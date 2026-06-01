@@ -424,7 +424,7 @@ modes:
 validators:
   - validator_id: "test"
     validator_type: "testing"
-    criteria: ["Run tests"]
+    evaluation_phase: "pre_execute"
 disagreement_policy: "unanimous"
 initial_mode: "producer"
 """)
