@@ -1,0 +1,117 @@
+protocol_id: "default"
+name: "Default Snodo Protocol"
+version: "1.0.0"
+
+modes:
+  - mode_id: "producer"
+    name: "Producer Mode"
+    tools:
+      - "edit"
+      - "dispatch"
+      - "resolve"
+      - "test"
+      - "validate"
+    validators:
+      - "security"
+      - "architecture"
+      - "quality"
+      - "protocol_adherence"
+    transitions:
+      complete: "reviewer"
+
+  - mode_id: "reviewer"
+    name: "Reviewer Mode"
+    tools:
+      - "review"
+      - "approve"
+      - "merge"
+      - "pr"
+    validators:
+      - "security"
+    transitions:
+      approved: "complete"
+
+  - mode_id: "planner"
+    name: "Planner Mode"
+    tools:
+      - "assess"
+      - "plan"
+    validators:
+      - "intent_clarity"
+      - "intent_scope"
+      - "agile_conformance"
+      - "value_increment"
+      - "completeness"
+    transitions:
+      planned: "producer"
+
+validators:
+  - validator_id: "security"
+    validator_type: "security"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Check for security vulnerabilities"
+      - "Validate input sanitization"
+      - "Check authentication/authorization"
+
+  - validator_id: "architecture"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Check design patterns"
+      - "Validate separation of concerns"
+      - "Check for tight coupling"
+
+  - validator_id: "quality"
+    validator_type: "quality"
+    evaluation_phase: "post_execute"
+    tooling: {}  # auto-detect from repo marker files
+    # Override for your stack:
+    # tooling:
+    #   test_command: "npm test"        # Node
+    #   test_command: "pytest"          # Python
+    #   test_command: "cargo test"      # Rust
+    #   test_command: "go test ./..."   # Go
+    #   test_command: "make test"       # Custom
+
+  - validator_id: "intent_clarity"
+    validator_type: "planning"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Does this intent have clear acceptance criteria?"
+
+  - validator_id: "intent_scope"
+    validator_type: "planning"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Is this intent bounded and specific?"
+
+  - validator_id: "agile_conformance"
+    validator_type: "planning"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Are tasks agile-conformant (small, testable, valuable)?"
+
+  - validator_id: "value_increment"
+    validator_type: "planning"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Does each wave deliver testable value?"
+
+  - validator_id: "completeness"
+    validator_type: "planning"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Does this plan cover all aspects of the intent?"
+
+  - validator_id: "protocol_adherence"
+    validator_type: "protocol"
+    evaluation_phase: "pre_execute"
+    severity_cap: "warn"
+    criteria:
+      - "Examine the submitted task spec in light of the current mode's operational profile (tools, validators, transitions, name). Determine whether the work described falls within the operational scope implied by the mode's profile. Consider whether the work would more naturally belong to a sibling mode in this protocol. Flag mismatches with specific justification explaining which mode the work belongs in."
+
+disagreement_policy: "unanimous"
+initial_mode: "producer"
+
+global_constraints: []

@@ -1,0 +1,124 @@
+protocol_id: "2+n"
+name: "2+N Reference Protocol"
+version: "1.0.0"
+
+# 2+N team pattern: 2 human-in-control roles + N specialized agents
+# Reference configuration from Paper Listing 1 (Section 4.12)
+# Producer-reviewer separation enforces Separation of Duties (WF1)
+
+modes:
+  - mode_id: "producer"
+    name: "Producer Mode"
+    # Producer cannot access reviewer tools (merge, approve)
+    # Paper constraint: negative(producer_mode calls merge) - enforced by WF1
+    tools:
+      - "edit"
+      - "dispatch"
+      - "resolve"
+      - "test"
+      - "validate"
+    validators:
+      - "security"
+      - "architecture"
+      - "conventions"
+      - "quality"
+      - "protocol_adherence"
+    transitions:
+      complete: "reviewer"
+
+  - mode_id: "reviewer"
+    name: "Reviewer Mode"
+    # Reviewer cannot access producer tools (edit, dispatch)
+    tools:
+      - "review"
+      - "approve"
+      - "merge"
+      - "pr"
+    validators:
+      - "security"
+      - "architecture"
+      - "quality"
+    transitions:
+      approved: "complete"
+      rejected: "producer"
+
+validators:
+  - validator_id: "security"
+    validator_type: "security"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Check the task spec against OWASP Top 10 categories: injection, broken authentication, sensitive data exposure, XXE, broken access control, security misconfiguration, XSS, insecure deserialization, vulnerable components, insufficient logging"
+      - "Verify no hardcoded credentials, secrets, tokens, or API keys in the implementation plan"
+      - "Confirm input validation and output encoding requirements are specified for all user-facing interfaces"
+
+  - validator_id: "architecture"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Check the spec aligns with SOLID principles: single responsibility, open/closed, Liskov substitution, interface segregation, dependency inversion"
+      - "Flag tight coupling between modules or unclear separation of concerns that violates established architectural patterns"
+      - "Identify missing abstractions, circular dependencies, or leaky module boundaries"
+
+  - validator_id: "conventions"
+    validator_type: "conventions"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Check the spec follows project naming conventions, file organization, and module boundaries"
+      - "Verify documentation requirements: docstrings for public APIs, type hints, inline comments for non-obvious logic"
+      - "Confirm test requirements are specified: unit tests for logic, integration tests for boundaries, edge case coverage"
+
+  - validator_id: "quality"
+    validator_type: "quality"
+    evaluation_phase: "post_execute"
+    tooling: {}
+    # Auto-detect test command from repo marker files
+    # Override for your stack:
+    # tooling:
+    #   test_command: "npm test"        # Node
+    #   test_command: "pytest"          # Python
+    #   test_command: "cargo test"      # Rust
+    #   test_command: "go test ./..."   # Go
+    #   test_command: "make test"       # Custom
+
+  - validator_id: "protocol_adherence"
+    validator_type: "protocol"
+    evaluation_phase: "pre_execute"
+    severity_cap: "warn"
+    criteria:
+      - "Examine the submitted task spec in light of the current mode's operational profile (tools, validators, transitions, name). Determine whether the work described falls within the operational scope implied by the mode's profile. Consider whether the work would more naturally belong to a sibling mode in this protocol. Flag mismatches with specific justification explaining which mode the work belongs in."
+
+disagreement_policy: "unanimous"
+initial_mode: "producer"
+
+# Paper constraints (Listing 1):
+# Capability-level enforced via WF1 (disjoint tool sets):
+#   negative(orchestrator_agent calls edit) → orchestrator lacks edit tool
+#   negative(producer_mode calls merge) → merge is reviewer-only
+# Spec-level now enforced via predicate framework (7.8):
+#   negative(coder modifies out_of_scope) → files_in_scope predicate
+#   positive(exists tests => dispatch) → tests_exist_for_modified predicate
+global_constraints:
+  - constraint_id: "files_in_scope"
+    description: "All modified files must be within project scope"
+    expression: "artifact_paths all match scope_paths"
+    severity: "blocker"
+    predicate: "files_in_scope"
+    params:
+      scope_paths:
+        - "src/**"
+        - "tests/**"
+        - "docs/**"
+        - "snodo/**"
+  - constraint_id: "tests_exist"
+    description: "Modified implementation files must have corresponding tests"
+    expression: "for each non-test artifact a test file exists"
+    severity: "blocker"
+    predicate: "tests_exist_for_modified"
+    params:
+      test_dir_pattern: "tests/"
+  - constraint_id: "no_secrets"
+    description: "No secrets or credentials in committed diff"
+    expression: "git diff has no credential patterns"
+    severity: "blocker"
+    predicate: "no_secrets_in_diff"
+    params: {}

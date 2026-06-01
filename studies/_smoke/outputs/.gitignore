@@ -1,0 +1,4 @@
+# _smoke outputs are committed as regression guards.
+# Un-ignore SVG/CSV in this directory only.
+!*.svg
+!*.csv

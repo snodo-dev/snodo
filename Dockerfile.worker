@@ -1,0 +1,18 @@
+FROM python:3.13-slim
+
+LABEL maintainer="snodo" \
+      description="Snodo worker container for isolated task execution"
+
+# Install git (required for GitPython operations)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install snodo
+COPY . /opt/snodo
+RUN pip install --no-cache-dir /opt/snodo && \
+    rm -rf /opt/snodo
+
+WORKDIR /workspace
+
+ENTRYPOINT ["snodo"]

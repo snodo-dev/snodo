@@ -1,0 +1,178 @@
+{
+  "disagreement_policy": "unanimous",
+  "global_constraints": [],
+  "initial_mode": "producer",
+  "metadata": {},
+  "modes": [
+    {
+      "coder": null,
+      "coder_config": {},
+      "constraints": [],
+      "mode_id": "producer",
+      "name": "Producer Mode",
+      "tools": [
+        "edit",
+        "dispatch",
+        "resolve",
+        "test",
+        "validate"
+      ],
+      "transitions": {
+        "complete": "reviewer"
+      },
+      "validators": [
+        "security",
+        "architecture",
+        "quality",
+        "protocol_adherence"
+      ]
+    },
+    {
+      "coder": null,
+      "coder_config": {},
+      "constraints": [],
+      "mode_id": "reviewer",
+      "name": "Reviewer Mode",
+      "tools": [
+        "review",
+        "approve",
+        "merge",
+        "pr"
+      ],
+      "transitions": {
+        "approved": "complete"
+      },
+      "validators": [
+        "security"
+      ]
+    },
+    {
+      "coder": null,
+      "coder_config": {},
+      "constraints": [],
+      "mode_id": "planner",
+      "name": "Planner Mode",
+      "tools": [
+        "assess",
+        "plan"
+      ],
+      "transitions": {
+        "planned": "producer"
+      },
+      "validators": [
+        "intent_clarity",
+        "intent_scope",
+        "agile_conformance",
+        "value_increment",
+        "completeness"
+      ]
+    }
+  ],
+  "name": "Default Snodo Protocol",
+  "protocol_id": "default",
+  "roles": [],
+  "validators": [
+    {
+      "constraints": [],
+      "criteria": [
+        "Check for security vulnerabilities",
+        "Validate input sanitization",
+        "Check authentication/authorization"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "security",
+      "validator_type": "security"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Check design patterns",
+        "Validate separation of concerns",
+        "Check for tight coupling"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "architecture",
+      "validator_type": "architecture"
+    },
+    {
+      "constraints": [],
+      "criteria": [],
+      "evaluation_phase": "post_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "quality",
+      "validator_type": "quality"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Does this intent have clear acceptance criteria?"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "intent_clarity",
+      "validator_type": "planning"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Is this intent bounded and specific?"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "intent_scope",
+      "validator_type": "planning"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Are tasks agile-conformant (small, testable, valuable)?"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "agile_conformance",
+      "validator_type": "planning"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Does each wave deliver testable value?"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "value_increment",
+      "validator_type": "planning"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Does this plan cover all aspects of the intent?"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "completeness",
+      "validator_type": "planning"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Examine the submitted task spec in light of the current mode's operational profile (tools, validators, transitions, name). Determine whether the work described falls within the operational scope implied by the mode's profile. Consider whether the work would more naturally belong to a sibling mode in this protocol. Flag mismatches with specific justification explaining which mode the work belongs in."
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": "warn",
+      "tooling": {},
+      "validator_id": "protocol_adherence",
+      "validator_type": "protocol"
+    }
+  ],
+  "version": "1.0.0"
+}

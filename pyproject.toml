@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snodo"
+version = "0.1.0"
+dependencies = [
+    "pydantic>=2.12.0",
+    "pyyaml>=6.0",
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-community>=0.4.0",
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint-sqlite>=3.0.0",
+    "langmem>=0.0.20",
+    "litellm>=1.80.0",
+    "mcp>=1.0.0",
+    "PyGithub>=2.0.0",
+    "GitPython>=3.1.0",
+    "typer>=0.9.0",
+    "pyjwt>=2.8.0",
+    "textual>=1.0.0",
+    "docker>=7.0.0",
+]
+
+description = "AI-native Software Development Lifecycle protocol engine"
+requires-python = ">=3.12"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "The Snodo Authors", email = "noreply@snodo.dev" }]
+keywords = ["ai", "sdlc", "agents", "protocol", "governance", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+[project.urls]
+Homepage = "https://snodo.dev"
+Repository = "https://github.com/snodo-dev/snodo"
+Issues = "https://github.com/snodo-dev/snodo/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-timeout>=2.3.0",
+    "hypothesis>=6.100.0",
+    "ruff>=0.1.0",
+    "radon>=6.0.0",
+]
+studies = [
+    "marimo>=0.9.0",
+    "numpy>=1.24.0",
+    "matplotlib>=3.7.0",
+    "pandas>=2.0.0",
+]
+
+[project.scripts]
+snodo = "snodo.cli.main:main"
+snop = "snodo.cli.commands.dashboard_cmd:snop_entry"
+
+[tool.setuptools.packages.find]
+include = ["snodo*"]
+
+[tool.setuptools.package-data]
+"snodo.protocols.templates" = ["*.yml"]
+
+[tool.pytest.ini_options]
+markers = [
+    "e2e: end-to-end tests using subprocess invocation of the snodo CLI",
+    "slow: tests that take more than a second to complete",
+    "property: hypothesis property-based tests",
+    "timeout: test execution timeout",
+]
+filterwarnings = [
+    "ignore::UserWarning:langchain_core.utils.pydantic",
+]

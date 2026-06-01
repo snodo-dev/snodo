@@ -1,0 +1,153 @@
+{
+  "disagreement_policy": "unanimous",
+  "global_constraints": [
+    {
+      "constraint_id": "files_in_scope",
+      "description": "All modified files must be within project scope",
+      "expression": "artifact_paths all match scope_paths",
+      "params": {
+        "scope_paths": [
+          "src/**",
+          "tests/**",
+          "docs/**",
+          "snodo/**"
+        ]
+      },
+      "predicate": "files_in_scope",
+      "severity": "blocker"
+    },
+    {
+      "constraint_id": "tests_exist",
+      "description": "Modified implementation files must have corresponding tests",
+      "expression": "for each non-test artifact a test file exists",
+      "params": {
+        "test_dir_pattern": "tests/"
+      },
+      "predicate": "tests_exist_for_modified",
+      "severity": "blocker"
+    },
+    {
+      "constraint_id": "no_secrets",
+      "description": "No secrets or credentials in committed diff",
+      "expression": "git diff has no credential patterns",
+      "params": {},
+      "predicate": "no_secrets_in_diff",
+      "severity": "blocker"
+    }
+  ],
+  "initial_mode": "producer",
+  "metadata": {},
+  "modes": [
+    {
+      "coder": null,
+      "coder_config": {},
+      "constraints": [],
+      "mode_id": "producer",
+      "name": "Producer Mode",
+      "tools": [
+        "edit",
+        "dispatch",
+        "resolve",
+        "test",
+        "validate"
+      ],
+      "transitions": {
+        "complete": "reviewer"
+      },
+      "validators": [
+        "security",
+        "architecture",
+        "conventions",
+        "quality",
+        "protocol_adherence"
+      ]
+    },
+    {
+      "coder": null,
+      "coder_config": {},
+      "constraints": [],
+      "mode_id": "reviewer",
+      "name": "Reviewer Mode",
+      "tools": [
+        "review",
+        "approve",
+        "merge",
+        "pr"
+      ],
+      "transitions": {
+        "approved": "complete",
+        "rejected": "producer"
+      },
+      "validators": [
+        "security",
+        "architecture",
+        "quality"
+      ]
+    }
+  ],
+  "name": "2+N Reference Protocol",
+  "protocol_id": "2+n",
+  "roles": [],
+  "validators": [
+    {
+      "constraints": [],
+      "criteria": [
+        "Check the task spec against OWASP Top 10 categories: injection, broken authentication, sensitive data exposure, XXE, broken access control, security misconfiguration, XSS, insecure deserialization, vulnerable components, insufficient logging",
+        "Verify no hardcoded credentials, secrets, tokens, or API keys in the implementation plan",
+        "Confirm input validation and output encoding requirements are specified for all user-facing interfaces"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "security",
+      "validator_type": "security"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Check the spec aligns with SOLID principles: single responsibility, open/closed, Liskov substitution, interface segregation, dependency inversion",
+        "Flag tight coupling between modules or unclear separation of concerns that violates established architectural patterns",
+        "Identify missing abstractions, circular dependencies, or leaky module boundaries"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "architecture",
+      "validator_type": "architecture"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Check the spec follows project naming conventions, file organization, and module boundaries",
+        "Verify documentation requirements: docstrings for public APIs, type hints, inline comments for non-obvious logic",
+        "Confirm test requirements are specified: unit tests for logic, integration tests for boundaries, edge case coverage"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "conventions",
+      "validator_type": "conventions"
+    },
+    {
+      "constraints": [],
+      "criteria": [],
+      "evaluation_phase": "post_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "quality",
+      "validator_type": "quality"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Examine the submitted task spec in light of the current mode's operational profile (tools, validators, transitions, name). Determine whether the work described falls within the operational scope implied by the mode's profile. Consider whether the work would more naturally belong to a sibling mode in this protocol. Flag mismatches with specific justification explaining which mode the work belongs in."
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": "warn",
+      "tooling": {},
+      "validator_id": "protocol_adherence",
+      "validator_type": "protocol"
+    }
+  ],
+  "version": "1.0.0"
+}

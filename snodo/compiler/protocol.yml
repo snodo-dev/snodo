@@ -1,0 +1,142 @@
+protocol_id: "ai_sdlc_v1"
+name: "AI-Powered SDLC Protocol"
+version: "1.0.0"
+disagreement_policy: "unanimous"
+initial_mode: "planning"
+
+roles:
+  - role_id: "architect"
+    name: "System Architect"
+    permissions:
+      - "create_plan"
+      - "review_architecture"
+    responsibilities:
+      - "Define system structure"
+      - "Review technical decisions"
+  
+  - role_id: "coder"
+    name: "Code Implementer"
+    permissions:
+      - "write_code"
+      - "run_tests"
+    responsibilities:
+      - "Implement specifications"
+      - "Write unit tests"
+  
+  - role_id: "reviewer"
+    name: "Code Reviewer"
+    permissions:
+      - "review_code"
+      - "approve_merge"
+    responsibilities:
+      - "Review pull requests"
+      - "Ensure quality standards"
+
+validators:
+  - validator_id: "arch_validator"
+    validator_type: "architecture"
+    criteria:
+      - "Follows design patterns"
+      - "Maintains modularity"
+      - "Respects dependency boundaries"
+    severity_threshold: "warn"
+    constraints:
+      - constraint_id: "no_circular_deps"
+        description: "No circular dependencies allowed"
+        expression: "graph.is_acyclic()"
+        severity: "blocker"
+  
+  - validator_id: "sec_validator"
+    validator_type: "security"
+    criteria:
+      - "No hardcoded credentials"
+      - "Input validation present"
+      - "No SQL injection vectors"
+    severity_threshold: "blocker"
+    constraints:
+      - constraint_id: "no_secrets"
+        description: "No secrets in code"
+        expression: "!contains_secret_pattern()"
+        severity: "blocker"
+  
+  - validator_id: "conv_validator"
+    validator_type: "conventions"
+    criteria:
+      - "Follows naming conventions"
+      - "Has docstrings"
+      - "Proper type hints"
+    severity_threshold: "warn"
+
+modes:
+  - mode_id: "planning"
+    name: "Planning & Architecture"
+    tools:
+      - "plan_tool"
+      - "diagram_tool"
+    transitions:
+      plan_approved: "implementation"
+      plan_rejected: "planning"
+    validators:
+      - "arch_validator"
+    constraints:
+      - constraint_id: "must_have_plan"
+        description: "Plan document required"
+        expression: "plan_exists()"
+        severity: "blocker"
+  
+  - mode_id: "implementation"
+    name: "Code Implementation"
+    tools:
+      - "code_editor"
+      - "test_runner"
+      - "git_client"
+    transitions:
+      tests_pass: "review"
+      tests_fail: "implementation"
+    validators:
+      - "arch_validator"
+      - "sec_validator"
+      - "conv_validator"
+    constraints:
+      - constraint_id: "must_have_tests"
+        description: "Tests required for all code"
+        expression: "test_coverage() >= 0.8"
+        severity: "blocker"
+  
+  - mode_id: "review"
+    name: "Code Review"
+    tools:
+      - "diff_viewer"
+      - "comment_tool"
+    transitions:
+      approved: "done"
+      changes_requested: "implementation"
+    validators:
+      - "arch_validator"
+      - "sec_validator"
+      - "conv_validator"
+  
+  - mode_id: "done"
+    name: "Completed"
+    tools: []
+    transitions: {}
+    validators: []
+
+global_constraints:
+  - constraint_id: "max_scope"
+    description: "Task scope must be reasonable"
+    expression: "lines_of_code() < 1000"
+    severity: "warn"
+  
+  - constraint_id: "timeline_limit"
+    description: "Task duration limit"
+    expression: "duration_hours() < 40"
+    severity: "warn"
+
+metadata:
+  author: "Snodo Team"
+  description: "Production-ready AI-SDLC protocol"
+  tags:
+    - "ai"
+    - "sdlc"
+    - "protocol"

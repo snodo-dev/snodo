@@ -1,0 +1,54 @@
+protocol_id: "solo"
+name: "Solo Developer Protocol"
+version: "1.0.0"
+
+modes:
+  - mode_id: "producer"
+    name: "Producer Mode"
+    tools:
+      - "edit"
+      - "dispatch"
+      - "resolve"
+      - "test"
+      - "validate"
+      - "commit"
+      - "merge"
+    validators:
+      - "security"
+      - "architecture"
+      - "quality"
+    transitions: {}
+
+validators:
+  - validator_id: "security"
+    validator_type: "security"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Check for security vulnerabilities"
+      - "Validate input sanitization"
+      - "Check authentication/authorization"
+
+  - validator_id: "architecture"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "Check design patterns"
+      - "Validate separation of concerns"
+      - "Check for tight coupling"
+
+  - validator_id: "quality"
+    validator_type: "quality"
+    evaluation_phase: "post_execute"
+    tooling: {}  # auto-detect from repo marker files
+    # Override for your stack:
+    # tooling:
+    #   test_command: "npm test"        # Node
+    #   test_command: "pytest"          # Python
+    #   test_command: "cargo test"      # Rust
+    #   test_command: "go test ./..."   # Go
+    #   test_command: "make test"       # Custom
+
+disagreement_policy: "unanimous"
+initial_mode: "producer"
+
+global_constraints: []

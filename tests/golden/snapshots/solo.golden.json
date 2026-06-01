@@ -1,0 +1,71 @@
+{
+  "disagreement_policy": "unanimous",
+  "global_constraints": [],
+  "initial_mode": "producer",
+  "metadata": {},
+  "modes": [
+    {
+      "coder": null,
+      "coder_config": {},
+      "constraints": [],
+      "mode_id": "producer",
+      "name": "Producer Mode",
+      "tools": [
+        "edit",
+        "dispatch",
+        "resolve",
+        "test",
+        "validate",
+        "commit",
+        "merge"
+      ],
+      "transitions": {},
+      "validators": [
+        "security",
+        "architecture",
+        "quality"
+      ]
+    }
+  ],
+  "name": "Solo Developer Protocol",
+  "protocol_id": "solo",
+  "roles": [],
+  "validators": [
+    {
+      "constraints": [],
+      "criteria": [
+        "Check for security vulnerabilities",
+        "Validate input sanitization",
+        "Check authentication/authorization"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "security",
+      "validator_type": "security"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Check design patterns",
+        "Validate separation of concerns",
+        "Check for tight coupling"
+      ],
+      "evaluation_phase": "pre_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "architecture",
+      "validator_type": "architecture"
+    },
+    {
+      "constraints": [],
+      "criteria": [],
+      "evaluation_phase": "post_execute",
+      "severity_cap": null,
+      "tooling": {},
+      "validator_id": "quality",
+      "validator_type": "quality"
+    }
+  ],
+  "version": "1.0.0"
+}

@@ -1,0 +1,7 @@
+# Study-only dependencies — separate from the main snodo package.
+# Install with: pip install -r studies/requirements.txt
+
+marimo>=0.9.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+pandas>=2.0.0

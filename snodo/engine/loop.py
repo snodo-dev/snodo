@@ -1,0 +1,1205 @@
+"""Dynamic Graph Builder for Protocol Execution (Kleene Closure) - INTEGRATED.
+
+FILE: snodo/engine/loop.py (Task 3.4 + 3.7 + 5.2 Integration)
+
+Takes a compiled Protocol object and builds a LangGraph StateGraph dynamically.
+NOW WIRED WITH REAL AGENTS:
+- Execute node → calls BasicCoderAdapter → writes files via WorkspaceMCP
+- Validate node → runs pre_execute validators (ShellMCP + LLM stubs)
+- Post-validate node → runs post_execute validators (QualityValidator)
+- Git commits via GitMCP
+- Checkpointer for persistent agent memory (Task 5.2)
+
+Phase-aware validation (Task 3.7):
+- pre_execute validators run before execution (governance gate)
+- post_execute validators run after execution (quality gate)
+
+INV3 (non-overridable validation) is structural/emergent — no single site:
+  token issuance (tokens.py) requires satisfied quorum → token gate (server.py)
+  blocks mutation tools → validation cannot be bypassed.
+"""
+
+from typing import Dict, Any, List, Optional, Callable, Union
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+
+from langgraph.graph import StateGraph, END
+
+from snodo.compiler.models import Protocol, Validator
+from snodo.core.interfaces import Task, ValidatorResult, TaskSpec
+from snodo.infrastructure.tokens import ValidationToken, TokenIssuer
+from snodo.engine.policy import PolicyEvaluator, PolicyAction, policy_decision_to_dict
+
+# Import real implementations
+from snodo.coders import LiteLLMAdapter, MockAdapter
+from snodo.mcp.workspace import WorkspaceMCP
+from snodo.mcp.git import GitMCP
+from snodo.mcp.shell import ShellMCP
+import snodo.predicates.scope  # noqa: F401 — registers predicates on import
+import snodo.predicates.tests  # noqa: F401
+import snodo.predicates.secrets  # noqa: F401
+import snodo.validators  # noqa: F401 — registers validators on import
+from snodo.validators.context import ValidatorContext
+
+
+class LoopStage(str, Enum):
+    """Stages in the orchestration loop."""
+    GOVERNANCE = "governance"
+    VALIDATE = "validate"
+    EXECUTE = "execute"
+    MOVE_NEXT = "move_next"
+    COMPLETE = "complete"
+    BLOCKED = "blocked"
+
+
+@dataclass
+class LoopState:
+    """State carried through the orchestration loop."""
+    task: Task
+    current_mode: str
+    validation_results: List[ValidatorResult] = field(default_factory=list)
+    validation_token: Optional[ValidationToken] = None
+    artifacts: List[str] = field(default_factory=list)
+    stage: LoopStage = LoopStage.GOVERNANCE
+    iteration: int = 0
+    constraints_passed: bool = True
+    constraint_violations: List[str] = field(default_factory=list)
+    policy_decision: Optional[Any] = None
+    is_complete: bool = False
+    is_blocked: bool = False
+    halt_type: Optional[str] = None  # "blocked" | "escalated" | "resolution" | "constraint" | "max_iterations" | "wf3"
+    pending_disagreement: Optional[Dict[str, Any]] = None
+    resolution_override: bool = False
+    spawned_subtasks: List[Task] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    messages: List[Dict[str, Any]] = field(default_factory=list)
+    summary: str = ""
+
+
+class GraphBuilder:
+    """Builds LangGraph StateGraph from Protocol specification.
+    
+    NOW WITH REAL MCP INTEGRATION (Task 3.4):
+    - workspace_mcp: File operations
+    - git_mcp: Version control
+    - shell_mcp: Test execution
+    - coder: Code generation (BasicCoderAdapter)
+    """
+    
+    def __init__(
+        self,
+        protocol: Protocol,
+        workspace_mcp: Optional[WorkspaceMCP] = None,
+        git_mcp: Optional[GitMCP] = None,
+        shell_mcp: Optional[ShellMCP] = None,
+        coder: Optional[Union[LiteLLMAdapter, MockAdapter]] = None,
+        checkpointer: Any = None,
+        governance_fn: Optional[Callable[..., Any]] = None,
+        validator_fn: Optional[Callable[..., List[ValidatorResult]]] = None,
+        executor_fn: Optional[Callable[..., List[str]]] = None,
+        audit_log: Any = None,
+        session_manager: Any = None,
+        token_issuer: Optional[TokenIssuer] = None,
+        predicate_registry: Any = None,
+    ):
+        """Initialize graph builder with real MCP services.
+
+        Args:
+            protocol: The protocol specification
+            workspace_mcp: Workspace MCP for file operations
+            git_mcp: Git MCP for version control
+            shell_mcp: Shell MCP for test execution
+            coder: Coder adapter for code generation
+            checkpointer: LangGraph checkpointer for persistent memory (e.g., SqliteSaver)
+            governance_fn: Optional custom governance checker
+            validator_fn: Optional custom validator runner
+            executor_fn: Optional custom executor
+            audit_log: Optional AuditLog for INV4 event logging
+            session_manager: Optional SessionManager for INV5 session state
+            token_issuer: Optional TokenIssuer for JWT validation tokens (7.7)
+            predicate_registry: Optional PredicateRegistry for constraint evaluation (7.8)
+        """
+        self.protocol = protocol
+        self.workspace_mcp = workspace_mcp
+        self.git_mcp = git_mcp
+        self.shell_mcp = shell_mcp
+        self.coder = coder or MockAdapter()
+        self.checkpointer = checkpointer
+        self._audit_log = audit_log
+        self._session_manager = session_manager
+        self._token_issuer = token_issuer or TokenIssuer()
+
+        from snodo.predicates.registry import _default_registry
+        self._predicate_registry = predicate_registry or _default_registry
+
+        self.governance_fn = governance_fn or self._default_governance
+        self.validator_fn = validator_fn or self._default_validator
+        self.executor_fn = executor_fn or self._default_executor
+
+        self.policy_evaluator = PolicyEvaluator()
+        self._summary_model = self._init_summary_model()
+        self._project_context_cache: Optional[Dict[str, Any]] = None
+    
+    def build_graph(self) -> StateGraph:
+        """Build executable StateGraph from protocol.
+
+        Graph flow:
+          governance → validate(pre_execute) → execute → post_validate → move_next → complete
+                                                ↑                          |
+                                                blocked                  blocked
+        """
+        workflow = StateGraph(dict)  # type: ignore[type-var]
+
+        # Add nodes
+        workflow.add_node("governance", self._governance_node)  # type: ignore[type-var]
+        workflow.add_node("validate", self._validate_node)  # type: ignore[type-var]
+        workflow.add_node("execute", self._execute_node)  # type: ignore[type-var]
+        workflow.add_node("post_validate", self._post_validate_node)  # type: ignore[type-var]
+        workflow.add_node("move_next", self._move_next_node)  # type: ignore[type-var]
+        workflow.add_node("blocked", self._blocked_node)  # type: ignore[type-var]
+        workflow.add_node("complete", self._complete_node)  # type: ignore[type-var]
+
+        # Set entry point
+        workflow.set_entry_point("governance")
+
+        # Add edges
+        workflow.add_conditional_edges(
+            "governance",
+            self._route_after_governance,
+            {
+                "validate": "validate",
+                "execute": "execute",
+                "blocked": "blocked",
+            }
+        )
+        workflow.add_conditional_edges(
+            "validate",
+            self._route_after_validation,
+            {
+                "execute": "execute",
+                "governance": "governance",
+                "blocked": "blocked"
+            }
+        )
+        workflow.add_edge("execute", "post_validate")
+        workflow.add_conditional_edges(
+            "post_validate",
+            self._route_after_post_validation,
+            {
+                "move_next": "move_next",
+                "blocked": "blocked"
+            }
+        )
+        workflow.add_conditional_edges(
+            "move_next",
+            self._route_after_move,
+            {
+                "governance": "governance",
+                "complete": "complete"
+            }
+        )
+        workflow.add_edge("blocked", END)
+        workflow.add_edge("complete", END)
+
+        return workflow
+    
+    def _governance_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Stage 1: Check constraints and resolve pending disagreements."""
+        loop_state = self._dict_to_state(state)
+        loop_state.stage = LoopStage.GOVERNANCE
+        loop_state.iteration += 1
+
+        # Safety net: prevent infinite loops (max 50 iterations)
+        if loop_state.iteration > 50:
+            loop_state.is_blocked = True
+            loop_state.halt_type = "max_iterations"
+            loop_state.constraint_violations.append(
+                "Max iterations (50) exceeded — possible infinite loop"
+            )
+            return self._state_to_dict(loop_state)
+
+        # Consume resolution if present in session decisions
+        if self._session_manager and not loop_state.resolution_override:
+            session = self._session_manager.get_active_session(
+                loop_state.current_mode, getattr(self, '_project_root', "")
+            )
+            if session:
+                resolution_key = f"resolution_{loop_state.task.id}"
+                resolution = session.checkpoint.decisions.get(resolution_key)
+                if resolution:
+                    if resolution.get("resolution") == "proceed":
+                        loop_state.resolution_override = True
+                        self._audit("disagreement_override_applied", {
+                            "op": "disagreement_override_applied",
+                            "task_ref": loop_state.task.id,
+                            "resolution": resolution,
+                        })
+                        # Clear resolution (single-use)
+                        self._session_manager.update_decision(
+                            session.session_id, resolution_key, None
+                        )
+                    elif resolution.get("resolution") == "halt":
+                        loop_state.is_blocked = True
+                        loop_state.halt_type = "resolution"
+                        loop_state.constraint_violations.append(
+                            f"Resolution halt: {resolution.get('justification', 'No justification provided')}"
+                        )
+                        self._audit("disagreement_halt_applied", {
+                            "op": "disagreement_halt_applied",
+                            "task_ref": loop_state.task.id,
+                            "resolution": resolution,
+                        })
+                        # Clear resolution (single-use)
+                        self._session_manager.update_decision(
+                            session.session_id, resolution_key, None
+                        )
+                        return self._state_to_dict(loop_state)
+
+        # Summarize messages if they've grown too large
+        loop_state = self._maybe_summarize(loop_state)
+
+        loop_state = self.governance_fn(loop_state, self.protocol)
+
+        self._audit("governance_check", {
+            "op": "governance_check",
+            "task_ref": loop_state.task.id,
+            "mode": loop_state.current_mode,
+            "constraints_checked": loop_state.constraints_passed,
+        })
+
+        # Track task in messages for agent memory (only on first iteration)
+        if loop_state.iteration == 1:
+            loop_state.messages.append({
+                "role": "user",
+                "content": f"Task: {loop_state.task.spec}"
+            })
+
+        return self._state_to_dict(loop_state)
+    
+    def _resolve_validators(
+        self, mode_id: str, phase: str = "pre_execute"
+    ) -> tuple:
+        """Resolve validators for a mode and phase.
+
+        Returns:
+            (mode, validators) or (None, []) if mode not found.
+        """
+        mode = self.protocol.get_mode(mode_id)
+        if not mode:
+            return None, []
+        validators: List[Validator] = [
+            v for v in (
+                self.protocol.get_validator(vid)
+                for vid in mode.validators
+            )
+            if v is not None and v.evaluation_phase == phase
+        ]
+        return mode, validators
+
+    def _validate_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Stage 2: Run pre_execute validator quorum."""
+        loop_state = self._dict_to_state(state)
+        loop_state.stage = LoopStage.VALIDATE
+
+        current_mode, validators = self._resolve_validators(
+            loop_state.current_mode, "pre_execute"
+        )
+        if not current_mode:
+            loop_state.is_blocked = True
+            loop_state.halt_type = "constraint"
+            loop_state.constraint_violations.append(f"Invalid mode: {loop_state.current_mode}")
+            return self._state_to_dict(loop_state)
+
+        # WF3 runtime guard: explicit empty-validators check
+        if not validators:
+            loop_state.is_blocked = True
+            loop_state.halt_type = "wf3"
+            loop_state.constraint_violations.append(
+                f"WF3 violation: no pre_execute validators configured "
+                f"for mode '{loop_state.current_mode}'"
+            )
+            self._audit("wf3_runtime_violation", {
+                "task_ref": loop_state.task.id,
+                "mode": loop_state.current_mode,
+                "phase": "pre_execute",
+            })
+            return self._state_to_dict(loop_state)
+
+        results = self.validator_fn(loop_state.task, validators, self.shell_mcp,
+                                    current_mode=loop_state.current_mode)
+        loop_state.validation_results = results
+
+        decision = self.policy_evaluator.evaluate(
+            results, self.protocol.disagreement_policy
+        )
+        loop_state.policy_decision = decision
+
+        outcome = "blocked"
+        if decision.action in [PolicyAction.PROCEED, PolicyAction.PROCEED_WITH_LOG]:
+            loop_state.validation_token = self._token_issuer.issue_token(
+                task_id=loop_state.task.id,
+                validator_results=results,
+                consensus=self.protocol.disagreement_policy.value,
+            )
+            outcome = "passed"
+        elif decision.action == PolicyAction.HALT:
+            loop_state.is_blocked = True
+            loop_state.halt_type = "blocked"
+        elif decision.action == PolicyAction.ESCALATE:
+            loop_state.is_blocked = True
+            loop_state.halt_type = "escalated"
+            loop_state.pending_disagreement = {
+                "phase": "pre_execute",
+                "policy": self.protocol.disagreement_policy.value,
+                "validator_results": [
+                    {"validator_id": r.validator_id, "severity": r.severity, "justification": r.justification}
+                    for r in results
+                ],
+                "policy_decision": {
+                    "pass_count": decision.pass_count,
+                    "warn_count": decision.warn_count,
+                    "blocker_count": decision.blocker_count,
+                    "total_count": decision.total_count,
+                    "justification": decision.justification,
+                },
+            }
+            outcome = "escalated"
+            self._audit("disagreement_escalated", {
+                "op": "disagreement_escalated",
+                "phase": "pre_execute",
+                "task_ref": loop_state.task.id,
+                "policy": self.protocol.disagreement_policy.value,
+                "validator_results": loop_state.pending_disagreement["validator_results"],
+                "policy_decision": loop_state.pending_disagreement["policy_decision"],
+            })
+
+        self._audit("validate", {
+            "op": "validate",
+            "phase": "pre_execute",
+            "task_ref": loop_state.task.id,
+            "validators_invoked": [v.validator_id for v in validators],
+            "results": _build_audit_results(validators, results),
+            "outcome": outcome,
+            "policy_decision": str(decision.action.value) if decision else None,
+        })
+
+        return self._state_to_dict(loop_state)
+
+    def _execute_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Stage 3: Execute task (REAL IMPLEMENTATION - writes files!)."""
+        loop_state = self._dict_to_state(state)
+        loop_state.stage = LoopStage.EXECUTE
+
+        # Collect project context once (cached on builder)
+        if self._project_context_cache is None:
+            self._project_context_cache = self._collect_project_context(self.workspace_mcp)
+        loop_state.metadata["project_context"] = self._project_context_cache
+
+        if loop_state.resolution_override or self._token_issuer.verify_token(
+            loop_state.validation_token,
+            expected_task_id=loop_state.task.id,
+        ):
+            # Execute task (REAL EXECUTION)
+            artifacts = self.executor_fn(
+                loop_state.task,
+                loop_state.validation_token,
+                self.coder,
+                self.workspace_mcp,
+                self.git_mcp,
+                memory_summary=loop_state.summary,
+                project_context=self._project_context_cache,
+            )
+            loop_state.artifacts.extend(artifacts)
+
+            # Single-use: consume the token after successful dispatch
+            loop_state.validation_token = None
+            self._audit("token_consumed", {
+                "op": "token_consumed",
+                "task_ref": loop_state.task.id,
+            })
+
+        self._audit("dispatch", {
+            "op": "dispatch",
+            "task_ref": loop_state.task.id,
+            "token_id": loop_state.task.id,
+            "mode": loop_state.current_mode,
+            "artifacts_count": len(loop_state.artifacts),
+        })
+
+        # Track execution in messages for agent memory
+        artifact_summary = ", ".join(loop_state.artifacts) if loop_state.artifacts else "none"
+        loop_state.messages.append({
+            "role": "assistant",
+            "content": f"Executed task '{loop_state.task.spec}' in mode "
+                       f"'{loop_state.current_mode}'. Artifacts: {artifact_summary}."
+        })
+
+        return self._state_to_dict(loop_state)
+
+    def _post_validate_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Stage 3b: Run post_execute validators (quality gate)."""
+        loop_state = self._dict_to_state(state)
+        loop_state.stage = LoopStage.VALIDATE  # Reuse VALIDATE stage enum
+
+        # Re-evaluate constraints with post-execute context
+        # (artifacts populated, git diff available)
+        self._evaluate_constraints(loop_state, self.protocol, "post_validate")
+
+        current_mode, post_validators = self._resolve_validators(
+            loop_state.current_mode, "post_execute"
+        )
+        if not current_mode or not post_validators:
+            self._audit("post_validate_bypassed", {
+                "task_ref": loop_state.task.id if loop_state.task else None,
+                "mode": loop_state.current_mode,
+                "reason": "no_post_execute_validators",
+            })
+            return self._state_to_dict(loop_state)
+
+        # Run post_execute validators
+        results = self.validator_fn(loop_state.task, post_validators, self.shell_mcp,
+                                    current_mode=loop_state.current_mode)
+
+        # Merge post-validate results with existing results
+        loop_state.validation_results = loop_state.validation_results + results
+
+        # Evaluate policy on post-execute results
+        decision = self.policy_evaluator.evaluate(
+            results,
+            self.protocol.disagreement_policy
+        )
+
+        post_outcome = "passed"
+        if decision.action == PolicyAction.HALT:
+            loop_state.is_blocked = True
+            loop_state.halt_type = "blocked"
+            loop_state.constraint_violations.append(
+                "Post-execute validation failed: " + decision.justification
+            )
+            post_outcome = "blocked"
+        elif decision.action == PolicyAction.ESCALATE:
+            loop_state.is_blocked = True
+            loop_state.halt_type = "escalated"
+            loop_state.pending_disagreement = {
+                "phase": "post_execute",
+                "policy": self.protocol.disagreement_policy.value,
+                "validator_results": [
+                    {"validator_id": r.validator_id, "severity": r.severity, "justification": r.justification}
+                    for r in results
+                ],
+                "policy_decision": {
+                    "pass_count": decision.pass_count,
+                    "warn_count": decision.warn_count,
+                    "blocker_count": decision.blocker_count,
+                    "total_count": decision.total_count,
+                    "justification": decision.justification,
+                },
+            }
+            post_outcome = "escalated"
+            self._audit("disagreement_escalated", {
+                "op": "disagreement_escalated",
+                "phase": "post_execute",
+                "task_ref": loop_state.task.id,
+                "policy": self.protocol.disagreement_policy.value,
+                "validator_results": loop_state.pending_disagreement["validator_results"],
+                "policy_decision": loop_state.pending_disagreement["policy_decision"],
+            })
+
+        self._audit("validate", {
+            "op": "validate",
+            "phase": "post_execute",
+            "task_ref": loop_state.task.id,
+            "validators_invoked": [v.validator_id for v in post_validators],
+            "results": _build_audit_results(post_validators, results),
+            "outcome": post_outcome,
+        })
+
+        return self._state_to_dict(loop_state)
+
+    def _route_after_post_validation(self, state: Dict[str, Any]) -> str:
+        """Route after post-validation: proceed or block."""
+        loop_state = self._dict_to_state(state)
+        decision = "blocked" if loop_state.is_blocked else "move_next"
+        self._audit("post_validation_route", {
+            "op": "post_validation_route",
+            "task_ref": loop_state.task.id,
+            "decision": decision,
+        })
+        return decision
+
+    def _move_next_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Stage 4: Move to next task or complete."""
+        loop_state = self._dict_to_state(state)
+        loop_state.stage = LoopStage.MOVE_NEXT
+
+        # Simple completion logic
+        loop_state.is_complete = True
+
+        self._audit("transition", {
+            "op": "transition",
+            "task_ref": loop_state.task.id,
+            "from_mode": loop_state.current_mode,
+            "to_mode": "complete",
+        })
+
+        return self._state_to_dict(loop_state)
+    
+    def _blocked_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Terminal node: Blocker encountered."""
+        loop_state = self._dict_to_state(state)
+
+        # Log halt BEFORE entering blocked state
+        blocker_validators = [
+            r.validator_id for r in loop_state.validation_results
+            if r.severity == "blocker"
+        ]
+        self._audit("halt", {
+            "op": "halt",
+            "task_ref": loop_state.task.id,
+            "reason": "; ".join(loop_state.constraint_violations) or "blocker",
+            "blocker_validators": blocker_validators,
+        })
+
+        loop_state.stage = LoopStage.BLOCKED
+        return self._state_to_dict(loop_state)
+    
+    def _complete_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Terminal node: Work complete."""
+        loop_state = self._dict_to_state(state)
+        loop_state.stage = LoopStage.COMPLETE
+
+        self._audit("task_complete", {
+            "op": "task_complete",
+            "task_ref": loop_state.task.id,
+            "artifacts": loop_state.artifacts,
+        })
+
+        loop_state.messages.append({
+            "role": "assistant",
+            "content": f"Task completed successfully. "
+                       f"Iterations: {loop_state.iteration}. "
+                       f"Artifacts: {len(loop_state.artifacts)}."
+        })
+        return self._state_to_dict(loop_state)
+    
+    def _route_after_validation(self, state: Dict[str, Any]) -> str:
+        """Route after validation based on policy decision."""
+        loop_state = self._dict_to_state(state)
+        
+        if loop_state.is_blocked:
+            return "blocked"
+        elif loop_state.validation_token and self._token_issuer.verify_token(
+            loop_state.validation_token,
+            expected_task_id=loop_state.task.id,
+        ):
+            return "execute"
+        else:
+            return "governance"
+    
+    def _route_after_move(self, state: Dict[str, Any]) -> str:
+        """Route after move_next based on completion."""
+        loop_state = self._dict_to_state(state)
+        
+        if loop_state.is_complete:
+            return "complete"
+        else:
+            return "governance"
+    
+    def _route_after_governance(self, state: Dict[str, Any]) -> str:
+        """Route after governance: proceed, block, or skip validation."""
+        loop_state = self._dict_to_state(state)
+        if loop_state.is_blocked:
+            return "blocked"
+        if loop_state.resolution_override:
+            return "execute"
+        return "validate"
+
+    def _default_governance(self, state: LoopState, protocol: Protocol) -> LoopState:
+        """Evaluate protocol and mode constraints against execution context."""
+        state.constraints_passed = True
+        state.constraint_violations = []
+
+        self._evaluate_constraints(state, protocol, "governance")
+        return state
+
+    def _evaluate_constraints(
+        self,
+        state: LoopState,
+        protocol: Protocol,
+        phase: str,
+    ) -> None:
+        """Evaluate applicable constraints using the predicate registry.
+
+        Collects global_constraints + current mode's constraints, builds
+        a PredicateContext for the current phase, and evaluates each
+        constraint that has a predicate set.  Sets is_blocked / 
+        constraints_passed on the state accordingly.
+        """
+        # Collect applicable constraints
+        constraints: List[Any] = list(protocol.global_constraints)
+        mode = protocol.get_mode(state.current_mode)
+        if mode:
+            constraints.extend(mode.constraints)
+
+        if not constraints:
+            return
+
+        from snodo.predicates.base import PredicateContext
+
+        ctx = PredicateContext(
+            task=state.task,
+            mode=state.current_mode,
+            artifacts=state.artifacts,
+            workspace_mcp=self.workspace_mcp,
+            git_mcp=self.git_mcp,
+            protocol=protocol,
+            phase=phase,
+        )
+
+        for constraint in constraints:
+            if not constraint.predicate:
+                continue  # Legacy constraint, no executable predicate
+
+            try:
+                pred = self._predicate_registry.lookup(constraint.predicate)
+            except KeyError:
+                self._audit("constraint_predicate_unknown", {
+                    "op": "constraint_predicate_unknown",
+                    "constraint_id": constraint.constraint_id,
+                    "predicate_name": constraint.predicate,
+                    "phase": phase,
+                })
+                self._apply_constraint_failure(
+                    state, constraint, "blocker",
+                    f"Unknown predicate: {constraint.predicate}"
+                )
+                continue
+
+            try:
+                result = pred.evaluate(ctx, **constraint.params)
+            except Exception as e:
+                result = type("_R", (), {
+                    "passed": False,
+                    "justification": f"Predicate evaluation error: {e}",
+                    "evidence": {},
+                })
+
+            if result.passed:
+                continue
+
+            self._apply_constraint_failure(
+                state, constraint, constraint.severity.value, result.justification
+            )
+            self._audit("constraint_violation", {
+                "op": "constraint_violation",
+                "constraint_id": constraint.constraint_id,
+                "predicate": constraint.predicate,
+                "severity": constraint.severity.value,
+                "justification": result.justification,
+                "evidence": result.evidence,
+                "phase": phase,
+            })
+
+    def _apply_constraint_failure(
+        self,
+        state: LoopState,
+        constraint: Any,
+        severity: str,
+        justification: str,
+    ) -> None:
+        """Apply a constraint failure to the loop state."""
+        msg = f"{constraint.constraint_id}: {justification}"
+        state.constraint_violations.append(msg)
+        if severity == "blocker":
+            state.is_blocked = True
+            state.halt_type = "constraint"
+            state.constraints_passed = False
+    
+    def _default_validator(
+        self,
+        task: Task,
+        validators: List[Validator],
+        shell_mcp: Optional[ShellMCP],
+        current_mode: str = "",
+    ) -> List[ValidatorResult]:
+        """Validator dispatch via registry (Task 7.20).
+
+        Builds a single ValidatorContext for the pass, then looks up
+        each validator_spec.validator_type in the registry.  Falls back
+        to the LLMValidator catch-all for registered types + criteria,
+        or stub results for unrecognised / no-LLM cases.
+        """
+        from snodo.validators.registry import _default_registry as reg
+
+        # Build shared context once per validate pass
+        mode_obj = self.protocol.get_mode(current_mode)
+        context = ValidatorContext(
+            task=task,
+            current_mode=mode_obj,
+            protocol=self.protocol,
+            artifacts=[],
+            audit_log=self._audit_log,
+            mode_name=mode_obj.name if mode_obj else "",
+            mode_tools=list(mode_obj.tools) if mode_obj else [],
+            mode_transitions=dict(mode_obj.transitions) if mode_obj else {},
+            mode_validator_refs=list(mode_obj.validators) if mode_obj else [],
+            completion_fn=self._get_completion_fn(),
+            model=getattr(self.coder, "model", "gpt-4"),
+            working_directory=str(Path.cwd()) if not self.workspace_mcp
+            else str(getattr(self.workspace_mcp, "project_root", Path.cwd())),
+        )
+
+        results = []
+        for v in validators:
+            result = self._dispatch_one(v, context, reg)
+            # Apply severity cap
+            if v.severity_cap is not None:
+                from snodo.compiler.models import Severity
+                if Severity(result.severity) > v.severity_cap:
+                    result = ValidatorResult(
+                        validator_id=result.validator_id,
+                        severity=v.severity_cap.value,
+                        justification=result.justification,
+                    )
+            results.append(result)
+        return results
+
+    def _get_completion_fn(self):
+        """Get the LLM completion function from the coder adapter."""
+        if hasattr(self.coder, '_completion_fn') and self.coder._completion_fn is not None:
+            return self.coder._completion_fn
+        return None
+
+    def _dispatch_one(
+        self, v: Validator, context: ValidatorContext, reg
+    ) -> ValidatorResult:
+        """Dispatch a single validator spec via the registry.
+
+        Quality and protocol types always dispatch via registry.
+        LLM-backed types only dispatch when they have criteria
+        (no-criteria → stub pass, preserving legacy behavior).
+        """
+        # Always dispatch quality and protocol
+        always_register = {"quality", "protocol"}
+        cls = reg.lookup(v.validator_type) if (v.criteria or v.validator_type in always_register) else None
+        if cls is not None:
+            try:
+                instance = cls(validator_spec=v)
+                return instance.evaluate(context)
+            except Exception as e:
+                return ValidatorResult(
+                    validator_id=v.validator_id,
+                    severity="warn",
+                    justification=f"Validator error: {e}",
+                )
+
+        # Fallback: LLM-backed types (architecture/security/etc) with
+        # completion_fn and criteria → LLMValidator
+        if context.completion_fn and v.criteria:
+            from snodo.validators.llm_validator import LLMValidator
+            try:
+                instance = LLMValidator(validator_spec=v)
+                return instance.evaluate(context)
+            except Exception as e:
+                return ValidatorResult(
+                    validator_id=v.validator_id,
+                    severity="warn",
+                    justification=f"LLM validation failed: {e}",
+                )
+
+        if v.criteria:
+            return ValidatorResult(
+                validator_id=v.validator_id,
+                severity="warn",
+                justification=f"LLM unavailable for {v.validator_type} validation",
+            )
+
+        return ValidatorResult(
+            validator_id=v.validator_id,
+            severity="pass",
+            justification=f"Stub validation for {v.validator_type}",
+        )
+
+    def _audit(self, event_type: str, data: Dict[str, Any]) -> None:
+        """Log an audit event if audit_log is available."""
+        if self._audit_log is not None:
+            self._audit_log.append_event(event_type, data)
+
+    @staticmethod
+    def _init_summary_model():
+        """Try to create a cheap summary model. Returns None if unavailable."""
+        try:
+            from snodo.infrastructure.memory import create_summary_model
+            return create_summary_model()
+        except Exception:
+            return None
+
+    def _maybe_summarize(self, loop_state: LoopState) -> LoopState:
+        """Summarize messages if they exceed token threshold.
+
+        Uses LLM summary when model is available, otherwise truncates
+        messages and builds a simple text summary from discarded messages.
+
+        Threshold: ~8000 tokens (approx 4 chars per token).
+        """
+        total_chars = sum(len(m.get("content", "")) for m in loop_state.messages)
+        token_estimate = total_chars // 4
+
+        if token_estimate < 8000:
+            return loop_state
+
+        if self._summary_model is not None:
+            try:
+                summary_prompt = (
+                    "Summarize the following conversation history concisely "
+                    "(max 512 tokens). Focus on key decisions, artifacts "
+                    "produced, and important context:\n\n"
+                )
+                for msg in loop_state.messages:
+                    summary_prompt += f"{msg['role']}: {msg['content']}\n"
+
+                response = self._summary_model.invoke(summary_prompt)
+                loop_state.summary = response.content
+                loop_state.messages = loop_state.messages[-3:]
+                return loop_state
+            except Exception:
+                pass  # Fall through to truncation
+
+        # Fallback: truncate messages, keep most recent 3
+        discarded = loop_state.messages[:-3]
+        if discarded:
+            snippets = [m.get("content", "")[:100] for m in discarded]
+            loop_state.summary = "Previous: " + "; ".join(snippets)
+        loop_state.messages = loop_state.messages[-3:]
+        return loop_state
+
+    def _collect_project_context(
+        self, workspace_mcp: Optional[WorkspaceMCP]
+    ) -> Dict[str, Any]:
+        """Collect project context: language, structure, key configs.
+
+        Args:
+            workspace_mcp: Workspace MCP for file operations
+
+        Returns:
+            Dict with language, structure, and config_files keys
+        """
+        context: Dict[str, Any] = {
+            "language": "unknown",
+            "structure": "",
+            "config_files": {},
+        }
+        if not workspace_mcp:
+            return context
+
+        # Language detection from marker files
+        lang_markers = [
+            ("package.json", "javascript"),
+            ("tsconfig.json", "typescript"),
+            ("pyproject.toml", "python"),
+            ("setup.py", "python"),
+            ("setup.cfg", "python"),
+            ("Cargo.toml", "rust"),
+            ("go.mod", "go"),
+            ("pom.xml", "java"),
+            ("build.gradle", "java"),
+        ]
+        for marker, lang in lang_markers:
+            if workspace_mcp.file_exists(marker):
+                context["language"] = lang
+                break
+
+        # Directory tree via BFS (depth 3)
+        context["structure"] = self._build_dir_tree(workspace_mcp, max_depth=3)
+
+        # Key config files
+        config_candidates = [
+            "package.json", "tsconfig.json", "pyproject.toml",
+            "setup.py", "setup.cfg", "Cargo.toml", "go.mod",
+        ]
+        for cfg in config_candidates:
+            try:
+                content = workspace_mcp.read_file(cfg)
+                # Truncate large configs to first 2000 chars
+                context["config_files"][cfg] = content[:2000]
+            except FileNotFoundError:
+                pass
+
+        return context
+
+    @staticmethod
+    def _build_dir_tree(
+        workspace_mcp: WorkspaceMCP, max_depth: int = 3
+    ) -> str:
+        """Build directory tree via iterative BFS.
+
+        Args:
+            workspace_mcp: Workspace MCP for listing files
+            max_depth: Maximum traversal depth
+
+        Returns:
+            Formatted tree string
+        """
+        lines: List[str] = []
+        # Queue entries: (relative_path, depth)
+        queue: List[tuple] = [(".", 0)]
+
+        while queue:
+            current_path, depth = queue.pop(0)
+            try:
+                entries = sorted(workspace_mcp.list_files(current_path))
+            except (FileNotFoundError, ValueError):
+                continue
+
+            for entry in entries:
+                # Skip hidden directories and common noise
+                if entry.startswith(".") or entry in ("node_modules", "__pycache__", ".git"):
+                    continue
+                indent = "  " * depth
+                child_path = entry if current_path == "." else f"{current_path}/{entry}"
+                # Check if it's a directory by trying to list it
+                try:
+                    workspace_mcp.list_files(child_path)
+                    lines.append(f"{indent}{entry}/")
+                    if depth < max_depth - 1:
+                        queue.append((child_path, depth + 1))
+                except (FileNotFoundError, ValueError):
+                    lines.append(f"{indent}{entry}")
+
+        return "\n".join(lines[:200])  # Cap at 200 lines
+
+    def _default_executor(
+        self,
+        task: Task,
+        token: ValidationToken,  # JWT-backed, from tokens.py (7.7)
+        coder: Union[LiteLLMAdapter, MockAdapter],
+        workspace_mcp: Optional[WorkspaceMCP],
+        git_mcp: Optional[GitMCP],
+        memory_summary: str = "",
+        project_context: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
+        """Default executor - REAL IMPLEMENTATION.
+
+        This actually:
+        1. Calls coder to generate code (returns CodeArtifact with FileArtifact list)
+        2. Iterates file operations: write or delete via workspace MCP
+        3. Stages and commits via git MCP
+        """
+        artifacts = []
+
+        # Generate code using coder with context
+        spec = TaskSpec(
+            description=task.spec,
+            constraints=[],
+            memory_summary=memory_summary,
+            project_context=project_context or {},
+        )
+
+        try:
+            code_artifact = coder.implement(spec)
+
+            # If workspace available, process file operations
+            if workspace_mcp:
+                artifact_paths = []
+                for file_op in code_artifact.files:
+                    if file_op.action == "delete":
+                        workspace_mcp.delete_file(file_op.path)
+                    else:
+                        workspace_mcp.write_file(file_op.path, file_op.content)
+                    artifact_paths.append(file_op.path)
+                    artifacts.append(file_op.path)
+
+                # If git available, stage and commit
+                if git_mcp and artifact_paths:
+                    try:
+                        git_mcp.stage_files(artifact_paths)
+                        git_mcp.commit(f"feat: {task.spec}")
+                        artifacts.append("git_commit")
+                    except Exception as e:
+                        # Git operation failed, not critical
+                        artifacts.append(f"git_error: {str(e)}")
+            else:
+                # No workspace, just return stub
+                artifacts.append(f"code_generated_for_{task.id}")
+
+        except Exception as e:
+            # Code generation failed
+            artifacts.append(f"error: {str(e)}")
+
+        return artifacts
+    
+    def _dict_to_state(self, d: Dict[str, Any]) -> LoopState:
+        """Convert dict to LoopState."""
+        task_dict = d.get("task", {})
+        task = Task(
+            id=task_dict.get("id", ""),
+            spec=task_dict.get("spec", ""),
+            parent_task_ref=task_dict.get("parent_task_ref"),
+            depth=task_dict.get("depth", 0),
+        )
+        
+        results = []
+        for r in d.get("validation_results", []):
+            results.append(ValidatorResult(
+                validator_id=r.get("validator_id", ""),
+                severity=r.get("severity", "pass"),
+                justification=r.get("justification", "")
+            ))
+        
+        token = None
+        if d.get("validation_token"):
+            token_dict = d["validation_token"]
+            jwt_str = token_dict.get("jwt", "")
+            if jwt_str:
+                # Reconstruct token from JWT string via the issuer
+                token = ValidationToken(jwt=jwt_str)
+                payload = self._token_issuer.decode_token(token)
+                if payload:
+                    token = ValidationToken(
+                        jwt=jwt_str,
+                        task_id=payload.get("task_id", ""),
+                        validator_signatures=payload.get("validator_signatures", []),
+                        consensus=payload.get("consensus", ""),
+                        issued_at=payload.get("iat", ""),
+                        expires_at=payload.get("exp", ""),
+                    )
+        
+        return LoopState(
+            task=task,
+            current_mode=d.get("current_mode", ""),
+            validation_results=results,
+            validation_token=token,
+            artifacts=d.get("artifacts", []),
+            stage=LoopStage(d.get("stage", "governance")),
+            iteration=d.get("iteration", 0),
+            constraints_passed=d.get("constraints_passed", True),
+            constraint_violations=d.get("constraint_violations", []),
+            policy_decision=d.get("policy_decision"),
+            is_complete=d.get("is_complete", False),
+            is_blocked=d.get("is_blocked", False),
+            halt_type=d.get("halt_type"),
+            pending_disagreement=d.get("pending_disagreement"),
+            resolution_override=d.get("resolution_override", False),
+            spawned_subtasks=[],
+            metadata=d.get("metadata", {}),
+            messages=d.get("messages", []),
+            summary=d.get("summary", ""),
+        )
+    
+    def _state_to_dict(self, state: LoopState) -> Dict[str, Any]:
+        """Convert LoopState to dict."""
+        return {
+            "task": {
+                "id": state.task.id,
+                "spec": state.task.spec,
+                "parent_task_ref": state.task.parent_task_ref,
+                "depth": state.task.depth,
+            },
+            "current_mode": state.current_mode,
+            "validation_results": [
+                {
+                    "validator_id": r.validator_id,
+                    "severity": r.severity,
+                    "justification": r.justification
+                }
+                for r in state.validation_results
+            ],
+            "validation_token": {
+                "jwt": state.validation_token.jwt,
+            } if state.validation_token else None,
+            "artifacts": state.artifacts,
+            "stage": state.stage.value,
+            "iteration": state.iteration,
+            "constraints_passed": state.constraints_passed,
+            "constraint_violations": state.constraint_violations,
+            "policy_decision": policy_decision_to_dict(state.policy_decision),
+            "is_complete": state.is_complete,
+            "is_blocked": state.is_blocked,
+            "halt_type": state.halt_type,
+            "pending_disagreement": state.pending_disagreement,
+            "resolution_override": state.resolution_override,
+            "metadata": state.metadata,
+            "messages": state.messages,
+            "summary": state.summary,
+        }
+
+
+def _build_audit_results(validators: list, results: list) -> list:
+    """Build audit results array with capping metadata.
+
+    Compares each result against its validator spec's severity_cap.
+    When capping occurred, adds original_severity and severity_capped
+    flags to the audit payload.
+    """
+    audit_results = []
+    for i, r in enumerate(results):
+        entry = {
+            "validator_id": r.validator_id,
+            "severity": r.severity,
+            "justification": r.justification,
+        }
+        # Check if this result was capped
+        if i < len(validators):
+            v = validators[i]
+            if v.severity_cap is not None and r.severity == v.severity_cap.value:
+                # Severity matches the cap — may have been downgraded.
+                # We don't have the original here, but we can flag that
+                # the result sits at the cap boundary
+                entry["severity_at_cap"] = True
+        audit_results.append(entry)
+    return audit_results
+
+
+def build_protocol_graph(
+    protocol: Protocol,
+    project_root: Optional[str] = None,
+    use_mock_coder: bool = False,
+    model: Optional[str] = None,
+    checkpointer=None,
+    audit_log: Any = None,
+    session_manager: Any = None,
+    **custom_functions
+) -> StateGraph:
+    """Convenience function to build graph with MCP integration.
+
+    Args:
+        protocol: Protocol specification
+        project_root: Project root for MCP services (defaults to current directory)
+        use_mock_coder: If True, use MockCoderAdapter instead of real LLM
+        model: Model identifier for the coder (default: claude-sonnet-4-20250514)
+        checkpointer: LangGraph checkpointer for persistent agent memory
+        audit_log: Optional AuditLog for INV4 event logging
+        session_manager: Optional SessionManager for INV5 session state
+        **custom_functions: Optional overrides
+
+    Returns:
+        Executable StateGraph with real MCP integration
+    """
+    if project_root is None:
+        project_root = str(Path.cwd())
+
+    # Initialize MCP services
+    workspace_mcp = WorkspaceMCP(project_root)
+    git_mcp = GitMCP(project_root)
+    shell_mcp = ShellMCP(project_root)
+
+    # Initialize coder
+    coder: Union[LiteLLMAdapter, MockAdapter]
+    if use_mock_coder:
+        coder = MockAdapter()
+    else:
+        coder = LiteLLMAdapter(model=model or "claude-sonnet-4-20250514")
+
+    builder = GraphBuilder(
+        protocol,
+        workspace_mcp=workspace_mcp,
+        git_mcp=git_mcp,
+        shell_mcp=shell_mcp,
+        coder=coder,
+        checkpointer=checkpointer,
+        audit_log=audit_log,
+        session_manager=session_manager,
+        **custom_functions
+    )
+    return builder.build_graph()
