@@ -1,4 +1,9 @@
 # snodo
+[![CI](https://github.com/snodo-dev/snodo/actions/workflows/ci.yml/badge.svg)](https://github.com/snodo-dev/snodo/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/snodo)](https://pypi.org/project/snodo/)
+[![Python](https://img.shields.io/pypi/pyversions/snodo)](https://pypi.org/project/snodo/)
+[![License: AGPLv3](https://img.shields.io/badge/License-AGPLv3-blue)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-snodo.dev-2DD4BF)](https://docs.snodo.dev)
 
 **AI-SDLC Protocol Engine** — a governance layer for AI-assisted software development.
 
