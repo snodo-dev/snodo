@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://docs.snodo.dev
+    about: Usage, protocol reference, and how to extend Snodo.
+  - name: Security report
+    url: https://github.com/snodo-dev/snodo/security/policy
+    about: Report vulnerabilities privately, not as public issues.
