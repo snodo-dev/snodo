@@ -70,6 +70,7 @@ snop = "snodo.cli.commands.dashboard_cmd:snop_entry"
 include = ["snodo*"]
 
 [tool.setuptools.package-data]
+snodo = ["py.typed"]
 "snodo.protocols.templates" = ["*.yml"]
 
 [tool.pytest.ini_options]
