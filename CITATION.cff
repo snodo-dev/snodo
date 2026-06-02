@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use Snodo, please cite it as below."
+title: Snodo
+abstract: "An AI-SDLC protocol engine: a specification language for human-agent responsibility boundaries, approval gates, and governance constraints in software teams where AI agents are first-class members."
+type: software
+authors:
+  - name: "The Snodo Authors"
+repository-code: "https://github.com/snodo-dev/snodo"
+url: "https://snodo.dev"
+license: AGPL-3.0-or-later
+version: "0.1.0"
+keywords:
+  - AI-SDLC
+  - protocol specification
+  - human-agent collaboration
+  - validation tokens
+  - software engineering
