@@ -1,0 +1,49 @@
+site_name: Snodo
+site_description: A protocol language for human-agent software teams
+site_url: https://docs.snodo.dev
+repo_url: https://github.com/snodo-dev/snodo
+repo_name: snodo-dev/snodo
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: teal
+    accent: teal
+  font:
+    text: Hanken Grotesk
+    code: JetBrains Mono
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - toc.follow
+
+nav:
+  - Home: index.md
+  - Use Snodo:
+      - Install & run: runbook.md
+      - Protocol reference: protocol.md
+  - Extend & contribute:
+      - Architecture: architecture.md
+      - Extending Snodo: extending.md
+      - Design decisions: decisions/README.md
+  - Research: research/README.md
+
+not_in_nav: |
+  decisions/0*.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.details
+
+plugins:
+  - search

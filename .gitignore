@@ -40,3 +40,4 @@ studies/*/outputs/*.csv
 
 # macOS
 .DS_Store
+site/
