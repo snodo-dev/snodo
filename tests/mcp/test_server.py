@@ -319,10 +319,11 @@ class TestFastMCPBridge:
             handler(paths=["test.txt"])
 
     def test_tool_handler_returns_json_for_dicts(self, server):
-        """Dict results are serialized as JSON."""
+        """Dict results are serialized as JSON (async handler for slow tools)."""
+        import asyncio
         tool_info = next(t for t in server.get_tools() if t["name"] == "validate_task")
         handler = _make_tool_handler(server, tool_info)
-        result = handler(task_id="t1")
+        result = asyncio.run(handler(task_id="t1"))
 
         parsed = json.loads(result)
         assert "token_issued" in parsed

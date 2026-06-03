@@ -10,7 +10,9 @@ Generates an MCP server from a Protocol definition:
 Transport is handled by FastMCP (see transport.py).
 """
 
+import asyncio
 import hashlib
+import threading
 from typing import Any, Dict, List, Optional
 
 from snodo.compiler.models import Protocol
@@ -431,6 +433,10 @@ class ProtocolMCPServer:
         self._audit_log = audit_log
         self.token_issuer = token_issuer or TokenIssuer(audit_log=audit_log)
         self._validation_token: Optional[ValidationToken] = None
+        self._token_lock = threading.Lock()
+
+        # Tools whose handlers may block the event loop — dispatched async
+        self._SLOW_TOOLS = {"validate_task", "run_tests"}
 
         # Initialize backing MCPs
         self.workspace = WorkspaceMCP(project_root)
@@ -578,6 +584,18 @@ class ProtocolMCPServer:
         # Dispatch to backing MCP
         return self._dispatch_tool(name, schema, arguments)
 
+    def is_slow_tool(self, name: str) -> bool:
+        """Return True if *name* is a tool whose handler may block the event loop."""
+        return name in self._SLOW_TOOLS
+
+    async def call_tool_async(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Any:
+        """Async wrapper for slow tools — runs the blocking work in a thread.
+
+        FastMCP natively awaits async tool functions, so the event loop
+        stays free to serve other calls while the slow subprocess runs.
+        """
+        return await asyncio.to_thread(self.call_tool, name, arguments)
+
     def _enforce_wf1(self, name: str, schema: dict) -> None:
         """Enforce WF1: mutating tools require a valid validation token.
 
@@ -596,27 +614,28 @@ class ProtocolMCPServer:
         """
         if not schema["requires_token"]:
             return
-        if not self._validation_token:
-            self._audit("wf1_violation", {
-                "op": "wf1_violation",
-                "tool": name,
-                "mode": self.mode_id or "all",
-                "reason": "no_token",
-            })
-            raise MCPError(
-                f"WF1 violation: tool '{name}' requires a validation token. "
-                "Call validate_task first."
-            )
-        if not self.token_issuer.verify_token(self._validation_token):
-            self._audit("wf1_violation", {
-                "op": "wf1_violation",
-                "tool": name,
-                "mode": self.mode_id or "all",
-                "reason": "invalid_token",
-            })
-            raise MCPError(
-                f"WF1 violation: invalid or expired validation token for tool '{name}'"
-            )
+        with self._token_lock:
+            if not self._validation_token:
+                self._audit("wf1_violation", {
+                    "op": "wf1_violation",
+                    "tool": name,
+                    "mode": self.mode_id or "all",
+                    "reason": "no_token",
+                })
+                raise MCPError(
+                    f"WF1 violation: tool '{name}' requires a validation token. "
+                    "Call validate_task first."
+                )
+            if not self.token_issuer.verify_token(self._validation_token):
+                self._audit("wf1_violation", {
+                    "op": "wf1_violation",
+                    "tool": name,
+                    "mode": self.mode_id or "all",
+                    "reason": "invalid_token",
+                })
+                raise MCPError(
+                    f"WF1 violation: invalid or expired validation token for tool '{name}'"
+                )
 
     def _dispatch_tool(self, name: str, schema: dict, arguments: dict) -> Any:
         """Dispatch a tool call to the backing MCP.
@@ -696,7 +715,8 @@ class ProtocolMCPServer:
         )
 
         if token:
-            self._validation_token = token
+            with self._token_lock:
+                self._validation_token = token
 
         self._audit("validator_results", {
             "op": "validator_results",
@@ -749,8 +769,13 @@ class ProtocolMCPServer:
         })
 
         # Single-use: consume the token after successful dispatch
-        if self._validation_token:
-            self._validation_token = None
+        with self._token_lock:
+            if self._validation_token:
+                self._validation_token = None
+                consumed = True
+            else:
+                consumed = False
+        if consumed:
             self._audit("token_consumed", {
                 "op": "token_consumed",
                 "task_spec_hash": task_spec_hash,
