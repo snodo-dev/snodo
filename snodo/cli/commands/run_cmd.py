@@ -356,6 +356,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     compiled_graph = _build_graph(
         args, protocol, project_root, model, checkpointer,
         audit_log=audit_log, session_manager=session_manager,
+        session_id=session_id,
     )
     if compiled_graph is None:
         if checkpointer:
@@ -485,7 +486,8 @@ def _close_checkpointer(checkpointer) -> None:
 
 
 def _build_graph(args, protocol: Protocol, project_root: str, model: str,
-                 checkpointer=None, audit_log=None, session_manager=None):
+                 checkpointer=None, audit_log=None, session_manager=None,
+                 session_id=None):
     """Build and compile the protocol execution graph.
 
     Returns:
@@ -508,6 +510,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             checkpointer=checkpointer,
             audit_log=audit_log,
             session_manager=session_manager,
+            session_id=session_id,
         )
         compiled_graph = graph.compile(checkpointer=checkpointer)
         print("✓ Graph compiled with MCP integration")

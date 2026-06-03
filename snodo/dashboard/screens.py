@@ -314,6 +314,13 @@ class SessionDetailScreen(Screen):
     #detail-body {
         height: 1fr;
     }
+    #detail-task-history {
+        height: auto;
+        max-height: 14;
+        border: solid $error;
+        margin: 0 1;
+        padding: 0 1;
+    }
     #detail-validators {
         height: auto;
         max-height: 12;
@@ -349,6 +356,9 @@ class SessionDetailScreen(Screen):
         yield Header()
         yield Static(id="detail-header")
         with VerticalScroll(id="detail-body"):
+            with Container(id="detail-task-history"):
+                yield Static("TASK HISTORY", classes="section-title")
+                yield DataTable(id="task-history-table", cursor_type="row")
             with Container(id="detail-validators"):
                 yield Static("VALIDATORS", classes="section-title")
                 yield DataTable(id="validators-table", cursor_type="row")
@@ -366,6 +376,19 @@ class SessionDetailScreen(Screen):
 
     def _populate(self):
         d = self.detail
+
+        # Task History
+        th = self.query_one("#task-history-table", DataTable)
+        th.add_columns("Task", "Validate", "Post-Val", "Outcome")
+        task_events = self._build_task_history(d.events)
+        for te in task_events:
+            task_short = _short_id(te["task_ref"]) if te["task_ref"] else "—"
+            pre_display = self._format_validator_results(
+                te.get("pre_results", []))
+            post_display = self._format_validator_results(
+                te.get("post_results", []))
+            outcome_display = self._format_outcome(te)
+            th.add_row(task_short, pre_display, post_display, outcome_display)
 
         # Validators
         vt = self.query_one("#validators-table", DataTable)
@@ -393,6 +416,82 @@ class SessionDetailScreen(Screen):
             summary = _summarize_event(ev)
             color = _event_color(ev.event_type)
             et.add_row(ts, f"[{color}]{ev_type}[/]", summary)
+
+    @staticmethod
+    def _build_task_history(events: list) -> list:
+        """Group events by task_ref and build per-task summary rows."""
+        by_task: dict = {}
+        for ev in events:
+            data = ev.data if isinstance(ev.data, dict) else {}
+            task_ref = data.get("task_ref", "")
+            if not task_ref:
+                continue
+            if task_ref not in by_task:
+                by_task[task_ref] = []
+            by_task[task_ref].append(ev)
+
+        rows = []
+        for task_ref in sorted(by_task):
+            evs = by_task[task_ref]
+            pre_results = []
+            post_results = []
+            outcome = "—"
+            outcome_color = ""
+
+            for e in evs:
+                ed = e.data if isinstance(e.data, dict) else {}
+                if e.event_type == "validate":
+                    phase = ed.get("phase", "")
+                    results = ed.get("results", [])
+                    if phase == "pre_execute":
+                        pre_results = results
+                    elif phase == "post_execute":
+                        post_results = results
+                elif e.event_type == "halt":
+                    outcome = f"halted: {ed.get('reason', 'blocker')[:40]}"
+                    outcome_color = "red"
+                elif e.event_type == "task_complete":
+                    outcome = "completed"
+                    outcome_color = "green"
+                elif e.event_type == "dispatch":
+                    count = ed.get("artifacts_count", 0)
+                    outcome = f"dispatched ({count} files)"
+                    outcome_color = "green"
+
+            rows.append({
+                "task_ref": task_ref,
+                "pre_results": pre_results,
+                "post_results": post_results,
+                "outcome": outcome,
+                "outcome_color": outcome_color,
+            })
+        return rows
+
+    @staticmethod
+    def _format_validator_results(results: list) -> str:
+        if not results:
+            return "—"
+        parts = []
+        for r in results[:4]:
+            vid = r.get("validator_id", "?")
+            sev = r.get("severity", "?")
+            if sev == "blocker":
+                parts.append(f"[red]{vid}:✗[/]")
+            elif sev == "warn":
+                parts.append(f"[yellow]{vid}:![/]")
+            else:
+                parts.append(f"[green]{vid}:✓[/]")
+        if len(results) > 4:
+            parts.append("…")
+        return " ".join(parts)
+
+    @staticmethod
+    def _format_outcome(te: dict) -> str:
+        color = te.get("outcome_color", "")
+        text = te["outcome"]
+        if color:
+            return f"[{color}]{text}[/]"
+        return text
 
     def _update_header(self):
         header = self.query_one("#detail-header", Static)

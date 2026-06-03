@@ -102,6 +102,7 @@ class GraphBuilder:
         session_manager: Any = None,
         token_issuer: Optional[TokenIssuer] = None,
         predicate_registry: Any = None,
+        session_id: Optional[str] = None,
     ):
         """Initialize graph builder with real MCP services.
 
@@ -119,6 +120,7 @@ class GraphBuilder:
             session_manager: Optional SessionManager for INV5 session state
             token_issuer: Optional TokenIssuer for JWT validation tokens (7.7)
             predicate_registry: Optional PredicateRegistry for constraint evaluation (7.8)
+            session_id: Optional active session ID to tag on every audit event
         """
         self.protocol = protocol
         self.workspace_mcp = workspace_mcp
@@ -129,6 +131,7 @@ class GraphBuilder:
         self._audit_log = audit_log
         self._session_manager = session_manager
         self._token_issuer = token_issuer or TokenIssuer()
+        self._session_id = session_id
 
         from snodo.predicates.registry import _default_registry
         self._predicate_registry = predicate_registry or _default_registry
@@ -824,6 +827,8 @@ class GraphBuilder:
     def _audit(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log an audit event if audit_log is available."""
         if self._audit_log is not None:
+            if self._session_id:
+                data["session_id"] = self._session_id
             self._audit_log.append_event(event_type, data)
 
     @staticmethod
@@ -1159,6 +1164,7 @@ def build_protocol_graph(
     checkpointer=None,
     audit_log: Any = None,
     session_manager: Any = None,
+    session_id: Optional[str] = None,
     **custom_functions
 ) -> StateGraph:
     """Convenience function to build graph with MCP integration.
@@ -1171,6 +1177,7 @@ def build_protocol_graph(
         checkpointer: LangGraph checkpointer for persistent agent memory
         audit_log: Optional AuditLog for INV4 event logging
         session_manager: Optional SessionManager for INV5 session state
+        session_id: Optional active session ID to tag on every audit event
         **custom_functions: Optional overrides
 
     Returns:
@@ -1200,6 +1207,7 @@ def build_protocol_graph(
         checkpointer=checkpointer,
         audit_log=audit_log,
         session_manager=session_manager,
+        session_id=session_id,
         **custom_functions
     )
     return builder.build_graph()
