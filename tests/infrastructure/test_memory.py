@@ -387,7 +387,7 @@ class TestEndToEnd:
         from snodo.engine.loop import build_protocol_graph
         from snodo.core.interfaces import ValidatorResult
 
-        def _all_pass(task, validators, shell_mcp, current_mode=""):
+        def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
             return [
                 ValidatorResult(validator_id=v.validator_id, severity="pass",
                                 justification="ok")
@@ -462,7 +462,7 @@ class TestEndToEnd:
         from snodo.engine.loop import build_protocol_graph
         from snodo.core.interfaces import ValidatorResult
 
-        def _all_pass(task, validators, shell_mcp, current_mode=""):
+        def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
             return [
                 ValidatorResult(validator_id=v.validator_id, severity="pass",
                                 justification="ok")
@@ -532,7 +532,7 @@ class TestSummaryModel:
         from snodo.engine.loop import build_protocol_graph
         from snodo.core.interfaces import ValidatorResult
 
-        def _all_pass(task, validators, shell_mcp, current_mode=""):
+        def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
             return [
                 ValidatorResult(validator_id=v.validator_id, severity="pass",
                                 justification="ok")

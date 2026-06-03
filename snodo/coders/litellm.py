@@ -3,14 +3,29 @@
 FILE: snodo/coders/litellm.py
 
 Implements CoderAdapter using LangChain + liteLLM for model abstraction.
+
+Bounded tool-use loop (added):
+- When workspace_mcp is available, _call_llm runs a bounded read-only
+  tool-use loop over completion_fn(tools=[...]) so the coder can read
+  current file contents before generating a CodeArtifact.
+- Read-only tools: read_file, read_file_lines, list_files.
+- NO write tool, NO shell. The coder still returns a CodeArtifact;
+  the executor owns writes.
+- Bounded to _MAX_TOOL_TURNS turns. When no read is needed, the model
+  returns the CodeArtifact on the first turn (behaviour-equivalent to
+  the old single-completion path).
 """
 
 import json
 import re
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError
+
+
+# Maximum tool-use turns before forcing a CodeArtifact parse.
+_MAX_TOOL_TURNS = 6
 
 
 class LiteLLMAdapter(CoderAdapter):
@@ -29,12 +44,14 @@ class LiteLLMAdapter(CoderAdapter):
         model: str = "gpt-4",
         mcp_servers: Optional[List[MCPServer]] = None,
         temperature: float = 0.7,
-        max_tokens: int = 4000
+        max_tokens: int = 4000,
+        workspace_mcp: Optional[Any] = None,
     ):
         self.model = model
         self.mcp_servers = mcp_servers or []
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.workspace_mcp = workspace_mcp
 
         try:
             from litellm import completion
@@ -79,6 +96,18 @@ class LiteLLMAdapter(CoderAdapter):
                 prompt_parts.append(f"- {constraint}")
             prompt_parts.append("\n")
 
+        # Tool hint (when workspace available)
+        if self.workspace_mcp is not None:
+            prompt_parts.append(
+                "\n## Available Tools\n"
+                "You may call read-only tools to inspect the current state of files "
+                "before generating your changes. Use read_file(path) to see existing "
+                "content, read_file_lines(path, start, end) for line ranges, and "
+                "list_files(directory) to explore the project.\n"
+                "Read existing files you need to modify so you can make faithful edits.\n"
+                "\n"
+            )
+
         prompt_parts.append("""
 ## Output Format
 Your response MUST be a JSON array of file operations. Each element has:
@@ -104,16 +133,164 @@ Now generate the implementation:
                 "litellm not available. Install with: pip install litellm"
             )
 
+        # When workspace_mcp is available, use bounded tool-use loop
+        if self.workspace_mcp is not None:
+            return self._call_llm_with_tools(prompt)
+
+        # Fallback: single raw completion (backward-compatible)
         try:
             response = self._completion_fn(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=self.temperature,
-                max_tokens=self.max_tokens
+                max_tokens=self.max_tokens,
             )
             return response.choices[0].message.content
         except Exception as e:
             raise LLMCallError(f"LLM call failed: {e}")
+
+    def _call_llm_with_tools(self, prompt: str) -> str:
+        """Bounded tool-use loop: model may call read tools, then returns CodeArtifact."""
+        workspace = self.workspace_mcp
+        tools = self._build_tool_definitions()
+
+        messages: List[Dict[str, Any]] = [
+            {"role": "user", "content": prompt},
+        ]
+
+        for turn in range(_MAX_TOOL_TURNS):
+            try:
+                response = self._completion_fn(
+                    model=self.model,
+                    messages=messages,
+                    tools=tools,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+            except Exception as e:
+                raise LLMCallError(f"LLM tool-loop error on turn {turn + 1}: {e}")
+
+            msg = response.choices[0].message
+
+            # Check if the model returned text (CodeArtifact JSON)
+            if msg.content is not None and not getattr(msg, "tool_calls", None):
+                return msg.content
+
+            # Execute tool calls
+            tool_calls = getattr(msg, "tool_calls", [])
+            if not tool_calls:
+                # No content and no tool calls — break and try to parse
+                # whatever we have (likely empty, will raise ParseError)
+                break
+
+            # Add assistant message with tool_calls to conversation
+            messages.append({
+                "role": "assistant",
+                "content": msg.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in tool_calls
+                ],
+            })
+
+            # Execute each tool call and append results
+            for tc in tool_calls:
+                tool_name = tc.function.name
+                try:
+                    args = json.loads(tc.function.arguments)
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+
+                result = self._execute_tool(tool_name, args, workspace)
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": str(result),
+                })
+
+        # Hit the turn cap or no more tool calls — return whatever content we have
+        # The last assistant message may have content; if not, return empty string
+        # and let _parse_response handle the failure.
+        for m in reversed(messages):
+            if m.get("role") == "assistant" and m.get("content"):
+                return m["content"]
+        return ""
+
+    @staticmethod
+    def _build_tool_definitions() -> List[Dict[str, Any]]:
+        """Build OpenAI-format tool definitions for the read-only toolset."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "description": "Read full file content",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "File path relative to project root"},
+                        },
+                        "required": ["path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file_lines",
+                    "description": "Read a line range from a file (1-indexed, inclusive)",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "File path relative to project root"},
+                            "start": {"type": "integer", "description": "First line number (1-indexed)"},
+                            "end": {"type": "integer", "description": "Last line number (1-indexed, inclusive)"},
+                        },
+                        "required": ["path", "start", "end"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_files",
+                    "description": "List files and directories in a directory",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "directory": {"type": "string", "description": "Directory path", "default": "."},
+                        },
+                    },
+                },
+            },
+        ]
+
+    @staticmethod
+    def _execute_tool(
+        name: str,
+        args: Dict[str, Any],
+        workspace: Any,
+    ) -> str:
+        """Execute a read-only tool call and return the result as a string."""
+        try:
+            if name == "read_file":
+                return workspace.read_file(args["path"])
+            elif name == "read_file_lines":
+                return workspace.read_file_lines(args["path"], args["start"], args["end"])
+            elif name == "list_files":
+                return "\n".join(workspace.list_files(args.get("directory", ".")))
+            else:
+                return f"Unknown tool: {name}"
+        except Exception as e:
+            return f"Tool error: {e}"
 
     def _parse_response(self, response: str) -> CodeArtifact:
         parsed = self._extract_json(response)

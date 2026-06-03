@@ -154,7 +154,7 @@ def test_build_graph_with_custom_functions(sample_protocol, temp_workspace):
         state.metadata["custom"] = "governance"
         return state
     
-    def custom_validator(task, validators, shell_mcp, current_mode=""):
+    def custom_validator(task, validators, shell_mcp, current_mode="", **kwargs):
         return [
             ValidatorResult(
                 validator_id="custom",
@@ -213,7 +213,7 @@ def test_validate_node_success(sample_protocol, sample_task, temp_workspace):
     Uses a custom validator_fn that returns pass for every validator
     so the unanimous policy (sample protocol default) proceeds.
     """
-    def _all_pass(task, validators, shell_mcp, current_mode=""):
+    def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
         return [
             ValidatorResult(validator_id=v.validator_id, severity="pass",
                             justification="ok")
@@ -253,7 +253,7 @@ def test_validate_node_success(sample_protocol, sample_task, temp_workspace):
 def test_validate_node_blocker(sample_protocol, sample_task, temp_workspace):
     """Test validate node with blocker result."""
     
-    def blocker_validator(task, validators, shell_mcp, current_mode=""):  # Fixed signature - 4 args
+    def blocker_validator(task, validators, shell_mcp, current_mode="", **kwargs):  # Fixed signature - 4 args
         return [
             ValidatorResult(
                 validator_id="security",
@@ -736,7 +736,7 @@ def test_end_to_end_execution(sample_protocol, sample_task, temp_workspace):
     Uses a custom validator_fn that returns pass for every validator
     so the unanimous policy (sample protocol default) proceeds.
     """
-    def _all_pass(task, validators, shell_mcp, current_mode=""):
+    def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
         return [
             ValidatorResult(validator_id=v.validator_id, severity="pass",
                             justification="ok")
@@ -778,7 +778,7 @@ def test_end_to_end_execution(sample_protocol, sample_task, temp_workspace):
 def test_end_to_end_execution_with_blocker(sample_protocol, sample_task, temp_workspace):
     """Test loop execution that ends in blocker."""
     
-    def blocker_validator(task, validators, shell_mcp, current_mode=""):  # Fixed signature
+    def blocker_validator(task, validators, shell_mcp, current_mode="", **kwargs):  # Fixed signature
         return [
             ValidatorResult(
                 validator_id="security",
@@ -1241,7 +1241,7 @@ def test_end_to_end_audit_chain(sample_protocol, sample_task, temp_workspace):
     Uses a custom validator_fn that returns pass for every validator
     so the unanimous policy (sample protocol default) proceeds.
     """
-    def _all_pass(task, validators, shell_mcp, current_mode=""):
+    def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
         return [
             ValidatorResult(validator_id=v.validator_id, severity="pass",
                             justification="ok")
@@ -1306,7 +1306,7 @@ def test_end_to_end_blocker_audit(sample_protocol, sample_task, temp_workspace):
     """Blocker path produces halt + validator detail in audit."""
     audit = _make_audit_log()
 
-    def blocker_validator(task, validators, shell_mcp, current_mode=""):
+    def blocker_validator(task, validators, shell_mcp, current_mode="", **kwargs):
         return [
             ValidatorResult(
                 validator_id="security",
@@ -1633,7 +1633,7 @@ def test_validate_node_escalate_sets_blocked(sample_protocol, sample_task, temp_
 
     # Custom validator_fn that produces split results triggering ESCALATE
     # under unanimous policy: 1 pass, 1 warn, 0 total consensus
-    def _split_validator(task, validators, shell_mcp, current_mode=""):
+    def _split_validator(task, validators, shell_mcp, current_mode="", **kwargs):
         return [
             ValidatorResult(validator_id="sec", severity="pass", justification="ok"),
             ValidatorResult(validator_id="arch", severity="blocker", justification="bad"),
@@ -1684,7 +1684,7 @@ def test_validate_node_escalate_majority_pending_disagreement(sample_task, temp_
     )
     workspace_mcp = WorkspaceMCP(temp_workspace)
 
-    def _split_validator(task, validators, shell_mcp, current_mode=""):
+    def _split_validator(task, validators, shell_mcp, current_mode="", **kwargs):
         return [
             ValidatorResult(validator_id="v1", severity="pass", justification="ok"),
             ValidatorResult(validator_id="v2", severity="blocker", justification="bad"),
@@ -1831,7 +1831,7 @@ def test_validate_node_escalate_audit_event(sample_task, temp_workspace):
     # This test verifies that validate_node properly sets is_blocked
     # and the audit event type is "validate" with outcome "blocked".
     # The ESCALATE-specific audit fires when pending_disagreement is set.
-    def _split_validator(task, validators, shell_mcp, current_mode=""):
+    def _split_validator(task, validators, shell_mcp, current_mode="", **kwargs):
         return [ValidatorResult(validator_id="v1", severity="pass", justification="ok"),
                 ValidatorResult(validator_id="v2", severity="blocker", justification="bad")]
 

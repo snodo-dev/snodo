@@ -371,7 +371,7 @@ class TestLoopPhases:
         """validate node only runs pre_execute validators."""
         call_log = []
 
-        def tracking_validator(task, validators, shell_mcp, current_mode=""):
+        def tracking_validator(task, validators, shell_mcp, current_mode="", **kwargs):
             call_log.append([v.validator_id for v in validators])
             return [
                 ValidatorResult(v.validator_id, "pass", "stub")
@@ -407,7 +407,7 @@ class TestLoopPhases:
         """post_validate node runs post_execute validators."""
         call_log = []
 
-        def tracking_validator(task, validators, shell_mcp, current_mode=""):
+        def tracking_validator(task, validators, shell_mcp, current_mode="", **kwargs):
             call_log.append([v.validator_id for v in validators])
             return [
                 ValidatorResult(v.validator_id, "pass", "stub")
@@ -449,7 +449,7 @@ class TestLoopPhases:
 
     def test_post_validate_blocker_blocks(self, phased_protocol, project_dir):
         """post_validate with blocker result blocks execution."""
-        def blocker_validator(task, validators, shell_mcp, current_mode=""):
+        def blocker_validator(task, validators, shell_mcp, current_mode="", **kwargs):
             return [
                 ValidatorResult(v.validator_id, "blocker", "quality failed")
                 for v in validators
@@ -563,7 +563,7 @@ class TestLoopPhases:
         Uses a custom validator_fn that returns pass for LLM-backed
         validators (security) so the unanimous policy proceeds.
         """
-        def _all_pass(task, validators, shell_mcp, current_mode=""):
+        def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
             results = []
             for v in validators:
                 if v.validator_type == "quality" and shell_mcp:

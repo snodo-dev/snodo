@@ -302,7 +302,7 @@ def test_blocker_stops_execution(temp_git_repo):
         initial_mode="producer"
     )
     
-    def blocking_validator(task, validators, shell_mcp, current_mode=""):
+    def blocking_validator(task, validators, shell_mcp, current_mode="", **kwargs):
         return [ValidatorResult(
             validator_id="blocker",
             severity="blocker",
@@ -352,7 +352,7 @@ def test_multiple_artifacts_created(temp_git_repo, sample_protocol):
     """Test that artifacts are created during execution."""
     
     # Custom validator that always passes
-    def passing_validator(task, validators, shell_mcp, current_mode=""):
+    def passing_validator(task, validators, shell_mcp, current_mode="", **kwargs):
         return [ValidatorResult(
             validator_id="test",
             severity="pass",
