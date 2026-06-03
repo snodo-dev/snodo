@@ -25,7 +25,7 @@ from snodo.mcp.server import (
     TOOL_REGISTRY,
     MODE_TOOL_MAP,
 )
-from snodo.mcp.transport import build_fastmcp_server, _make_tool_handler
+from snodo.mcp.transport import build_fastmcp_server, _make_tool_handler, _build_instructions
 
 
 # === Fixtures ===
@@ -871,3 +871,169 @@ class TestServerAuditLog:
         audited_server.call_tool("validate_task", {"task_id": "t1"})
         assert audit_log.verify_chain() is True
         assert len(audit_log.events) >= 2
+
+
+# === MCP Self-Description: Instructions + Resources ===
+
+class TestInstructions:
+    """Tests for server instructions in the initialize handshake."""
+
+    def test_instructions_built_from_protocol(self, server):
+        """Instructions contain protocol-specific data."""
+        instructions = _build_instructions(server)
+        assert "test" in instructions  # protocol_id
+        assert "1.0.0" in instructions  # version
+        assert "producer" in instructions  # mode
+        assert "reviewer" in instructions  # mode
+        assert "security" in instructions  # validator
+        assert "unanimous" in instructions  # disagreement_policy
+
+    def test_instructions_contains_workflow_loop(self, server):
+        """Instructions contain the ordered workflow loop."""
+        instructions = _build_instructions(server)
+        assert "validate_task" in instructions
+        assert "dispatch_task" in instructions
+        assert "get_job_status" in instructions
+        assert "get_job_logs" in instructions
+
+    def test_instructions_contains_async_contract(self, server):
+        """Instructions explicitly state the async contract."""
+        instructions = _build_instructions(server)
+        assert "ASYNCHRONOUS" in instructions
+        assert "poll" in instructions.lower() or "get_job_status" in instructions
+        assert "dispatch" in instructions.lower()
+
+    def test_instructions_contains_wf1(self, server):
+        """Instructions describe WF1 token lifecycle."""
+        instructions = _build_instructions(server)
+        assert "WF1" in instructions
+        assert "single-use" in instructions or "token" in instructions.lower()
+
+    def test_instructions_contains_resource_uris(self, server):
+        """Instructions point to resources for state."""
+        instructions = _build_instructions(server)
+        assert "snodo://protocol" in instructions
+        assert "snodo://sessions" in instructions
+        assert "snodo://audit" in instructions
+
+    def test_instructions_passed_to_fastmcp(self, server):
+        """FastMCP instance receives instructions."""
+        mcp = build_fastmcp_server(server)
+        assert mcp.instructions is not None
+        assert "ASYNCHRONOUS" in mcp.instructions
+        assert "test" in mcp.instructions
+
+
+class TestResources:
+    """Tests for MCP resources (read-only, URI-addressable)."""
+
+    def _read_resource_content(self, mcp, uri):
+        """Extract string content from FastMCP read_resource result."""
+        import asyncio
+        results = asyncio.run(mcp.read_resource(uri))
+        # read_resource returns list[ReadResourceContents]
+        return results[0].content if results else ""
+
+    def test_protocol_resource(self, server):
+        """snodo://protocol returns protocol data as JSON."""
+        mcp = build_fastmcp_server(server)
+        content = self._read_resource_content(mcp, "snodo://protocol")
+        data = json.loads(content)
+        assert data["protocol_id"] == "test"
+        assert data["version"] == "1.0.0"
+        assert len(data["modes"]) == 2
+        assert len(data["validators"]) == 1
+
+    def test_sessions_resource(self, server, project_dir):
+        """snodo://sessions returns session list as JSON."""
+        mcp = build_fastmcp_server(server)
+        content = self._read_resource_content(mcp, "snodo://sessions")
+        data = json.loads(content)
+        assert isinstance(data, list)
+
+    def test_session_detail_resource(self, server, project_dir):
+        """snodo://sessions/{id} returns session detail."""
+        from snodo.infrastructure.session import SessionManager
+
+        # Create a session first
+        mgr = SessionManager()
+        session = mgr.create_session(
+            mode="producer",
+            project_root=project_dir,
+        )
+
+        mcp = build_fastmcp_server(server)
+        content = self._read_resource_content(
+            mcp, f"snodo://sessions/{session.session_id}"
+        )
+        data = json.loads(content)
+        assert data["session_id"] == session.session_id
+        assert data["mode"] == "producer"
+        assert "audit_events" in data
+
+    def test_session_detail_not_found(self, server):
+        """snodo://sessions/{nonexistent} returns error JSON."""
+        mcp = build_fastmcp_server(server)
+        content = self._read_resource_content(
+            mcp, "snodo://sessions/nonexistent_123"
+        )
+        data = json.loads(content)
+        assert "error" in data
+        assert "not found" in data["error"].lower()
+
+    def test_audit_resource(self, server, project_dir):
+        """snodo://audit returns bounded recent events."""
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.mcp.server import ProtocolMCPServer
+
+        f = tempfile.NamedTemporaryFile(suffix=".log", delete=False)
+        f.close()
+        audit_log = AuditLog(f.name)
+
+        # Add some events
+        audit_log.append_event("test_event", {"key": "value"})
+        audit_log.append_event("another_event", {"key2": "value2"})
+
+        # Create server with audit log
+        audited_server = ProtocolMCPServer(
+            server.protocol, project_dir, audit_log=audit_log
+        )
+
+        mcp = build_fastmcp_server(audited_server)
+        content = self._read_resource_content(mcp, "snodo://audit")
+        data = json.loads(content)
+        assert isinstance(data, list)
+        assert len(data) >= 2
+        assert data[-1]["event_type"] == "another_event"
+
+        Path(f.name).unlink(missing_ok=True)
+
+    def test_audit_resource_no_log(self, server):
+        """snodo://audit with no audit log returns empty note."""
+        mcp = build_fastmcp_server(server)
+        content = self._read_resource_content(mcp, "snodo://audit")
+        data = json.loads(content)
+        assert "events" in data
+        assert "note" in data
+
+    def test_resources_listed_on_fastmcp(self, server):
+        """All 4 resources are registered on FastMCP."""
+        import asyncio
+        mcp = build_fastmcp_server(server)
+        resources = asyncio.run(mcp.list_resources())
+        uris = {str(r.uri) for r in resources}
+        templates = asyncio.run(mcp.list_resource_templates())
+        template_uris = {t.uriTemplate for t in templates}
+        all_uris = uris | template_uris
+        assert "snodo://protocol" in all_uris
+        assert "snodo://sessions" in all_uris
+        assert "snodo://sessions/{session_id}" in all_uris
+        assert "snodo://audit" in all_uris
+
+    def test_resources_are_read_only(self, server):
+        """Resources return string/JSON content, not mutable objects."""
+        mcp = build_fastmcp_server(server)
+        for uri in ["snodo://protocol", "snodo://sessions", "snodo://audit"]:
+            content = self._read_resource_content(mcp, uri)
+            assert isinstance(content, str)
+            json.loads(content)  # valid JSON
