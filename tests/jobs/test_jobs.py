@@ -332,6 +332,72 @@ class TestGetLogs:
         content = manager.get_logs("j_log04", stream="stdout")
         assert content == ""
 
+    def test_get_logs_tail_large_file_bounded_read(self, manager):
+        """tail=50 on a large file reads only a trailing window, not whole file."""
+        job_dir = manager.jobs_dir / "j_log05"
+        job_dir.mkdir()
+        (job_dir / "state.json").write_text('{"status": "completed"}')
+
+        log_file = job_dir / "stdout.log"
+        with open(log_file, "w") as f:
+            for i in range(20000):
+                f.write(f"line {i:05d} padding for size\n")
+
+        import time
+        start = time.time()
+        content = manager.get_logs("j_log05", stream="stdout", tail=50)
+        elapsed = time.time() - start
+
+        lines = content.strip().splitlines()
+        assert len(lines) == 50
+        assert "line 19999" in lines[-1]
+        # Should be well under 100ms for a bounded tail read
+        assert elapsed < 1.0, f"tail read took {elapsed:.2f}s — not bounded"
+
+    def test_get_logs_tail_fewer_lines_than_file(self, manager):
+        """tail larger than file line count returns all lines."""
+        job_dir = manager.jobs_dir / "j_log06"
+        job_dir.mkdir()
+        (job_dir / "state.json").write_text('{"status": "completed"}')
+        (job_dir / "stdout.log").write_text("a\nb\nc\n")
+
+        content = manager.get_logs("j_log06", stream="stdout", tail=10)
+        lines = content.strip().splitlines()
+        assert len(lines) == 3
+        assert lines == ["a", "b", "c"]
+
+    def test_get_logs_tail_empty_file(self, manager):
+        """tail on empty log file returns empty string."""
+        job_dir = manager.jobs_dir / "j_log07"
+        job_dir.mkdir()
+        (job_dir / "state.json").write_text('{"status": "completed"}')
+        (job_dir / "stdout.log").write_text("")
+
+        content = manager.get_logs("j_log07", stream="stdout", tail=10)
+        assert content == ""
+
+    def test_get_logs_no_tail_capped_read(self, manager):
+        """tail=None reads at most 1MB from end, never unbounded."""
+        job_dir = manager.jobs_dir / "j_log08"
+        job_dir.mkdir()
+        (job_dir / "state.json").write_text('{"status": "completed"}')
+        (job_dir / "stdout.log").write_text("line1\nline2\nline3\n")
+
+        content = manager.get_logs("j_log08", stream="stdout", tail=None)
+        assert "line3" in content
+        assert "line1" in content
+
+    def test_get_logs_tail_zero_same_as_none(self, manager):
+        """tail=0 returns capped read, same as tail=None."""
+        job_dir = manager.jobs_dir / "j_log09"
+        job_dir.mkdir()
+        (job_dir / "state.json").write_text('{"status": "completed"}')
+        (job_dir / "stdout.log").write_text("line1\nline2\nline3\n")
+
+        content = manager.get_logs("j_log09", stream="stdout", tail=0)
+        assert "line3" in content
+        assert "line1" in content
+
 
 # === Cancel Tests ===
 

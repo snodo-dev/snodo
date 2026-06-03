@@ -215,28 +215,84 @@ class JobManager:
         return {**state, "id": job_id, "task": task}
 
     def get_logs(self, job_id: str, stream: str = "stdout", tail: Optional[int] = None) -> str:
-        """Read log file for a job.
+        """Read log file for a job — bounded tail read, never the whole file.
+
+        When *tail* is a positive int, only the last N lines are returned.
+        The read is O(tail) — it seeks from the end of the file and reads
+        only a trailing window (initial 64 KB, expanding up to a 1 MB hard
+        cap if the window doesn't yet contain *tail* newlines).
+
+        When *tail* is None or <= 0 the entire file content up to the 1 MB
+        hard cap is returned.  An unbounded full-file read is never possible.
 
         Args:
             job_id: Job identifier
-            stream: "stdout" or "stderr"
-            tail: If set, return only the last N lines
+            stream: ``"stdout"`` or ``"stderr"``
+            tail:    If set, return only the last *N* lines
 
         Returns:
-            Log content string
+            Log content string (empty string when the log file is missing).
         """
         job_dir = self._job_dir(job_id)
         log_file = job_dir / f"{stream}.log"
         if not log_file.exists():
             return ""
 
-        content = log_file.read_text()
         if tail is not None and tail > 0:
-            lines = content.splitlines()
-            content = "\n".join(lines[-tail:])
-            if lines[-tail:]:
-                content += "\n"
-        return content
+            return self._read_tail(log_file, tail)
+        else:
+            return self._read_capped(log_file)
+
+    @staticmethod
+    def _read_tail(log_file: Path, tail: int) -> str:
+        """Read the last *tail* lines from *log_file* using a bounded window.
+
+        Never reads the full file.  Starts with a 64 KB window at end of
+        file and expands up to a 1 MB hard cap if the window doesn't
+        contain *tail* newlines yet.
+        """
+        _INITIAL_WINDOW = 64 * 1024   # 64 KB
+        _MAX_WINDOW = 1024 * 1024     # 1 MB
+
+        with open(log_file, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            file_size = fh.tell()
+            if file_size == 0:
+                return ""
+
+            window_size = _INITIAL_WINDOW
+            content = b""
+            while window_size <= _MAX_WINDOW:
+                read_start = max(0, file_size - window_size)
+                fh.seek(read_start, os.SEEK_SET)
+                content = fh.read(window_size)
+                newline_count = content.count(b"\n")
+                if newline_count >= tail:
+                    break
+                # Partial first line is acceptable — only expand when we
+                # have fewer newlines than requested lines.
+                window_size *= 2
+
+        return _decode_tail_lines(content, tail)
+
+    @staticmethod
+    def _read_capped(log_file: Path) -> str:
+        """Read at most the last 1 MB of the log file."""
+        _MAX_CAP = 1024 * 1024  # 1 MB
+
+        with open(log_file, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            file_size = fh.tell()
+            if file_size == 0:
+                return ""
+            read_start = max(0, file_size - _MAX_CAP)
+            fh.seek(read_start, os.SEEK_SET)
+            content = fh.read(_MAX_CAP)
+
+        try:
+            return content.decode("utf-8")
+        except UnicodeDecodeError:
+            return content.decode("utf-8", errors="replace")
 
     def wait_for(self, job_id: str, timeout: Optional[float] = None) -> dict:
         """Poll until job reaches terminal state.
@@ -296,3 +352,16 @@ class JobManager:
         self._save_state(job_dir, state)
 
         return {**state, "id": job_id}
+
+
+def _decode_tail_lines(content: bytes, tail: int) -> str:
+    """Decode binary content and return the last *tail* lines."""
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        text = content.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    result = "\n".join(lines[-tail:])
+    if lines[-tail:]:
+        result += "\n"
+    return result
