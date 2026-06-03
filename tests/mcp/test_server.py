@@ -604,6 +604,118 @@ class TestDispatchTask:
                 f"delete_file found in MODE_TOOL_MAP['{mode_tool}']"
             )
 
+    def test_job_tools_in_registry(self):
+        """get_job_status, list_jobs, get_job_logs are registered."""
+        for name in ("get_job_status", "list_jobs", "get_job_logs"):
+            assert name in TOOL_REGISTRY, f"{name} missing from TOOL_REGISTRY"
+            assert not TOOL_REGISTRY[name]["requires_token"]
+            assert TOOL_REGISTRY[name]["mcp"] is None
+
+    def test_job_tools_in_dispatch_map(self):
+        """All three job tools are in MODE_TOOL_MAP['dispatch']."""
+        dispatch_tools = MODE_TOOL_MAP["dispatch"]
+        for name in ("get_job_status", "list_jobs", "get_job_logs"):
+            assert name in dispatch_tools
+
+    def test_get_job_status_missing_id(self, dispatch_server):
+        with pytest.raises(MCPError, match="requires job_id"):
+            dispatch_server.call_tool("get_job_status", {})
+
+    def test_get_job_status_returns_shape(self, dispatch_server):
+        with patch("snodo.jobs.JobManager") as mock_cls:
+            mock_jm = MagicMock()
+            mock_jm.get_status.return_value = {
+                "id": "j_abc", "status": "completed", "pid": 12345,
+                "created_at": 100.0, "started_at": 101.0,
+                "completed_at": 105.0, "exit_code": 0,
+                "task": {"description": "test", "mode": "producer"},
+            }
+            mock_cls.return_value = mock_jm
+            result = dispatch_server.call_tool(
+                "get_job_status", {"job_id": "j_abc"}
+            )
+
+        assert result["status"] == "completed"
+        assert result["id"] == "j_abc"
+        assert result["exit_code"] == 0
+        assert result["task"]["description"] == "test"
+
+    def test_get_job_status_not_found(self, dispatch_server):
+        with patch("snodo.jobs.JobManager") as mock_cls:
+            from snodo.jobs import JobError
+            mock_jm = MagicMock()
+            mock_jm.get_status.side_effect = JobError("not found")
+            mock_cls.return_value = mock_jm
+            with pytest.raises(MCPError, match="Job not found"):
+                dispatch_server.call_tool(
+                    "get_job_status", {"job_id": "j_bad"}
+                )
+
+    def test_list_jobs_returns_array(self, dispatch_server):
+        with patch("snodo.jobs.JobManager") as mock_cls:
+            mock_jm = MagicMock()
+            mock_jm.list_jobs.return_value = [
+                {"id": "j_1", "status": "completed",
+                 "description": "task A", "created_at": 100.0},
+                {"id": "j_2", "status": "running",
+                 "description": "task B", "created_at": 200.0},
+            ]
+            mock_cls.return_value = mock_jm
+            result = dispatch_server.call_tool("list_jobs", {})
+
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0]["id"] == "j_1"
+        assert result[1]["status"] == "running"
+
+    def test_get_job_logs_missing_id(self, dispatch_server):
+        with pytest.raises(MCPError, match="requires job_id"):
+            dispatch_server.call_tool("get_job_logs", {})
+
+    def test_get_job_logs_defaults(self, dispatch_server):
+        with patch("snodo.jobs.JobManager") as mock_cls:
+            mock_jm = MagicMock()
+            mock_jm.get_logs.return_value = "line1\nline2\n"
+            mock_cls.return_value = mock_jm
+            result = dispatch_server.call_tool(
+                "get_job_logs", {"job_id": "j_abc"}
+            )
+
+        assert result["job_id"] == "j_abc"
+        assert result["stream"] == "stdout"
+        assert result["tail"] == 50
+        assert "line1" in result["log"]
+        mock_jm.get_logs.assert_called_once_with(
+            "j_abc", stream="stdout", tail=50
+        )
+
+    def test_get_job_logs_custom_stream(self, dispatch_server):
+        with patch("snodo.jobs.JobManager") as mock_cls:
+            mock_jm = MagicMock()
+            mock_jm.get_logs.return_value = "error line\n"
+            mock_cls.return_value = mock_jm
+            result = dispatch_server.call_tool(
+                "get_job_logs",
+                {"job_id": "j_abc", "stream": "stderr", "tail": 10},
+            )
+
+        assert result["stream"] == "stderr"
+        assert result["tail"] == 10
+        mock_jm.get_logs.assert_called_once_with(
+            "j_abc", stream="stderr", tail=10
+        )
+
+    def test_get_job_logs_not_found(self, dispatch_server):
+        with patch("snodo.jobs.JobManager") as mock_cls:
+            from snodo.jobs import JobError
+            mock_jm = MagicMock()
+            mock_jm.get_logs.side_effect = JobError("not found")
+            mock_cls.return_value = mock_jm
+            with pytest.raises(MCPError, match="Job not found"):
+                dispatch_server.call_tool(
+                    "get_job_logs", {"job_id": "j_bad"}
+                )
+
 
 # === Workspace Scoping ===
 
