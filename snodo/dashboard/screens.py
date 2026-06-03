@@ -386,8 +386,7 @@ class SessionDetailScreen(Screen):
         # Task History
         th = self.query_one("#task-history-table", DataTable)
         th.add_columns("Task", "Validate", "Post-Val", "Outcome")
-        task_events = self._build_task_history(d.events)
-        for te in task_events:
+        for te in d.task_history:
             task_short = _short_id(te["task_ref"]) if te["task_ref"] else "—"
             pre_display = self._format_validator_results(
                 te.get("pre_results", []))
@@ -420,70 +419,6 @@ class SessionDetailScreen(Screen):
         for ev in d.events[-50:]:
             cells = self._event_cells(ev)
             self._events_row_keys[ev.sequence] = et.add_row(*cells, key=str(ev.sequence))
-
-    @staticmethod
-    def _build_task_history(events: list) -> list:
-        """Build per-task summary rows from session_task_changed + correlated events.
-
-        The authoritative ordered task list comes from session_task_changed
-        events (every task transition is logged).  Validate/dispatch/halt
-        events are correlated to each task_ref.  Tasks with no correlated
-        events yet appear with empty status.
-        """
-        ordered_task_refs: list = []
-        by_task: dict[str, list] = {}
-
-        for ev in events:
-            data = ev.data if isinstance(ev.data, dict) else {}
-            if ev.event_type == "session_task_changed":
-                new_task = data.get("new_task", "")
-                if new_task and new_task not in ordered_task_refs:
-                    ordered_task_refs.append(new_task)
-                    if new_task not in by_task:
-                        by_task[new_task] = []
-            else:
-                task_ref = data.get("task_ref", "")
-                if task_ref:
-                    if task_ref not in by_task:
-                        by_task[task_ref] = []
-                    by_task[task_ref].append(ev)
-
-        rows = []
-        for task_ref in ordered_task_refs:
-            evs = by_task.get(task_ref, [])
-            pre_results: list = []
-            post_results: list = []
-            outcome = "—"
-            outcome_color = ""
-
-            for e in evs:
-                ed = e.data if isinstance(e.data, dict) else {}
-                if e.event_type == "validate":
-                    phase = ed.get("phase", "")
-                    results = ed.get("results", [])
-                    if phase == "pre_execute":
-                        pre_results = results
-                    elif phase == "post_execute":
-                        post_results = results
-                elif e.event_type == "halt":
-                    outcome = f"halted: {ed.get('reason', 'blocker')[:40]}"
-                    outcome_color = "red"
-                elif e.event_type == "task_complete":
-                    outcome = "completed"
-                    outcome_color = "green"
-                elif e.event_type == "dispatch":
-                    count = ed.get("artifacts_count", 0)
-                    outcome = f"dispatched ({count} files)"
-                    outcome_color = "green"
-
-            rows.append({
-                "task_ref": task_ref,
-                "pre_results": pre_results,
-                "post_results": post_results,
-                "outcome": outcome,
-                "outcome_color": outcome_color,
-            })
-        return rows
 
     @staticmethod
     def _format_validator_results(results: list) -> str:

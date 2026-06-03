@@ -46,6 +46,7 @@ class SessionDetail:
     validators: List[Dict[str, Any]] = field(default_factory=list)
     agents: List[Dict[str, Any]] = field(default_factory=list)
     events: List[AuditEvent] = field(default_factory=list)
+    task_history: List[Dict[str, Any]] = field(default_factory=list)
     is_escalated: bool = False
     is_halted: bool = False
 
@@ -175,6 +176,8 @@ class DashboardDataProvider:
         is_escalated = any(e.event_type == "disagreement_escalated" for e in events)
         is_halted = any(e.event_type == "halt" for e in events)
 
+        task_history = _build_task_history(events)
+
         return SessionDetail(
             session_id=session.session_id,
             mode_id=session.mode,
@@ -187,6 +190,7 @@ class DashboardDataProvider:
             validators=validator_data,
             agents=agent_data,
             events=events[-20:],
+            task_history=task_history,
             is_escalated=is_escalated,
             is_halted=is_halted,
         )
@@ -309,3 +313,90 @@ class DashboardDataProvider:
                     result.append(ev)
 
         return result
+
+
+def _build_task_history(events: list) -> list:
+    """Build per-task summary rows from session_task_changed + correlated events.
+
+    Preferred source: session_task_changed events give the ordered task list.
+    Fallback: if none exist, collect task_refs from all events that carry one
+    (governance_check, validate, dispatch, halt, task_complete), deduplicated
+    and ordered by first-seen.
+    """
+    ordered_task_refs: list = []
+    seen: set = set()
+    by_task: dict[str, list] = {}
+    has_session_changed = False
+
+    for ev in events:
+        data = ev.data if isinstance(ev.data, dict) else {}
+        if ev.event_type == "session_task_changed":
+            has_session_changed = True
+            new_task = data.get("new_task", "")
+            if new_task and new_task not in seen:
+                ordered_task_refs.append(new_task)
+                seen.add(new_task)
+                if new_task not in by_task:
+                    by_task[new_task] = []
+        else:
+            task_ref = data.get("task_ref", "")
+            if task_ref:
+                if task_ref not in by_task:
+                    by_task[task_ref] = []
+
+    # Fallback: no session_task_changed — collect task_refs from all events
+    if not has_session_changed:
+        ordered_task_refs = []
+        seen.clear()
+        for ev in events:
+            data = ev.data if isinstance(ev.data, dict) else {}
+            task_ref = data.get("task_ref", "")
+            if task_ref and task_ref not in seen:
+                ordered_task_refs.append(task_ref)
+                seen.add(task_ref)
+
+    # Correlate non-session_task_changed events to each task_ref
+    for ev in events:
+        data = ev.data if isinstance(ev.data, dict) else {}
+        if ev.event_type == "session_task_changed":
+            continue
+        task_ref = data.get("task_ref", "")
+        if task_ref and task_ref in by_task:
+            by_task[task_ref].append(ev)
+
+    rows = []
+    for task_ref in ordered_task_refs:
+        evs = by_task.get(task_ref, [])
+        pre_results: list = []
+        post_results: list = []
+        outcome = "—"
+        outcome_color = ""
+
+        for e in evs:
+            ed = e.data if isinstance(e.data, dict) else {}
+            if e.event_type == "validate":
+                phase = ed.get("phase", "")
+                results = ed.get("results", [])
+                if phase == "pre_execute":
+                    pre_results = results
+                elif phase == "post_execute":
+                    post_results = results
+            elif e.event_type == "halt":
+                outcome = f"halted: {ed.get('reason', 'blocker')[:40]}"
+                outcome_color = "red"
+            elif e.event_type == "task_complete":
+                outcome = "completed"
+                outcome_color = "green"
+            elif e.event_type == "dispatch":
+                count = ed.get("artifacts_count", 0)
+                outcome = f"dispatched ({count} files)"
+                outcome_color = "green"
+
+        rows.append({
+            "task_ref": task_ref,
+            "pre_results": pre_results,
+            "post_results": post_results,
+            "outcome": outcome,
+            "outcome_color": outcome_color,
+        })
+    return rows
