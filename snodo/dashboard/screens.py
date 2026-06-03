@@ -6,9 +6,11 @@ FILE: snodo/dashboard/screens.py  (Task: dashboard rebuild)
 import time as _time
 from typing import Any, Dict, Optional
 
+from rich.markup import escape as _escape
+
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, VerticalScroll
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
@@ -304,6 +306,15 @@ class SessionDetailScreen(Screen):
         border-bottom: solid $primary;
     }
     #detail-body {
+        layout: horizontal;
+        height: 1fr;
+    }
+    #detail-left {
+        width: 2fr;
+        height: 1fr;
+    }
+    #detail-right {
+        width: 1fr;
         height: 1fr;
     }
     #detail-task-history {
@@ -313,24 +324,22 @@ class SessionDetailScreen(Screen):
         margin: 0 1;
         padding: 0 1;
     }
+    #detail-events {
+        height: 1fr;
+        border: solid $warning;
+        margin: 0 1 1 1;
+        padding: 0 1;
+    }
     #detail-validators {
-        height: auto;
-        max-height: 12;
+        height: 1fr;
         border: solid $secondary;
         margin: 0 1;
         padding: 0 1;
     }
     #detail-agents {
-        height: auto;
-        max-height: 10;
+        height: 1fr;
         border: solid $accent;
         margin: 0 1;
-        padding: 0 1;
-    }
-    #detail-events {
-        height: 1fr;
-        border: solid $warning;
-        margin: 0 1 1 1;
         padding: 0 1;
     }
     .section-title {
@@ -343,28 +352,33 @@ class SessionDetailScreen(Screen):
         super().__init__(**kwargs)
         self.detail = detail
         self.provider = provider
+        self._events_row_keys: Dict[int, Any] = {}
+        self._refresh_timer: Any = None
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static(id="detail-header")
-        with VerticalScroll(id="detail-body"):
-            with Container(id="detail-task-history"):
-                yield Static("TASK HISTORY", classes="section-title")
-                yield DataTable(id="task-history-table", cursor_type="row")
-            with Container(id="detail-validators"):
-                yield Static("VALIDATORS", classes="section-title")
-                yield DataTable(id="validators-table", cursor_type="row")
-            with Container(id="detail-agents"):
-                yield Static("AGENTS", classes="section-title")
-                yield DataTable(id="agents-table", cursor_type="row")
-            with Container(id="detail-events"):
-                yield Static("EVENTS", classes="section-title")
-                yield DataTable(id="events-table", cursor_type="row")
+        with Horizontal(id="detail-body"):
+            with VerticalScroll(id="detail-left"):
+                with Container(id="detail-task-history"):
+                    yield Static("TASK HISTORY", classes="section-title")
+                    yield DataTable(id="task-history-table", cursor_type="row")
+                with Container(id="detail-events"):
+                    yield Static("EVENTS", classes="section-title")
+                    yield DataTable(id="events-table", cursor_type="row")
+            with Vertical(id="detail-right"):
+                with Container(id="detail-validators"):
+                    yield Static("VALIDATORS", classes="section-title")
+                    yield DataTable(id="validators-table", cursor_type="row")
+                with Container(id="detail-agents"):
+                    yield Static("AGENTS", classes="section-title")
+                    yield DataTable(id="agents-table", cursor_type="row")
         yield Footer()
 
     def on_mount(self):
         self._populate()
         self._update_header()
+        self._refresh_timer = self.set_interval(2.0, self._refresh_events)
 
     def _populate(self):
         d = self.detail
@@ -402,31 +416,43 @@ class SessionDetailScreen(Screen):
         # Events
         et = self.query_one("#events-table", DataTable)
         et.add_columns("Time", "Type", "Summary")
-        for ev in d.events[-15:]:
-            ts = ev.timestamp[11:19] if len(ev.timestamp) >= 19 else ev.timestamp
-            ev_type = ev.event_type
-            summary = _summarize_event(ev)
-            color = _event_color(ev.event_type)
-            et.add_row(ts, f"[{color}]{ev_type}[/]", summary)
+        self._events_row_keys.clear()
+        for ev in d.events[-50:]:
+            cells = self._event_cells(ev)
+            self._events_row_keys[ev.sequence] = et.add_row(*cells, key=str(ev.sequence))
 
     @staticmethod
     def _build_task_history(events: list) -> list:
-        """Group events by task_ref and build per-task summary rows."""
-        by_task: dict = {}
+        """Build per-task summary rows from session_task_changed + correlated events.
+
+        The authoritative ordered task list comes from session_task_changed
+        events (every task transition is logged).  Validate/dispatch/halt
+        events are correlated to each task_ref.  Tasks with no correlated
+        events yet appear with empty status.
+        """
+        ordered_task_refs: list = []
+        by_task: dict[str, list] = {}
+
         for ev in events:
             data = ev.data if isinstance(ev.data, dict) else {}
-            task_ref = data.get("task_ref", "")
-            if not task_ref:
-                continue
-            if task_ref not in by_task:
-                by_task[task_ref] = []
-            by_task[task_ref].append(ev)
+            if ev.event_type == "session_task_changed":
+                new_task = data.get("new_task", "")
+                if new_task and new_task not in ordered_task_refs:
+                    ordered_task_refs.append(new_task)
+                    if new_task not in by_task:
+                        by_task[new_task] = []
+            else:
+                task_ref = data.get("task_ref", "")
+                if task_ref:
+                    if task_ref not in by_task:
+                        by_task[task_ref] = []
+                    by_task[task_ref].append(ev)
 
         rows = []
-        for task_ref in sorted(by_task):
-            evs = by_task[task_ref]
-            pre_results = []
-            post_results = []
+        for task_ref in ordered_task_refs:
+            evs = by_task.get(task_ref, [])
+            pre_results: list = []
+            post_results: list = []
             outcome = "—"
             outcome_color = ""
 
@@ -465,7 +491,7 @@ class SessionDetailScreen(Screen):
             return "—"
         parts = []
         for r in results[:4]:
-            vid = r.get("validator_id", "?")
+            vid = _escape(str(r.get("validator_id", "?")))
             sev = r.get("severity", "?")
             if sev == "blocker":
                 parts.append(f"[red]{vid}:✗[/]")
@@ -480,10 +506,48 @@ class SessionDetailScreen(Screen):
     @staticmethod
     def _format_outcome(te: dict) -> str:
         color = te.get("outcome_color", "")
-        text = te["outcome"]
+        text = _escape(te["outcome"])
         if color:
             return f"[{color}]{text}[/]"
         return text
+
+    @staticmethod
+    def _event_cells(ev: Any) -> list:
+        """Build escaped cell values for an audit event."""
+        ts = ev.timestamp[11:19] if len(ev.timestamp) >= 19 else ev.timestamp
+        ev_type = _escape(ev.event_type)
+        color = _event_color(ev.event_type)
+        type_cell = f"[{color}]{ev_type}[/]" if color else ev_type
+        summary_cell = _escape(_summarize_event(ev))
+        return [ts, type_cell, summary_cell]
+
+    def _refresh_events(self):
+        """Tail the audit log and update the events table in-place."""
+        detail = self.provider.get_session_detail(self.detail.session_id)
+        if detail is None:
+            return
+        self.detail = detail
+        table = self.query_one("#events-table", DataTable)
+        events = detail.events[-50:]
+
+        new_ids = {ev.sequence: ev for ev in events}
+
+        gone = [seq for seq in self._events_row_keys if seq not in new_ids]
+        for seq in gone:
+            if seq in self._events_row_keys:
+                table.remove_row(self._events_row_keys[seq])
+                del self._events_row_keys[seq]
+
+        for seq, ev in new_ids.items():
+            cells = self._event_cells(ev)
+            if seq in self._events_row_keys:
+                row_key = self._events_row_keys[seq]
+                existing = table.get_row(row_key)
+                for col_idx, new_val in enumerate(cells):
+                    if col_idx < len(existing) and existing[col_idx] != new_val:
+                        table.update_cell(row_key, col_idx, new_val)
+            else:
+                self._events_row_keys[seq] = table.add_row(*cells, key=str(seq))
 
     def _update_header(self):
         header = self.query_one("#detail-header", Static)
@@ -566,11 +630,14 @@ class EventsScreen(Screen):
         self._all_events = events
         for ev in events[-80:]:
             key = str(ev.sequence)
+            color = _event_color(ev.event_type)
+            ev_type = _escape(ev.event_type)
+            type_cell = f"[{color}]{ev_type}[/]" if color else ev_type
             rk = et.add_row(
                 str(ev.sequence),
                 ev.timestamp[11:19] if len(ev.timestamp) >= 19 else ev.timestamp,
-                f"[{_event_color(ev.event_type)}]{ev.event_type}[/]",
-                _summarize_event(ev),
+                type_cell,
+                _escape(_summarize_event(ev)),
                 key=key,
             )
             self._event_row_keys[ev.sequence] = rk
@@ -606,9 +673,10 @@ class EventsScreen(Screen):
         for seq, ev in new_ids.items():
             ts = ev.timestamp[11:19] if len(ev.timestamp) >= 19 else ev.timestamp
             color = _event_color(ev.event_type)
-            cells = [str(ev.sequence), ts,
-                     f"[{color}]{ev.event_type}[/]",
-                     _summarize_event(ev)]
+            ev_type = _escape(ev.event_type)
+            type_cell = f"[{color}]{ev_type}[/]" if color else ev_type
+            cells = [str(ev.sequence), ts, type_cell,
+                     _escape(_summarize_event(ev))]
 
             if seq in self._event_row_keys:
                 row_key = self._event_row_keys[seq]

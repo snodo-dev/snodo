@@ -313,6 +313,52 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "get_job_status": {
+        "description": (
+            "Poll execution status of a dispatched job. Call after "
+            "dispatch_task returns a task_id. Status progresses: queued → "
+            "running → completed | failed. Check for completed + exit_code=0 "
+            "to confirm success."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "Job ID returned by dispatch_task"},
+            },
+            "required": ["job_id"],
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
+    "list_jobs": {
+        "description": "List all jobs for this project with their current status.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
+    "get_job_logs": {
+        "description": (
+            "Fetch stdout or stderr logs for a job. stream='stdout' or "
+            "'stderr', tail=N for last N lines."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "Job ID returned by dispatch_task"},
+                "stream": {"type": "string", "description": "stdout or stderr", "default": "stdout"},
+                "tail": {"type": "integer", "description": "Return only the last N lines", "default": 50},
+            },
+            "required": ["job_id"],
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
     "resolve_disagreement": {
         "description": "Resolve an escalated validator disagreement",
         "inputSchema": {
@@ -335,7 +381,7 @@ TOOL_REGISTRY = {
 # Map protocol tool names (from mode.tools) to concrete MCP tool names
 MODE_TOOL_MAP = {
     "edit": ["read_file", "list_files"],
-    "dispatch": ["dispatch_task"],
+    "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs"],
     "resolve": ["resolve_disagreement"],
     "test": ["run_tests"],
     "validate": ["run_tests"],
@@ -520,6 +566,12 @@ class ProtocolMCPServer:
             return self._handle_validate_task(arguments)
         if name == "dispatch_task":
             return self._handle_dispatch_task(arguments)
+        if name == "get_job_status":
+            return self._handle_get_job_status(arguments)
+        if name == "list_jobs":
+            return self._handle_list_jobs(arguments)
+        if name == "get_job_logs":
+            return self._handle_get_job_logs(arguments)
         if name == "resolve_disagreement":
             return self._handle_resolve_disagreement(arguments)
 
@@ -708,6 +760,70 @@ class ProtocolMCPServer:
             "status": "accepted",
             "task_id": job_id,
             "task_spec": task_spec,
+        }
+
+    def _handle_get_job_status(self, arguments: Dict[str, Any]) -> dict:
+        """Get the current status of a dispatched job.
+
+        Args:
+            arguments: Must contain job_id
+
+        Returns:
+            Dict with id, status, pid, created_at, started_at,
+            completed_at, exit_code, and task info.
+        """
+        job_id = arguments.get("job_id", "")
+        if not job_id:
+            raise MCPError("get_job_status requires job_id")
+
+        from snodo.jobs import JobManager  # noqa: F811
+
+        job_mgr = JobManager(self.project_root)
+        try:
+            return job_mgr.get_status(job_id)
+        except Exception as e:
+            raise MCPError(f"Job not found or error: {e}")
+
+    def _handle_list_jobs(self, arguments: Dict[str, Any]) -> list:
+        """List all jobs for the current project.
+
+        Returns:
+            List of job dicts with id, status, description, created_at.
+        """
+        from snodo.jobs import JobManager  # noqa: F811
+
+        job_mgr = JobManager(self.project_root)
+        return job_mgr.list_jobs()
+
+    def _handle_get_job_logs(self, arguments: Dict[str, Any]) -> dict:
+        """Fetch logs for a job.
+
+        Args:
+            arguments: Must contain job_id.  Optional: stream (default
+                       "stdout"), tail (default 50).
+
+        Returns:
+            Dict with job_id, stream, log (content), tail.
+        """
+        job_id = arguments.get("job_id", "")
+        if not job_id:
+            raise MCPError("get_job_logs requires job_id")
+        stream = arguments.get("stream", "stdout")
+        tail = arguments.get("tail", 50)
+
+        from snodo.jobs import JobManager  # noqa: F811
+
+        job_mgr = JobManager(self.project_root)
+        try:
+            log_content = job_mgr.get_logs(job_id, stream=stream, tail=tail)
+        except Exception as e:
+            raise MCPError(f"Job not found or error: {e}")
+
+        return {
+            "job_id": job_id,
+            "stream": stream,
+            "tail": tail,
+            "log": log_content,
         }
 
     def _handle_resolve_disagreement(self, arguments: Dict[str, Any]) -> dict:
