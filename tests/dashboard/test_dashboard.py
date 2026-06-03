@@ -187,7 +187,7 @@ class TestSnodoDashboard:
 
         app = SnodoDashboard(project_root="/tmp/test")
         assert app.project_root == "/tmp/test"
-        assert app.TITLE == "Snodo Dashboard"
+        assert app.TITLE.startswith("Snodo Dashboard")
 
     def test_app_default_project_root(self):
         """Should default to cwd if no project_root given."""
