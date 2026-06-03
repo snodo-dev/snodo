@@ -548,13 +548,42 @@ class TestDispatchTask:
         with pytest.raises(MCPError, match="WF1 violation"):
             dispatch_server.call_tool("dispatch_task", {"task_spec": "test"})
 
-    def test_dispatch_task_stores_pending(self, dispatch_server):
-        # Issue token first
+    def test_dispatch_task_submits_to_jobmanager(self, dispatch_server):
+        """dispatch_task submits to JobManager and returns the job_id."""
         dispatch_server.call_tool("validate_task", {"task_id": "t1"})
-        result = dispatch_server.call_tool("dispatch_task", {"task_spec": "implement feature"})
+        with patch("snodo.jobs.JobManager") as mock_jm_cls:
+            mock_jm = MagicMock()
+            mock_jm.submit.return_value = "j_abc123"
+            mock_jm_cls.return_value = mock_jm
+
+            result = dispatch_server.call_tool(
+                "dispatch_task", {"task_spec": "implement feature"}
+            )
+
         assert result["status"] == "accepted"
+        assert result["task_id"] == "j_abc123"
         assert result["task_spec"] == "implement feature"
-        assert dispatch_server._pending_dispatch == "implement feature"
+        mock_jm_cls.assert_called_once_with(dispatch_server.project_root)
+        mock_jm.submit.assert_called_once()
+        submitted_args = mock_jm.submit.call_args[0][0]
+        assert submitted_args["description"] == "implement feature"
+        assert submitted_args["cwd"] == dispatch_server.project_root
+        assert submitted_args["mode"] == "producer"
+
+    def test_dispatch_task_sets_mode_from_server(self, dispatch_server):
+        """dispatch_task includes the server's mode_id in submitted args."""
+        dispatch_server.call_tool("validate_task", {"task_id": "t2"})
+        with patch("snodo.jobs.JobManager") as mock_jm_cls:
+            mock_jm = MagicMock()
+            mock_jm.submit.return_value = "j_mode_X"
+            mock_jm_cls.return_value = mock_jm
+
+            dispatch_server.call_tool(
+                "dispatch_task", {"task_spec": "mode-aware task"}
+            )
+
+        submitted_args = mock_jm.submit.call_args[0][0]
+        assert submitted_args["mode"] == "producer"
 
     def test_dispatch_task_requires_task_spec(self, dispatch_server):
         dispatch_server.call_tool("validate_task", {"task_id": "t1"})

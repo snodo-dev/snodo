@@ -385,7 +385,6 @@ class ProtocolMCPServer:
         self._audit_log = audit_log
         self.token_issuer = token_issuer or TokenIssuer(audit_log=audit_log)
         self._validation_token: Optional[ValidationToken] = None
-        self._pending_dispatch: Optional[str] = None
 
         # Initialize backing MCPs
         self.workspace = WorkspaceMCP(project_root)
@@ -665,24 +664,35 @@ class ProtocolMCPServer:
         }
 
     def _handle_dispatch_task(self, arguments: Dict[str, Any]) -> dict:
-        """Store a task spec for dispatch (event boundary).
+        """Submit a task spec to JobManager for background execution.
 
         Args:
             arguments: Must contain task_spec
 
         Returns:
-            Dict acknowledging the dispatch request
+            Dict with status, task_id (job ID), and task_spec
         """
         task_spec = arguments.get("task_spec")
         if not task_spec:
             raise MCPError("dispatch_task requires task_spec")
 
-        self._pending_dispatch = task_spec
+        from snodo.jobs import JobManager
+
+        job_mgr = JobManager(self.project_root)
+        task_args: Dict[str, Any] = {
+            "description": task_spec,
+            "cwd": self.project_root,
+        }
+        if self.mode_id:
+            task_args["mode"] = self.mode_id
+
+        job_id = job_mgr.submit(task_args)
 
         task_spec_hash = hashlib.sha256(task_spec.encode()).hexdigest()[:16]
         self._audit("dispatch_request", {
             "op": "dispatch_request",
             "task_spec_hash": task_spec_hash,
+            "job_id": job_id,
             "mode": self.mode_id or "all",
         })
 
@@ -696,6 +706,7 @@ class ProtocolMCPServer:
 
         return {
             "status": "accepted",
+            "task_id": job_id,
             "task_spec": task_spec,
         }
 

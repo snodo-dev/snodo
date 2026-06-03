@@ -79,6 +79,35 @@ def test_git_init_not_git_repo_raises():
             GitMCP(tmpdir)
 
 
+def test_git_init_subdirectory_of_repo():
+    """GitMCP resolves the enclosing repo from a subdirectory (monorepo)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        subdir = root / "apps" / "myapp"
+        subdir.mkdir(parents=True)
+
+        subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=root, check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"],
+            cwd=root, check=True, capture_output=True,
+        )
+        (root / "README.md").write_text("# monorepo")
+        subprocess.run(["git", "add", "README.md"], cwd=root, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=root, check=True, capture_output=True)
+
+        git_mcp = GitMCP(str(subdir))
+
+        assert git_mcp.project_root == subdir.resolve()
+        assert str(git_mcp.repo.working_tree_dir) == str(root.resolve())
+
+        status = git_mcp.get_status()
+        assert "nothing to commit" in status or "working tree clean" in status
+
+
 # ========== PATH VALIDATION TESTS ==========
 
 def test_validate_path_relative(temp_git_repo):
