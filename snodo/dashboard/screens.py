@@ -49,7 +49,6 @@ class SessionsScreen(Screen):
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
-        Binding("enter", "drill_down", "Detail"),
         Binding("r", "refresh", "Refresh"),
         Binding(":", "command_mode", "Commands"),
         Binding("/", "filter_mode", "Filter"),
@@ -130,11 +129,11 @@ class SessionsScreen(Screen):
     def action_refresh(self):
         self._refresh()
 
-    def action_drill_down(self):
-        table = self.query_one("#session-table", DataTable)
-        if table.cursor_row is None or table.row_count == 0:
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Enter on a session row → drill into session detail."""
+        if event.row_key is None:
             return
-        session_id = self._cursor_to_session_id(table)
+        session_id = self._row_key_to_session_id(event.row_key)
         if session_id is None:
             return
         detail = self.provider.get_session_detail(session_id)
@@ -273,13 +272,11 @@ class SessionsScreen(Screen):
         sel = (table.cursor_row or 0) + 1 if table.row_count else 0
         self.app.sub_title = f"Row {sel}/{rows}  |  Enter:detail  /:filter  ::commands  q:quit"
 
-    def _cursor_to_session_id(self, table: DataTable) -> Optional[str]:
-        if table.cursor_row is None or table.cursor_row >= len(table.ordered_rows):
-            return None
-        row_key = table.ordered_rows[table.cursor_row]
-        for sid, rk in self._row_keys.items():
-            if rk == row_key:
-                return sid
+    def _row_key_to_session_id(self, row_key: Any) -> Optional[str]:
+        """Resolve session_id from a RowKey (RowKey.value == session_id)."""
+        value = getattr(row_key, "value", None) or str(row_key)
+        if value in self._row_keys:
+            return value
         return None
 
 
