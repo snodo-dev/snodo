@@ -49,7 +49,7 @@ class GitMCP:
             raise ValueError(f"Project root is not a directory: {self.project_root}")
 
         try:
-            self.repo = Repo(str(self.project_root))
+            self.repo = Repo(str(self.project_root), search_parent_directories=True)
         except InvalidGitRepositoryError:
             raise ValueError(f"Not a git repository: {self.project_root}")
 
