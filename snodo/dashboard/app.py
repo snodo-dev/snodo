@@ -17,10 +17,18 @@ from snodo.dashboard.providers import DashboardDataProvider
 from snodo.dashboard.screens import SessionsScreen
 
 
+def _snodo_version() -> str:
+    try:
+        from snodo import __version__
+        return __version__
+    except Exception:
+        return "unknown"
+
+
 class SnodoDashboard(App):
     """Snodo k9s-style session-monitor dashboard."""
 
-    TITLE = "Snodo Dashboard"
+    TITLE = f"Snodo Dashboard  v{_snodo_version()}"
     SUB_TITLE = ""
 
     CSS = """

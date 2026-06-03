@@ -197,20 +197,8 @@ class SessionsScreen(Screen):
                 del self._row_keys[sid]
 
         for sid, s in new_ids.items():
-            short = _short_id(sid)
-            status_str = self._status_cell(s)
-            last_event = _relative_time(s.last_event_at) if s.last_event_at else "—"
-            cells = [short, s.mode, str(s.agent_count),
-                     str(s.validator_count), last_event, status_str]
-
-            if sid in self._row_keys:
-                row_key = self._row_keys[sid]
-                existing = table.get_row(row_key)
-                for col_idx, new_val in enumerate(cells):
-                    if col_idx < len(existing) and existing[col_idx] != new_val:
-                        table.update_cell(row_key, col_idx, new_val)
-            else:
-                self._row_keys[sid] = table.add_row(*cells)
+            cells = self._build_row_cells(sid, s)
+            self._sync_row(table, sid, cells)
 
         self._update_header()
         self._update_status_footer(table)
@@ -233,23 +221,30 @@ class SessionsScreen(Screen):
                 del self._row_keys[sid]
 
         for sid, s in new_ids.items():
-            short = _short_id(sid)
-            status_str = self._status_cell(s)
-            last_event = _relative_time(s.last_event_at) if s.last_event_at else "—"
-            cells = [short, s.mode, str(s.agent_count),
-                     str(s.validator_count), last_event, status_str]
-
-            if sid in self._row_keys:
-                row_key = self._row_keys[sid]
-                existing = table.get_row(row_key)
-                for col_idx, new_val in enumerate(cells):
-                    if col_idx < len(existing) and existing[col_idx] != new_val:
-                        table.update_cell(row_key, col_idx, new_val)
-            else:
-                self._row_keys[sid] = table.add_row(*cells)
+            cells = self._build_row_cells(sid, s)
+            self._sync_row(table, sid, cells)
 
         self._update_header()
         self._update_status_footer(table)
+
+    def _build_row_cells(self, sid: str, s: Any) -> list:
+        """Build cell values for a session row."""
+        short = _short_id(sid)
+        status_str = self._status_cell(s)
+        last_event = _relative_time(s.last_event_at) if s.last_event_at else "—"
+        return [short, s.mode, str(s.agent_count),
+                str(s.validator_count), last_event, status_str]
+
+    def _sync_row(self, table: DataTable, sid: str, cells: list) -> None:
+        """Update or add a row by session_id (used as the RowKey)."""
+        if sid in self._row_keys:
+            row_key = self._row_keys[sid]
+            existing = table.get_row(row_key)
+            for col_idx, new_val in enumerate(cells):
+                if col_idx < len(existing) and existing[col_idx] != new_val:
+                    table.update_cell(row_key, col_idx, new_val)
+        else:
+            self._row_keys[sid] = table.add_row(*cells, key=sid)
 
     def _status_cell(self, s: Any) -> str:
         if s.is_escalated:
@@ -573,11 +568,13 @@ class EventsScreen(Screen):
         events = self.provider.get_all_events()
         self._all_events = events
         for ev in events[-80:]:
+            key = str(ev.sequence)
             rk = et.add_row(
                 str(ev.sequence),
                 ev.timestamp[11:19] if len(ev.timestamp) >= 19 else ev.timestamp,
                 f"[{_event_color(ev.event_type)}]{ev.event_type}[/]",
                 _summarize_event(ev),
+                key=key,
             )
             self._event_row_keys[ev.sequence] = rk
 
@@ -623,7 +620,7 @@ class EventsScreen(Screen):
                     if col_idx < len(existing) and existing[col_idx] != new_val:
                         table.update_cell(row_key, col_idx, new_val)
             else:
-                self._event_row_keys[seq] = table.add_row(*cells)
+                self._event_row_keys[seq] = table.add_row(*cells, key=str(seq))
 
     @staticmethod
     def _event_matches(ev: Any, text: str) -> bool:

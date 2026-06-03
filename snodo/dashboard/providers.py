@@ -275,12 +275,37 @@ class DashboardDataProvider:
     def _session_events(
         self, audit: AuditLog, session_id: str
     ) -> List[AuditEvent]:
-        """Filter audit events that reference a given session_id."""
-        result = []
-        for ev in audit.get_history():
+        """Filter audit events that belong to a session.
+
+        First pass: events directly tagged with session_id (post-fix engine events).
+        Second pass: events correlated via task_ref from session_task_changed events
+        (covers pre-fix events that lack session_id).
+        """
+        all_events = audit.get_history()
+        result: List[AuditEvent] = []
+        session_task_refs: set = set()
+
+        # First pass: directly tagged events, and collect task_refs
+        for ev in all_events:
             data = ev.data if isinstance(ev.data, dict) else {}
             if data.get("session_id") == session_id:
                 result.append(ev)
-            elif data.get("op") == "session_started" and data.get("session_id") == session_id:
-                result.append(ev)
+                if ev.event_type in ("session_task_changed",):
+                    new_task = data.get("new_task") or data.get("task_ref")
+                    if new_task:
+                        session_task_refs.add(new_task)
+                    old_task = data.get("old_task") or data.get("previous_task_ref")
+                    if old_task:
+                        session_task_refs.add(old_task)
+
+        # Second pass: correlate via task_ref for events without session_id
+        if session_task_refs:
+            for ev in all_events:
+                data = ev.data if isinstance(ev.data, dict) else {}
+                if data.get("session_id"):
+                    continue  # already handled in first pass
+                task_ref = data.get("task_ref", "")
+                if task_ref and task_ref in session_task_refs:
+                    result.append(ev)
+
         return result
