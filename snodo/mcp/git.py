@@ -187,6 +187,52 @@ class GitMCP:
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
 
+    def diff_between_refs(self, ref1: str, ref2: str) -> str:
+        """Read diff between two git refs.
+
+        Args:
+            ref1: First ref (e.g. "HEAD~1")
+            ref2: Second ref (e.g. "HEAD")
+
+        Returns:
+            Diff output as string
+        """
+        try:
+            return self.repo.git.diff(f"{ref1}..{ref2}")
+        except GitCommandError as e:
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+
+    def show(self, ref: str, path: str) -> str:
+        """Read a file's content at a specific git ref.
+
+        Args:
+            ref: Git ref (e.g. "HEAD", "main", "abc1234")
+            path: File path relative to project root
+
+        Returns:
+            File content at the given ref
+        """
+        validated = self.validate_path(path)
+        rel_path = str(validated.relative_to(self.project_root))
+        try:
+            return self.repo.git.show(f"{ref}:{rel_path}")
+        except GitCommandError as e:
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+
+    def log(self, n: int = 5) -> str:
+        """Read recent commits in oneline format.
+
+        Args:
+            n: Number of recent commits to return
+
+        Returns:
+            Git log output as string
+        """
+        try:
+            return self.repo.git.log(f"--oneline", f"-{n}")
+        except GitCommandError as e:
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+
 
 # Module-level instance for convenience
 _git_instance: Optional[GitMCP] = None

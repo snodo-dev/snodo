@@ -537,3 +537,136 @@ def test_complete_workflow(temp_git_repo):
     # Verify clean status
     status = git_mcp.get_status()
     assert "nothing to commit" in status or "working tree clean" in status
+
+
+# ========== READ-ONLY REF OPS TESTS (validator tool loop) ==========
+
+def test_diff_between_refs_shows_change(temp_git_repo):
+    """Test diff_between_refs returns the diff between two refs."""
+    git_mcp, tmpdir = temp_git_repo
+
+    # Make a change and commit
+    test_file = Path(tmpdir) / "README.md"
+    test_file.write_text("# Modified content")
+    git_mcp.stage_files(["README.md"])
+    git_mcp.commit("Modify README")
+
+    diff = git_mcp.diff_between_refs("HEAD~1", "HEAD")
+
+    assert "README.md" in diff
+    assert "Modified content" in diff
+
+
+def test_diff_between_refs_no_change(temp_git_repo):
+    """Test diff_between_refs with identical refs returns empty."""
+    git_mcp, _ = temp_git_repo
+
+    diff = git_mcp.diff_between_refs("HEAD", "HEAD")
+    assert diff == ""
+
+
+def test_diff_between_refs_invalid_ref(temp_git_repo):
+    """Test diff_between_refs with invalid ref raises GitError."""
+    git_mcp, _ = temp_git_repo
+
+    with pytest.raises(GitError):
+        git_mcp.diff_between_refs("HEAD~999", "HEAD")
+
+
+def test_show_reads_file_at_ref(temp_git_repo):
+    """Test show reads a file's content at a specific ref."""
+    git_mcp, tmpdir = temp_git_repo
+
+    # Modify and commit
+    test_file = Path(tmpdir) / "README.md"
+    test_file.write_text("# Second version")
+    git_mcp.stage_files(["README.md"])
+    git_mcp.commit("Update README")
+
+    content = git_mcp.show("HEAD", "README.md")
+    assert "# Second version" in content
+
+
+def test_show_reads_file_at_previous_ref(temp_git_repo):
+    """Test show reads the old version at HEAD~1."""
+    git_mcp, tmpdir = temp_git_repo
+
+    # Modify and commit
+    test_file = Path(tmpdir) / "README.md"
+    test_file.write_text("# Second version")
+    git_mcp.stage_files(["README.md"])
+    git_mcp.commit("Update README")
+
+    content = git_mcp.show("HEAD~1", "README.md")
+    assert "# Test Repo" in content
+
+
+def test_show_path_validation(temp_git_repo):
+    """Test show validates path is within project root."""
+    git_mcp, _ = temp_git_repo
+
+    with pytest.raises(PathValidationError):
+        git_mcp.show("HEAD", "../../../etc/passwd")
+
+
+def test_show_nonexistent_file_at_ref(temp_git_repo):
+    """Test show raises for file that doesn't exist at ref."""
+    git_mcp, _ = temp_git_repo
+
+    with pytest.raises(GitError):
+        git_mcp.show("HEAD", "nonexistent.txt")
+
+
+def test_log_returns_recent_commits(temp_git_repo):
+    """Test log returns recent commits in oneline format."""
+    git_mcp, tmpdir = temp_git_repo
+
+    # Make two more commits
+    for i in range(2):
+        test_file = Path(tmpdir) / f"file{i}.txt"
+        test_file.write_text(f"content {i}")
+        git_mcp.stage_files([f"file{i}.txt"])
+        git_mcp.commit(f"Add file {i}")
+
+    log = git_mcp.log(3)
+
+    lines = log.strip().split("\n")
+    assert len(lines) == 3
+    # Each line should have a hash and message
+    for line in lines:
+        assert len(line) > 10  # hash + message
+
+
+def test_log_default_count(temp_git_repo):
+    """Test log defaults to 5 commits."""
+    git_mcp, tmpdir = temp_git_repo
+
+    # Make 3 more commits (4 total including initial)
+    for i in range(3):
+        test_file = Path(tmpdir) / f"extra{i}.txt"
+        test_file.write_text(f"extra {i}")
+        git_mcp.stage_files([f"extra{i}.txt"])
+        git_mcp.commit(f"Extra {i}")
+
+    log = git_mcp.log()
+    lines = log.strip().split("\n")
+    assert len(lines) == 4  # only 4 commits exist
+
+
+def test_diff_between_refs_post_execute_scenario(temp_git_repo):
+    """Simulate post-execute: diff HEAD~1..HEAD shows the committed change."""
+    git_mcp, tmpdir = temp_git_repo
+
+    # Simulate executor: write file, stage, commit
+    src_file = Path(tmpdir) / "src" / "module.py"
+    src_file.parent.mkdir(parents=True, exist_ok=True)
+    src_file.write_text("def new_function():\n    return 42\n")
+    git_mcp.stage_files(["src/module.py"])
+    git_mcp.commit("feat: add new function")
+
+    # Post-execute validator reads what changed
+    diff = git_mcp.diff_between_refs("HEAD~1", "HEAD")
+
+    assert "src/module.py" in diff
+    assert "new_function" in diff
+    assert "return 42" in diff

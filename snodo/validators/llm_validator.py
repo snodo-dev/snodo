@@ -9,16 +9,25 @@ Judge prompt contract:
 - Input: task spec + validator criteria from protocol YAML
 - Output: JSON with {severity, justification}
 - Falls back to "warn" on any LLM or parse failure
+
+Post-execute tool loop (added):
+- For post_execute phase with MCPs available, runs a bounded
+  read-only tool-use loop so the validator can inspect the actual
+  change (diff HEAD~1..HEAD) and read files on demand.
 """
 
 import json
 import re
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.validators.context import ValidatorContext, ValidatorBase
 from snodo.validators.registry import _default_registry
+
+
+# Maximum tool-use turns before forcing a verdict.
+_MAX_TOOL_TURNS = 6
 
 
 class LLMValidator(ValidatorBase):
@@ -61,6 +70,16 @@ class LLMValidator(ValidatorBase):
             if context.model:
                 self.model = context.model
 
+        # Phase gating: post-execute with MCPs → tool-loop path
+        if (
+            getattr(context, "phase", "") == "post_execute"
+            and context.workspace_mcp is not None
+            and context.git_mcp is not None
+            and self._completion_fn is not None
+        ):
+            return self._evaluate_with_tools(context)
+
+        # Pre-execute or fallback: single-completion path (unchanged)
         prompt = self._build_prompt(context)
 
         try:
@@ -72,6 +91,267 @@ class LLMValidator(ValidatorBase):
                 severity="warn",
                 justification=f"LLM validation failed, defaulting to warn: {e}",
             )
+
+    # ------------------------------------------------------------------
+    # Post-execute bounded tool-use loop
+    # ------------------------------------------------------------------
+
+    def _evaluate_with_tools(self, context: ValidatorContext) -> ValidatorResult:
+        """Run a bounded read-only tool-use loop for post-execute validation.
+
+        Prepends the HEAD~1..HEAD diff into the first prompt so the
+        common case needs no tool calls.  Exposes a read-only toolset
+        via completion_fn(tools=[...]).  Bounded to _MAX_TOOL_TURNS.
+        """
+        workspace = context.workspace_mcp
+        git = context.git_mcp
+
+        # Gather the "what changed" diff upfront
+        try:
+            change_diff = git.diff_between_refs("HEAD~1", "HEAD")
+        except Exception:
+            change_diff = "(unable to read diff HEAD~1..HEAD)"
+
+        criteria_text = "\n".join(
+            f"  {i+1}. {c}" for i, c in enumerate(self.validator_spec.criteria)
+        )
+
+        system_prompt = (
+            f"You are a {self.validator_spec.validator_type} validator for a software development protocol.\n"
+            f"Evaluate the ACTUAL CODE CHANGE against the criteria below.\n"
+            f"\n"
+            f"## Task\n"
+            f"{context.task.spec}\n"
+            f"\n"
+            f"## Criteria\n"
+            f"{criteria_text}\n"
+            f"\n"
+            f"## Code Change (HEAD~1..HEAD)\n"
+            f"```\n{change_diff}\n```\n"
+            f"\n"
+            f"## Available Tools\n"
+            f"You may call read-only tools to inspect files and git history.\n"
+            f"Use them if you need more context beyond the diff above.\n"
+            f"\n"
+            f"## Instructions\n"
+            f"Evaluate the code change against EACH criterion.\n"
+            f"Use tools to read files if needed, then return your verdict.\n"
+            f"Return your FINAL verdict as a JSON object with exactly two fields:\n"
+            f"- \"severity\": one of \"pass\", \"warn\", or \"blocker\"\n"
+            f"- \"justification\": a brief explanation of your evaluation\n"
+            f"\n"
+            f"Respond with ONLY the JSON object for your final verdict, no other text.\n"
+            f"\n"
+            f'Example:\n'
+            f'{{"severity": "pass", "justification": "Change meets all criteria."}}\n'
+        )
+
+        messages: List[Dict[str, Any]] = [
+            {"role": "user", "content": system_prompt},
+        ]
+
+        tools = self._build_tool_definitions()
+
+        for turn in range(_MAX_TOOL_TURNS):
+            try:
+                response = self._completion_fn(
+                    model=self.model,
+                    messages=messages,
+                    tools=tools,
+                    temperature=0.0,
+                    max_tokens=500,
+                )
+            except Exception as e:
+                return ValidatorResult(
+                    validator_id=self.validator_spec.validator_id,
+                    severity="warn",
+                    justification=f"LLM tool-loop error on turn {turn + 1}: {e}",
+                )
+
+            msg = response.choices[0].message
+
+            # Check if the model returned a final text response (verdict)
+            if msg.content is not None and not getattr(msg, "tool_calls", None):
+                return self._parse_response(msg.content)
+
+            # Execute tool calls
+            tool_calls = getattr(msg, "tool_calls", [])
+            if not tool_calls:
+                # No content and no tool calls — force verdict
+                return ValidatorResult(
+                    validator_id=self.validator_spec.validator_id,
+                    severity="warn",
+                    justification=(
+                        "LLM returned neither a verdict nor tool calls "
+                        f"on turn {turn + 1}. Diff was provided but no "
+                        "judgment could be parsed."
+                    ),
+                )
+
+            # Add assistant message with tool_calls to conversation
+            messages.append({
+                "role": "assistant",
+                "content": msg.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in tool_calls
+                ],
+            })
+
+            # Execute each tool call and append results
+            for tc in tool_calls:
+                tool_name = tc.function.name
+                try:
+                    args = json.loads(tc.function.arguments)
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+
+                result = self._execute_tool(tool_name, args, workspace, git)
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": str(result),
+                })
+
+        # Hit the turn cap — force a verdict from what we have
+        return ValidatorResult(
+            validator_id=self.validator_spec.validator_id,
+            severity="warn",
+            justification=(
+                f"Validator tool-loop reached the maximum of {_MAX_TOOL_TURNS} "
+                f"turns without a final verdict. Partial inspection was performed."
+            ),
+        )
+
+    @staticmethod
+    def _build_tool_definitions() -> List[Dict[str, Any]]:
+        """Build OpenAI-format tool definitions for the read-only toolset."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_diff_between_refs",
+                    "description": "Read git diff between two refs (e.g. HEAD~1..HEAD)",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "ref1": {"type": "string", "description": "First ref, e.g. HEAD~1"},
+                            "ref2": {"type": "string", "description": "Second ref, e.g. HEAD"},
+                        },
+                        "required": ["ref1", "ref2"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "git_show",
+                    "description": "Read a file's content at a specific git ref",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "ref": {"type": "string", "description": "Git ref, e.g. HEAD, main"},
+                            "path": {"type": "string", "description": "File path relative to project root"},
+                        },
+                        "required": ["ref", "path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "git_log",
+                    "description": "Read recent commits in oneline format",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "n": {"type": "integer", "description": "Number of commits", "default": 5},
+                        },
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "description": "Read full file content",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "File path relative to project root"},
+                        },
+                        "required": ["path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file_lines",
+                    "description": "Read a line range from a file (1-indexed, inclusive)",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "File path relative to project root"},
+                            "start": {"type": "integer", "description": "First line number (1-indexed)"},
+                            "end": {"type": "integer", "description": "Last line number (1-indexed, inclusive)"},
+                        },
+                        "required": ["path", "start", "end"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_files",
+                    "description": "List files and directories in a directory",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "directory": {"type": "string", "description": "Directory path", "default": "."},
+                        },
+                    },
+                },
+            },
+        ]
+
+    @staticmethod
+    def _execute_tool(
+        name: str,
+        args: Dict[str, Any],
+        workspace: Any,
+        git: Any,
+    ) -> str:
+        """Execute a read-only tool call and return the result as a string."""
+        try:
+            if name == "read_diff_between_refs":
+                return git.diff_between_refs(args["ref1"], args["ref2"])
+            elif name == "git_show":
+                return git.show(args["ref"], args["path"])
+            elif name == "git_log":
+                return git.log(args.get("n", 5))
+            elif name == "read_file":
+                return workspace.read_file(args["path"])
+            elif name == "read_file_lines":
+                return workspace.read_file_lines(args["path"], args["start"], args["end"])
+            elif name == "list_files":
+                return "\n".join(workspace.list_files(args.get("directory", ".")))
+            else:
+                return f"Unknown tool: {name}"
+        except Exception as e:
+            return f"Tool error: {e}"
+
+    # ------------------------------------------------------------------
+    # Single-completion path (pre-execute, unchanged)
+    # ------------------------------------------------------------------
 
     def _build_prompt(self, context_or_task) -> str:
         # Backward compat: accept Task directly for old test code

@@ -496,3 +496,490 @@ class TestImports:
         from snodo.validators.llm_validator import LLMValidator
         assert hasattr(LLMValidator, "evaluate")
         assert callable(getattr(LLMValidator, "evaluate"))
+
+
+# === Post-Execute Tool Loop Tests ===
+
+class TestPostExecuteToolLoop:
+    """Tests for the bounded read-only tool-use loop used in post-execute."""
+
+    def _make_post_context(self, completion_fn, workspace_mcp=None, git_mcp=None):
+        """Build a ValidatorContext for post-execute phase."""
+        from snodo.validators.context import ValidatorContext
+        task = Task(id="t1", spec="Add user authentication")
+        return ValidatorContext(
+            task=task,
+            completion_fn=completion_fn,
+            model="gpt-4",
+            workspace_mcp=workspace_mcp,
+            git_mcp=git_mcp,
+            phase="post_execute",
+        )
+
+    def test_tool_loop_uses_diff_head_minus_1_to_head(self, security_validator):
+        """Post-execute loop should call diff_between_refs(HEAD~1, HEAD)."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "diff --git a/src/auth.py\n+def login():"
+        mock_workspace = MagicMock()
+        mock_workspace.list_files.return_value = []
+
+        # First call: tool call for diff, second call: verdict
+        def completion_side_effect(**kwargs):
+            messages = kwargs.get("messages", [])
+            # Check that the first message contains the diff
+            if len(messages) == 1:
+                assert "HEAD~1..HEAD" in messages[0]["content"]
+                assert "diff --git a/src/auth.py" in messages[0]["content"]
+            # First call returns a tool call
+            if len(messages) <= 2:
+                resp = MagicMock()
+                resp.choices = [MagicMock()]
+                tool_call = MagicMock()
+                tool_call.id = "tc_1"
+                tool_call.function.name = "read_file"
+                tool_call.function.arguments = '{"path": "src/auth.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tool_call]
+                return resp
+            # Second call returns verdict
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = json.dumps({
+                "severity": "pass",
+                "justification": "Auth implementation looks good",
+            })
+            resp.choices[0].message.tool_calls = None
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(security_validator, completion_fn, model="gpt-4")
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        assert "Auth implementation" in result.justification
+        # diff_between_refs was called with HEAD~1, HEAD
+        mock_git.diff_between_refs.assert_called_once_with("HEAD~1", "HEAD")
+
+    def test_tool_loop_executes_read_file_via_workspace(self, security_validator):
+        """Tool loop should call workspace.read_file for read_file tool."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+        mock_workspace.read_file.return_value = "def login():\n    pass"
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if call_count[0] == 1:
+                tool_call = MagicMock()
+                tool_call.id = "tc_1"
+                tool_call.function.name = "read_file"
+                tool_call.function.arguments = '{"path": "src/auth.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tool_call]
+            else:
+                resp.choices[0].message.content = json.dumps({
+                    "severity": "pass",
+                    "justification": "OK",
+                })
+                resp.choices[0].message.tool_calls = None
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        mock_workspace.read_file.assert_called_once_with("src/auth.py")
+
+    def test_tool_loop_executes_read_file_lines(self, security_validator):
+        """Tool loop should call workspace.read_file_lines."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+        mock_workspace.read_file_lines.return_value = "def login():\n    pass"
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if call_count[0] == 1:
+                tool_call = MagicMock()
+                tool_call.id = "tc_1"
+                tool_call.function.name = "read_file_lines"
+                tool_call.function.arguments = '{"path": "src/auth.py", "start": 1, "end": 10}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tool_call]
+            else:
+                resp.choices[0].message.content = json.dumps({
+                    "severity": "pass",
+                    "justification": "OK",
+                })
+                resp.choices[0].message.tool_calls = None
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        mock_workspace.read_file_lines.assert_called_once_with("src/auth.py", 1, 10)
+
+    def test_tool_loop_executes_git_show(self, security_validator):
+        """Tool loop should call git.show for git_show tool."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_git.show.return_value = "def old_login(): pass"
+        mock_workspace = MagicMock()
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if call_count[0] == 1:
+                tool_call = MagicMock()
+                tool_call.id = "tc_1"
+                tool_call.function.name = "git_show"
+                tool_call.function.arguments = '{"ref": "HEAD~1", "path": "src/auth.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tool_call]
+            else:
+                resp.choices[0].message.content = json.dumps({
+                    "severity": "pass",
+                    "justification": "OK",
+                })
+                resp.choices[0].message.tool_calls = None
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        mock_git.show.assert_called_once_with("HEAD~1", "src/auth.py")
+
+    def test_tool_loop_executes_git_log(self, security_validator):
+        """Tool loop should call git.log for git_log tool."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_git.log.return_value = "abc1234 feat: add login"
+        mock_workspace = MagicMock()
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if call_count[0] == 1:
+                tool_call = MagicMock()
+                tool_call.id = "tc_1"
+                tool_call.function.name = "git_log"
+                tool_call.function.arguments = '{"n": 3}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tool_call]
+            else:
+                resp.choices[0].message.content = json.dumps({
+                    "severity": "pass",
+                    "justification": "OK",
+                })
+                resp.choices[0].message.tool_calls = None
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        mock_git.log.assert_called_once_with(3)
+
+    def test_tool_loop_executes_list_files(self, security_validator):
+        """Tool loop should call workspace.list_files."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+        mock_workspace.list_files.return_value = ["auth.py", "models.py"]
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if call_count[0] == 1:
+                tool_call = MagicMock()
+                tool_call.id = "tc_1"
+                tool_call.function.name = "list_files"
+                tool_call.function.arguments = '{"directory": "src"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tool_call]
+            else:
+                resp.choices[0].message.content = json.dumps({
+                    "severity": "pass",
+                    "justification": "OK",
+                })
+                resp.choices[0].message.tool_calls = None
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        mock_workspace.list_files.assert_called_once_with("src")
+
+    def test_tool_loop_bounded_at_max_turns(self, security_validator):
+        """Tool loop should stop after _MAX_TOOL_TURNS and return warn."""
+        from snodo.validators.llm_validator import _MAX_TOOL_TURNS
+
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        # Always return a tool call, never a verdict
+        def completion_side_effect(**kwargs):
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            tool_call = MagicMock()
+            tool_call.id = "tc_1"
+            tool_call.function.name = "read_file"
+            tool_call.function.arguments = '{"path": "x.py"}'
+            resp.choices[0].message.content = None
+            resp.choices[0].message.tool_calls = [tool_call]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "warn"
+        assert "maximum" in result.justification.lower()
+        # Should have been called exactly _MAX_TOOL_TURNS times
+        assert completion_fn.call_count == _MAX_TOOL_TURNS
+
+    def test_tool_loop_returns_verdict_on_first_response(self, security_validator):
+        """If model returns verdict immediately, no tool calls needed."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = json.dumps({
+            "severity": "pass",
+            "justification": "Change is fine",
+        })
+        resp.choices[0].message.tool_calls = None
+        completion_fn = MagicMock(return_value=resp)
+
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        assert "Change is fine" in result.justification
+        # Only one LLM call
+        assert completion_fn.call_count == 1
+
+    def test_tool_loop_handles_tool_error_gracefully(self, security_validator):
+        """If a tool call fails, error is fed back and loop continues."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+        mock_workspace.read_file.side_effect = FileNotFoundError("not found")
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if call_count[0] == 1:
+                tool_call = MagicMock()
+                tool_call.id = "tc_1"
+                tool_call.function.name = "read_file"
+                tool_call.function.arguments = '{"path": "missing.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tool_call]
+            else:
+                resp.choices[0].message.content = json.dumps({
+                    "severity": "warn",
+                    "justification": "File not found but diff looks OK",
+                })
+                resp.choices[0].message.tool_calls = None
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "warn"
+        assert "diff looks OK" in result.justification
+
+    def test_tool_loop_llm_exception_returns_warn(self, security_validator):
+        """If LLM call throws, return warn."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        completion_fn = MagicMock(side_effect=Exception("API down"))
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "warn"
+        assert "tool-loop error" in result.justification
+
+    def test_tool_loop_no_content_no_tool_calls_forces_warn(self, security_validator):
+        """If model returns neither content nor tool_calls, force warn."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = None
+        resp.choices[0].message.tool_calls = []
+        completion_fn = MagicMock(return_value=resp)
+
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "warn"
+        assert "neither a verdict nor tool calls" in result.justification
+
+    def test_tool_loop_uses_tools_kwarg_in_completion_call(self, security_validator):
+        """Tool loop must pass tools=[...] to completion_fn."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = json.dumps({
+            "severity": "pass",
+            "justification": "OK",
+        })
+        resp.choices[0].message.tool_calls = None
+        completion_fn = MagicMock(return_value=resp)
+
+        validator = LLMValidator(security_validator, completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        validator.evaluate(ctx)
+
+        call_kwargs = completion_fn.call_args[1]
+        assert "tools" in call_kwargs
+        assert isinstance(call_kwargs["tools"], list)
+        # Verify tool definitions have expected names
+        tool_names = [t["function"]["name"] for t in call_kwargs["tools"]]
+        assert "read_file" in tool_names
+        assert "read_file_lines" in tool_names
+        assert "read_diff_between_refs" in tool_names
+        assert "git_show" in tool_names
+        assert "git_log" in tool_names
+        assert "list_files" in tool_names
+
+
+class TestPreExecuteRegression:
+    """Ensure pre-execute validators still use single-completion path."""
+
+    def test_pre_execute_uses_single_completion(self, security_validator, task):
+        """Pre-execute phase should NOT use tool loop, just single completion."""
+        from snodo.validators.context import ValidatorContext
+
+        mock_workspace = MagicMock()
+        mock_git = MagicMock()
+
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = json.dumps({
+            "severity": "pass",
+            "justification": "Pre-execute OK",
+        })
+        completion_fn = MagicMock(return_value=resp)
+
+        ctx = ValidatorContext(
+            task=task,
+            completion_fn=completion_fn,
+            model="gpt-4",
+            workspace_mcp=mock_workspace,
+            git_mcp=mock_git,
+            phase="pre_execute",
+        )
+
+        validator = LLMValidator(security_validator, completion_fn)
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        # Should NOT have called tools
+        call_kwargs = completion_fn.call_args[1]
+        assert "tools" not in call_kwargs
+        # Workspace and git should NOT have been used
+        mock_workspace.read_file.assert_not_called()
+        mock_git.diff_between_refs.assert_not_called()
+
+    def test_no_mcp_falls_back_to_single_completion(self, security_validator, task):
+        """If workspace_mcp or git_mcp is None, fall back to single-completion."""
+        from snodo.validators.context import ValidatorContext
+
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = json.dumps({
+            "severity": "pass",
+            "justification": "Fallback OK",
+        })
+        completion_fn = MagicMock(return_value=resp)
+
+        ctx = ValidatorContext(
+            task=task,
+            completion_fn=completion_fn,
+            model="gpt-4",
+            workspace_mcp=None,
+            git_mcp=None,
+            phase="post_execute",
+        )
+
+        validator = LLMValidator(security_validator, completion_fn)
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        call_kwargs = completion_fn.call_args[1]
+        assert "tools" not in call_kwargs
+
+    def test_backward_compat_task_direct_still_works(self, security_validator, task):
+        """Passing Task directly (old API) should still work."""
+        completion_fn = _make_completion_fn("pass", "Backward compat OK")
+        validator = LLMValidator(security_validator, completion_fn)
+
+        result = validator.evaluate(task)
+
+        assert result.severity == "pass"
+        assert "Backward compat" in result.justification

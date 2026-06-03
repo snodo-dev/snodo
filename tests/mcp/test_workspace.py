@@ -418,3 +418,89 @@ def test_complete_workflow(temp_workspace):
     # Check existence
     assert temp_workspace.file_exists("project/src/main.py")
     assert not temp_workspace.file_exists("project/src/other.py")
+
+
+# ========== READ FILE LINES TESTS (validator tool loop) ==========
+
+def test_read_file_lines_full_range(temp_workspace):
+    """Test reading all lines with full range."""
+    temp_workspace.write_file("lines.txt", "line1\nline2\nline3\nline4\nline5")
+
+    content = temp_workspace.read_file_lines("lines.txt", 1, 5)
+    assert content == "line1\nline2\nline3\nline4\nline5"
+
+
+def test_read_file_lines_partial_range(temp_workspace):
+    """Test reading a subset of lines."""
+    temp_workspace.write_file("lines.txt", "line1\nline2\nline3\nline4\nline5")
+
+    content = temp_workspace.read_file_lines("lines.txt", 2, 4)
+    assert content == "line2\nline3\nline4"
+
+
+def test_read_file_lines_single_line(temp_workspace):
+    """Test reading a single line."""
+    temp_workspace.write_file("lines.txt", "line1\nline2\nline3")
+
+    content = temp_workspace.read_file_lines("lines.txt", 2, 2)
+    assert content == "line2"
+
+
+def test_read_file_lines_first_line(temp_workspace):
+    """Test reading the first line."""
+    temp_workspace.write_file("lines.txt", "first\nsecond\nthird")
+
+    content = temp_workspace.read_file_lines("lines.txt", 1, 1)
+    assert content == "first"
+
+
+def test_read_file_lines_last_line(temp_workspace):
+    """Test reading the last line."""
+    temp_workspace.write_file("lines.txt", "first\nsecond\nthird")
+
+    content = temp_workspace.read_file_lines("lines.txt", 3, 3)
+    assert content == "third"
+
+
+def test_read_file_lines_end_beyond_eof(temp_workspace):
+    """Test reading past end of file returns available lines."""
+    temp_workspace.write_file("lines.txt", "line1\nline2")
+
+    content = temp_workspace.read_file_lines("lines.txt", 1, 100)
+    assert content == "line1\nline2"
+
+
+def test_read_file_lines_start_zero_raises(temp_workspace):
+    """Test start=0 raises ValueError."""
+    temp_workspace.write_file("lines.txt", "line1\nline2")
+
+    with pytest.raises(ValueError, match="start must be >= 1"):
+        temp_workspace.read_file_lines("lines.txt", 0, 2)
+
+
+def test_read_file_lines_end_before_start_raises(temp_workspace):
+    """Test end < start raises ValueError."""
+    temp_workspace.write_file("lines.txt", "line1\nline2")
+
+    with pytest.raises(ValueError, match="end must be >= start"):
+        temp_workspace.read_file_lines("lines.txt", 3, 1)
+
+
+def test_read_file_lines_nonexistent_file_raises(temp_workspace):
+    """Test reading lines from nonexistent file raises."""
+    with pytest.raises(FileNotFoundError):
+        temp_workspace.read_file_lines("nonexistent.txt", 1, 5)
+
+
+def test_read_file_lines_directory_raises(temp_workspace):
+    """Test reading lines from directory raises."""
+    temp_workspace.create_directory("adir")
+
+    with pytest.raises(ValueError, match="not a file"):
+        temp_workspace.read_file_lines("adir", 1, 5)
+
+
+def test_read_file_lines_traversal_blocked(temp_workspace):
+    """Test read_file_lines with traversal attack blocked."""
+    with pytest.raises(PathValidationError):
+        temp_workspace.read_file_lines("../../../etc/passwd", 1, 5)

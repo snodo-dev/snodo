@@ -330,7 +330,8 @@ class GraphBuilder:
             return self._state_to_dict(loop_state)
 
         results = self.validator_fn(loop_state.task, validators, self.shell_mcp,
-                                    current_mode=loop_state.current_mode)
+                                    current_mode=loop_state.current_mode,
+                                    phase="pre_execute")
         loop_state.validation_results = results
 
         decision = self.policy_evaluator.evaluate(
@@ -462,7 +463,8 @@ class GraphBuilder:
 
         # Run post_execute validators
         results = self.validator_fn(loop_state.task, post_validators, self.shell_mcp,
-                                    current_mode=loop_state.current_mode)
+                                    current_mode=loop_state.current_mode,
+                                    phase="post_execute")
 
         # Merge post-validate results with existing results
         loop_state.validation_results = loop_state.validation_results + results
@@ -725,6 +727,7 @@ class GraphBuilder:
         validators: List[Validator],
         shell_mcp: Optional[ShellMCP],
         current_mode: str = "",
+        phase: str = "",
     ) -> List[ValidatorResult]:
         """Validator dispatch via registry (Task 7.20).
 
@@ -751,6 +754,9 @@ class GraphBuilder:
             model=getattr(self.coder, "model", "gpt-4"),
             working_directory=str(Path.cwd()) if not self.workspace_mcp
             else str(getattr(self.workspace_mcp, "project_root", Path.cwd())),
+            workspace_mcp=self.workspace_mcp,
+            git_mcp=self.git_mcp,
+            phase=phase,
         )
 
         results = []
@@ -993,6 +999,10 @@ class GraphBuilder:
         """
         artifacts = []
 
+        # Inject workspace into coder for read-before-write tool loop
+        if workspace_mcp and hasattr(coder, "workspace_mcp") and coder.workspace_mcp is None:
+            coder.workspace_mcp = workspace_mcp
+
         # Generate code using coder with context
         spec = TaskSpec(
             description=task.spec,
@@ -1196,7 +1206,10 @@ def build_protocol_graph(
     if use_mock_coder:
         coder = MockAdapter()
     else:
-        coder = LiteLLMAdapter(model=model or "claude-sonnet-4-20250514")
+        coder = LiteLLMAdapter(
+            model=model or "claude-sonnet-4-20250514",
+            workspace_mcp=workspace_mcp,
+        )
 
     builder = GraphBuilder(
         protocol,

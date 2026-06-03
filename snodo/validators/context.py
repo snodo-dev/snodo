@@ -29,6 +29,9 @@ class ValidatorContext:
     completion_fn: Any = None
     model: str = ""
     working_directory: str = ""
+    workspace_mcp: Any = None
+    git_mcp: Any = None
+    phase: str = ""
 
 
 class ValidatorBase(ABC):

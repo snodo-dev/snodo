@@ -93,6 +93,39 @@ class WorkspaceMCP:
         
         return validated_path.read_text()
     
+    def read_file_lines(self, path: str, start: int, end: int) -> str:
+        """Read a line range from a file (1-indexed, inclusive).
+        
+        Args:
+            path: Path to file (relative to project root or absolute)
+            start: First line number to read (1-indexed)
+            end: Last line number to read (1-indexed, inclusive)
+            
+        Returns:
+            File content for the specified line range
+            
+        Raises:
+            PathValidationError: If path escapes project root
+            FileNotFoundError: If file doesn't exist
+            ValueError: If start > end or start < 1
+        """
+        if start < 1:
+            raise ValueError(f"start must be >= 1, got {start}")
+        if end < start:
+            raise ValueError(f"end must be >= start, got {end} < {start}")
+        
+        validated_path = self.validate_path(path)
+        
+        if not validated_path.exists():
+            raise FileNotFoundError(f"File not found: {path}")
+        
+        if not validated_path.is_file():
+            raise ValueError(f"Path is not a file: {path}")
+        
+        lines = validated_path.read_text().splitlines()
+        selected = lines[start - 1:end]
+        return "\n".join(selected)
+    
     def write_file(self, path: str, content: str) -> bool:
         """Write content to file.
         
