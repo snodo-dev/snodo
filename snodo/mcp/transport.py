@@ -105,11 +105,20 @@ def _make_tool_handler(
     annotations["return"] = str
 
     # Create handler closure that delegates to protocol server
-    def handler(**kwargs) -> str:
-        result = protocol_server.call_tool(tool_name, kwargs)
-        if isinstance(result, str):
-            return result
-        return json.dumps(result, default=str)
+    is_slow = protocol_server.is_slow_tool(tool_name)
+
+    if is_slow:
+        async def handler(**kwargs) -> str:
+            result = await protocol_server.call_tool_async(tool_name, kwargs)
+            if isinstance(result, str):
+                return result
+            return json.dumps(result, default=str)
+    else:
+        def handler(**kwargs) -> str:
+            result = protocol_server.call_tool(tool_name, kwargs)
+            if isinstance(result, str):
+                return result
+            return json.dumps(result, default=str)
 
     handler.__name__ = tool_name
     handler.__doc__ = tool_info["description"]

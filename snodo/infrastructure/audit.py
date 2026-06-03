@@ -88,7 +88,7 @@ class AuditLog:
         return event
 
     def get_history(self, event_type: Optional[str] = None) -> List[AuditEvent]:
-        """Get audit event history.
+        """Get audit event history (consistent snapshot under lock).
 
         Args:
             event_type: Optional filter by event type
@@ -96,9 +96,10 @@ class AuditLog:
         Returns:
             List of audit events (filtered if event_type provided)
         """
-        if event_type is None:
-            return self.events.copy()
-        return [e for e in self.events if e.event_type == event_type]
+        with self._lock:
+            if event_type is None:
+                return self.events.copy()
+            return [e for e in self.events if e.event_type == event_type]
 
     def verify_chain(self) -> bool:
         """Verify integrity of the hash chain.
