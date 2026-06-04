@@ -10,15 +10,16 @@ Judge prompt contract:
 - Output: JSON with {severity, justification}
 - Falls back to "warn" on any LLM or parse failure
 
-Post-execute tool loop (added):
-- For post_execute phase with MCPs available, runs a bounded
-  read-only tool-use loop so the validator can inspect the actual
-  change (diff HEAD~1..HEAD) and read files on demand.
+Tool-loop (capability-grant):
+- Runs iff validator_spec.tools is non-empty AND MCPs + completion_fn present.
+- Empty/absent tools => single-completion path (no loop, no tools).
+- Explicit grant only — never defaults to the full set.
+- Phase only filters read_diff_between_refs (meaningful post-execute only).
 """
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task, ValidatorResult
@@ -28,6 +29,19 @@ from snodo.validators.registry import _default_registry
 
 # Maximum tool-use turns before forcing a verdict.
 _MAX_TOOL_TURNS = 6
+
+# Fixed read-only tool names — the only tools a validator may ever use.
+_READ_ONLY_TOOL_NAMES: Set[str] = {
+    "read_file",
+    "read_file_lines",
+    "list_files",
+    "git_show",
+    "git_log",
+    "read_diff_between_refs",
+}
+
+# Tools only meaningful when a change is committed (post-execute).
+_POST_EXECUTE_ONLY_TOOLS: Set[str] = {"read_diff_between_refs"}
 
 
 class LLMValidator(ValidatorBase):
@@ -70,9 +84,12 @@ class LLMValidator(ValidatorBase):
             if context.model:
                 self.model = context.model
 
-        # Phase gating: post-execute with MCPs → tool-loop path
+        # Capability gate: tool-loop runs iff validator declares tools
+        # AND MCPs + completion_fn are present. Empty/absent tools =>
+        # single-completion path (no loop, no tools). Explicit grant only.
+        declared_tools = getattr(self.validator_spec, "tools", None) or []
         if (
-            getattr(context, "phase", "") == "post_execute"
+            declared_tools
             and context.workspace_mcp is not None
             and context.git_mcp is not None
             and self._completion_fn is not None
@@ -97,60 +114,79 @@ class LLMValidator(ValidatorBase):
     # ------------------------------------------------------------------
 
     def _evaluate_with_tools(self, context: ValidatorContext) -> ValidatorResult:
-        """Run a bounded read-only tool-use loop for post-execute validation.
+        """Run a bounded read-only tool-use loop.
 
-        Prepends the HEAD~1..HEAD diff into the first prompt so the
-        common case needs no tool calls.  Exposes a read-only toolset
-        via completion_fn(tools=[...]).  Bounded to _MAX_TOOL_TURNS.
+        Activated by declared tools on the validator spec (not phase).
+        Phase only filters read_diff_between_refs (meaningful post-execute).
         """
         workspace = context.workspace_mcp
         git = context.git_mcp
+        phase = getattr(context, "phase", "")
 
-        # Gather the "what changed" diff upfront
-        try:
-            change_diff = git.diff_between_refs("HEAD~1", "HEAD")
-        except Exception:
-            change_diff = "(unable to read diff HEAD~1..HEAD)"
+        # Assemble toolset: intersect declared tools with read-only set,
+        # then strip post-execute-only tools if not in post-execute phase.
+        declared = set(getattr(self.validator_spec, "tools", []) or [])
+        active_names = declared & _READ_ONLY_TOOL_NAMES
+        if phase != "post_execute":
+            active_names -= _POST_EXECUTE_ONLY_TOOLS
+
+        tools = self._build_tool_definitions(active_names)
+
+        # Only prepend diff when the diff tool is in the active set
+        has_diff = "read_diff_between_refs" in active_names
+        change_diff = ""
+        if has_diff:
+            try:
+                change_diff = git.diff_between_refs("HEAD~1", "HEAD")
+            except Exception:
+                change_diff = "(unable to read diff HEAD~1..HEAD)"
 
         criteria_text = "\n".join(
             f"  {i+1}. {c}" for i, c in enumerate(self.validator_spec.criteria)
         )
 
-        system_prompt = (
-            f"You are a {self.validator_spec.validator_type} validator for a software development protocol.\n"
-            f"Evaluate the ACTUAL CODE CHANGE against the criteria below.\n"
-            f"\n"
-            f"## Task\n"
-            f"{context.task.spec}\n"
-            f"\n"
-            f"## Criteria\n"
-            f"{criteria_text}\n"
-            f"\n"
-            f"## Code Change (HEAD~1..HEAD)\n"
-            f"```\n{change_diff}\n```\n"
-            f"\n"
-            f"## Available Tools\n"
-            f"You may call read-only tools to inspect files and git history.\n"
-            f"Use them if you need more context beyond the diff above.\n"
-            f"\n"
-            f"## Instructions\n"
-            f"Evaluate the code change against EACH criterion.\n"
-            f"Use tools to read files if needed, then return your verdict.\n"
-            f"Return your FINAL verdict as a JSON object with exactly two fields:\n"
-            f"- \"severity\": one of \"pass\", \"warn\", or \"blocker\"\n"
-            f"- \"justification\": a brief explanation of your evaluation\n"
-            f"\n"
-            f"Respond with ONLY the JSON object for your final verdict, no other text.\n"
-            f"\n"
-            f'Example:\n'
-            f'{{"severity": "pass", "justification": "Change meets all criteria."}}\n'
-        )
+        prompt_parts = [
+            f"You are a {self.validator_spec.validator_type} validator for a software development protocol.\n",
+            f"Evaluate the task against the criteria below.\n",
+            f"\n",
+            f"## Task\n",
+            f"{context.task.spec}\n",
+            f"\n",
+            f"## Criteria\n",
+            f"{criteria_text}\n",
+        ]
+
+        if has_diff and change_diff:
+            prompt_parts.extend([
+                f"\n",
+                f"## Code Change (HEAD~1..HEAD)\n",
+                f"```\n{change_diff}\n```\n",
+            ])
+
+        prompt_parts.extend([
+            f"\n",
+            f"## Available Tools\n",
+            f"You may call read-only tools to inspect files and git history.\n",
+            f"Use them if you need more context.\n",
+            f"\n",
+            f"## Instructions\n",
+            f"Evaluate against EACH criterion.\n",
+            f"Use tools to read files if needed, then return your verdict.\n",
+            f"Return your FINAL verdict as a JSON object with exactly two fields:\n",
+            f"- \"severity\": one of \"pass\", \"warn\", or \"blocker\"\n",
+            f"- \"justification\": a brief explanation of your evaluation\n",
+            f"\n",
+            f"Respond with ONLY the JSON object for your final verdict, no other text.\n",
+            f"\n",
+            f'Example:\n',
+            f'{{"severity": "pass", "justification": "Change meets all criteria."}}\n',
+        ])
+
+        system_prompt = "".join(prompt_parts)
 
         messages: List[Dict[str, Any]] = [
             {"role": "user", "content": system_prompt},
         ]
-
-        tools = self._build_tool_definitions()
 
         for turn in range(_MAX_TOOL_TURNS):
             try:
@@ -232,10 +268,14 @@ class LLMValidator(ValidatorBase):
         )
 
     @staticmethod
-    def _build_tool_definitions() -> List[Dict[str, Any]]:
-        """Build OpenAI-format tool definitions for the read-only toolset."""
-        return [
-            {
+    def _build_tool_definitions(tool_names: Set[str]) -> List[Dict[str, Any]]:
+        """Build OpenAI-format tool definitions for exactly the declared tools.
+
+        Never returns the full set — only the tools in *tool_names* that
+        are in the fixed read-only allowlist.
+        """
+        all_defs = {
+            "read_diff_between_refs": {
                 "type": "function",
                 "function": {
                     "name": "read_diff_between_refs",
@@ -250,7 +290,7 @@ class LLMValidator(ValidatorBase):
                     },
                 },
             },
-            {
+            "git_show": {
                 "type": "function",
                 "function": {
                     "name": "git_show",
@@ -265,7 +305,7 @@ class LLMValidator(ValidatorBase):
                     },
                 },
             },
-            {
+            "git_log": {
                 "type": "function",
                 "function": {
                     "name": "git_log",
@@ -278,7 +318,7 @@ class LLMValidator(ValidatorBase):
                     },
                 },
             },
-            {
+            "read_file": {
                 "type": "function",
                 "function": {
                     "name": "read_file",
@@ -292,7 +332,7 @@ class LLMValidator(ValidatorBase):
                     },
                 },
             },
-            {
+            "read_file_lines": {
                 "type": "function",
                 "function": {
                     "name": "read_file_lines",
@@ -308,7 +348,7 @@ class LLMValidator(ValidatorBase):
                     },
                 },
             },
-            {
+            "list_files": {
                 "type": "function",
                 "function": {
                     "name": "list_files",
@@ -321,7 +361,8 @@ class LLMValidator(ValidatorBase):
                     },
                 },
             },
-        ]
+        }
+        return [all_defs[name] for name in tool_names if name in all_defs]
 
     @staticmethod
     def _execute_tool(
