@@ -103,7 +103,7 @@ def test_litellm_adapter_defaults():
     assert adapter.model == "gpt-4"
     assert adapter.mcp_servers == []
     assert adapter.temperature == 0.7
-    assert adapter.max_tokens == 4000
+    assert adapter.max_tokens == 16000
 
 
 def test_litellm_adapter_custom_init():
@@ -291,7 +291,21 @@ class TestCoderToolLoop:
     """Tests for the bounded read-only tool-use loop in LiteLLMAdapter."""
 
     def _make_code_artifact_response(self, files=None):
-        """Create a mock LLM response with CodeArtifact JSON."""
+        """Create a mock LLM response with submit_files tool call."""
+        if files is None:
+            files = [{"path": "src/main.py", "content": "def main(): pass", "action": "write"}]
+        response = Mock()
+        response.choices = [Mock()]
+        response.choices[0].message.content = None
+        tc = Mock()
+        tc.id = "tc_submit"
+        tc.function.name = "submit_files"
+        tc.function.arguments = json.dumps({"files": files})
+        response.choices[0].message.tool_calls = [tc]
+        return response
+
+    def _make_legacy_response(self, files=None):
+        """Create a mock LLM response with free-text JSON (single-completion path)."""
         if files is None:
             files = [{"path": "src/main.py", "content": "def main(): pass", "action": "write"}]
         response = Mock()
@@ -447,7 +461,7 @@ class TestCoderToolLoop:
         """Without workspace_mcp, uses single-completion path."""
         from snodo.coders import LiteLLMAdapter
 
-        completion_fn = Mock(return_value=self._make_code_artifact_response())
+        completion_fn = Mock(return_value=self._make_legacy_response())
 
         coder = LiteLLMAdapter(model="gpt-4")
         coder._completion_fn = completion_fn
