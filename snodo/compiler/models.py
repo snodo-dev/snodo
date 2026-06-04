@@ -46,6 +46,17 @@ class Severity(str, Enum):
 
 EVALUATION_PHASES = {"pre_execute", "post_execute", "mode_transition"}
 
+# Fixed read-only tool names that validators may be granted.
+# No write/exec/mutating tool is ever accepted here.
+_READ_ONLY_TOOL_NAMES = {
+    "read_file",
+    "read_file_lines",
+    "list_files",
+    "git_show",
+    "git_log",
+    "read_diff_between_refs",
+}
+
 
 class Constraint(BaseModel):
     """A rule or limitation on protocol execution."""
@@ -92,6 +103,12 @@ class Validator(BaseModel):
                     "validators under evaluation: blocker capped to warn "
                     "prevents blocking the workflow.  None = no cap."
     )
+    tools: List[str] = Field(
+        default_factory=list,
+        description="Read-only tool allowlist for this validator. "
+                    "Empty means no tool access (single-completion path). "
+                    f"Allowed: {sorted(_READ_ONLY_TOOL_NAMES)}"
+    )
 
     @field_validator('validator_id')
     @classmethod
@@ -114,6 +131,19 @@ class Validator(BaseModel):
             raise ValueError(
                 f"evaluation_phase must be one of {sorted(EVALUATION_PHASES)}, got '{v}'"
             )
+        return v
+
+    @field_validator('tools')
+    @classmethod
+    def validate_tools(cls, v: List[str]) -> List[str]:
+        """Reject any tool name not in the fixed read-only set."""
+        for tool_name in v:
+            if tool_name not in _READ_ONLY_TOOL_NAMES:
+                raise ValueError(
+                    f"Validator tool '{tool_name}' is not a read-only tool. "
+                    f"Allowed tools: {sorted(_READ_ONLY_TOOL_NAMES)}. "
+                    f"Validators may never use write/exec/mutating tools."
+                )
         return v
 
 
