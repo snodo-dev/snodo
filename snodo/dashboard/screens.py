@@ -11,6 +11,7 @@ from rich.markup import escape as _escape
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.coordinate import Coordinate
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
@@ -243,7 +244,7 @@ class SessionsScreen(Screen):
             existing = table.get_row(row_key)
             for col_idx, new_val in enumerate(cells):
                 if col_idx < len(existing) and existing[col_idx] != new_val:
-                    table.update_cell(row_key, col_idx, new_val)
+                    table.update_cell_at(Coordinate(table.get_row_index(row_key), col_idx), new_val)
         else:
             self._row_keys[sid] = table.add_row(*cells, key=sid)
 
@@ -480,7 +481,7 @@ class SessionDetailScreen(Screen):
                 existing = table.get_row(row_key)
                 for col_idx, new_val in enumerate(cells):
                     if col_idx < len(existing) and existing[col_idx] != new_val:
-                        table.update_cell(row_key, col_idx, new_val)
+                        table.update_cell_at(Coordinate(table.get_row_index(row_key), col_idx), new_val)
             else:
                 self._events_row_keys[seq] = table.add_row(*cells, key=str(seq))
 
@@ -618,7 +619,7 @@ class EventsScreen(Screen):
                 existing = table.get_row(row_key)
                 for col_idx, new_val in enumerate(cells):
                     if col_idx < len(existing) and existing[col_idx] != new_val:
-                        table.update_cell(row_key, col_idx, new_val)
+                        table.update_cell_at(Coordinate(table.get_row_index(row_key), col_idx), new_val)
             else:
                 self._event_row_keys[seq] = table.add_row(*cells, key=str(seq))
 

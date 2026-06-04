@@ -786,8 +786,8 @@ class TestPostExecuteToolLoop:
         mock_workspace.list_files.assert_called_once_with("src")
 
     def test_tool_loop_bounded_at_max_turns(self, security_validator):
-        """Tool loop should fail-closed after _MAX_TOOL_TURNS without submit_verdict."""
-        from snodo.validators.llm_validator import _MAX_TOOL_TURNS
+        """Tool loop should fail-closed after max turns without submit_verdict."""
+        from snodo.validators.llm_validator import _DEFAULT_MAX_TOOL_TURNS
 
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
@@ -813,7 +813,7 @@ class TestPostExecuteToolLoop:
 
         assert result.severity == "error"
         assert "maximum" in result.justification.lower()
-        assert completion_fn.call_count == _MAX_TOOL_TURNS
+        assert completion_fn.call_count == _DEFAULT_MAX_TOOL_TURNS
 
     def test_tool_loop_returns_verdict_on_first_response(self, security_validator):
         """If model calls submit_verdict immediately, no read tools needed."""

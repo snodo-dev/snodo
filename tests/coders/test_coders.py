@@ -415,7 +415,7 @@ class TestCoderToolLoop:
     def test_tool_loop_bounded_at_max_turns(self):
         """Coder loop)"""
         from snodo.coders import LiteLLMAdapter
-        from snodo.coders.litellm import _MAX_TOOL_TURNS
+        from snodo.coders.litellm import _DEFAULT_MAX_TOOL_TURNS
 
         workspace = Mock()
 
@@ -435,8 +435,8 @@ class TestCoderToolLoop:
         with pytest.raises(ParseError):
             coder.implement(spec)
 
-        # Should have been called exactly _MAX_TOOL_TURNS times
-        assert completion_fn.call_count == _MAX_TOOL_TURNS
+        # Should have been called exactly _DEFAULT_MAX_TOOL_TURNS times
+        assert completion_fn.call_count == _DEFAULT_MAX_TOOL_TURNS
 
     def test_no_read_returns_code_artifact_first_turn(self):
         """When no read is needed, returns CodeArtifact on first turn."""

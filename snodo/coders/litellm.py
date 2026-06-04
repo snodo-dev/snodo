@@ -28,7 +28,7 @@ _logger = logging.getLogger(__name__)
 
 
 # Maximum tool-use turns before forcing a CodeArtifact parse.
-_MAX_TOOL_TURNS = 6
+_DEFAULT_MAX_TOOL_TURNS = 6
 
 
 class LiteLLMAdapter(CoderAdapter):
@@ -48,12 +48,14 @@ class LiteLLMAdapter(CoderAdapter):
         mcp_servers: Optional[List[MCPServer]] = None,
         temperature: float = 0.7,
         max_tokens: int = 16000,
+        max_tool_turns: Optional[int] = None,
         workspace_mcp: Optional[Any] = None,
     ):
         self.model = model
         self.mcp_servers = mcp_servers or []
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.max_tool_turns = max_tool_turns if max_tool_turns is not None else _DEFAULT_MAX_TOOL_TURNS
         self.workspace_mcp = workspace_mcp
 
         try:
@@ -195,7 +197,7 @@ Now generate the implementation:
 
         retried_free_text = False
 
-        for turn in range(_MAX_TOOL_TURNS):
+        for turn in range(self.max_tool_turns):
             try:
                 response = self._completion_fn(
                     model=self.model,

@@ -111,6 +111,8 @@ def _config_set(mgr: ConfigManager, key: str, value: str) -> int:
             mgr.set_engine_value(engine_key, value)
         print(f"Set {key} = {value}")
         return 0
+    elif len(parts) == 2 and parts[0] == "llm":
+        return _set_llm_value(mgr, parts[1], value)
     elif key == "model":
         mgr.set_model(value)
         print(f"Set model = {value}")
@@ -130,9 +132,66 @@ def _config_get(mgr: ConfigManager, key: str) -> int:
             return 1
         print(value)
         return 0
+    elif len(parts) == 2 and parts[0] == "llm":
+        return _get_llm_value(parts[1])
     elif key == "model":
         print(mgr.get_model())
         return 0
     else:
         print(f"Error: Unknown config key: {key}", file=sys.stderr)
         return 1
+
+
+def _set_llm_value(mgr: ConfigManager, subkey: str, value: str) -> int:
+    """Set an llm.* config value."""
+    try:
+        int_value = int(value)
+    except ValueError:
+        print("Error: llm values must be integers", file=sys.stderr)
+        return 1
+
+    valid_keys = {
+        "coder.max_tokens", "coder.max_tool_turns",
+        "validator.max_tokens", "validator.max_tool_turns",
+    }
+    if subkey not in valid_keys:
+        print(f"Error: Unknown llm key: llm.{subkey}", file=sys.stderr)
+        print(f"Valid: {', '.join(sorted(valid_keys))}", file=sys.stderr)
+        return 1
+
+    config = mgr.load()
+    llm = config.setdefault("llm", {})
+    key_parts = subkey.split(".")
+    if len(key_parts) == 2:
+        section = llm.setdefault(key_parts[0], {})
+        section[key_parts[1]] = int_value
+    mgr.save(config)
+    print(f"Set llm.{subkey} = {value}")
+    return 0
+
+
+def _get_llm_value(subkey: str) -> int:
+    """Get an llm.* config value (reads config, returns default when absent)."""
+    from snodo.infrastructure.config import load_llm_config
+
+    llm_cfg = load_llm_config()
+    key_parts = subkey.split(".")
+    if len(key_parts) != 2:
+        print(f"Error: Unknown llm key: llm.{subkey}", file=sys.stderr)
+        return 1
+
+    section, field = key_parts[0], key_parts[1]
+    try:
+        if section == "coder":
+            value = getattr(llm_cfg.coder, field)
+        elif section == "validator":
+            value = getattr(llm_cfg.validator, field)
+        else:
+            print(f"Error: Unknown llm section: {section}", file=sys.stderr)
+            return 1
+    except AttributeError:
+        print(f"Error: Unknown llm key: llm.{subkey}", file=sys.stderr)
+        return 1
+
+    print(value)
+    return 0
