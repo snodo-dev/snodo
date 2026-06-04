@@ -524,12 +524,48 @@ def uninstall_cmd(
     ))
 
 
-# === Resolve ===
+# === Adjudicate ===
+
+@app.command()
+def adjudicate(
+    session_id: str = typer.Argument(..., help="Session ID"),
+    task_id: str = typer.Argument(..., help="Task ID"),
+    validator_id: str = typer.Argument(..., help="Validator ID that raised the concern"),
+    decision: str = typer.Option(
+        ..., "--decision", "-d", help="Decision: proceed or halt",
+    ),
+    justification: str = typer.Option(
+        ..., "--justification", "-j", help="Justification for the decision",
+    ),
+    resolved_by: Optional[str] = typer.Option(
+        None, "--resolved-by", help="Who adjudicated (default: human)",
+    ),
+):
+    """Adjudicate an escalated validator concern (human-only).
+
+    Mints a signed DecisionRecord that persists in the session.
+    On re-dispatch, the policy layer consults this record to
+    resolve the adjudicated warn.  Blockers cannot be adjudicated
+    (INV3).
+    """
+    from snodo.cli.commands.adjudicate_cmd import adjudicate_command
+    args = SimpleNamespace(
+        session_id=session_id, task_id=task_id, validator_id=validator_id,
+        decision=decision, justification=justification,
+        resolved_by=resolved_by or "human",
+    )
+    return adjudicate_command(args)
+
+
+# === Resolve (deprecated — kept for backward compat, now delegates to adjudicate) ===
 
 @app.command()
 def resolve(
     session_id: str = typer.Argument(..., help="Session ID"),
     task_id: str = typer.Argument(..., help="Task ID"),
+    validator_id: Optional[str] = typer.Argument(
+        None, help="Validator ID (optional; auto-picks if single)",
+    ),
     decision: str = typer.Option(
         ..., "--decision", "-d", help="Resolution: proceed or halt",
     ),
@@ -540,10 +576,11 @@ def resolve(
         None, "--resolved-by", help="Who resolved (default: cli)",
     ),
 ):
-    """Resolve an escalated validator disagreement."""
+    """Resolve an escalated validator disagreement (deprecated — use adjudicate)."""
     from snodo.cli.commands.resolve_cmd import resolve_command
     args = SimpleNamespace(
         session_id=session_id, task_id=task_id,
+        validator_id=validator_id,
         decision=decision, justification=justification,
         resolved_by=resolved_by or "cli",
     )

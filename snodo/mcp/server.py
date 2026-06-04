@@ -361,30 +361,12 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
-    "resolve_disagreement": {
-        "description": "Resolve an escalated validator disagreement",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "task_id": {"type": "string", "description": "Task ID whose disagreement is being resolved"},
-                "session_id": {"type": "string", "description": "Session ID for the resolution"},
-                "resolution": {"type": "string", "description": "Resolution: proceed or halt"},
-                "justification": {"type": "string", "description": "Justification for the decision"},
-                "resolved_by": {"type": "string", "description": "Who resolved: human or orchestrator"},
-            },
-            "required": ["task_id", "session_id", "resolution", "justification"],
-        },
-        "requires_token": False,
-        "mcp": None,
-        "method": None,
-    },
 }
 
 # Map protocol tool names (from mode.tools) to concrete MCP tool names
 MODE_TOOL_MAP = {
     "edit": ["read_file", "list_files"],
     "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs"],
-    "resolve": ["resolve_disagreement"],
     "test": ["run_tests"],
     "validate": ["run_tests"],
     "review": ["read_file", "list_files", "read_diff", "get_status"],
@@ -578,8 +560,6 @@ class ProtocolMCPServer:
             return self._handle_list_jobs(arguments)
         if name == "get_job_logs":
             return self._handle_get_job_logs(arguments)
-        if name == "resolve_disagreement":
-            return self._handle_resolve_disagreement(arguments)
 
         # Dispatch to backing MCP
         return self._dispatch_tool(name, schema, arguments)
@@ -850,45 +830,3 @@ class ProtocolMCPServer:
             "tail": tail,
             "log": log_content,
         }
-
-    def _handle_resolve_disagreement(self, arguments: Dict[str, Any]) -> dict:
-        """Store a disagreement resolution in session decisions.
-
-        Args:
-            arguments: Must contain task_id, session_id, resolution,
-                      justification.  Optional: resolved_by.
-
-        Returns:
-            Dict acknowledging the resolution
-
-        Raises:
-            MCPError: If required arguments missing or resolution invalid
-        """
-        task_id = arguments.get("task_id")
-        session_id = arguments.get("session_id")
-        resolution = arguments.get("resolution")
-        justification = arguments.get("justification")
-        resolved_by = arguments.get("resolved_by", "orchestrator")
-
-        if not task_id:
-            raise MCPError("resolve_disagreement requires task_id")
-        if not session_id:
-            raise MCPError("resolve_disagreement requires session_id")
-        if not justification:
-            raise MCPError("resolve_disagreement requires justification")
-
-        from snodo.mcp.resolution import apply_resolution
-
-        try:
-            return apply_resolution(
-                task_id=task_id,
-                session_id=session_id,
-                resolution=resolution,
-                justification=justification,
-                resolved_by=resolved_by,
-                audit_log=self._audit_log,
-            )
-        except ValueError as e:
-            raise MCPError(str(e))
-        except FileNotFoundError:
-            raise MCPError(f"Session not found: {session_id}")

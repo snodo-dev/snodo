@@ -70,7 +70,6 @@ class LoopState:
     is_blocked: bool = False
     halt_type: Optional[str] = None  # "blocked" | "escalated" | "resolution" | "constraint" | "max_iterations" | "wf3" | "validator_error"
     pending_disagreement: Optional[Dict[str, Any]] = None
-    resolution_override: bool = False
     spawned_subtasks: List[Task] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
     messages: List[Dict[str, Any]] = field(default_factory=list)
@@ -222,42 +221,18 @@ class GraphBuilder:
             )
             return self._state_to_dict(loop_state)
 
-        # Consume resolution if present in session decisions
-        if self._session_manager and not loop_state.resolution_override:
+        # Load DecisionRecords from session for policy-layer consultation.
+        # DecisionRecords are consulted AFTER the blocker HALT in the policy
+        # evaluator, so they can NEVER override a genuine blocker (INV3).
+        self._decision_records: List[str] = []
+        if self._session_manager:
             session = self._session_manager.get_active_session(
                 loop_state.current_mode, getattr(self, '_project_root', "")
             )
             if session:
-                resolution_key = f"resolution_{loop_state.task.id}"
-                resolution = session.checkpoint.decisions.get(resolution_key)
-                if resolution:
-                    if resolution.get("resolution") == "proceed":
-                        loop_state.resolution_override = True
-                        self._audit("disagreement_override_applied", {
-                            "op": "disagreement_override_applied",
-                            "task_ref": loop_state.task.id,
-                            "resolution": resolution,
-                        })
-                        # Clear resolution (single-use)
-                        self._session_manager.update_decision(
-                            session.session_id, resolution_key, None
-                        )
-                    elif resolution.get("resolution") == "halt":
-                        loop_state.is_blocked = True
-                        loop_state.halt_type = "resolution"
-                        loop_state.constraint_violations.append(
-                            f"Resolution halt: {resolution.get('justification', 'No justification provided')}"
-                        )
-                        self._audit("disagreement_halt_applied", {
-                            "op": "disagreement_halt_applied",
-                            "task_ref": loop_state.task.id,
-                            "resolution": resolution,
-                        })
-                        # Clear resolution (single-use)
-                        self._session_manager.update_decision(
-                            session.session_id, resolution_key, None
-                        )
-                        return self._state_to_dict(loop_state)
+                records = session.checkpoint.decisions.get("decision_records", [])
+                if isinstance(records, list):
+                    self._decision_records = [r for r in records if isinstance(r, str)]
 
         # Summarize messages if they've grown too large
         loop_state = self._maybe_summarize(loop_state)
@@ -335,7 +310,9 @@ class GraphBuilder:
         loop_state.validation_results = results
 
         decision = self.policy_evaluator.evaluate(
-            results, self.protocol.disagreement_policy
+            results, self.protocol.disagreement_policy,
+            decision_records=getattr(self, '_decision_records', []),
+            task_ref=loop_state.task.id,
         )
         loop_state.policy_decision = decision
 
@@ -401,7 +378,7 @@ class GraphBuilder:
             self._project_context_cache = self._collect_project_context(self.workspace_mcp)
         loop_state.metadata["project_context"] = self._project_context_cache
 
-        if loop_state.resolution_override or self._token_issuer.verify_token(
+        if self._token_issuer.verify_token(
             loop_state.validation_token,
             expected_task_id=loop_state.task.id,
         ):
@@ -473,7 +450,9 @@ class GraphBuilder:
         # Evaluate policy on post-execute results
         decision = self.policy_evaluator.evaluate(
             results,
-            self.protocol.disagreement_policy
+            self.protocol.disagreement_policy,
+            decision_records=getattr(self, '_decision_records', []),
+            task_ref=loop_state.task.id,
         )
 
         post_outcome = "passed"
@@ -618,8 +597,6 @@ class GraphBuilder:
         loop_state = self._dict_to_state(state)
         if loop_state.is_blocked:
             return "blocked"
-        if loop_state.resolution_override:
-            return "execute"
         return "validate"
 
     def _default_governance(self, state: LoopState, protocol: Protocol) -> LoopState:
@@ -1101,7 +1078,6 @@ class GraphBuilder:
             is_blocked=d.get("is_blocked", False),
             halt_type=d.get("halt_type"),
             pending_disagreement=d.get("pending_disagreement"),
-            resolution_override=d.get("resolution_override", False),
             spawned_subtasks=[],
             metadata=d.get("metadata", {}),
             messages=d.get("messages", []),
@@ -1139,7 +1115,6 @@ class GraphBuilder:
             "is_blocked": state.is_blocked,
             "halt_type": state.halt_type,
             "pending_disagreement": state.pending_disagreement,
-            "resolution_override": state.resolution_override,
             "metadata": state.metadata,
             "messages": state.messages,
             "summary": state.summary,

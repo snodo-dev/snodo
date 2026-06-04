@@ -90,14 +90,19 @@ class PolicyEvaluator:
     def evaluate(
         self,
         results: List[ValidatorResult],
-        policy: DisagreementPolicy
+        policy: DisagreementPolicy,
+        decision_records: Optional[List[str]] = None,
+        task_ref: str = "",
     ) -> PolicyDecision:
         """Evaluate validator results against policy.
-        
+
         Args:
             results: List of validator results
             policy: Disagreement policy to apply
-            
+            decision_records: Optional list of signed DecisionRecord JWTs
+                              from the session (human adjudications).
+            task_ref: Task ID for matching DecisionRecords.
+
         Returns:
             PolicyDecision with action and justification
         """
@@ -111,7 +116,7 @@ class PolicyEvaluator:
                 total_count=0,
                 justification="No validator results provided"
             )
-        
+
         # Count severities
         pass_count = sum(1 for r in results if r.severity == "pass")
         warn_count = sum(1 for r in results if r.severity == "warn")
@@ -131,7 +136,9 @@ class PolicyEvaluator:
                 justification=f"{error_count} validator(s) failed to produce a verdict — fail-closed"
             )
 
-        # Any blocker always halts (hard invariant)
+        # Any blocker always halts (hard invariant — INV3)
+        # DecisionRecords are consulted AFTER this check, so they can
+        # NEVER override a genuine blocker.
         if blocker_count > 0:
             return PolicyDecision(
                 action=PolicyAction.HALT,
@@ -142,7 +149,23 @@ class PolicyEvaluator:
                 total_count=total_count,
                 justification=f"{blocker_count} blocker(s) present"
             )
-        
+
+        # Consult DecisionRecords for adjudicated warns (after blocker HALT).
+        # A warn with a valid matching DecisionRecord(decision=proceed) is
+        # reclassified as resolved — removed from warn_count, added to pass_count.
+        if decision_records and task_ref:
+            from snodo.infrastructure.decisions import DecisionRecordIssuer
+            issuer = DecisionRecordIssuer()
+            for r in list(results):
+                if r.severity != "warn":
+                    continue
+                payload = issuer.find_adjudicated(
+                    decision_records, task_ref, r.validator_id, "warn"
+                )
+                if payload is not None:
+                    warn_count -= 1
+                    pass_count += 1
+
         # Apply policy to non-blocker results via dispatch
         evaluator = self._POLICY_DISPATCH.get(policy)
         if not evaluator:
@@ -321,17 +344,25 @@ class PolicyEvaluator:
 def evaluate_policy(
     results: List[ValidatorResult],
     policy: DisagreementPolicy,
-    quorum_threshold: float = 0.67
+    quorum_threshold: float = 0.67,
+    decision_records: Optional[List[str]] = None,
+    task_ref: str = "",
 ) -> PolicyDecision:
     """Evaluate policy (convenience function).
-    
+
     Args:
         results: Validator results
         policy: Disagreement policy
         quorum_threshold: Threshold for QUORUM policy
-        
+        decision_records: Optional list of signed DecisionRecord JWTs
+        task_ref: Task ID for matching DecisionRecords
+
     Returns:
         PolicyDecision
     """
     evaluator = PolicyEvaluator(quorum_threshold=quorum_threshold)
-    return evaluator.evaluate(results, policy)
+    return evaluator.evaluate(
+        results, policy,
+        decision_records=decision_records,
+        task_ref=task_ref,
+    )
