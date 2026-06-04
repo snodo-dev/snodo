@@ -742,6 +742,8 @@ class GraphBuilder:
 
         # Build shared context once per validate pass
         mode_obj = self.protocol.get_mode(current_mode)
+        from snodo.infrastructure.config import load_llm_config
+        _vcfg = load_llm_config().validator
         context = ValidatorContext(
             task=task,
             current_mode=mode_obj,
@@ -759,6 +761,8 @@ class GraphBuilder:
             workspace_mcp=self.workspace_mcp,
             git_mcp=self.git_mcp,
             phase=phase,
+            max_tokens=_vcfg.max_tokens,
+            max_tool_turns=_vcfg.max_tool_turns,
         )
 
         results = []
@@ -1203,13 +1207,17 @@ def build_protocol_graph(
     git_mcp = GitMCP(project_root)
     shell_mcp = ShellMCP(project_root)
 
-    # Initialize coder
+    # Initialize coder with LLM config knobs
+    from snodo.infrastructure.config import load_llm_config
+    llm_cfg = load_llm_config()
     coder: Union[LiteLLMAdapter, MockAdapter]
     if use_mock_coder:
         coder = MockAdapter()
     else:
         coder = LiteLLMAdapter(
             model=model or "claude-sonnet-4-20250514",
+            max_tokens=llm_cfg.coder.max_tokens,
+            max_tool_turns=llm_cfg.coder.max_tool_turns,
             workspace_mcp=workspace_mcp,
         )
 

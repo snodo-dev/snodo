@@ -32,6 +32,8 @@ class ValidatorContext:
     workspace_mcp: Any = None
     git_mcp: Any = None
     phase: str = ""
+    max_tokens: Optional[int] = None
+    max_tool_turns: Optional[int] = None
 
 
 class ValidatorBase(ABC):

@@ -28,7 +28,8 @@ from snodo.validators.registry import _default_registry
 
 
 # Maximum tool-use turns before forcing a verdict.
-_MAX_TOOL_TURNS = 6
+_DEFAULT_MAX_TOOL_TURNS = 6
+_DEFAULT_MAX_TOKENS = 1500
 
 # Fixed read-only tool names — the only tools a validator may ever use.
 _READ_ONLY_TOOL_NAMES: Set[str] = {
@@ -122,6 +123,8 @@ class LLMValidator(ValidatorBase):
         workspace = context.workspace_mcp
         git = context.git_mcp
         phase = getattr(context, "phase", "")
+        tool_turns = getattr(context, "max_tool_turns", None) or _DEFAULT_MAX_TOOL_TURNS
+        completion_tokens = getattr(context, "max_tokens", None) or _DEFAULT_MAX_TOKENS
 
         # Assemble toolset: intersect declared tools with read-only set,
         # then strip post-execute-only tools if not in post-execute phase.
@@ -188,14 +191,14 @@ class LLMValidator(ValidatorBase):
 
         retried_free_text = False
 
-        for turn in range(_MAX_TOOL_TURNS):
+        for turn in range(tool_turns):
             try:
                 response = self._completion_fn(
                     model=self.model,
                     messages=messages,
                     tools=tools,
                     temperature=0.0,
-                    max_tokens=1500,
+                    max_tokens=completion_tokens,
                 )
             except Exception as e:
                 return ValidatorResult(
@@ -286,7 +289,7 @@ class LLMValidator(ValidatorBase):
             validator_id=self.validator_spec.validator_id,
             severity="error",
             justification=(
-                f"Validator tool-loop reached the maximum of {_MAX_TOOL_TURNS} "
+                f"Validator tool-loop reached the maximum of {tool_turns} "
                 "turns without calling submit_verdict."
             ),
         )
