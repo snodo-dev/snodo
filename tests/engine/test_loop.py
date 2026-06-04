@@ -1716,35 +1716,8 @@ def test_validate_node_escalate_majority_pending_disagreement(sample_task, temp_
     assert result["is_blocked"] is True
 
 
-def test_route_after_governance_resolution_override(sample_protocol):
-    """resolution_override=True → route to execute, skip validate."""
-    builder = GraphBuilder(sample_protocol)
-
-    state = {
-        "task": {"id": "t1", "spec": "test"},
-        "current_mode": "producer",
-        "iteration": 1,
-        "stage": "governance",
-        "validation_results": [],
-        "validation_token": None,
-        "artifacts": [],
-        "constraints_passed": True,
-        "constraint_violations": [],
-        "policy_decision": None,
-        "is_complete": False,
-        "is_blocked": False,
-        "resolution_override": True,
-        "metadata": {},
-        "messages": [],
-        "summary": "",
-    }
-
-    route = builder._route_after_governance(state)
-    assert route == "execute"
-
-
 def test_route_after_governance_blocked(sample_protocol):
-    """is_blocked=True → route to blocked (even with resolution_override)."""
+    """is_blocked=True → route to blocked."""
     builder = GraphBuilder(sample_protocol)
 
     state = {
@@ -1760,7 +1733,6 @@ def test_route_after_governance_blocked(sample_protocol):
         "policy_decision": None,
         "is_complete": False,
         "is_blocked": True,
-        "resolution_override": False,
         "metadata": {},
         "messages": [],
         "summary": [],
@@ -1797,7 +1769,6 @@ def test_max_iterations_hard_stop():
         "is_complete": False,
         "is_blocked": False,
         "pending_disagreement": None,
-        "resolution_override": False,
         "metadata": {},
         "messages": [],
         "summary": [],
@@ -1862,45 +1833,6 @@ def test_validate_node_escalate_audit_event(sample_task, temp_workspace):
 
     validate_events = audit.get_history(event_type="validate")
     assert len(validate_events) == 1
-
-
-def test_execute_node_resolution_override(sample_protocol, sample_task, temp_workspace):
-    """resolution_override=True → execute proceeds without token."""
-    workspace_mcp = WorkspaceMCP(temp_workspace)
-    git_mcp = GitMCP(temp_workspace)
-    coder = MockCoderAdapter()
-    issuer = TokenIssuer(secret="test_exec_override_32b!", ttl_seconds=3600)
-
-    builder = GraphBuilder(
-        sample_protocol,
-        workspace_mcp=workspace_mcp,
-        git_mcp=git_mcp,
-        coder=coder,
-        token_issuer=issuer,
-    )
-
-    state = {
-        "task": {"id": sample_task.id, "spec": sample_task.spec},
-        "current_mode": "producer",
-        "iteration": 1,
-        "stage": "execute",
-        "validation_results": [],
-        "validation_token": None,
-        "artifacts": [],
-        "constraints_passed": True,
-        "constraint_violations": [],
-        "policy_decision": None,
-        "is_complete": False,
-        "is_blocked": False,
-        "resolution_override": True,
-        "metadata": {},
-        "messages": [],
-        "summary": [],
-    }
-
-    result = builder._execute_node(state)
-    assert len(result["artifacts"]) > 0
-    assert any("src/hello.py" in str(a) for a in result["artifacts"])
 
 
 # ============================================================================

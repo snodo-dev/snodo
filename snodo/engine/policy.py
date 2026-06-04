@@ -76,16 +76,23 @@ class PolicyEvaluator:
         DisagreementPolicy.ANY: "_evaluate_any",
     }
 
-    def __init__(self, quorum_threshold: float = 0.67):
+    def __init__(
+        self,
+        quorum_threshold: float = 0.67,
+        decision_issuer: Optional[Any] = None,
+    ):
         """Initialize policy evaluator.
-        
+
         Args:
             quorum_threshold: Fraction of validators required for QUORUM policy (0.0-1.0)
+            decision_issuer: Optional DecisionRecordIssuer for verifying
+                             DecisionRecords. Uses default issuer if None.
         """
         if not 0.0 <= quorum_threshold <= 1.0:
             raise ValueError("quorum_threshold must be between 0.0 and 1.0")
-        
+
         self.quorum_threshold = quorum_threshold
+        self._decision_issuer = decision_issuer
     
     def evaluate(
         self,
@@ -155,7 +162,7 @@ class PolicyEvaluator:
         # reclassified as resolved — removed from warn_count, added to pass_count.
         if decision_records and task_ref:
             from snodo.infrastructure.decisions import DecisionRecordIssuer
-            issuer = DecisionRecordIssuer()
+            issuer = self._decision_issuer or DecisionRecordIssuer()
             for r in list(results):
                 if r.severity != "warn":
                     continue

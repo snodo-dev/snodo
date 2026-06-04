@@ -82,6 +82,7 @@
       "evaluation_phase": "pre_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "security",
       "validator_type": "security"
     },
@@ -95,6 +96,7 @@
       "evaluation_phase": "pre_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "architecture",
       "validator_type": "architecture"
     },
@@ -104,6 +106,7 @@
       "evaluation_phase": "post_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "quality",
       "validator_type": "quality"
     },
@@ -115,6 +118,7 @@
       "evaluation_phase": "pre_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "intent_clarity",
       "validator_type": "planning"
     },
@@ -126,6 +130,7 @@
       "evaluation_phase": "pre_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "intent_scope",
       "validator_type": "planning"
     },
@@ -137,6 +142,7 @@
       "evaluation_phase": "pre_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "agile_conformance",
       "validator_type": "planning"
     },
@@ -148,6 +154,7 @@
       "evaluation_phase": "pre_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "value_increment",
       "validator_type": "planning"
     },
@@ -159,6 +166,7 @@
       "evaluation_phase": "pre_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "completeness",
       "validator_type": "planning"
     },
@@ -170,6 +178,7 @@
       "evaluation_phase": "pre_execute",
       "severity_cap": "warn",
       "tooling": {},
+      "tools": [],
       "validator_id": "protocol_adherence",
       "validator_type": "protocol"
     }

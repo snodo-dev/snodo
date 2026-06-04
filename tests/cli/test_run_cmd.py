@@ -903,7 +903,7 @@ class TestRenderHaltPayload:
         assert payload["halt_type"] == "escalated"
         assert payload["phase"] == "pre_execute"
         assert "escalation_validator_results" in payload
-        assert "To resolve" in out
+        assert "To adjudicate" in out
 
     def test_halt_type_inferred_as_constraint(self, capsys):
         from snodo.cli.commands.run_cmd import _render_halt_payload
@@ -1116,7 +1116,6 @@ class TestLoopSerialization:
             "is_blocked": True,
             "halt_type": "wf3",
             "pending_disagreement": None,
-            "resolution_override": False,
             "metadata": {},
             "messages": [],
             "summary": "",
