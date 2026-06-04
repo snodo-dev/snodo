@@ -516,6 +516,17 @@ class TestPostExecuteToolLoop:
             phase="post_execute",
         )
 
+    def _make_post_validator(self, security_validator):
+        """Clone the fixture validator with tools for the tool-loop."""
+        return Validator(
+            validator_id=security_validator.validator_id,
+            validator_type=security_validator.validator_type,
+            evaluation_phase="post_execute",
+            criteria=list(security_validator.criteria),
+            tools=["read_file", "read_file_lines", "list_files",
+                   "git_show", "git_log", "read_diff_between_refs"],
+        )
+
     def test_tool_loop_uses_diff_head_minus_1_to_head(self, security_validator):
         """Post-execute loop should call diff_between_refs(HEAD~1, HEAD)."""
         mock_git = MagicMock()
@@ -524,14 +535,17 @@ class TestPostExecuteToolLoop:
         mock_workspace.list_files.return_value = []
 
         # First call: tool call for diff, second call: verdict
+        call_count = [0]
+
         def completion_side_effect(**kwargs):
             messages = kwargs.get("messages", [])
+            call_count[0] += 1
             # Check that the first message contains the diff
-            if len(messages) == 1:
+            if call_count[0] == 1:
                 assert "HEAD~1..HEAD" in messages[0]["content"]
                 assert "diff --git a/src/auth.py" in messages[0]["content"]
-            # First call returns a tool call
-            if len(messages) <= 2:
+            # First call returns a read tool call
+            if call_count[0] == 1:
                 resp = MagicMock()
                 resp.choices = [MagicMock()]
                 tool_call = MagicMock()
@@ -541,18 +555,22 @@ class TestPostExecuteToolLoop:
                 resp.choices[0].message.content = None
                 resp.choices[0].message.tool_calls = [tool_call]
                 return resp
-            # Second call returns verdict
+            # Second call returns verdict via submit_verdict
             resp = MagicMock()
             resp.choices = [MagicMock()]
-            resp.choices[0].message.content = json.dumps({
+            resp.choices[0].message.content = None
+            tc = MagicMock()
+            tc.id = "tc_verdict"
+            tc.function.name = "submit_verdict"
+            tc.function.arguments = json.dumps({
                 "severity": "pass",
                 "justification": "Auth implementation looks good",
             })
-            resp.choices[0].message.tool_calls = None
+            resp.choices[0].message.tool_calls = [tc]
             return resp
 
         completion_fn = MagicMock(side_effect=completion_side_effect)
-        validator = LLMValidator(security_validator, completion_fn, model="gpt-4")
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn, model="gpt-4")
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
@@ -583,15 +601,19 @@ class TestPostExecuteToolLoop:
                 resp.choices[0].message.content = None
                 resp.choices[0].message.tool_calls = [tool_call]
             else:
-                resp.choices[0].message.content = json.dumps({
+                resp.choices[0].message.content = None
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
                     "severity": "pass",
                     "justification": "OK",
                 })
-                resp.choices[0].message.tool_calls = None
+                resp.choices[0].message.tool_calls = [tc]
             return resp
 
         completion_fn = MagicMock(side_effect=completion_side_effect)
-        validator = LLMValidator(security_validator, completion_fn)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
@@ -620,15 +642,19 @@ class TestPostExecuteToolLoop:
                 resp.choices[0].message.content = None
                 resp.choices[0].message.tool_calls = [tool_call]
             else:
-                resp.choices[0].message.content = json.dumps({
+                resp.choices[0].message.content = None
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
                     "severity": "pass",
                     "justification": "OK",
                 })
-                resp.choices[0].message.tool_calls = None
+                resp.choices[0].message.tool_calls = [tc]
             return resp
 
         completion_fn = MagicMock(side_effect=completion_side_effect)
-        validator = LLMValidator(security_validator, completion_fn)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
@@ -657,15 +683,19 @@ class TestPostExecuteToolLoop:
                 resp.choices[0].message.content = None
                 resp.choices[0].message.tool_calls = [tool_call]
             else:
-                resp.choices[0].message.content = json.dumps({
+                resp.choices[0].message.content = None
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
                     "severity": "pass",
                     "justification": "OK",
                 })
-                resp.choices[0].message.tool_calls = None
+                resp.choices[0].message.tool_calls = [tc]
             return resp
 
         completion_fn = MagicMock(side_effect=completion_side_effect)
-        validator = LLMValidator(security_validator, completion_fn)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
@@ -694,15 +724,19 @@ class TestPostExecuteToolLoop:
                 resp.choices[0].message.content = None
                 resp.choices[0].message.tool_calls = [tool_call]
             else:
-                resp.choices[0].message.content = json.dumps({
+                resp.choices[0].message.content = None
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
                     "severity": "pass",
                     "justification": "OK",
                 })
-                resp.choices[0].message.tool_calls = None
+                resp.choices[0].message.tool_calls = [tc]
             return resp
 
         completion_fn = MagicMock(side_effect=completion_side_effect)
-        validator = LLMValidator(security_validator, completion_fn)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
@@ -731,15 +765,19 @@ class TestPostExecuteToolLoop:
                 resp.choices[0].message.content = None
                 resp.choices[0].message.tool_calls = [tool_call]
             else:
-                resp.choices[0].message.content = json.dumps({
+                resp.choices[0].message.content = None
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
                     "severity": "pass",
                     "justification": "OK",
                 })
-                resp.choices[0].message.tool_calls = None
+                resp.choices[0].message.tool_calls = [tc]
             return resp
 
         completion_fn = MagicMock(side_effect=completion_side_effect)
-        validator = LLMValidator(security_validator, completion_fn)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
@@ -748,7 +786,7 @@ class TestPostExecuteToolLoop:
         mock_workspace.list_files.assert_called_once_with("src")
 
     def test_tool_loop_bounded_at_max_turns(self, security_validator):
-        """Tool loop should stop after _MAX_TOOL_TURNS and return warn."""
+        """Tool loop should fail-closed after _MAX_TOOL_TURNS without submit_verdict."""
         from snodo.validators.llm_validator import _MAX_TOOL_TURNS
 
         mock_git = MagicMock()
@@ -768,32 +806,35 @@ class TestPostExecuteToolLoop:
             return resp
 
         completion_fn = MagicMock(side_effect=completion_side_effect)
-        validator = LLMValidator(security_validator, completion_fn)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
 
-        assert result.severity == "warn"
+        assert result.severity == "error"
         assert "maximum" in result.justification.lower()
-        # Should have been called exactly _MAX_TOOL_TURNS times
         assert completion_fn.call_count == _MAX_TOOL_TURNS
 
     def test_tool_loop_returns_verdict_on_first_response(self, security_validator):
-        """If model returns verdict immediately, no tool calls needed."""
+        """If model calls submit_verdict immediately, no read tools needed."""
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
         mock_workspace = MagicMock()
 
         resp = MagicMock()
         resp.choices = [MagicMock()]
-        resp.choices[0].message.content = json.dumps({
+        resp.choices[0].message.content = None
+        tc = MagicMock()
+        tc.id = "tc_verdict"
+        tc.function.name = "submit_verdict"
+        tc.function.arguments = json.dumps({
             "severity": "pass",
             "justification": "Change is fine",
         })
-        resp.choices[0].message.tool_calls = None
+        resp.choices[0].message.tool_calls = [tc]
         completion_fn = MagicMock(return_value=resp)
 
-        validator = LLMValidator(security_validator, completion_fn)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
@@ -824,15 +865,19 @@ class TestPostExecuteToolLoop:
                 resp.choices[0].message.content = None
                 resp.choices[0].message.tool_calls = [tool_call]
             else:
-                resp.choices[0].message.content = json.dumps({
+                resp.choices[0].message.content = None
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
                     "severity": "warn",
                     "justification": "File not found but diff looks OK",
                 })
-                resp.choices[0].message.tool_calls = None
+                resp.choices[0].message.tool_calls = [tc]
             return resp
 
         completion_fn = MagicMock(side_effect=completion_side_effect)
-        validator = LLMValidator(security_validator, completion_fn)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
@@ -847,7 +892,7 @@ class TestPostExecuteToolLoop:
         mock_workspace = MagicMock()
 
         completion_fn = MagicMock(side_effect=Exception("API down"))
-        validator = LLMValidator(security_validator, completion_fn)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
@@ -855,25 +900,32 @@ class TestPostExecuteToolLoop:
         assert result.severity == "warn"
         assert "tool-loop error" in result.justification
 
-    def test_tool_loop_no_content_no_tool_calls_forces_warn(self, security_validator):
-        """If model returns neither content nor tool_calls, force warn."""
+    def test_tool_loop_no_content_no_tool_calls_fails_closed(self, security_validator):
+        """If model returns neither content nor tool_calls, fail-closed as error."""
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
         mock_workspace = MagicMock()
 
-        resp = MagicMock()
-        resp.choices = [MagicMock()]
-        resp.choices[0].message.content = None
-        resp.choices[0].message.tool_calls = []
-        completion_fn = MagicMock(return_value=resp)
+        # First call: empty response — triggers retry
+        # Second call: same empty response — fail-closed
+        call_count = [0]
 
-        validator = LLMValidator(security_validator, completion_fn)
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = None
+            resp.choices[0].message.tool_calls = []
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         result = validator.evaluate(ctx)
 
-        assert result.severity == "warn"
-        assert "neither a verdict nor tool calls" in result.justification
+        assert result.severity == "error"
+        assert "submit_verdict" in result.justification
 
     def test_tool_loop_uses_tools_kwarg_in_completion_call(self, security_validator):
         """Tool loop must pass tools=[...] to completion_fn."""
@@ -883,14 +935,15 @@ class TestPostExecuteToolLoop:
 
         resp = MagicMock()
         resp.choices = [MagicMock()]
-        resp.choices[0].message.content = json.dumps({
-            "severity": "pass",
-            "justification": "OK",
-        })
-        resp.choices[0].message.tool_calls = None
+        resp.choices[0].message.content = None
+        tc = MagicMock()
+        tc.id = "tc_verdict"
+        tc.function.name = "submit_verdict"
+        tc.function.arguments = json.dumps({"severity": "pass", "justification": "OK"})
+        resp.choices[0].message.tool_calls = [tc]
         completion_fn = MagicMock(return_value=resp)
 
-        validator = LLMValidator(security_validator, completion_fn)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
         validator.evaluate(ctx)

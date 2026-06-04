@@ -661,8 +661,21 @@ def _stream_execution(compiled_graph, initial_state: dict, args,
             _print_stage(node_state)
 
             if node_state.get("is_blocked"):
+                halt_type = node_state.get("halt_type", "blocked")
                 violations = node_state.get("constraint_violations", [])
-                print(f"\n✗ BLOCKED: {', '.join(violations) if violations else 'blocker'}")
+
+                if halt_type == "escalated":
+                    print("\n✗ ESCALATED (warn): validation failed unanimously")
+                elif halt_type == "validator_error":
+                    error_validators = [
+                        r["validator_id"]
+                        for r in node_state.get("validation_results", [])
+                        if r.get("severity") == "error"
+                    ]
+                    names = ", ".join(error_validators) if error_validators else "unknown"
+                    print(f"\n✗ VALIDATOR ERROR: {names} produced no verdict — resolve or retry")
+                else:
+                    print(f"\n✗ BLOCKED: {', '.join(violations) if violations else 'blocker'}")
 
                 # Print validator justifications (blockers and warns)
                 validation_results = node_state.get("validation_results", [])

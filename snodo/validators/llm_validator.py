@@ -47,7 +47,7 @@ _POST_EXECUTE_ONLY_TOOLS: Set[str] = {"read_diff_between_refs"}
 class LLMValidator(ValidatorBase):
     """Evaluates tasks against protocol criteria using an LLM judge."""
 
-    VALID_SEVERITIES = {"pass", "warn", "blocker"}
+    VALID_SEVERITIES = {"pass", "warn", "blocker", "error"}
 
     HANDLED_TYPES = {
         "architecture", "security", "conventions",
@@ -131,6 +131,7 @@ class LLMValidator(ValidatorBase):
             active_names -= _POST_EXECUTE_ONLY_TOOLS
 
         tools = self._build_tool_definitions(active_names)
+        tools.append(self._SUBMIT_VERDICT_DEF)
 
         # Only prepend diff when the diff tool is in the active set
         has_diff = "read_diff_between_refs" in active_names
@@ -147,39 +148,36 @@ class LLMValidator(ValidatorBase):
 
         prompt_parts = [
             f"You are a {self.validator_spec.validator_type} validator for a software development protocol.\n",
-            f"Evaluate the task against the criteria below.\n",
-            f"\n",
-            f"## Task\n",
+            "Evaluate the task against the criteria below.\n",
+            "\n",
+            "## Task\n",
             f"{context.task.spec}\n",
-            f"\n",
-            f"## Criteria\n",
+            "\n",
+            "## Criteria\n",
             f"{criteria_text}\n",
         ]
 
         if has_diff and change_diff:
             prompt_parts.extend([
-                f"\n",
-                f"## Code Change (HEAD~1..HEAD)\n",
+                "\n",
+                "## Code Change (HEAD~1..HEAD)\n",
                 f"```\n{change_diff}\n```\n",
             ])
 
         prompt_parts.extend([
-            f"\n",
-            f"## Available Tools\n",
-            f"You may call read-only tools to inspect files and git history.\n",
-            f"Use them if you need more context.\n",
-            f"\n",
-            f"## Instructions\n",
-            f"Evaluate against EACH criterion.\n",
-            f"Use tools to read files if needed, then return your verdict.\n",
-            f"Return your FINAL verdict as a JSON object with exactly two fields:\n",
-            f"- \"severity\": one of \"pass\", \"warn\", or \"blocker\"\n",
-            f"- \"justification\": a brief explanation of your evaluation\n",
-            f"\n",
-            f"Respond with ONLY the JSON object for your final verdict, no other text.\n",
-            f"\n",
-            f'Example:\n',
-            f'{{"severity": "pass", "justification": "Change meets all criteria."}}\n',
+            "\n",
+            "## Available Tools\n",
+            "You may call read-only tools to inspect files and git history.\n",
+            "When you are ready to deliver your verdict, call the\n",
+            "`submit_verdict(severity, justification)` tool — this is the\n",
+            "ONLY way to return your verdict.  Do NOT narrate your verdict\n",
+            "as prose; use the tool.\n",
+            "\n",
+            "## Instructions\n",
+            "Evaluate against EACH criterion.\n",
+            "Use tools to read files if needed.\n",
+            "Then call submit_verdict with severity in [\"pass\", \"warn\", \"blocker\"]\n",
+            "and a concise justification.\n",
         ])
 
         system_prompt = "".join(prompt_parts)
@@ -188,6 +186,8 @@ class LLMValidator(ValidatorBase):
             {"role": "user", "content": system_prompt},
         ]
 
+        retried_free_text = False
+
         for turn in range(_MAX_TOOL_TURNS):
             try:
                 response = self._completion_fn(
@@ -195,7 +195,7 @@ class LLMValidator(ValidatorBase):
                     messages=messages,
                     tools=tools,
                     temperature=0.0,
-                    max_tokens=500,
+                    max_tokens=1500,
                 )
             except Exception as e:
                 return ValidatorResult(
@@ -205,65 +205,89 @@ class LLMValidator(ValidatorBase):
                 )
 
             msg = response.choices[0].message
-
-            # Check if the model returned a final text response (verdict)
-            if msg.content is not None and not getattr(msg, "tool_calls", None):
-                return self._parse_response(msg.content)
-
-            # Execute tool calls
             tool_calls = getattr(msg, "tool_calls", [])
-            if not tool_calls:
-                # No content and no tool calls — force verdict
-                return ValidatorResult(
-                    validator_id=self.validator_spec.validator_id,
-                    severity="warn",
-                    justification=(
-                        "LLM returned neither a verdict nor tool calls "
-                        f"on turn {turn + 1}. Diff was provided but no "
-                        "judgment could be parsed."
-                    ),
-                )
 
-            # Add assistant message with tool_calls to conversation
-            messages.append({
-                "role": "assistant",
-                "content": msg.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in tool_calls
-                ],
-            })
+            # Check for submit_verdict before anything else
+            verdict = self._extract_submit_verdict(tool_calls)
+            if verdict is not None:
+                return verdict
 
-            # Execute each tool call and append results
-            for tc in tool_calls:
-                tool_name = tc.function.name
-                try:
-                    args = json.loads(tc.function.arguments)
-                except (json.JSONDecodeError, TypeError):
-                    args = {}
-
-                result = self._execute_tool(tool_name, args, workspace, git)
-
+            # If any tool calls (read tools), execute them and continue
+            if tool_calls:
                 messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": str(result),
+                    "role": "assistant",
+                    "content": msg.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in tool_calls
+                    ],
                 })
 
-        # Hit the turn cap — force a verdict from what we have
+                for tc in tool_calls:
+                    tool_name = tc.function.name
+                    try:
+                        args = json.loads(tc.function.arguments)
+                    except (json.JSONDecodeError, TypeError):
+                        args = {}
+
+                    if tool_name == "submit_verdict":
+                        continue  # already handled above
+
+                    result = self._execute_tool(tool_name, args, workspace, git)
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": str(result),
+                    })
+                continue
+
+            # No submit_verdict — either free-text or empty response
+            has_content = msg.content is not None
+            if not has_content and not tool_calls:
+                msg.content = ""  # normalise so the retry path picks it up
+                has_content = True
+
+            if has_content and not retried_free_text:
+                retried_free_text = True
+                messages.append({
+                    "role": "assistant",
+                    "content": msg.content,
+                })
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Return your verdict by calling "
+                        "submit_verdict(severity, justification). "
+                        "Do not narrate."
+                    ),
+                })
+                continue
+
+            # Still no valid verdict after retry — fail closed
+            return ValidatorResult(
+                validator_id=self.validator_spec.validator_id,
+                severity="error",
+                justification=(
+                    f"Validator did not call submit_verdict after {turn + 1} turn(s). "
+                    "No reliable verdict could be obtained."
+                ),
+            )
+
+        # Hit the turn cap — fail closed
         return ValidatorResult(
             validator_id=self.validator_spec.validator_id,
-            severity="warn",
+            severity="error",
             justification=(
                 f"Validator tool-loop reached the maximum of {_MAX_TOOL_TURNS} "
-                f"turns without a final verdict. Partial inspection was performed."
+                "turns without calling submit_verdict."
             ),
         )
 
@@ -363,6 +387,55 @@ class LLMValidator(ValidatorBase):
             },
         }
         return [all_defs[name] for name in tool_names if name in all_defs]
+
+    _SUBMIT_VERDICT_DEF = {
+        "type": "function",
+        "function": {
+            "name": "submit_verdict",
+            "description": (
+                "Submit your final verdict. Call this exactly once when you are "
+                "ready to deliver your evaluation. severity must be one of: "
+                "pass, warn, blocker."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "severity": {
+                        "type": "string",
+                        "enum": ["pass", "warn", "blocker"],
+                        "description": "Your verdict",
+                    },
+                    "justification": {
+                        "type": "string",
+                        "description": "Brief explanation of your evaluation",
+                    },
+                },
+                "required": ["severity", "justification"],
+            },
+        },
+    }
+
+    def _extract_submit_verdict(self, tool_calls: list) -> Optional["ValidatorResult"]:
+        """Scan tool_calls for submit_verdict and return a ValidatorResult if found.
+
+        Returns None if submit_verdict is not present or has invalid arguments.
+        """
+        for tc in (tool_calls or []):
+            if tc.function.name != "submit_verdict":
+                continue
+            try:
+                args = json.loads(tc.function.arguments)
+            except (json.JSONDecodeError, TypeError):
+                return None
+            severity = str(args.get("severity", "")).lower().strip()
+            justification = str(args.get("justification", "No justification provided"))
+            if severity in self.VALID_SEVERITIES:
+                return ValidatorResult(
+                    validator_id=self.validator_spec.validator_id,
+                    severity=severity,
+                    justification=justification,
+                )
+        return None
 
     @staticmethod
     def _execute_tool(

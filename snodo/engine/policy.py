@@ -116,8 +116,21 @@ class PolicyEvaluator:
         pass_count = sum(1 for r in results if r.severity == "pass")
         warn_count = sum(1 for r in results if r.severity == "warn")
         blocker_count = sum(1 for r in results if r.severity == "blocker")
+        error_count = sum(1 for r in results if r.severity == "error")
         total_count = len(results)
-        
+
+        # Validator error always halts fail-closed (hard invariant)
+        if error_count > 0:
+            return PolicyDecision(
+                action=PolicyAction.HALT,
+                consensus_achieved=False,
+                pass_count=pass_count,
+                warn_count=warn_count,
+                blocker_count=blocker_count,
+                total_count=total_count,
+                justification=f"{error_count} validator(s) failed to produce a verdict — fail-closed"
+            )
+
         # Any blocker always halts (hard invariant)
         if blocker_count > 0:
             return PolicyDecision(

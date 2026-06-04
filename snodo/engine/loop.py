@@ -68,7 +68,7 @@ class LoopState:
     policy_decision: Optional[Any] = None
     is_complete: bool = False
     is_blocked: bool = False
-    halt_type: Optional[str] = None  # "blocked" | "escalated" | "resolution" | "constraint" | "max_iterations" | "wf3"
+    halt_type: Optional[str] = None  # "blocked" | "escalated" | "resolution" | "constraint" | "max_iterations" | "wf3" | "validator_error"
     pending_disagreement: Optional[Dict[str, Any]] = None
     resolution_override: bool = False
     spawned_subtasks: List[Task] = field(default_factory=list)
@@ -349,7 +349,8 @@ class GraphBuilder:
             outcome = "passed"
         elif decision.action == PolicyAction.HALT:
             loop_state.is_blocked = True
-            loop_state.halt_type = "blocked"
+            has_errors = any(r.severity == "error" for r in results)
+            loop_state.halt_type = "validator_error" if has_errors else "blocked"
         elif decision.action == PolicyAction.ESCALATE:
             loop_state.is_blocked = True
             loop_state.halt_type = "escalated"
@@ -478,7 +479,8 @@ class GraphBuilder:
         post_outcome = "passed"
         if decision.action == PolicyAction.HALT:
             loop_state.is_blocked = True
-            loop_state.halt_type = "blocked"
+            has_errors = any(r.severity == "error" for r in results)
+            loop_state.halt_type = "validator_error" if has_errors else "blocked"
             loop_state.constraint_violations.append(
                 "Post-execute validation failed: " + decision.justification
             )
