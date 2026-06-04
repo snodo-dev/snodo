@@ -173,13 +173,14 @@ class TestDecisionRecordAudit:
 class TestPolicyDecisionRecordConsultation:
     """Policy evaluator consults DecisionRecords after blocker HALT."""
 
-    def _make_evaluator(self):
+    def _make_evaluator(self, issuer=None):
         from snodo.engine.policy import PolicyEvaluator
         from snodo.compiler.models import DisagreementPolicy
-        return PolicyEvaluator(), DisagreementPolicy.UNANIMOUS
+        return PolicyEvaluator(decision_issuer=issuer), DisagreementPolicy.UNANIMOUS
 
     def test_warn_without_decision_escalates(self):
-        evaluator, policy = self._make_evaluator()
+        issuer = _make_issuer()
+        evaluator, policy = self._make_evaluator(issuer)
         results = [
             _make_result("security", "pass"),
             _make_result("architecture", "warn", "Minor concern"),
@@ -189,8 +190,8 @@ class TestPolicyDecisionRecordConsultation:
         assert decision.warn_count == 1
 
     def test_warn_with_valid_decision_proceeds(self):
-        evaluator, policy = self._make_evaluator()
         issuer = _make_issuer()
+        evaluator, policy = self._make_evaluator(issuer)
         warn_result = _make_result("architecture", "warn", "Minor concern")
         record = issuer.issue_record("t1", "architecture", warn_result, "proceed", "Acceptable")
 
@@ -209,8 +210,8 @@ class TestPolicyDecisionRecordConsultation:
 
     def test_blocker_with_decision_still_halts(self):
         """INV3: DecisionRecord cannot override a blocker."""
-        evaluator, policy = self._make_evaluator()
         issuer = _make_issuer()
+        evaluator, policy = self._make_evaluator(issuer)
 
         # We can't mint a record for a blocker, but even if someone
         # injected a forged JWT, the blocker HALT runs FIRST.
@@ -228,7 +229,8 @@ class TestPolicyDecisionRecordConsultation:
 
     def test_error_with_decision_still_halts(self):
         """Error HALT runs before DecisionRecord consultation."""
-        evaluator, policy = self._make_evaluator()
+        issuer = _make_issuer()
+        evaluator, policy = self._make_evaluator(issuer)
         results = [
             _make_result("llm_security", "error", "LLM failed"),
             _make_result("architecture", "pass"),
@@ -242,8 +244,8 @@ class TestPolicyDecisionRecordConsultation:
 
     def test_multiple_warns_partial_adjudication(self):
         """Only adjudicated warns are reclassified."""
-        evaluator, policy = self._make_evaluator()
         issuer = _make_issuer()
+        evaluator, policy = self._make_evaluator(issuer)
 
         warn1 = _make_result("architecture", "warn", "Concern A")
         warn2 = _make_result("security", "warn", "Concern B")
@@ -266,8 +268,8 @@ class TestPolicyDecisionRecordConsultation:
 
     def test_decision_for_wrong_task_does_not_match(self):
         """DecisionRecord for task t2 should not resolve t1's warn."""
-        evaluator, policy = self._make_evaluator()
         issuer = _make_issuer()
+        evaluator, policy = self._make_evaluator(issuer)
         warn_result = _make_result("architecture", "warn", "Concern")
         record = issuer.issue_record("t2", "architecture", warn_result, "proceed", "OK")
 
@@ -285,8 +287,8 @@ class TestPolicyDecisionRecordConsultation:
 
     def test_decision_for_wrong_validator_does_not_match(self):
         """DecisionRecord for validator A should not resolve validator B's warn."""
-        evaluator, policy = self._make_evaluator()
         issuer = _make_issuer()
+        evaluator, policy = self._make_evaluator(issuer)
         warn_a = _make_result("architecture", "warn", "Concern A")
         record = issuer.issue_record("t1", "architecture", warn_a, "proceed", "OK")
 
@@ -305,8 +307,8 @@ class TestPolicyDecisionRecordConsultation:
 
     def test_decision_halt_does_not_reclassify(self):
         """A DecisionRecord with decision=halt should NOT reclassify the warn."""
-        evaluator, policy = self._make_evaluator()
         issuer = _make_issuer()
+        evaluator, policy = self._make_evaluator(issuer)
         warn_result = _make_result("architecture", "warn", "Concern")
         record = issuer.issue_record("t1", "architecture", warn_result, "halt", "Too risky")
 
@@ -389,8 +391,10 @@ class TestINV3Regression:
         """Verify the order: blocker HALT runs before any DecisionRecord logic."""
         from snodo.engine.policy import PolicyEvaluator, PolicyAction
         from snodo.compiler.models import DisagreementPolicy
+        from snodo.infrastructure.decisions import DecisionRecordIssuer
 
-        evaluator = PolicyEvaluator()
+        issuer = DecisionRecordIssuer(secret="test-secret")
+        evaluator = PolicyEvaluator(decision_issuer=issuer)
         policy = DisagreementPolicy.UNANIMOUS
 
         # Blocker present → HALT immediately, no decision_records consulted

@@ -139,7 +139,14 @@ class GraphBuilder:
         self.validator_fn = validator_fn or self._default_validator
         self.executor_fn = executor_fn or self._default_executor
 
-        self.policy_evaluator = PolicyEvaluator()
+        from snodo.infrastructure.decisions import DecisionRecordIssuer
+        self._decision_issuer = DecisionRecordIssuer(
+            secret=self._token_issuer.secret,
+            audit_log=self._audit_log,
+        )
+        self.policy_evaluator = PolicyEvaluator(
+            decision_issuer=self._decision_issuer,
+        )
         self._summary_model = self._init_summary_model()
         self._project_context_cache: Optional[Dict[str, Any]] = None
     

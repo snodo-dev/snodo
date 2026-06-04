@@ -42,8 +42,8 @@ def test_escalate_payload_marker_in_blocked_output(snodo_cli):
 
 
 @pytest.mark.e2e
-def test_resolve_proceed(snodo_cli):
-    """Test that snodo resolve --decision proceed writes to session decisions."""
+def test_adjudicate_proceed(snodo_cli):
+    """Test that snodo adjudicate --decision proceed writes a DecisionRecord to session."""
     snodo_cli(["init", "--template", "solo"])
     snodo_cli(["run", "get a session started", "--mock"])
 
@@ -58,19 +58,19 @@ def test_resolve_proceed(snodo_cli):
     if session_id is None:
         pytest.skip("No session created — environment may not support auto-session")
 
-    # Resolve a disagreement
+    # Adjudicate a validator concern
     r2 = snodo_cli([
-        "resolve", session_id, "fake_task_123",
+        "adjudicate", session_id, "fake_task_123", "security",
         "--decision", "proceed",
-        "--justification", "test resolution from e2e",
+        "--justification", "test adjudication from e2e",
     ])
     assert r2.returncode == 0
-    assert "Resolution applied" in r2.stdout
+    assert "DecisionRecord minted" in r2.stdout
 
 
 @pytest.mark.e2e
-def test_resolve_halt(snodo_cli):
-    """Test that snodo resolve --decision halt works."""
+def test_adjudicate_halt(snodo_cli):
+    """Test that snodo adjudicate --decision halt works."""
     snodo_cli(["init", "--template", "solo"])
     snodo_cli(["run", "get a session started", "--mock"])
 
@@ -85,18 +85,18 @@ def test_resolve_halt(snodo_cli):
         pytest.skip("No session created")
 
     r2 = snodo_cli([
-        "resolve", session_id, "fake_task_456",
+        "adjudicate", session_id, "fake_task_456", "security",
         "--decision", "halt",
-        "--justification", "halt resolution test",
+        "--justification", "halt adjudication test",
     ])
     assert r2.returncode == 0
 
 
 @pytest.mark.e2e
-def test_resolve_invalid_decision_rejected(snodo_cli):
-    """Invalid resolution decision should be rejected."""
+def test_adjudicate_invalid_decision_rejected(snodo_cli):
+    """Invalid adjudication decision should be rejected."""
     r = snodo_cli([
-        "resolve", "sess_fake", "task_x",
+        "adjudicate", "sess_fake", "task_x", "security",
         "--decision", "approve",
         "--justification", "bad",
     ])

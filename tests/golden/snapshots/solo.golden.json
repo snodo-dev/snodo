@@ -41,6 +41,7 @@
       "evaluation_phase": "pre_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "security",
       "validator_type": "security"
     },
@@ -54,6 +55,7 @@
       "evaluation_phase": "pre_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "architecture",
       "validator_type": "architecture"
     },
@@ -63,6 +65,7 @@
       "evaluation_phase": "post_execute",
       "severity_cap": null,
       "tooling": {},
+      "tools": [],
       "validator_id": "quality",
       "validator_type": "quality"
     }
