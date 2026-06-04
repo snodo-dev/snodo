@@ -98,7 +98,7 @@ def test_basic_adapter_init_defaults():
     assert adapter.model == "gpt-4"
     assert adapter.mcp_servers == []
     assert adapter.temperature == 0.7
-    assert adapter.max_tokens == 4000
+    assert adapter.max_tokens == 16000
 
 
 def test_basic_adapter_init_custom():

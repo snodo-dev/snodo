@@ -17,11 +17,14 @@ Bounded tool-use loop (added):
 """
 
 import json
+import logging
 import re
 from typing import Any, Dict, List, Optional
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError
+
+_logger = logging.getLogger(__name__)
 
 
 # Maximum tool-use turns before forcing a CodeArtifact parse.
@@ -44,7 +47,7 @@ class LiteLLMAdapter(CoderAdapter):
         model: str = "gpt-4",
         mcp_servers: Optional[List[MCPServer]] = None,
         temperature: float = 0.7,
-        max_tokens: int = 4000,
+        max_tokens: int = 16000,
         workspace_mcp: Optional[Any] = None,
     ):
         self.model = model
@@ -106,6 +109,10 @@ class LiteLLMAdapter(CoderAdapter):
                 "list_files(directory) to explore the project.\n"
                 "Read existing files you need to modify so you can make faithful edits.\n"
                 "\n"
+                "When you are ready to deliver your changes, call the\n"
+                "`submit_files(files)` tool — this is the ONLY way to deliver file\n"
+                "operations.  Do NOT emit file content as prose or as a JSON text blob.\n"
+                "\n"
             )
 
         prompt_parts.append("""
@@ -114,6 +121,8 @@ Your response MUST be a JSON array of file operations. Each element has:
 - "path": file path relative to the project root
 - "content": the full file content
 - "action": "write" (default) or "delete"
+
+Return ONLY the JSON array, no other text.
 
 ```json
 [
@@ -149,14 +158,42 @@ Now generate the implementation:
         except Exception as e:
             raise LLMCallError(f"LLM call failed: {e}")
 
+    def _call_llm(self, prompt: str) -> str:
+        if self._completion_fn is None:
+            raise LLMCallError(
+                "litellm not available. Install with: pip install litellm"
+            )
+
+        # When workspace_mcp is available, use bounded tool-use loop
+        if self.workspace_mcp is not None:
+            return self._call_llm_with_tools(prompt)
+
+        # Fallback: single raw completion (backward-compatible)
+        try:
+            response = self._completion_fn(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+            )
+            self._check_truncation(response)
+            return response.choices[0].message.content
+        except (LLMCallError, ParseError):
+            raise
+        except Exception as e:
+            raise LLMCallError(f"LLM call failed: {e}")
+
     def _call_llm_with_tools(self, prompt: str) -> str:
-        """Bounded tool-use loop: model may call read tools, then returns CodeArtifact."""
+        """Bounded tool-use loop with submit_files terminal tool."""
         workspace = self.workspace_mcp
         tools = self._build_tool_definitions()
+        tools.append(self._SUBMIT_FILES_DEF)
 
         messages: List[Dict[str, Any]] = [
             {"role": "user", "content": prompt},
         ]
+
+        retried_free_text = False
 
         for turn in range(_MAX_TOOL_TURNS):
             try:
@@ -170,59 +207,156 @@ Now generate the implementation:
             except Exception as e:
                 raise LLMCallError(f"LLM tool-loop error on turn {turn + 1}: {e}")
 
+            self._check_truncation(response)
+
             msg = response.choices[0].message
-
-            # Check if the model returned text (CodeArtifact JSON)
-            if msg.content is not None and not getattr(msg, "tool_calls", None):
-                return msg.content
-
-            # Execute tool calls
             tool_calls = getattr(msg, "tool_calls", [])
-            if not tool_calls:
-                # No content and no tool calls — break and try to parse
-                # whatever we have (likely empty, will raise ParseError)
-                break
 
-            # Add assistant message with tool_calls to conversation
-            messages.append({
-                "role": "assistant",
-                "content": msg.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in tool_calls
-                ],
-            })
+            # Check for submit_files before anything else
+            files_list = self._extract_submit_files(tool_calls)
+            if files_list is not None:
+                return json.dumps(files_list)
 
-            # Execute each tool call and append results
-            for tc in tool_calls:
-                tool_name = tc.function.name
-                try:
-                    args = json.loads(tc.function.arguments)
-                except (json.JSONDecodeError, TypeError):
-                    args = {}
-
-                result = self._execute_tool(tool_name, args, workspace)
-
+            # Execute read tools
+            if tool_calls:
                 messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": str(result),
+                    "role": "assistant",
+                    "content": msg.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in tool_calls
+                    ],
                 })
 
-        # Hit the turn cap or no more tool calls — return whatever content we have
-        # The last assistant message may have content; if not, return empty string
-        # and let _parse_response handle the failure.
+                for tc in tool_calls:
+                    tool_name = tc.function.name
+                    if tool_name == "submit_files":
+                        continue  # already handled above
+                    try:
+                        args = json.loads(tc.function.arguments)
+                    except (json.JSONDecodeError, TypeError):
+                        args = {}
+                    result = self._execute_tool(tool_name, args, workspace)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": str(result),
+                    })
+                continue
+
+            # No tool calls — free-text, try corrective retry once
+            if msg.content is not None and not retried_free_text:
+                retried_free_text = True
+                messages.append({
+                    "role": "assistant",
+                    "content": msg.content,
+                })
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Deliver your changes by calling "
+                        "submit_files(files=[...]). Do not "
+                        "emit them as text."
+                    ),
+                })
+                continue
+
+            # Fallback: return whatever free-text we have for legacy parse
+            if msg.content is not None:
+                return msg.content
+            break
+
+        # Hit turn cap — return last assistant content for legacy parse
         for m in reversed(messages):
             if m.get("role") == "assistant" and m.get("content"):
                 return m["content"]
         return ""
+
+    _SUBMIT_FILES_DEF = {
+        "type": "function",
+        "function": {
+            "name": "submit_files",
+            "description": (
+                "Submit file operations. Call this exactly once when you are "
+                "ready to deliver ALL your changes. Each file has path, content, "
+                "and an optional action (\"write\" or \"delete\")."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "files": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {
+                                    "type": "string",
+                                    "description": "File path relative to project root",
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "Full file content",
+                                },
+                                "action": {
+                                    "type": "string",
+                                    "enum": ["write", "delete"],
+                                    "description": "write or delete",
+                                },
+                            },
+                            "required": ["path", "content"],
+                        },
+                        "description": "Array of file operations",
+                    },
+                },
+                "required": ["files"],
+            },
+        },
+    }
+
+    @staticmethod
+    def _extract_submit_files(tool_calls: list) -> Optional[List[Dict]]:
+        """Scan tool_calls for submit_files and return the files array if found.
+
+        Returns None if submit_files is not present or has invalid arguments.
+        """
+        for tc in (tool_calls or []):
+            if tc.function.name != "submit_files":
+                continue
+            try:
+                args = json.loads(tc.function.arguments)
+            except (json.JSONDecodeError, TypeError):
+                return None
+            files = args.get("files", [])
+            if isinstance(files, list):
+                return files
+        return None
+
+    def _check_truncation(self, response: Any) -> None:
+        """Raise ParseError if the completion was truncated at max_tokens."""
+        try:
+            choice = response.choices[0]
+            finish = getattr(choice, "finish_reason", None)
+            if finish == "length":
+                raw = str(getattr(choice.message, "content", ""))
+                _logger.warning(
+                    "Coder output truncated at max_tokens=%s — "
+                    "raw response (first 2KB): %s",
+                    self.max_tokens,
+                    _truncated_log(raw),
+                )
+                raise ParseError(
+                    f"Coder output truncated at max_tokens={self.max_tokens}. "
+                    "Raise the limit or split the task into smaller subtasks."
+                )
+        except (AttributeError, IndexError):
+            pass
 
     @staticmethod
     def _build_tool_definitions() -> List[Dict[str, Any]]:
@@ -296,6 +430,10 @@ Now generate the implementation:
         parsed = self._extract_json(response)
 
         if parsed is None or not isinstance(parsed, list):
+            _logger.warning(
+                "Coder parse failure — raw response (first 2KB): %s",
+                _truncated_log(response),
+            )
             raise ParseError(
                 "Failed to parse response as JSON array of file operations"
             )
@@ -318,13 +456,22 @@ Now generate the implementation:
 
     @staticmethod
     def _extract_json(response: str):
-        """Extract JSON array from raw response or code block."""
+        """Extract JSON array from raw response or code block.
+
+        Uses a greedy fence extractor so that ``` inside file content does
+        not break the match — only the outermost ``` fence pair is consumed.
+        """
         try:
             return json.loads(response)
         except (json.JSONDecodeError, TypeError):
             pass
 
-        match = re.search(r'```(?:json)?\s*\n(.*?)```', response, re.DOTALL)
+        # Greedy: match from the first ``` fence to the LAST ``` fence,
+        # stripping only the outermost pair.  The non-greedy .*? would stop
+        # at the first ``` inside file content.
+        match = re.search(
+            r'```(?:json)?\s*\n(.*)```\s*$', response, re.DOTALL
+        )
         if match:
             try:
                 return json.loads(match.group(1).strip())
@@ -339,3 +486,10 @@ Now generate the implementation:
 
     def list_available_tools(self) -> List[str]:
         return [f"mcp_server_{i}" for i in range(len(self.mcp_servers))]
+
+
+def _truncated_log(raw: str, max_chars: int = 2048) -> str:
+    """Truncate a raw response string for logging."""
+    if len(raw) <= max_chars:
+        return raw
+    return raw[:max_chars] + "...<truncated>"
