@@ -376,7 +376,6 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         "policy_decision": None,
         "pending_disagreement": None,
         "halt_type": None,
-        "resolution_override": False,
         "is_complete": False,
         "is_blocked": False,
         "metadata": {},
@@ -584,7 +583,8 @@ def _render_halt_payload(node_state: dict) -> dict:
         "hint": (
             "Address the blocking concerns and re-run a revised task. "
             "If you believe the block is incorrect, use "
-            "`snodo resolve <session_id> <task_id> --decision proceed|halt`."
+            "`snodo adjudicate <session_id> <task_id> <validator_id> "
+            "--decision proceed --justification \"...\"`."
         ),
     }
 
@@ -604,7 +604,7 @@ def _render_halt_payload(node_state: dict) -> dict:
     print()
 
     if halt_type == "escalated" or (pending and halt_type != "escalated"):
-        print("To resolve: snodo resolve <session_id> <task_id> --decision proceed|halt")
+        print("To adjudicate: snodo adjudicate <session_id> <task_id> <validator_id> --decision proceed --justification \"...\"")
 
     return payload
 
