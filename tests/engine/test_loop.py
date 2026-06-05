@@ -685,6 +685,25 @@ def test_default_validator(sample_protocol, sample_task, temp_workspace):
     assert len(results) >= 2
 
 
+def test_default_validator_config_error_returns_blocker(sample_protocol, sample_task, temp_workspace):
+    """When load_llm_config raises ConfigLoadError, _default_validator returns blocker."""
+    from snodo.infrastructure.config import ConfigLoadError
+    from unittest.mock import patch
+
+    builder = GraphBuilder(sample_protocol)
+    validators = [
+        Validator(validator_id="v1", validator_type="security"),
+    ]
+    shell_mcp = ShellMCP(temp_workspace)
+
+    with patch("snodo.infrastructure.config.load_llm_config", side_effect=ConfigLoadError("bad config")):
+        results = builder._default_validator(sample_task, validators, shell_mcp)
+
+    assert len(results) == 1
+    assert results[0].severity == "blocker"
+    assert "Config error" in results[0].justification
+
+
 def test_default_executor(sample_protocol, sample_task, temp_workspace):
     """Test default executor creates artifacts."""
     workspace_mcp = WorkspaceMCP(temp_workspace)
