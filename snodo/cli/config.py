@@ -27,6 +27,25 @@ PROVIDER_MODEL_PREFIXES = {
 
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
+_API_KEY_ENV_MAP = {
+    "claude-": "ANTHROPIC_API_KEY",
+    "gpt-": "OPENAI_API_KEY",
+    "o1-": "OPENAI_API_KEY",
+    "o3-": "OPENAI_API_KEY",
+    "gemini/": "GEMINI_API_KEY",
+    "gemini-": "GEMINI_API_KEY",
+}
+
+
+def _set_api_key_env(mgr: "ConfigManager", model: str) -> None:
+    """Set API key in environment if available from config."""
+    api_key = mgr.get_key_for_model(model)
+    if api_key:
+        for prefix, env_var in _API_KEY_ENV_MAP.items():
+            if model.startswith(prefix):
+                os.environ[env_var] = api_key
+                break
+
 
 class ConfigError(Exception):
     """Configuration error."""
