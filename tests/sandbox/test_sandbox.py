@@ -423,6 +423,73 @@ class TestDockerSandbox:
                 with pytest.raises(SandboxError, match="docker package not installed"):
                     _ = new_sandbox.client
 
+    def test_oom_kill_returns_exit_137(self, docker_client_mock):
+        """Container killed by OOM → exit_code 137, stderr captured."""
+        mock_client, mock_container = docker_client_mock
+        mock_container.wait.return_value = {"StatusCode": 137}
+        mock_container.logs.side_effect = [b"", b"Killed\n"]
+
+        sandbox = DockerSandbox()
+        result = sandbox.run_task(
+            ["snodo", "run", "memory-hungry task"],
+            Path("/tmp/workspace"),
+        )
+
+        assert result.exit_code == 137
+        assert "Killed" in result.stderr
+        assert result.sandbox_type == "docker"
+
+    def test_docker_timeout_raises_sandbox_error(self, docker_client_mock):
+        """container.wait() raises APIError (timeout) → SandboxError."""
+        mock_client, mock_container = docker_client_mock
+        import docker.errors
+        mock_container.wait.side_effect = docker.errors.APIError(
+            "Request timeout: container did not stop before timeout"
+        )
+
+        sandbox = DockerSandbox()
+        with pytest.raises(SandboxError, match="timeout"):
+            sandbox.run_task(
+                ["snodo", "run", "slow task"],
+                Path("/tmp/workspace"),
+            )
+
+    def test_volume_mounts_passed_to_container(self, docker_client_mock):
+        """SandboxConfig.mounts are merged into the volume mapping."""
+        mock_client, mock_container = docker_client_mock
+
+        sandbox = DockerSandbox()
+        config = SandboxConfig(
+            mounts={
+                "/host/data": {"bind": "/data", "mode": "ro"},
+            },
+        )
+        sandbox.run_task(
+            ["snodo", "run", "test"],
+            Path("/tmp/workspace"),
+            config=config,
+        )
+
+        call_kwargs = mock_client.containers.run.call_args[1]
+        volumes = call_kwargs["volumes"]
+        assert "/host/data" in volumes
+        assert volumes["/host/data"] == {"bind": "/data", "mode": "ro"}
+
+    def test_network_error_raises_sandbox_error(self, docker_client_mock):
+        """containers.run() raises DockerException → SandboxError, not SandboxResult."""
+        mock_client, mock_container = docker_client_mock
+        import docker.errors
+        mock_client.containers.run.side_effect = docker.errors.DockerException(
+            "Error while fetching server API version"
+        )
+
+        sandbox = DockerSandbox()
+        with pytest.raises(SandboxError, match="Container execution failed"):
+            sandbox.run_task(
+                ["snodo", "run", "test"],
+                Path("/tmp/workspace"),
+            )
+
 
 # === Factory Tests ===
 

@@ -95,7 +95,7 @@ def test_basic_adapter_init_defaults():
     """Test BasicCoderAdapter initialization with defaults."""
     adapter = BasicCoderAdapter()
     
-    assert adapter.model == "gpt-4"
+    assert adapter.model == "claude-sonnet-4-20250514"
     assert adapter.mcp_servers == []
     assert adapter.temperature == 0.7
     assert adapter.max_tokens == 16000
@@ -312,7 +312,7 @@ def test_create_coder_basic():
     coder = create_coder()
     
     assert isinstance(coder, BasicCoderAdapter)
-    assert coder.model == "gpt-4"
+    assert coder.model == "claude-sonnet-4-20250514"
 
 
 def test_create_coder_custom_model():

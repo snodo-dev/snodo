@@ -460,7 +460,9 @@ class TestEngineLoopIntegration:
         assert len(results) == 2
         assert results[0].validator_id == "security"
         assert results[1].validator_id == "architecture"
-        assert coder._completion_fn.call_count == 2
+        # claude-sonnet-4-20250514 supports response_format, so each validator
+        # gets a structured-output attempt (fails on mock) + a legacy call = 4
+        assert coder._completion_fn.call_count == 4
 
     def test_model_passed_from_coder(self):
         """LLMValidator should use the coder's model."""

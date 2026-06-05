@@ -11,6 +11,7 @@ from snodo.core.interfaces import Coder, MCPServer
 from snodo.coders.base import CoderAdapter, AdapterError as AdapterError, LLMCallError as LLMCallError, ParseError as ParseError
 from snodo.coders.litellm import LiteLLMAdapter
 from snodo.coders.mock import MockAdapter
+from snodo.infrastructure.config import DEFAULT_MODEL
 
 # Backward-compatible aliases
 BasicCoderAdapter = LiteLLMAdapter
@@ -44,7 +45,7 @@ def get_coder(name: str, **config: Any) -> CoderAdapter:
 
 
 def create_coder(
-    model: str = "gpt-4",
+    model: str = DEFAULT_MODEL,
     mcp_servers: Optional[List[MCPServer]] = None,
     mock: bool = False
 ) -> Coder:

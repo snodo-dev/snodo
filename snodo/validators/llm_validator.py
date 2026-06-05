@@ -27,6 +27,7 @@ from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.validators.context import ValidatorContext, ValidatorBase
 from snodo.validators.registry import _default_registry
+from snodo.infrastructure.config import DEFAULT_MODEL
 
 
 # Maximum tool-use turns before forcing a verdict.
@@ -61,7 +62,7 @@ class LLMValidator(ValidatorBase):
         self,
         validator_spec: Validator,
         completion_fn=None,
-        model: str = "gpt-4",
+        model: str = DEFAULT_MODEL,
     ):
         self.validator_spec = validator_spec
         self._completion_fn = completion_fn

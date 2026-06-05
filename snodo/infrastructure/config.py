@@ -20,6 +20,8 @@ _CODER_MAX_TOOL_TURNS_DEFAULT = 6
 _VALIDATOR_MAX_TOKENS_DEFAULT = 1500
 _VALIDATOR_MAX_TOOL_TURNS_DEFAULT = 6
 
+DEFAULT_MODEL = "claude-sonnet-4-20250514"
+
 
 class ConfigLoadError(Exception):
     """Raised when config.yml exists but cannot be loaded (malformed YAML or validation error)."""

@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError
+from snodo.infrastructure.config import DEFAULT_MODEL
 
 _logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class LiteLLMAdapter(CoderAdapter):
 
     def __init__(
         self,
-        model: str = "gpt-4",
+        model: str = DEFAULT_MODEL,
         mcp_servers: Optional[List[MCPServer]] = None,
         temperature: float = 0.7,
         max_tokens: int = 16000,
