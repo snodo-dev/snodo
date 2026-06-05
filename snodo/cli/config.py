@@ -14,9 +14,36 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
+from pydantic import BaseModel
 
 from snodo.infrastructure.paths import resolve_home
 from snodo.infrastructure.config import DEFAULT_MODEL
+
+
+class ProviderConfig(BaseModel):
+    """Provider configuration with API credential env var and /models endpoint."""
+    api_key_env: str = ""
+    models_endpoint: str = ""
+
+
+DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
+    "anthropic": ProviderConfig(
+        api_key_env="ANTHROPIC_API_KEY",
+        models_endpoint="https://api.anthropic.com/v1/models",
+    ),
+    "openai": ProviderConfig(
+        api_key_env="OPENAI_API_KEY",
+        models_endpoint="https://api.openai.com/v1/models",
+    ),
+    "openrouter": ProviderConfig(
+        api_key_env="OPENROUTER_API_KEY",
+        models_endpoint="https://openrouter.ai/api/v1/models",
+    ),
+    "google": ProviderConfig(
+        api_key_env="GEMINI_API_KEY",
+        models_endpoint="https://generativelanguage.googleapis.com/v1beta/models",
+    ),
+}
 
 
 # Provider-to-model prefix mapping for key resolution
@@ -40,6 +67,14 @@ def _set_api_key_env(mgr: "ConfigManager", model: str) -> None:
     """Set API key in environment if available from config."""
     api_key = mgr.get_key_for_model(model)
     if api_key:
+        provider_name = ConfigManager._provider_for_model(model)
+        if provider_name:
+            providers = mgr.get_providers()
+            pc = providers.get(provider_name)
+            if pc and pc.api_key_env:
+                os.environ[pc.api_key_env] = api_key
+                return
+        # Fallback to old env map for backward compat
         for prefix, env_var in _API_KEY_ENV_MAP.items():
             if model.startswith(prefix):
                 os.environ[env_var] = api_key
@@ -73,7 +108,7 @@ class ConfigManager:
             Configuration dict (empty dict if file doesn't exist)
         """
         if not self.config_path.exists():
-            return {"api_keys": {}, "model": DEFAULT_MODEL, "engine": {"max_subtask_depth": 3, "max_session_age_days": 30, "token_ttl_seconds": 600}}
+            return self._default_config()
 
         try:
             with open(self.config_path) as f:
@@ -86,6 +121,50 @@ class ConfigManager:
         data.setdefault("model", DEFAULT_MODEL)
         data.setdefault("engine", {"max_subtask_depth": 3, "max_session_age_days": 30, "token_ttl_seconds": 600})
         return data
+
+    def _default_config(self) -> dict:
+        return {
+            "api_keys": {},
+            "model": DEFAULT_MODEL,
+            "engine": {"max_subtask_depth": 3, "max_session_age_days": 30, "token_ttl_seconds": 600},
+        }
+
+    def get_providers(self) -> Dict[str, ProviderConfig]:
+        """Return configured providers, synthesized from api_keys for backward compat.
+
+        If config.yml has a ``providers`` section, it is loaded into ProviderConfig
+        models.  If it has the old ``api_keys`` dict and no ``providers``, providers
+        are synthesized from api_keys using the known provider catalog.  Config
+        always wins over defaults.
+        """
+        config = self.load()
+        providers_raw = config.get("providers")
+
+        if isinstance(providers_raw, dict):
+            result: Dict[str, ProviderConfig] = {}
+            for name, raw in providers_raw.items():
+                if isinstance(raw, dict):
+                    result[name] = ProviderConfig(**raw)
+            # Merge in defaults for providers not in config
+            for name, pc in DEFAULT_PROVIDER_CATALOG.items():
+                if name not in result:
+                    result[name] = pc
+            return result
+
+        # Backward compat: synthesize from api_keys
+        result: Dict[str, ProviderConfig] = {}
+        for name, pc in DEFAULT_PROVIDER_CATALOG.items():
+            result[name] = pc
+        return result
+
+    @staticmethod
+    def _provider_for_model(model: str) -> Optional[str]:
+        """Return the provider name for a given model string prefix."""
+        for provider, prefixes in PROVIDER_MODEL_PREFIXES.items():
+            for prefix in prefixes:
+                if model.startswith(prefix):
+                    return provider
+        return None
 
     def save(self, config: dict) -> None:
         """Save configuration to disk with secure permissions.
@@ -114,7 +193,12 @@ class ConfigManager:
             raise ConfigError("API key cannot be empty")
 
         config = self.load()
-        config["api_keys"][provider] = key
+        if "providers" in config:
+            providers = config.setdefault("providers", {})
+            provider_data = providers.setdefault(provider, {})
+            provider_data["api_key"] = key
+        else:
+            config["api_keys"][provider] = key
         self.save(config)
 
     def get_key(self, provider: str) -> Optional[str]:
@@ -127,6 +211,12 @@ class ConfigManager:
             API key string, or None if not configured
         """
         config = self.load()
+        providers_raw = config.get("providers")
+        if isinstance(providers_raw, dict):
+            entry = providers_raw.get(provider, {})
+            if isinstance(entry, dict):
+                return entry.get("api_key")
+            return None
         return config["api_keys"].get(provider)
 
     def remove_key(self, provider: str) -> bool:
@@ -139,6 +229,15 @@ class ConfigManager:
             True if key was removed, False if it didn't exist
         """
         config = self.load()
+        providers_raw = config.get("providers")
+        if isinstance(providers_raw, dict):
+            entry = providers_raw.get(provider, {})
+            if isinstance(entry, dict) and "api_key" in entry:
+                del entry["api_key"]
+                self.save(config)
+                return True
+            return False
+
         if provider in config["api_keys"]:
             del config["api_keys"][provider]
             self.save(config)
@@ -154,16 +253,10 @@ class ConfigManager:
         Returns:
             API key string, or None if no matching key found
         """
-        config = self.load()
-        keys = config.get("api_keys", {})
-
-        for provider, prefixes in PROVIDER_MODEL_PREFIXES.items():
-            for prefix in prefixes:
-                if model.startswith(prefix):
-                    return keys.get(provider)
-
-        # Fallback: check environment or return None
-        return None
+        provider = self._provider_for_model(model)
+        if provider is None:
+            return None
+        return self.get_key(provider)
 
     def set_model(self, model: str) -> None:
         """Set the default model.
@@ -228,21 +321,24 @@ class ConfigManager:
         Returns:
             Dict of provider -> success boolean
         """
-        config = self.load()
-        keys = config.get("api_keys", {})
         results = {}
+        providers = self.get_providers()
 
-        for provider, key in keys.items():
-            results[provider] = self._test_single_key(provider, key)
+        for name, pc in providers.items():
+            key = self.get_key(name)
+            if not key:
+                continue
+            results[name] = self._test_single_key(name, key, pc)
 
         return results
 
-    def _test_single_key(self, provider: str, key: str) -> bool:
+    def _test_single_key(self, provider: str, key: str, pc: Optional[ProviderConfig] = None) -> bool:
         """Test a single API key by making a minimal LLM call.
 
         Args:
             provider: Provider name
             key: API key to test
+            pc: ProviderConfig with api_key_env
 
         Returns:
             True if key is valid
@@ -261,14 +357,12 @@ class ConfigManager:
             if not model:
                 return False
 
-            # Set the API key in environment temporarily
-            env_key_map = {
-                "openai": "OPENAI_API_KEY",
-                "anthropic": "ANTHROPIC_API_KEY",
-                "google": "GEMINI_API_KEY",
-            }
-
-            env_var = env_key_map.get(provider)
+            if pc is not None and pc.api_key_env:
+                env_var = pc.api_key_env
+            else:
+                # Fallback for backward-compat direct calls
+                env_map = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "google": "GEMINI_API_KEY"}
+                env_var = env_map.get(provider, "")
             if not env_var:
                 return False
 
