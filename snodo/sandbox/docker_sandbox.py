@@ -141,21 +141,12 @@ class DockerSandbox(Sandbox):
             )
 
         except Exception as e:
-            stdout, stderr = "", str(e)
             if container:
                 try:
-                    stdout, stderr = self._collect_logs(container)
+                    self._collect_logs(container)
                 except Exception:
                     pass
-
-            return SandboxResult(
-                exit_code=1,
-                stdout=stdout,
-                stderr=stderr,
-                duration=time.time() - start_time,
-                sandbox_type="docker",
-                container_id=container.id[:12] if container else None,
-            )
+            raise SandboxError(f"Container execution failed: {e}") from e
 
         finally:
             self._remove_container(container)
