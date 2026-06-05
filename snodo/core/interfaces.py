@@ -13,6 +13,10 @@ class AuditError(Exception):
     """Audit log operation failed (e.g., I/O write failure)."""
 
 
+class ExecutionError(Exception):
+    """Task execution produced no usable artifacts."""
+
+
 class Coder(ABC):
     """Implements tasks. Can be LLM or human or traditional tooling."""
     

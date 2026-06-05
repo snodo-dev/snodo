@@ -27,7 +27,7 @@ from pathlib import Path
 from langgraph.graph import StateGraph, END
 
 from snodo.compiler.models import Protocol, Validator
-from snodo.core.interfaces import Task, ValidatorResult, TaskSpec
+from snodo.core.interfaces import Task, ValidatorResult, TaskSpec, ExecutionError
 from snodo.infrastructure.tokens import ValidationToken, TokenIssuer
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.engine.policy import PolicyEvaluator, PolicyAction, policy_decision_to_dict
@@ -392,15 +392,27 @@ class GraphBuilder:
         ):
             # Token verified — safe to use (never None here)
             assert loop_state.validation_token is not None
-            artifacts = self.executor_fn(
-                loop_state.task,
-                loop_state.validation_token,
-                self.coder,
-                self.workspace_mcp,
-                self.git_mcp,
-                memory_summary=loop_state.summary,
-                project_context=self._project_context_cache,
-            )
+            try:
+                artifacts = self.executor_fn(
+                    loop_state.task,
+                    loop_state.validation_token,
+                    self.coder,
+                    self.workspace_mcp,
+                    self.git_mcp,
+                    memory_summary=loop_state.summary,
+                    project_context=self._project_context_cache,
+                )
+            except ExecutionError as e:
+                loop_state.is_blocked = True
+                loop_state.halt_type = "execution_error"
+                loop_state.constraint_violations.append(str(e))
+                self._audit("execution_failed", {
+                    "op": "execution_failed",
+                    "task_ref": loop_state.task.id,
+                    "error": str(e),
+                })
+                return self._state_to_dict(loop_state)
+
             loop_state.artifacts.extend(artifacts)
 
             # Single-use: consume the token after successful dispatch
@@ -892,6 +904,9 @@ class GraphBuilder:
                     artifact_paths.append(file_op.path)
                     artifacts.append(file_op.path)
 
+                if not artifact_paths:
+                    raise ExecutionError("Coder produced no file operations")
+
                 # If git available, stage and commit
                 if git_mcp and artifact_paths:
                     try:
@@ -905,9 +920,14 @@ class GraphBuilder:
                 # No workspace, just return stub
                 artifacts.append(f"code_generated_for_{task.id}")
 
+        except ExecutionError:
+            raise
         except Exception as e:
             # Code generation failed
             artifacts.append(f"error: {str(e)}")
+
+        if any(a.startswith("error:") for a in artifacts):
+            raise ExecutionError(f"Coder execution failed: {artifacts}")
 
         return artifacts
     
