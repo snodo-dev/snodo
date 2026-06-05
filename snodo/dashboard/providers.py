@@ -271,8 +271,8 @@ class DashboardDataProvider:
                     "validator_id": v.validator_id,
                     "validator_type": v.validator_type,
                     "evaluation_phase": v.evaluation_phase,
-                    "severity_cap": v.severity_cap.value if v.severity_cap else None,
-                    "criteria": v.criteria,
+                    "severity_cap": v.severity_cap.value if v.severity_cap else None,  # type: ignore[dict-item]
+                    "criteria": v.criteria,  # type: ignore[dict-item]
                 })
         return result
 

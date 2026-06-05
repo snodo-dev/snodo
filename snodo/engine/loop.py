@@ -389,7 +389,8 @@ class GraphBuilder:
             loop_state.validation_token,
             expected_task_id=loop_state.task.id,
         ):
-            # Execute task (REAL EXECUTION)
+            # Token verified — safe to use (never None here)
+            assert loop_state.validation_token is not None
             artifacts = self.executor_fn(
                 loop_state.task,
                 loop_state.validation_token,

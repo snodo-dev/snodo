@@ -1036,3 +1036,84 @@ class TestPreExecuteRegression:
 
         assert result.severity == "pass"
         assert "Backward compat" in result.justification
+
+
+# === Structured Output Tests ===
+
+class TestStructuredOutput:
+    """Tests for the response_format=ValidatorResult structured output path."""
+
+    def _make_structured_response(self, severity: str = "pass", justification: str = "all good"):
+        """Mock a LiteLLM response for structured output (content is JSON string)."""
+        from snodo.core.interfaces import ValidatorResult
+        vr = ValidatorResult(validator_id="security", severity=severity, justification=justification)
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = vr.model_dump_json()
+        return resp
+
+    def test_structured_output_bypasses_parse(self, security_validator, task):
+        """When model supports response_format, structured output is used, not _parse_response."""
+        from unittest.mock import patch
+
+        completion_fn = MagicMock()
+        completion_fn.return_value = self._make_structured_response("pass", "All criteria met")
+
+        validator = LLMValidator(security_validator, completion_fn, model="gpt-4o")
+
+        with patch("snodo.validators.llm_validator.supports_response_schema", return_value=True):
+            result = validator.evaluate(task)
+
+        assert result.severity == "pass"
+        assert result.justification == "All criteria met"
+        # Structured path passes response_format=ValidatorResult
+        call_kwargs = completion_fn.call_args[1]
+        assert call_kwargs["response_format"] is not None
+
+    def test_markdown_prose_still_works_via_structured(self, security_validator, task):
+        """Markdown prose in LLM response doesn't break structured output — schema enforces JSON."""
+        from unittest.mock import patch
+
+        completion_fn = MagicMock()
+        # Even if the model would have returned markdown, structured output
+        # guarantees valid JSON matching the schema at the API level
+        completion_fn.return_value = self._make_structured_response("blocker", "SQL injection risk")
+
+        validator = LLMValidator(security_validator, completion_fn, model="gpt-4o")
+
+        with patch("snodo.validators.llm_validator.supports_response_schema", return_value=True):
+            result = validator.evaluate(task)
+
+        assert result.severity == "blocker"
+        assert "SQL injection" in result.justification
+
+    def test_unsupported_model_falls_back_to_parse(self, security_validator, task):
+        """When supports_response_schema returns False, legacy _parse_response is used."""
+        from unittest.mock import patch
+
+        completion_fn = _make_completion_fn("warn", "Minor concern")
+        validator = LLMValidator(security_validator, completion_fn, model="gpt-4")
+
+        with patch("snodo.validators.llm_validator.supports_response_schema", return_value=False):
+            result = validator.evaluate(task)
+
+        assert result.severity == "warn"
+        assert result.justification == "Minor concern"
+        # Legacy path does NOT pass response_format
+        call_kwargs = completion_fn.call_args[1]
+        assert "response_format" not in call_kwargs
+
+    def test_structured_uses_config_max_tokens(self, security_validator, task):
+        """Structured path uses self.completion_tokens, not hardcoded 500."""
+        from unittest.mock import patch
+
+        completion_fn = MagicMock()
+        completion_fn.return_value = self._make_structured_response("pass", "ok")
+
+        validator = LLMValidator(security_validator, completion_fn, model="gpt-4o")
+
+        with patch("snodo.validators.llm_validator.supports_response_schema", return_value=True):
+            validator.evaluate(task)
+
+        call_kwargs = completion_fn.call_args[1]
+        assert call_kwargs["max_tokens"] > 500

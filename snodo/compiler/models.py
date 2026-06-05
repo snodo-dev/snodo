@@ -27,19 +27,22 @@ class Severity(str, Enum):
     WARN = "warn"
     BLOCKER = "blocker"
 
-    def __lt__(self, other: "Severity") -> bool:
+    # Intentional LSP violation: we override str's comparison operators
+    # to provide semantic ordering (pass < warn < blocker) rather than
+    # lexicographic ordering. This is required for policy evaluation.
+    def __lt__(self, other: "Severity") -> bool:  # type: ignore[override]
         _order = {"pass": 0, "warn": 1, "blocker": 2}
         return _order[self.value] < _order[other.value]
 
-    def __le__(self, other: "Severity") -> bool:
+    def __le__(self, other: "Severity") -> bool:  # type: ignore[override]
         _order = {"pass": 0, "warn": 1, "blocker": 2}
         return _order[self.value] <= _order[other.value]
 
-    def __gt__(self, other: "Severity") -> bool:
+    def __gt__(self, other: "Severity") -> bool:  # type: ignore[override]
         _order = {"pass": 0, "warn": 1, "blocker": 2}
         return _order[self.value] > _order[other.value]
 
-    def __ge__(self, other: "Severity") -> bool:
+    def __ge__(self, other: "Severity") -> bool:  # type: ignore[override]
         _order = {"pass": 0, "warn": 1, "blocker": 2}
         return _order[self.value] >= _order[other.value]
 

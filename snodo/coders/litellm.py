@@ -156,28 +156,6 @@ Now generate the implementation:
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
             )
-            return response.choices[0].message.content
-        except Exception as e:
-            raise LLMCallError(f"LLM call failed: {e}")
-
-    def _call_llm(self, prompt: str) -> str:
-        if self._completion_fn is None:
-            raise LLMCallError(
-                "litellm not available. Install with: pip install litellm"
-            )
-
-        # When workspace_mcp is available, use bounded tool-use loop
-        if self.workspace_mcp is not None:
-            return self._call_llm_with_tools(prompt)
-
-        # Fallback: single raw completion (backward-compatible)
-        try:
-            response = self._completion_fn(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
             self._check_truncation(response)
             return response.choices[0].message.content
         except (LLMCallError, ParseError):

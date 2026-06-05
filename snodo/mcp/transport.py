@@ -305,7 +305,7 @@ def _make_tool_handler(
                 return result
             return json.dumps(result, default=str)
     else:
-        def handler(**kwargs) -> str:
+        def handler(**kwargs) -> str:  # type: ignore[misc]
             result = protocol_server.call_tool(tool_name, kwargs)
             if isinstance(result, str):
                 return result

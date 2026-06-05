@@ -374,7 +374,7 @@ class TestLoopPhases:
         def tracking_validator(task, validators, shell_mcp, current_mode="", **kwargs):
             call_log.append([v.validator_id for v in validators])
             return [
-                ValidatorResult(v.validator_id, "pass", "stub")
+                ValidatorResult(validator_id=v.validator_id, severity="pass", justification="stub")
                 for v in validators
             ]
 
@@ -410,7 +410,7 @@ class TestLoopPhases:
         def tracking_validator(task, validators, shell_mcp, current_mode="", **kwargs):
             call_log.append([v.validator_id for v in validators])
             return [
-                ValidatorResult(v.validator_id, "pass", "stub")
+                ValidatorResult(validator_id=v.validator_id, severity="pass", justification="stub")
                 for v in validators
             ]
 
@@ -451,7 +451,7 @@ class TestLoopPhases:
         """post_validate with blocker result blocks execution."""
         def blocker_validator(task, validators, shell_mcp, current_mode="", **kwargs):
             return [
-                ValidatorResult(v.validator_id, "blocker", "quality failed")
+                ValidatorResult(validator_id=v.validator_id, severity="blocker", justification="quality failed")
                 for v in validators
             ]
 

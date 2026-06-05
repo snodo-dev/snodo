@@ -21,6 +21,8 @@ from unittest.mock import Mock
 import jwt
 import pytest
 
+from tests.conftest import TEST_SECRET
+
 from snodo.core.interfaces import ValidatorResult
 from snodo.infrastructure.tokens import (
     TokenIssuer,
@@ -42,12 +44,12 @@ from snodo.infrastructure.tokens import (
 
 @pytest.fixture
 def issuer():
-    return TokenIssuer(secret="test_secret_key_32_bytes_long!", ttl_seconds=3600)
+    return TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600)
 
 
 @pytest.fixture
 def short_ttl_issuer():
-    return TokenIssuer(secret="test_secret_key_32_bytes_long!", ttl_seconds=1)
+    return TokenIssuer(secret=TEST_SECRET, ttl_seconds=1)
 
 
 @pytest.fixture
@@ -104,9 +106,9 @@ def test_issued_jwt_has_standard_claims(issuer, no_blockers):
 
 
 def test_issuer_respects_configured_ttl(no_blockers):
-    issuer = TokenIssuer(secret="test_secret", ttl_seconds=60)
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=60)
     token = issuer.issue_token("t1", no_blockers)
-    payload = jwt.decode(token.jwt, "test_secret", algorithms=["HS256"])
+    payload = jwt.decode(token.jwt, TEST_SECRET, algorithms=["HS256"])
     lifetime = payload["exp"] - payload["iat"]
     assert lifetime == 60
 
@@ -143,7 +145,7 @@ def test_verify_token_wrong_secret_rejects(no_blockers):
 
 
 def test_verify_token_expired(no_blockers):
-    issuer = TokenIssuer(secret="test_secret", ttl_seconds=-1)
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=-1)
     token = issuer.issue_token("task_1", no_blockers)
     # The token has an exp in the past -> should fail
     assert issuer.verify_token(token) is False
@@ -220,7 +222,7 @@ def test_convenience_decode_token(no_blockers):
 
 def test_token_issued_logs_audit_event(no_blockers):
     audit = Mock()
-    issuer = TokenIssuer(secret="test_secret", ttl_seconds=3600, audit_log=audit)
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, audit_log=audit)
     issuer.issue_token("task_1", no_blockers)
     issued_calls = [
         c for c in audit.append_event.call_args_list
@@ -231,7 +233,7 @@ def test_token_issued_logs_audit_event(no_blockers):
 
 def test_token_blocked_logs_audit_event(with_blocker):
     audit = Mock()
-    issuer = TokenIssuer(secret="test_secret", ttl_seconds=3600, audit_log=audit)
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, audit_log=audit)
     issuer.issue_token("task_1", with_blocker)
     blocked_calls = [
         c for c in audit.append_event.call_args_list
@@ -242,7 +244,7 @@ def test_token_blocked_logs_audit_event(with_blocker):
 
 def test_token_expired_logs_audit_event(no_blockers):
     audit = Mock()
-    issuer = TokenIssuer(secret="test_secret", ttl_seconds=-1, audit_log=audit)
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=-1, audit_log=audit)
     token = issuer.issue_token("task_1", no_blockers)
     issuer.verify_token(token)
     expired_calls = [
@@ -254,7 +256,7 @@ def test_token_expired_logs_audit_event(no_blockers):
 
 def test_token_invalid_logs_audit_event_on_tamper(issuer, no_blockers):
     audit = Mock()
-    issuer_with_audit = TokenIssuer(secret="test_secret", ttl_seconds=3600, audit_log=audit)
+    issuer_with_audit = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, audit_log=audit)
     token = issuer_with_audit.issue_token("task_1", no_blockers)
     tampered = ValidationToken(jwt=token.jwt + "tampered")
     issuer_with_audit.verify_token(tampered)
@@ -267,7 +269,7 @@ def test_token_invalid_logs_audit_event_on_tamper(issuer, no_blockers):
 
 def test_token_task_mismatch_logs_audit_event(issuer, no_blockers):
     audit = Mock()
-    issuer_with_audit = TokenIssuer(secret="test_secret", ttl_seconds=3600, audit_log=audit)
+    issuer_with_audit = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, audit_log=audit)
     token = issuer_with_audit.issue_token("task_1", no_blockers)
     issuer_with_audit.verify_token(token, expected_task_id="wrong_task")
     mismatch_calls = [
@@ -282,9 +284,9 @@ def test_token_task_mismatch_logs_audit_event(issuer, no_blockers):
 # ---------------------------------------------------------------------------
 
 def test_explicit_secret_works(no_blockers):
-    issuer = TokenIssuer(secret="explicit_32_byte_long_key_okay!", ttl_seconds=3600)
+    issuer = TokenIssuer(secret="explicit_32_byte_long_key_okay!!", ttl_seconds=3600)
     token = issuer.issue_token("t1", no_blockers)
-    payload = jwt.decode(token.jwt, "explicit_32_byte_long_key_okay!", algorithms=["HS256"])
+    payload = jwt.decode(token.jwt, "explicit_32_byte_long_key_okay!!", algorithms=["HS256"])
     assert payload["task_id"] == "t1"
 
 

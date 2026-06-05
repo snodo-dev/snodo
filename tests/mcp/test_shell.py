@@ -57,9 +57,10 @@ def test_shell_init_file_as_root_raises():
 
 def test_validate_command_pytest(temp_project):
     """Test validating pytest command."""
+    import sys
     shell_mcp, _ = temp_project
     command = shell_mcp._validate_command("pytest")
-    assert command == ["pytest"]
+    assert command == [sys.executable, "-m", "pytest"]
 
 
 def test_validate_command_npm(temp_project):

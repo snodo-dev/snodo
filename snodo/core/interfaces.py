@@ -4,8 +4,10 @@ All other modules implement against these contracts.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from dataclasses import dataclass, field
+
+from pydantic import BaseModel
 
 
 class Coder(ABC):
@@ -33,11 +35,10 @@ class Task:
     depth: int = 0
 
 
-@dataclass
-class ValidatorResult:
+class ValidatorResult(BaseModel):
     """Output from a single validator."""
     validator_id: str
-    severity: str  # "pass" | "warn" | "blocker"
+    severity: Literal["pass", "warn", "blocker", "error"]
     justification: str
 
 
