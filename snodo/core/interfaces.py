@@ -10,6 +10,10 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel
 
 
+class AuditError(Exception):
+    """Audit log operation failed (e.g., I/O write failure)."""
+
+
 class Coder(ABC):
     """Implements tasks. Can be LLM or human or traditional tooling."""
     
