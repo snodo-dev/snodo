@@ -18,6 +18,7 @@ from snodo.infrastructure.paths import resolve_home
 
 class ProviderConfig(BaseModel):
     """Provider configuration with API credential env var and /models endpoint."""
+    api_key: str = ""
     api_key_env: str = ""
     models_endpoint: str = ""
 

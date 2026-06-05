@@ -35,10 +35,36 @@ class ModelInfo(BaseModel):
     context_window: int = 0
 
 
-def _resolve_api_key(pc: ProviderConfig) -> Optional[str]:
-    """Resolve the API key for a provider from environment or config."""
+def _resolve_api_key(provider_name: str, pc: ProviderConfig) -> Optional[str]:
+    """Resolve the API key: config value first, then env fallback.
+
+    Args:
+        provider_name: Provider name for logging (e.g. "anthropic").
+        pc: ProviderConfig with optional api_key and api_key_env.
+
+    Returns:
+        API key string, or None if neither source has one.
+    """
+    # 1. Config-stored key (from ~/.snodo/config.yml providers.<name>.api_key)
+    if pc.api_key:
+        return pc.api_key
+
+    # 2. Environment variable fallback
     if pc.api_key_env:
-        return os.environ.get(pc.api_key_env)
+        env_val = os.environ.get(pc.api_key_env)
+        if env_val:
+            return env_val
+
+    # 3. Neither source has a key — log clearly
+    sources = []
+    if pc.api_key_env:
+        sources.append(f"env:{pc.api_key_env}")
+    sources.append("config api_key")
+    _logger.warning(
+        "No API key for %s (tried: %s)",
+        provider_name,
+        ", ".join(reversed(sources)),
+    )
     return None
 
 
@@ -50,9 +76,8 @@ def _discover_anthropic(pc: ProviderConfig) -> List[ModelInfo]:
     """GET /models with X-Api-Key + anthropic-version headers."""
     import httpx
 
-    api_key = _resolve_api_key(pc)
+    api_key = _resolve_api_key("anthropic", pc)
     if not api_key:
-        _logger.warning("No API key for anthropic, skipping discovery")
         return []
 
     try:
@@ -87,9 +112,8 @@ def _discover_openrouter(pc: ProviderConfig) -> List[ModelInfo]:
     """GET /models with Bearer auth. data[].id — extra fields ignored."""
     import httpx
 
-    api_key = _resolve_api_key(pc)
+    api_key = _resolve_api_key("openrouter", pc)
     if not api_key:
-        _logger.warning("No API key for openrouter, skipping discovery")
         return []
 
     try:
@@ -120,9 +144,8 @@ def _discover_google(pc: ProviderConfig) -> List[ModelInfo]:
     """GET /models?key=KEY. models[].name camelCase, strip "models/" prefix."""
     import httpx
 
-    api_key = _resolve_api_key(pc)
+    api_key = _resolve_api_key("google", pc)
     if not api_key:
-        _logger.warning("No API key for google, skipping discovery")
         return []
 
     try:
