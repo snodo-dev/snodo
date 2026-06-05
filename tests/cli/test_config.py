@@ -42,24 +42,24 @@ def mgr(config_dir):
 class TestConfigLoadSave:
     def test_load_returns_defaults_when_no_file(self, mgr):
         config = mgr.load()
-        assert config["api_keys"] == {}
+        assert config.get("providers", {}) == {}
         assert config["model"] == DEFAULT_MODEL
 
     def test_save_and_load_round_trip(self, mgr):
-        config = {"api_keys": {"openai": "sk-test123"}, "model": "gpt-4"}
+        config = {"providers": {"openai": {"api_key": "sk-test123"}}, "model": "gpt-4"}
         mgr.save(config)
         loaded = mgr.load()
-        assert loaded["api_keys"]["openai"] == "sk-test123"
+        assert loaded.get("providers", {}).get("openai", {}).get("api_key") == "sk-test123"
         assert loaded["model"] == "gpt-4"
 
     def test_save_creates_directory(self, config_dir):
         nested = config_dir / "nested" / "deep"
         mgr = ConfigManager(config_dir=nested)
-        mgr.save({"api_keys": {}, "model": "gpt-4"})
+        mgr.save({"model": "gpt-4"})
         assert mgr.config_path.exists()
 
     def test_save_sets_600_permissions(self, mgr):
-        mgr.save({"api_keys": {}, "model": "gpt-4"})
+        mgr.save({"model": "gpt-4"})
         mode = os.stat(mgr.config_path).st_mode
         assert mode & 0o777 == 0o600
 
@@ -73,14 +73,14 @@ class TestConfigLoadSave:
         mgr.config_dir.mkdir(parents=True, exist_ok=True)
         mgr.config_path.write_text("")
         config = mgr.load()
-        assert config["api_keys"] == {}
+        assert config.get("providers", {}) == {}
         assert config["model"] == DEFAULT_MODEL
 
     def test_load_partial_config_fills_defaults(self, mgr):
         mgr.config_dir.mkdir(parents=True, exist_ok=True)
         mgr.config_path.write_text("model: gpt-4\n")
         config = mgr.load()
-        assert config["api_keys"] == {}
+        assert config.get("providers", {}) == {}
         assert config["model"] == "gpt-4"
 
 
@@ -461,8 +461,10 @@ class TestEdgeCases:
         mgr.set_model("gpt-4")
 
         config = mgr.load()
-        assert len(config["api_keys"]) == 2
-        assert "anthropic" not in config["api_keys"]
+        providers = config.get("providers", {})
+        configured = sum(1 for p in providers.values() if isinstance(p, dict) and p.get("api_key"))
+        assert configured == 2
+        assert mgr.get_key("anthropic") is None
         assert config["model"] == "gpt-4"
 
 
@@ -497,7 +499,7 @@ class TestEngineConfig:
 
     def test_existing_config_without_engine_loads_defaults(self, mgr):
         """Legacy config without engine section gets defaults."""
-        mgr.save({"api_keys": {}, "model": DEFAULT_MODEL})  # no engine key
+        mgr.save({"model": DEFAULT_MODEL})  # no engine key
         config = mgr.load()
         assert config["engine"]["max_subtask_depth"] == 3
 
@@ -641,7 +643,7 @@ class TestProviders:
     def test_new_providers_section_parses(self, mgr):
         """New providers section → ProviderConfig models returned."""
         config = {
-            "api_keys": {},
+            
             "model": "gpt-4o",
             "providers": {
                 "openai": {
@@ -665,38 +667,12 @@ class TestProviders:
         assert providers["openai"].models_endpoint == "https://api.openai.com/v1/models"
         assert providers["anthropic"].api_key_env == "ANTHROPIC_API_KEY"
 
-    def test_old_api_keys_synthesizes_providers(self, mgr):
-        """Old api_keys-only config → providers synthesized from defaults."""
-        config = {
-            "api_keys": {"openai": "sk-old", "anthropic": "sk-ant-old"},
-            "model": "gpt-4",
-        }
-        mgr.save(config)
-        providers = mgr.get_providers()
 
-        # All four default providers should be present
-        assert "openai" in providers
-        assert "anthropic" in providers
-        assert "google" in providers
-        assert "openrouter" in providers
-        # Default catalog should have correct endpoints
-        assert providers["openai"].api_key_env == "OPENAI_API_KEY"
-        assert providers["openai"].models_endpoint == "https://api.openai.com/v1/models"
-
-    def test_old_schema_get_key_works(self, mgr):
-        """Under old api_keys schema, get_key still resolves."""
-        config = {
-            "api_keys": {"openai": "sk-old-schema"},
-            "model": "gpt-4",
-        }
-        mgr.save(config)
-        assert mgr.get_key("openai") == "sk-old-schema"
-        assert mgr.get_key("anthropic") is None
 
     def test_new_schema_get_key_works(self, mgr):
         """Under new providers schema, get_key resolves from providers."""
         config = {
-            "api_keys": {},
+            
             "model": "gpt-4o",
             "providers": {
                 "openai": {"api_key": "sk-new-schema"},
@@ -707,20 +683,11 @@ class TestProviders:
         assert mgr.get_key("openai") == "sk-new-schema"
         assert mgr.get_key("anthropic") is None
 
-    def test_old_schema_get_key_for_model(self, mgr):
-        """get_key_for_model resolves under old api_keys schema."""
-        config = {
-            "api_keys": {"openai": "sk-gpt"},
-            "model": "gpt-4",
-        }
-        mgr.save(config)
-        assert mgr.get_key_for_model("gpt-4o") == "sk-gpt"
-        assert mgr.get_key_for_model("claude-sonnet-4-20250514") is None
 
     def test_new_schema_get_key_for_model(self, mgr):
         """get_key_for_model resolves under new providers schema."""
         config = {
-            "api_keys": {},
+            
             "model": "gpt-4o",
             "providers": {
                 "openai": {"api_key": "sk-new"},
@@ -734,7 +701,7 @@ class TestProviders:
     def test_new_schema_add_key_routes_to_providers(self, mgr):
         """add_key writes to providers section when present."""
         config = {
-            "api_keys": {},
+            
             "model": "gpt-4o",
             "providers": {"anthropic": {}},
         }
@@ -745,17 +712,11 @@ class TestProviders:
         providers = reloaded.get("providers", {})
         assert providers.get("anthropic", {}).get("api_key") == "sk-ant-added"
 
-    def test_old_schema_add_key_routes_to_api_keys(self, mgr):
-        """add_key writes to api_keys when no providers section."""
-        mgr.add_key("openai", "sk-op")
-
-        reloaded = mgr.load()
-        assert reloaded["api_keys"]["openai"] == "sk-op"
 
     def test_new_schema_remove_key(self, mgr):
         """remove_key removes from providers section."""
         config = {
-            "api_keys": {},
+            
             "model": "gpt-4o",
             "providers": {"openai": {"api_key": "sk-rm"}},
         }
@@ -766,11 +727,6 @@ class TestProviders:
         providers = reloaded.get("providers", {})
         assert "api_key" not in providers.get("openai", {})
 
-    def test_old_schema_remove_key(self, mgr):
-        """remove_key works under old api_keys schema."""
-        mgr.add_key("openai", "sk-rm-old")
-        assert mgr.remove_key("openai") is True
-        assert mgr.get_key("openai") is None
 
     def test_default_catalog_has_four_providers(self):
         """DEFAULT_PROVIDER_CATALOG has anthropic, openai, openrouter, google."""
@@ -791,7 +747,7 @@ class TestProviders:
     def test_config_merges_default_providers(self, mgr):
         """Providers section with only openai still gets anthropic/google/openrouter defaults."""
         config = {
-            "api_keys": {},
+            
             "model": "gpt-4o",
             "providers": {
                 "openai": {"api_key_env": "CUSTOM_OPENAI_KEY"},
@@ -806,3 +762,18 @@ class TestProviders:
         assert providers["anthropic"].models_endpoint == "https://api.anthropic.com/v1/models"
         assert "google" in providers
         assert "openrouter" in providers
+
+    def test_legacy_config_raises_migration_error(self, mgr):
+        """Legacy api_keys-only config raises ConfigError with migration message."""
+        config = {
+            "api_keys": {"openai": "sk-old", "anthropic": "sk-ant-old"},
+            "model": "gpt-4",
+        }
+        mgr.save(config)
+        with pytest.raises(ConfigError, match="Legacy api_keys config detected"):
+            mgr.load()
+
+    def test_no_config_file_uses_defaults(self, mgr):
+        """Missing config file does not raise — returns defaults."""
+        config = mgr.load()
+        assert config["model"] == DEFAULT_MODEL

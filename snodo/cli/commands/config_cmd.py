@@ -32,17 +32,23 @@ def config_command(args) -> int:
 def _config_show(mgr: ConfigManager) -> int:
     """Show current configuration."""
     config = mgr.load()
-    keys = config.get("api_keys", {})
     model = config.get("model", DEFAULT_MODEL)
+    providers = mgr.get_providers()
 
     print(f"Config: {mgr.config_path}")
     print(f"Model:  {model}")
     print()
 
-    if keys:
+    configured = []
+    for name, pc in providers.items():
+        key = mgr.get_key(name)
+        if key:
+            configured.append((name, key))
+
+    if configured:
         print("API Keys:")
-        for provider, key in keys.items():
-            print(f"  {provider}: {ConfigManager.mask_key(key)}")
+        for name, key in configured:
+            print(f"  {name}: {ConfigManager.mask_key(key)}")
     else:
         print("No API keys configured.")
         print("  Add one: snodo config add <provider> <key>")
@@ -73,9 +79,9 @@ def _config_remove(mgr: ConfigManager, provider: str) -> int:
 
 def _config_test(mgr: ConfigManager) -> int:
     """Test all configured API keys."""
-    config = mgr.load()
-    keys = config.get("api_keys", {})
-    if not keys:
+    providers = mgr.get_providers()
+    any_key = any(mgr.get_key(name) for name in providers)
+    if not any_key:
         print("No API keys configured. Add one first:")
         print("  snodo config add <provider> <key>")
         return 1
