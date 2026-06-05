@@ -727,8 +727,17 @@ class GraphBuilder:
 
         # Build shared context once per validate pass
         mode_obj = self.protocol.get_mode(current_mode)
-        from snodo.infrastructure.config import load_llm_config
-        _vcfg = load_llm_config().validator
+        from snodo.infrastructure.config import load_llm_config, ConfigLoadError
+        try:
+            _vcfg = load_llm_config().validator
+        except ConfigLoadError as e:
+            return [
+                ValidatorResult(
+                    validator_id="config",
+                    severity="blocker",
+                    justification=f"Config error: {e}",
+                )
+            ]
         context = ValidatorContext(
             task=task,
             current_mode=mode_obj,
