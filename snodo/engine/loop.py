@@ -29,6 +29,7 @@ from langgraph.graph import StateGraph, END
 from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult, TaskSpec
 from snodo.infrastructure.tokens import ValidationToken, TokenIssuer
+from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.engine.policy import PolicyEvaluator, PolicyAction, policy_decision_to_dict
 from snodo.engine.constraints import ConstraintEngine
 from snodo.engine.validators import ValidatorRunner
@@ -656,7 +657,7 @@ class GraphBuilder:
             mode_transitions=dict(mode_obj.transitions) if mode_obj else {},
             mode_validator_refs=list(mode_obj.validators) if mode_obj else [],
             completion_fn=self._get_completion_fn(),
-            model=getattr(self.coder, "model", "gpt-4"),
+            model=getattr(self.coder, "model", DEFAULT_MODEL),
             working_directory=str(Path.cwd()) if not self.workspace_mcp
             else str(getattr(self.workspace_mcp, "project_root", Path.cwd())),
             workspace_mcp=self.workspace_mcp,

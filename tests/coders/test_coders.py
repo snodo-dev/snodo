@@ -100,7 +100,7 @@ def test_litellm_adapter_defaults():
     """LiteLLMAdapter has correct defaults."""
     from snodo.coders import LiteLLMAdapter
     adapter = LiteLLMAdapter()
-    assert adapter.model == "gpt-4"
+    assert adapter.model == "claude-sonnet-4-20250514"
     assert adapter.mcp_servers == []
     assert adapter.temperature == 0.7
     assert adapter.max_tokens == 16000

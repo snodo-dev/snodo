@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 from snodo.infrastructure.paths import resolve_home
+from snodo.infrastructure.config import DEFAULT_MODEL
 
 
 # Provider-to-model prefix mapping for key resolution
@@ -24,8 +25,6 @@ PROVIDER_MODEL_PREFIXES = {
     "anthropic": ["claude-"],
     "google": ["gemini/", "gemini-"],
 }
-
-DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
 _API_KEY_ENV_MAP = {
     "claude-": "ANTHROPIC_API_KEY",
@@ -150,7 +149,7 @@ class ConfigManager:
         """Resolve the API key needed for a given model.
 
         Args:
-            model: Model identifier (e.g., "claude-sonnet-4-20250514", "gpt-4")
+            model: Model identifier (e.g., "claude-sonnet-4-20250514", "gpt-4o")
 
         Returns:
             API key string, or None if no matching key found
