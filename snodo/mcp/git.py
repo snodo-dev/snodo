@@ -229,7 +229,7 @@ class GitMCP:
             Git log output as string
         """
         try:
-            return self.repo.git.log(f"--oneline", f"-{n}")
+            return self.repo.git.log("--oneline", f"-{n}")
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
 

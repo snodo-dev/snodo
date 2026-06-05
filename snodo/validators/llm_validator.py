@@ -21,6 +21,8 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Set
 
+from litellm import supports_response_schema
+
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.validators.context import ValidatorContext, ValidatorBase
@@ -64,6 +66,7 @@ class LLMValidator(ValidatorBase):
         self.validator_spec = validator_spec
         self._completion_fn = completion_fn
         self.model = model
+        self.completion_tokens = _DEFAULT_MAX_TOKENS
 
     @classmethod
     def registered_type(cls) -> str:
@@ -84,6 +87,9 @@ class LLMValidator(ValidatorBase):
                 self._completion_fn = context.completion_fn
             if context.model:
                 self.model = context.model
+            ctx_tokens = getattr(context, "max_tokens", None)
+            if ctx_tokens is not None:
+                self.completion_tokens = ctx_tokens
 
         # Capability gate: tool-loop runs iff validator declares tools
         # AND MCPs + completion_fn are present. Empty/absent tools =>
@@ -97,9 +103,17 @@ class LLMValidator(ValidatorBase):
         ):
             return self._evaluate_with_tools(context)
 
-        # Pre-execute or fallback: single-completion path (unchanged)
+        # Pre-execute or fallback: single-completion path
         prompt = self._build_prompt(context)
 
+        # Try structured output when the model supports it
+        if self._completion_fn is not None and supports_response_schema(self.model):
+            try:
+                return self._call_llm_structured(prompt)
+            except Exception:
+                pass  # fall through to legacy parse
+
+        # Legacy: free-text completion + hand-rolled parse
         try:
             response_text = self._call_llm(prompt)
             return self._parse_response(response_text)
@@ -524,6 +538,23 @@ class LLMValidator(ValidatorBase):
             max_tokens=500,
         )
         return response.choices[0].message.content
+
+    def _call_llm_structured(self, prompt: str) -> ValidatorResult:
+        """Call the LLM with response_format=ValidatorResult for structured output.
+
+        LiteLLM enforces JSON schema at the API level.  The response content
+        is guaranteed to be valid JSON matching the ValidatorResult schema.
+        Zero free-text parsing.
+        """
+        response = self._completion_fn(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            max_tokens=self.completion_tokens,
+            response_format=ValidatorResult,
+        )
+        content = response.choices[0].message.content
+        return ValidatorResult.model_validate_json(content)
 
     def _parse_response(self, response_text: str) -> ValidatorResult:
         """Parse LLM response into a ValidatorResult.

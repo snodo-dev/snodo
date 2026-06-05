@@ -7,6 +7,8 @@ Updated to match new MCP-integrated signatures.
 
 import pytest
 
+from tests.conftest import TEST_SECRET
+
 from snodo.compiler.models import (
     Protocol, Mode, Validator, Severity, DisagreementPolicy
 )
@@ -28,7 +30,7 @@ from pathlib import Path
 def _make_test_token(task_id, issuer=None):
     """Create a valid JWT-backed ValidationToken for testing."""
     if issuer is None:
-        issuer = TokenIssuer(secret="test_secret", ttl_seconds=3600)
+        issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600)
     return issuer.issue_token(
         task_id,
         [ValidatorResult(validator_id="security", severity="pass", justification="OK")],
@@ -321,7 +323,7 @@ def test_execute_node(sample_protocol, sample_task, temp_workspace):
     workspace_mcp = WorkspaceMCP(temp_workspace)
     git_mcp = GitMCP(temp_workspace)
     coder = MockCoderAdapter()
-    issuer = TokenIssuer(secret="test_exec_key_32bytes_ok!", ttl_seconds=3600)
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600)
     
     builder = GraphBuilder(
         sample_protocol,
@@ -463,7 +465,7 @@ def test_complete_node(sample_protocol, sample_task, temp_workspace):
 
 def test_route_after_validation_to_execute(sample_protocol, temp_workspace):
     """Test routing to execute when token issued."""
-    issuer = TokenIssuer(secret="test_route_key_32bytes_ok!!", ttl_seconds=3600)
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600)
     builder = GraphBuilder(sample_protocol, token_issuer=issuer)
     
     state = {

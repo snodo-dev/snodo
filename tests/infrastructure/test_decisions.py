@@ -38,7 +38,8 @@ def _make_result(validator_id: str, severity: str, justification: str = "") -> V
 
 
 def _make_issuer(audit_log=None) -> DecisionRecordIssuer:
-    return DecisionRecordIssuer(secret="test-secret-key", audit_log=audit_log)
+    from tests.conftest import TEST_SECRET
+    return DecisionRecordIssuer(secret=TEST_SECRET, audit_log=audit_log)
 
 
 # === Issue / Verify Tests ===
@@ -392,8 +393,9 @@ class TestINV3Regression:
         from snodo.engine.policy import PolicyEvaluator, PolicyAction
         from snodo.compiler.models import DisagreementPolicy
         from snodo.infrastructure.decisions import DecisionRecordIssuer
+        from tests.conftest import TEST_SECRET
 
-        issuer = DecisionRecordIssuer(secret="test-secret")
+        issuer = DecisionRecordIssuer(secret=TEST_SECRET)
         evaluator = PolicyEvaluator(decision_issuer=issuer)
         policy = DisagreementPolicy.UNANIMOUS
 

@@ -190,7 +190,7 @@ class TestWF1Enforcement:
 
     def test_invalid_token_rejected(self, server):
         # Create a token with a different secret so verification fails
-        rogue = TokenIssuer(secret="rogue_secret_key_32bytes_xx!", ttl_seconds=3600)
+        rogue = TokenIssuer(secret="rogue_secret_key_32bytes_longer!", ttl_seconds=3600)
         rogue_token = rogue.issue_token(
             "t1",
             [ValidatorResult(validator_id="sec", severity="pass", justification="ok")],

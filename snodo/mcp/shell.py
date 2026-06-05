@@ -8,20 +8,22 @@ Converts test results to ValidatorResult format for protocol integration.
 
 import subprocess
 import re
+import sys
 from pathlib import Path
 from typing import List, Optional
-from dataclasses import dataclass
 
 # Import ValidatorResult from core interfaces
 try:
     from snodo.core.interfaces import ValidatorResult
 except ImportError:
     # Fallback for testing without full package
-    @dataclass
-    class ValidatorResult:  # type: ignore[no-redef]
+    from typing import Literal
+    from pydantic import BaseModel
+
+    class ValidatorResult(BaseModel):  # type: ignore[no-redef]
         """Output from a single validator."""
         validator_id: str
-        severity: str  # "pass" | "warn" | "blocker"
+        severity: Literal["pass", "warn", "blocker", "error"]
         justification: str
 
 
@@ -44,7 +46,7 @@ class ShellMCP:
     
     # Whitelist of allowed test commands
     ALLOWED_COMMANDS = {
-        "pytest": ["pytest"],
+        "pytest": [sys.executable, "-m", "pytest"],
         "npm": ["npm", "test"],
         "cargo": ["cargo", "test"],
     }
