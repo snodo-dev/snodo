@@ -20,6 +20,7 @@ class ValidatorRunner:
         workspace_mcp: Any,
         git_mcp: Any,
         session_manager: Any,
+        validator_config: Any = None,
     ):
         self.protocol = protocol
         self.coder = coder
@@ -27,6 +28,7 @@ class ValidatorRunner:
         self.workspace_mcp = workspace_mcp
         self.git_mcp = git_mcp
         self._session_manager = session_manager
+        self._validator_config = validator_config
 
     def resolve_validators(
         self, mode_id: str, phase: str = "pre_execute"
@@ -52,19 +54,21 @@ class ValidatorRunner:
         phase: str = "",
     ) -> List[ValidatorResult]:
         from snodo.validators.registry import _default_registry as reg
-        from snodo.infrastructure.config import load_llm_config, ConfigLoadError
 
         mode_obj = self.protocol.get_mode(current_mode)
-        try:
-            _vcfg = load_llm_config().validator
-        except ConfigLoadError as e:
-            return [
-                ValidatorResult(
-                    validator_id="config",
-                    severity="blocker",
-                    justification=f"Config error: {e}",
-                )
-            ]
+        _vcfg = self._validator_config
+        if _vcfg is None:
+            from snodo.infrastructure.config import load_llm_config, ConfigLoadError
+            try:
+                _vcfg = load_llm_config().validator
+            except ConfigLoadError as e:
+                return [
+                    ValidatorResult(
+                        validator_id="config",
+                        severity="blocker",
+                        justification=f"Config error: {e}",
+                    )
+                ]
 
         context = ValidatorContext(
             task=task,
