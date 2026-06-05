@@ -3,14 +3,14 @@
 FILE: tests/validators/test_protocol_adherence.py
 """
 
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 import pytest
 
 from snodo.compiler.models import (
-    Protocol, Mode, Validator, DisagreementPolicy
+    Protocol, Mode, Validator
 )
-from snodo.core.interfaces import Task
+from snodo.core.interfaces import Task, ValidatorResult
 from snodo.validators.context import ValidatorContext
 from snodo.validators.protocol_adherence import ProtocolAdherenceValidator
 
@@ -252,3 +252,118 @@ def test_single_mode_no_sibling_profiles(task, validator_spec):
     val = ProtocolAdherenceValidator(validator_spec, Mock())
     prompt = val._build_prompt(ctx)
     assert "Sibling Modes" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# Structured output tests (parity with llm_validator TestStructuredOutput)
+# ---------------------------------------------------------------------------
+
+class TestStructuredOutput:
+    """Tests for the response_format=ValidatorResult structured output path."""
+
+    def _make_structured_response(self, severity: str = "pass", justification: str = "all good"):
+        """Mock a LiteLLM response for structured output (content is JSON string)."""
+        vr = ValidatorResult(validator_id="protocol_adherence", severity=severity, justification=justification)
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = vr.model_dump_json()
+        return resp
+
+    def test_structured_output_bypasses_parse(self, task, producer_mode, protocol, validator_spec):
+        """When model supports response_format, structured output is used, not _parse_response."""
+        from unittest.mock import patch
+
+        completion_fn = MagicMock()
+        completion_fn.return_value = self._make_structured_response("pass", "Work aligns with mode")
+
+        validator = ProtocolAdherenceValidator(validator_spec, completion_fn, model="gpt-4o")
+
+        ctx = ValidatorContext(
+            task=task, current_mode=producer_mode, protocol=protocol,
+            mode_name=producer_mode.name,
+            mode_tools=list(producer_mode.tools),
+            mode_transitions=dict(producer_mode.transitions),
+            mode_validator_refs=list(producer_mode.validators),
+        )
+
+        with patch("snodo.validators.protocol_adherence.supports_response_schema", return_value=True):
+            result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        assert result.justification == "Work aligns with mode"
+        # Structured path passes response_format=ValidatorResult
+        call_kwargs = completion_fn.call_args[1]
+        assert call_kwargs["response_format"] is not None
+
+    def test_markdown_prose_still_works_via_structured(self, task, producer_mode, protocol, validator_spec):
+        """Markdown prose in LLM response doesn't break structured output — schema enforces JSON."""
+        from unittest.mock import patch
+
+        completion_fn = MagicMock()
+        completion_fn.return_value = self._make_structured_response("blocker", "Planning work in producer mode")
+
+        validator = ProtocolAdherenceValidator(validator_spec, completion_fn, model="gpt-4o")
+
+        ctx = ValidatorContext(
+            task=task, current_mode=producer_mode, protocol=protocol,
+            mode_name=producer_mode.name,
+            mode_tools=list(producer_mode.tools),
+            mode_transitions=dict(producer_mode.transitions),
+            mode_validator_refs=list(producer_mode.validators),
+        )
+
+        with patch("snodo.validators.protocol_adherence.supports_response_schema", return_value=True):
+            result = validator.evaluate(ctx)
+
+        assert result.severity == "blocker"
+        assert "Planning work" in result.justification
+
+    def test_unsupported_model_falls_back_to_parse(self, task, producer_mode, protocol, validator_spec):
+        """When supports_response_schema returns False, legacy _parse_response is used."""
+        from unittest.mock import patch
+
+        completion_fn = MagicMock()
+        completion_fn.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content='{"severity":"warn","justification":"Minor concern"}'))]
+        )
+        validator = ProtocolAdherenceValidator(validator_spec, completion_fn, model="gpt-4")
+
+        ctx = ValidatorContext(
+            task=task, current_mode=producer_mode, protocol=protocol,
+            mode_name=producer_mode.name,
+            mode_tools=list(producer_mode.tools),
+            mode_transitions=dict(producer_mode.transitions),
+            mode_validator_refs=list(producer_mode.validators),
+        )
+
+        with patch("snodo.validators.protocol_adherence.supports_response_schema", return_value=False):
+            result = validator.evaluate(ctx)
+
+        assert result.severity == "warn"
+        assert result.justification == "Minor concern"
+        # Legacy path does NOT pass response_format
+        call_kwargs = completion_fn.call_args[1]
+        assert "response_format" not in call_kwargs
+
+    def test_structured_uses_config_max_tokens(self, task, producer_mode, protocol, validator_spec):
+        """Structured path uses self.completion_tokens, not hardcoded 500."""
+        from unittest.mock import patch
+
+        completion_fn = MagicMock()
+        completion_fn.return_value = self._make_structured_response("pass", "ok")
+
+        validator = ProtocolAdherenceValidator(validator_spec, completion_fn, model="gpt-4o")
+
+        ctx = ValidatorContext(
+            task=task, current_mode=producer_mode, protocol=protocol,
+            mode_name=producer_mode.name,
+            mode_tools=list(producer_mode.tools),
+            mode_transitions=dict(producer_mode.transitions),
+            mode_validator_refs=list(producer_mode.validators),
+        )
+
+        with patch("snodo.validators.protocol_adherence.supports_response_schema", return_value=True):
+            validator.evaluate(ctx)
+
+        call_kwargs = completion_fn.call_args[1]
+        assert call_kwargs["max_tokens"] > 500
