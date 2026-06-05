@@ -80,6 +80,7 @@
         "Check authentication/authorization"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -94,6 +95,7 @@
         "Check for tight coupling"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -104,6 +106,7 @@
       "constraints": [],
       "criteria": [],
       "evaluation_phase": "post_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -116,6 +119,7 @@
         "Does this intent have clear acceptance criteria?"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -128,6 +132,7 @@
         "Is this intent bounded and specific?"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -140,6 +145,7 @@
         "Are tasks agile-conformant (small, testable, valuable)?"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -152,6 +158,7 @@
         "Does each wave deliver testable value?"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -164,6 +171,7 @@
         "Does this plan cover all aspects of the intent?"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -176,6 +184,7 @@
         "Examine the submitted task spec in light of the current mode's operational profile (tools, validators, transitions, name). Determine whether the work described falls within the operational scope implied by the mode's profile. Consider whether the work would more naturally belong to a sibling mode in this protocol. Flag mismatches with specific justification explaining which mode the work belongs in."
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": "warn",
       "tooling": {},
       "tools": [],

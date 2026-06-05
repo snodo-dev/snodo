@@ -182,7 +182,7 @@ class ConfigManager:
             Model identifier
         """
         config = self.load()
-        return config.get("model", DEFAULT_MODEL)
+        return config.get("default_model") or config.get("model", DEFAULT_MODEL)
 
     def get_engine_value(self, key: str, default: Any = None) -> Any:
         """Get an engine configuration value.

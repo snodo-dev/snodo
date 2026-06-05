@@ -146,14 +146,18 @@ class GraphBuilder:
             workspace_mcp=workspace_mcp,
             git_mcp=git_mcp,
         )
+        self._completion_fn = getattr(self.coder, "_completion_fn", None) or \
+                              getattr(self.coder, "completion_fn", None)
+        self._default_model = getattr(self.coder, "model", DEFAULT_MODEL)
         self._validator_runner = ValidatorRunner(
             protocol=self.protocol,
-            coder=self.coder,
+            completion_fn=self._completion_fn,
+            default_model=self._default_model,
+            validator_config=validator_config,
             audit_log=self._audit_log,
             workspace_mcp=workspace_mcp,
             git_mcp=git_mcp,
             session_manager=session_manager,
-            validator_config=validator_config,
         )
 
         self.governance_fn = governance_fn or self._default_governance
@@ -694,8 +698,8 @@ class GraphBuilder:
         return results
 
     def _get_completion_fn(self):
-        """Delegate to ValidatorRunner."""
-        return self._validator_runner._get_completion_fn()
+        """Return the coder's completion function."""
+        return self._completion_fn
 
     def _dispatch_one(
         self, v: Validator, context: ValidatorContext, reg
