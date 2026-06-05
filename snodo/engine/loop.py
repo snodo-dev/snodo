@@ -104,6 +104,7 @@ class GraphBuilder:
         token_issuer: Optional[TokenIssuer] = None,
         predicate_registry: Any = None,
         session_id: Optional[str] = None,
+        validator_config: Any = None,
     ):
         """Initialize graph builder with real MCP services.
 
@@ -122,6 +123,7 @@ class GraphBuilder:
             token_issuer: Optional TokenIssuer for JWT validation tokens (7.7)
             predicate_registry: Optional PredicateRegistry for constraint evaluation (7.8)
             session_id: Optional active session ID to tag on every audit event
+            validator_config: Pre-loaded ValidatorConfig (cached at build time)
         """
         self.protocol = protocol
         self.workspace_mcp = workspace_mcp
@@ -150,6 +152,7 @@ class GraphBuilder:
             workspace_mcp=workspace_mcp,
             git_mcp=git_mcp,
             session_manager=session_manager,
+            validator_config=validator_config,
         )
 
         self.governance_fn = governance_fn or self._default_governance
@@ -622,21 +625,26 @@ class GraphBuilder:
         each validator_spec.validator_type in the registry.  Falls back
         to the LLMValidator catch-all for registered types + criteria,
         or stub results for unrecognised / no-LLM cases.
+
+        Kept as full implementation (not delegation) so tests can
+        monkey-patch ``self._dispatch_one`` and have it take effect.
         """
         from snodo.validators.registry import _default_registry as reg
-        from snodo.infrastructure.config import load_llm_config, ConfigLoadError
 
         mode_obj = self.protocol.get_mode(current_mode)
-        try:
-            _vcfg = load_llm_config().validator
-        except ConfigLoadError as e:
-            return [
-                ValidatorResult(
-                    validator_id="config",
-                    severity="blocker",
-                    justification=f"Config error: {e}",
-                )
-            ]
+        _vcfg = self._validator_runner._validator_config
+        if _vcfg is None:
+            from snodo.infrastructure.config import load_llm_config, ConfigLoadError
+            try:
+                _vcfg = load_llm_config().validator
+            except ConfigLoadError as e:
+                return [
+                    ValidatorResult(
+                        validator_id="config",
+                        severity="blocker",
+                        justification=f"Config error: {e}",
+                    )
+                ]
         context = ValidatorContext(
             task=task,
             current_mode=mode_obj,
@@ -1081,6 +1089,7 @@ def build_protocol_graph(
         audit_log=audit_log,
         session_manager=session_manager,
         session_id=session_id,
+        validator_config=llm_cfg.validator,
         **custom_functions
     )
     return builder.build_graph()
