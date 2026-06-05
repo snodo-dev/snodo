@@ -120,7 +120,7 @@ class TestGetCompletedWaves:
     """Tests for _get_completed_waves."""
 
     def test_all_tasks_completed(self):
-        from snodo.cli.commands.run_cmd import _get_completed_waves
+        from snodo.cli.commands.plan_run import _get_completed_waves
 
         waves = [{"id": "w1", "tasks": ["t1", "t2"]}]
         tasks_status = {"t1": "completed", "t2": "completed"}
@@ -128,7 +128,7 @@ class TestGetCompletedWaves:
         assert result == {"w1"}
 
     def test_incomplete_wave(self):
-        from snodo.cli.commands.run_cmd import _get_completed_waves
+        from snodo.cli.commands.plan_run import _get_completed_waves
 
         waves = [{"id": "w1", "tasks": ["t1", "t2"]}]
         tasks_status = {"t1": "completed", "t2": "in_progress"}
@@ -136,14 +136,14 @@ class TestGetCompletedWaves:
         assert result == set()
 
     def test_empty_tasks(self):
-        from snodo.cli.commands.run_cmd import _get_completed_waves
+        from snodo.cli.commands.plan_run import _get_completed_waves
 
         waves = [{"id": "w1", "tasks": []}]
         result = _get_completed_waves(waves, {})
         assert result == set()
 
     def test_multiple_waves(self):
-        from snodo.cli.commands.run_cmd import _get_completed_waves
+        from snodo.cli.commands.plan_run import _get_completed_waves
 
         waves = [
             {"id": "w1", "tasks": ["t1"]},
@@ -160,20 +160,20 @@ class TestShouldSkipTask:
     """Tests for _should_skip_task."""
 
     def test_completed_task_skipped(self, capsys):
-        from snodo.cli.commands.run_cmd import _should_skip_task
+        from snodo.cli.commands.plan_run import _should_skip_task
 
         result = _should_skip_task("t1", {"t1": "completed"}, False)
         assert result is True
         assert "skipped (completed)" in capsys.readouterr().out
 
     def test_non_completed_not_skipped(self):
-        from snodo.cli.commands.run_cmd import _should_skip_task
+        from snodo.cli.commands.plan_run import _should_skip_task
 
         result = _should_skip_task("t1", {"t1": "pending"}, False)
         assert result is False
 
     def test_interactive_user_declines(self, capsys):
-        from snodo.cli.commands.run_cmd import _should_skip_task
+        from snodo.cli.commands.plan_run import _should_skip_task
 
         with patch("builtins.input", return_value="n"):
             result = _should_skip_task("t1", {}, True)
@@ -181,7 +181,7 @@ class TestShouldSkipTask:
         assert "skipped (user)" in capsys.readouterr().out
 
     def test_interactive_user_accepts(self):
-        from snodo.cli.commands.run_cmd import _should_skip_task
+        from snodo.cli.commands.plan_run import _should_skip_task
 
         with patch("builtins.input", return_value="y"):
             result = _should_skip_task("t1", {}, True)
@@ -194,7 +194,7 @@ class TestExecuteWaveTask:
     """Tests for _execute_wave_task."""
 
     def test_spec_file_not_found(self, tmp_path, capsys):
-        from snodo.cli.commands.run_cmd import _execute_wave_task
+        from snodo.cli.commands.plan_run import _execute_wave_task
 
         planner = MagicMock()
         planner.plans_dir = tmp_path
@@ -207,7 +207,7 @@ class TestExecuteWaveTask:
 
     @patch("snodo.cli.commands.run_cmd._execute_task", return_value=0)
     def test_task_success(self, mock_exec, tmp_path, capsys):
-        from snodo.cli.commands.run_cmd import _execute_wave_task
+        from snodo.cli.commands.plan_run import _execute_wave_task
 
         planner = MagicMock()
         planner.plans_dir = tmp_path
@@ -224,7 +224,7 @@ class TestExecuteWaveTask:
 
     @patch("snodo.cli.commands.run_cmd._execute_task", return_value=1)
     def test_task_failure(self, mock_exec, tmp_path, capsys):
-        from snodo.cli.commands.run_cmd import _execute_wave_task
+        from snodo.cli.commands.plan_run import _execute_wave_task
 
         planner = MagicMock()
         planner.plans_dir = tmp_path
@@ -245,20 +245,20 @@ class TestExecuteWaveTask:
 class TestExecuteWaves:
     """Tests for _execute_waves."""
 
-    @patch("snodo.cli.commands.run_cmd._execute_wave_task", return_value=True)
-    @patch("snodo.cli.commands.run_cmd._should_skip_task", return_value=False)
+    @patch("snodo.cli.commands.plan_run._execute_wave_task", return_value=True)
+    @patch("snodo.cli.commands.plan_run._should_skip_task", return_value=False)
     def test_executes_task(self, mock_skip, mock_exec, capsys):
-        from snodo.cli.commands.run_cmd import _execute_waves
+        from snodo.cli.commands.plan_run import _execute_waves
 
         waves = [{"id": "w1", "tasks": ["t1"], "depends_on": []}]
         result = _execute_waves(waves, MagicMock(), MagicMock(), MagicMock(),
                                 "gpt-4", {}, set(), False)
         assert result is False
 
-    @patch("snodo.cli.commands.run_cmd._execute_wave_task", return_value=False)
-    @patch("snodo.cli.commands.run_cmd._should_skip_task", return_value=False)
+    @patch("snodo.cli.commands.plan_run._execute_wave_task", return_value=False)
+    @patch("snodo.cli.commands.plan_run._should_skip_task", return_value=False)
     def test_task_failure_stops(self, mock_skip, mock_exec, capsys):
-        from snodo.cli.commands.run_cmd import _execute_waves
+        from snodo.cli.commands.plan_run import _execute_waves
 
         waves = [{"id": "w1", "tasks": ["t1", "t2"], "depends_on": []}]
         result = _execute_waves(waves, MagicMock(), MagicMock(), MagicMock(),
@@ -266,7 +266,7 @@ class TestExecuteWaves:
         assert result is True
 
     def test_blocked_wave_skipped(self, capsys):
-        from snodo.cli.commands.run_cmd import _execute_waves
+        from snodo.cli.commands.plan_run import _execute_waves
 
         waves = [{"id": "w2", "tasks": ["t1"], "depends_on": ["w1"]}]
         result = _execute_waves(waves, MagicMock(), MagicMock(), MagicMock(),
@@ -281,7 +281,7 @@ class TestPrintPlanProgress:
     """Tests for _print_plan_progress."""
 
     def test_prints_progress(self, capsys):
-        from snodo.cli.commands.run_cmd import _print_plan_progress
+        from snodo.cli.commands.plan_run import _print_plan_progress
 
         planner = MagicMock()
         planner.get_status.return_value = {
@@ -508,14 +508,14 @@ class TestSetupMemory:
 class TestRunPlan:
     """Tests for _run_plan."""
 
-    @patch("snodo.cli.commands.run_cmd._execute_waves", return_value=False)
-    @patch("snodo.cli.commands.run_cmd._print_plan_progress")
+    @patch("snodo.cli.commands.plan_run._execute_waves", return_value=False)
+    @patch("snodo.cli.commands.plan_run._print_plan_progress")
     @patch("snodo.cli.commands.run_cmd._set_api_key_env")
     @patch("snodo.cli.commands.run_cmd.ConfigManager")
     @patch("snodo.cli.commands.run_cmd.load_protocol")
     def test_run_plan_success(self, mock_load, mock_cm, mock_api, mock_progress,
                               mock_waves, temp_project, capsys):
-        from snodo.cli.commands.run_cmd import _run_plan
+        from snodo.cli.commands.plan_run import _run_plan
 
         protocol = MagicMock()
         mock_load.return_value = protocol
@@ -539,7 +539,7 @@ class TestRunPlan:
 
     @patch("snodo.cli.commands.run_cmd.load_protocol", return_value=None)
     def test_run_plan_no_protocol(self, mock_load):
-        from snodo.cli.commands.run_cmd import _run_plan
+        from snodo.cli.commands.plan_run import _run_plan
 
         args = SimpleNamespace(protocol="missing.yml", model=None, plan="p")
         result = _run_plan(args)
@@ -549,7 +549,7 @@ class TestRunPlan:
     @patch("snodo.cli.commands.run_cmd.ConfigManager")
     @patch("snodo.cli.commands.run_cmd.load_protocol")
     def test_run_plan_planner_error(self, mock_load, mock_cm, mock_api, capsys):
-        from snodo.cli.commands.run_cmd import _run_plan
+        from snodo.cli.commands.plan_run import _run_plan
         from snodo.mcp.planner import PlannerError
 
         mock_load.return_value = MagicMock()
@@ -570,7 +570,7 @@ class TestRunPlan:
 class TestRunCommandPlan:
     """Tests for run_command routing to _run_plan."""
 
-    @patch("snodo.cli.commands.run_cmd._run_plan", return_value=0)
+    @patch("snodo.cli.commands.plan_run._run_plan", return_value=0)
     def test_routes_to_run_plan(self, mock_plan):
         from snodo.cli.commands.run_cmd import run_command
 
@@ -724,23 +724,23 @@ class TestTaskCompletedHelper:
     """Tests for _task_completed with both string and dict entries."""
 
     def test_string_entry_completed(self):
-        from snodo.cli.commands.run_cmd import _task_completed
+        from snodo.cli.commands.plan_run import _task_completed
         assert _task_completed({"t1": "completed"}, "t1") is True
 
     def test_string_entry_not_completed(self):
-        from snodo.cli.commands.run_cmd import _task_completed
+        from snodo.cli.commands.plan_run import _task_completed
         assert _task_completed({"t1": "pending"}, "t1") is False
 
     def test_dict_entry_completed(self):
-        from snodo.cli.commands.run_cmd import _task_completed
+        from snodo.cli.commands.plan_run import _task_completed
         assert _task_completed({"t1": {"status": "completed"}}, "t1") is True
 
     def test_dict_entry_not_completed(self):
-        from snodo.cli.commands.run_cmd import _task_completed
+        from snodo.cli.commands.plan_run import _task_completed
         assert _task_completed({"t1": {"status": "pending"}}, "t1") is False
 
     def test_missing_entry(self):
-        from snodo.cli.commands.run_cmd import _task_completed
+        from snodo.cli.commands.plan_run import _task_completed
         assert _task_completed({}, "t1") is False
 
 
@@ -749,7 +749,7 @@ class TestTaskCompletedHelper:
 class TestRunCommandSessionWiring:
     """Test that run_command constructs and threads session_manager."""
 
-    @patch("snodo.cli.commands.run_cmd._run_plan", return_value=0)
+    @patch("snodo.cli.commands.plan_run._run_plan", return_value=0)
     def test_plan_route_gets_audit_and_session(self, mock_plan):
         from snodo.cli.commands.run_cmd import run_command
 
@@ -768,14 +768,14 @@ class TestRunCommandSessionWiring:
 class TestRunPlanAuditLogFix:
     """Verify PlannerMCP in _run_plan receives audit_log."""
 
-    @patch("snodo.cli.commands.run_cmd._execute_waves", return_value=False)
-    @patch("snodo.cli.commands.run_cmd._print_plan_progress")
+    @patch("snodo.cli.commands.plan_run._execute_waves", return_value=False)
+    @patch("snodo.cli.commands.plan_run._print_plan_progress")
     @patch("snodo.cli.commands.run_cmd._set_api_key_env")
     @patch("snodo.cli.commands.run_cmd.ConfigManager")
     @patch("snodo.cli.commands.run_cmd.load_protocol")
     def test_planner_gets_audit_log(self, mock_load, mock_cm, mock_api,
                                      mock_progress, mock_waves, temp_project):
-        from snodo.cli.commands.run_cmd import _run_plan
+        from snodo.cli.commands.plan_run import _run_plan
 
         protocol = MagicMock()
         mock_load.return_value = protocol

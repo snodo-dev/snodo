@@ -601,7 +601,7 @@ class TestRunInSandbox:
         mock_client.ping.side_effect = Exception("not running")
         mock_from_env.return_value = mock_client
 
-        from snodo.cli.commands.run_cmd import _run_in_sandbox
+        from snodo.cli.commands.sandbox_run import _run_in_sandbox
         args = SimpleNamespace(
             description="test",
             protocol=".snodo/protocol.yml",
@@ -630,7 +630,7 @@ class TestRunInSandbox:
         mock_client.images.get.side_effect = Exception("not found")
         mock_from_env.return_value = mock_client
 
-        from snodo.cli.commands.run_cmd import _run_in_sandbox
+        from snodo.cli.commands.sandbox_run import _run_in_sandbox
         args = SimpleNamespace(
             description="test",
             protocol=".snodo/protocol.yml",
@@ -663,7 +663,7 @@ class TestRunInSandbox:
         ]
         mock_client.containers.run.return_value = mock_container
 
-        from snodo.cli.commands.run_cmd import _run_in_sandbox
+        from snodo.cli.commands.sandbox_run import _run_in_sandbox
         args = SimpleNamespace(
             description="implement feature",
             protocol=".snodo/protocol.yml",

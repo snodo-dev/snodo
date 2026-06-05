@@ -5,7 +5,6 @@ FILE: snodo/cli/commands/run_cmd.py
 
 import json
 import sys
-import os
 from dataclasses import is_dataclass, asdict
 from pathlib import Path
 from typing import Optional
@@ -13,7 +12,7 @@ from typing import Optional
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
 from snodo.engine.loop import build_protocol_graph, LoopStage
-from snodo.cli.config import ConfigManager
+from snodo.cli.config import ConfigManager, _set_api_key_env
 from snodo.cli.commands import load_protocol
 
 
@@ -92,9 +91,10 @@ def _fetch_pr_context(pr_number: int, project_root: str) -> str:
 
 def run_command(args) -> int:
     """Execute task through protocol loop - REAL EXECUTION."""
-    # Construct audit_log and session_manager at CLI top level (7.1/7.3 pattern)
     from snodo.infrastructure.audit import get_audit_log
     from snodo.infrastructure.session import SessionManager
+    from snodo.cli.commands.plan_run import _run_plan
+    from snodo.cli.commands.sandbox_run import _run_in_sandbox, _submit_background_job
 
     audit_log = get_audit_log()
     session_manager = SessionManager(audit_log=audit_log)
@@ -111,7 +111,7 @@ def run_command(args) -> int:
         print("Error: task description required (or use --plan <name>)", file=sys.stderr)
         return 1
 
-    # Route through Docker sandbox if requested
+    # Route through docker sandbox if requested
     sandbox_type = getattr(args, "sandbox", "local")
     if sandbox_type == "docker":
         return _run_in_sandbox(args)
@@ -162,169 +162,6 @@ def _build_description(args) -> str:
         print("  PR context prepended to task spec")
         print()
     return description
-
-
-def _submit_background_job(args) -> int:
-    """Submit task as a background job.
-
-    Validates args, builds task_args dict, calls JobManager.submit(),
-    prints job_id with helper commands.
-    """
-    from snodo.jobs import JobManager, JobError
-
-    if getattr(args, "plan", None):
-        print("Error: --plan and --background cannot be used together", file=sys.stderr)
-        return 1
-
-    if args.description is None:
-        print("Error: task description required for background jobs", file=sys.stderr)
-        return 1
-
-    protocol_path = Path(args.protocol)
-    if not protocol_path.exists():
-        print(f"Error: Protocol file not found: {protocol_path}", file=sys.stderr)
-        print("Run 'snodo init' to create default protocol.", file=sys.stderr)
-        return 1
-
-    # Set API key env vars so child process inherits them
-    mgr = ConfigManager()
-    model = args.model or mgr.get_model()
-    _set_api_key_env(mgr, model)
-
-    task_args = {
-        "description": args.description,
-        "protocol": args.protocol,
-        "model": model,
-        "mock": getattr(args, "mock", False),
-        "verbose": getattr(args, "verbose", False),
-        "from_pr": getattr(args, "from_pr", None),
-        "cwd": str(Path.cwd()),
-    }
-
-    try:
-        project_root = str(Path.cwd())
-        manager = JobManager(project_root)
-        job_id = manager.submit(task_args)
-    except (ValueError, JobError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    print(f"Job submitted: {job_id}")
-    print(f"  snodo job status {job_id}")
-    print(f"  snodo job logs {job_id}")
-    print(f"  snodo job wait {job_id}")
-    return 0
-
-
-def _build_sandbox_command(args) -> list:
-    """Build the snodo run command for inside the container."""
-    command = ["snodo", "run", args.description, "--protocol", args.protocol]
-    if args.model:
-        command.extend(["--model", args.model])
-    if getattr(args, "mock", False):
-        command.append("--mock")
-    if getattr(args, "verbose", False):
-        command.append("--verbose")
-    from_pr = getattr(args, "from_pr", None)
-    if from_pr:
-        command.extend(["--from-pr", str(from_pr)])
-    return command
-
-
-def _build_sandbox_env(mgr: ConfigManager, model: str) -> dict:
-    """Build environment variables (API keys) for the sandbox container."""
-    env: dict[str, str] = {}
-    api_key = mgr.get_key_for_model(model)
-    if not api_key:
-        return env
-    env_map = {
-        "claude-": "ANTHROPIC_API_KEY",
-        "gpt-": "OPENAI_API_KEY",
-        "o1-": "OPENAI_API_KEY",
-        "o3-": "OPENAI_API_KEY",
-        "gemini/": "GEMINI_API_KEY",
-        "gemini-": "GEMINI_API_KEY",
-    }
-    for prefix, env_var in env_map.items():
-        if model.startswith(prefix):
-            env[env_var] = api_key
-            break
-    return env
-
-
-def _print_sandbox_result(result, sandbox_image: str, config) -> None:
-    """Print sandbox execution output and summary."""
-    if result.stdout:
-        print(result.stdout, end="")
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr)
-    print()
-    print(f"Container: {result.container_id or 'N/A'}")
-    print(f"Duration: {result.duration:.1f}s")
-    print(f"Exit code: {result.exit_code}")
-
-
-def _run_in_sandbox(args) -> int:
-    """Execute task inside a Docker sandbox container.
-
-    Builds the snodo run command and dispatches to DockerSandbox.
-    Falls back to local execution if Docker is unavailable.
-    """
-    from snodo.sandbox import DockerSandbox, SandboxConfig
-
-    sandbox = DockerSandbox()
-
-    if not sandbox.is_available():
-        print("Warning: Docker not available, falling back to local execution",
-              file=sys.stderr)
-        args.sandbox = "local"
-        return run_command(args)
-
-    if not sandbox.image_exists():
-        print("Error: snodo-worker image not built", file=sys.stderr)
-        print("Run: snodo sandbox build", file=sys.stderr)
-        return 1
-
-    mgr = ConfigManager()
-    model = args.model or mgr.get_model()
-
-    config = SandboxConfig(
-        network="none",
-        memory_limit="2g",
-        cpu_limit=2.0,
-        env=_build_sandbox_env(mgr, model),
-    )
-
-    print("Running in Docker sandbox...")
-    print(f"  Image: {sandbox._image}")
-    print(f"  Network: {config.network}")
-    print(f"  Memory: {config.memory_limit}")
-    print(f"  CPUs: {config.cpu_limit}")
-    print()
-
-    command = _build_sandbox_command(args)
-    result = sandbox.run_task(command, Path.cwd(), config=config)
-
-    _print_sandbox_result(result, sandbox._image, config)
-    return result.exit_code
-
-
-def _set_api_key_env(mgr: ConfigManager, model: str) -> None:
-    """Set API key in environment if available from config."""
-    api_key = mgr.get_key_for_model(model)
-    if api_key:
-        env_map = {
-            "claude-": "ANTHROPIC_API_KEY",
-            "gpt-": "OPENAI_API_KEY",
-            "o1-": "OPENAI_API_KEY",
-            "o3-": "OPENAI_API_KEY",
-            "gemini/": "GEMINI_API_KEY",
-            "gemini-": "GEMINI_API_KEY",
-        }
-        for prefix, env_var in env_map.items():
-            if model.startswith(prefix):
-                os.environ[env_var] = api_key
-                break
 
 
 def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
@@ -592,8 +429,6 @@ def _render_halt_payload(node_state: dict) -> dict:
     if pending:
         payload["phase"] = pending.get("phase")
         payload["policy"] = pending.get("policy")
-        # pending_disagreement carries its own validator_results/policy_decision
-        # that may differ from the top-level — include both for backward compat
         payload["escalation_validator_results"] = pending.get("validator_results", [])
         payload["escalation_policy_decision"] = pending.get("policy_decision", {})
 
@@ -726,162 +561,3 @@ def _report_result(final_state: Optional[dict]) -> int:
     else:
         print("\n✗ Task did not complete successfully", file=sys.stderr)
         return 1
-
-
-def _task_completed(tasks_status: dict, task_id: str) -> bool:
-    """Check if a task is completed, handling both string and dict entries."""
-    entry = tasks_status.get(task_id)
-    if isinstance(entry, dict):
-        return entry.get("status") == "completed"
-    return entry == "completed"
-
-
-def _get_completed_waves(waves: list, tasks_status: dict) -> set:
-    """Determine which waves are fully completed.
-
-    Args:
-        waves: All waves from plan data
-        tasks_status: Task status mapping
-
-    Returns:
-        Set of completed wave IDs
-    """
-    completed = set()
-    for wave in waves:
-        wid = wave.get("id")
-        wave_tasks = wave.get("tasks", [])
-        if wave_tasks and all(_task_completed(tasks_status, t) for t in wave_tasks):
-            completed.add(wid)
-    return completed
-
-
-def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool:
-    """Execute a single task within a wave.
-
-    Returns:
-        True on success, False on failure.
-    """
-    wave_dir = planner.plans_dir / args.plan / f"wave_{wave_id}"
-    spec_file = wave_dir / f"{task_id}_task.md"
-    if not spec_file.exists():
-        print(f"  [{task_id}] ERROR: spec file not found", file=sys.stderr)
-        return False
-
-    spec = spec_file.read_text()
-    planner.update_status(args.plan, task_id, "in_progress")
-
-    task = Task(id=task_id, spec=spec)
-    print(f"  [{task_id}] executing...")
-    result = _execute_task(args, protocol, task, model)
-
-    if result == 0:
-        planner.update_status(args.plan, task_id, "completed")
-        return True
-    else:
-        planner.update_status(args.plan, task_id, "blocked")
-        print(f"  [{task_id}] FAILED", file=sys.stderr)
-        return False
-
-
-def _filter_waves(waves: list, wave_filter) -> Optional[list]:
-    """Filter waves by ID. Returns None on error."""
-    if wave_filter is None:
-        return waves
-    filtered = [w for w in waves if w.get("id") == wave_filter]
-    if not filtered:
-        print(f"Error: Wave {wave_filter} not found in plan", file=sys.stderr)
-        return None
-    return filtered
-
-
-def _run_plan(args) -> int:
-    """Execute a plan's tasks through the protocol loop."""
-    from snodo.mcp.planner import PlannerMCP, PlannerError
-
-    protocol_path = Path(args.protocol)
-    protocol = load_protocol(protocol_path)
-    if not protocol:
-        return 1
-
-    mgr = ConfigManager()
-    model = args.model or mgr.get_model()
-    _set_api_key_env(mgr, model)
-
-    try:
-        audit_log = getattr(args, "audit_log", None)
-        planner = PlannerMCP(str(Path.cwd()), audit_log=audit_log)
-        plan_data = planner.get_plan(args.plan)
-        status_data = planner.get_status(args.plan)
-    except (ValueError, PlannerError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-    print(f"Plan: {plan_data.get('name', args.plan)}")
-    print(f"Intent: {plan_data.get('intent', 'N/A')}")
-    print()
-
-    waves = _filter_waves(plan_data.get("waves", []), getattr(args, "wave", None))
-    if waves is None:
-        return 1
-
-    tasks_status = status_data.get("tasks", {})
-    completed_waves = _get_completed_waves(plan_data.get("waves", []), tasks_status)
-    interactive = getattr(args, "interactive", False)
-
-    failed = _execute_waves(waves, planner, args, protocol, model,
-                            tasks_status, completed_waves, interactive)
-
-    _print_plan_progress(planner, args.plan)
-    return 1 if failed else 0
-
-
-def _print_plan_progress(planner, plan_name: str) -> None:
-    """Print final plan progress."""
-    status_data = planner.get_status(plan_name)
-    tasks = status_data.get("tasks", {})
-    done = sum(1 for s in tasks.values()
-               if (s.get("status") if isinstance(s, dict) else s) == "completed")
-    print(f"\nPlan progress: {done}/{len(tasks)} completed")
-
-
-def _should_skip_task(task_id, tasks_status, interactive) -> bool:
-    """Check if a task should be skipped (completed or user declined).
-
-    Returns:
-        True if the task should be skipped.
-    """
-    if _task_completed(tasks_status, task_id):
-        print(f"  [{task_id}] skipped (completed)")
-        return True
-    if interactive:
-        answer = input(f"  Execute {task_id}? [y/N] ").strip().lower()
-        if answer != "y":
-            print(f"  [{task_id}] skipped (user)")
-            return True
-    return False
-
-
-def _execute_waves(waves, planner, args, protocol, model,
-                   tasks_status, completed_waves, interactive) -> bool:
-    """Execute waves in order, respecting dependencies.
-
-    Returns:
-        True if any task failed, False if all succeeded.
-    """
-    for wave in waves:
-        wave_id = wave.get("id")
-        deps = wave.get("depends_on", [])
-
-        unmet = [d for d in deps if d not in completed_waves]
-        if unmet:
-            print(f"Wave {wave_id}: blocked (depends on: {', '.join(str(d) for d in unmet)})")
-            continue
-
-        print(f"Wave {wave_id}:")
-        for task_id in wave.get("tasks", []):
-            if _should_skip_task(task_id, tasks_status, interactive):
-                continue
-            if not _execute_wave_task(planner, args, protocol, model, wave_id, task_id):
-                return True  # failed
-
-    return False
