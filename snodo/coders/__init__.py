@@ -11,6 +11,9 @@ from snodo.core.interfaces import Coder, MCPServer
 from snodo.coders.base import CoderAdapter, AdapterError as AdapterError, LLMCallError as LLMCallError, ParseError as ParseError
 from snodo.coders.litellm import LiteLLMAdapter
 from snodo.coders.mock import MockAdapter
+from snodo.coders.openai_adapter import OpenAIAdapter
+from snodo.coders.anthropic_adapter import AnthropicAdapter
+from snodo.coders.gemini_adapter import GeminiAdapter
 from snodo.infrastructure.config import DEFAULT_MODEL
 
 # Backward-compatible aliases
@@ -21,8 +24,28 @@ MockCoderAdapter = MockAdapter
 CODER_REGISTRY: Dict[str, Type[CoderAdapter]] = {
     "litellm": LiteLLMAdapter,
     "mock": MockAdapter,
-    # Future: "claude_code", "aider", "opencode"
+    "openai": OpenAIAdapter,
+    "anthropic": AnthropicAdapter,
+    "gemini": GeminiAdapter,
 }
+
+
+def resolve_adapter_class(model: str) -> Type[CoderAdapter]:
+    """Resolve the appropriate coder adapter class for a model string.
+
+    Args:
+        model: Model identifier (e.g., "claude-sonnet-4-20250514", "gpt-4o")
+
+    Returns:
+        CoderAdapter subclass best suited for the model.
+    """
+    if model.startswith(("gpt", "o1", "o3")):
+        return OpenAIAdapter
+    if model.startswith("claude"):
+        return AnthropicAdapter
+    if model.startswith(("gemini", "google/")):
+        return GeminiAdapter
+    return LiteLLMAdapter
 
 
 def get_coder(name: str, **config: Any) -> CoderAdapter:
