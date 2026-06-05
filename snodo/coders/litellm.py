@@ -174,6 +174,7 @@ Now generate the implementation:
         ]
 
         retried_free_text = False
+        finish_reason = None
 
         for turn in range(self.max_tool_turns):
             try:
@@ -191,6 +192,7 @@ Now generate the implementation:
 
             msg = response.choices[0].message
             tool_calls = getattr(msg, "tool_calls", [])
+            finish_reason = getattr(response.choices[0], "finish_reason", None)
 
             # Check for submit_files before anything else
             files_list = self._extract_submit_files(tool_calls)
@@ -248,16 +250,48 @@ Now generate the implementation:
                 })
                 continue
 
-            # Fallback: return whatever free-text we have for legacy parse
+            # Fallback: try to parse free-text as file operations
             if msg.content is not None:
-                return msg.content
+                return self._try_parse_or_fail(
+                    msg.content, turn, finish_reason,
+                )
             break
 
-        # Hit turn cap — return last assistant content for legacy parse
+        # Hit turn cap — try last assistant content for legacy parse
         for m in reversed(messages):
             if m.get("role") == "assistant" and m.get("content"):
-                return m["content"]
-        return ""
+                return self._try_parse_or_fail(
+                    m["content"], self.max_tool_turns - 1, finish_reason,
+                )
+
+        # No content at all — diagnostic failure
+        self._raise_tool_loop_failure(
+            "", self.max_tool_turns, finish_reason,
+        )
+
+    def _try_parse_or_fail(
+        self, content: str, turns_used: int, finish_reason: Optional[str],
+    ) -> str:
+        """Attempt to parse content as file operations; raise diagnostic if not."""
+        parsed = self._extract_json(content)
+        if parsed is not None and isinstance(parsed, list):
+            # Validate it looks like file operations
+            if all(isinstance(item, dict) for item in parsed):
+                return content
+        self._raise_tool_loop_failure(content, turns_used, finish_reason)
+
+    def _raise_tool_loop_failure(
+        self, content: str, turns_used: int, finish_reason: Optional[str],
+    ) -> None:
+        """Raise a diagnostic ParseError when the tool loop ends without files."""
+        preview = content[:200] if content else "(empty)"
+        raise ParseError(
+            "Coder completed the tool loop without delivering files via "
+            "submit_files. Final response was empty or unparseable. "
+            f"Model: {self.model}, turns used: {turns_used + 1}, "
+            f"finish_reason: {finish_reason}, "
+            f"content preview: {preview}"
+        )
 
     _SUBMIT_FILES_DEF = {
         "type": "function",
