@@ -5,9 +5,8 @@ All other modules implement against these contracts.
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Literal, Optional
-from dataclasses import dataclass, field
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AuditError(Exception):
@@ -30,8 +29,7 @@ class MCPServer(ABC):
         """Execute tool within capability boundary."""
 
 
-@dataclass
-class Task:
+class Task(BaseModel):
     """A unit of work."""
     id: str
     spec: str
@@ -46,46 +44,21 @@ class ValidatorResult(BaseModel):
     justification: str
 
 
-@dataclass
-class ExecutionResult:
-    """Output from task execution."""
-    task_id: str
-    status: str
-    artifacts: List[str]
-
-
-@dataclass
-class Mode:
-    """Operational stage with defined permissions."""
-    mode_id: str
-    tools: List[str]
-
-
-@dataclass
-class Event:
-    """State transition trigger."""
-    event_type: str
-    data: Dict[str, Any]
-
-
-@dataclass
-class TaskSpec:
+class TaskSpec(BaseModel):
     """Specification for code generation."""
     description: str
     constraints: List[str]
     memory_summary: str = ""
-    project_context: Dict[str, Any] = field(default_factory=dict)
+    project_context: Dict[str, Any] = Field(default_factory=dict)
 
 
-@dataclass
-class FileArtifact:
+class FileArtifact(BaseModel):
     """A file operation emitted by the coder."""
     path: str
     content: str
     action: str = "write"  # "write" | "delete"
 
 
-@dataclass
-class CodeArtifact:
+class CodeArtifact(BaseModel):
     """Generated code output — list of file operations."""
-    files: list  # List[FileArtifact]
+    files: List[FileArtifact] = Field(default_factory=list)
