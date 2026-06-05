@@ -39,6 +39,7 @@
         "Check authentication/authorization"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -53,6 +54,7 @@
         "Check for tight coupling"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -63,6 +65,7 @@
       "constraints": [],
       "criteria": [],
       "evaluation_phase": "post_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],

@@ -112,6 +112,11 @@ class Validator(BaseModel):
                     "Empty means no tool access (single-completion path). "
                     f"Allowed: {sorted(_READ_ONLY_TOOL_NAMES)}"
     )
+    model: Optional[str] = Field(
+        default=None,
+        description="Optional LLM model override for this validator. "
+                    "Falls back to coder model / default_model if not set."
+    )
 
     @field_validator('validator_id')
     @classmethod

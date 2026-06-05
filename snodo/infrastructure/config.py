@@ -37,9 +37,14 @@ class ValidatorConfig(BaseModel):
     max_tool_turns: int = Field(default=_VALIDATOR_MAX_TOOL_TURNS_DEFAULT, ge=1, le=20)
 
 
+class ValidatorLLMConfig(BaseModel):
+    model: Optional[str] = Field(default=None, description="Validator LLM model. None = use default_model.")
+
+
 class LlmConfig(BaseModel):
     coder: CoderConfig = Field(default_factory=CoderConfig)
     validator: ValidatorConfig = Field(default_factory=ValidatorConfig)
+    validator_llm: ValidatorLLMConfig = Field(default_factory=ValidatorLLMConfig)
 
 
 def load_llm_config(config_dir: Optional[str] = None) -> LlmConfig:

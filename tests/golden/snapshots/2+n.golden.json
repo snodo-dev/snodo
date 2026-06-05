@@ -97,6 +97,7 @@
         "Confirm input validation and output encoding requirements are specified for all user-facing interfaces"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -111,6 +112,7 @@
         "Identify missing abstractions, circular dependencies, or leaky module boundaries"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -125,6 +127,7 @@
         "Confirm test requirements are specified: unit tests for logic, integration tests for boundaries, edge case coverage"
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -135,6 +138,7 @@
       "constraints": [],
       "criteria": [],
       "evaluation_phase": "post_execute",
+      "model": null,
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -147,6 +151,7 @@
         "Examine the submitted task spec in light of the current mode's operational profile (tools, validators, transitions, name). Determine whether the work described falls within the operational scope implied by the mode's profile. Consider whether the work would more naturally belong to a sibling mode in this protocol. Flag mismatches with specific justification explaining which mode the work belongs in."
       ],
       "evaluation_phase": "pre_execute",
+      "model": null,
       "severity_cap": "warn",
       "tooling": {},
       "tools": [],

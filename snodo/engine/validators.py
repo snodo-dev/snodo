@@ -1,7 +1,7 @@
 """Validator dispatch and execution for protocol validation."""
 
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Callable, List, Optional
 
 from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
@@ -16,15 +16,17 @@ class ValidatorRunner:
     def __init__(
         self,
         protocol: Protocol,
-        coder: Any,
+        completion_fn: Optional[Callable],
+        default_model: str,
+        validator_config: Any,
         audit_log: Any,
         workspace_mcp: Any,
         git_mcp: Any,
         session_manager: Any,
-        validator_config: Any = None,
     ):
         self.protocol = protocol
-        self.coder = coder
+        self._completion_fn = completion_fn
+        self._default_model = default_model
         self._audit_log = audit_log
         self.workspace_mcp = workspace_mcp
         self.git_mcp = git_mcp
@@ -81,8 +83,8 @@ class ValidatorRunner:
             mode_tools=list(mode_obj.tools) if mode_obj else [],
             mode_transitions=dict(mode_obj.transitions) if mode_obj else {},
             mode_validator_refs=list(mode_obj.validators) if mode_obj else [],
-            completion_fn=self._get_completion_fn(),
-            model=getattr(self.coder, "model", DEFAULT_MODEL),
+            completion_fn=self._completion_fn,
+            model=self._default_model,
             working_directory=str(Path.cwd()) if not self.workspace_mcp
             else str(getattr(self.workspace_mcp, "project_root", Path.cwd())),
             workspace_mcp=self.workspace_mcp,
@@ -94,6 +96,8 @@ class ValidatorRunner:
 
         results = []
         for v in validators:
+            effective_model = v.model or self._default_model or DEFAULT_MODEL
+            context.model = effective_model
             result = self._dispatch_one(v, context, reg)
             if v.severity_cap is not None:
                 from snodo.compiler.models import Severity
@@ -105,11 +109,6 @@ class ValidatorRunner:
                     )
             results.append(result)
         return results
-
-    def _get_completion_fn(self):
-        if hasattr(self.coder, '_completion_fn') and self.coder._completion_fn is not None:
-            return self.coder._completion_fn
-        return None
 
     def _dispatch_one(
         self, v: Validator, context: ValidatorContext, reg
