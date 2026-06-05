@@ -63,7 +63,7 @@ def _run_in_sandbox(args) -> int:
     Builds the snodo run command and dispatches to DockerSandbox.
     Falls back to local execution if Docker is unavailable.
     """
-    from snodo.sandbox import DockerSandbox, SandboxConfig
+    from snodo.sandbox import DockerSandbox, SandboxConfig, SandboxError
     from snodo.cli.commands.run_cmd import run_command
 
     sandbox = DockerSandbox()
@@ -97,7 +97,11 @@ def _run_in_sandbox(args) -> int:
     print()
 
     command = _build_sandbox_command(args)
-    result = sandbox.run_task(command, Path.cwd(), config=config)
+    try:
+        result = sandbox.run_task(command, Path.cwd(), config=config)
+    except SandboxError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     _print_sandbox_result(result, sandbox._image, config)
     return result.exit_code

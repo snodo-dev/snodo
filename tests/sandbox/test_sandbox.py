@@ -345,7 +345,7 @@ class TestDockerSandbox:
         assert call_kwargs["environment"] == {"API_KEY": "secret"}
 
     @patch("docker.from_env")
-    def test_run_task_exception_returns_result(self, mock_from_env):
+    def test_run_task_exception_raises_sandbox_error(self, mock_from_env):
         mock_client = MagicMock()
         mock_from_env.return_value = mock_client
 
@@ -356,13 +356,11 @@ class TestDockerSandbox:
         mock_client.containers.run.return_value = mock_container
 
         sandbox = DockerSandbox()
-        result = sandbox.run_task(
-            ["snodo", "run", "task"],
-            Path("/tmp/workspace"),
-        )
-
-        assert result.exit_code == 1
-        assert result.sandbox_type == "docker"
+        with pytest.raises(SandboxError, match="timeout"):
+            sandbox.run_task(
+                ["snodo", "run", "task"],
+                Path("/tmp/workspace"),
+            )
         mock_container.remove.assert_called_once_with(force=True)
 
     @patch("docker.from_env")
@@ -684,6 +682,54 @@ class TestRunInSandbox:
         captured = capsys.readouterr()
         assert "Docker sandbox" in captured.out
         assert "Task completed!" in captured.out
+
+    @patch("docker.from_env")
+    def test_container_execution_failure_raises_sandbox_error(self, mock_from_env, capsys):
+        """Container execution failure raises SandboxError, not SandboxResult(exit_code=1)."""
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+        mock_client.images.get.return_value = MagicMock()
+        mock_from_env.return_value = mock_client
+
+        mock_client.containers.run.side_effect = Exception("container start failed")
+
+        from snodo.sandbox import DockerSandbox, SandboxConfig, SandboxError
+
+        sandbox = DockerSandbox()
+        config = SandboxConfig()
+
+        with pytest.raises(SandboxError, match="container start failed"):
+            sandbox.run_task(["echo", "test"], Path("."), config=config)
+
+    @patch("docker.from_env")
+    def test_sandbox_run_catches_sandbox_error(self, mock_from_env, capsys):
+        """_run_in_sandbox catches SandboxError and returns exit code 1."""
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+        mock_client.images.get.return_value = MagicMock()
+        mock_from_env.return_value = mock_client
+
+        mock_client.containers.run.side_effect = Exception("container start failed")
+
+        from snodo.cli.commands.sandbox_run import _run_in_sandbox
+        args = SimpleNamespace(
+            description="test",
+            protocol=".snodo/protocol.yml",
+            model=None,
+            mock=True,
+            verbose=False,
+            from_pr=None,
+        )
+
+        with patch("snodo.cli.commands.run_cmd.ConfigManager") as mock_cfg:
+            mock_cfg.return_value.get_model.return_value = "mock"
+            mock_cfg.return_value.get_key_for_model.return_value = None
+
+            result = _run_in_sandbox(args)
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "container start failed" in captured.err
 
 
 # === Module Import Tests ===
