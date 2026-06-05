@@ -224,7 +224,7 @@ class TestTestKeys:
         mgr.add_key("openai", "sk-good")
         mgr.add_key("anthropic", "sk-bad")
 
-        def side_effect(provider, key):
+        def side_effect(provider, key, pc=None):
             return provider == "openai"
         mock_test.side_effect = side_effect
 
@@ -631,3 +631,178 @@ class TestSessionAgeConfig:
             assert "30" in captured.out
         finally:
             shutil.rmtree(d, ignore_errors=True)
+
+
+# === Provider Config Tests ===
+
+class TestProviders:
+    """Tests for the providers config section."""
+
+    def test_new_providers_section_parses(self, mgr):
+        """New providers section → ProviderConfig models returned."""
+        config = {
+            "api_keys": {},
+            "model": "gpt-4o",
+            "providers": {
+                "openai": {
+                    "api_key": "sk-test",
+                    "api_key_env": "OPENAI_API_KEY",
+                    "models_endpoint": "https://api.openai.com/v1/models",
+                },
+                "anthropic": {
+                    "api_key": "sk-ant-test",
+                    "api_key_env": "ANTHROPIC_API_KEY",
+                    "models_endpoint": "https://api.anthropic.com/v1/models",
+                },
+            },
+        }
+        mgr.save(config)
+        providers = mgr.get_providers()
+
+        assert "openai" in providers
+        assert "anthropic" in providers
+        assert providers["openai"].api_key_env == "OPENAI_API_KEY"
+        assert providers["openai"].models_endpoint == "https://api.openai.com/v1/models"
+        assert providers["anthropic"].api_key_env == "ANTHROPIC_API_KEY"
+
+    def test_old_api_keys_synthesizes_providers(self, mgr):
+        """Old api_keys-only config → providers synthesized from defaults."""
+        config = {
+            "api_keys": {"openai": "sk-old", "anthropic": "sk-ant-old"},
+            "model": "gpt-4",
+        }
+        mgr.save(config)
+        providers = mgr.get_providers()
+
+        # All four default providers should be present
+        assert "openai" in providers
+        assert "anthropic" in providers
+        assert "google" in providers
+        assert "openrouter" in providers
+        # Default catalog should have correct endpoints
+        assert providers["openai"].api_key_env == "OPENAI_API_KEY"
+        assert providers["openai"].models_endpoint == "https://api.openai.com/v1/models"
+
+    def test_old_schema_get_key_works(self, mgr):
+        """Under old api_keys schema, get_key still resolves."""
+        config = {
+            "api_keys": {"openai": "sk-old-schema"},
+            "model": "gpt-4",
+        }
+        mgr.save(config)
+        assert mgr.get_key("openai") == "sk-old-schema"
+        assert mgr.get_key("anthropic") is None
+
+    def test_new_schema_get_key_works(self, mgr):
+        """Under new providers schema, get_key resolves from providers."""
+        config = {
+            "api_keys": {},
+            "model": "gpt-4o",
+            "providers": {
+                "openai": {"api_key": "sk-new-schema"},
+                "anthropic": {},
+            },
+        }
+        mgr.save(config)
+        assert mgr.get_key("openai") == "sk-new-schema"
+        assert mgr.get_key("anthropic") is None
+
+    def test_old_schema_get_key_for_model(self, mgr):
+        """get_key_for_model resolves under old api_keys schema."""
+        config = {
+            "api_keys": {"openai": "sk-gpt"},
+            "model": "gpt-4",
+        }
+        mgr.save(config)
+        assert mgr.get_key_for_model("gpt-4o") == "sk-gpt"
+        assert mgr.get_key_for_model("claude-sonnet-4-20250514") is None
+
+    def test_new_schema_get_key_for_model(self, mgr):
+        """get_key_for_model resolves under new providers schema."""
+        config = {
+            "api_keys": {},
+            "model": "gpt-4o",
+            "providers": {
+                "openai": {"api_key": "sk-new"},
+                "anthropic": {"api_key": "sk-ant-new"},
+            },
+        }
+        mgr.save(config)
+        assert mgr.get_key_for_model("gpt-4o") == "sk-new"
+        assert mgr.get_key_for_model("claude-sonnet-4-20250514") == "sk-ant-new"
+
+    def test_new_schema_add_key_routes_to_providers(self, mgr):
+        """add_key writes to providers section when present."""
+        config = {
+            "api_keys": {},
+            "model": "gpt-4o",
+            "providers": {"anthropic": {}},
+        }
+        mgr.save(config)
+        mgr.add_key("anthropic", "sk-ant-added")
+
+        reloaded = mgr.load()
+        providers = reloaded.get("providers", {})
+        assert providers.get("anthropic", {}).get("api_key") == "sk-ant-added"
+
+    def test_old_schema_add_key_routes_to_api_keys(self, mgr):
+        """add_key writes to api_keys when no providers section."""
+        mgr.add_key("openai", "sk-op")
+
+        reloaded = mgr.load()
+        assert reloaded["api_keys"]["openai"] == "sk-op"
+
+    def test_new_schema_remove_key(self, mgr):
+        """remove_key removes from providers section."""
+        config = {
+            "api_keys": {},
+            "model": "gpt-4o",
+            "providers": {"openai": {"api_key": "sk-rm"}},
+        }
+        mgr.save(config)
+        assert mgr.remove_key("openai") is True
+
+        reloaded = mgr.load()
+        providers = reloaded.get("providers", {})
+        assert "api_key" not in providers.get("openai", {})
+
+    def test_old_schema_remove_key(self, mgr):
+        """remove_key works under old api_keys schema."""
+        mgr.add_key("openai", "sk-rm-old")
+        assert mgr.remove_key("openai") is True
+        assert mgr.get_key("openai") is None
+
+    def test_default_catalog_has_four_providers(self):
+        """DEFAULT_PROVIDER_CATALOG has anthropic, openai, openrouter, google."""
+        from snodo.cli.config import DEFAULT_PROVIDER_CATALOG
+        assert set(DEFAULT_PROVIDER_CATALOG.keys()) == {"anthropic", "openai", "openrouter", "google"}
+        assert DEFAULT_PROVIDER_CATALOG["openrouter"].models_endpoint == "https://openrouter.ai/api/v1/models"
+        assert DEFAULT_PROVIDER_CATALOG["google"].api_key_env == "GEMINI_API_KEY"
+
+    def test_provider_for_model_resolves(self, mgr):
+        """_provider_for_model maps model prefixes to provider names."""
+        assert mgr._provider_for_model("gpt-4o") == "openai"
+        assert mgr._provider_for_model("o1-mini") == "openai"
+        assert mgr._provider_for_model("claude-sonnet-4-20250514") == "anthropic"
+        assert mgr._provider_for_model("gemini/gemini-2.0-flash-exp") == "google"
+        assert mgr._provider_for_model("gemini-2.0-flash-exp") == "google"
+        assert mgr._provider_for_model("unknown-model") is None
+
+    def test_config_merges_default_providers(self, mgr):
+        """Providers section with only openai still gets anthropic/google/openrouter defaults."""
+        config = {
+            "api_keys": {},
+            "model": "gpt-4o",
+            "providers": {
+                "openai": {"api_key_env": "CUSTOM_OPENAI_KEY"},
+            },
+        }
+        mgr.save(config)
+        providers = mgr.get_providers()
+
+        assert providers["openai"].api_key_env == "CUSTOM_OPENAI_KEY"
+        # Defaults filled in for unlisted providers
+        assert providers["anthropic"].api_key_env == "ANTHROPIC_API_KEY"
+        assert providers["anthropic"].models_endpoint == "https://api.anthropic.com/v1/models"
+        assert "google" in providers
+        assert "openrouter" in providers
