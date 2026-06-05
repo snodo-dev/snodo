@@ -9,11 +9,38 @@ The ``llm`` section is optional — absent file or missing keys default to the
 current code defaults.
 """
 
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
 from snodo.infrastructure.paths import resolve_home
+
+
+class ProviderConfig(BaseModel):
+    """Provider configuration with API credential env var and /models endpoint."""
+    api_key_env: str = ""
+    models_endpoint: str = ""
+
+
+DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
+    "anthropic": ProviderConfig(
+        api_key_env="ANTHROPIC_API_KEY",
+        models_endpoint="https://api.anthropic.com/v1/models",
+    ),
+    "openai": ProviderConfig(
+        api_key_env="OPENAI_API_KEY",
+        models_endpoint="https://api.openai.com/v1/models",
+    ),
+    "openrouter": ProviderConfig(
+        api_key_env="OPENROUTER_API_KEY",
+        models_endpoint="https://openrouter.ai/api/v1/models",
+    ),
+    "google": ProviderConfig(
+        api_key_env="GEMINI_API_KEY",
+        models_endpoint="https://generativelanguage.googleapis.com/v1beta/models",
+    ),
+}
+
 
 _CODER_MAX_TOKENS_DEFAULT = 16000
 _CODER_MAX_TOOL_TURNS_DEFAULT = 6

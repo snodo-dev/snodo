@@ -22,6 +22,7 @@ dependencies = [
     "pyjwt>=2.8.0",
     "textual>=1.0.0",
     "docker>=7.0.0",
+    "httpx>=0.27.0",
 ]
 
 description = "AI-native Software Development Lifecycle protocol engine"

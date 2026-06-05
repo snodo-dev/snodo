@@ -14,36 +14,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
-from pydantic import BaseModel
 
 from snodo.infrastructure.paths import resolve_home
-from snodo.infrastructure.config import DEFAULT_MODEL
-
-
-class ProviderConfig(BaseModel):
-    """Provider configuration with API credential env var and /models endpoint."""
-    api_key_env: str = ""
-    models_endpoint: str = ""
-
-
-DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
-    "anthropic": ProviderConfig(
-        api_key_env="ANTHROPIC_API_KEY",
-        models_endpoint="https://api.anthropic.com/v1/models",
-    ),
-    "openai": ProviderConfig(
-        api_key_env="OPENAI_API_KEY",
-        models_endpoint="https://api.openai.com/v1/models",
-    ),
-    "openrouter": ProviderConfig(
-        api_key_env="OPENROUTER_API_KEY",
-        models_endpoint="https://openrouter.ai/api/v1/models",
-    ),
-    "google": ProviderConfig(
-        api_key_env="GEMINI_API_KEY",
-        models_endpoint="https://generativelanguage.googleapis.com/v1beta/models",
-    ),
-}
+from snodo.infrastructure.config import DEFAULT_MODEL, ProviderConfig, DEFAULT_PROVIDER_CATALOG
 
 
 # Provider-to-model prefix mapping for key resolution
