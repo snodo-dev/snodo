@@ -33,15 +33,14 @@ _DEFAULT_MAX_TOOL_TURNS = 6
 
 
 class LiteLLMAdapter(CoderAdapter):
-    """Implements CoderAdapter using LangChain + liteLLM.
+    """Base coder adapter using liteLLM as transport.
 
-    This adapter bridges V1 patterns (LangChain ecosystem) to V2 protocol.
-    It handles:
-    - Model abstraction via liteLLM
-    - Tool orchestration via LangChain
-    - MCP server integration
-    - Output parsing into CodeArtifact
+    Provider-agnostic tool-use loop. Subclasses override only
+    TRUNCATION_REASONS and (optionally) _call_llm_with_tools for
+    provider-specific message shaping.
     """
+
+    TRUNCATION_REASONS: set[str] = {"length"}
 
     def __init__(
         self,
@@ -324,7 +323,7 @@ Now generate the implementation:
         try:
             choice = response.choices[0]
             finish = getattr(choice, "finish_reason", None)
-            if finish == "length":
+            if finish in self.TRUNCATION_REASONS:
                 raw = str(getattr(choice.message, "content", ""))
                 _logger.warning(
                     "Coder output truncated at max_tokens=%s — "

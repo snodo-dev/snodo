@@ -1092,13 +1092,16 @@ def build_protocol_graph(
 
     # Initialize coder with LLM config knobs
     from snodo.infrastructure.config import load_llm_config
+    from snodo.coders import resolve_adapter_class
     llm_cfg = load_llm_config()
+    resolved_model = model or DEFAULT_MODEL
+    adapter_cls = resolve_adapter_class(resolved_model)
     coder: Union[LiteLLMAdapter, MockAdapter]
     if use_mock_coder:
         coder = MockAdapter()
     else:
-        coder = LiteLLMAdapter(
-            model=model or "claude-sonnet-4-20250514",
+        coder = adapter_cls(
+            model=resolved_model,
             max_tokens=llm_cfg.coder.max_tokens,
             max_tool_turns=llm_cfg.coder.max_tool_turns,
             workspace_mcp=workspace_mcp,
