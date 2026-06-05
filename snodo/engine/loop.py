@@ -30,6 +30,8 @@ from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult, TaskSpec
 from snodo.infrastructure.tokens import ValidationToken, TokenIssuer
 from snodo.engine.policy import PolicyEvaluator, PolicyAction, policy_decision_to_dict
+from snodo.engine.constraints import ConstraintEngine
+from snodo.engine.validators import ValidatorRunner
 
 # Import real implementations
 from snodo.coders import LiteLLMAdapter, MockAdapter
@@ -135,8 +137,23 @@ class GraphBuilder:
         from snodo.predicates.registry import _default_registry
         self._predicate_registry = predicate_registry or _default_registry
 
+        self._constraint_engine = ConstraintEngine(
+            protocol=self.protocol,
+            predicate_registry=self._predicate_registry,
+            workspace_mcp=workspace_mcp,
+            git_mcp=git_mcp,
+        )
+        self._validator_runner = ValidatorRunner(
+            protocol=self.protocol,
+            coder=self.coder,
+            audit_log=self._audit_log,
+            workspace_mcp=workspace_mcp,
+            git_mcp=git_mcp,
+            session_manager=session_manager,
+        )
+
         self.governance_fn = governance_fn or self._default_governance
-        self.validator_fn = validator_fn or self._default_validator
+        self.validator_fn = validator_fn or self._validator_runner.run
         self.executor_fn = executor_fn or self._default_executor
 
         from snodo.infrastructure.decisions import DecisionRecordIssuer
@@ -262,32 +279,12 @@ class GraphBuilder:
 
         return self._state_to_dict(loop_state)
     
-    def _resolve_validators(
-        self, mode_id: str, phase: str = "pre_execute"
-    ) -> tuple:
-        """Resolve validators for a mode and phase.
-
-        Returns:
-            (mode, validators) or (None, []) if mode not found.
-        """
-        mode = self.protocol.get_mode(mode_id)
-        if not mode:
-            return None, []
-        validators: List[Validator] = [
-            v for v in (
-                self.protocol.get_validator(vid)
-                for vid in mode.validators
-            )
-            if v is not None and v.evaluation_phase == phase
-        ]
-        return mode, validators
-
     def _validate_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Stage 2: Run pre_execute validator quorum."""
         loop_state = self._dict_to_state(state)
         loop_state.stage = LoopStage.VALIDATE
 
-        current_mode, validators = self._resolve_validators(
+        current_mode, validators = self._validator_runner.resolve_validators(
             loop_state.current_mode, "pre_execute"
         )
         if not current_mode:
@@ -434,9 +431,9 @@ class GraphBuilder:
 
         # Re-evaluate constraints with post-execute context
         # (artifacts populated, git diff available)
-        self._evaluate_constraints(loop_state, self.protocol, "post_validate")
+        self._constraint_engine.evaluate(loop_state, "post_validate", self._audit)
 
-        current_mode, post_validators = self._resolve_validators(
+        current_mode, post_validators = self._validator_runner.resolve_validators(
             loop_state.current_mode, "post_execute"
         )
         if not current_mode or not post_validators:
@@ -609,105 +606,8 @@ class GraphBuilder:
 
     def _default_governance(self, state: LoopState, protocol: Protocol) -> LoopState:
         """Evaluate protocol and mode constraints against execution context."""
-        state.constraints_passed = True
-        state.constraint_violations = []
+        return self._constraint_engine.evaluate(state, "governance", self._audit)
 
-        self._evaluate_constraints(state, protocol, "governance")
-        return state
-
-    def _evaluate_constraints(
-        self,
-        state: LoopState,
-        protocol: Protocol,
-        phase: str,
-    ) -> None:
-        """Evaluate applicable constraints using the predicate registry.
-
-        Collects global_constraints + current mode's constraints, builds
-        a PredicateContext for the current phase, and evaluates each
-        constraint that has a predicate set.  Sets is_blocked / 
-        constraints_passed on the state accordingly.
-        """
-        # Collect applicable constraints
-        constraints: List[Any] = list(protocol.global_constraints)
-        mode = protocol.get_mode(state.current_mode)
-        if mode:
-            constraints.extend(mode.constraints)
-
-        if not constraints:
-            return
-
-        from snodo.predicates.base import PredicateContext
-
-        ctx = PredicateContext(
-            task=state.task,
-            mode=state.current_mode,
-            artifacts=state.artifacts,
-            workspace_mcp=self.workspace_mcp,
-            git_mcp=self.git_mcp,
-            protocol=protocol,
-            phase=phase,
-        )
-
-        for constraint in constraints:
-            if not constraint.predicate:
-                continue  # Legacy constraint, no executable predicate
-
-            try:
-                pred = self._predicate_registry.lookup(constraint.predicate)
-            except KeyError:
-                self._audit("constraint_predicate_unknown", {
-                    "op": "constraint_predicate_unknown",
-                    "constraint_id": constraint.constraint_id,
-                    "predicate_name": constraint.predicate,
-                    "phase": phase,
-                })
-                self._apply_constraint_failure(
-                    state, constraint, "blocker",
-                    f"Unknown predicate: {constraint.predicate}"
-                )
-                continue
-
-            try:
-                result = pred.evaluate(ctx, **constraint.params)
-            except Exception as e:
-                result = type("_R", (), {
-                    "passed": False,
-                    "justification": f"Predicate evaluation error: {e}",
-                    "evidence": {},
-                })
-
-            if result.passed:
-                continue
-
-            self._apply_constraint_failure(
-                state, constraint, constraint.severity.value, result.justification
-            )
-            self._audit("constraint_violation", {
-                "op": "constraint_violation",
-                "constraint_id": constraint.constraint_id,
-                "predicate": constraint.predicate,
-                "severity": constraint.severity.value,
-                "justification": result.justification,
-                "evidence": result.evidence,
-                "phase": phase,
-            })
-
-    def _apply_constraint_failure(
-        self,
-        state: LoopState,
-        constraint: Any,
-        severity: str,
-        justification: str,
-    ) -> None:
-        """Apply a constraint failure to the loop state."""
-        msg = f"{constraint.constraint_id}: {justification}"
-        state.constraint_violations.append(msg)
-        if severity == "blocker":
-            state.is_blocked = True
-            state.halt_type = "constraint"
-            state.constraints_passed = False
-    
     def _default_validator(
         self,
         task: Task,
@@ -724,10 +624,9 @@ class GraphBuilder:
         or stub results for unrecognised / no-LLM cases.
         """
         from snodo.validators.registry import _default_registry as reg
-
-        # Build shared context once per validate pass
-        mode_obj = self.protocol.get_mode(current_mode)
         from snodo.infrastructure.config import load_llm_config, ConfigLoadError
+
+        mode_obj = self.protocol.get_mode(current_mode)
         try:
             _vcfg = load_llm_config().validator
         except ConfigLoadError as e:
@@ -762,7 +661,6 @@ class GraphBuilder:
         results = []
         for v in validators:
             result = self._dispatch_one(v, context, reg)
-            # Apply severity cap
             if v.severity_cap is not None:
                 from snodo.compiler.models import Severity
                 if Severity(result.severity) > v.severity_cap:
@@ -775,60 +673,20 @@ class GraphBuilder:
         return results
 
     def _get_completion_fn(self):
-        """Get the LLM completion function from the coder adapter."""
-        if hasattr(self.coder, '_completion_fn') and self.coder._completion_fn is not None:
-            return self.coder._completion_fn
-        return None
+        """Delegate to ValidatorRunner."""
+        return self._validator_runner._get_completion_fn()
 
     def _dispatch_one(
         self, v: Validator, context: ValidatorContext, reg
     ) -> ValidatorResult:
-        """Dispatch a single validator spec via the registry.
+        """Delegate to ValidatorRunner."""
+        return self._validator_runner._dispatch_one(v, context, reg)
 
-        Quality and protocol types always dispatch via registry.
-        LLM-backed types only dispatch when they have criteria
-        (no-criteria → stub pass, preserving legacy behavior).
-        """
-        # Always dispatch quality and protocol
-        always_register = {"quality", "protocol"}
-        cls = reg.lookup(v.validator_type) if (v.criteria or v.validator_type in always_register) else None
-        if cls is not None:
-            try:
-                instance = cls(validator_spec=v)
-                return instance.evaluate(context)
-            except Exception as e:
-                return ValidatorResult(
-                    validator_id=v.validator_id,
-                    severity="warn",
-                    justification=f"Validator error: {e}",
-                )
-
-        # Fallback: LLM-backed types (architecture/security/etc) with
-        # completion_fn and criteria → LLMValidator
-        if context.completion_fn and v.criteria:
-            from snodo.validators.llm_validator import LLMValidator
-            try:
-                instance = LLMValidator(validator_spec=v)
-                return instance.evaluate(context)
-            except Exception as e:
-                return ValidatorResult(
-                    validator_id=v.validator_id,
-                    severity="warn",
-                    justification=f"LLM validation failed: {e}",
-                )
-
-        if v.criteria:
-            return ValidatorResult(
-                validator_id=v.validator_id,
-                severity="warn",
-                justification=f"LLM unavailable for {v.validator_type} validation",
-            )
-
-        return ValidatorResult(
-            validator_id=v.validator_id,
-            severity="pass",
-            justification=f"Stub validation for {v.validator_type}",
-        )
+    def _resolve_validators(
+        self, mode_id: str, phase: str = "pre_execute"
+    ) -> tuple:
+        """Delegate to ValidatorRunner."""
+        return self._validator_runner.resolve_validators(mode_id, phase)
 
     def _audit(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log an audit event if audit_log is available."""
