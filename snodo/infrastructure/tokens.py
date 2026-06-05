@@ -76,6 +76,7 @@ class TokenIssuer:
         self.secret = secret or os.environ.get("SNODO_TOKEN_SECRET") or secrets.token_hex(32)
         self.ttl_seconds = ttl_seconds
         self._audit_log = audit_log
+        self._used_tokens: set[str] = set()
 
     def issue_token(
         self,
@@ -163,6 +164,12 @@ class TokenIssuer:
         if token is None or not token.jwt:
             return False
 
+        if self._token_id(token.jwt) in self._used_tokens:
+            self._log_event("token_consumed", {
+                "task_ref": token.task_id or expected_task_id,
+            })
+            return False
+
         try:
             payload = jwt.decode(
                 token.jwt,
@@ -191,6 +198,15 @@ class TokenIssuer:
             return False
 
         return True
+
+    def consume_token(self, token: Optional[ValidationToken]) -> None:
+        """Mark a token as consumed (single-use enforcement).
+
+        Args:
+            token: ValidationToken to mark as used
+        """
+        if token is not None and token.jwt:
+            self._used_tokens.add(self._token_id(token.jwt))
 
     def decode_token(self, token: Optional[ValidationToken]) -> Optional[Dict[str, Any]]:
         """Decode token payload for inspection (no signature verification).

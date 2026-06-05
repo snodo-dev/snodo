@@ -11,7 +11,7 @@ import pytest
 
 from snodo.infrastructure.audit import AuditLog
 from snodo.core.interfaces import ValidatorResult
-from snodo.engine.policy import PolicyEvaluator
+from snodo.engine.policy import PolicyEvaluator, PolicyAction
 from snodo.compiler.models import (
     Protocol, Severity, DisagreementPolicy,
 )
@@ -22,7 +22,10 @@ from tests.strategies import (
     protocols, tasks, validator_results,
     severity_strings, identifiers,
     jwt_tokens, gen_audit_events,
+    severities,
 )
+
+severity_enum_strings = st.sampled_from(["pass", "warn", "blocker"])
 
 
 # ============================================================================
@@ -168,7 +171,7 @@ def test_wf1_modes_have_disjoint_tools(protocol):
 # Core Property 5 — Severity cap monotonicity
 # ============================================================================
 
-@given(orig=severity_strings, cap=st.sampled_from([Severity.PASS, Severity.WARN]))
+@given(orig=severity_enum_strings, cap=st.sampled_from([Severity.PASS, Severity.WARN]))
 @_HYP_SETTINGS
 @pytest.mark.property
 def test_severity_cap_never_increases_severity(orig, cap):
@@ -182,7 +185,7 @@ def test_severity_cap_never_increases_severity(orig, cap):
         assert cap in (Severity.PASS, Severity.WARN)
 
 
-@given(orig=severity_strings, cap=st.sampled_from([Severity.PASS, Severity.WARN]))
+@given(orig=severity_enum_strings, cap=st.sampled_from([Severity.PASS, Severity.WARN]))
 @_HYP_SETTINGS
 @pytest.mark.property
 def test_severity_cap_preserves_pass(orig, cap):
@@ -275,3 +278,85 @@ def test_files_in_scope_deterministic(artifacts):
     r2 = pred.evaluate(ctx, scope_paths=["src/**", "tests/**"])
     assert r1.passed == r2.passed
     assert r1.justification == r2.justification
+
+
+# ============================================================================
+# Bonus Property 9 — Error severity always halts
+# ============================================================================
+
+@given(results=validator_results(min_count=1))
+@_HYP_SETTINGS
+@pytest.mark.property
+def test_policy_error_severity_always_halts(results):
+    """Any 'error' severity → HALT under ALL disagreement policies."""
+    forced = [ValidatorResult(
+        validator_id="err_v", severity="error",
+        justification="validator failure",
+    )] + list(results)
+    for policy in [DisagreementPolicy.UNANIMOUS, DisagreementPolicy.MAJORITY,
+                   DisagreementPolicy.QUORUM, DisagreementPolicy.ANY]:
+        evaluator = PolicyEvaluator()
+        decision = evaluator.evaluate(forced, policy)
+        assert decision.action == PolicyAction.HALT, (
+            f"Error present but action={decision.action} under {policy}"
+        )
+
+
+# ============================================================================
+# Bonus Property 10 — Unanimous all-warn escalates
+# ============================================================================
+
+@given(results=validator_results(min_count=1))
+@_HYP_SETTINGS
+@pytest.mark.property
+def test_policy_warn_unanimous_escalates(results):
+    """All-warn results under unanimous policy → ESCALATE (not PROCEED)."""
+    all_warn = [ValidatorResult(
+        validator_id=r.validator_id, severity="warn",
+        justification=r.justification,
+    ) for r in results]
+    evaluator = PolicyEvaluator()
+    decision = evaluator.evaluate(all_warn, DisagreementPolicy.UNANIMOUS)
+    assert decision.action == PolicyAction.ESCALATE, (
+        f"All-warn under unanimous should ESCALATE, got {decision.action}"
+    )
+
+
+# ============================================================================
+# Bonus Property 11 — JWT expired token rejected
+# ============================================================================
+
+@given(token_data=jwt_tokens())
+@_HYP_SETTINGS
+@pytest.mark.property
+def test_jwt_expired_token_rejected(token_data):
+    """Token with exp in the past always fails verification."""
+    import time
+    token, issuer, task_id = token_data
+    assert token is not None
+    parts = token.jwt.split(".")
+    import base64, json
+    payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
+    payload["exp"] = int(time.time()) - 3600
+    new_payload = base64.urlsafe_b64encode(
+        json.dumps(payload).encode()
+    ).decode().rstrip("=")
+    expired_jwt = ValidationToken(jwt=f"{parts[0]}.{new_payload}.{parts[2]}")
+    assert not issuer.verify_token(expired_jwt), "Expired token should be rejected"
+
+
+# ============================================================================
+# Bonus Property 12 — JWT single-use consumed token rejected
+# ============================================================================
+
+@given(token_data=jwt_tokens())
+@_HYP_SETTINGS
+@pytest.mark.property
+def test_jwt_single_use_consumed_token_rejected(token_data):
+    """A consumed (used) token cannot be verified again."""
+    token, issuer, task_id = token_data
+    assert token is not None
+    first_verify = issuer.verify_token(token)
+    assert first_verify is True
+    issuer.consume_token(token)
+    assert not issuer.verify_token(token), "Consumed token should be rejected"
