@@ -7,13 +7,15 @@ Thread-safe: a single lock wraps both in-memory append and disk write.
 
 import hashlib
 import json
-import sys
 import threading
 import time
 from datetime import datetime, UTC
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 from pathlib import Path
+
+
+from snodo.core.interfaces import AuditError
 
 
 @dataclass
@@ -56,6 +58,7 @@ class AuditLog:
         """Append a new event to the log.
 
         Thread-safe: acquires lock for both in-memory and disk write.
+        Disk write happens first — if it fails, no in-memory state is mutated.
 
         Args:
             event_type: Type of event (e.g., "dispatch", "validate")
@@ -63,6 +66,9 @@ class AuditLog:
 
         Returns:
             The created AuditEvent
+
+        Raises:
+            AuditError: If disk write fails after retry
         """
         with self._lock:
             sequence = len(self.events)
@@ -82,8 +88,9 @@ class AuditLog:
                 event_hash=event_hash,
             )
 
-            self.events.append(event)
+            # Disk first — if this raises, memory stays consistent
             self._safe_append_to_disk(event)
+            self.events.append(event)
 
         return event
 
@@ -180,10 +187,10 @@ class AuditLog:
             f.write(json.dumps(event_dict) + "\n")
 
     def _safe_append_to_disk(self, event: AuditEvent) -> None:
-        """Append event to disk with retry-once and stderr fallback.
+        """Append event to disk with retry-once, then raise AuditError.
 
         No in-memory buffer — if disk write fails after retry,
-        warn to stderr but do not raise.
+        the caller receives AuditError and decides whether to halt.
         """
         try:
             self._append_to_disk(event)
@@ -192,12 +199,11 @@ class AuditLog:
             time.sleep(0.1)
             try:
                 self._append_to_disk(event)
-            except Exception as e:
-                print(
-                    f"AUDIT WARNING: failed to persist event "
-                    f"seq={event.sequence} type={event.event_type}: {e}",
-                    file=sys.stderr,
-                )
+            except Exception as retry_err:
+                raise AuditError(
+                    f"Failed to persist audit event seq={event.sequence} "
+                    f"type={event.event_type}: {retry_err}"
+                ) from retry_err
 
 
 # Singleton instance for global audit log

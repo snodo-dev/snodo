@@ -9,6 +9,7 @@ from pathlib import Path
 from snodo.infrastructure.audit import (
     AuditLog, AuditEvent, get_audit_log, log_event
 )
+from snodo.core.interfaces import AuditError
 
 
 @pytest.fixture
@@ -323,10 +324,9 @@ def test_concurrent_appends_via_asyncio(temp_audit_log):
 
 # ========== TASK 7.1: DISK ERROR HANDLING TESTS ==========
 
-def test_disk_failure_retries_once(temp_audit_log):
-    """On disk failure, retries once then warns to stderr."""
+def test_disk_failure_retries_once_then_raises(temp_audit_log):
+    """On disk failure, retries once then raises AuditError."""
     call_count = 0
-    original = temp_audit_log._append_to_disk
 
     def failing_disk(event):
         nonlocal call_count
@@ -335,26 +335,21 @@ def test_disk_failure_retries_once(temp_audit_log):
 
     temp_audit_log._append_to_disk = failing_disk
 
-    # Should not raise
-    event = temp_audit_log.append_event("fail_test", {"key": "val"})
+    with pytest.raises(AuditError, match="disk full"):
+        temp_audit_log.append_event("fail_test", {"key": "val"})
 
-    assert event is not None
-    assert event.event_type == "fail_test"
     # _append_to_disk called twice: initial + retry
     assert call_count == 2
-    # Event still in memory
-    assert len(temp_audit_log.events) == 1
+    # Event NOT in memory (append_event rolls back on failure)
+    assert len(temp_audit_log.events) == 0
 
 
-def test_disk_failure_warns_stderr(temp_audit_log, capsys):
-    """Disk failure warning goes to stderr."""
+def test_disk_failure_raises_audit_error(temp_audit_log):
+    """Disk failure raises AuditError, no silent drop."""
     temp_audit_log._append_to_disk = lambda e: (_ for _ in ()).throw(OSError("boom"))
 
-    temp_audit_log.append_event("err", {})
-
-    captured = capsys.readouterr()
-    assert "AUDIT WARNING" in captured.err
-    assert "boom" in captured.err
+    with pytest.raises(AuditError, match="boom"):
+        temp_audit_log.append_event("err", {})
 
 
 def test_disk_retry_succeeds_second_time(temp_audit_log):
