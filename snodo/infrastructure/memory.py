@@ -9,6 +9,7 @@ Manages persistent agent memory:
 """
 
 import json
+import logging
 import os
 import sqlite3
 import time
@@ -19,6 +20,8 @@ from typing import List, Optional
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from snodo.infrastructure.paths import resolve_home
+
+_logger = logging.getLogger(__name__)
 
 
 class MemoryError(Exception):
@@ -57,11 +60,22 @@ class AgentMemoryManager:
         return saver
 
     def _load_registry(self) -> dict:
-        """Load agent registry from disk."""
+        """Load agent registry from disk.
+
+        Returns an empty registry if the file is missing or corrupted,
+        logging a warning in the latter case so the operator can fix it.
+        """
         if not self.agents_path.exists():
             return {"agents": {}}
-        with open(self.agents_path) as f:
-            return json.load(f)
+        try:
+            with open(self.agents_path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            _logger.warning(
+                "Corrupt agents.json at %s — returning empty registry (%s)",
+                self.agents_path, e,
+            )
+            return {"agents": {}}
 
     def _save_registry(self, registry: dict) -> None:
         """Atomically save agent registry."""

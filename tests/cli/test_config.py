@@ -449,8 +449,9 @@ class TestEdgeCases:
         assert mgr.config_path == config_dir / "config.yml"
 
     def test_default_config_dir(self):
+        from snodo.infrastructure.paths import resolve_home
         mgr = ConfigManager()
-        assert mgr.config_dir == Path.home() / ".snodo"
+        assert mgr.config_dir == resolve_home()
 
     def test_concurrent_key_operations(self, mgr):
         """Multiple operations don't corrupt config."""

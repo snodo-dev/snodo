@@ -38,7 +38,11 @@ def manager(temp_home):
 
 @pytest.fixture
 def temp_project():
-    """Create a temporary project with .snodo/ for CLI tests."""
+    """Create a temporary project with .snodo/ for CLI tests.
+
+    Also isolates SNODO_HOME to a temp dir so no test touches
+    the real ~/.snodo/.
+    """
     temp_dir = tempfile.mkdtemp()
     snodo_dir = Path(temp_dir) / ".snodo"
     snodo_dir.mkdir()
@@ -65,6 +69,13 @@ def temp_project():
         'global_constraints: []\n'
     )
 
+    # Isolate SNODO_HOME so AgentMemoryManager / main() never
+    # read or write the real ~/.snodo/.
+    snodo_home = Path(temp_dir) / "snodo_home"
+    snodo_home.mkdir()
+    old_home = os.environ.get("SNODO_HOME")
+    os.environ["SNODO_HOME"] = str(snodo_home)
+
     original_cwd = Path.cwd()
     try:
         os.chdir(temp_dir)
@@ -72,6 +83,10 @@ def temp_project():
     finally:
         os.chdir(original_cwd)
         shutil.rmtree(temp_dir, ignore_errors=True)
+        if old_home is not None:
+            os.environ["SNODO_HOME"] = old_home
+        elif "SNODO_HOME" in os.environ:
+            del os.environ["SNODO_HOME"]
 
 
 # === AgentMemoryManager Init Tests ===
