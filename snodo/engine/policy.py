@@ -161,8 +161,10 @@ class PolicyEvaluator:
         # A warn with a valid matching DecisionRecord(decision=proceed) is
         # reclassified as resolved — removed from warn_count, added to pass_count.
         if decision_records and task_ref:
-            from snodo.infrastructure.decisions import DecisionRecordIssuer
-            issuer = self._decision_issuer or DecisionRecordIssuer()
+            from snodo.infrastructure.decisions import (
+                verify_only_issuer,
+            )
+            issuer = self._decision_issuer or verify_only_issuer()
             for r in list(results):
                 if r.severity != "warn":
                     continue

@@ -148,6 +148,16 @@ def init_command(args) -> int:
     except Exception as e:
         print(f"Warning: Could not write state.json: {e}", file=sys.stderr)
 
+    # Generate RS256 keypair for HI-CTRL decision record signing
+    try:
+        from snodo.infrastructure.signing_keys import generate_keypair
+        priv_path, pub_path = generate_keypair()
+        print("RS256 keypair generated:")
+        print(f"  Private: {priv_path}")
+        print(f"  Public:  {pub_path}")
+    except Exception as e:
+        print(f"Warning: Could not generate signing keys: {e}", file=sys.stderr)
+
     print("\nSnodo initialized successfully!")
     print("\nNext steps:")
     print("  1. Edit .snodo/protocol.yml to customize your protocol")

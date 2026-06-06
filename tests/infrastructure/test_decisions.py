@@ -13,14 +13,12 @@ Acceptance criteria:
 - Human-gated: no MCP tool for autonomous minting
 """
 
-import hashlib
-import os
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from snodo.infrastructure.decisions import (
-    DecisionRecord,
-    DecisionRecordIssuer,
+    SigningDecisionRecordIssuer,
+    VerifyOnlyDecisionRecordIssuer,
     DecisionError,
     DecisionInvalidSeverityError,
 )
@@ -37,9 +35,29 @@ def _make_result(validator_id: str, severity: str, justification: str = "") -> V
     )
 
 
-def _make_issuer(audit_log=None) -> DecisionRecordIssuer:
-    from tests.conftest import TEST_SECRET
-    return DecisionRecordIssuer(secret=TEST_SECRET, audit_log=audit_log)
+def _gen_keypair():
+    """Generate a throwaway RSA keypair for tests."""
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.backends import default_backend
+    private = rsa.generate_private_key(
+        public_exponent=65537, key_size=2048, backend=default_backend(),
+    )
+    return private, private.public_key()
+
+
+def _make_signing_issuer(audit_log=None) -> SigningDecisionRecordIssuer:
+    priv, _ = _gen_keypair()
+    return SigningDecisionRecordIssuer(priv, audit_log=audit_log)
+
+
+def _make_verify_issuer(audit_log=None) -> VerifyOnlyDecisionRecordIssuer:
+    _, pub = _gen_keypair()
+    return VerifyOnlyDecisionRecordIssuer(pub, audit_log=audit_log)
+
+
+def _make_issuer(audit_log=None):
+    """Backward compat alias — signing issuer for tests."""
+    return _make_signing_issuer(audit_log)
 
 
 # === Issue / Verify Tests ===
@@ -381,7 +399,7 @@ class TestINV3Regression:
     """The old severity-blind resolution_override path is gone."""
 
     def test_loop_state_has_no_resolution_override(self):
-        from snodo.engine.loop import LoopState, LoopStage
+        from snodo.engine.loop import LoopState
         from snodo.core.interfaces import Task
 
         task = Task(id="t1", spec="test")
@@ -392,10 +410,10 @@ class TestINV3Regression:
         """Verify the order: blocker HALT runs before any DecisionRecord logic."""
         from snodo.engine.policy import PolicyEvaluator, PolicyAction
         from snodo.compiler.models import DisagreementPolicy
-        from snodo.infrastructure.decisions import DecisionRecordIssuer
-        from tests.conftest import TEST_SECRET
+        from snodo.infrastructure.decisions import SigningDecisionRecordIssuer
 
-        issuer = DecisionRecordIssuer(secret=TEST_SECRET)
+        priv, _ = _gen_keypair()
+        issuer = SigningDecisionRecordIssuer(priv)
         evaluator = PolicyEvaluator(decision_issuer=issuer)
         policy = DisagreementPolicy.UNANIMOUS
 

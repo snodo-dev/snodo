@@ -164,9 +164,12 @@ class GraphBuilder:
         self.validator_fn = validator_fn or self._validator_runner.run
         self.executor_fn = executor_fn or self._default_executor
 
-        from snodo.infrastructure.decisions import DecisionRecordIssuer
-        self._decision_issuer = DecisionRecordIssuer(
-            secret=self._token_issuer.secret,
+        from snodo.infrastructure.decisions import (
+            VerifyOnlyDecisionRecordIssuer,
+        )
+        from snodo.infrastructure.signing_keys import load_public_key
+        self._decision_issuer = VerifyOnlyDecisionRecordIssuer(
+            load_public_key(),
             audit_log=self._audit_log,
         )
         self.policy_evaluator = PolicyEvaluator(
