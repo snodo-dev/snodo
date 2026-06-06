@@ -717,6 +717,19 @@ class TestDispatchTask:
                     "get_job_logs", {"job_id": "j_bad"}
                 )
 
+    def test_model_tools_in_registry(self):
+        """list_models and resolve_model are registered."""
+        for name in ("list_models", "resolve_model"):
+            assert name in TOOL_REGISTRY, f"{name} missing from TOOL_REGISTRY"
+            assert not TOOL_REGISTRY[name]["requires_token"]
+            assert TOOL_REGISTRY[name]["mcp"] is None
+
+    def test_model_tools_in_edit_mode(self):
+        """Both model tools are in MODE_TOOL_MAP['edit']."""
+        edit_tools = MODE_TOOL_MAP["edit"]
+        for name in ("list_models", "resolve_model"):
+            assert name in edit_tools
+
 
 # === Workspace Scoping ===
 

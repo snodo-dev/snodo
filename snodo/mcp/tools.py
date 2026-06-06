@@ -352,11 +352,50 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "list_models": {
+        "description": "List available models across configured providers",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "description": "Optional: filter to a single provider (anthropic, openai, openrouter, google)",
+                },
+            },
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
+    "resolve_model": {
+        "description": (
+            "Resolve a model query (e.g. \"sonnet\", \"gpt4o\", \"gemini\") "
+            "to a concrete model. Returns exact match, or ambiguous candidates "
+            "to pick from by index, or not_found."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Model query string, e.g. \"sonnet\", \"gemini-2.0\"",
+                },
+                "index": {
+                    "type": "integer",
+                    "description": "When ambiguous, resolve to the candidate at this index",
+                },
+            },
+            "required": ["query"],
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
 }
 
 # Map protocol tool names (from mode.tools) to concrete MCP tool names
 MODE_TOOL_MAP = {
-    "edit": ["read_file", "list_files"],
+    "edit": ["read_file", "list_files", "list_models", "resolve_model"],
     "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs"],
     "test": ["run_tests"],
     "validate": ["run_tests"],

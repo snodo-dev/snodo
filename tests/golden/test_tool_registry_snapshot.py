@@ -3,7 +3,6 @@
 Catches accidental tool additions, removals, or mode/tool assignment changes.
 """
 
-import pytest
 
 from snodo.mcp.tools import TOOL_REGISTRY, MODE_TOOL_MAP
 
@@ -34,6 +33,8 @@ EXPECTED_TOOL_KEYS = frozenset({
     "get_job_status",
     "list_jobs",
     "get_job_logs",
+    "list_models",
+    "resolve_model",
     "validate_task",
 })
 
