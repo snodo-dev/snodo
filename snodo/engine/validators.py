@@ -55,6 +55,8 @@ class ValidatorRunner:
         shell_mcp: Optional[ShellMCP],
         current_mode: str = "",
         phase: str = "",
+        authorized_decisions: Optional[List[str]] = None,
+        decision_issuer: Any = None,
     ) -> List[ValidatorResult]:
         from snodo.validators.registry import _default_registry as reg
 
@@ -95,8 +97,25 @@ class ValidatorRunner:
         )
 
         results = []
+        # Resolve set_model overrides once per pass
+        overrides: dict = {}
+        if authorized_decisions and decision_issuer:
+            verified = decision_issuer.find_set_model_overrides(
+                authorized_decisions,
+            )
+            for payload in verified:
+                scope = payload.get("scope", "")
+                if scope.startswith("validator:"):
+                    vid = scope.split(":", 1)[1]
+                    overrides[vid] = payload.get("proposed_model", "")
+
         for v in validators:
-            effective_model = v.model or self._default_model or DEFAULT_MODEL
+            # Precedence: authorized set_model override > v.model > default_model > DEFAULT_MODEL
+            override_model = overrides.get(v.validator_id)
+            if override_model:
+                effective_model = override_model
+            else:
+                effective_model = v.model or self._default_model or DEFAULT_MODEL
             context.model = effective_model
             result = self._dispatch_one(v, context, reg)
             if v.severity_cap is not None:

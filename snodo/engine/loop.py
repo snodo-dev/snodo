@@ -260,6 +260,7 @@ class GraphBuilder:
         # DecisionRecords are consulted AFTER the blocker HALT in the policy
         # evaluator, so they can NEVER override a genuine blocker (INV3).
         self._decision_records: List[str] = []
+        self._authorized_decisions: List[str] = []
         if self._session_manager:
             session = self._session_manager.get_active_session(
                 loop_state.current_mode, getattr(self, '_project_root', "")
@@ -268,6 +269,9 @@ class GraphBuilder:
                 records = session.checkpoint.decisions.get("decision_records", [])
                 if isinstance(records, list):
                     self._decision_records = [r for r in records if isinstance(r, str)]
+                auth = session.checkpoint.decisions.get("authorized_decisions", [])
+                if isinstance(auth, list):
+                    self._authorized_decisions = [a for a in auth if isinstance(a, str)]
 
         # Summarize messages if they've grown too large
         loop_state = self._maybe_summarize(loop_state)
@@ -321,7 +325,9 @@ class GraphBuilder:
 
         results = self.validator_fn(loop_state.task, validators, self.shell_mcp,
                                     current_mode=loop_state.current_mode,
-                                    phase="pre_execute")
+                                    phase="pre_execute",
+                                    authorized_decisions=getattr(self, '_authorized_decisions', []),
+                                    decision_issuer=self._decision_issuer)
         loop_state.validation_results = results
 
         decision = self.policy_evaluator.evaluate(
@@ -470,7 +476,9 @@ class GraphBuilder:
         # Run post_execute validators
         results = self.validator_fn(loop_state.task, post_validators, self.shell_mcp,
                                     current_mode=loop_state.current_mode,
-                                    phase="post_execute")
+                                    phase="post_execute",
+                                    authorized_decisions=getattr(self, '_authorized_decisions', []),
+                                    decision_issuer=self._decision_issuer)
 
         # Merge post-validate results with existing results
         loop_state.validation_results = loop_state.validation_results + results
