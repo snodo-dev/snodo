@@ -13,7 +13,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 @dataclass
@@ -21,7 +21,7 @@ class ProjectState:
     """Per-project runtime state stored in .snodo/state.json."""
 
     current_mode: str = ""
-    active_session: Optional[str] = None
+    active_session: Dict[str, str] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -29,14 +29,27 @@ def read_state(project_root: str) -> ProjectState:
     """Read project state from .snodo/state.json.
 
     Returns a default ProjectState if the file does not exist.
+    Old-format ``active_session: null`` or single-string values are
+    migrated cleanly to the per-mode dict.
     """
     path = Path(project_root) / ".snodo" / "state.json"
     if not path.exists():
         return ProjectState()
     try:
         data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ProjectState()
+
+    # Migrate old single-string active_session to per-mode dict
+    raw = data.get("active_session")
+    if isinstance(raw, str):
+        data["active_session"] = {}  # old string → empty dict (no per-mode info)
+    elif not isinstance(raw, dict):
+        data["active_session"] = {}
+
+    try:
         return ProjectState(**data)
-    except (json.JSONDecodeError, OSError, TypeError):
+    except TypeError:
         return ProjectState()
 
 

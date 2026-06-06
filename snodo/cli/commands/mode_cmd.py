@@ -90,18 +90,20 @@ def _mode_change(args, state, project_root) -> int:
 
     print(f"Mode changed to: {mode.name} ({new_mode})")
 
-    # Session picker: list sessions for the new mode
+    # Ensure the target mode has an active session
     session_mgr = SessionManager(sessions_dir=resolve_home() / "sessions")
+    active = session_mgr.get_active_session(new_mode, project_root)
+    if active:
+        print(f"Active session: {active.session_id}")
     sessions = session_mgr.list_sessions(mode=new_mode, project_root=project_root)
     if sessions:
         print()
         print(f"Available sessions for {new_mode}:")
         for s in sessions:
             task = s.checkpoint.current_task or "(none)"
-            print(f"  {s.session_id}  updated={s.updated_at[:19]}  task={task}")
+            marker = " ← active" if active and s.session_id == active.session_id else ""
+            print(f"  {s.session_id}  updated={s.updated_at[:19]}  task={task}{marker}")
         print()
-        print("Use 'snodo run' to continue with the most recent session,")
-        print("or 'snodo run --resume <session_id>' for a specific one.")
     else:
-        print("No existing sessions for this mode. Next 'snodo run' will create one.")
+        print("No sessions for this mode yet. First 'snodo run' will create one.")
     return 0

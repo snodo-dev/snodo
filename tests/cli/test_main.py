@@ -110,7 +110,7 @@ def test_init_writes_state_json(temp_project_dir):
     from snodo.infrastructure.state import read_state
     state = read_state(str(temp_project_dir))
     assert state.current_mode == "producer"
-    assert state.active_session is None
+    assert state.active_session == {}
 
 
 def test_init_mode_flag_skips_picker(temp_project_dir):
