@@ -97,9 +97,11 @@ class DashboardDataProvider:
     # Sessions
     # ------------------------------------------------------------------
 
-    def get_active_session_id(self) -> Optional[str]:
+    def get_active_session_id(self, mode: str = "") -> Optional[str]:
         state = read_state(self.project_root)
-        return state.active_session
+        if mode:
+            return state.active_session.get(mode)
+        return state.active_session.get(self.get_active_mode())
 
     def get_active_mode(self) -> str:
         state = read_state(self.project_root)
@@ -111,12 +113,13 @@ class DashboardDataProvider:
         mgr = SessionManager()
         sessions = mgr.list_sessions(project_root=self.project_root)
 
-        active_id = self.get_active_session_id()
+        state = read_state(self.project_root)
+        active_ids = set(state.active_session.values())
         audit = self._get_audit_log()
 
         summaries = []
         for s in sessions:
-            is_active = s.session_id == active_id
+            is_active = s.session_id in active_ids
             mode_obj = self._get_mode(s.mode)
 
             agent_count = self._count_agents_for_mode(s.mode)

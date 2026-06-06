@@ -20,11 +20,15 @@ def session_command(args) -> int:
     elif action == "show":
         return _session_show(mgr, args.session_id)
     elif action == "delete":
-        return _session_delete(mgr, args.session_id)
+        return _session_delete(mgr, args)
     elif action == "prune":
         return _session_prune(mgr, args)
+    elif action == "switch":
+        return _session_switch(mgr, args)
+    elif action == "new":
+        return _session_new(mgr, args)
     else:
-        print("Unknown session action. Use: list, show, delete, prune",
+        print("Unknown session action. Use: list, show, delete, prune, switch, new",
               file=sys.stderr)
         return 1
 
@@ -70,14 +74,14 @@ def _session_show(mgr: SessionManager, session_id: str) -> int:
     return 0
 
 
-def _session_delete(mgr: SessionManager, session_id: str) -> int:
-    """Delete a session."""
+def _session_delete(mgr: SessionManager, args) -> int:
+    """Delete a session.  Clears active pointer if this was the active session."""
     try:
-        mgr.delete_session(session_id)
-        print(f"Deleted session: {session_id}")
+        mgr.delete_session(args.session_id)
+        print(f"Deleted session: {args.session_id}")
         return 0
     except FileNotFoundError:
-        print(f"Error: Session not found: {session_id}", file=sys.stderr)
+        print(f"Error: Session not found: {args.session_id}", file=sys.stderr)
         return 1
 
 
@@ -89,4 +93,42 @@ def _session_prune(mgr: SessionManager, args) -> int:
 
     count = mgr.prune_stale(max_age_days=max_age)
     print(f"Pruned {count} stale session(s) (max age: {max_age} days)")
+    return 0
+
+
+def _session_switch(mgr: SessionManager, args) -> int:
+    """Set an existing session as the active one for its (project, mode)."""
+    from pathlib import Path
+    project_root = str(Path.cwd())
+
+    try:
+        session = mgr.load_session(args.session_id)
+    except FileNotFoundError:
+        print(f"Error: Session not found: {args.session_id}", file=sys.stderr)
+        return 1
+
+    try:
+        mgr.set_active_session(project_root, session.mode, session.session_id)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print(f"Switched to session: {session.session_id} (mode={session.mode})")
+    return 0
+
+
+def _session_new(mgr: SessionManager, args) -> int:
+    """Create a new session and set it active."""
+    from pathlib import Path
+    from snodo.infrastructure.state import read_state
+    project_root = str(Path.cwd())
+    state = read_state(project_root)
+
+    mode = getattr(args, "mode", None) or state.current_mode
+    if not mode:
+        print("Error: No mode specified. Use --mode or set current_mode via 'snodo mode change'.", file=sys.stderr)
+        return 1
+
+    session = mgr.create_session(mode, project_root)
+    print(f"Created new session: {session.session_id} (mode={mode})")
     return 0

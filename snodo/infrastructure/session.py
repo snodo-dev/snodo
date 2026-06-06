@@ -9,6 +9,7 @@ excluded - revalidation on resume is required.
 
 import hashlib
 import json
+import logging
 import secrets
 from datetime import datetime, UTC, timedelta
 from typing import Dict, Any, Optional, List
@@ -16,6 +17,8 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
 from snodo.infrastructure.paths import resolve_home
+
+_logger = logging.getLogger(__name__)
 
 
 MODE_PREFIXES = {
@@ -126,6 +129,8 @@ class SessionManager:
             "mode": mode,
             "project_root": project_root,
         })
+        # Set this session as active for its (project, mode)
+        self._set_active_pointer(project_root, mode, session_id)
         return session
 
     def get_active_session(
@@ -133,28 +138,67 @@ class SessionManager:
         mode: str,
         project_root: str,
     ) -> Optional[SessionState]:
-        """Find a session matching (mode, project_root).
+        """Return the active session for (project, mode).
 
-        All saved sessions are considered valid. The "active" designation
-        is maintained by .snodo/state.json.active_session.
+        The authoritative source is the per-mode pointer in
+        .snodo/state.json.  Falls back to auto-adoption when the
+        pointer is unset or stale.
 
         Args:
             mode: Protocol mode
             project_root: Absolute path to project root
 
         Returns:
-            First matching SessionState if found, None otherwise
+            Matching SessionState if found, None otherwise
         """
+        from snodo.infrastructure.state import read_state
+
+        state = read_state(project_root)
+        pointer = state.active_session.get(mode)
+
+        # Pointer set and valid → authoritative
+        if pointer:
+            try:
+                session = self.load_session(pointer)
+                if session.mode == mode and session.project_id == _project_id(project_root):
+                    return session
+            except FileNotFoundError:
+                pass  # stale pointer — fall through to auto-adopt
+
+        # No pointer or stale — find all sessions for this (project, mode)
         pid = _project_id(project_root)
+        candidates: List[SessionState] = []
         for session_file in self.sessions_dir.glob("*.json"):
             try:
-                session = self._load_file(session_file)
+                s = self._load_file(session_file)
             except (json.JSONDecodeError, KeyError, TypeError):
                 continue
-            if (session.mode == mode
-                    and session.project_id == pid):
-                return session
-        return None
+            if s.mode == mode and s.project_id == pid:
+                candidates.append(s)
+
+        if not candidates:
+            return None
+
+        if len(candidates) == 1:
+            # Exactly one — adopt it as active
+            session = candidates[0]
+            _logger.info(
+                "Auto-adopting active session %s for mode=%s project=%s",
+                session.session_id, mode, project_root,
+            )
+            self._set_active_pointer(project_root, mode, session.session_id)
+            return session
+
+        # Multiple candidates, no pointer — ambiguous.  Pick most-recent.
+        candidates.sort(key=lambda s: s.updated_at, reverse=True)
+        session = candidates[0]
+        _logger.warning(
+            "Multiple sessions (%d) for mode=%s project=%s, no active pointer. "
+            "Adopting most-recent %s as active.",
+            len(candidates), mode, project_root, session.session_id,
+        )
+        self._set_active_pointer(project_root, mode, session.session_id)
+        return session
 
     def load_session(self, session_id: str) -> SessionState:
         """Load a session by ID.
@@ -245,18 +289,67 @@ class SessionManager:
             "new_task": task_id,
         })
 
-    def delete_session(self, session_id: str) -> None:
-        """Delete a session file.
+    def set_active_session(
+        self,
+        project_root: str,
+        mode: str,
+        session_id: str,
+    ) -> None:
+        """Set *session_id* as the active session for (project, mode).
 
-        Args:
-            session_id: Session identifier
+        Validates that the session exists and matches the (project, mode)
+        scope before writing the pointer.  Raises FileNotFoundError or
+        ValueError on mismatch.
         """
-        self.load_session(session_id)  # Validate session exists
+        session = self.load_session(session_id)
+        if session.mode != mode:
+            raise ValueError(
+                f"Session {session_id} is mode={session.mode}, "
+                f"not {mode}"
+            )
+        pid = _project_id(project_root)
+        if session.project_id != pid:
+            raise ValueError(
+                f"Session {session_id} is for a different project"
+            )
+        self._set_active_pointer(project_root, mode, session_id)
+
+    def _set_active_pointer(
+        self, project_root: str, mode: str, session_id: str,
+    ) -> None:
+        """Write the active-session pointer to state.json (best-effort)."""
+        from snodo.infrastructure.state import read_state, write_state
+
+        try:
+            state = read_state(project_root)
+            state.active_session[mode] = session_id
+            write_state(project_root, state)
+        except (OSError, PermissionError) as e:
+            _logger.warning(
+                "Could not write active-session pointer for %s/%s: %s",
+                project_root, mode, e,
+            )
+
+    def delete_session(self, session_id: str) -> None:
+        """Delete a session file.  Clears the active pointer if deleted."""
+        from snodo.infrastructure.state import read_state, write_state
+
+        session = self.load_session(session_id)  # Validate exists
         self._audit("session_deleted", {
             "op": "session_deleted",
             "session_id": session_id,
         })
         (self.sessions_dir / f"{session_id}.json").unlink(missing_ok=True)
+
+        # Clear active pointer if this was the active session
+        try:
+            state = read_state(session.project_root)
+            pointer = state.active_session.get(session.mode)
+            if pointer == session_id:
+                del state.active_session[session.mode]
+                write_state(session.project_root, state)
+        except (OSError, PermissionError):
+            pass
 
     def list_sessions(
         self,
@@ -291,8 +384,8 @@ class SessionManager:
     def prune_stale(self, max_age_days: int = 30) -> int:
         """Remove sessions older than max_age_days.
 
-        The "active session" reference in .snodo/state.json prevents
-        the user's active session from being pruned regardless of age.
+        The active session for each (project, mode) is NEVER pruned
+        regardless of its age.
 
         Args:
             max_age_days: Maximum age in days before a session is stale
@@ -302,6 +395,23 @@ class SessionManager:
         """
         cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
         pruned = 0
+
+        # Collect active pointers from all known state.json files
+        # to prevent pruning ANY active session.
+        active_ids: set = set()
+        for session_file in self.sessions_dir.glob("*.json"):
+            try:
+                s = self._load_file(session_file)
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue
+            try:
+                from snodo.infrastructure.state import read_state
+                state = read_state(s.project_root)
+                for sid in state.active_session.values():
+                    active_ids.add(sid)
+            except Exception:
+                pass
+
         for session_file in list(self.sessions_dir.glob("*.json")):
             try:
                 session = self._load_file(session_file)
@@ -309,6 +419,10 @@ class SessionManager:
                 session_file.unlink(missing_ok=True)
                 pruned += 1
                 continue
+
+            if session.session_id in active_ids:
+                continue
+
             try:
                 updated = datetime.fromisoformat(session.updated_at)
             except (ValueError, TypeError):
@@ -319,6 +433,7 @@ class SessionManager:
                 session_file.unlink(missing_ok=True)
                 pruned += 1
                 continue
+
             if updated < cutoff:
                 self._audit("session_deleted", {
                     "op": "session_deleted",
