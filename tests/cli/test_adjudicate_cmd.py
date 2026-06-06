@@ -10,17 +10,21 @@ Tests the human-only DecisionRecord minting path:
 - --decision halt also works
 """
 
-import json
-import os
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 
-from snodo.core.interfaces import ValidatorResult
-from snodo.infrastructure.decisions import DecisionRecordIssuer
+from snodo.infrastructure.decisions import SigningDecisionRecordIssuer
+
+
+def _make_test_signing_issuer() -> SigningDecisionRecordIssuer:
+    """Create a signing issuer with a throwaway test keypair."""
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.backends import default_backend
+    private = rsa.generate_private_key(65537, 2048, backend=default_backend())
+    return SigningDecisionRecordIssuer(private)
 
 
 TEST_SECRET = "test-secret-key-that-is-at-least-32-bytes!!"
@@ -71,8 +75,9 @@ class TestAdjudicateCommand:
         }
         mgr, sessions_dir = _make_session_manager_with_session(session_id, decisions)
 
+        issuer = _make_test_signing_issuer()
         with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
-            with patch.dict(os.environ, {"SNODO_TOKEN_SECRET": TEST_SECRET}):
+            with patch("snodo.infrastructure.decisions.signing_issuer", return_value=issuer):
                 args = SimpleNamespace(
                     session_id=session_id,
                     task_id=task_id,
@@ -91,8 +96,7 @@ class TestAdjudicateCommand:
         records = session.checkpoint.decisions.get("decision_records", [])
         assert len(records) == 1
 
-        # Verify the record is valid
-        issuer = DecisionRecordIssuer(secret=TEST_SECRET)
+        # Verify the record is valid (same issuer)
         payload = issuer.verify_record(records[0], expected_task_ref=task_id)
         assert payload is not None
         assert payload["validator_id"] == validator_id
@@ -119,8 +123,9 @@ class TestAdjudicateCommand:
         }
         mgr, sessions_dir = _make_session_manager_with_session(session_id, decisions)
 
+        issuer = _make_test_signing_issuer()
         with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
-            with patch.dict(os.environ, {"SNODO_TOKEN_SECRET": TEST_SECRET}):
+            with patch("snodo.infrastructure.decisions.signing_issuer", return_value=issuer):
                 args = SimpleNamespace(
                     session_id=session_id,
                     task_id=task_id,
@@ -138,7 +143,6 @@ class TestAdjudicateCommand:
         records = session.checkpoint.decisions.get("decision_records", [])
         assert len(records) == 1
 
-        issuer = DecisionRecordIssuer(secret=TEST_SECRET)
         payload = issuer.verify_record(records[0], expected_task_ref=task_id)
         assert payload["decision"] == "halt"
 
@@ -233,26 +237,25 @@ class TestAdjudicateCommand:
 
         audit_log = MagicMock()
         with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
-            with patch.dict(os.environ, {"SNODO_TOKEN_SECRET": TEST_SECRET}):
-                with patch("snodo.infrastructure.decisions.DecisionRecordIssuer") as MockIssuer:
-                    mock_issuer = MagicMock()
-                    mock_record = MagicMock()
-                    mock_record.jwt = "test.jwt.payload"
-                    mock_record.adjudicated_severity = "warn"
-                    mock_issuer.issue_record.return_value = mock_record
-                    mock_issuer._record_id.return_value = "abc123"
-                    MockIssuer.return_value = mock_issuer
+            with patch("snodo.infrastructure.decisions.signing_issuer") as mock_signing:
+                mock_issuer = MagicMock()
+                mock_record = MagicMock()
+                mock_record.jwt = "test.jwt.payload"
+                mock_record.adjudicated_severity = "warn"
+                mock_issuer.issue_record.return_value = mock_record
+                mock_issuer._record_id.return_value = "abc123"
+                mock_signing.return_value = mock_issuer
 
-                    args = SimpleNamespace(
-                        session_id=session_id,
-                        task_id=task_id,
-                        validator_id=validator_id,
-                        decision="proceed",
-                        justification="OK",
-                        resolved_by="human",
-                    )
-                    from snodo.cli.commands.adjudicate_cmd import adjudicate_command
-                    result = adjudicate_command(args)
+                args = SimpleNamespace(
+                    session_id=session_id,
+                    task_id=task_id,
+                    validator_id=validator_id,
+                    decision="proceed",
+                    justification="OK",
+                    resolved_by="human",
+                )
+                from snodo.cli.commands.adjudicate_cmd import adjudicate_command
+                result = adjudicate_command(args)
 
         assert result == 0
         # Verify issue_record was called with correct args
@@ -288,7 +291,7 @@ class TestAdjudicateINV3:
         mgr, sessions_dir = _make_session_manager_with_session(session_id, decisions)
 
         with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
-            with patch.dict(os.environ, {"SNODO_TOKEN_SECRET": TEST_SECRET}):
+            with patch("snodo.infrastructure.decisions.signing_issuer", return_value=_make_test_signing_issuer()):
                 args = SimpleNamespace(
                     session_id=session_id,
                     task_id=task_id,
@@ -326,7 +329,7 @@ class TestAdjudicateINV3:
         mgr, sessions_dir = _make_session_manager_with_session(session_id, decisions)
 
         with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
-            with patch.dict(os.environ, {"SNODO_TOKEN_SECRET": TEST_SECRET}):
+            with patch("snodo.infrastructure.decisions.signing_issuer", return_value=_make_test_signing_issuer()):
                 args = SimpleNamespace(
                     session_id=session_id,
                     task_id=task_id,
@@ -356,8 +359,9 @@ class TestAdjudicateFallback:
         decisions = {}
         mgr, sessions_dir = _make_session_manager_with_session(session_id, decisions)
 
+        issuer = _make_test_signing_issuer()
         with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
-            with patch.dict(os.environ, {"SNODO_TOKEN_SECRET": TEST_SECRET}):
+            with patch("snodo.infrastructure.decisions.signing_issuer", return_value=issuer):
                 args = SimpleNamespace(
                     session_id=session_id,
                     task_id=task_id,
@@ -375,7 +379,6 @@ class TestAdjudicateFallback:
         records = session.checkpoint.decisions.get("decision_records", [])
         assert len(records) == 1
 
-        issuer = DecisionRecordIssuer(secret=TEST_SECRET)
         payload = issuer.verify_record(records[0], expected_task_ref=task_id)
         assert payload is not None
         assert payload["adjudicated_severity"] == "warn"
@@ -406,7 +409,7 @@ class TestResolveCommandDelegation:
         mgr, sessions_dir = _make_session_manager_with_session(session_id, decisions)
 
         with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
-            with patch.dict(os.environ, {"SNODO_TOKEN_SECRET": TEST_SECRET}):
+            with patch("snodo.infrastructure.decisions.signing_issuer", return_value=_make_test_signing_issuer()):
                 args = SimpleNamespace(
                     session_id=session_id,
                     task_id=task_id,
@@ -445,7 +448,7 @@ class TestResolveCommandDelegation:
         mgr, sessions_dir = _make_session_manager_with_session(session_id, decisions)
 
         with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
-            with patch.dict(os.environ, {"SNODO_TOKEN_SECRET": TEST_SECRET}):
+            with patch("snodo.infrastructure.decisions.signing_issuer", return_value=_make_test_signing_issuer()):
                 args = SimpleNamespace(
                     session_id=session_id,
                     task_id=task_id,

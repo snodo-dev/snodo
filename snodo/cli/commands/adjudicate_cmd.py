@@ -41,7 +41,7 @@ def adjudicate_command(args) -> int:
     from snodo.infrastructure.decisions import (
         DecisionError,
         DecisionInvalidSeverityError,
-        DecisionRecordIssuer,
+        signing_issuer,
     )
     from snodo.infrastructure.session import SessionManager
     from snodo.core.interfaces import ValidatorResult
@@ -67,7 +67,7 @@ def adjudicate_command(args) -> int:
             justification="(concern text not available in session)",
         )
 
-    issuer = DecisionRecordIssuer()
+    issuer = signing_issuer()
 
     try:
         record = issuer.issue_record(
