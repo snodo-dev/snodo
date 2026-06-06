@@ -24,6 +24,7 @@ from snodo.mcp.planner import PlannerMCP
 from snodo.mcp.tools import TOOL_REGISTRY, MODE_TOOL_MAP
 from snodo.mcp.job_handlers import JobToolHandler
 from snodo.mcp.model_handlers import ModelToolHandler
+from snodo.mcp.decision_handlers import DecisionToolHandler
 
 
 class MCPError(Exception):
@@ -84,6 +85,7 @@ class ProtocolMCPServer:
         }
         self._job_handler = JobToolHandler(project_root)
         self._model_handler = ModelToolHandler()
+        self._decision_handler = DecisionToolHandler()
         self._tools = self._resolve_tools()
 
     def _audit(self, event_type: str, data: Dict[str, Any]) -> None:
@@ -197,6 +199,10 @@ class ProtocolMCPServer:
             return self._model_handler.handle_list_models(arguments)
         if name == "resolve_model":
             return self._model_handler.handle_resolve_model(arguments)
+        if name == "propose_adjudicate":
+            return self._decision_handler.handle_propose_adjudicate(arguments)
+        if name == "propose_set_model":
+            return self._decision_handler.handle_propose_set_model(arguments)
 
         # Dispatch to backing MCP
         return self._dispatch_tool(name, schema, arguments)

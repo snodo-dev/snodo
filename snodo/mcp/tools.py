@@ -352,6 +352,70 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "propose_adjudicate": {
+        "description": (
+            "Propose a decision to override a validator concern. The "
+            "human runs 'snodo authorize <task_id>' to review and sign. "
+            "The agent cannot self-authorize — only the human CLI holds "
+            "the signing key."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string",
+                    "description": "Task identifier to adjudicate",
+                },
+                "validator_id": {
+                    "type": "string",
+                    "description": "Validator to override (e.g. 'security')",
+                },
+                "decision": {
+                    "type": "string",
+                    "description": "proceed or halt",
+                },
+                "justification": {
+                    "type": "string",
+                    "description": "Agent's justification for the proposed decision",
+                },
+            },
+            "required": ["task_id", "validator_id", "decision", "justification"],
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
+    "propose_set_model": {
+        "description": (
+            "Propose a model change (validator or coder). The human runs "
+            "'snodo authorize <task_id>' to review and sign."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string",
+                    "description": "Task identifier this proposal is scoped to",
+                },
+                "proposed_model": {
+                    "type": "string",
+                    "description": "Model identifier (e.g. 'gemini/gemini-2.0-flash-exp')",
+                },
+                "scope": {
+                    "type": "string",
+                    "description": "Where to apply: 'coder' or 'validator:<id>'",
+                },
+                "justification": {
+                    "type": "string",
+                    "description": "Why the model change is needed",
+                },
+            },
+            "required": ["task_id", "proposed_model", "scope", "justification"],
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
     "list_models": {
         "description": "List available models across configured providers",
         "inputSchema": {
@@ -396,6 +460,7 @@ TOOL_REGISTRY = {
 # Map protocol tool names (from mode.tools) to concrete MCP tool names
 MODE_TOOL_MAP = {
     "edit": ["read_file", "list_files", "list_models", "resolve_model"],
+    "decide": ["propose_adjudicate", "propose_set_model"],
     "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs"],
     "test": ["run_tests"],
     "validate": ["run_tests"],
