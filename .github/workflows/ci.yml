@@ -27,7 +27,7 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
       - name: Test
-        run: pytest tests/ -v --tb=short --timeout=60
+        run: pytest tests/ -v -m "" --tb=short --timeout=60
 
   lint:
     runs-on: ubuntu-latest
