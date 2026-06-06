@@ -198,6 +198,36 @@ class DecisionRecordIssuer:
                 return payload
         return None
 
+    def find_set_model_overrides(
+        self,
+        authorized_jwts: List[str],
+    ) -> List[Dict[str, Any]]:
+        """Return verified set_model payloads from a list of JWT strings.
+
+        Each JWT is RS256-verified via the public key.  Invalid, tampered,
+        or non-set_model records are skipped (logged via audit if available).
+
+        Args:
+            authorized_jwts: List of JWT strings from
+                             checkpoint.decisions["authorized_decisions"]
+
+        Returns:
+            List of verified set_model payload dicts with keys:
+            type, proposed_model, scope, task_ref, justification.
+        """
+        overrides: List[Dict[str, Any]] = []
+        for r_jwt in authorized_jwts:
+            payload = self.verify_record(r_jwt)
+            if payload is None:
+                self._log_event("set_model_verify_failed", {
+                    "reason": "verification failed — skipping",
+                })
+                continue
+            if payload.get("type") != "set_model":
+                continue  # adjudicate record, not a set_model — skip silently
+            overrides.append(payload)
+        return overrides
+
     # ------------------------------------------------------------------
     # Internals — subclasses must implement _verify_key
     # ------------------------------------------------------------------
