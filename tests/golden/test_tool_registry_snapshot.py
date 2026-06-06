@@ -35,11 +35,14 @@ EXPECTED_TOOL_KEYS = frozenset({
     "get_job_logs",
     "list_models",
     "resolve_model",
+    "propose_adjudicate",
+    "propose_set_model",
     "validate_task",
 })
 
 EXPECTED_MODE_TOOL_MAP_KEYS = frozenset({
     "edit",
+    "decide",
     "dispatch",
     "test",
     "validate",

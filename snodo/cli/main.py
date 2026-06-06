@@ -589,6 +589,25 @@ def resolve(
     return resolve_command(args)
 
 
+# === Authorize (human-only) ===
+
+@app.command()
+def authorize(
+    task_id: str = typer.Argument(..., help="Task ID of the pending decision to authorize"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Authorize a pending decision (human-only — requires private signing key).
+
+    Reviews the proposal stored by the agent via propose_adjudicate or
+    propose_set_model, shows it to the human, and on confirmation mints
+    an RS256-signed record.  The agent cannot self-authorize — it has
+    no access to the private key.
+    """
+    from snodo.cli.commands.authorize_cmd import authorize_command
+    args = SimpleNamespace(task_id=task_id, yes=yes)
+    return authorize_command(args)
+
+
 # === Entry point ===
 
 def main(argv=None):
