@@ -5,7 +5,6 @@ FILE: snodo/cli/commands/job_cmd.py
 
 import sys
 import time
-from pathlib import Path
 
 
 def job_command(args) -> int:

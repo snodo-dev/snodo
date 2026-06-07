@@ -11,8 +11,6 @@ it can be called on every shell redraw.
 Output format: ``mode`` or ``mode:short_session`` (no ANSI/color).
 """
 
-import sys
-
 
 def main() -> None:
     """Print current mode + active session short-id, or nothing.
