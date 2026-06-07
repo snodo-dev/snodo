@@ -98,8 +98,8 @@ def _session_prune(mgr: SessionManager, args) -> int:
 
 def _session_switch(mgr: SessionManager, args) -> int:
     """Set an existing session as the active one for its (project, mode)."""
-    from pathlib import Path
-    project_root = str(Path.cwd())
+    from snodo.infrastructure.paths import require_project_root
+    project_root = require_project_root()
 
     try:
         session = mgr.load_session(args.session_id)
@@ -119,9 +119,9 @@ def _session_switch(mgr: SessionManager, args) -> int:
 
 def _session_new(mgr: SessionManager, args) -> int:
     """Create a new session and set it active."""
-    from pathlib import Path
     from snodo.infrastructure.state import read_state
-    project_root = str(Path.cwd())
+    from snodo.infrastructure.paths import require_project_root
+    project_root = require_project_root()
     state = read_state(project_root)
 
     mode = getattr(args, "mode", None) or state.current_mode

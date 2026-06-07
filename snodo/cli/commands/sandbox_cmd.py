@@ -23,9 +23,10 @@ def sandbox_command(args) -> int:
 def _sandbox_build(args) -> int:
     """Build the snodo-worker Docker image."""
     from snodo.sandbox import DockerSandbox, SandboxError
+    from snodo.infrastructure.paths import resolve_project_root
 
     # Find Dockerfile.worker
-    project_root = Path.cwd()
+    project_root = Path(resolve_project_root() or Path.cwd())
     dockerfile = project_root / "Dockerfile.worker"
 
     if not dockerfile.exists():

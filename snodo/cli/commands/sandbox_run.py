@@ -97,8 +97,10 @@ def _run_in_sandbox(args) -> int:
     print()
 
     command = _build_sandbox_command(args)
+    from snodo.infrastructure.paths import require_project_root
+    project_root = Path(require_project_root())
     try:
-        result = sandbox.run_task(command, Path.cwd(), config=config)
+        result = sandbox.run_task(command, project_root, config=config)
     except SandboxError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -114,6 +116,7 @@ def _submit_background_job(args) -> int:
     prints job_id with helper commands.
     """
     from snodo.jobs import JobManager, JobError
+    from snodo.infrastructure.paths import require_project_root
 
     if getattr(args, "plan", None):
         print("Error: --plan and --background cannot be used together", file=sys.stderr)
@@ -134,6 +137,7 @@ def _submit_background_job(args) -> int:
     model = args.model or mgr.get_model()
     _set_api_key_env(mgr, model)
 
+    project_root = require_project_root()
     task_args = {
         "description": args.description,
         "protocol": args.protocol,
@@ -141,11 +145,10 @@ def _submit_background_job(args) -> int:
         "mock": getattr(args, "mock", False),
         "verbose": getattr(args, "verbose", False),
         "from_pr": getattr(args, "from_pr", None),
-        "cwd": str(Path.cwd()),
+        "cwd": project_root,
     }
 
     try:
-        project_root = str(Path.cwd())
         manager = JobManager(project_root)
         job_id = manager.submit(task_args)
     except (ValueError, JobError) as e:

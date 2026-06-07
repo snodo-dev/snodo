@@ -10,8 +10,9 @@ from pathlib import Path
 def plan_command(args) -> int:
     """Manage plans."""
     from snodo.mcp.planner import PlannerMCP
+    from snodo.infrastructure.paths import require_project_root
 
-    project_root = str(Path.cwd())
+    project_root = require_project_root()
 
     try:
         planner = PlannerMCP(project_root)

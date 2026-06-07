@@ -19,8 +19,10 @@ from snodo.mcp.installer import (
 
 def install_command(args) -> int:
     """Install this project's modes into Claude Desktop config."""
+    from snodo.infrastructure.paths import require_project_root
+    project_root = require_project_root()
     protocol_path = getattr(args, "protocol", ".snodo/protocol.yml")
-    protocol_file = Path(protocol_path)
+    protocol_file = Path(protocol_path) if Path(protocol_path).is_absolute() else Path(project_root) / protocol_path
 
     if not protocol_file.exists():
         print(f"Error: Protocol file not found: {protocol_file}", file=sys.stderr)
@@ -73,8 +75,10 @@ def uninstall_command(args) -> int:
         return _uninstall_purge(config_path, mode_filter, skip_prompt)
 
     # Standard uninstall: this project's entries only
+    from snodo.infrastructure.paths import require_project_root
+    project_root = require_project_root()
     protocol_path = getattr(args, "protocol", ".snodo/protocol.yml")
-    protocol_file = Path(protocol_path)
+    protocol_file = Path(protocol_path) if Path(protocol_path).is_absolute() else Path(project_root) / protocol_path
     if not protocol_file.exists():
         print(f"Error: Protocol file not found: {protocol_file}", file=sys.stderr)
         print("  Project may already be removed. Use --purge or --orphans.", file=sys.stderr)
@@ -108,10 +112,11 @@ def uninstall_command(args) -> int:
 
 def _uninstall_purge(config_path, mode_filter, skip_prompt: bool) -> int:
     """Uninstall entries and purge project state."""
-    project_root = str(Path.cwd())
+    from snodo.infrastructure.paths import require_project_root
+    project_root = require_project_root()
 
     # Show what will be removed
-    snodo_dir = Path(".snodo")
+    snodo_dir = Path(project_root) / ".snodo"
     entries_to_remove = []
     if snodo_dir.exists():
         entries_to_remove.append(str(snodo_dir.resolve()))

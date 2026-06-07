@@ -325,6 +325,10 @@ class SigningDecisionRecordIssuer(DecisionRecordIssuer):
 
         return record
 
+    def sign_payload(self, payload: dict) -> str:
+        """Sign an arbitrary payload dict with RS256 (for non-adjudicate records)."""
+        return jwt.encode(payload, self._private_key, algorithm=self._ALGORITHM)
+
     def _verify_key(self):
         return self._private_key.public_key()
 

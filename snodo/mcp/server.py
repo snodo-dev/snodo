@@ -85,7 +85,7 @@ class ProtocolMCPServer:
         }
         self._job_handler = JobToolHandler(project_root)
         self._model_handler = ModelToolHandler()
-        self._decision_handler = DecisionToolHandler()
+        self._decision_handler = DecisionToolHandler(project_root)
         self._tools = self._resolve_tools()
 
     def _audit(self, event_type: str, data: Dict[str, Any]) -> None:

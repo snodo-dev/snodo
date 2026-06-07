@@ -6,6 +6,8 @@ FILE: snodo/cli/commands/dashboard_cmd.py (Task 5.3)
 import sys
 from pathlib import Path
 
+from snodo.infrastructure.paths import resolve_project_root
+
 
 def snop_entry():
     """Entry point for the 'snop' shortcut command."""
@@ -16,7 +18,7 @@ def snop_entry():
 
 def dashboard_command(args) -> int:
     """Launch the Snodo TUI dashboard."""
-    project_root = str(Path.cwd())
+    project_root = resolve_project_root() or str(Path.cwd())
 
     # Verify .snodo/ exists
     snodo_dir = Path(project_root) / ".snodo"

@@ -11,8 +11,9 @@ from pathlib import Path
 def job_command(args) -> int:
     """Manage background jobs."""
     from snodo.jobs import JobManager, JobError
+    from snodo.infrastructure.paths import require_project_root
 
-    project_root = str(Path.cwd())
+    project_root = require_project_root()
 
     try:
         manager = JobManager(project_root)
