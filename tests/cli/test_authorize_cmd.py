@@ -122,6 +122,15 @@ class TestProposeSetModel:
 # ------------------------------------------------------------------#
 
 class TestAuthorizeCommand:
+
+    @pytest.fixture(autouse=True)
+    def _patch_project_root(self, monkeypatch):
+        """Ensure authorize_command finds a project root (isolation)."""
+        monkeypatch.setattr(
+            "snodo.cli.commands.authorize_cmd.require_project_root",
+            lambda: "/fake/project",
+        )
+
     def test_authorize_no_pending_decision_errors(self, capsys):
         """No pending decision → clear error."""
         from snodo.cli.commands.authorize_cmd import authorize_command

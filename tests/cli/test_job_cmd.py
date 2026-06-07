@@ -401,6 +401,15 @@ class TestJobCancel:
 # === job_command Routing Tests ===
 
 class TestJobCommandRouting:
+
+    @pytest.fixture(autouse=True)
+    def _patch_project_root(self, monkeypatch):
+        """Ensure job_command finds a project root (isolation)."""
+        monkeypatch.setattr(
+            "snodo.infrastructure.paths.require_project_root",
+            lambda: "/fake/project",
+        )
+
     @patch("snodo.jobs.JobManager")
     def test_route_list(self, MockJobManager, capsys):
         """job_command routes 'list' action correctly."""

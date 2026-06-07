@@ -570,6 +570,14 @@ class TestRunPlan:
 class TestRunCommandPlan:
     """Tests for run_command routing to _run_plan."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_project_root(self, monkeypatch):
+        """Ensure run_command finds a project root (isolation)."""
+        monkeypatch.setattr(
+            "snodo.infrastructure.paths.require_project_root",
+            lambda: "/fake/project",
+        )
+
     @patch("snodo.cli.commands.plan_run._run_plan", return_value=0)
     def test_routes_to_run_plan(self, mock_plan):
         from snodo.cli.commands.run_cmd import run_command
@@ -748,6 +756,14 @@ class TestTaskCompletedHelper:
 
 class TestRunCommandSessionWiring:
     """Test that run_command constructs and threads session_manager."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_project_root(self, monkeypatch):
+        """Ensure run_command finds a project root (isolation)."""
+        monkeypatch.setattr(
+            "snodo.infrastructure.paths.require_project_root",
+            lambda: "/fake/project",
+        )
 
     @patch("snodo.cli.commands.plan_run._run_plan", return_value=0)
     def test_plan_route_gets_audit_and_session(self, mock_plan):

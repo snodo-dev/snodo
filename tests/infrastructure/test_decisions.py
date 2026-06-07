@@ -285,8 +285,13 @@ class TestPolicyDecisionRecordConsultation:
         assert decision.warn_count == 1
         assert decision.action.value == "escalate"  # not unanimous (1 warn remains)
 
-    def test_decision_for_wrong_task_does_not_match(self):
-        """DecisionRecord for task t2 should not resolve t1's warn."""
+    def test_carry_forward_on_retry_task(self):
+        """Adjudication from a prior task carries forward to a retry task.
+
+        When a task is blocked, adjudicated, and re-dispatched with a new
+        task_id, the adjudicated concern should follow — the human already
+        authorized the override for this session.
+        """
         issuer = _make_issuer()
         evaluator, policy = self._make_evaluator(issuer)
         warn_result = _make_result("architecture", "warn", "Concern")
@@ -299,10 +304,11 @@ class TestPolicyDecisionRecordConsultation:
         decision = evaluator.evaluate(
             results, policy,
             decision_records=[record.jwt],
-            task_ref="t1",  # Different task
+            task_ref="t1",  # Different task — retry
         )
-        assert decision.action.value == "escalate"
-        assert decision.warn_count == 1
+        assert decision.pass_count == 2
+        assert decision.warn_count == 0
+        assert decision.action.value == "proceed"
 
     def test_decision_for_wrong_validator_does_not_match(self):
         """DecisionRecord for validator A should not resolve validator B's warn."""
