@@ -170,6 +170,24 @@ def init_command(args) -> int:
     except Exception as e:
         print(f"Warning: Could not generate signing keys: {e}", file=sys.stderr)
 
+    # Check Docker availability for opencode adapter
+    try:
+        from snodo.coders.opencode_container import OpenCodeContainer
+        oc = OpenCodeContainer()
+        if oc.is_available():
+            if not oc.image_exists():
+                print()
+                print("OpenCode adapter: Docker detected. Build the image with:")
+                print("  docker build -t snodo-opencode:latest -f docker/Dockerfile.opencode .")
+            else:
+                print()
+                print("OpenCode adapter: Docker + image ready.")
+        else:
+            print()
+            print("OpenCode adapter: Docker not available. Install Docker to use opencode models.")
+    except ImportError:
+        pass  # docker-py not installed — skip check silently
+
     print("\nSnodo initialized successfully!")
     print("\nNext steps:")
     print("  1. Edit .snodo/protocol.yml to customize your protocol")
