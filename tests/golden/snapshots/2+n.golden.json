@@ -59,7 +59,8 @@
         "architecture",
         "conventions",
         "quality",
-        "protocol_adherence"
+        "protocol_adherence",
+        "meta-spec"
       ]
     },
     {
@@ -81,7 +82,8 @@
       "validators": [
         "security",
         "architecture",
-        "quality"
+        "quality",
+        "meta-spec"
       ]
     }
   ],
@@ -157,6 +159,23 @@
       "tools": [],
       "validator_id": "protocol_adherence",
       "validator_type": "protocol"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "The task spec must define INTENT and CONSTRAINTS \u2014 what to build and the boundaries it must respect \u2014 and leave implementation decisions to the coder. A spec describes behavior and contracts; it does not transcribe the implementation.",
+        "ALLOWED in a spec (these are constraints, not implementation): function and method signatures, exported names, type and interface shapes, behavioral requirements (what it must do, what inputs it must reject), hard constraints (algorithm choice such as HS256, framework limits, dependency restrictions), specific required values that are genuine requirements (e.g. a 7-day expiry, a max-age), acceptance criteria, and occasional short code hints that clarify a constraint.",
+        "PROHIBITED in a spec (this is the coder's job): literal function bodies, transcribed implementation logic, exact statement-by-statement code the coder should author, regex literals and exact API-call sequences presented as the implementation, and any spec that leaves the coder no implementation decisions to make.",
+        "Guideline for judgment: if more than roughly 40% of the spec is literal implementation code rather than intent, contracts, and constraints, the spec is code-prescriptive and must be rejected as a blocker. The orchestrator must re-issue the task as intent plus constraints, not as transcribed code.",
+        "A correctly-scoped spec leaves the coder room to author the implementation while still being unambiguous about what 'done' means. Reject specs that read as code wearing a spec's clothes."
+      ],
+      "evaluation_phase": "pre_execute",
+      "model": null,
+      "severity_cap": null,
+      "tooling": {},
+      "tools": [],
+      "validator_id": "meta-spec",
+      "validator_type": "architecture"
     }
   ],
   "version": "1.0.0"

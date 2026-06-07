@@ -98,7 +98,7 @@ def test_init_protocol_is_valid(temp_project_dir):
     assert protocol is not None
     assert protocol.protocol_id == "default"
     assert len(protocol.modes) == 3
-    assert len(protocol.validators) == 9
+    assert len(protocol.validators) == 10
 
 
 def test_init_writes_state_json(temp_project_dir):
@@ -483,11 +483,11 @@ def test_init_template_2plus_n_validators(temp_project_dir):
 
     assert protocol is not None
     validator_ids = {v.validator_id for v in protocol.validators}
-    assert validator_ids == {"security", "architecture", "conventions", "quality", "protocol_adherence"}
+    assert validator_ids == {"security", "architecture", "conventions", "quality", "protocol_adherence", "meta-spec"}
 
     pre = [v for v in protocol.validators if v.evaluation_phase == "pre_execute"]
     post = [v for v in protocol.validators if v.evaluation_phase == "post_execute"]
-    assert len(pre) == 4
+    assert len(pre) == 5
     assert len(post) == 1
     assert post[0].validator_id == "quality"
 
@@ -530,7 +530,7 @@ def test_two_plus_n_protocol_is_valid():
 
     assert protocol.protocol_id == "2+n"
     assert len(protocol.modes) == 2
-    assert len(protocol.validators) == 5
+    assert len(protocol.validators) == 6
     assert protocol.initial_mode == "producer"
 
 
@@ -551,7 +551,7 @@ def test_solo_protocol_is_valid():
 
     assert protocol.protocol_id == "solo"
     assert len(protocol.modes) == 1
-    assert len(protocol.validators) == 3
+    assert len(protocol.validators) == 4
     assert protocol.initial_mode == "producer"
 
 

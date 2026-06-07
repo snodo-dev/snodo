@@ -41,10 +41,10 @@ def test_solo_structure():
     assert p.protocol_id == "solo"
     assert len(p.modes) == 1
     assert p.modes[0].mode_id == "producer"
-    assert len(p.validators) == 3
+    assert len(p.validators) == 4
     assert p.initial_mode == "producer"
     ids = {v.validator_id for v in p.validators}
-    assert ids == {"security", "architecture", "quality"}
+    assert ids == {"security", "architecture", "quality", "meta-spec"}
 
 
 def test_team_structure():
@@ -53,7 +53,7 @@ def test_team_structure():
     assert len(p.modes) == 3
     mode_ids = {m.mode_id for m in p.modes}
     assert mode_ids == {"producer", "reviewer", "planner"}
-    assert len(p.validators) == 9
+    assert len(p.validators) == 10
     ids = {v.validator_id for v in p.validators}
     assert "protocol_adherence" in ids
 
@@ -64,7 +64,7 @@ def test_2plus_n_structure():
     assert len(p.modes) == 2
     mode_ids = {m.mode_id for m in p.modes}
     assert mode_ids == {"producer", "reviewer"}
-    assert len(p.validators) == 5
+    assert len(p.validators) == 6
     ids = {v.validator_id for v in p.validators}
     assert "protocol_adherence" in ids
 
