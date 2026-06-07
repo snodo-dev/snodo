@@ -165,6 +165,41 @@ def test_init_force_overwrites(temp_project_dir):
     assert "protocol_id" in content
 
 
+def test_init_refuses_nested_snodo(temp_project_dir):
+    """Test snodo init refuses when a parent already has .snodo."""
+    # Create .snodo in parent directory first
+    (temp_project_dir / ".snodo").mkdir()
+    nested_dir = temp_project_dir / "subdir"
+    nested_dir.mkdir()
+
+    import os
+    os.chdir(str(nested_dir))
+    try:
+        with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+            result = main()
+        assert result == 1
+        assert not (nested_dir / ".snodo").exists()
+    finally:
+        os.chdir(str(temp_project_dir))
+
+
+def test_init_force_allows_nested_snodo(temp_project_dir):
+    """Test snodo init --force allows nested .snodo despite parent."""
+    (temp_project_dir / ".snodo").mkdir()
+    nested_dir = temp_project_dir / "subdir"
+    nested_dir.mkdir()
+
+    import os
+    os.chdir(str(nested_dir))
+    try:
+        with patch('sys.argv', ['snodo', 'init', '--force', '--template', 'team']):
+            result = main()
+        assert result == 0
+        assert (nested_dir / ".snodo").exists()
+    finally:
+        os.chdir(str(temp_project_dir))
+
+
 # Load Protocol Tests
 
 def test_load_protocol_success(initialized_project):
@@ -204,6 +239,7 @@ def test_load_protocol_invalid_structure(temp_project_dir):
 
 def test_run_missing_protocol(temp_project_dir):
     """Test snodo run fails if protocol doesn't exist."""
+    (temp_project_dir / ".snodo").mkdir(exist_ok=True)
     with patch('sys.argv', ['snodo', 'run', 'test task', '--mock']):
         result = main()
     
@@ -233,6 +269,7 @@ def test_run_creates_files(initialized_project):
 
 def test_run_custom_protocol_path(temp_project_dir):
     """Test snodo run with custom protocol (team template → ESCALATE)."""
+    (temp_project_dir / ".snodo").mkdir(exist_ok=True)
     custom_protocol = temp_project_dir / "custom.yml"
     custom_protocol.write_text(DEFAULT_PROTOCOL + "\n")
     
@@ -318,6 +355,7 @@ def test_run_help(capsys):
 
 def test_run_requires_description(temp_project_dir):
     """Test snodo run without description returns error."""
+    (temp_project_dir / ".snodo").mkdir(exist_ok=True)
     with patch('sys.argv', ['snodo', 'run']):
         result = main()
     assert result == 1

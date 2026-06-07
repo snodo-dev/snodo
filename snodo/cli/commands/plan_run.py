@@ -146,8 +146,10 @@ def _run_plan(args) -> int:
     _set_api_key_env(mgr, model)
 
     try:
+        from snodo.infrastructure.paths import require_project_root
+        project_root = require_project_root()
         audit_log = getattr(args, "audit_log", None)
-        planner = PlannerMCP(str(Path.cwd()), audit_log=audit_log)
+        planner = PlannerMCP(project_root, audit_log=audit_log)
         plan_data = planner.get_plan(args.plan)
         status_data = planner.get_status(args.plan)
     except (ValueError, PlannerError) as e:

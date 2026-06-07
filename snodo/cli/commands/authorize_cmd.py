@@ -14,8 +14,8 @@ exact content.
 """
 
 import sys
-from pathlib import Path
 
+from snodo.infrastructure.paths import require_project_root
 from snodo.infrastructure.state import read_state
 from snodo.infrastructure.session import SessionManager
 
@@ -31,7 +31,7 @@ def authorize_command(args) -> int:
         print("Error: task_id is required", file=sys.stderr)
         return 1
 
-    project_root = str(Path.cwd())
+    project_root = require_project_root()
     state = read_state(project_root)
     mode = state.current_mode
 
@@ -111,7 +111,6 @@ def authorize_command(args) -> int:
 
     elif proposal_type == "set_model":
         from snodo.infrastructure.decisions import DecisionRecord
-        import jwt
         from datetime import datetime as dt, timezone
 
         now = dt.now(timezone.utc)
@@ -125,10 +124,7 @@ def authorize_command(args) -> int:
             "resolved_by": "human",
         }
 
-        # Sign with RS256 private key
-        from snodo.infrastructure.signing_keys import load_private_key
-        priv = load_private_key()
-        jwt_str = jwt.encode(payload, priv, algorithm="RS256")
+        jwt_str = issuer.sign_payload(payload)
 
         record = DecisionRecord(
             jwt=jwt_str,

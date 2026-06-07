@@ -18,8 +18,11 @@ from snodo.infrastructure.session import SessionManager
 class DecisionToolHandler:
     """Handles propose_adjudicate and propose_set_model tool calls."""
 
+    def __init__(self, project_root: str):
+        self.project_root = project_root
+
     def _get_active_session(self) -> Any:
-        project_root = str(Path.cwd())
+        project_root = self.project_root
         state = read_state(project_root)
         mode = state.current_mode or "producer"
         mgr = SessionManager()

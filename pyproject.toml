@@ -66,6 +66,7 @@ studies = [
 [project.scripts]
 snodo = "snodo.cli.main:main"
 snop = "snodo.cli.commands.dashboard_cmd:snop_entry"
+snodo-prompt = "snodo.prompt_cmd:main"
 
 [tool.setuptools.packages.find]
 include = ["snodo*"]

@@ -93,9 +93,11 @@ def run_command(args) -> int:
     """Execute task through protocol loop - REAL EXECUTION."""
     from snodo.infrastructure.audit import get_audit_log
     from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.paths import require_project_root
     from snodo.cli.commands.plan_run import _run_plan
     from snodo.cli.commands.sandbox_run import _run_in_sandbox, _submit_background_job
 
+    project_root = require_project_root()
     audit_log = get_audit_log()
     session_manager = SessionManager(audit_log=audit_log)
     args.audit_log = audit_log
@@ -117,6 +119,8 @@ def run_command(args) -> int:
         return _run_in_sandbox(args)
 
     protocol_path = Path(args.protocol)
+    if not protocol_path.is_absolute():
+        protocol_path = Path(project_root) / args.protocol
     protocol = load_protocol(protocol_path)
     if not protocol:
         return 1
@@ -155,7 +159,8 @@ def _build_description(args) -> str:
     description = args.description
     from_pr = getattr(args, "from_pr", None)
     if from_pr is not None:
-        project_root = str(Path.cwd())
+        from snodo.infrastructure.paths import require_project_root
+        project_root = require_project_root()
         print(f"Fetching PR #{from_pr} context...")
         pr_context = _fetch_pr_context(from_pr, project_root)
         description = f"{pr_context}\n\n{description}"
@@ -176,7 +181,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     print(f"Task ID: {task.id}")
     print()
 
-    project_root = str(Path.cwd())
+    from snodo.infrastructure.paths import require_project_root
+    project_root = require_project_root()
     audit_log = getattr(args, "audit_log", None)
     session_manager = getattr(args, "session_manager", None)
 

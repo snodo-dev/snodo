@@ -53,7 +53,10 @@ class SnodoDashboard(App):
 
     def __init__(self, project_root: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
-        self.project_root = project_root or str(Path.cwd())
+        if project_root is None:
+            from snodo.infrastructure.paths import resolve_project_root
+            project_root = str(resolve_project_root() or Path.cwd())
+        self.project_root = project_root
         self.provider = DashboardDataProvider(self.project_root)
 
     def compose(self) -> ComposeResult:

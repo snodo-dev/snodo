@@ -11,7 +11,8 @@ from snodo.infrastructure.state import read_state, write_state
 
 def mode_command(args) -> int:
     """Manage active protocol mode."""
-    project_root = str(Path.cwd())
+    from snodo.infrastructure.paths import require_project_root
+    project_root = require_project_root()
     state = read_state(project_root)
     action = getattr(args, "mode_action", "show")
 
@@ -31,7 +32,7 @@ def _mode_show(state) -> int:
         return 0
 
     # Try to load protocol for richer display
-    protocol_path = Path(".snodo/protocol.yml")
+    protocol_path = Path(project_root) / ".snodo" / "protocol.yml"
     mode_name = state.current_mode
     if protocol_path.exists():
         import yaml
@@ -59,7 +60,7 @@ def _mode_change(args, state, project_root) -> int:
         return 1
 
     # Validate mode exists in protocol
-    protocol_path = Path(".snodo/protocol.yml")
+    protocol_path = Path(project_root) / ".snodo" / "protocol.yml"
     if not protocol_path.exists():
         print("Error: .snodo/protocol.yml not found. Run 'snodo init' first.",
               file=sys.stderr)

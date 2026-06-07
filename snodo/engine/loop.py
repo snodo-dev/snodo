@@ -1159,7 +1159,8 @@ def build_protocol_graph(
         Executable StateGraph with real MCP integration
     """
     if project_root is None:
-        project_root = str(Path.cwd())
+        from snodo.infrastructure.paths import resolve_project_root
+        project_root = str(resolve_project_root() or Path.cwd())
 
     # Initialize MCP services
     workspace_mcp = WorkspaceMCP(project_root)

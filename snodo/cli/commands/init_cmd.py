@@ -105,6 +105,18 @@ def _pick_mode(args, modes: list, default_mode: str) -> str:
 
 def init_command(args) -> int:
     """Initialize Snodo project structure."""
+    from snodo.infrastructure.paths import resolve_project_root
+
+    # Nested-init guard: refuse if a parent directory already has .snodo
+    parent_root = resolve_project_root(str(Path.cwd().parent))
+    if parent_root is not None and not args.force:
+        print(
+            f"Error: Already inside a Snodo project rooted at {parent_root}. "
+            "Nested .snodo is not allowed. Use --force to override.",
+            file=sys.stderr,
+        )
+        return 1
+
     snodo_dir = Path(".snodo")
 
     if snodo_dir.exists():

@@ -47,7 +47,7 @@ class TestProposeAdjudicate:
     def test_writes_proposal_returns_instruction(self):
         from snodo.mcp.decision_handlers import DecisionToolHandler
 
-        handler = DecisionToolHandler()
+        handler = DecisionToolHandler(project_root="/fake/project")
         session = _make_session_with_pending("t_xyz", {})
         mgr = MagicMock()
         handler._get_active_session = MagicMock(return_value=(session, mgr))
@@ -75,7 +75,7 @@ class TestProposeAdjudicate:
         from snodo.mcp.decision_handlers import DecisionToolHandler
         from snodo.mcp.server import MCPError
 
-        handler = DecisionToolHandler()
+        handler = DecisionToolHandler(project_root="/fake/project")
         with pytest.raises(MCPError, match="task_id"):
             handler.handle_propose_adjudicate({})
 
@@ -83,7 +83,7 @@ class TestProposeAdjudicate:
         from snodo.mcp.decision_handlers import DecisionToolHandler
         from snodo.mcp.server import MCPError
 
-        handler = DecisionToolHandler()
+        handler = DecisionToolHandler(project_root="/fake/project")
         session = _make_session_with_pending("t1", {})
         mgr = MagicMock()
         handler._get_active_session = MagicMock(return_value=(session, mgr))
@@ -99,7 +99,7 @@ class TestProposeSetModel:
     def test_writes_proposal_returns_instruction(self):
         from snodo.mcp.decision_handlers import DecisionToolHandler
 
-        handler = DecisionToolHandler()
+        handler = DecisionToolHandler(project_root="/fake/project")
         session = _make_session_with_pending("t_xyz", {})
         mgr = MagicMock()
         handler._get_active_session = MagicMock(return_value=(session, mgr))
