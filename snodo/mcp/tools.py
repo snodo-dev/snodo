@@ -455,16 +455,85 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "recon": {
+        "description": (
+            "Dispatch a read-only exploration query to one or more agents. "
+            "Returns a recon_id immediately. Agents independently read the "
+            "codebase to answer the query. Use get_recon_status to poll for "
+            "completion, then get_recon_results for the raw answers. Use when "
+            "you need to understand the codebase before writing a spec."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The exploration question to answer",
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Paths to search within (e.g. [\"./\"])",
+                },
+                "agents": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Model strings; 'default' uses the configured model",
+                    "default": ["default"],
+                },
+            },
+            "required": ["query", "paths"],
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
+    "get_recon_status": {
+        "description": "Get the status of a recon query.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "recon_id": {
+                    "type": "string",
+                    "description": "Recon ID returned by recon",
+                },
+            },
+            "required": ["recon_id"],
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
+    "get_recon_results": {
+        "description": (
+            "Get the raw results of a completed recon query. Returns one "
+            "result per agent. Results are raw text — synthesise them into "
+            "a spec."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "recon_id": {
+                    "type": "string",
+                    "description": "Recon ID returned by recon",
+                },
+            },
+            "required": ["recon_id"],
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
 }
 
 # Map protocol tool names (from mode.tools) to concrete MCP tool names
 MODE_TOOL_MAP = {
-    "edit": ["read_file", "list_files", "list_models", "resolve_model"],
+    "edit": ["read_file", "list_files", "list_models", "resolve_model", "recon", "get_recon_status", "get_recon_results"],
     "decide": ["propose_adjudicate", "propose_set_model"],
     "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs"],
     "test": ["run_tests"],
     "validate": ["run_tests"],
-    "review": ["read_file", "list_files", "read_diff", "get_status"],
+    "review": ["read_file", "list_files", "read_diff", "get_status", "recon", "get_recon_status", "get_recon_results"],
     "approve": ["stage_files", "commit"],
     "commit": ["stage_files", "commit"],
     "merge": ["create_branch", "stage_files", "commit", "merge_branch", "delete_branch"],

@@ -185,9 +185,29 @@ class DecisionRecordIssuer:
         validator_id: str,
         severity: str,
     ) -> Optional[Dict[str, Any]]:
-        """Find a valid DecisionRecord matching a specific concern."""
+        """Find a valid DecisionRecord matching a specific concern.
+
+        Exact match on task_ref first.  If none found, falls back to
+        a session-scoped match (same validator/severity/decision,
+        any task_ref) so that adjudications carry forward to retry
+        tasks in the same session.
+        """
         for r_jwt in records_jwt:
             payload = self.verify_record(r_jwt, expected_task_ref=task_ref)
+            if payload is not None:
+                if (
+                    payload.get("validator_id") == validator_id
+                    and payload.get("adjudicated_severity") == severity
+                    and payload.get("decision") == "proceed"
+                ):
+                    return payload
+
+        # Carry-forward: session-scoped adjudication from a prior task.
+        # The record was already in this session's decision_records list,
+        # which means a human authorized it for this session.  A retry
+        # task with a new task_id should still benefit from it.
+        for r_jwt in records_jwt:
+            payload = self.verify_record(r_jwt)
             if payload is None:
                 continue
             if (
@@ -195,7 +215,14 @@ class DecisionRecordIssuer:
                 and payload.get("adjudicated_severity") == severity
                 and payload.get("decision") == "proceed"
             ):
+                self._log_event("adjudication_carry_forward", {
+                    "original_task_ref": payload.get("task_ref"),
+                    "current_task_ref": task_ref,
+                    "validator_id": validator_id,
+                    "decision": "proceed",
+                })
                 return payload
+
         return None
 
     def find_set_model_overrides(

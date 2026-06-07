@@ -38,6 +38,9 @@ EXPECTED_TOOL_KEYS = frozenset({
     "propose_adjudicate",
     "propose_set_model",
     "validate_task",
+    "recon",
+    "get_recon_status",
+    "get_recon_results",
 })
 
 EXPECTED_MODE_TOOL_MAP_KEYS = frozenset({
