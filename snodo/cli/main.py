@@ -6,9 +6,22 @@ Command implementations live in snodo/cli/commands/*.
 This module provides the CLI entry point using Typer.
 """
 
+# ruff: noqa: E402
+# The warnings filter must run before any langchain_core import,
+# so it sits between stdlib imports and the snodo import block.
+
 import sys
+import warnings
 from types import SimpleNamespace
 from typing import Optional
+
+# TODO: remove once langchain_core fixes pydantic v1 detection on 3.14+
+# https://github.com/langchain-ai/langchain/issues/33926
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    module="langchain_core",
+)
 
 import typer
 import click.exceptions
