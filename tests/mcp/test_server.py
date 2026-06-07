@@ -820,6 +820,194 @@ class TestDeriveProjectRoot:
                 os.chdir(original_cwd)
 
 
+# === SSE serve fixes ===
+
+
+class TestServePortAndProxy:
+    """Test port passthrough and FORWARDED_ALLOW_IPS in _run_server."""
+
+    def test_port_passed_to_fastmcp_settings(self):
+        """Port arg is set on mcp.settings.port before run."""
+        from snodo.cli.commands.serve_cmd import _run_server
+        from unittest.mock import MagicMock, patch, PropertyMock
+        from types import SimpleNamespace
+
+        mock_protocol = MagicMock()
+        mock_protocol.protocol_id = "test"
+        mock_protocol.modes = []
+        mock_protocol.get_mode.return_value = None
+
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml",
+            mode=None,
+            transport="sse",
+            port=9999,
+        )
+
+        with patch("snodo.mcp.server.ProtocolMCPServer") as MockP:
+            MockP.return_value.get_tools.return_value = []
+            with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+                mock_mcp = MagicMock()
+                mock_mcp.settings.port = 8000
+                mock_build.return_value = mock_mcp
+
+                _run_server(args, mock_protocol)
+
+                assert mock_mcp.settings.port == 9999
+                mock_mcp.run.assert_called_once_with(transport="sse")
+
+    def test_forwarded_allow_ips_set_for_sse(self):
+        """FORWARDED_ALLOW_IPS is set for sse transport."""
+        from snodo.cli.commands.serve_cmd import _run_server
+        from unittest.mock import MagicMock, patch
+        from types import SimpleNamespace
+        import os
+
+        mock_protocol = MagicMock()
+        mock_protocol.protocol_id = "test"
+        mock_protocol.modes = []
+        mock_protocol.get_mode.return_value = None
+
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml",
+            mode=None,
+            transport="sse",
+            port=8080,
+        )
+
+        with patch("snodo.mcp.server.ProtocolMCPServer"):
+            with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+                mock_mcp = MagicMock()
+                mock_mcp.settings.port = 8000
+                mock_build.return_value = mock_mcp
+
+                # Clear the env var before test
+                os.environ.pop("FORWARDED_ALLOW_IPS", None)
+                _run_server(args, mock_protocol)
+                assert os.environ.get("FORWARDED_ALLOW_IPS") == "*"
+
+    def test_forwarded_allow_ips_set_for_streamable_http(self):
+        """FORWARDED_ALLOW_IPS is set for streamable-http transport."""
+        from snodo.cli.commands.serve_cmd import _run_server
+        from unittest.mock import MagicMock, patch
+        from types import SimpleNamespace
+        import os
+
+        mock_protocol = MagicMock()
+        mock_protocol.protocol_id = "test"
+        mock_protocol.modes = []
+        mock_protocol.get_mode.return_value = None
+
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml",
+            mode=None,
+            transport="streamable-http",
+            port=8080,
+        )
+
+        with patch("snodo.mcp.server.ProtocolMCPServer"):
+            with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+                mock_mcp = MagicMock()
+                mock_mcp.settings.port = 8000
+                mock_build.return_value = mock_mcp
+
+                os.environ.pop("FORWARDED_ALLOW_IPS", None)
+                _run_server(args, mock_protocol)
+                assert os.environ.get("FORWARDED_ALLOW_IPS") == "*"
+
+    def test_no_forwarded_allow_ips_for_stdio(self):
+        """FORWARDED_ALLOW_IPS is NOT set for stdio transport."""
+        from snodo.cli.commands.serve_cmd import _run_server
+        from unittest.mock import MagicMock, patch
+        from types import SimpleNamespace
+        import os
+
+        mock_protocol = MagicMock()
+        mock_protocol.protocol_id = "test"
+        mock_protocol.modes = []
+        mock_protocol.get_mode.return_value = None
+
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml",
+            mode=None,
+            transport="stdio",
+            port=8000,
+        )
+
+        with patch("snodo.mcp.server.ProtocolMCPServer"):
+            with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+                mock_mcp = MagicMock()
+                mock_mcp.settings.port = 8000
+                mock_build.return_value = mock_mcp
+
+                os.environ.pop("FORWARDED_ALLOW_IPS", None)
+                _run_server(args, mock_protocol)
+                assert "FORWARDED_ALLOW_IPS" not in os.environ
+
+    def test_hint_printed_for_sse(self, capsys):
+        """DIY remote access hint printed for sse transport."""
+        from snodo.cli.commands.serve_cmd import _run_server
+        from unittest.mock import MagicMock, patch
+        from types import SimpleNamespace
+
+        mock_protocol = MagicMock()
+        mock_protocol.protocol_id = "test"
+        mock_protocol.modes = []
+        mock_protocol.get_mode.return_value = None
+
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml",
+            mode=None,
+            transport="sse",
+            port=8080,
+        )
+
+        with patch("snodo.mcp.server.ProtocolMCPServer"):
+            with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+                mock_mcp = MagicMock()
+                mock_mcp.settings.port = 8000
+                mock_build.return_value = mock_mcp
+
+                _run_server(args, mock_protocol)
+
+        out = capsys.readouterr().out
+        assert "ngrok" in out
+        assert "cloudflared" in out
+        assert "tailscale" in out
+        assert "snodo serve --tunnel" in out
+
+    def test_no_hint_for_stdio(self, capsys):
+        """No DIY hint printed for stdio transport."""
+        from snodo.cli.commands.serve_cmd import _run_server
+        from unittest.mock import MagicMock, patch
+        from types import SimpleNamespace
+
+        mock_protocol = MagicMock()
+        mock_protocol.protocol_id = "test"
+        mock_protocol.modes = []
+        mock_protocol.get_mode.return_value = None
+
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml",
+            mode=None,
+            transport="stdio",
+            port=8000,
+        )
+
+        with patch("snodo.mcp.server.ProtocolMCPServer"):
+            with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+                mock_mcp = MagicMock()
+                mock_mcp.settings.port = 8000
+                mock_build.return_value = mock_mcp
+
+                _run_server(args, mock_protocol)
+
+        out = capsys.readouterr().out
+        assert "ngrok" not in out
+        assert "cloudflared" not in out
+        assert "snodo serve --tunnel" not in out
+
+
 # === Task 7.1: Server Audit Log Wiring ===
 
 class TestServerAuditLog:

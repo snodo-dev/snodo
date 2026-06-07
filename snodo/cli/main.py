@@ -146,9 +146,15 @@ def serve(
         None, "--mode", help="Serve a single mode (default: all modes)",
     ),
     transport: str = typer.Option(
-        "stdio", "--transport", help="Transport type: stdio or sse",
+        "stdio", "--transport", help="Transport type: stdio, sse, or streamable-http",
     ),
     port: int = typer.Option(8080, "--port", help="Port for SSE transport"),
+    tunnel: bool = typer.Option(
+        False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
+    ),
+    rotate: bool = typer.Option(
+        False, "--rotate", help="Rotate the Cloudflare service token for an existing tunnel",
+    ),
     install: bool = typer.Option(
         False, "--install", help="Install MCP servers into Claude Desktop config",
     ),
@@ -165,6 +171,7 @@ def serve(
     """Start MCP server from protocol definition."""
     args = SimpleNamespace(
         protocol=protocol, mode=mode, transport=transport, port=port,
+        tunnel=tunnel, rotate=rotate,
         install=install, uninstall=uninstall, uninstall_all=uninstall_all,
         project_name=project_name,
     )
