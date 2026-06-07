@@ -1,9 +1,10 @@
-"""Cloud command — snodo cloud connect / disconnect / status.
+"""Cloud command — snodo cloud connect / disconnect / status / sync.
 
 FILE: snodo/cli/commands/cloud_cmd.py
 """
 
 import sys
+from pathlib import Path
 
 
 def cloud_connect_command(api_key: str) -> int:
@@ -99,3 +100,97 @@ def _format_ts(ts: float) -> str:
         return _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(ts))
     except (ValueError, OSError):
         return "unknown"
+
+
+def cloud_sync_command(sync_all: bool = False, session_id: str = "") -> int:
+    """Sync audit events to snodo cloud for one or more sessions.
+
+    --all: sync all sessions for the current project
+    --session <id>: sync a specific session
+    (no flags): sync the current active session
+    """
+    from snodo.cli.config import ConfigManager
+    from snodo.infrastructure.paths import require_project_root
+    from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
+    from snodo.infrastructure.audit import AuditLog
+
+    mgr = ConfigManager()
+    config = mgr.load()
+    cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
+
+    api_key = cloud.get("api_key", "")
+    api_url = cloud.get("api_url", "https://api.snodo.dev")
+
+    if not api_key:
+        print("Error: Not connected to snodo cloud.", file=sys.stderr)
+        print("  Run: snodo cloud connect <api_key>", file=sys.stderr)
+        return 1
+
+    project_root = require_project_root()
+
+    from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.state import read_state
+
+    session_mgr = SessionManager()
+
+    # Resolve which sessions to sync
+    sessions_to_sync: list = []
+
+    if session_id:
+        try:
+            session = session_mgr.load_session(session_id)
+        except FileNotFoundError:
+            print(f"Error: Session not found: {session_id}", file=sys.stderr)
+            return 1
+        sessions_to_sync = [session]
+
+    elif sync_all:
+        sessions_to_sync = session_mgr.list_sessions(project_root=project_root)
+
+    else:
+        # Active session for current mode
+        state = read_state(project_root)
+        mode = state.current_mode
+        if not mode:
+            print("Error: No active mode set. Run 'snodo mode change <mode>' first.",
+                  file=sys.stderr)
+            return 1
+        session = session_mgr.get_active_session(mode, project_root)
+        if session is None:
+            print(f"Error: No active session for mode={mode}", file=sys.stderr)
+            return 1
+        sessions_to_sync = [session]
+
+    if not sessions_to_sync:
+        print("No sessions to sync.")
+        return 0
+
+    dispatcher = CloudSyncDispatcher()
+    total_synced = 0
+    total_failed = 0
+
+    for session in sessions_to_sync:
+        sid = session.session_id
+        proot = session.project_root
+
+        audit_path = str(Path(proot) / ".snodo" / "audit.log")
+        audit_log = AuditLog(audit_path)
+
+        result = dispatcher.sync(sid, proot, audit_log, api_key, api_url)
+
+        if result["synced"] > 0:
+            print(f"  {sid}  ✓ {result['synced']} events synced")
+            total_synced += result["synced"]
+        elif result.get("failed"):
+            print(f"  {sid}  ✗ sync failed")
+            total_failed += 1
+        else:
+            print(f"  {sid}  — no new events")
+
+    if total_synced > 0 or total_failed > 0:
+        print()
+        print(f"Synced {total_synced} events across {len(sessions_to_sync)} session(s).")
+        if total_failed:
+            print(f"  {total_failed} session(s) had failures.")
+
+    return 0 if total_failed == 0 else 1
