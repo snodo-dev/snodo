@@ -94,6 +94,11 @@ class ConfigManager:
         return {
             "model": DEFAULT_MODEL,
             "engine": {"max_subtask_depth": 3, "max_session_age_days": 30, "token_ttl_seconds": 600},
+            "cloud": {
+                "api_key": "",
+                "api_url": "https://api.snodo.dev",
+                "sync_enabled": False,
+            },
         }
 
     def get_providers(self) -> Dict[str, ProviderConfig]:

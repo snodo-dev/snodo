@@ -1008,7 +1008,230 @@ class TestServePortAndProxy:
         assert "snodo serve --tunnel" not in out
 
 
-# === Task 7.1: Server Audit Log Wiring ===
+# === Managed tunnel tests ===
+
+
+class TestTunnelProvisioning:
+    """Test tunnel config saving and API stubs."""
+
+    def test_tunnel_config_saves_no_client_secret(self, tmp_path):
+        """tunnel.json never includes client_secret."""
+        from snodo.cli.commands.serve_cmd import _save_tunnel_config, _load_tunnel_config
+
+        project_root = str(tmp_path)
+        config = {
+            "hostname": "test.tunnel.snodo.dev",
+            "tunnel_token": "eyJ...",
+            "client_id": "abc123.access",
+            "client_secret": "SECRET_DO_NOT_SAVE",
+            "created_at": "2026-06-07T00:00:00Z",
+        }
+        _save_tunnel_config(project_root, config)
+
+        saved = _load_tunnel_config(project_root)
+        assert saved["hostname"] == "test.tunnel.snodo.dev"
+        assert saved["tunnel_token"] == "eyJ..."
+        assert saved["client_id"] == "abc123.access"
+        assert "client_secret" not in saved
+
+    def test_load_missing_tunnel_config(self, tmp_path):
+        """Missing tunnel.json returns empty dict."""
+        from snodo.cli.commands.serve_cmd import _load_tunnel_config
+
+        config = _load_tunnel_config(str(tmp_path))
+        assert config == {}
+
+    def test_generate_short_id_is_alphanumeric(self):
+        """Short IDs are 6 alphanumeric chars."""
+        from snodo.cli.commands.serve_cmd import _generate_short_id
+
+        for _ in range(20):
+            sid = _generate_short_id()
+            assert len(sid) == 6
+            assert sid.isalnum()
+
+    def test_check_cloudflared_missing(self):
+        """When cloudflared is not on PATH, returns False."""
+        from snodo.cli.commands.serve_cmd import _check_cloudflared
+        from unittest.mock import patch
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError
+            assert _check_cloudflared() is False
+
+    def test_check_cloudflared_found(self):
+        """When cloudflared is on PATH, returns True."""
+        from snodo.cli.commands.serve_cmd import _check_cloudflared
+        from unittest.mock import patch
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            assert _check_cloudflared() is True
+
+
+class TestTunnelRunErrors:
+    """Test error paths in _run_tunnel."""
+
+    def test_no_cloudflared_shows_install_instructions(self):
+        """Missing cloudflared prints install help and returns 1."""
+        from snodo.cli.commands.serve_cmd import _run_tunnel
+        from unittest.mock import MagicMock, patch
+        from types import SimpleNamespace
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000, rotate=False,
+        )
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=False):
+            result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 1
+
+    def test_no_snodo_account_shows_signup(self):
+        """No API key shows signup URL and returns 1."""
+        from snodo.cli.commands.serve_cmd import _run_tunnel
+        from unittest.mock import MagicMock, patch
+        from types import SimpleNamespace
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000, rotate=False,
+        )
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value=""):
+                result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 1
+
+    def test_rotate_with_no_existing_tunnel(self):
+        """--rotate without an existing tunnel.json errors."""
+        from snodo.cli.commands.serve_cmd import _run_tunnel
+        from unittest.mock import MagicMock, patch
+        from types import SimpleNamespace
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000, rotate=True,
+        )
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+                with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
+                    result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 1
+
+    def test_first_run_provisions_and_starts_services(self):
+        """First run provisions tunnel, saves config, starts subprocesses."""
+        from snodo.cli.commands.serve_cmd import _run_tunnel
+        from unittest.mock import MagicMock, patch, ANY
+        from types import SimpleNamespace
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=9090, rotate=False,
+        )
+
+        provisioned = {
+            "hostname": "myproject-prod-a1b2c3.tunnel.snodo.dev",
+            "tunnel_token": "tok_xxx",
+            "client_id": "client_abc.access",
+            "client_secret": "s3cr3t",
+        }
+
+        mock_sub = MagicMock()
+        mock_sub.pid = 12345
+        mock_sub.poll.return_value = None
+        mock_sub.stderr.readline.return_value = "Registered tunnel connection\n"
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+                with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
+                    with patch("snodo.cli.commands.serve_cmd._provision_tunnel", return_value=provisioned):
+                        with patch("snodo.cli.commands.serve_cmd._save_tunnel_config"):
+                            with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
+                                with patch("snodo.cli.commands.serve_cmd.signal.signal"):
+                                    # Return immediately so the function doesn't block
+                                    mock_sub.wait.return_value = 0
+                                    result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 0
+
+    def test_subsequent_run_uses_stored_config(self):
+        """Subsequent run with tunnel.json skips provisioning."""
+        from snodo.cli.commands.serve_cmd import _run_tunnel
+        from unittest.mock import MagicMock, patch
+        from types import SimpleNamespace
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000, rotate=False,
+        )
+
+        stored = {
+            "hostname": "existing.tunnel.snodo.dev",
+            "tunnel_token": "tok_existing",
+            "client_id": "client_old.access",
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+
+        mock_sub = MagicMock()
+        mock_sub.pid = 12345
+        mock_sub.poll.return_value = None
+        mock_sub.stderr.readline.return_value = "Registered tunnel connection\n"
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+                with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=stored):
+                    with patch("snodo.cli.commands.serve_cmd._provision_tunnel") as mock_provision:
+                        with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
+                            with patch("snodo.cli.commands.serve_cmd.signal.signal"):
+                                mock_sub.wait.return_value = 0
+                                result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 0
+        mock_provision.assert_not_called()  # No provisioning on subsequent run
+
+    def test_rotate_calls_api_and_updates_config(self):
+        """--rotate calls rotation API and saves updated config."""
+        from snodo.cli.commands.serve_cmd import _run_tunnel
+        from unittest.mock import MagicMock, patch
+        from types import SimpleNamespace
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000, rotate=True,
+        )
+
+        stored = {
+            "hostname": "existing.tunnel.snodo.dev",
+            "tunnel_token": "tok_old",
+            "client_id": "client_old.access",
+        }
+
+        new_token = {
+            "client_id": "client_new.access",
+            "client_secret": "new_secret",
+        }
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+                with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=stored):
+                    with patch("snodo.cli.commands.serve_cmd._rotate_tunnel_token", return_value=new_token) as mock_rotate:
+                        with patch("snodo.cli.commands.serve_cmd._save_tunnel_config") as mock_save:
+                            result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 0
+        mock_rotate.assert_called_once_with("key123", "existing.tunnel.snodo.dev")
+        mock_save.assert_called_once()
 
 class TestServerAuditLog:
     """Tests for audit log wiring in ProtocolMCPServer."""
