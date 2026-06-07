@@ -1,0 +1,266 @@
+"""OpenCode coder adapter — delegates to opencode server in Docker.
+
+FILE: snodo/coders/opencode_adapter.py
+
+Implements CoderAdapter via the opencode HTTP API:
+  POST /session       → session_id
+  POST /session/{id}/message  → submit spec
+  GET  /session/{id}/diff     → poll for file changes
+
+The opencode server runs inside a Docker container managed by
+OpenCodeContainer.  Each implement() call creates a fresh session.
+"""
+
+import json
+import logging
+import time
+from pathlib import Path
+from typing import Any, Optional
+
+import httpx
+
+from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
+from snodo.coders.base import CoderAdapter, LLMCallError, ParseError
+
+_logger = logging.getLogger(__name__)
+
+_SESSION_POLL_INTERVAL = 2.0
+_SESSION_TIMEOUT = 300.0  # 5 minutes
+
+
+class OpenCodeAdapter(CoderAdapter):
+    """Coder adapter backed by opencode CLI running in Docker."""
+
+    def __init__(
+        self,
+        model: str = "opencode/",
+        temperature: float = 0.7,
+        workspace: Optional[Path] = None,
+        container: Optional[Any] = None,
+        **kwargs,
+    ):
+        self.model = model
+        self.temperature = temperature
+        self._workspace = workspace or Path.cwd()
+
+        if container is None:
+            from snodo.coders.opencode_container import OpenCodeContainer
+            self._container = OpenCodeContainer()
+        else:
+            self._container = container
+
+    @property
+    def base_url(self) -> str:
+        return self._container.base_url
+
+    def implement(self, spec: TaskSpec) -> CodeArtifact:
+        """Generate code via the opencode HTTP API.
+
+        1. Ensure container is running (start if needed)
+        2. Create session via POST /session
+        3. Submit the task spec via POST /session/{id}/message
+        4. Poll GET /session/{id}/diff until files appear
+        5. Convert diff entries to CodeArtifact
+        """
+        if not self._container.is_running():
+            self._start_container()
+
+        session_id = self._create_session()
+        try:
+            self._send_message(session_id, spec)
+            diff_entries = self._poll_diff(session_id)
+            return self._diff_to_artifact(diff_entries)
+        finally:
+            self._cleanup_session(session_id)
+
+    def _start_container(self) -> None:
+        """Start the opencode container if not running."""
+        from snodo.coders.opencode_container import OpenCodeContainerError
+
+        if not self._container.is_available():
+            raise LLMCallError(
+                "Docker is not available. The opencode adapter requires Docker."
+            )
+        if not self._container.image_exists():
+            _logger.info("Building opencode Docker image (first run)...")
+            try:
+                self._container.build_image()
+            except OpenCodeContainerError as e:
+                raise LLMCallError(f"Failed to build opencode image: {e}")
+
+        try:
+            self._container.start(self._workspace)
+        except OpenCodeContainerError as e:
+            raise LLMCallError(f"Failed to start opencode container: {e}")
+
+    def _create_session(self) -> str:
+        """POST /session — create a new session and return the ID."""
+        try:
+            resp = httpx.post(
+                f"{self.base_url}/session",
+                json={
+                    "model": self._resolve_model_payload(),
+                },
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                raise LLMCallError(
+                    f"opencode session creation failed (HTTP {resp.status_code}): "
+                    f"{resp.text[:500]}"
+                )
+            data = resp.json()
+            session_id = data.get("id") or data.get("session_id")
+            if not session_id:
+                raise LLMCallError(
+                    f"opencode session response missing id: {resp.text[:500]}"
+                )
+            _logger.debug("opencode session created: %s", session_id)
+            return session_id
+        except (httpx.RequestError, json.JSONDecodeError) as e:
+            raise LLMCallError(f"opencode session creation error: {e}")
+
+    def _send_message(self, session_id: str, spec: TaskSpec) -> None:
+        """POST /session/{id}/message — submit the task spec."""
+        prompt = self._build_prompt(spec)
+        try:
+            resp = httpx.post(
+                f"{self.base_url}/session/{session_id}/message",
+                json={
+                    "parts": [{"type": "text", "text": prompt}],
+                },
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                _logger.warning(
+                    "opencode message rejected (HTTP %d): %s",
+                    resp.status_code, resp.text[:500],
+                )
+        except httpx.RequestError as e:
+            _logger.warning("opencode message send error: %s", e)
+
+    def _poll_diff(self, session_id: str) -> list:
+        """Poll GET /session/{id} until complete, then fetch GET /session/{id}/diff."""
+        deadline = time.time() + _SESSION_TIMEOUT
+        while time.time() < deadline:
+            try:
+                session_resp = httpx.get(
+                    f"{self.base_url}/session/{session_id}",
+                    timeout=10.0,
+                )
+                if session_resp.status_code != 200:
+                    time.sleep(_SESSION_POLL_INTERVAL)
+                    continue
+                session = session_resp.json()
+                completed = (
+                    session.get("time", {}) or {}
+                ).get("completed") is not None
+                has_additions = (
+                    session.get("summary", {}) or {}
+                ).get("additions", 0) > 0
+                if completed or has_additions:
+                    break
+                time.sleep(_SESSION_POLL_INTERVAL)
+            except httpx.RequestError:
+                time.sleep(_SESSION_POLL_INTERVAL)
+        else:
+            raise LLMCallError(
+                f"opencode session {session_id} timed out after {_SESSION_TIMEOUT}s"
+            )
+
+        diff_resp = httpx.get(
+            f"{self.base_url}/session/{session_id}/diff",
+            timeout=10.0,
+        )
+        data = diff_resp.json() if diff_resp.status_code == 200 else []
+        _logger.debug(
+            "opencode diff received: %d entries", len(data),
+        )
+        return data
+
+    def _cleanup_session(self, session_id: str) -> None:
+        """Best-effort session cleanup."""
+        try:
+            httpx.delete(
+                f"{self.base_url}/session/{session_id}",
+                timeout=5.0,
+            )
+        except Exception:
+            pass
+
+    def _diff_to_artifact(self, diff_entries: list) -> CodeArtifact:
+        """Convert opencode diff entries to a CodeArtifact.
+
+        Each entry: ``{file, patch, additions, deletions, status}``.
+        We need the full file content — re-read from disk after the
+        opencode session has written changes.
+        """
+        files = []
+        for entry in diff_entries:
+            path = entry.get("file", "")
+            if not path:
+                continue
+            status = entry.get("status", "modified")
+
+            if status == "deleted":
+                files.append(FileArtifact(path=path, content="", action="delete"))
+                continue
+
+            # Re-read the file from disk (opencode wrote to workspace)
+            file_path = self._workspace / path
+            try:
+                content = file_path.read_text()
+            except Exception:
+                content = ""
+
+            files.append(FileArtifact(path=path, content=content, action="write"))
+
+        if not files:
+            raise ParseError("opencode diff returned no files")
+
+        return CodeArtifact(files=files)
+
+    def _resolve_model_payload(self) -> dict:
+        """Map the snodo model string to an opencode model payload."""
+        model = self.model
+        if model.startswith("opencode/"):
+            provider_and_id = model[len("opencode/"):]
+            if "/" in provider_and_id:
+                provider, model_id = provider_and_id.split("/", 1)
+                return {"providerID": provider, "id": model_id}
+            return {"id": provider_and_id}
+        # Fallback: pass through as model id
+        return {"id": model}
+
+    def _build_prompt(self, spec: TaskSpec) -> str:
+        """Build a prompt from the TaskSpec for opencode."""
+        language = spec.project_context.get("language", "unknown")
+        lang_hint = f" ({language} project)" if language != "unknown" else ""
+
+        parts = [
+            f"You are an expert software engineer{lang_hint}.",
+            "Generate code based on the following specification.",
+            "",
+        ]
+
+        structure = spec.project_context.get("structure", "")
+        if structure:
+            parts.append(f"## Directory Structure\n```\n{structure}\n```")
+            parts.append("")
+
+        if spec.memory_summary:
+            parts.append(f"## Session History\n{spec.memory_summary}")
+            parts.append("")
+
+        parts.append(f"## Task\n{spec.description}")
+
+        if spec.constraints:
+            parts.append("\n## Constraints")
+            for c in spec.constraints:
+                parts.append(f"- {c}")
+
+        parts.append("")
+        parts.append(
+            "Write the implementation to disk. Create all necessary files."
+        )
+
+        return "\n".join(parts)
