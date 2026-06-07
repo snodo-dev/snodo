@@ -266,3 +266,102 @@ class TestAuthorizeCommand:
         verifier = _make_verify_issuer(pub)
         payload = verifier.verify_record(records[-1], expected_task_ref="t_stored")
         assert payload["decision"] == "halt"  # from stored proposal, not args
+
+
+# ------------------------------------------------------------------#
+# List pending decisions tests
+# ------------------------------------------------------------------#
+
+class TestListPending:
+    def test_no_pending_decisions(self, capsys):
+        """Empty pending dict → clear message."""
+        from snodo.cli.commands.authorize_cmd import _list_pending
+
+        session = MagicMock()
+        session.session_id = "sess_test"
+        session.mode = "producer"
+
+        result = _list_pending(session, {})
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "No pending decisions" in out
+
+    def test_pending_decisions_table(self, capsys):
+        """Multiple pending decisions → table with task_id, type, target, justification."""
+        from snodo.cli.commands.authorize_cmd import _list_pending
+
+        session = MagicMock()
+        session.session_id = "sess_abc"
+        session.mode = "planner"
+
+        pending = {
+            "task_fca4bb": {
+                "type": "adjudicate",
+                "validator_id": "architecture",
+                "decision": "proceed",
+                "justification": "Spec contains approved patterns",
+            },
+            "task_abc123": {
+                "type": "set_model",
+                "scope": "validator:security",
+                "proposed_model": "gemini-2.0",
+                "justification": "Better cost/performance for next run",
+            },
+        }
+
+        result = _list_pending(session, pending)
+        assert result == 0
+        out = capsys.readouterr().out
+
+        assert "sess_abc" in out
+        assert "planner" in out
+        assert "task_fca4bb" in out
+        assert "adjudicate" in out
+        assert "architecture" in out
+        assert "Spec contains" in out
+        assert "task_abc123" in out
+        assert "set_model" in out
+        assert "validator:security" in out
+        assert "snodo authorize" in out
+
+    def test_long_justification_truncated(self, capsys):
+        """Justification over 40 chars is truncated with ellipsis."""
+        from snodo.cli.commands.authorize_cmd import _list_pending
+
+        session = MagicMock()
+        session.session_id = "sess_x"
+        session.mode = "producer"
+
+        long_just = "A" * 60
+        pending = {
+            "t1": {
+                "type": "adjudicate",
+                "validator_id": "v",
+                "justification": long_just,
+            },
+        }
+
+        _list_pending(session, pending)
+        out = capsys.readouterr().out
+        assert "A" * 37 + "..." in out
+        assert "A" * 38 not in out
+
+    def test_unknown_type_shows_dash(self, capsys):
+        """Unknown proposal type shows '—' for target."""
+        from snodo.cli.commands.authorize_cmd import _list_pending
+
+        session = MagicMock()
+        session.session_id = "sess_1"
+        session.mode = "producer"
+
+        pending = {
+            "t_xyz": {
+                "type": "unknown_type",
+                "justification": "reason",
+            },
+        }
+
+        _list_pending(session, pending)
+        out = capsys.readouterr().out
+        assert "t_xyz" in out
+        assert "unknown_type" in out
