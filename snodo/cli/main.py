@@ -658,6 +658,17 @@ def cloud_status():
     from snodo.cli.commands.cloud_cmd import cloud_status_command
     return cloud_status_command()
 
+
+@cloud_app.command(name="sync")
+def cloud_sync(
+    sync_all: bool = typer.Option(False, "--all", help="Sync all sessions for the current project"),
+    session: str = typer.Option("", "--session", help="Sync a specific session by ID"),
+):
+    """Ship unsynced audit events to snodo cloud."""
+    from snodo.cli.commands.cloud_cmd import cloud_sync_command
+    return cloud_sync_command(sync_all=sync_all, session_id=session)
+
+
 app.add_typer(cloud_app, name="cloud")
 
 

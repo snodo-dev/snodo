@@ -407,3 +407,145 @@ class TestCloudSyncDispatcher:
             sync_if_enabled("sess_t", "/proj", MagicMock(), config=config)
 
         mock_sync.assert_not_called()
+
+
+# ------------------------------------------------------------------#
+# cloud_sync_command tests
+# ------------------------------------------------------------------#
+
+class TestCloudSyncCommand:
+    def test_no_api_key_errors(self):
+        from snodo.cli.commands.cloud_cmd import cloud_sync_command
+
+        with patch("snodo.cli.config.ConfigManager") as MockCM:
+            MockCM.return_value.load.return_value = {"cloud": {"api_key": ""}}
+            result = cloud_sync_command()
+        assert result == 1
+
+    def test_sync_active_session(self):
+        from snodo.cli.commands.cloud_cmd import cloud_sync_command
+
+        with patch("snodo.infrastructure.audit.AuditLog"):
+            with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher") as MockDisp:
+                with patch("snodo.infrastructure.session.SessionManager") as MockSM:
+                    with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
+                        with patch("snodo.infrastructure.state.read_state") as mock_rs:
+                            with patch("snodo.cli.config.ConfigManager") as MockCM:
+                                MockCM.return_value.load.return_value = {
+                                    "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
+                                }
+                                mock_rs.return_value.current_mode = "producer"
+
+                                mock_session = MagicMock()
+                                mock_session.session_id = "sess_active"
+                                mock_session.project_root = "/fake/proj"
+                                MockSM.return_value.get_active_session.return_value = mock_session
+
+                                mock_disp = MockDisp.return_value
+                                mock_disp.sync.return_value = {"synced": 5, "failed": False}
+
+                                result = cloud_sync_command()
+
+        assert result == 0
+        mock_disp.sync.assert_called_once()
+
+    def test_sync_all_sessions(self):
+        from snodo.cli.commands.cloud_cmd import cloud_sync_command
+
+        with patch("snodo.infrastructure.audit.AuditLog"):
+            with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher") as MockDisp:
+                with patch("snodo.infrastructure.session.SessionManager") as MockSM:
+                    with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
+                        with patch("snodo.cli.config.ConfigManager") as MockCM:
+                            MockCM.return_value.load.return_value = {
+                                "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
+                            }
+
+                            sess1 = MagicMock()
+                            sess1.session_id = "sess_a"
+                            sess1.project_root = "/fake/a"
+                            sess2 = MagicMock()
+                            sess2.session_id = "sess_b"
+                            sess2.project_root = "/fake/b"
+                            MockSM.return_value.list_sessions.return_value = [sess1, sess2]
+
+                            mock_disp = MockDisp.return_value
+                            mock_disp.sync.side_effect = [
+                                {"synced": 3, "failed": False},
+                                {"synced": 7, "failed": False},
+                            ]
+
+                            result = cloud_sync_command(sync_all=True)
+
+        assert result == 0
+        assert mock_disp.sync.call_count == 2
+
+    def test_sync_specific_session(self):
+        from snodo.cli.commands.cloud_cmd import cloud_sync_command
+
+        with patch("snodo.infrastructure.audit.AuditLog"):
+            with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher") as MockDisp:
+                with patch("snodo.infrastructure.session.SessionManager") as MockSM:
+                    with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
+                        with patch("snodo.cli.config.ConfigManager") as MockCM:
+                            MockCM.return_value.load.return_value = {
+                                "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
+                            }
+
+                            mock_session = MagicMock()
+                            mock_session.session_id = "sess_specific"
+                            mock_session.project_root = "/fake/proj"
+                            MockSM.return_value.load_session.return_value = mock_session
+
+                            mock_disp = MockDisp.return_value
+                            mock_disp.sync.return_value = {"synced": 12, "failed": False}
+
+                            result = cloud_sync_command(session_id="sess_specific")
+
+        assert result == 0
+        mock_disp.sync.assert_called_once()
+
+    def test_sync_failure_returns_one(self):
+        from snodo.cli.commands.cloud_cmd import cloud_sync_command
+
+        with patch("snodo.infrastructure.audit.AuditLog"):
+            with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher") as MockDisp:
+                with patch("snodo.infrastructure.session.SessionManager") as MockSM:
+                    with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
+                        with patch("snodo.cli.config.ConfigManager") as MockCM:
+                            MockCM.return_value.load.return_value = {
+                                "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
+                            }
+
+                            sess1 = MagicMock()
+                            sess1.session_id = "sess_x"
+                            sess1.project_root = "/fake/x"
+                            sess2 = MagicMock()
+                            sess2.session_id = "sess_y"
+                            sess2.project_root = "/fake/y"
+                            MockSM.return_value.list_sessions.return_value = [sess1, sess2]
+
+                            mock_disp = MockDisp.return_value
+                            mock_disp.sync.side_effect = [
+                                {"synced": 0, "failed": True},
+                                {"synced": 0, "failed": True},
+                            ]
+
+                            result = cloud_sync_command(sync_all=True)
+
+        assert result == 1
+
+    def test_sync_session_not_found(self):
+        from snodo.cli.commands.cloud_cmd import cloud_sync_command
+
+        with patch("snodo.infrastructure.session.SessionManager") as MockSM:
+            with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
+                with patch("snodo.cli.config.ConfigManager") as MockCM:
+                    MockCM.return_value.load.return_value = {
+                        "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
+                    }
+                    MockSM.return_value.load_session.side_effect = FileNotFoundError("nope")
+
+                    result = cloud_sync_command(session_id="sess_missing")
+
+        assert result == 1
