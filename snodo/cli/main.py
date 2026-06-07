@@ -25,6 +25,7 @@ warnings.filterwarnings(
 
 import typer
 import click.exceptions
+from typer._click.exceptions import UsageError  # typer vendors its own click
 
 # Re-export command functions and shared utilities so existing imports keep working
 from snodo.cli.commands import DEFAULT_PROTOCOL, SOLO_PROTOCOL, TEAM_PROTOCOL, TWO_PLUS_N_PROTOCOL, PROTOCOL_TEMPLATES, load_protocol  # noqa: F401
@@ -630,6 +631,36 @@ def authorize(
     return authorize_command(args)
 
 
+# === Cloud ===
+
+cloud_app = typer.Typer(help="Manage snodo cloud connection and audit sync")
+
+
+@cloud_app.command(name="connect")
+def cloud_connect(
+    api_key: str = typer.Argument(..., help="Snodo cloud API key (starts with sndo_staging_ or sndo_live_)"),
+):
+    """Connect to snodo cloud and enable audit sync."""
+    from snodo.cli.commands.cloud_cmd import cloud_connect_command
+    return cloud_connect_command(api_key)
+
+
+@cloud_app.command(name="disconnect")
+def cloud_disconnect():
+    """Disconnect from snodo cloud and disable sync."""
+    from snodo.cli.commands.cloud_cmd import cloud_disconnect_command
+    return cloud_disconnect_command()
+
+
+@cloud_app.command(name="status")
+def cloud_status():
+    """Show cloud connection and sync status."""
+    from snodo.cli.commands.cloud_cmd import cloud_status_command
+    return cloud_status_command()
+
+app.add_typer(cloud_app, name="cloud")
+
+
 # === Entry point ===
 
 def main(argv=None):
@@ -644,6 +675,11 @@ def main(argv=None):
         return result if isinstance(result, int) else 0
     except SystemExit:
         raise
+    except UsageError as e:
+        print(f"Error: {e.format_message()}", file=sys.stderr)
+        print("Run 'snodo --help' to see available commands.",
+              file=sys.stderr)
+        return 2
     except click.exceptions.ClickException:
         raise SystemExit(2)
 

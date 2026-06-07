@@ -240,6 +240,14 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                 pass
         _close_checkpointer(checkpointer)
 
+        # Fire-and-forget cloud sync (background thread, never blocks)
+        if session_id and audit_log:
+            try:
+                from snodo.infrastructure.cloud_sync import sync_if_enabled
+                sync_if_enabled(session_id, project_root, audit_log)
+            except Exception:
+                pass
+
 
 def _resolve_session(args, session_manager, protocol, project_root):
     """Resolve session: explicit resume, auto-resume, or auto-create.
