@@ -138,6 +138,7 @@ class CloudSyncDispatcher:
             )
             if ok:
                 state.advance_cursor(session_id, max_seq)
+                _logger.debug("Cursor advanced to sequence %d", max_seq)
                 synced += len(batch)
             else:
                 failed = True
@@ -175,6 +176,13 @@ class CloudSyncDispatcher:
         }).encode()
 
         url = f"{api_url.rstrip('/')}/ingest"
+        first_seq = batch[0].sequence
+        last_seq = batch[-1].sequence
+        _logger.debug(
+            "POST %s — %d events (seq %d-%d)",
+            url, len(batch), first_seq, last_seq,
+        )
+        _logger.debug("Authorization: Bearer %s...", api_key[:16])
 
         for attempt in range(_MAX_RETRIES + 1):
             try:
@@ -186,12 +194,17 @@ class CloudSyncDispatcher:
                     },
                 )
                 with urllib.request.urlopen(req, timeout=30) as resp:
+                    resp_body = resp.read().decode("utf-8", errors="replace")[:200]
                     if resp.status == 200:
+                        _logger.debug("Response 200 — accepted=%s", resp_body)
                         return True
                     # Unexpected 2xx — treat as success
+                    _logger.debug("Response %d — %s", resp.status, resp_body)
                     return False
 
             except urllib.error.HTTPError as e:
+                body_text = e.read().decode("utf-8", errors="replace")[:500] if e.fp else ""
+
                 if e.code == 429:
                     retry_after = e.headers.get("Retry-After", "5")
                     try:
@@ -199,9 +212,8 @@ class CloudSyncDispatcher:
                     except ValueError:
                         wait = 5
                     _logger.warning(
-                        "Cloud sync 429 rate limited on session=%s, "
-                        "retry_after=%s",
-                        session_id, retry_after,
+                        "Cloud sync HTTP 429 retry_after=%s (session=%s): %s",
+                        retry_after, session_id, body_text,
                     )
                     time.sleep(wait)
                     # 429 retry doesn't count against the backoff attempts
@@ -210,17 +222,21 @@ class CloudSyncDispatcher:
                 if 500 <= e.code < 600:
                     if attempt == _MAX_RETRIES:
                         _logger.warning(
-                            "Cloud sync 5xx retries exhausted (session=%s, code=%d)",
-                            session_id, e.code,
+                            "Cloud sync HTTP %d retries exhausted (session=%s): %s",
+                            e.code, session_id, body_text,
                         )
                         return False
+                    _logger.warning(
+                        "Cloud sync HTTP %d attempt %d (session=%s): %s",
+                        e.code, attempt, session_id, body_text,
+                    )
                     backoff = 2 ** attempt
                     time.sleep(backoff)
                     continue
 
                 _logger.warning(
-                    "Cloud sync HTTP %d on session=%s — stopping",
-                    e.code, session_id,
+                    "Cloud sync HTTP %d on session=%s: %s",
+                    e.code, session_id, body_text,
                 )
                 return False
 
