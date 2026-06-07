@@ -60,8 +60,19 @@ def _app_callback(
         None, "--version", help="Show version and exit",
         is_eager=True,
     ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose debug logging",
+        is_eager=True,
+    ),
 ):
     """Snodo - AI-SDLC Protocol Engine."""
+    if verbose:
+        import logging
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(name)s %(levelname)s %(message)s",
+        )
+
     if version:
         from snodo import __version__
         print(f"snodo {__version__}")
