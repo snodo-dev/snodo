@@ -21,15 +21,12 @@ from snodo.infrastructure.session import SessionManager
 
 
 def authorize_command(args) -> int:
-    """Review and sign a pending decision.
+    """Review and sign a pending decision, or list all pending decisions.
 
     Args:
-        args: Namespace with task_id (required) and --yes (optional skip prompt).
+        args: Namespace with task_id (optional) and --yes (optional skip prompt).
     """
     task_id = getattr(args, "task_id", "")
-    if not task_id:
-        print("Error: task_id is required", file=sys.stderr)
-        return 1
 
     project_root = require_project_root()
     state = read_state(project_root)
@@ -47,6 +44,11 @@ def authorize_command(args) -> int:
         return 1
 
     pending = session.checkpoint.decisions.get("pending_decisions", {})
+
+    # ---- No task_id: list pending decisions ----
+    if not task_id:
+        return _list_pending(session, pending)
+
     if not isinstance(pending, dict) or task_id not in pending:
         print(f"No pending decision for task {task_id}.",
               file=sys.stderr)
@@ -156,4 +158,61 @@ def authorize_command(args) -> int:
 
     print("Decision authorized and signed (RS256).")
     print(f"  Record ID: {issuer._record_id(record.jwt)}")
+    return 0
+
+
+def _list_pending(session, pending: dict) -> int:
+    """Print a table of all pending decisions in the session."""
+    if not isinstance(pending, dict) or not pending:
+        print("No pending decisions in current session.")
+        return 0
+
+    print(f"Pending decisions in session {session.session_id} ({session.mode}):")
+    print()
+
+    rows = []
+    for tid, proposal in sorted(pending.items()):
+        ptype = proposal.get("type", "unknown")
+        if ptype == "adjudicate":
+            target = proposal.get("validator_id", "—")
+        elif ptype == "set_model":
+            target = proposal.get("scope", "—")
+        else:
+            target = "—"
+        justification = proposal.get("justification", "—")
+        if len(justification) > 40:
+            justification = justification[:37] + "..."
+        rows.append((tid, ptype, target, justification))
+
+    col_widths = [
+        max(len(r[0]) for r in rows),
+        max(len(r[1]) for r in rows),
+        max(len(r[2]) for r in rows),
+    ]
+    col_widths = [max(w, len(h)) for w, h in zip(
+        col_widths, ["TASK ID", "TYPE", "TARGET", "JUSTIFICATION"]
+    )]
+    col_widths[0] = max(col_widths[0], 7)
+    col_widths[1] = max(col_widths[1], 4)
+    col_widths[2] = max(col_widths[2], 6)
+
+    header = (
+        f" {'TASK ID':<{col_widths[0]}}  "
+        f"{'TYPE':<{col_widths[1]}}  "
+        f"{'TARGET':<{col_widths[2]}}  "
+        f"JUSTIFICATION"
+    )
+    print(header)
+    print("-" * len(header))
+
+    for tid, ptype, target, justification in rows:
+        print(
+            f" {tid:<{col_widths[0]}}  "
+            f"{ptype:<{col_widths[1]}}  "
+            f"{target:<{col_widths[2]}}  "
+            f"{justification}"
+        )
+
+    print()
+    print("Run: snodo authorize <task_id> to review and sign.")
     return 0
