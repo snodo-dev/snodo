@@ -155,8 +155,7 @@ class CloudSyncDispatcher:
         api_url: str,
     ) -> bool:
         """POST a batch of events. Returns True if cursor should advance."""
-        import urllib.request
-        import urllib.error
+        import httpx
 
         payload_events = []
         for ev in batch:
@@ -184,29 +183,26 @@ class CloudSyncDispatcher:
         )
         _logger.debug("Authorization: Bearer %s...", api_key[:16])
 
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
         for attempt in range(_MAX_RETRIES + 1):
             try:
-                req = urllib.request.Request(
-                    url, data=body, method="POST",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
+                response = httpx.post(
+                    url, content=body, headers=headers, timeout=30.0,
                 )
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    resp_body = resp.read().decode("utf-8", errors="replace")[:200]
-                    if resp.status == 200:
-                        _logger.debug("Response 200 — accepted=%s", resp_body)
-                        return True
-                    # Unexpected 2xx — treat as success
-                    _logger.debug("Response %d — %s", resp.status, resp_body)
-                    return False
 
-            except urllib.error.HTTPError as e:
-                body_text = e.read().decode("utf-8", errors="replace")[:500] if e.fp else ""
+                if response.status_code == 200:
+                    _logger.debug("Response 200 — accepted=%s",
+                                  response.text[:200])
+                    return True
 
-                if e.code == 429:
-                    retry_after = e.headers.get("Retry-After", "5")
+                body_text = response.text[:500]
+
+                if response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After", "5")
                     try:
                         wait = int(retry_after)
                     except ValueError:
@@ -216,19 +212,18 @@ class CloudSyncDispatcher:
                         retry_after, session_id, body_text,
                     )
                     time.sleep(wait)
-                    # 429 retry doesn't count against the backoff attempts
                     continue
 
-                if 500 <= e.code < 600:
+                if response.status_code >= 500:
                     if attempt == _MAX_RETRIES:
                         _logger.warning(
                             "Cloud sync HTTP %d retries exhausted (session=%s): %s",
-                            e.code, session_id, body_text,
+                            response.status_code, session_id, body_text,
                         )
                         return False
                     _logger.warning(
                         "Cloud sync HTTP %d attempt %d (session=%s): %s",
-                        e.code, attempt, session_id, body_text,
+                        response.status_code, attempt, session_id, body_text,
                     )
                     backoff = 2 ** attempt
                     time.sleep(backoff)
@@ -236,7 +231,7 @@ class CloudSyncDispatcher:
 
                 _logger.warning(
                     "Cloud sync HTTP %d on session=%s: %s",
-                    e.code, session_id, body_text,
+                    response.status_code, session_id, body_text,
                 )
                 return False
 
@@ -283,9 +278,15 @@ def sync_if_enabled(
     api_url = cloud["api_url"]
 
     dispatcher = CloudSyncDispatcher()
+
+    def _run_sync():
+        try:
+            dispatcher.sync(session_id, project_root, audit_log, api_key, api_url)
+        except Exception as e:
+            _logger.warning("Cloud sync background thread failed: %s", e)
+
     thread = Thread(
-        target=dispatcher.sync,
-        args=(session_id, project_root, audit_log, api_key, api_url),
+        target=_run_sync,
         daemon=True,
     )
     thread.start()

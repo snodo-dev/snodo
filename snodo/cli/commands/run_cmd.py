@@ -4,6 +4,7 @@ FILE: snodo/cli/commands/run_cmd.py
 """
 
 import json
+import logging
 import sys
 from dataclasses import is_dataclass, asdict
 from pathlib import Path
@@ -14,6 +15,8 @@ from snodo.core.interfaces import Task
 from snodo.engine.loop import build_protocol_graph, LoopStage
 from snodo.cli.config import ConfigManager, _set_api_key_env
 from snodo.cli.commands import load_protocol
+
+_logger = logging.getLogger(__name__)
 
 
 def _format_pr_comments(data: dict) -> list:
@@ -245,8 +248,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             try:
                 from snodo.infrastructure.cloud_sync import sync_if_enabled
                 sync_if_enabled(session_id, project_root, audit_log)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning("Cloud sync hook failed: %s", e)
 
 
 def _resolve_session(args, session_manager, protocol, project_root):
