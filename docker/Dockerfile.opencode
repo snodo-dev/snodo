@@ -1,0 +1,25 @@
+FROM debian:bookworm-slim
+
+LABEL maintainer="snodo" \
+      description="Snodo opencode adapter container — opencode v1.16.2"
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        tar \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG OPENCODE_VERSION=1.16.2
+ARG OPENCODE_URL=https://github.com/anomalyco/opencode/releases/download/v1.16.2/opencode-linux-x64.tar.gz
+
+RUN curl -fsSL "$OPENCODE_URL" -o /tmp/opencode.tar.gz && \
+    tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin && \
+    rm /tmp/opencode.tar.gz && \
+    chmod +x /usr/local/bin/opencode
+
+WORKDIR /workspace
+
+EXPOSE 8080
+
+ENTRYPOINT ["opencode", "serve", "--port", "8080"]
