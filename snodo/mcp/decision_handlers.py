@@ -8,7 +8,6 @@ proposals in session checkpoint decisions so the human CLI path
 """
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict
 
 from snodo.infrastructure.state import read_state

@@ -4,7 +4,6 @@ FILE: snodo/cli/commands/plan_cmd.py
 """
 
 import sys
-from pathlib import Path
 
 
 def plan_command(args) -> int:

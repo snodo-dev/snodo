@@ -17,7 +17,7 @@ def mode_command(args) -> int:
     action = getattr(args, "mode_action", "show")
 
     if action == "show":
-        return _mode_show(state)
+        return _mode_show(state, project_root)
     elif action == "change":
         return _mode_change(args, state, project_root)
     else:
@@ -25,7 +25,7 @@ def mode_command(args) -> int:
         return 1
 
 
-def _mode_show(state) -> int:
+def _mode_show(state, project_root) -> int:
     """Display the current active mode."""
     if not state.current_mode:
         print("No mode set. Run 'snodo mode change <m>' to select one.")
