@@ -273,6 +273,9 @@ class GraphBuilder:
                 if isinstance(auth, list):
                     self._authorized_decisions = [a for a in auth if isinstance(a, str)]
 
+        # Respawn coder if a verified set_model(scope=coder) override exists
+        self._maybe_respawn_coder()
+
         # Summarize messages if they've grown too large
         loop_state = self._maybe_summarize(loop_state)
 
@@ -730,6 +733,68 @@ class GraphBuilder:
             if self._session_id:
                 data["session_id"] = self._session_id
             self._audit_log.append_event(event_type, data)
+
+    def _maybe_respawn_coder(self) -> None:
+        """Respawn the coder if a verified set_model(scope=coder) override exists.
+
+        Reads self._authorized_decisions (loaded by _governance_node),
+        verifies each via the verify-only issuer, and rebuilds the coder
+        when the override model differs from the current coder's model.
+
+        Also updates the two values captured at __init__ so the validator
+        default_model stays in sync:
+          self._completion_fn  → new coder's completion fn
+          self._default_model  → new model
+          self._validator_runner._completion_fn
+          self._validator_runner._default_model
+
+        Idempotent: does nothing when no override exists or when the
+        override model equals the current model.
+        """
+        if not self._authorized_decisions or not self._decision_issuer:
+            return
+
+        verified = self._decision_issuer.find_set_model_overrides(
+            self._authorized_decisions,
+        )
+        override = next(
+            (p for p in verified if p.get("scope") == "coder"), None
+        )
+        if override is None:
+            return
+
+        new_model = override.get("proposed_model", "")
+        if not new_model or new_model == getattr(self.coder, "model", ""):
+            return  # already on this model — idempotent
+
+        # Build a fresh coder with the new model
+        from snodo.coders import resolve_adapter_class
+        from snodo.infrastructure.config import load_llm_config
+
+        llm_cfg = load_llm_config()
+        adapter_cls = resolve_adapter_class(new_model)
+        fresh_coder = adapter_cls(
+            model=new_model,
+            max_tokens=llm_cfg.coder.max_tokens,
+            max_tool_turns=llm_cfg.coder.max_tool_turns,
+            workspace_mcp=self.workspace_mcp,
+        )
+
+        old_model = getattr(self.coder, "model", "")
+        self.coder = fresh_coder
+        self._completion_fn = getattr(fresh_coder, "_completion_fn", None) or \
+                              getattr(fresh_coder, "completion_fn", None)
+        self._default_model = new_model
+
+        # Keep the validator runner in sync — it holds its own copies
+        self._validator_runner._completion_fn = self._completion_fn
+        self._validator_runner._default_model = self._default_model
+
+        self._audit("coder_respawned", {
+            "op": "coder_respawned",
+            "old_model": old_model,
+            "new_model": new_model,
+        })
 
     @staticmethod
     def _init_summary_model():
