@@ -590,7 +590,7 @@ class TestDefaultProtocol:
             protocol = load_protocol(Path(f.name))
         assert protocol is not None
         assert len(protocol.modes) == 3
-        assert len(protocol.validators) == 9
+        assert len(protocol.validators) == 10
 
     def test_producer_no_plan_tools_in_default(self):
         from snodo.cli.main import DEFAULT_PROTOCOL
