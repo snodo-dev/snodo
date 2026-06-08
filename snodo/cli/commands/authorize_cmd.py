@@ -47,6 +47,9 @@ def authorize_command(args) -> int:
 
     # ---- No task_id: list pending decisions ----
     if not task_id:
+        reject_all = getattr(args, "reject_all", False)
+        if reject_all:
+            return _reject_all_decisions(session, pending, session_mgr)
         return _list_pending(session, pending)
 
     if not isinstance(pending, dict) or task_id not in pending:
@@ -217,6 +220,38 @@ def _list_pending(session, pending: dict) -> int:
 
     print()
     print("Run: snodo authorize <task_id> to review and sign.")
+    return 0
+
+
+def _reject_all_decisions(session, pending: dict, session_mgr) -> int:
+    """Bulk reject all pending decisions.
+
+    Shows the list, prompts for confirmation, then mints a signed
+    reject record for each and clears them all.
+    """
+    if not isinstance(pending, dict) or not pending:
+        print("No pending decisions to reject.")
+        return 0
+
+    _list_pending(session, pending)
+
+    count = len(pending)
+    try:
+        answer = input(f"\nReject all {count} pending decisions? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled.", file=sys.stderr)
+        return 1
+    if answer != "y":
+        print("Cancelled.", file=sys.stderr)
+        return 1
+
+    rejected = 0
+    for task_id in sorted(pending.keys()):
+        proposal = pending[task_id]
+        _reject_decision(task_id, proposal, session, session_mgr)
+        rejected += 1
+
+    print(f"\n{rejected} decision(s) rejected and recorded.")
     return 0
 
 

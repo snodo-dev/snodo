@@ -567,6 +567,7 @@ def uninstall_cmd(
 def authorize(
     task_id: str = typer.Argument(None, help="Task ID of the pending decision to authorize"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    reject_all: bool = typer.Option(False, "--reject-all", help="Bulk reject all pending decisions"),
 ):
     """Authorize a pending decision (human-only — requires private signing key).
 
@@ -576,9 +577,10 @@ def authorize(
     no access to the private key.
 
     When called without a task_id, lists all pending decisions in the active session.
+    Use --reject-all to mint signed reject records for all pending decisions at once.
     """
     from snodo.cli.commands.authorize_cmd import authorize_command
-    args = SimpleNamespace(task_id=task_id, yes=yes)
+    args = SimpleNamespace(task_id=task_id, yes=yes, reject_all=reject_all)
     return authorize_command(args)
 
 
