@@ -213,30 +213,28 @@ def _provision_tunnel(
     Raises RuntimeError on failure.
     """
     try:
-        import urllib.request
-        import urllib.error
+        import httpx
 
         url = f"{_TUNNEL_API_BASE}/provision"
-        payload = json.dumps({
+        payload = {
             "project_slug": project_slug,
             "mode": mode,
             "short_id": short_id,
             "snodo_version": snodo_version,
-        }).encode()
-        req = urllib.request.Request(
-            url, data=payload, method="POST",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+        }
+        resp = httpx.post(
+            url,
+            json=payload,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=30.0,
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode() if e.fp else ""
-        raise RuntimeError(
-            f"Tunnel provisioning failed (HTTP {e.code}): {body}"
-        )
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"Tunnel provisioning failed (HTTP {resp.status_code}): {resp.text[:500]}"
+            )
+        return resp.json()
+    except RuntimeError:
+        raise
     except Exception as e:
         raise RuntimeError(f"Tunnel provisioning failed: {e}")
 
@@ -247,19 +245,22 @@ def _rotate_tunnel_token(api_key: str, hostname: str) -> dict:
     Returns a dict with client_id and client_secret.
     """
     try:
-        import urllib.request
-        import urllib.error
+        import httpx
 
         url = f"{_TUNNEL_API_BASE}/{hostname}/token"
-        req = urllib.request.Request(
-            url, data=b"{}", method="POST",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+        resp = httpx.post(
+            url,
+            json={},
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=30.0,
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode())
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"Token rotation failed (HTTP {resp.status_code}): {resp.text[:500]}"
+            )
+        return resp.json()
+    except RuntimeError:
+        raise
     except Exception as e:
         raise RuntimeError(f"Token rotation failed: {e}")
 
