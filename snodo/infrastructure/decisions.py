@@ -282,9 +282,9 @@ class DecisionRecordIssuer:
 
     @staticmethod
     def _validate_decision(decision: str) -> None:
-        if decision not in ("proceed", "halt"):
+        if decision not in ("proceed", "halt", "reject"):
             raise DecisionError(
-                f"Decision must be 'proceed' or 'halt', got {decision!r}"
+                f"Decision must be 'proceed', 'halt', or 'reject', got {decision!r}"
             )
 
     def _log_event(self, event_type: str, data: Dict[str, Any]) -> None:
