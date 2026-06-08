@@ -74,10 +74,12 @@ def authorize_command(args) -> int:
     skip_prompt = getattr(args, "yes", False)
     if not skip_prompt:
         try:
-            answer = input("Authorize this decision? [y/N] ").strip().lower()
+            answer = input("Authorize this decision? [y/N/r] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             print("\nCancelled.", file=sys.stderr)
             return 1
+        if answer == "r":
+            return _reject_decision(task_id, proposal, session, session_mgr)
         if answer != "y":
             print("Cancelled.", file=sys.stderr)
             return 1
@@ -215,4 +217,75 @@ def _list_pending(session, pending: dict) -> int:
 
     print()
     print("Run: snodo authorize <task_id> to review and sign.")
+    return 0
+
+
+def _reject_decision(task_id: str, proposal: dict, session, session_mgr) -> int:
+    """Mint a signed reject record and clear the pending decision.
+
+    Returns 0 on success.
+    """
+    from snodo.infrastructure.decisions import signing_issuer, DecisionRecord
+    from snodo.core.interfaces import ValidatorResult
+    from datetime import datetime as dt, timezone
+
+    issuer = signing_issuer()
+    proposal_type = proposal.get("type", "unknown")
+    now = dt.now(timezone.utc)
+
+    if proposal_type == "adjudicate":
+        validator_result = ValidatorResult(
+            validator_id=proposal.get("validator_id", ""),
+            severity="warn",
+            justification=proposal.get("justification", ""),
+        )
+        record = issuer.issue_record(
+            task_ref=task_id,
+            validator_id=proposal.get("validator_id", ""),
+            validator_result=validator_result,
+            decision="reject",
+            justification=proposal.get("justification", ""),
+            resolved_by="human",
+        )
+    else:
+        payload = {
+            "iat": now,
+            "task_ref": task_id,
+            "type": proposal_type,
+            "decision": "reject",
+            "justification": proposal.get("justification", ""),
+            "resolved_by": "human",
+        }
+        if proposal_type == "set_model":
+            payload["proposed_model"] = proposal.get("proposed_model", "")
+            payload["scope"] = proposal.get("scope", "")
+        jwt_str = issuer.sign_payload(payload)
+        record = DecisionRecord(
+            jwt=jwt_str,
+            task_ref=task_id,
+            decision="reject",
+            justification=proposal.get("justification", ""),
+            resolved_by="human",
+            issued_at=now.isoformat(),
+        )
+
+    # Persist to decision_records
+    records = session.checkpoint.decisions.get("decision_records", [])
+    if not isinstance(records, list):
+        records = []
+    records.append(record.jwt)
+    session_mgr.update_decision(
+        session.session_id, "decision_records", records,
+    )
+
+    # Consume the proposal
+    pending = session.checkpoint.decisions.get("pending_decisions", {})
+    if isinstance(pending, dict) and task_id in pending:
+        del pending[task_id]
+        session_mgr.update_decision(
+            session.session_id, "pending_decisions", pending,
+        )
+
+    print("Decision rejected and recorded.")
+    print(f"  Record ID: {issuer._record_id(record.jwt)}")
     return 0
