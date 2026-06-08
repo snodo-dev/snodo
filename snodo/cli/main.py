@@ -160,7 +160,7 @@ def serve(
     transport: str = typer.Option(
         "stdio", "--transport", help="Transport type: stdio, sse, or streamable-http",
     ),
-    port: int = typer.Option(8080, "--port", help="Port for SSE transport"),
+    port: int = typer.Option(55441, "--port", help="Port for SSE/streamable-http transport"),
     tunnel: bool = typer.Option(
         False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
     ),
