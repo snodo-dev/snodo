@@ -191,12 +191,11 @@ def _check_cloudflared() -> bool:
 
 
 def _get_snodo_api_key() -> str:
-    """Read the snodo API key from ~/.snodo/config.yml."""
+    """Read the snodo API key from ~/.snodo/config.yml cloud section."""
     from snodo.cli.config import ConfigManager
 
-    mgr = ConfigManager()
-    config = mgr.load()
-    return config.get("snodo_api_key", "") or config.get("api_key", "")
+    config = ConfigManager().load()
+    return config.get("cloud", {}).get("api_key", "")
 
 
 def _generate_short_id() -> str:
@@ -319,7 +318,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     if not api_key:
         print("snodo serve --tunnel requires a free snodo account.", file=sys.stderr)
         print("  Sign up at: https://app.snodo.dev", file=sys.stderr)
-        print("  Then run: snodo auth login", file=sys.stderr)
+        print("  Then run: snodo cloud connect <api_key>", file=sys.stderr)
         return 1
 
     # 3. Load existing tunnel config
@@ -354,7 +353,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         except RuntimeError as e:
             print(f"Error: {e}", file=sys.stderr)
             print("If you see an authentication error, your snodo API key may have expired.", file=sys.stderr)
-            print("Re-run: snodo auth login", file=sys.stderr)
+            print("Re-run: snodo cloud connect <api_key>", file=sys.stderr)
             return 1
 
         tunnel_config = {
