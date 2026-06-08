@@ -4,12 +4,8 @@ FILE: tests/cli/test_cloud.py
 """
 
 import json
-import time
-import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-
-import pytest
 
 
 # ------------------------------------------------------------------#
@@ -282,7 +278,7 @@ class TestCloudSyncDispatcher:
 
         with patch.object(CloudSyncState, "get_cursor", return_value=5):
             with patch.object(CloudSyncState, "advance_cursor"):
-                with patch.object(dispatcher, "_post_batch", return_value=True) as mock_post:
+                with patch.object(dispatcher, "_post_batch", return_value=True):
                     result = dispatcher.sync(
                         "sess_cur", "/proj", audit_log,
                         "sndo_live_xxx", "https://api.example.com",
@@ -294,7 +290,6 @@ class TestCloudSyncDispatcher:
     def test_429_retries_with_retry_after(self):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
         from unittest.mock import patch
-        import urllib.error
 
         events = self._make_events(3)
         audit_log = MagicMock()
@@ -302,19 +297,14 @@ class TestCloudSyncDispatcher:
 
         dispatcher = CloudSyncDispatcher()
 
-        # First call: 429, second: 200
-        ok_mock = MagicMock()
-        ok_mock.status = 200
-        ok_mock.__enter__.return_value = ok_mock
-        with patch("urllib.request.urlopen") as mock_urlopen:
-            mock_urlopen.side_effect = [
-                urllib.error.HTTPError(
-                    "url", 429, "Too Many Requests",
-                    {"Retry-After": "1"}, None,
-                ),
-                ok_mock,
-            ]
-
+        ok_resp = MagicMock()
+        ok_resp.status_code = 200
+        ok_resp.text = "ok"
+        rate_limited = MagicMock()
+        rate_limited.status_code = 429
+        rate_limited.headers = {"Retry-After": "1"}
+        rate_limited.text = "rate limited"
+        with patch("httpx.post", side_effect=[rate_limited, ok_resp]) as mock_post:
             with patch("snodo.infrastructure.cloud_sync.time.sleep") as mock_sleep:
                 result = dispatcher._post_batch(
                     "sess_rl", "/proj", events[:3],
@@ -323,20 +313,19 @@ class TestCloudSyncDispatcher:
 
         assert result is True
         mock_sleep.assert_called_with(1)
+        assert mock_post.call_count == 2
 
     def test_5xx_exponential_backoff(self):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
         from unittest.mock import patch
-        import urllib.error
 
         events = self._make_events(3)
         dispatcher = CloudSyncDispatcher()
 
-        with patch("urllib.request.urlopen") as mock_urlopen:
-            mock_urlopen.side_effect = urllib.error.HTTPError(
-                "url", 503, "Service Unavailable", {}, None,
-            )
-
+        svr_err = MagicMock()
+        svr_err.status_code = 503
+        svr_err.text = "service unavailable"
+        with patch("httpx.post", return_value=svr_err) as mock_post:
             with patch("snodo.infrastructure.cloud_sync.time.sleep") as mock_sleep:
                 result = dispatcher._post_batch(
                     "sess_5xx", "/proj", events[:3],
@@ -346,6 +335,7 @@ class TestCloudSyncDispatcher:
         assert result is False
         # 5 retries: attempt 0 (1s), 1 (2s), 2 (4s), 3 (8s), 4 (16s), attempt 5 → return False
         assert mock_sleep.call_count == 5
+        assert mock_post.call_count == 6  # _MAX_RETRIES + 1
 
     def test_network_error_never_raises(self):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
