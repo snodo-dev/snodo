@@ -115,6 +115,12 @@ class LLMValidator(ValidatorBase):
                 pass  # fall through to legacy parse
 
         # Legacy: free-text completion + hand-rolled parse
+        if self._completion_fn is None:
+            return ValidatorResult(
+                validator_id=self.validator_spec.validator_id,
+                severity="warn",
+                justification="No completion_fn available",
+            )
         try:
             response_text = self._call_llm(prompt)
             return self._parse_response(response_text)
