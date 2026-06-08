@@ -399,8 +399,42 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     mcp_process = subprocess.Popen(
         mcp_cmd,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
     )
+
+    # Verify MCP server started successfully
+    deadline = time.time() + 10
+    health_url = f"http://localhost:{port}/health"
+    import httpx
+    mcp_ready = False
+    while time.time() < deadline:
+        if mcp_process.poll() is not None:
+            stderr_output = mcp_process.stderr.read() if mcp_process.stderr else ""
+            print(f"Error: MCP server exited with code {mcp_process.returncode}.",
+                  file=sys.stderr)
+            if stderr_output:
+                print(stderr_output, file=sys.stderr)
+            return 1
+        try:
+            resp = httpx.get(health_url, timeout=1.0)
+            if resp.status_code < 500:
+                mcp_ready = True
+                break
+        except Exception:
+            pass
+        time.sleep(1)
+
+    if not mcp_ready:
+        print("Error: MCP server did not become ready within 10s.",
+              file=sys.stderr)
+        if mcp_process.poll() is None:
+            mcp_process.terminate()
+        else:
+            stderr_output = mcp_process.stderr.read() if mcp_process.stderr else ""
+            if stderr_output:
+                print(stderr_output, file=sys.stderr)
+        return 1
 
     # 5. Start cloudflared
     cf_cmd = [

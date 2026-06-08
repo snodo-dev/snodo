@@ -1155,11 +1155,12 @@ class TestTunnelRunErrors:
                 with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
                     with patch("snodo.cli.commands.serve_cmd._provision_tunnel", return_value=provisioned):
                         with patch("snodo.cli.commands.serve_cmd._save_tunnel_config"):
-                            with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
-                                with patch("snodo.cli.commands.serve_cmd.signal.signal"):
-                                    # Return immediately so the function doesn't block
-                                    mock_sub.wait.return_value = 0
-                                    result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+                            with patch("httpx.get", return_value=MagicMock(status_code=200)):
+                                with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
+                                    with patch("snodo.cli.commands.serve_cmd.signal.signal"):
+                                        # Return immediately so the function doesn't block
+                                        mock_sub.wait.return_value = 0
+                                        result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
         assert result == 0
 
@@ -1191,10 +1192,11 @@ class TestTunnelRunErrors:
             with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
                 with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=stored):
                     with patch("snodo.cli.commands.serve_cmd._provision_tunnel") as mock_provision:
-                        with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
-                            with patch("snodo.cli.commands.serve_cmd.signal.signal"):
-                                mock_sub.wait.return_value = 0
-                                result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+                        with patch("httpx.get", return_value=MagicMock(status_code=200)):
+                            with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
+                                with patch("snodo.cli.commands.serve_cmd.signal.signal"):
+                                    mock_sub.wait.return_value = 0
+                                    result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
         assert result == 0
         mock_provision.assert_not_called()  # No provisioning on subsequent run
