@@ -164,11 +164,14 @@ class GraphBuilder:
             validator_completion_fn = functools.partial(
                 litellm_completion, model=validator_model,
             )
+            validator_default_model = validator_model
+        else:
+            validator_default_model = self._default_model
 
         self._validator_runner = ValidatorRunner(
             protocol=self.protocol,
             completion_fn=validator_completion_fn,
-            default_model=self._default_model,
+            default_model=validator_default_model,
             validator_config=validator_config,
             audit_log=self._audit_log,
             workspace_mcp=workspace_mcp,
