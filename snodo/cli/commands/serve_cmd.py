@@ -90,7 +90,7 @@ def _run_server(args, protocol) -> int:
     tools = protocol_server.get_tools()
     mode_label = mode_id or "all"
 
-    port = getattr(args, "port", 8000)
+    port = getattr(args, "port", 55441)
     if port is not None:
         mcp.settings.port = port
 
@@ -309,7 +309,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     project_slug = Path(project_root).name
     mode = getattr(args, "mode", None) or "all"
     transport = getattr(args, "transport", "streamable-http")
-    port = getattr(args, "port", 8000)
+    port = getattr(args, "port", 55441)
     rotate = getattr(args, "rotate", False)
 
     # Prefer streamable-http for tunnels
@@ -403,37 +403,14 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         text=True,
     )
 
-    # Verify MCP server started successfully
-    deadline = time.time() + 10
-    health_url = f"http://localhost:{port}/health"
-    import httpx
-    mcp_ready = False
-    while time.time() < deadline:
-        if mcp_process.poll() is not None:
-            stderr_output = mcp_process.stderr.read() if mcp_process.stderr else ""
-            print(f"Error: MCP server exited with code {mcp_process.returncode}.",
-                  file=sys.stderr)
-            if stderr_output:
-                print(stderr_output, file=sys.stderr)
-            return 1
-        try:
-            resp = httpx.get(health_url, timeout=1.0)
-            if resp.status_code < 500:
-                mcp_ready = True
-                break
-        except Exception:
-            pass
-        time.sleep(1)
-
-    if not mcp_ready:
-        print("Error: MCP server did not become ready within 10s.",
+    # Verify MCP server started — give uvicorn 2s to bind, then check process alive
+    time.sleep(2)
+    if mcp_process.poll() is not None:
+        stderr_output = mcp_process.stderr.read() if mcp_process.stderr else ""
+        print(f"Error: MCP server exited with code {mcp_process.returncode}.",
               file=sys.stderr)
-        if mcp_process.poll() is None:
-            mcp_process.terminate()
-        else:
-            stderr_output = mcp_process.stderr.read() if mcp_process.stderr else ""
-            if stderr_output:
-                print(stderr_output, file=sys.stderr)
+        if stderr_output:
+            print(stderr_output, file=sys.stderr)
         return 1
 
     # 5. Start cloudflared
@@ -488,7 +465,19 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     signal.signal(signal.SIGTERM, _cleanup)
 
     try:
-        cf_process.wait()
+        while True:
+            try:
+                cf_process.wait(timeout=5)
+                break  # cloudflared exited normally
+            except subprocess.TimeoutExpired:
+                pass
+            if mcp_process.poll() is not None:
+                print("Error: MCP server exited unexpectedly.", file=sys.stderr)
+                stderr_output = mcp_process.stderr.read() if mcp_process.stderr else ""
+                if stderr_output:
+                    print(stderr_output, file=sys.stderr)
+                _cleanup()
+                return 1
     except KeyboardInterrupt:
         _cleanup()
 

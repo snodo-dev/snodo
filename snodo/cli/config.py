@@ -99,6 +99,9 @@ class ConfigManager:
                 "api_url": "https://api.snodo.dev",
                 "sync_enabled": False,
             },
+            "mcp": {
+                "port": 55441,
+            },
         }
 
     def get_providers(self) -> Dict[str, ProviderConfig]:
