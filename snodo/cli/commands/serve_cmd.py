@@ -176,8 +176,6 @@ def _handle_uninstall(args, protocol, protocol_path) -> int:
 # Managed tunnel via snodo.dev
 # ------------------------------------------------------------------#
 
-_TUNNEL_API_BASE = "https://api.snodo.dev/tunnel"
-
 
 def _check_cloudflared() -> bool:
     """Return True if cloudflared is on PATH."""
@@ -188,6 +186,14 @@ def _check_cloudflared() -> bool:
         return True
     except (subprocess.SubprocessError, FileNotFoundError):
         return False
+
+
+def _get_cloud_api_url() -> str:
+    """Read the cloud API URL from ~/.snodo/config.yml."""
+    from snodo.cli.config import ConfigManager
+
+    config = ConfigManager().load()
+    return config.get("cloud", {}).get("api_url", "https://api.snodo.dev")
 
 
 def _get_snodo_api_key() -> str:
@@ -215,7 +221,9 @@ def _provision_tunnel(
     try:
         import httpx
 
-        url = f"{_TUNNEL_API_BASE}/provision"
+        api_url = _get_cloud_api_url()
+
+        url = f"{api_url.rstrip('/')}/tunnel/provision"
         payload = {
             "project_slug": project_slug,
             "mode": mode,
@@ -247,7 +255,9 @@ def _rotate_tunnel_token(api_key: str, hostname: str) -> dict:
     try:
         import httpx
 
-        url = f"{_TUNNEL_API_BASE}/{hostname}/token"
+        api_url = _get_cloud_api_url()
+
+        url = f"{api_url.rstrip('/')}/tunnel/{hostname}/token"
         resp = httpx.post(
             url,
             json={},
