@@ -539,7 +539,6 @@ class LLMValidator(ValidatorBase):
             Exception: If the LLM call fails
         """
         response = self._completion_fn(
-            model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             max_tokens=500,
@@ -554,7 +553,6 @@ class LLMValidator(ValidatorBase):
         Zero free-text parsing.
         """
         response = self._completion_fn(
-            model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             max_tokens=self.completion_tokens,

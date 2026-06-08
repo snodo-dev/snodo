@@ -160,7 +160,12 @@ class GraphBuilder:
         if validator_completion_fn is None:
             import functools
             from snodo.cli.config import ConfigManager
-            validator_model = ConfigManager().load().get("model") or DEFAULT_MODEL
+            config = ConfigManager().load()
+            validator_model = (
+                config.get("llm", {}).get("validator_llm", {}).get("model")
+                or config.get("model")
+                or DEFAULT_MODEL
+            )
             validator_completion_fn = functools.partial(
                 litellm_completion, model=validator_model,
             )
