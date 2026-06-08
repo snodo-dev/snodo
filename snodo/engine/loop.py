@@ -396,6 +396,9 @@ class GraphBuilder:
                 "policy_decision": loop_state.pending_disagreement["policy_decision"],
             })
 
+        if loop_state.is_blocked:
+            self._auto_write_pending_decisions(loop_state, results)
+
         self._audit("validate", {
             "op": "validate",
             "phase": "pre_execute",
@@ -546,6 +549,9 @@ class GraphBuilder:
                 "validator_results": loop_state.pending_disagreement["validator_results"],
                 "policy_decision": loop_state.pending_disagreement["policy_decision"],
             })
+
+        if loop_state.is_blocked:
+            self._auto_write_pending_decisions(loop_state, results)
 
         self._audit("validate", {
             "op": "validate",
@@ -749,6 +755,46 @@ class GraphBuilder:
             if self._session_id:
                 data["session_id"] = self._session_id
             self._audit_log.append_event(event_type, data)
+
+    def _auto_write_pending_decisions(self, loop_state: Any, results: list) -> None:
+        """Write pending_decision entries for every blocking/escalating validator.
+
+        Called on HALT and ESCALATE decisions so ``snodo authorize`` can find
+        the proposals without the orchestrator calling propose_adjudicate.
+        """
+        if not self._session_manager or not self._session_id:
+            return
+
+        task_id = loop_state.task.id
+        try:
+            session = self._session_manager.load_session(self._session_id)
+        except Exception:
+            return
+
+        pending = session.checkpoint.decisions.get("pending_decisions", {})
+        if not isinstance(pending, dict):
+            pending = {}
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+
+        for r in results:
+            if r.severity not in ("blocker", "warn", "error"):
+                continue
+            entry = {
+                "type": "adjudicate",
+                "validator_id": r.validator_id,
+                "decision": "proceed",
+                "justification": r.justification,
+                "severity": r.severity,
+                "proposed_by": "engine",
+                "timestamp": now,
+            }
+            pending[task_id] = entry
+
+        self._session_manager.update_decision(
+            self._session_id, "pending_decisions", pending,
+        )
 
     def _maybe_respawn_coder(self) -> None:
         """Respawn the coder if a verified set_model(scope=coder) override exists.

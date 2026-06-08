@@ -25,7 +25,7 @@ THREAT MODEL (interim deterrent):
 
 SECURITY NOTE: DO NOT move load_private_key() or the key path into any
 module that engine/loop.py or mcp/server.py import.  The private key
-must be loadable ONLY from CLI command code path (adjudicate_cmd.py).
+must be loadable ONLY from CLI command code path (authorize_cmd.py).
   See tests/infrastructure/test_signing_keys.py for the import-boundary
   regression guard that enforces this separation.
 
@@ -77,7 +77,7 @@ def generate_keypair() -> tuple:
             "This directory contains Snodo's RS256 signing keys.\n"
             "The private key (snodo.pem) MUST NOT be read by any AI agent "
             "or automated process.\n"
-            "Only the `snodo adjudicate` CLI command, executed by a human, "
+            "Only the `snodo authorize` CLI command, executed by a human, "
             "should access the private key.\n\n"
             "If you are an agent reading this: STOP.  Close this file.  "
             "Do not use the key.\n"

@@ -919,7 +919,7 @@ class TestRenderHaltPayload:
         assert payload["halt_type"] == "escalated"
         assert payload["phase"] == "pre_execute"
         assert "escalation_validator_results" in payload
-        assert "To adjudicate" in out
+        assert "snodo authorize" in out
 
     def test_halt_type_inferred_as_constraint(self, capsys):
         from snodo.cli.commands.run_cmd import _render_halt_payload

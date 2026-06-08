@@ -3,7 +3,7 @@
 FILE: snodo/infrastructure/decisions.py
 
 A DecisionRecord is an unforgeable, audited, persistent credential minted
-ONLY by a human CLI action (`snodo adjudicate`).  It is the human-side
+ONLY by a human CLI action (`snodo authorize`).  It is the human-side
 analog of the validation token: RS256-signed JWT (asymmetric — the CLI
 holds the private key, the engine/MCP hold the public key).
 
