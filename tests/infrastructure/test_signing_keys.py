@@ -24,7 +24,7 @@ _FORBIDDEN = {
 }
 # Paths that MUST be able to reach the private key (positive control).
 _PRIVILEGED_PATHS = {
-    "snodo/cli/commands/adjudicate_cmd.py",
+    "snodo/cli/commands/authorize_cmd.py",
 }
 
 # Engine and MCP module roots — all .py files under these dirs are checked.
@@ -101,7 +101,7 @@ def test_mcp_modules_never_import_private_key():
 # ------------------------------------------------------------------#
 
 def test_privileged_path_reaches_private_key():
-    """The adjudicate CLI command CAN import load_private_key — it must."""
+    """The authorize CLI command CAN import the signing issuer — it must."""
     missing = []
     for rel_path in _PRIVILEGED_PATHS:
         full = _PROJECT_ROOT / rel_path
@@ -118,7 +118,7 @@ def test_privileged_path_reaches_private_key():
         "PRIVILEGED PATHS CANNOT REACH THE PRIVATE KEY:\n"
         + "\n".join(f"  {m}" for m in missing)
         + "\n\nThe legitimate CLI path must be able to sign. "
-        "If this fails, adjudicate_cmd.py can no longer mint DecisionRecords."
+        "If this fails, authorize_cmd.py can no longer mint DecisionRecords."
     )
 
 

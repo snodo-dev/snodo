@@ -437,8 +437,8 @@ def _render_halt_payload(node_state: dict) -> dict:
         "hint": (
             "Address the blocking concerns and re-run a revised task. "
             "If you believe the block is incorrect, use "
-            "`snodo adjudicate <session_id> <task_id> <validator_id> "
-            "--decision proceed --justification \"...\"`."
+            "`snodo authorize <task_id>`.\n"
+            "Run: snodo authorize to list all pending decisions."
         ),
     }
 
@@ -456,7 +456,7 @@ def _render_halt_payload(node_state: dict) -> dict:
     print()
 
     if halt_type == "escalated" or (pending and halt_type != "escalated"):
-        print("To adjudicate: snodo adjudicate <session_id> <task_id> <validator_id> --decision proceed --justification \"...\"")
+        print("Run: snodo authorize <task_id>")
 
     return payload
 
