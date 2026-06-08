@@ -149,9 +149,21 @@ class GraphBuilder:
         self._completion_fn = getattr(self.coder, "_completion_fn", None) or \
                               getattr(self.coder, "completion_fn", None)
         self._default_model = getattr(self.coder, "model", DEFAULT_MODEL)
+
+        # Validators need their own completion_fn — the coder may not
+        # use LiteLLM (e.g. OpenCodeAdapter uses HTTP).  Fall back to a
+        # partial litellm.completion bound to the default model.
+        from litellm import completion as litellm_completion
+        validator_completion_fn = getattr(self.coder, "_completion_fn", None)
+        if validator_completion_fn is None:
+            import functools
+            validator_completion_fn = functools.partial(
+                litellm_completion, model=self._default_model,
+            )
+
         self._validator_runner = ValidatorRunner(
             protocol=self.protocol,
-            completion_fn=self._completion_fn,
+            completion_fn=validator_completion_fn,
             default_model=self._default_model,
             validator_config=validator_config,
             audit_log=self._audit_log,

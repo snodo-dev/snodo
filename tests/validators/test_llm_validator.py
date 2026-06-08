@@ -371,7 +371,7 @@ class TestEngineLoopIntegration:
         assert len(results) == 1
         assert results[0].validator_id == "security"
         assert results[0].severity == "warn"
-        assert "LLM" in results[0].justification
+        assert "completion_fn" in results[0].justification.lower()
 
     def test_stub_used_for_empty_criteria(self):
         """Validators without criteria should use stub even if LLM available."""
