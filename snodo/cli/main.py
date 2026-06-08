@@ -167,6 +167,9 @@ def serve(
     rotate: bool = typer.Option(
         False, "--rotate", help="Rotate the Cloudflare service token for an existing tunnel",
     ),
+    delete: bool = typer.Option(
+        False, "--delete", help="Deprovision and remove the managed tunnel",
+    ),
     install: bool = typer.Option(
         False, "--install", help="Install MCP servers into Claude Desktop config",
     ),
@@ -183,7 +186,7 @@ def serve(
     """Start MCP server from protocol definition."""
     args = SimpleNamespace(
         protocol=protocol, mode=mode, transport=transport, port=port,
-        tunnel=tunnel, rotate=rotate,
+        tunnel=tunnel, rotate=rotate, delete=delete,
         install=install, uninstall=uninstall, uninstall_all=uninstall_all,
         project_name=project_name,
     )
