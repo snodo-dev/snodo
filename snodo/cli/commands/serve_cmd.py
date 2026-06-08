@@ -275,6 +275,65 @@ def _rotate_tunnel_token(api_key: str, hostname: str) -> dict:
         raise RuntimeError(f"Token rotation failed: {e}")
 
 
+def _deprovision_tunnel(api_key: str, hostname: str) -> bool:
+    """DELETE /tunnel/{hostname} — deprovision the tunnel.
+
+    Returns True on success (200 or 404).
+    Raises RuntimeError on other errors.
+    """
+    try:
+        import httpx
+
+        api_url = _get_cloud_api_url()
+        url = f"{api_url.rstrip('/')}/tunnel/{hostname}"
+        resp = httpx.delete(
+            url,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=30.0,
+        )
+        if resp.status_code in (200, 404):
+            return resp.status_code == 200
+        raise RuntimeError(
+            f"Tunnel deprovision failed (HTTP {resp.status_code}): {resp.text[:500]}"
+        )
+    except RuntimeError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f"Tunnel deprovision failed: {e}")
+
+
+def _handle_tunnel_delete(project_root: str, tunnel_config: dict,
+                          api_key: str) -> int:
+    """Deprovision and remove the tunnel."""
+    hostname = tunnel_config.get("hostname", "")
+    if not hostname:
+        print("No tunnel configured for this project.")
+        return 1
+
+    try:
+        was_found = _deprovision_tunnel(api_key, hostname)
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    _delete_tunnel_file(project_root)
+
+    if was_found:
+        print("Tunnel deprovisioned.")
+    else:
+        print("Tunnel not found remotely, cleaned up locally.")
+    return 0
+
+
+def _delete_tunnel_file(project_root: str) -> None:
+    """Remove .snodo/tunnel.json if it exists."""
+    path = Path(project_root) / ".snodo" / "tunnel.json"
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def _load_tunnel_config(project_root: str) -> dict:
     """Load .snodo/tunnel.json or return empty dict."""
     path = Path(project_root) / ".snodo" / "tunnel.json"
@@ -311,6 +370,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     transport = getattr(args, "transport", "streamable-http")
     port = getattr(args, "port", 55441)
     rotate = getattr(args, "rotate", False)
+    delete = getattr(args, "delete", False)
 
     # Prefer streamable-http for tunnels
     if transport == "stdio":
@@ -334,6 +394,10 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
     # 3. Load existing tunnel config
     tunnel_config = _load_tunnel_config(project_root)
+
+    # --delete flow
+    if delete:
+        return _handle_tunnel_delete(project_root, tunnel_config, api_key)
 
     # --rotate flow
     if rotate:
