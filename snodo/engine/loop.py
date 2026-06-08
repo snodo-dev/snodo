@@ -152,13 +152,17 @@ class GraphBuilder:
 
         # Validators need their own completion_fn — the coder may not
         # use LiteLLM (e.g. OpenCodeAdapter uses HTTP).  Fall back to a
-        # partial litellm.completion bound to the default model.
+        # partial litellm.completion bound to the configured default model.
+        # We use ConfigManager directly — self._default_model may be a
+        # non-LiteLLM string like "opencode/google/gemini-3.5-flash".
         from litellm import completion as litellm_completion
         validator_completion_fn = getattr(self.coder, "_completion_fn", None)
         if validator_completion_fn is None:
             import functools
+            from snodo.cli.config import ConfigManager
+            validator_model = ConfigManager().load().get("model") or DEFAULT_MODEL
             validator_completion_fn = functools.partial(
-                litellm_completion, model=self._default_model,
+                litellm_completion, model=validator_model,
             )
 
         self._validator_runner = ValidatorRunner(
