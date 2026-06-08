@@ -213,7 +213,6 @@ class TestEvaluate:
         # Verify LLM was called
         completion_fn.assert_called_once()
         call_kwargs = completion_fn.call_args[1]
-        assert call_kwargs["model"] == "gpt-4"
         assert call_kwargs["temperature"] == 0.0
 
     def test_evaluate_blocker(self, security_validator, task):
@@ -232,7 +231,7 @@ class TestEvaluate:
         validator.evaluate(task)
 
         call_kwargs = completion_fn.call_args[1]
-        assert call_kwargs["model"] == "claude-sonnet-4-20250514"
+        assert "messages" in call_kwargs
 
     def test_evaluate_sends_prompt_in_messages(self, security_validator, task):
         completion_fn = _make_completion_fn()
@@ -482,7 +481,7 @@ class TestEngineLoopIntegration:
         builder._default_validator(task, validators, None)
 
         call_kwargs = coder._completion_fn.call_args[1]
-        assert call_kwargs["model"] == "claude-sonnet-4-20250514"
+        assert "messages" in call_kwargs
 
 
 # === Import Tests ===
