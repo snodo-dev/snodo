@@ -150,6 +150,9 @@ def _call_agent(
 
     final_answer = ""
 
+    from snodo.cli.config import ConfigManager, _set_api_key_env
+    _set_api_key_env(ConfigManager(), model)
+
     for _turn in range(max_turns):
         try:
             response = litellm.completion(
