@@ -155,24 +155,26 @@ class GraphBuilder:
         # partial litellm.completion bound to the configured default model.
         # We use ConfigManager directly — self._default_model may be a
         # non-LiteLLM string like "opencode/google/gemini-3.5-flash".
+        # Always bind the validator model explicitly — the coder's
+        # _completion_fn (if present) provides the authenticated call
+        # mechanism but has no model bound.
         from litellm import completion as litellm_completion
-        validator_completion_fn = getattr(self.coder, "_completion_fn", None)
-        if validator_completion_fn is None:
-            import functools
-            from snodo.cli.config import ConfigManager, _set_api_key_env
-            config = ConfigManager().load()
-            validator_model = (
-                config.get("llm", {}).get("validator_llm", {}).get("model")
-                or config.get("model")
-                or DEFAULT_MODEL
-            )
-            _set_api_key_env(ConfigManager(), validator_model)
-            validator_completion_fn = functools.partial(
-                litellm_completion, model=validator_model,
-            )
-            validator_default_model = validator_model
-        else:
-            validator_default_model = self._default_model
+        import functools
+        from snodo.cli.config import ConfigManager, _set_api_key_env
+
+        config = ConfigManager().load()
+        validator_model = (
+            config.get("llm", {}).get("validator_llm", {}).get("model")
+            or config.get("model")
+            or DEFAULT_MODEL
+        )
+        _set_api_key_env(ConfigManager(), validator_model)
+
+        base_fn = getattr(self.coder, "_completion_fn", None) or litellm_completion
+        validator_completion_fn = functools.partial(
+            base_fn, model=validator_model,
+        )
+        validator_default_model = validator_model
 
         self._validator_runner = ValidatorRunner(
             protocol=self.protocol,
