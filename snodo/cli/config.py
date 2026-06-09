@@ -102,6 +102,10 @@ class ConfigManager:
             "mcp": {
                 "port": 55441,
             },
+            "opencode": {
+                "session_token_warning": 150000,
+                "session_reset_on_model_change": False,
+            },
         }
 
     def get_providers(self) -> Dict[str, ProviderConfig]:
