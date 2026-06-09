@@ -81,17 +81,28 @@ class OpenCodeContainer:
             raise OpenCodeContainerError(f"Failed to build image: {e}")
 
     def start(self, workspace: Path) -> None:
-        """Start the opencode server container.
+        """Start the opencode server container, reusing an existing one if healthy.
 
         The *workspace* directory is mounted at /workspace inside the
         container so opencode can read project files.
 
-        Raises OpenCodeContainerError if the container is already
-        running or startup fails.
+        Raises OpenCodeContainerError if startup fails.
         """
-        if self._container is not None:
-            raise OpenCodeContainerError("Container is already running")
+        # If we already hold a reference and it's healthy, skip
+        if self._container is not None and self._is_container_healthy():
+            return
 
+        # Check for an existing container from a previous session
+        existing = self._find_existing_container()
+        if existing is not None:
+            self._container = existing
+            if self._is_container_healthy():
+                _logger.debug("Reusing existing opencode container %s", existing.id[:12])
+                return
+            _logger.debug("Existing container %s is unhealthy — removing", existing.id[:12])
+            self.stop()
+
+        # Start fresh
         try:
             volumes = {
                 str(workspace.resolve()): {"bind": "/workspace", "mode": "rw"},
@@ -112,6 +123,32 @@ class OpenCodeContainer:
             raise OpenCodeContainerError(f"Failed to start container: {e}")
 
         self._wait_ready()
+
+    def _find_existing_container(self):
+        """Return an existing running container with this image, or None."""
+        try:
+            containers = self.client.containers.list(
+                filters={"ancestor": self._image, "status": "running"},
+            )
+            if containers:
+                return containers[0]
+        except Exception:
+            pass
+        return None
+
+    def _is_container_healthy(self) -> bool:
+        """Check if the container is running AND /global/health responds."""
+        import httpx
+
+        if not self.is_running():
+            return False
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/global/health", timeout=2.0,
+            )
+            return resp.status_code == 200
+        except Exception:
+            return False
 
     def _wait_ready(self, timeout: float = 30.0) -> None:
         """Poll the opencode HTTP API until it responds or times out."""
