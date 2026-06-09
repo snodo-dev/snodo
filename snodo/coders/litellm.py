@@ -29,7 +29,7 @@ _logger = logging.getLogger(__name__)
 
 
 # Maximum tool-use turns before forcing a CodeArtifact parse.
-_DEFAULT_MAX_TOOL_TURNS = 6
+_DEFAULT_MAX_TOOL_TURNS = 20
 
 
 class LiteLLMAdapter(CoderAdapter):

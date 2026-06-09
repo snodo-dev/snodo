@@ -31,7 +31,7 @@ from snodo.infrastructure.config import DEFAULT_MODEL
 
 
 # Maximum tool-use turns before forcing a verdict.
-_DEFAULT_MAX_TOOL_TURNS = 6
+_DEFAULT_MAX_TOOL_TURNS = 20
 _DEFAULT_MAX_TOKENS = 1500
 
 # Fixed read-only tool names — the only tools a validator may ever use.

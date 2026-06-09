@@ -57,12 +57,12 @@ class ConfigLoadError(Exception):
 
 class CoderConfig(BaseModel):
     max_tokens: int = Field(default=_CODER_MAX_TOKENS_DEFAULT, ge=1)
-    max_tool_turns: int = Field(default=_CODER_MAX_TOOL_TURNS_DEFAULT, ge=1, le=20)
+    max_tool_turns: int = Field(default=_CODER_MAX_TOOL_TURNS_DEFAULT, ge=1, le=200)
 
 
 class ValidatorConfig(BaseModel):
     max_tokens: int = Field(default=_VALIDATOR_MAX_TOKENS_DEFAULT, ge=1)
-    max_tool_turns: int = Field(default=_VALIDATOR_MAX_TOOL_TURNS_DEFAULT, ge=1, le=20)
+    max_tool_turns: int = Field(default=_VALIDATOR_MAX_TOOL_TURNS_DEFAULT, ge=1, le=200)
 
 
 class ValidatorLLMConfig(BaseModel):
