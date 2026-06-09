@@ -97,7 +97,7 @@ class OpenCodeContainer:
         if existing is not None:
             self._container = existing
             if self._is_container_healthy():
-                _logger.debug("Reusing existing opencode container %s", existing.id[:12])
+                _logger.info("Reusing existing opencode container %s", existing.id[:12])
                 return
             _logger.debug("Existing container %s is unhealthy — removing", existing.id[:12])
             self.stop()
@@ -123,6 +123,9 @@ class OpenCodeContainer:
             raise OpenCodeContainerError(f"Failed to start container: {e}")
 
         self._wait_ready()
+
+        _logger.info("Started new opencode container")
+        self._log_readiness()
 
     def _find_existing_container(self):
         """Return an existing running container with this image, or None."""
@@ -170,6 +173,26 @@ class OpenCodeContainer:
         raise OpenCodeContainerError(
             f"OpenCode server did not become ready within {timeout}s"
         )
+
+    def _log_readiness(self) -> None:
+        """Log container health information at DEBUG level."""
+        import httpx
+
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/global/health", timeout=2.0,
+            )
+            data = resp.json() if resp.status_code == 200 else {}
+            version = data.get("version", "unknown")
+            _logger.debug(
+                "OpenCode container ready: http://localhost:%d (v%s)",
+                self._port, version,
+            )
+        except Exception:
+            _logger.debug(
+                "OpenCode container ready: http://localhost:%d",
+                self._port,
+            )
 
     @property
     def base_url(self) -> str:
