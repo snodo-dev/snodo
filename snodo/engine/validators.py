@@ -1,5 +1,7 @@
 """Validator dispatch and execution for protocol validation."""
 
+import copy
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
@@ -96,7 +98,6 @@ class ValidatorRunner:
             max_tool_turns=_vcfg.max_tool_turns,
         )
 
-        results = []
         # Resolve set_model overrides once per pass
         overrides: dict = {}
         if authorized_decisions and decision_issuer:
@@ -109,24 +110,44 @@ class ValidatorRunner:
                     vid = scope.split(":", 1)[1]
                     overrides[vid] = payload.get("proposed_model", "")
 
-        for v in validators:
-            # Precedence: authorized set_model override > v.model > default_model > DEFAULT_MODEL
-            override_model = overrides.get(v.validator_id)
-            if override_model:
-                effective_model = override_model
-            else:
-                effective_model = v.model or self._default_model or DEFAULT_MODEL
-            context.model = effective_model
-            result = self._dispatch_one(v, context, reg)
-            if v.severity_cap is not None:
-                from snodo.compiler.models import Severity
-                if Severity(result.severity) > v.severity_cap:
+        results_by_id: dict[str, ValidatorResult] = {}
+        with ThreadPoolExecutor(max_workers=min(len(validators), 4)) as executor:
+            futures = {}
+            for v in validators:
+                override_model = overrides.get(v.validator_id)
+                if override_model:
+                    effective_model = override_model
+                else:
+                    effective_model = v.model or self._default_model or DEFAULT_MODEL
+                ctx = copy.copy(context)
+                ctx.model = effective_model
+                future = executor.submit(self._dispatch_one, v, ctx, reg)
+                futures[future] = v.validator_id
+
+            for future in as_completed(futures):
+                vid = futures[future]
+                try:
+                    result = future.result()
+                except Exception as e:
                     result = ValidatorResult(
-                        validator_id=result.validator_id,
-                        severity=v.severity_cap.value,
-                        justification=result.justification,
+                        validator_id=vid,
+                        severity="warn",
+                        justification=f"Validator error: {e}",
                     )
-            results.append(result)
+                if result is not None:
+                    v_obj = next((v for v in validators if v.validator_id == vid), None)
+                    if v_obj is not None and v_obj.severity_cap is not None:
+                        from snodo.compiler.models import Severity
+                        if Severity(result.severity) > v_obj.severity_cap:
+                            result = ValidatorResult(
+                                validator_id=result.validator_id,
+                                severity=v_obj.severity_cap.value,
+                                justification=result.justification,
+                            )
+                    results_by_id[vid] = result
+
+        # Return in original order
+        results = [results_by_id[v.validator_id] for v in validators]
         return results
 
     def _dispatch_one(
