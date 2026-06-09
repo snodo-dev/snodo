@@ -14,7 +14,7 @@ OpenCodeContainer.  Each implement() call creates a fresh session.
 
 import json
 import logging
-import time
+import threading
 from pathlib import Path
 from typing import Any, Optional
 
@@ -61,20 +61,80 @@ class OpenCodeAdapter(CoderAdapter):
 
         1. Ensure container is running (start if needed)
         2. Create session via POST /session
-        3. Submit the task spec via POST /session/{id}/message
-        4. Poll GET /session/{id}/diff until files appear
-        5. Convert diff entries to CodeArtifact
+        3. Subscribe to SSE /event BEFORE sending message (race-safe)
+        4. Submit the task spec via POST /session/{id}/message
+        5. Wait for session.idle event (threading.Event, 300s timeout)
+        6. Fetch GET /session/{id}/diff → CodeArtifact
         """
         if not self._container.is_running():
             self._start_container()
 
         session_id = self._create_session()
         try:
-            self._send_message(session_id, spec)
-            diff_entries = self._poll_diff(session_id)
+            self._wait_for_completion(session_id, spec)
+            diff_entries = self._fetch_diff(session_id)
             return self._diff_to_artifact(diff_entries)
         finally:
             self._cleanup_session(session_id)
+
+    def _wait_for_completion(self, session_id: str, spec: TaskSpec) -> None:
+        """Subscribe to SSE, send message, wait for session.idle event."""
+        completed = threading.Event()
+
+        def _listen_sse():
+            try:
+                with httpx.stream(
+                    "GET",
+                    f"{self.base_url}/event",
+                    timeout=_SESSION_TIMEOUT,
+                ) as r:
+                    for line in r.iter_lines():
+                        if completed.is_set():
+                            break
+                        if not line.startswith("data: "):
+                            continue
+                        try:
+                            event = json.loads(line[6:])
+                        except json.JSONDecodeError:
+                            continue
+                        props = event.get("properties", {}) or {}
+                        event_sid = props.get("sessionID", "")
+                        if event_sid != session_id:
+                            continue
+                        event_type = event.get("type", "")
+                        if event_type == "session.idle":
+                            completed.set()
+                            return
+                        if (
+                            event_type == "session.status"
+                            and (props.get("status", {}) or {}).get("type") == "idle"
+                        ):
+                            completed.set()
+                            return
+            except Exception:
+                pass
+
+        thread = threading.Thread(target=_listen_sse, daemon=True)
+        thread.start()
+
+        self._send_message(session_id, spec)
+
+        if not completed.wait(timeout=_SESSION_TIMEOUT):
+            raise LLMCallError(
+                f"opencode session {session_id} timed out after {_SESSION_TIMEOUT}s"
+            )
+
+    def _fetch_diff(self, session_id: str) -> list:
+        """GET /session/{id}/diff — return changed files as a list."""
+        diff_resp = httpx.get(
+            f"{self.base_url}/session/{session_id}/diff",
+            timeout=10.0,
+        )
+        data = diff_resp.json() if diff_resp.status_code == 200 else []
+        _logger.debug(
+            "opencode diff received: %d entries", len(data),
+        )
+        return data
 
     def _start_container(self) -> None:
         """Start the opencode container if not running."""
@@ -140,56 +200,6 @@ class OpenCodeAdapter(CoderAdapter):
                 )
         except httpx.RequestError as e:
             _logger.warning("opencode message send error: %s", e)
-
-    def _poll_diff(self, session_id: str) -> list:
-        """Subscribe to SSE /event, wait for session.idle, then fetch diff."""
-        deadline = time.time() + _SESSION_TIMEOUT
-        completed = False
-        try:
-            with httpx.stream(
-                "GET",
-                f"{self.base_url}/event",
-                timeout=_SESSION_TIMEOUT,
-            ) as r:
-                for line in r.iter_lines():
-                    if time.time() >= deadline:
-                        break
-                    if not line.startswith("data: "):
-                        continue
-                    try:
-                        event = json.loads(line[6:])
-                    except json.JSONDecodeError:
-                        continue
-                    event_type = event.get("type", "")
-                    props = event.get("properties", {}) or {}
-                    event_sid = props.get("sessionID", "")
-                    if event_type == "session.idle" and event_sid == session_id:
-                        completed = True
-                        break
-                    if (
-                        event_type == "session.status"
-                        and (props.get("status", {}) or {}).get("type") == "idle"
-                        and event_sid == session_id
-                    ):
-                        completed = True
-                        break
-        except httpx.RequestError:
-            pass
-
-        if not completed:
-            raise LLMCallError(
-                f"opencode session {session_id} timed out after {_SESSION_TIMEOUT}s"
-            )
-
-        diff_resp = httpx.get(
-            f"{self.base_url}/session/{session_id}/diff",
-            timeout=10.0,
-        )
-        data = diff_resp.json() if diff_resp.status_code == 200 else []
-        _logger.debug(
-            "opencode diff received: %d entries", len(data),
-        )
-        return data
 
     def _cleanup_session(self, session_id: str) -> None:
         """Best-effort session cleanup."""
