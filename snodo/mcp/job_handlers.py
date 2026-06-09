@@ -13,7 +13,7 @@ class JobToolHandler:
         self.project_root = project_root
 
     def handle_get_job_status(self, arguments: Dict[str, Any]) -> dict:
-        """Get the current status of a dispatched job."""
+        """Get the current status of a dispatched job (status fields only)."""
         from snodo.jobs import JobManager
 
         job_id = arguments.get("job_id", "")
@@ -23,10 +23,20 @@ class JobToolHandler:
 
         job_mgr = JobManager(self.project_root)
         try:
-            return job_mgr.get_status(job_id)
+            full = job_mgr.get_status(job_id)
         except Exception as e:
             from snodo.mcp.server import MCPError
             raise MCPError(f"Job not found or error: {e}")
+
+        return {
+            "id": full.get("id", job_id),
+            "status": full.get("status", "unknown"),
+            "pid": full.get("pid"),
+            "exit_code": full.get("exit_code"),
+            "created_at": full.get("created_at"),
+            "started_at": full.get("started_at"),
+            "completed_at": full.get("completed_at"),
+        }
 
     def handle_list_jobs(self, arguments: Dict[str, Any]) -> list:
         """List all jobs for the current project."""

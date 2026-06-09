@@ -639,7 +639,7 @@ class TestDispatchTask:
         assert result["status"] == "completed"
         assert result["id"] == "j_abc"
         assert result["exit_code"] == 0
-        assert result["task"]["description"] == "test"
+        assert "task" not in result
 
     def test_get_job_status_not_found(self, dispatch_server):
         with patch("snodo.jobs.JobManager") as mock_cls:
