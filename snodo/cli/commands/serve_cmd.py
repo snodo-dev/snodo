@@ -211,7 +211,7 @@ def _generate_short_id() -> str:
 
 
 def _provision_tunnel(
-    api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str,
+    api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str, port: int = 55441,
 ) -> dict:
     """Provision a tunnel via the snodo-cloud API.
 
@@ -229,6 +229,7 @@ def _provision_tunnel(
             "mode": mode,
             "short_id": short_id,
             "snodo_version": snodo_version,
+            "port": port,
         }
         resp = httpx.post(
             url,
@@ -423,7 +424,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
         try:
             provisioned = _provision_tunnel(
-                api_key, project_slug, mode, short_id, __version__,
+                api_key, project_slug, mode, short_id, __version__, port,
             )
         except RuntimeError as e:
             print(f"Error: {e}", file=sys.stderr)
