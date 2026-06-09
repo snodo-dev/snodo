@@ -115,6 +115,8 @@ class OpenCodeContainer:
             volumes = {
                 str(workspace.resolve()): {"bind": "/workspace", "mode": "rw"},
             }
+            env = _build_provider_env()
+            env["OPENCODE_PORT"] = str(self._port)
             self._container = self.client.containers.run(
                 self._image,
                 detach=True,
@@ -122,9 +124,7 @@ class OpenCodeContainer:
                 ports={f"{self._port}/tcp": self._port},
                 publish_all_ports=False,
                 remove=True,
-                environment={
-                    "OPENCODE_PORT": str(self._port),
-                },
+                environment=env,
             )
         except Exception as e:
             self._container = None
@@ -228,3 +228,40 @@ class OpenCodeContainer:
             except Exception:
                 pass
             self._container = None
+
+
+_PROVIDER_ENV_MAP = {
+    "google": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+    "anthropic": ("ANTHROPIC_API_KEY",),
+    "openai": ("OPENAI_API_KEY",),
+    "deepseek": ("DEEPSEEK_API_KEY",),
+    "openrouter": ("OPENROUTER_API_KEY",),
+    "opencode": ("OPENCODE_API_KEY",),
+}
+
+
+def _build_provider_env() -> dict:
+    """Read provider API keys from snodo config and return env vars for opencode."""
+    env: dict[str, str] = {}
+    try:
+        from snodo.cli.config import ConfigManager
+        import os as _os
+        config = ConfigManager().load()
+        providers = config.get("providers", {})
+        if not isinstance(providers, dict):
+            return env
+        for provider_name, env_var_names in _PROVIDER_ENV_MAP.items():
+            provider_config = providers.get(provider_name, {})
+            if not isinstance(provider_config, dict):
+                continue
+            key = provider_config.get("api_key", "")
+            if not key:
+                api_key_env_name = provider_config.get("api_key_env", "")
+                if api_key_env_name:
+                    key = _os.environ.get(api_key_env_name, "")
+            if key:
+                for env_name in env_var_names:
+                    env[env_name] = key
+    except Exception:
+        pass
+    return env
