@@ -112,6 +112,10 @@ def run_command(args) -> int:
     if getattr(args, "plan", None):
         return _run_plan(args)
 
+    retry_task_id = getattr(args, "retry", None)
+    if retry_task_id:
+        return _retry_task(args, retry_task_id, project_root, session_manager)
+
     if args.description is None:
         print("Error: task description required (or use --plan <name>)", file=sys.stderr)
         return 1
@@ -170,6 +174,89 @@ def _build_description(args) -> str:
         print("  PR context prepended to task spec")
         print()
     return description
+
+
+def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
+    """Retry a failed task on its existing branch with failure context."""
+    from snodo.infrastructure.state import read_state
+
+    state = read_state(project_root)
+    mode = state.current_mode or "producer"
+
+    session = session_manager.get_active_session(mode, project_root)
+    if session is None:
+        print(f"Error: No active session for mode={mode}", file=sys.stderr)
+        return 1
+
+    task_failure = session.checkpoint.decisions.get("task_failure", {})
+    if not isinstance(task_failure, dict) or task_id not in task_failure:
+        print(f"No failure context for {task_id}. Cannot retry.", file=sys.stderr)
+        return 1
+
+    failure = task_failure[task_id]
+    attempt = failure.get("attempt", 0)
+
+    protocol_path = Path(args.protocol)
+    if not protocol_path.is_absolute():
+        protocol_path = Path(project_root) / args.protocol
+    protocol = load_protocol(protocol_path)
+    if not protocol:
+        return 1
+
+    max_retries = getattr(protocol.execution, "max_retries", 3)
+    if attempt >= max_retries:
+        print(f"Task {task_id} has failed {max_retries} times.")
+        print(f"  Review branch {failure.get('branch', 'unknown')} and either:")
+        print(f"  - snodo run --retry {task_id} \"revised spec\" (override spec)")
+        print(f"  - snodo task abandon {task_id} (delete branch)")
+        return 1
+
+    # Clear stale pending_decisions from previous attempt
+    pending = session.checkpoint.decisions.get("pending_decisions", {})
+    if isinstance(pending, dict):
+        pending.pop(task_id, None)
+        session_manager.update_decision(
+            session.session_id, "pending_decisions", pending,
+        )
+
+    # Build augmented prompt
+    original_spec = failure.get("spec", "")
+    revised_spec = args.description
+
+    failed_validators = failure.get("failed_validators", [])
+    validator_details = "\n".join(
+        f"  {v['validator_id']}: {v['justification']}"
+        for v in failed_validators
+    )
+    files_changed = ", ".join(failure.get("files_changed", []))
+
+    if revised_spec:
+        augmented = (
+            f"Original spec: {original_spec}\n\n"
+            f"Revised spec (replaces original): {revised_spec}\n\n"
+            f"Previous attempt {attempt} failed post-validation:\n"
+            f"{validator_details}\n\n"
+            f"Files changed in previous attempt: {files_changed}\n\n"
+            f"Fix the issues above."
+        )
+    else:
+        augmented = (
+            f"Original spec: {original_spec}\n\n"
+            f"Previous attempt {attempt} failed post-validation:\n"
+            f"{validator_details}\n\n"
+            f"Files changed in previous attempt: {files_changed}\n\n"
+            f"Fix the issues above."
+        )
+
+    mgr = ConfigManager()
+    model = args.model or mgr.get_model()
+    _set_api_key_env(mgr, model)
+
+    task = Task(id=task_id, spec=augmented)
+    print(f"Retrying task {task_id} (attempt {attempt + 1}/{max_retries})")
+    print()
+
+    return _execute_task(args, protocol, task, model)
 
 
 def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
