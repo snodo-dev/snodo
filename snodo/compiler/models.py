@@ -9,6 +9,14 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
+class ExecutionConfig(BaseModel):
+    """Branch execution configuration for task isolation."""
+
+    max_retries: int = Field(default=3, ge=0, le=10)
+    branch_ttl_days: int = Field(default=7, ge=1, le=30)
+    branch_prefix: str = Field(default="task")
+
+
 class DisagreementPolicy(str, Enum):
     """Policy for resolving validator disagreements."""
     UNANIMOUS = "unanimous"  # All validators must pass
@@ -230,6 +238,10 @@ class Protocol(BaseModel):
     global_constraints: List[Constraint] = Field(
         default_factory=list,
         description="Protocol-wide constraints"
+    )
+    execution: ExecutionConfig = Field(
+        default_factory=ExecutionConfig,
+        description="Branch isolation and retry configuration"
     )
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     

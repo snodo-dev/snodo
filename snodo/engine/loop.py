@@ -1041,6 +1041,14 @@ class GraphBuilder:
             project_context=project_context or {},
         )
 
+        # Branch isolation: create/checkout task branch before coder runs
+        if git_mcp:
+            branch_name = _task_branch_name(task.id, task.spec)
+            if _branch_exists(git_mcp, branch_name):
+                git_mcp.checkout_branch(branch_name)
+            else:
+                git_mcp.create_branch(branch_name)
+
         try:
             code_artifact = coder.implement(spec)
 
@@ -1049,9 +1057,11 @@ class GraphBuilder:
                 artifact_paths = []
                 for file_op in code_artifact.files:
                     if file_op.action == "delete":
-                        workspace_mcp.delete_file(file_op.path)
+                        if not getattr(coder, "skip_workspace_write", False):
+                            workspace_mcp.delete_file(file_op.path)
                     else:
-                        workspace_mcp.write_file(file_op.path, file_op.content)
+                        if not getattr(coder, "skip_workspace_write", False):
+                            workspace_mcp.write_file(file_op.path, file_op.content)
                     artifact_paths.append(file_op.path)
                     artifacts.append(file_op.path)
 
@@ -1059,7 +1069,7 @@ class GraphBuilder:
                     raise ExecutionError("Coder produced no file operations")
 
                 # If git available, stage and commit
-                if git_mcp and artifact_paths:
+                if git_mcp and artifact_paths and not getattr(coder, "skip_engine_commit", False):
                     try:
                         git_mcp.stage_files(artifact_paths)
                         git_mcp.commit(f"feat: {task.spec}")
@@ -1200,6 +1210,32 @@ def _build_audit_results(validators: list, results: list) -> list:
                 entry["severity_at_cap"] = True
         audit_results.append(entry)
     return audit_results
+
+
+def _slugify(spec: str, max_words: int = 5) -> str:
+    """Convert a task spec into a branch-safe slug.
+
+    Takes the first *max_words* words, lowercases, hyphenates,
+    and strips non-alphanumeric characters.
+    """
+    import re
+    words = spec.strip().split()[:max_words]
+    slug = "-".join(words).lower()
+    slug = re.sub(r"[^a-z0-9-]", "", slug)
+    return slug
+
+
+def _task_branch_name(task_id: str, spec: str) -> str:
+    """Build a branch name: task/{task_id}/{slug}."""
+    return f"task/{task_id}/{_slugify(spec)}"
+
+
+def _branch_exists(git_mcp: Any, name: str) -> bool:
+    """Return True if *name* is an existing branch head."""
+    try:
+        return name in git_mcp.repo.heads
+    except Exception:
+        return False
 
 
 def build_protocol_graph(
