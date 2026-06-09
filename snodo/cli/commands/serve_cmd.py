@@ -97,6 +97,7 @@ def _run_server(args, protocol) -> int:
     # Accept proxied requests when not using stdio
     if transport != "stdio":
         os.environ["FORWARDED_ALLOW_IPS"] = "*"
+        mcp.settings.transport_security.enable_dns_rebinding_protection = False
 
     print(
         f"Snodo MCP [{protocol.protocol_id}] mode={mode_label} "
