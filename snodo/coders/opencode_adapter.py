@@ -5,7 +5,8 @@ FILE: snodo/coders/opencode_adapter.py
 Implements CoderAdapter via the opencode HTTP API:
   POST /session       → session_id
   POST /session/{id}/message  → submit spec
-  GET  /session/{id}/diff     → poll for file changes
+  GET  /event          → SSE subscription for completion signal
+  GET  /session/{id}/diff     → fetch changed files after completion
 
 The opencode server runs inside a Docker container managed by
 OpenCodeContainer.  Each implement() call creates a fresh session.
@@ -20,11 +21,10 @@ from typing import Any, Optional
 import httpx
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
-from snodo.coders.base import CoderAdapter, LLMCallError, ParseError
+from snodo.coders.base import CoderAdapter, LLMCallError
 
 _logger = logging.getLogger(__name__)
 
-_SESSION_POLL_INTERVAL = 2.0
 _SESSION_TIMEOUT = 300.0  # 5 minutes
 
 
@@ -142,30 +142,41 @@ class OpenCodeAdapter(CoderAdapter):
             _logger.warning("opencode message send error: %s", e)
 
     def _poll_diff(self, session_id: str) -> list:
-        """Poll GET /session/{id} until complete, then fetch GET /session/{id}/diff."""
+        """Subscribe to SSE /event, wait for session.idle, then fetch diff."""
         deadline = time.time() + _SESSION_TIMEOUT
-        while time.time() < deadline:
-            try:
-                session_resp = httpx.get(
-                    f"{self.base_url}/session/{session_id}",
-                    timeout=10.0,
-                )
-                if session_resp.status_code != 200:
-                    time.sleep(_SESSION_POLL_INTERVAL)
-                    continue
-                session = session_resp.json()
-                completed = (
-                    session.get("time", {}) or {}
-                ).get("completed") is not None
-                has_additions = (
-                    session.get("summary", {}) or {}
-                ).get("additions", 0) > 0
-                if completed or has_additions:
-                    break
-                time.sleep(_SESSION_POLL_INTERVAL)
-            except httpx.RequestError:
-                time.sleep(_SESSION_POLL_INTERVAL)
-        else:
+        completed = False
+        try:
+            with httpx.stream(
+                "GET",
+                f"{self.base_url}/event",
+                timeout=_SESSION_TIMEOUT,
+            ) as r:
+                for line in r.iter_lines():
+                    if time.time() >= deadline:
+                        break
+                    if not line.startswith("data: "):
+                        continue
+                    try:
+                        event = json.loads(line[6:])
+                    except json.JSONDecodeError:
+                        continue
+                    event_type = event.get("type", "")
+                    props = event.get("properties", {}) or {}
+                    event_sid = props.get("sessionID", "")
+                    if event_type == "session.idle" and event_sid == session_id:
+                        completed = True
+                        break
+                    if (
+                        event_type == "session.status"
+                        and (props.get("status", {}) or {}).get("type") == "idle"
+                        and event_sid == session_id
+                    ):
+                        completed = True
+                        break
+        except httpx.RequestError:
+            pass
+
+        if not completed:
             raise LLMCallError(
                 f"opencode session {session_id} timed out after {_SESSION_TIMEOUT}s"
             )
@@ -218,7 +229,8 @@ class OpenCodeAdapter(CoderAdapter):
             files.append(FileArtifact(path=path, content=content, action="write"))
 
         if not files:
-            raise ParseError("opencode diff returned no files")
+            _logger.debug("opencode diff returned no files — returning empty artifact")
+            return CodeArtifact(files=[])
 
         return CodeArtifact(files=files)
 
