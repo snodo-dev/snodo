@@ -20,6 +20,6 @@ RUN curl -fsSL "$OPENCODE_URL" -o /tmp/opencode.tar.gz && \
 
 WORKDIR /workspace
 
-EXPOSE 8080
+EXPOSE 55440
 
-ENTRYPOINT ["opencode", "serve", "--port", "8080", "--hostname", "0.0.0.0"]
+ENTRYPOINT ["opencode", "serve", "--port", "55440", "--hostname", "0.0.0.0"]

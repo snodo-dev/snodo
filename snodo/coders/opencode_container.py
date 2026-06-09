@@ -13,7 +13,7 @@ from pathlib import Path
 _logger = logging.getLogger(__name__)
 
 _IMAGE = "snodo-opencode:latest"
-_PORT = 8080
+_PORT = 55440
 
 
 class OpenCodeContainerError(Exception):
