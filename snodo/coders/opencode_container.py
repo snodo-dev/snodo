@@ -7,7 +7,9 @@ Built on docker-py (same dependency as DockerSandbox).
 """
 
 import logging
+import os
 import time
+import urllib.parse
 from pathlib import Path
 
 _logger = logging.getLogger(__name__)
@@ -32,6 +34,12 @@ class OpenCodeContainer:
         self._port = port
         self._client = None
         self._container = None
+
+        docker_host = os.environ.get("DOCKER_HOST", "")
+        if docker_host.startswith(("ssh://", "tcp://")):
+            self._host = urllib.parse.urlparse(docker_host).hostname or "localhost"
+        else:
+            self._host = "localhost"
 
     @property
     def client(self):
@@ -153,7 +161,7 @@ class OpenCodeContainer:
         except Exception:
             return False
 
-    def _wait_ready(self, timeout: float = 30.0) -> None:
+    def _wait_ready(self, timeout: float = 60.0) -> None:
         """Poll the opencode HTTP API until it responds or times out."""
         import httpx
 
@@ -185,18 +193,18 @@ class OpenCodeContainer:
             data = resp.json() if resp.status_code == 200 else {}
             version = data.get("version", "unknown")
             _logger.debug(
-                "OpenCode container ready: http://localhost:%d (v%s)",
-                self._port, version,
+                "OpenCode container ready: http://%s:%d (v%s)",
+                self._host, self._port, version,
             )
         except Exception:
             _logger.debug(
-                "OpenCode container ready: http://localhost:%d",
-                self._port,
+                "OpenCode container ready: http://%s:%d",
+                self._host, self._port,
             )
 
     @property
     def base_url(self) -> str:
-        return f"http://localhost:{self._port}"
+        return f"http://{self._host}:{self._port}"
 
     def is_running(self) -> bool:
         """Return True if the container is alive."""
