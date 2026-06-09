@@ -1137,7 +1137,7 @@ class GraphBuilder:
                     artifact_paths.append(file_op.path)
                     artifacts.append(file_op.path)
 
-                if not artifact_paths:
+                if not artifact_paths and not getattr(coder, "skip_engine_commit", False):
                     raise ExecutionError("Coder produced no file operations")
 
                 # If git available, stage and commit
