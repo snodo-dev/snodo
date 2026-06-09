@@ -22,4 +22,4 @@ WORKDIR /workspace
 
 EXPOSE 8080
 
-ENTRYPOINT ["opencode", "serve", "--port", "8080"]
+ENTRYPOINT ["opencode", "serve", "--port", "8080", "--hostname", "0.0.0.0"]
