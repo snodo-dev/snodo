@@ -407,6 +407,7 @@ class GraphBuilder:
 
         if loop_state.is_blocked:
             self._auto_write_pending_decisions(loop_state, results)
+            self._auto_write_failure_context(loop_state, results)
 
         self._audit("validate", {
             "op": "validate",
@@ -561,6 +562,7 @@ class GraphBuilder:
 
         if loop_state.is_blocked:
             self._auto_write_pending_decisions(loop_state, results)
+            self._auto_write_failure_context(loop_state, results)
 
         self._audit("validate", {
             "op": "validate",
@@ -624,6 +626,8 @@ class GraphBuilder:
         """Terminal node: Work complete."""
         loop_state = self._dict_to_state(state)
         loop_state.stage = LoopStage.COMPLETE
+
+        self._clear_failure_context(loop_state)
 
         self._audit("task_complete", {
             "op": "task_complete",
@@ -804,6 +808,74 @@ class GraphBuilder:
         self._session_manager.update_decision(
             self._session_id, "pending_decisions", pending,
         )
+
+    def _auto_write_failure_context(self, loop_state: Any, results: list) -> None:
+        """Persist structured failure context for retry when a task halts.
+
+        Written to ``session.checkpoint.decisions["task_failure"][task_id]``.
+        Separate from pending_decisions — this is operational state, not
+        a governance record.
+        """
+        if not self._session_manager or not self._session_id:
+            return
+
+        task_id = loop_state.task.id
+        try:
+            session = self._session_manager.load_session(self._session_id)
+        except Exception:
+            return
+
+        failures = session.checkpoint.decisions.get("task_failure", {})
+        if not isinstance(failures, dict):
+            failures = {}
+
+        existing = failures.get(task_id, {}) if isinstance(failures.get(task_id), dict) else {}
+        attempt = existing.get("attempt", 0) + 1
+
+        from datetime import datetime, timezone
+        branch_name = _task_branch_name(task_id, loop_state.task.spec)
+
+        failures[task_id] = {
+            "spec": loop_state.task.spec,
+            "branch": branch_name,
+            "attempt": attempt,
+            "failed_validators": [
+                {
+                    "validator_id": r.validator_id,
+                    "severity": r.severity,
+                    "justification": r.justification,
+                }
+                for r in results
+                if r.severity in ("blocker", "warn", "error")
+            ],
+            "files_changed": list(loop_state.artifacts),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        self._session_manager.update_decision(
+            self._session_id, "task_failure", failures,
+        )
+
+    def _clear_failure_context(self, loop_state: Any) -> None:
+        """Remove failure context for a task when execution succeeds."""
+        if not self._session_manager or not self._session_id:
+            return
+
+        task_id = loop_state.task.id
+        try:
+            session = self._session_manager.load_session(self._session_id)
+        except Exception:
+            return
+
+        failures = session.checkpoint.decisions.get("task_failure", {})
+        if isinstance(failures, dict) and task_id in failures:
+            del failures[task_id]
+            try:
+                self._session_manager.update_decision(
+                    self._session_id, "task_failure", failures,
+                )
+            except Exception:
+                pass
 
     def _maybe_respawn_coder(self) -> None:
         """Respawn the coder if a verified set_model(scope=coder) override exists.

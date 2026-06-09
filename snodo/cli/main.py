@@ -136,13 +136,16 @@ def run(
     resume: Optional[str] = typer.Option(
         None, "--resume", help="Resume execution from session ID",
     ),
+    retry: Optional[str] = typer.Option(
+        None, "--retry", help="Retry a failed task by ID (requires P0 branch isolation)",
+    ),
 ):
     """Execute a task through the protocol."""
     args = SimpleNamespace(
         description=description, protocol=protocol, model=model,
         verbose=verbose, mock=mock, plan=plan, wave=wave,
         interactive=interactive, from_pr=from_pr, background=background,
-        sandbox=sandbox, resume=resume,
+        sandbox=sandbox, resume=resume, retry=retry,
     )
     return run_command(args)
 
@@ -623,6 +626,42 @@ def cloud_sync(
 
 
 app.add_typer(cloud_app, name="cloud")
+
+
+# === Task ===
+
+task_app = typer.Typer(help="Manage task branches")
+
+
+@task_app.command(name="list")
+def task_list():
+    """List all task branches in the current project."""
+    from snodo.cli.commands.task_cmd import task_list_command
+    from types import SimpleNamespace
+    return task_list_command(SimpleNamespace())
+
+
+@task_app.command(name="abandon")
+def task_abandon(
+    task_id: str = typer.Argument(..., help="Task ID to abandon (e.g. task_a1b2c3)"),
+):
+    """Delete a task branch and clear its failure context."""
+    from snodo.cli.commands.task_cmd import task_abandon_command
+    from types import SimpleNamespace
+    return task_abandon_command(SimpleNamespace(task_id=task_id))
+
+
+@task_app.command(name="prune")
+def task_prune(
+    stale_days: int = typer.Option(7, "--stale-days", help="Days without activity before pruning"),
+):
+    """List and delete stale task branches."""
+    from snodo.cli.commands.task_cmd import task_prune_command
+    from types import SimpleNamespace
+    return task_prune_command(SimpleNamespace(stale_days=stale_days))
+
+
+app.add_typer(task_app, name="task")
 
 
 # === Entry point ===
