@@ -191,12 +191,15 @@ class OpenCodeAdapter(CoderAdapter):
                 json={
                     "parts": [{"type": "text", "text": prompt}],
                 },
-                timeout=10.0,
+                timeout=60.0,
             )
             if resp.status_code != 200:
                 _logger.warning(
                     "opencode message rejected (HTTP %d): %s",
                     resp.status_code, resp.text[:500],
+                )
+                raise LLMCallError(
+                    f"opencode message rejected (HTTP {resp.status_code})"
                 )
         except httpx.RequestError as e:
             _logger.warning("opencode message send error: %s", e)
