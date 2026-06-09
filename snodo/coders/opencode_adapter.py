@@ -31,6 +31,9 @@ _SESSION_TIMEOUT = 300.0  # 5 minutes
 class OpenCodeAdapter(CoderAdapter):
     """Coder adapter backed by opencode CLI running in Docker."""
 
+    skip_engine_commit: bool = True
+    skip_workspace_write: bool = True
+
     def __init__(
         self,
         model: str = "opencode/",

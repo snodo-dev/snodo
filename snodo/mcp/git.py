@@ -93,6 +93,23 @@ class GitMCP:
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
 
+    def checkout_branch(self, name: str) -> str:
+        """Checkout an existing git branch.
+
+        Args:
+            name: Name of the branch to checkout
+
+        Returns:
+            Command output
+
+        Raises:
+            GitError: If branch does not exist or checkout fails
+        """
+        try:
+            return self.repo.git.checkout(name)
+        except GitCommandError as e:
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+
     def stage_files(self, paths: List[str]) -> str:
         """Stage files for commit.
 

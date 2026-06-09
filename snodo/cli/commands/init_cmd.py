@@ -107,6 +107,15 @@ def init_command(args) -> int:
     """Initialize Snodo project structure."""
     from snodo.infrastructure.paths import resolve_project_root
 
+    # Git requirement: check .git exists in project root or any parent
+    try:
+        from git import Repo, InvalidGitRepositoryError
+        Repo(str(Path.cwd()), search_parent_directories=True)
+    except (InvalidGitRepositoryError, ImportError):
+        print("Error: snodo requires a git repository. Run 'git init' first.",
+              file=sys.stderr)
+        return 1
+
     # Nested-init guard: refuse if a parent directory already has .snodo
     parent_root = resolve_project_root(str(Path.cwd().parent))
     if parent_root is not None and not args.force:
