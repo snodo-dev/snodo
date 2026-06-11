@@ -292,9 +292,10 @@ def job_logs(
     job_id: str = typer.Argument(..., help="Job ID"),
     stream: str = typer.Option("stdout", "--stream", "-s", help="Log stream: stdout or stderr"),
     tail: Optional[int] = typer.Option(None, "--tail", "-n", help="Show last N lines"),
+    watch: bool = typer.Option(False, "--watch", "-w", help="Tail logs in real time until job completes"),
 ):
     """Show job logs."""
-    args = SimpleNamespace(job_action="logs", job_id=job_id, stream=stream, tail=tail)
+    args = SimpleNamespace(job_action="logs", job_id=job_id, stream=stream, tail=tail, watch=watch)
     return job_command(args)
 
 
