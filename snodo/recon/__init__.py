@@ -9,6 +9,7 @@ using litellm.completion with a read-only tool surface.
 """
 
 import json
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -17,6 +18,8 @@ from threading import Thread
 from typing import Optional
 
 from pydantic import BaseModel
+
+_logger = logging.getLogger(__name__)
 
 
 class ReconState(BaseModel):
@@ -151,6 +154,7 @@ def _call_agent(
     final_answer = ""
 
     from snodo.cli.config import ConfigManager, _set_api_key_env
+    _logger.debug("recon: injecting API key for model=%s", model)
     _set_api_key_env(ConfigManager(), model)
 
     for _turn in range(max_turns):
@@ -176,6 +180,12 @@ def _call_agent(
             final_answer += text
 
         if not hasattr(msg, "tool_calls") or not msg.tool_calls:
+            if _turn == 0 and not text:
+                _logger.warning(
+                    "Recon agent disengaged on turn 0 — model=%s, "
+                    "content=%r",
+                    model, msg.content,
+                )
             break
 
         # Execute read-only tool calls
@@ -207,6 +217,17 @@ def _call_agent(
                 "tool_call_id": tc.id,
                 "content": result,
             })
+
+    if not final_answer.strip():
+        _logger.warning(
+            "Recon agent returned empty result on model=%s — "
+            "possible model disengagement or auth issue",
+            model,
+        )
+        return ReconResult(
+            agent=agent_label, model=model,
+            result="", error="Agent returned empty result",
+        )
 
     return ReconResult(
         agent=agent_label,
