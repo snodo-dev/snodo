@@ -35,8 +35,14 @@ def job_command(args) -> int:
             return _job_wait(manager, args.job_id, timeout)
         elif action == "cancel":
             return _job_cancel(manager, args.job_id)
+        elif action == "archive":
+            return _job_archive(manager, args)
+        elif action == "prune":
+            return _job_prune(manager, args)
+        elif action == "unarchive":
+            return _job_unarchive(manager, args)
         else:
-            print("Unknown job action. Use: list, status, logs, wait, cancel", file=sys.stderr)
+            print("Unknown job action. Use: list, status, logs, wait, cancel, archive, prune, unarchive", file=sys.stderr)
             return 1
     except JobError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -130,6 +136,111 @@ def _job_cancel(manager, job_id: str) -> int:
     """Cancel a running job."""
     manager.cancel(job_id)
     print(f"Job {job_id} cancelled.")
+    return 0
+
+
+def _job_archive(manager, args) -> int:
+    """Archive old terminal jobs."""
+    days = getattr(args, "days", 10)
+    skip_prompt = getattr(args, "yes", False)
+    try:
+        archived = manager.archive_jobs(older_than_days=days, dry_run=True)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    if not archived:
+        print(f"No terminal jobs older than {days} days to archive.")
+        return 0
+    print(f"Will archive {len(archived)} job(s):")
+    for jid in archived[:10]:
+        print(f"  {jid}")
+    if len(archived) > 10:
+        print(f"  ... and {len(archived) - 10} more")
+    if not skip_prompt:
+        try:
+            answer = input(f"Archive {len(archived)} job(s)? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return 1
+        if answer != "y":
+            print("Aborted.")
+            return 0
+    try:
+        archived = manager.archive_jobs(older_than_days=days)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    print(f"Archived {len(archived)} jobs to .snodo/jobs_archive/")
+    return 0
+
+
+def _job_prune(manager, args) -> int:
+    """Prune (delete) old terminal jobs."""
+    days = getattr(args, "days", 10)
+    skip_prompt = getattr(args, "yes", False)
+    try:
+        to_prune = manager.prune_jobs(older_than_days=days, dry_run=True)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    if not to_prune:
+        print(f"No terminal jobs older than {days} days to prune.")
+        return 0
+    print(f"Will delete {len(to_prune)} job(s):")
+    for jid in to_prune[:10]:
+        print(f"  {jid}")
+    if len(to_prune) > 10:
+        print(f"  ... and {len(to_prune) - 10} more")
+    if not skip_prompt:
+        try:
+            answer = input(f"Delete {len(to_prune)} job(s)? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return 1
+        if answer != "y":
+            print("Aborted.")
+            return 0
+    try:
+        pruned = manager.prune_jobs(older_than_days=days)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    print(f"Pruned {len(pruned)} job(s)")
+    return 0
+
+
+def _job_unarchive(manager, args) -> int:
+    """Restore archived jobs."""
+    days = getattr(args, "days", 12)
+    skip_prompt = getattr(args, "yes", False)
+    try:
+        to_restore = manager.unarchive_jobs(within_days=days, dry_run=True)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    if not to_restore:
+        print(f"No archived jobs within {days} days to restore.")
+        return 0
+    print(f"Will restore {len(to_restore)} job(s):")
+    for jid in to_restore[:10]:
+        print(f"  {jid}")
+    if len(to_restore) > 10:
+        print(f"  ... and {len(to_restore) - 10} more")
+    if not skip_prompt:
+        try:
+            answer = input(f"Restore {len(to_restore)} job(s)? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return 1
+        if answer != "y":
+            print("Aborted.")
+            return 0
+    try:
+        restored = manager.unarchive_jobs(within_days=days)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    print(f"Restored {len(restored)} jobs")
     return 0
 
 
