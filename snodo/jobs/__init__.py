@@ -431,7 +431,7 @@ class JobManager:
             except Exception:
                 continue
             archived_at = state.get("archived_at", 0)
-            if archived_at < cutoff:
+            if not isinstance(archived_at, (int, float)) or archived_at < cutoff:
                 continue
             if dry_run:
                 restored.append(entry.name)
