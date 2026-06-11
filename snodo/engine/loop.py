@@ -1141,6 +1141,12 @@ class GraphBuilder:
 
                 if not artifact_paths and not getattr(coder, "skip_engine_commit", False):
                     raise ExecutionError("Coder produced no file operations")
+                if not artifact_paths and getattr(coder, "skip_engine_commit", False):
+                    self._audit("empty_artifact_warning", {
+                        "op": "empty_artifact_warning",
+                        "task_ref": task.id,
+                        "note": "OpenCode completed with no file changes — verify task was necessary",
+                    })
 
                 # If git available, stage and commit
                 if git_mcp and artifact_paths and not getattr(coder, "skip_engine_commit", False):
