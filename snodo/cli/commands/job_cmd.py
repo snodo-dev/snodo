@@ -29,7 +29,8 @@ def job_command(args) -> int:
         elif action == "logs":
             stream = getattr(args, "stream", "stdout")
             tail = getattr(args, "tail", None)
-            return _job_logs(manager, args.job_id, stream, tail)
+            watch = getattr(args, "watch", False)
+            return _job_logs(manager, args.job_id, stream, tail, watch)
         elif action == "wait":
             timeout = getattr(args, "timeout", None)
             return _job_wait(manager, args.job_id, timeout)
@@ -103,13 +104,46 @@ def _job_status(manager, job_id: str) -> int:
     return 0
 
 
-def _job_logs(manager, job_id: str, stream: str, tail) -> int:
-    """Show job logs."""
+def _job_logs(manager, job_id: str, stream: str, tail, watch: bool = False) -> int:
+    """Show job logs, optionally tailing in real time with --watch."""
+    if watch:
+        return _job_logs_watch(manager, job_id, stream)
     content = manager.get_logs(job_id, stream=stream, tail=tail)
     if content:
         print(content, end="")
     else:
         print(f"(no {stream} output)")
+    return 0
+
+
+def _job_logs_watch(manager, job_id: str, stream: str) -> int:
+    """Tail job logs in real time, exiting when job reaches terminal status."""
+    from snodo.jobs import TERMINAL_STATUSES
+
+    job_dir = manager._job_dir(job_id)
+    log_path = job_dir / f"{stream}.log"
+
+    if not log_path.exists():
+        print(f"(no {stream} output — file not created yet)")
+        return 1
+
+    try:
+        with open(log_path) as f:
+            f.seek(0)
+            while True:
+                line = f.readline()
+                if line:
+                    print(line, end="", flush=True)
+                else:
+                    try:
+                        status = manager.get_status(job_id)
+                        if status.get("status") in TERMINAL_STATUSES:
+                            break
+                    except Exception:
+                        pass
+                    time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
     return 0
 
 
