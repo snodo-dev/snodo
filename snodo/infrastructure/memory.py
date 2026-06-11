@@ -273,28 +273,32 @@ class AgentMemoryManager:
 
 
 def create_summary_model():
-    """Create a cheap chat model for summarization, if API keys are available.
+    """Create a chat model for context summarization, using the user's configured model.
 
-    Tries OpenAI first (gpt-4o-mini), then Anthropic (claude-haiku).
-    Returns None if no keys configured.
+    Tries the user's configured model from config.yml first, falling
+    back to DEFAULT_MODEL.  Returns None if no API keys are configured
+    for the resolved provider.
     """
     from snodo.cli.config import ConfigManager
+    from snodo.infrastructure.config import DEFAULT_MODEL
 
     mgr = ConfigManager()
 
-    openai_key = mgr.get_key("openai")
-    if openai_key:
+    model = mgr.get_model() or DEFAULT_MODEL
+    provider = ConfigManager._provider_for_model(model)
+    key = mgr.get_key(provider) if provider else None
+
+    if provider == "openai" and key:
         try:
             from langchain_openai import ChatOpenAI
-            return ChatOpenAI(model="gpt-4o-mini", api_key=openai_key)
+            return ChatOpenAI(model=model, api_key=key)
         except Exception:
             pass
 
-    anthropic_key = mgr.get_key("anthropic")
-    if anthropic_key:
+    if provider == "anthropic" and key:
         try:
             from langchain_anthropic import ChatAnthropic
-            return ChatAnthropic(model="claude-haiku-3-5-20241022", api_key=anthropic_key)
+            return ChatAnthropic(model=model, api_key=key)
         except Exception:
             pass
 
