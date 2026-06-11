@@ -315,6 +315,36 @@ def job_cancel(job_id: str = typer.Argument(..., help="Job ID")):
     return job_command(args)
 
 
+@job_app.command("archive")
+def job_archive(
+    days: int = typer.Option(10, "--days", help="Archive jobs older than N days"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Archive old terminal jobs to .snodo/jobs_archive/."""
+    args = SimpleNamespace(job_action="archive", days=days, yes=yes)
+    return job_command(args)
+
+
+@job_app.command("prune")
+def job_prune(
+    days: int = typer.Option(10, "--days", help="Prune jobs older than N days"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Permanently delete old terminal jobs."""
+    args = SimpleNamespace(job_action="prune", days=days, yes=yes)
+    return job_command(args)
+
+
+@job_app.command("unarchive")
+def job_unarchive(
+    days: int = typer.Option(12, "--days", help="Restore jobs archived within N days"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Restore jobs from .snodo/jobs_archive/."""
+    args = SimpleNamespace(job_action="unarchive", days=days, yes=yes)
+    return job_command(args)
+
+
 # === Agent sub-app ===
 
 agent_app = typer.Typer(invoke_without_command=True)

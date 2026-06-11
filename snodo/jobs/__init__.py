@@ -353,6 +353,106 @@ class JobManager:
 
         return {**state, "id": job_id}
 
+    def _iter_terminal_jobs(self, older_than_days: int) -> list[Path]:
+        """Yield job dirs that are terminal and older than *older_than_days*."""
+        cutoff = time.time() - (older_than_days * 86400)
+        results = []
+        if not self.jobs_dir.exists():
+            return results
+        for entry in sorted(self.jobs_dir.iterdir()):
+            if not entry.is_dir() or not entry.name.startswith("j_"):
+                continue
+            try:
+                state = self._load_state(entry)
+                state = self._reconcile_state(entry, state)
+            except (JobError, json.JSONDecodeError):
+                continue
+            if state.get("status") not in TERMINAL_STATUSES:
+                continue
+            created = state.get("created_at", 0)
+            if created < cutoff:
+                results.append(entry)
+        return results
+
+    def archive_jobs(self, older_than_days: int = 10,
+                     dry_run: bool = False) -> list[str]:
+        """Move terminal jobs older than *older_than_days* to .snodo/jobs_archive/.
+
+        Returns the list of job IDs affected.
+        """
+        import shutil
+        archive_dir = Path(self.project_root) / ".snodo" / "jobs_archive"
+        archived = []
+        for job_dir in self._iter_terminal_jobs(older_than_days):
+            if dry_run:
+                archived.append(job_dir.name)
+                continue
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            state = self._load_state(job_dir)
+            state["archived_at"] = time.time()
+            self._save_state(job_dir, state)
+            dest = archive_dir / job_dir.name
+            shutil.move(str(job_dir), str(dest))
+            archived.append(job_dir.name)
+        return archived
+
+    def prune_jobs(self, older_than_days: int = 10,
+                   dry_run: bool = False) -> list[str]:
+        """Delete terminal jobs older than *older_than_days*.
+
+        Returns the list of job IDs affected.
+        """
+        import shutil
+        pruned = []
+        for job_dir in self._iter_terminal_jobs(older_than_days):
+            if dry_run:
+                pruned.append(job_dir.name)
+                continue
+            shutil.rmtree(str(job_dir), ignore_errors=True)
+            pruned.append(job_dir.name)
+        return pruned
+
+    def unarchive_jobs(self, within_days: int = 12,
+                       dry_run: bool = False) -> list[str]:
+        """Restore archived jobs that were archived within *within_days* days.
+
+        Returns the list of job IDs restored.
+        """
+        archive_dir = Path(self.project_root) / ".snodo" / "jobs_archive"
+        restored = []
+        if not archive_dir.exists():
+            return restored
+        cutoff = time.time() - (within_days * 86400)
+        for entry in sorted(archive_dir.iterdir()):
+            if not entry.is_dir() or not entry.name.startswith("j_"):
+                continue
+            try:
+                state = JobManager._load_state_static(entry)
+            except Exception:
+                continue
+            archived_at = state.get("archived_at", 0)
+            if archived_at < cutoff:
+                continue
+            if dry_run:
+                restored.append(entry.name)
+                continue
+            dest = self.jobs_dir / entry.name
+            dest.mkdir(parents=True, exist_ok=True)
+            for child in entry.iterdir():
+                child.rename(dest / child.name)
+            entry.rmdir()
+            restored.append(entry.name)
+        return restored
+
+    @staticmethod
+    def _load_state_static(job_dir: Path) -> dict:
+        """Load state.json without JobManager instance (used for archive dir)."""
+        state_path = job_dir / "state.json"
+        if not state_path.exists():
+            return {}
+        with open(state_path) as f:
+            return json.load(f)
+
 
 def _decode_tail_lines(content: bytes, tail: int) -> str:
     """Decode binary content and return the last *tail* lines."""
