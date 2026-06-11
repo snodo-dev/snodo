@@ -242,7 +242,7 @@ class OpenCodeAdapter(CoderAdapter):
             files.append(FileArtifact(path=path, content=content, action="write"))
 
         if not files:
-            _logger.debug("opencode diff returned no files — returning empty artifact")
+            _logger.warning("opencode diff returned no files — task completed with no changes")
             return CodeArtifact(files=[])
 
         return CodeArtifact(files=files)
