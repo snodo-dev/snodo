@@ -25,7 +25,10 @@ warnings.filterwarnings(
 
 import typer
 import click.exceptions
-from typer._click.exceptions import UsageError  # typer vendors its own click
+try:
+    from typer._click.exceptions import UsageError  # typer vendors its own click
+except ImportError:
+    from click.exceptions import UsageError
 
 # Re-export command functions and shared utilities so existing imports keep working
 from snodo.cli.commands import DEFAULT_PROTOCOL, SOLO_PROTOCOL, TEAM_PROTOCOL, TWO_PLUS_N_PROTOCOL, PROTOCOL_TEMPLATES, load_protocol  # noqa: F401
