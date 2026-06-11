@@ -260,6 +260,19 @@ def plan_create(
     return plan_command(args)
 
 
+# === Logs ===
+
+@app.command()
+def logs(
+    composite_id: str = typer.Argument(..., help="Job ID (j_xxx) or Recon ID (rec_xxx)"),
+    watch: bool = typer.Option(False, "--watch", "-w", help="Tail job logs in real time until job completes"),
+):
+    """Show output for a job or recon by ID."""
+    from snodo.cli.commands.logs_cmd import logs_command
+    args = SimpleNamespace(composite_id=composite_id, watch=watch)
+    return logs_command(args)
+
+
 # === Job sub-app ===
 
 job_app = typer.Typer(invoke_without_command=True)
