@@ -323,8 +323,7 @@ class ConfigManager:
                 env_var = pc.api_key_env
             else:
                 # Fallback for backward-compat direct calls without ProviderConfig
-                env_map = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "google": "GEMINI_API_KEY"}
-                env_var = env_map.get(provider, "")
+                env_var = DEFAULT_PROVIDER_CATALOG.get(provider, ProviderConfig()).api_key_env
             if not env_var:
                 return False
 
