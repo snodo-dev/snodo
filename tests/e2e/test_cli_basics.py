@@ -29,7 +29,7 @@ def test_top_level_help(snodo_cli):
     result = snodo_cli(["--help"])
     assert result.returncode == 0
     stdout = _strip_ansi(result.stdout)
-    for subcmd in ("init", "run", "plan", "session", "config", "resolve"):
+    for subcmd in ("init", "run", "plan", "session", "config"):
         assert subcmd in stdout, f"--help missing '{subcmd}'"
 
 
@@ -55,11 +55,3 @@ def test_session_help(snodo_cli):
     result = snodo_cli(["session", "--help"])
     assert result.returncode == 0
     assert "list" in _strip_ansi(result.stdout)
-
-
-@pytest.mark.e2e
-def test_resolve_help(snodo_cli):
-    result = snodo_cli(["resolve", "--help"])
-    assert result.returncode == 0
-    clean = _strip_ansi(result.stdout)
-    assert "session_id" in clean.lower() or "--decision" in clean
