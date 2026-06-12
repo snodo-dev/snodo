@@ -407,6 +407,12 @@ class GraphBuilder:
                 "policy_decision": loop_state.pending_disagreement["policy_decision"],
             })
 
+        loop_state.metadata["pre_validation"] = {
+            "policy_decision": policy_decision_to_dict(decision),
+            "validator_results": [r.model_dump() for r in results],
+            "outcome": outcome,
+        }
+
         if loop_state.is_blocked:
             self._auto_write_pending_decisions(loop_state, results)
             self._auto_write_failure_context(loop_state, results)
@@ -561,6 +567,13 @@ class GraphBuilder:
                 "validator_results": loop_state.pending_disagreement["validator_results"],
                 "policy_decision": loop_state.pending_disagreement["policy_decision"],
             })
+
+        loop_state.policy_decision = decision
+        loop_state.metadata["post_validation"] = {
+            "policy_decision": policy_decision_to_dict(decision),
+            "validator_results": [r.model_dump() for r in results],
+            "outcome": post_outcome,
+        }
 
         if loop_state.is_blocked:
             self._auto_write_pending_decisions(loop_state, results)
