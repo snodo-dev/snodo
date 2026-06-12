@@ -30,18 +30,12 @@ def _build_sandbox_env(mgr: ConfigManager, model: str) -> dict:
     api_key = mgr.get_key_for_model(model)
     if not api_key:
         return env
-    env_map = {
-        "claude-": "ANTHROPIC_API_KEY",
-        "gpt-": "OPENAI_API_KEY",
-        "o1-": "OPENAI_API_KEY",
-        "o3-": "OPENAI_API_KEY",
-        "gemini/": "GEMINI_API_KEY",
-        "gemini-": "GEMINI_API_KEY",
-    }
-    for prefix, env_var in env_map.items():
-        if model.startswith(prefix):
-            env[env_var] = api_key
-            break
+    provider = ConfigManager._provider_for_model(model)
+    if provider:
+        from snodo.infrastructure.config import DEFAULT_PROVIDER_CATALOG
+        pc = DEFAULT_PROVIDER_CATALOG.get(provider)
+        if pc and pc.api_key_env:
+            env[pc.api_key_env] = api_key
     return env
 
 
