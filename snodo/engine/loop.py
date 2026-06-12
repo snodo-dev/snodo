@@ -327,6 +327,7 @@ class GraphBuilder:
         """Stage 2: Run pre_execute validator quorum."""
         loop_state = self._dict_to_state(state)
         loop_state.stage = LoopStage.VALIDATE
+        outcome = "unknown"
 
         current_mode, validators = self._validator_runner.resolve_validators(
             loop_state.current_mode, "pre_execute"
