@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from snodo.core.interfaces import Task
-from snodo.cli.config import ConfigManager, _set_api_key_env
+from snodo.cli.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 
 
@@ -143,33 +143,33 @@ def _run_plan(args) -> int:
 
     mgr = ConfigManager()
     model = args.model or mgr.get_model()
-    _set_api_key_env(mgr, model)
 
-    try:
-        from snodo.infrastructure.paths import require_project_root
-        project_root = require_project_root()
-        audit_log = getattr(args, "audit_log", None)
-        planner = PlannerMCP(project_root, audit_log=audit_log)
-        plan_data = planner.get_plan(args.plan)
-        status_data = planner.get_status(args.plan)
-    except (ValueError, PlannerError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+    with provider_env(model) as mgr:
+        try:
+            from snodo.infrastructure.paths import require_project_root
+            project_root = require_project_root()
+            audit_log = getattr(args, "audit_log", None)
+            planner = PlannerMCP(project_root, audit_log=audit_log)
+            plan_data = planner.get_plan(args.plan)
+            status_data = planner.get_status(args.plan)
+        except (ValueError, PlannerError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
-    print(f"Plan: {plan_data.get('name', args.plan)}")
-    print(f"Intent: {plan_data.get('intent', 'N/A')}")
-    print()
+        print(f"Plan: {plan_data.get('name', args.plan)}")
+        print(f"Intent: {plan_data.get('intent', 'N/A')}")
+        print()
 
-    waves = _filter_waves(plan_data.get("waves", []), getattr(args, "wave", None))
-    if waves is None:
-        return 1
+        waves = _filter_waves(plan_data.get("waves", []), getattr(args, "wave", None))
+        if waves is None:
+            return 1
 
-    tasks_status = status_data.get("tasks", {})
-    completed_waves = _get_completed_waves(plan_data.get("waves", []), tasks_status)
-    interactive = getattr(args, "interactive", False)
+        tasks_status = status_data.get("tasks", {})
+        completed_waves = _get_completed_waves(plan_data.get("waves", []), tasks_status)
+        interactive = getattr(args, "interactive", False)
 
-    failed = _execute_waves(waves, planner, args, protocol, model,
-                            tasks_status, completed_waves, interactive)
+        failed = _execute_waves(waves, planner, args, protocol, model,
+                                tasks_status, completed_waves, interactive)
 
-    _print_plan_progress(planner, args.plan)
-    return 1 if failed else 0
+        _print_plan_progress(planner, args.plan)
+        return 1 if failed else 0

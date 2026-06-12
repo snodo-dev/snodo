@@ -160,7 +160,7 @@ class GraphBuilder:
         # mechanism but has no model bound.
         from litellm import completion as litellm_completion
         import functools
-        from snodo.cli.config import ConfigManager, _set_api_key_env
+        from snodo.cli.config import ConfigManager, provider_env
 
         config = ConfigManager().load()
         validator_model = (
@@ -168,13 +168,12 @@ class GraphBuilder:
             or config.get("model")
             or DEFAULT_MODEL
         )
-        _set_api_key_env(ConfigManager(), validator_model)
-
-        base_fn = getattr(self.coder, "_completion_fn", None) or litellm_completion
-        validator_completion_fn = functools.partial(
-            base_fn, model=validator_model,
-        )
-        validator_default_model = validator_model
+        with provider_env(validator_model) as mgr:
+            base_fn = getattr(self.coder, "_completion_fn", None) or litellm_completion
+            validator_completion_fn = functools.partial(
+                base_fn, model=validator_model,
+            )
+            validator_default_model = validator_model
 
         self._validator_runner = ValidatorRunner(
             protocol=self.protocol,

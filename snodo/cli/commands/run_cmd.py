@@ -13,7 +13,7 @@ from typing import Optional
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
 from snodo.engine.loop import build_protocol_graph, LoopStage
-from snodo.cli.config import ConfigManager, _set_api_key_env
+from snodo.cli.config import ConfigManager, provider_env, _set_api_key_env
 from snodo.cli.commands import load_protocol
 
 _logger = logging.getLogger(__name__)
@@ -142,8 +142,6 @@ def run_command(args) -> int:
     print(f"  Model: {model}")
     print()
 
-    _set_api_key_env(mgr, model)
-
     description = _build_description(args)
 
     task = Task(
@@ -151,7 +149,8 @@ def run_command(args) -> int:
         spec=description
     )
 
-    return _execute_task(args, protocol, task, model)
+    with provider_env(model) as mgr:
+        return _execute_task(args, protocol, task, model)
 
 
 def _build_description(args) -> str:
@@ -250,13 +249,13 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
 
     mgr = ConfigManager()
     model = args.model or mgr.get_model()
-    _set_api_key_env(mgr, model)
 
     task = Task(id=task_id, spec=augmented)
     print(f"Retrying task {task_id} (attempt {attempt + 1}/{max_retries})")
     print()
 
-    return _execute_task(args, protocol, task, model)
+    with provider_env(model) as mgr:
+        return _execute_task(args, protocol, task, model)
 
 
 def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
