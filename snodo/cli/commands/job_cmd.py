@@ -42,8 +42,10 @@ def job_command(args) -> int:
             return _job_prune(manager, args)
         elif action == "unarchive":
             return _job_unarchive(manager, args)
+        elif action == "retry":
+            return _job_retry(manager, args)
         else:
-            print("Unknown job action. Use: list, status, logs, wait, cancel, archive, prune, unarchive", file=sys.stderr)
+            print("Unknown job action. Use: list, status, logs, wait, cancel, archive, prune, unarchive, retry", file=sys.stderr)
             return 1
     except JobError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -282,6 +284,57 @@ def _job_unarchive(manager, args) -> int:
         return 1
     print(f"Restored {len(restored)} jobs")
     return 0
+
+
+def _job_retry(manager, args) -> int:
+    """Retry the task associated with a failed job."""
+    import json
+    from pathlib import Path
+
+    job_id = getattr(args, "job_id", "")
+    revised_spec = getattr(args, "description", "")
+    if not job_id:
+        print("Error: job_id is required", file=sys.stderr)
+        return 1
+
+    # Read task.json to get the original task_id
+    job_dir = manager._job_dir(job_id)
+    task_path = job_dir / "task.json"
+    if not task_path.exists():
+        print(f"No task.json found for job {job_id}", file=sys.stderr)
+        return 1
+    try:
+        with open(task_path) as f:
+            task_data = json.load(f)
+    except Exception as e:
+        print(f"Error reading task.json: {e}", file=sys.stderr)
+        return 1
+
+    task_id = task_data.get("task_id", "")
+    if not task_id:
+        print(f"No task_id in task.json for job {job_id}", file=sys.stderr)
+        return 1
+
+    # Build retry args with full context for _retry_task
+    from types import SimpleNamespace
+    from snodo.infrastructure.audit import get_audit_log
+    from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.paths import require_project_root
+
+    project_root = require_project_root()
+    audit_log = get_audit_log()
+    session_manager = SessionManager(audit_log=audit_log)
+
+    retry_args = SimpleNamespace(
+        description=revised_spec,
+        protocol=getattr(args, "protocol", ".snodo/protocol.yml"),
+        model=getattr(args, "model", None),
+        audit_log=audit_log,
+        session_manager=session_manager,
+    )
+
+    from snodo.cli.commands.run_cmd import _retry_task
+    return _retry_task(retry_args, task_id, project_root, session_manager)
 
 
 def _format_time(ts) -> str:

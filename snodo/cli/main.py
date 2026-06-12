@@ -359,6 +359,16 @@ def job_unarchive(
     return job_command(args)
 
 
+@job_app.command("retry")
+def job_retry(
+    job_id: str = typer.Argument(..., help="Job ID to retry (e.g., j_abc123)"),
+    description: str = typer.Argument("", help="Optional revised spec (replaces original)"),
+):
+    """Retry the task associated with a failed job."""
+    args = SimpleNamespace(job_action="retry", job_id=job_id, description=description)
+    return job_command(args)
+
+
 # === Agent sub-app ===
 
 agent_app = typer.Typer(invoke_without_command=True)

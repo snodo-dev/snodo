@@ -41,6 +41,7 @@ EXPECTED_TOOL_KEYS = frozenset({
     "recon",
     "get_recon_status",
     "get_recon_results",
+    "retry_job",
 })
 
 EXPECTED_MODE_TOOL_MAP_KEYS = frozenset({

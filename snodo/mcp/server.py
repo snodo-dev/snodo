@@ -211,6 +211,8 @@ class ProtocolMCPServer:
             return self._recon_handler.handle_get_recon_status(arguments)
         if name == "get_recon_results":
             return self._recon_handler.handle_get_recon_results(arguments)
+        if name == "retry_job":
+            return self._handle_retry_job(arguments)
 
         # Dispatch to backing MCP
         return self._dispatch_tool(name, schema, arguments)
@@ -416,4 +418,53 @@ class ProtocolMCPServer:
             "status": "accepted",
             "task_id": job_id,
             "task_spec": task_spec,
+        }
+
+    def _handle_retry_job(self, arguments: Dict[str, Any]) -> dict:
+        """Look up task_id from a failed job and dispatch a retry.
+
+        Reads the job's task.json, extracts the original task_id, and
+        submits a new background job with retry context.
+        """
+        from snodo.jobs import JobManager
+
+        job_id = arguments.get("job_id", "")
+        if not job_id:
+            raise MCPError("retry_job requires job_id")
+
+        revised_spec = arguments.get("revised_spec", "")
+
+        job_mgr = JobManager(self.project_root)
+        job_dir = job_mgr._job_dir(job_id)
+
+        import json
+        task_path = job_dir / "task.json"
+        if not task_path.exists():
+            raise MCPError(f"No task.json found for job {job_id}")
+
+        try:
+            with open(task_path) as f:
+                task_data = json.load(f)
+        except Exception as e:
+            raise MCPError(f"Error reading task.json: {e}")
+
+        task_id = task_data.get("task_id", "")
+        original_spec = task_data.get("description", "")
+
+        description = revised_spec or original_spec
+        task_args: Dict[str, Any] = {
+            "description": description,
+            "cwd": self.project_root,
+            "retry_task_id": task_id,
+        }
+        if self.mode_id:
+            task_args["mode"] = self.mode_id
+
+        new_job_id = job_mgr.submit(task_args)
+
+        return {
+            "status": "accepted",
+            "job_id": new_job_id,
+            "task_id": task_id,
+            "description": description,
         }
