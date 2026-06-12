@@ -138,6 +138,12 @@ def _job_logs_watch(manager, job_id: str, stream: str) -> int:
                     try:
                         status = manager.get_status(job_id)
                         if status.get("status") in TERMINAL_STATUSES:
+                            while True:
+                                line = f.readline()
+                                if line:
+                                    print(line, end="", flush=True)
+                                else:
+                                    break
                             break
                     except Exception:
                         pass
