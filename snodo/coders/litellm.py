@@ -32,6 +32,11 @@ _logger = logging.getLogger(__name__)
 _DEFAULT_MAX_TOOL_TURNS = 20
 
 
+def _is_gemini3_plus(model: str) -> bool:
+    m = re.search(r'gemini-(\d+)', model)
+    return bool(m and int(m.group(1)) >= 3)
+
+
 class LiteLLMAdapter(CoderAdapter):
     """Base coder adapter using liteLLM as transport.
 
@@ -150,12 +155,14 @@ Now generate the implementation:
 
         # Fallback: single raw completion (backward-compatible)
         try:
-            response = self._completion_fn(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
+            kwargs = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": self.max_tokens,
+            }
+            if not _is_gemini3_plus(self.model):
+                kwargs["temperature"] = self.temperature
+            response = self._completion_fn(**kwargs)
             self._check_truncation(response)
             return response.choices[0].message.content
         except (LLMCallError, ParseError):
@@ -178,13 +185,15 @@ Now generate the implementation:
 
         for turn in range(self.max_tool_turns):
             try:
-                response = self._completion_fn(
-                    model=self.model,
-                    messages=messages,
-                    tools=tools,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                )
+                kwargs = {
+                    "model": self.model,
+                    "messages": messages,
+                    "tools": tools,
+                    "max_tokens": self.max_tokens,
+                }
+                if not _is_gemini3_plus(self.model):
+                    kwargs["temperature"] = self.temperature
+                response = self._completion_fn(**kwargs)
             except Exception as e:
                 raise LLMCallError(f"LLM tool-loop error on turn {turn + 1}: {e}")
 

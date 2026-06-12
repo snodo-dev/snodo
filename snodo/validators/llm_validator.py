@@ -48,6 +48,11 @@ _READ_ONLY_TOOL_NAMES: Set[str] = {
 _POST_EXECUTE_ONLY_TOOLS: Set[str] = {"read_diff_between_refs"}
 
 
+def _is_gemini3_plus(model: str) -> bool:
+    m = re.search(r'gemini-(\d+)', model)
+    return bool(m and int(m.group(1)) >= 3)
+
+
 class LLMValidator(ValidatorBase):
     """Evaluates tasks against protocol criteria using an LLM judge."""
 
@@ -214,13 +219,15 @@ class LLMValidator(ValidatorBase):
 
         for turn in range(tool_turns):
             try:
-                response = self._completion_fn(
-                    model=self.model,
-                    messages=messages,
-                    tools=tools,
-                    temperature=0.0,
-                    max_tokens=completion_tokens,
-                )
+                kwargs = {
+                    "model": self.model,
+                    "messages": messages,
+                    "tools": tools,
+                    "max_tokens": completion_tokens,
+                }
+                if not _is_gemini3_plus(self.model):
+                    kwargs["temperature"] = 0.0
+                response = self._completion_fn(**kwargs)
             except Exception as e:
                 return ValidatorResult(
                     validator_id=self.validator_spec.validator_id,
@@ -538,11 +545,13 @@ class LLMValidator(ValidatorBase):
         Raises:
             Exception: If the LLM call fails
         """
-        response = self._completion_fn(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            max_tokens=500,
-        )
+        kwargs = {
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 500,
+        }
+        if not _is_gemini3_plus(self.model):
+            kwargs["temperature"] = 0.0
+        response = self._completion_fn(**kwargs)
         return response.choices[0].message.content
 
     def _call_llm_structured(self, prompt: str) -> ValidatorResult:
@@ -552,12 +561,14 @@ class LLMValidator(ValidatorBase):
         is guaranteed to be valid JSON matching the ValidatorResult schema.
         Zero free-text parsing.
         """
-        response = self._completion_fn(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            max_tokens=self.completion_tokens,
-            response_format=ValidatorResult,
-        )
+        kwargs = {
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": self.completion_tokens,
+            "response_format": ValidatorResult,
+        }
+        if not _is_gemini3_plus(self.model):
+            kwargs["temperature"] = 0.0
+        response = self._completion_fn(**kwargs)
         content = response.choices[0].message.content
         return ValidatorResult.model_validate_json(content)
 
