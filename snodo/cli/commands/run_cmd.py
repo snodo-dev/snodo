@@ -536,6 +536,11 @@ def _render_halt_payload(node_state: dict) -> dict:
         payload["escalation_validator_results"] = pending.get("validator_results", [])
         payload["escalation_policy_decision"] = pending.get("policy_decision", {})
 
+    meta = node_state.get("metadata", {})
+    payload["pre_validation"] = meta.get("pre_validation")
+    payload["post_validation"] = meta.get("post_validation")
+    payload["final_decision"] = "blocked"
+
     print()
     print("--- STRUCTURED HALT PAYLOAD ---")
     print(json.dumps(payload, indent=2))
