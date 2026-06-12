@@ -311,8 +311,21 @@ def _job_retry(manager, args) -> int:
 
     task_id = task_data.get("task_id", "")
     if not task_id:
-        print(f"No task_id in task.json for job {job_id}", file=sys.stderr)
-        return 1
+        description = task_data.get("description", "")
+        if not description:
+            print(f"No task_id or description in task.json for job {job_id}.",
+                  file=sys.stderr)
+            return 1
+        print(f"No task_id found. Original task: {description[:200]}")
+        try:
+            answer = input("Dispatch as new task instead? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nCancelled.")
+            return 1
+        if answer != "y":
+            print("Cannot retry — job predates task tracking.")
+            return 1
+        return _dispatch_as_new_task(args, task_data, job_id)
 
     # Build retry args with full context for _retry_task
     from types import SimpleNamespace
@@ -334,6 +347,47 @@ def _job_retry(manager, args) -> int:
 
     from snodo.cli.commands.run_cmd import _retry_task
     return _retry_task(retry_args, task_id, project_root, session_manager)
+
+
+def _dispatch_as_new_task(args, task_data: dict, job_id: str) -> int:
+    """Dispatch old job as a new task when task_id is missing."""
+    from snodo.infrastructure.audit import get_audit_log
+    from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.paths import require_project_root
+    from snodo.cli.config import ConfigManager, provider_env
+    from snodo.cli.commands import load_protocol
+    from snodo.core.interfaces import Task
+
+    description = getattr(args, "description", "") or task_data.get("description", "")
+    project_root = require_project_root()
+    audit_log = get_audit_log()
+    session_manager = SessionManager(audit_log=audit_log)
+
+    protocol_path = getattr(args, "protocol", ".snodo/protocol.yml")
+    from pathlib import Path
+    protocol = load_protocol(Path(project_root) / protocol_path if not protocol_path.startswith("/") else Path(protocol_path))
+    if not protocol:
+        return 1
+
+    mgr = ConfigManager()
+    model = getattr(args, "model", None) or mgr.get_model()
+
+    task_id = f"task_{hash(description) & 0xffffff:06x}"
+    task = Task(id=task_id, spec=description)
+
+    from snodo.cli.commands.run_cmd import _execute_task
+    from types import SimpleNamespace as NS
+
+    exec_args = NS(
+        protocol=protocol_path,
+        model=model,
+        audit_log=audit_log,
+        session_manager=session_manager,
+    )
+
+    print(f"Dispatched as new task {task_id}")
+    with provider_env(model):
+        return _execute_task(exec_args, protocol, task, model)
 
 
 def _format_time(ts) -> str:
