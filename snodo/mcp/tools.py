@@ -524,13 +524,38 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "retry_job": {
+        "description": (
+            "Retry the task associated with a failed job. Looks up the "
+            "task_id from the job's state, reads failure context, and "
+            "dispatches a new run with augmented prompt. Optionally "
+            "provide a revised spec to replace the original."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "job_id": {
+                    "type": "string",
+                    "description": "Job ID (e.g., j_abc123) to retry",
+                },
+                "revised_spec": {
+                    "type": "string",
+                    "description": "Optional revised specification replacing the original",
+                },
+            },
+            "required": ["job_id"],
+        },
+        "requires_token": True,
+        "mcp": None,
+        "method": None,
+    },
 }
 
 # Map protocol tool names (from mode.tools) to concrete MCP tool names
 MODE_TOOL_MAP = {
     "edit": ["read_file", "list_files", "list_models", "resolve_model", "recon", "get_recon_status", "get_recon_results"],
     "decide": ["propose_adjudicate", "propose_set_model"],
-    "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs"],
+    "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs", "retry_job"],
     "test": ["run_tests"],
     "validate": ["run_tests"],
     "review": ["read_file", "list_files", "read_diff", "get_status", "recon", "get_recon_status", "get_recon_results"],
