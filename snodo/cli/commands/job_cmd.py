@@ -379,8 +379,17 @@ def _dispatch_as_new_task(args, task_data: dict, job_id: str) -> int:
     from types import SimpleNamespace as NS
 
     exec_args = NS(
+        description=description,
         protocol=protocol_path,
         model=model,
+        mock=False,
+        verbose=False,
+        background=False,
+        plan=None,
+        retry=None,
+        sandbox="local",
+        from_pr=None,
+        resume=None,
         audit_log=audit_log,
         session_manager=session_manager,
     )
