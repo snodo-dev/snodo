@@ -153,87 +153,86 @@ def _call_agent(
 
     final_answer = ""
 
-    from snodo.cli.config import ConfigManager, _set_api_key_env
+    from snodo.cli.config import provider_env
     _logger.debug("recon: injecting API key for model=%s", model)
-    _set_api_key_env(ConfigManager(), model)
-
-    for _turn in range(max_turns):
-        try:
-            response = litellm.completion(
-                model=model,
-                messages=messages,
-                tools=_READ_ONLY_TOOLS,
-            )
-        except Exception as e:
-            return ReconResult(
-                agent=agent_label,
-                model=model,
-                result="",
-                error=str(e),
-            )
-
-        choice = response.choices[0]
-        msg = choice.message
-        text = msg.content or ""
-
-        if text:
-            final_answer += text
-
-        if not hasattr(msg, "tool_calls") or not msg.tool_calls:
-            if _turn == 0 and not text:
-                _logger.warning(
-                    "Recon agent disengaged on turn 0 — model=%s, "
-                    "content=%r",
-                    model, msg.content,
-                )
-            break
-
-        # Execute read-only tool calls
-        messages.append({"role": "assistant", "content": text, "tool_calls": [
-            {
-                "id": tc.id,
-                "type": "function",
-                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-            }
-            for tc in msg.tool_calls
-        ]})
-
-        for tc in msg.tool_calls:
-            name = tc.function.name
+    with provider_env(model) as mgr:
+        for _turn in range(max_turns):
             try:
-                args = json.loads(tc.function.arguments)
-            except json.JSONDecodeError:
-                args = {}
+                response = litellm.completion(
+                    model=model,
+                    messages=messages,
+                    tools=_READ_ONLY_TOOLS,
+                )
+            except Exception as e:
+                return ReconResult(
+                    agent=agent_label,
+                    model=model,
+                    result="",
+                    error=str(e),
+                )
 
-            if name == "read_file":
-                result = _read_file(project_root, args.get("path", ""))
-            elif name == "list_files":
-                result = _list_files(project_root, args.get("directory", "."))
-            else:
-                result = f"Error: unknown tool: {name}"
+            choice = response.choices[0]
+            msg = choice.message
+            text = msg.content or ""
 
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": result,
-            })
+            if text:
+                final_answer += text
 
-    if not final_answer.strip():
-        _logger.warning(
-            "Recon agent returned empty result on model=%s — "
-            "possible model disengagement or auth issue",
-            model,
-        )
+            if not hasattr(msg, "tool_calls") or not msg.tool_calls:
+                if _turn == 0 and not text:
+                    _logger.warning(
+                        "Recon agent disengaged on turn 0 — model=%s, "
+                        "content=%r",
+                        model, msg.content,
+                    )
+                break
+
+            # Execute read-only tool calls
+            messages.append({"role": "assistant", "content": text, "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in msg.tool_calls
+            ]})
+
+            for tc in msg.tool_calls:
+                name = tc.function.name
+                try:
+                    args = json.loads(tc.function.arguments)
+                except json.JSONDecodeError:
+                    args = {}
+
+                if name == "read_file":
+                    result = _read_file(project_root, args.get("path", ""))
+                elif name == "list_files":
+                    result = _list_files(project_root, args.get("directory", "."))
+                else:
+                    result = f"Error: unknown tool: {name}"
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result,
+                })
+
+        if not final_answer.strip():
+            _logger.warning(
+                "Recon agent returned empty result on model=%s — "
+                "possible model disengagement or auth issue",
+                model,
+            )
+            return ReconResult(
+                agent=agent_label, model=model,
+                result="", error="Agent returned empty result",
+            )
+
         return ReconResult(
-            agent=agent_label, model=model,
-            result="", error="Agent returned empty result",
+            agent=agent_label,
+            model=model,
+            result=final_answer.strip(),
         )
-
-    return ReconResult(
-        agent=agent_label,
-        model=model,
-        result=final_answer.strip(),
-    )
 
 
 class ReconManager:

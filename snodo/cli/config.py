@@ -10,6 +10,7 @@ Manages user configuration stored at ~/.snodo/config.yml:
 
 import os
 import stat
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -37,6 +38,17 @@ def _set_api_key_env(mgr: "ConfigManager", model: str) -> None:
             pc = providers.get(provider_name)
             if pc and pc.api_key_env:
                 os.environ[pc.api_key_env] = api_key
+
+
+@contextmanager
+def provider_env(model: str):
+    """Injects provider API keys for model into os.environ."""
+    mgr = ConfigManager()
+    _set_api_key_env(mgr, model)
+    try:
+        yield mgr
+    finally:
+        pass  # env vars intentionally left set
 
 
 class ConfigError(Exception):

@@ -6,7 +6,7 @@ Extracted from cli/commands/run_cmd.py to isolate sandbox/job logic.
 import sys
 from pathlib import Path
 
-from snodo.cli.config import ConfigManager, _set_api_key_env
+from snodo.cli.config import ConfigManager, provider_env
 
 
 def _build_sandbox_command(args) -> list:
@@ -129,28 +129,28 @@ def _submit_background_job(args) -> int:
     # Set API key env vars so child process inherits them
     mgr = ConfigManager()
     model = args.model or mgr.get_model()
-    _set_api_key_env(mgr, model)
 
-    project_root = require_project_root()
-    task_args = {
-        "description": args.description,
-        "protocol": args.protocol,
-        "model": model,
-        "mock": getattr(args, "mock", False),
-        "verbose": getattr(args, "verbose", False),
-        "from_pr": getattr(args, "from_pr", None),
-        "cwd": project_root,
-    }
+    with provider_env(model) as mgr:
+        project_root = require_project_root()
+        task_args = {
+            "description": args.description,
+            "protocol": args.protocol,
+            "model": model,
+            "mock": getattr(args, "mock", False),
+            "verbose": getattr(args, "verbose", False),
+            "from_pr": getattr(args, "from_pr", None),
+            "cwd": project_root,
+        }
 
-    try:
-        manager = JobManager(project_root)
-        job_id = manager.submit(task_args)
-    except (ValueError, JobError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        try:
+            manager = JobManager(project_root)
+            job_id = manager.submit(task_args)
+        except (ValueError, JobError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
-    print(f"Job submitted: {job_id}")
-    print(f"  snodo job status {job_id}")
-    print(f"  snodo job logs {job_id}")
-    print(f"  snodo job wait {job_id}")
-    return 0
+        print(f"Job submitted: {job_id}")
+        print(f"  snodo job status {job_id}")
+        print(f"  snodo job logs {job_id}")
+        print(f"  snodo job wait {job_id}")
+        return 0
