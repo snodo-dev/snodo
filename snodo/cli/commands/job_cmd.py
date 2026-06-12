@@ -289,7 +289,6 @@ def _job_unarchive(manager, args) -> int:
 def _job_retry(manager, args) -> int:
     """Retry the task associated with a failed job."""
     import json
-    from pathlib import Path
 
     job_id = getattr(args, "job_id", "")
     revised_spec = getattr(args, "description", "")
