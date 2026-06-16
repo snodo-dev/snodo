@@ -20,7 +20,7 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
     Returns:
         Command list suitable for subprocess.Popen
     """
-    cmd = [sys.executable, "-m", "snodo.jobs.wrapper", job_dir, "run"]
+    cmd = [sys.executable, "-u", "-m", "snodo.jobs.wrapper", job_dir, "run"]
 
     desc = task_args.get("description", "")
     if desc:

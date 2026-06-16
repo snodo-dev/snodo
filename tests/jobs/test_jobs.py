@@ -543,7 +543,8 @@ class TestRunner:
             "from_pr": None,
         }
         cmd = build_command("/path/to/job", task_args)
-        assert cmd[1:3] == ["-m", "snodo.jobs.wrapper"]
+        assert "-u" in cmd
+        assert cmd[1:4] == ["-u", "-m", "snodo.jobs.wrapper"]
         assert "/path/to/job" in cmd
         assert "run" in cmd
         assert "do something" in cmd
@@ -579,6 +580,19 @@ class TestRunner:
         cmd = build_command("/job", task_args)
         assert "--protocol" in cmd
         assert "custom/proto.yml" in cmd
+
+    def test_build_command_unbuffered(self):
+        """build_command() includes -u flag for unbuffered output."""
+        task_args = {
+            "description": "task",
+            "protocol": "proto.yml",
+            "model": None,
+            "mock": False,
+            "verbose": False,
+            "from_pr": None,
+        }
+        cmd = build_command("/job", task_args)
+        assert "-u" in cmd
 
 
 # === CLI Integration Tests ===

@@ -75,6 +75,12 @@ def _show_job(project_root: str, job_id: str, args) -> int:
                         try:
                             status = mgr.get_status(job_id)
                             if status.get("status") in TERMINAL_STATUSES:
+                                while True:
+                                    line = f.readline()
+                                    if line:
+                                        print(line, end="", flush=True)
+                                    else:
+                                        break
                                 break
                         except Exception:
                             pass
