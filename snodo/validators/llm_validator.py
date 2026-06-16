@@ -76,6 +76,8 @@ class LLMValidator(ValidatorBase):
         self._completion_fn = completion_fn
         self.model = model
         self.completion_tokens = _DEFAULT_MAX_TOKENS
+        self._job_id: str = ""
+        self._task_id: str = ""
 
     @classmethod
     def registered_type(cls) -> str:
@@ -227,6 +229,11 @@ class LLMValidator(ValidatorBase):
                     "messages": messages,
                     "tools": tools,
                     "max_tokens": completion_tokens,
+                    "metadata": {
+                        "job_id": self._job_id or "unknown",
+                        "task_id": self._task_id or "unknown",
+                        "role": f"validator:{self.validator_spec.validator_id}",
+                    },
                 }
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = 0.0
@@ -551,6 +558,11 @@ class LLMValidator(ValidatorBase):
         kwargs = {
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.completion_tokens,
+            "metadata": {
+                "job_id": self._job_id or "unknown",
+                "task_id": self._task_id or "unknown",
+                "role": f"validator:{self.validator_spec.validator_id}",
+            },
         }
         if not _is_gemini3_plus(self.model):
             kwargs["temperature"] = 0.0
@@ -579,6 +591,11 @@ class LLMValidator(ValidatorBase):
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.completion_tokens,
             "response_format": ValidatorResult,
+            "metadata": {
+                "job_id": self._job_id or "unknown",
+                "task_id": self._task_id or "unknown",
+                "role": f"validator:{self.validator_spec.validator_id}",
+            },
         }
         if not _is_gemini3_plus(self.model):
             kwargs["temperature"] = 0.0
