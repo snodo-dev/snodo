@@ -26,6 +26,7 @@ PROVIDER_MODEL_PREFIXES = {
     "anthropic": ["claude-"],
     "google": ["gemini/", "gemini-"],
     "cloudflare": ["cloudflare/", "openai/@cf/"],
+    "deepseek": ["deepseek/"],
 }
 
 
