@@ -29,6 +29,13 @@ PROVIDER_MODEL_PREFIXES = {
     "deepseek": ["deepseek/"],
 }
 
+# Alias map: litellm provider name → snodo config key.
+# litellm.get_llm_provider() returns "gemini" but snodo's config
+# key is "google".  Other names pass through unchanged.
+_PROVIDER_ALIASES: dict[str, str] = {
+    "gemini": "google",
+}
+
 
 def _set_api_key_env(mgr: "ConfigManager", model: str) -> None:
     """Set API key in environment if available from config."""
@@ -147,7 +154,25 @@ class ConfigManager:
 
     @staticmethod
     def _provider_for_model(model: str) -> Optional[str]:
-        """Return the provider name for a given model string prefix."""
+        """Return the provider (snodo config key) for a model string.
+
+        Uses litellm.get_llm_provider() as the primary path.  Falls
+        back to PROVIDER_MODEL_PREFIXES for provider names litellm
+        doesn't recognise.
+        """
+        try:
+            from litellm import get_llm_provider
+            _model, provider_name, _, _ = get_llm_provider(model)
+        except Exception:
+            provider_name = None
+
+        if provider_name:
+            # openai/@cf/... routes through OpenAI endpoint but CF config block
+            if model.startswith("openai/@cf/"):
+                return "cloudflare"
+            return _PROVIDER_ALIASES.get(provider_name, provider_name)
+
+        # Fallback: prefix matching for unprefixed model strings
         for provider, prefixes in PROVIDER_MODEL_PREFIXES.items():
             for prefix in prefixes:
                 if model.startswith(prefix):
