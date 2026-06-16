@@ -24,9 +24,37 @@ from typing import Any, Dict, List, Optional
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError
 from snodo.infrastructure.config import DEFAULT_MODEL
+from snodo.infrastructure.usage_tracker import UsageTracker
 
 import litellm as _litellm
 _litellm.drop_params = True
+
+if not getattr(_litellm, "callbacks", None):
+    _litellm.callbacks = []
+_litellm.callbacks.append(UsageTracker())
+
+_litellm.register_model({
+    "openai/@cf/google/gemma-4-26b-a4b-it": {
+        "input_cost_per_token": 0.10 / 1_000_000,
+        "output_cost_per_token": 0.30 / 1_000_000,
+    },
+    "openai/@cf/nvidia/nemotron-3-120b-a12b": {
+        "input_cost_per_token": 0.50 / 1_000_000,
+        "output_cost_per_token": 1.50 / 1_000_000,
+    },
+    "openai/@cf/moonshotai/kimi-k2.6": {
+        "input_cost_per_token": 0.95 / 1_000_000,
+        "output_cost_per_token": 4.00 / 1_000_000,
+    },
+    "openai/@cf/moonshotai/kimi-k2.7-code": {
+        "input_cost_per_token": 0.95 / 1_000_000,
+        "output_cost_per_token": 4.00 / 1_000_000,
+    },
+    "openai/@cf/mistralai/mistral-small-3.1-24b-instruct": {
+        "input_cost_per_token": 0.35 / 1_000_000,
+        "output_cost_per_token": 0.55 / 1_000_000,
+    },
+})
 
 _logger = logging.getLogger(__name__)
 
@@ -65,6 +93,9 @@ class LiteLLMAdapter(CoderAdapter):
         self.max_tokens = max_tokens
         self.max_tool_turns = max_tool_turns if max_tool_turns is not None else _DEFAULT_MAX_TOOL_TURNS
         self.workspace_mcp = workspace_mcp
+
+        self._job_id: str = ""
+        self._task_id: str = ""
 
         try:
             from litellm import completion
@@ -172,6 +203,11 @@ Now generate the implementation:
                 "model": self.model,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": self.max_tokens,
+                "metadata": {
+                    "job_id": self._job_id or "unknown",
+                    "task_id": self._task_id or "unknown",
+                    "role": "coder",
+                },
             }
             api_base = self._resolve_api_base()
             if api_base:
@@ -206,6 +242,11 @@ Now generate the implementation:
                     "messages": messages,
                     "tools": tools,
                     "max_tokens": self.max_tokens,
+                    "metadata": {
+                        "job_id": self._job_id or "unknown",
+                        "task_id": self._task_id or "unknown",
+                        "role": "coder",
+                    },
                 }
                 api_base = self._resolve_api_base()
                 if api_base:

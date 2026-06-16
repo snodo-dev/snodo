@@ -1143,6 +1143,12 @@ class GraphBuilder:
             else:
                 git_mcp.create_branch(branch_name)
 
+        # Thread job_id / task_id for usage tracking
+        if hasattr(coder, "_job_id"):
+            coder._job_id = self._session_id or ""
+        if hasattr(coder, "_task_id"):
+            coder._task_id = task.id
+
         try:
             code_artifact = coder.implement(spec)
 
