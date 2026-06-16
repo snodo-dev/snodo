@@ -63,6 +63,7 @@ class CoderConfig(BaseModel):
 class ValidatorConfig(BaseModel):
     max_tokens: int = Field(default=_VALIDATOR_MAX_TOKENS_DEFAULT, ge=1)
     max_tool_turns: int = Field(default=_VALIDATOR_MAX_TOOL_TURNS_DEFAULT, ge=1, le=200)
+    model: Optional[str] = Field(default=None, description="Validator LLM model. None = use default_model.")
 
 
 class ValidatorLLMConfig(BaseModel):
