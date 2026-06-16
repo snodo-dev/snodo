@@ -72,6 +72,16 @@ class LiteLLMAdapter(CoderAdapter):
         except ImportError:
             self._completion_fn = None
 
+    def _resolve_api_base(self) -> Optional[str]:
+        """Return api_base for the current model, if provider has base_url set."""
+        from snodo.cli.config import ConfigManager
+        provider = ConfigManager._provider_for_model(self.model)
+        if provider:
+            pc = ConfigManager().get_providers().get(provider)
+            if pc and pc.base_url:
+                return pc.base_url
+        return None
+
     def implement(self, spec: TaskSpec) -> CodeArtifact:
         prompt = self._build_prompt(spec)
         response = self._call_llm(prompt)
@@ -163,6 +173,9 @@ Now generate the implementation:
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": self.max_tokens,
             }
+            api_base = self._resolve_api_base()
+            if api_base:
+                kwargs["api_base"] = api_base
             if not _is_gemini3_plus(self.model):
                 kwargs["temperature"] = self.temperature
             response = self._completion_fn(**kwargs)
@@ -194,6 +207,9 @@ Now generate the implementation:
                     "tools": tools,
                     "max_tokens": self.max_tokens,
                 }
+                api_base = self._resolve_api_base()
+                if api_base:
+                    kwargs["api_base"] = api_base
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = self.temperature
                 response = self._completion_fn(**kwargs)
