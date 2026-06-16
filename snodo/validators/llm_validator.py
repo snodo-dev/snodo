@@ -550,7 +550,7 @@ class LLMValidator(ValidatorBase):
         """
         kwargs = {
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 500,
+            "max_tokens": self.completion_tokens,
         }
         if not _is_gemini3_plus(self.model):
             kwargs["temperature"] = 0.0
