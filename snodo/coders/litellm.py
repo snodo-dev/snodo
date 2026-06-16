@@ -25,6 +25,9 @@ from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServe
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError
 from snodo.infrastructure.config import DEFAULT_MODEL
 
+import litellm as _litellm
+_litellm.drop_params = True
+
 _logger = logging.getLogger(__name__)
 
 
