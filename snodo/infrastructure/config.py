@@ -23,6 +23,7 @@ class ProviderConfig(BaseModel):
     models_endpoint: str = ""
     account_id: str = ""
     account_id_env: str = ""
+    base_url: str = ""
 
 
 DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {

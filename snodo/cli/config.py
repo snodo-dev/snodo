@@ -25,7 +25,7 @@ PROVIDER_MODEL_PREFIXES = {
     "openai": ["gpt-", "o1-", "o3-"],
     "anthropic": ["claude-"],
     "google": ["gemini/", "gemini-"],
-    "cloudflare": ["cloudflare/"],
+    "cloudflare": ["cloudflare/", "openai/@cf/"],
 }
 
 

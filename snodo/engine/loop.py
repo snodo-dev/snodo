@@ -171,8 +171,14 @@ class GraphBuilder:
         )
         with provider_env(validator_model) as mgr:
             base_fn = getattr(self.coder, "_completion_fn", None) or litellm_completion
+            partial_kwargs: dict[str, Any] = {"model": validator_model}
+            provider = ConfigManager._provider_for_model(validator_model)
+            if provider:
+                pc = mgr.get_providers().get(provider)
+                if pc and pc.base_url:
+                    partial_kwargs["api_base"] = pc.base_url
             validator_completion_fn = functools.partial(
-                base_fn, model=validator_model,
+                base_fn, **partial_kwargs,
             )
             validator_default_model = validator_model
 
