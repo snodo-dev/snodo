@@ -380,6 +380,7 @@ class ProtocolMCPServer:
         task_spec = arguments.get("task_spec")
         if not task_spec:
             raise MCPError("dispatch_task requires task_spec")
+        coding_model = arguments.get("coding_model", "")
 
         from snodo.jobs import JobManager
 
@@ -388,6 +389,8 @@ class ProtocolMCPServer:
             "description": task_spec,
             "cwd": self.project_root,
         }
+        if coding_model:
+            task_args["model"] = coding_model
         if self.mode_id:
             task_args["mode"] = self.mode_id
 
@@ -414,11 +417,14 @@ class ProtocolMCPServer:
                 "task_spec_hash": task_spec_hash,
             })
 
-        return {
+        result = {
             "status": "accepted",
             "task_id": job_id,
             "task_spec": task_spec,
         }
+        if coding_model:
+            result["coding_model"] = coding_model
+        return result
 
     def _handle_retry_job(self, arguments: Dict[str, Any]) -> dict:
         """Look up task_id from a failed job and dispatch a retry.

@@ -286,6 +286,7 @@ TOOL_REGISTRY = {
             "type": "object",
             "properties": {
                 "task_spec": {"type": "string", "description": "Task specification to dispatch"},
+                "coding_model": {"type": "string", "description": "Optional model for the coder (overrides config default)"},
             },
             "required": ["task_spec"],
         },

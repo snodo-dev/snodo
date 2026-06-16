@@ -164,7 +164,8 @@ class GraphBuilder:
 
         config = ConfigManager().load()
         validator_model = (
-            config.get("llm", {}).get("validator_llm", {}).get("model")
+            config.get("llm", {}).get("validator", {}).get("model")
+            or config.get("llm", {}).get("validator_llm", {}).get("model")
             or config.get("model")
             or DEFAULT_MODEL
         )
