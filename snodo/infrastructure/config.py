@@ -21,6 +21,8 @@ class ProviderConfig(BaseModel):
     api_key: str = ""
     api_key_env: str = ""
     models_endpoint: str = ""
+    account_id: str = ""
+    account_id_env: str = ""
 
 
 DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
@@ -39,6 +41,10 @@ DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
     "google": ProviderConfig(
         api_key_env="GEMINI_API_KEY",
         models_endpoint="https://generativelanguage.googleapis.com/v1beta/models",
+    ),
+    "cloudflare": ProviderConfig(
+        api_key_env="CLOUDFLARE_API_KEY",
+        account_id_env="CLOUDFLARE_ACCOUNT_ID",
     ),
 }
 

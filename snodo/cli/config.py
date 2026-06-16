@@ -25,6 +25,7 @@ PROVIDER_MODEL_PREFIXES = {
     "openai": ["gpt-", "o1-", "o3-"],
     "anthropic": ["claude-"],
     "google": ["gemini/", "gemini-"],
+    "cloudflare": ["cloudflare/"],
 }
 
 
@@ -38,6 +39,8 @@ def _set_api_key_env(mgr: "ConfigManager", model: str) -> None:
             pc = providers.get(provider_name)
             if pc and pc.api_key_env:
                 os.environ[pc.api_key_env] = api_key
+            if pc and pc.account_id_env and pc.account_id:
+                os.environ[pc.account_id_env] = pc.account_id
 
 
 @contextmanager
