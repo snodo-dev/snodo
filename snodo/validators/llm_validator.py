@@ -18,6 +18,7 @@ Tool-loop (capability-grant):
 """
 
 import json
+import logging
 import re
 from typing import Any, Dict, List, Optional, Set
 
@@ -28,6 +29,8 @@ from snodo.core.interfaces import Task, ValidatorResult
 from snodo.validators.context import ValidatorContext, ValidatorBase
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
+
+_logger = logging.getLogger(__name__)
 
 
 # Maximum tool-use turns before forcing a verdict.
@@ -552,7 +555,18 @@ class LLMValidator(ValidatorBase):
         if not _is_gemini3_plus(self.model):
             kwargs["temperature"] = 0.0
         response = self._completion_fn(**kwargs)
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        if not content:
+            _logger.warning(
+                "Validator %s returned empty response (model=%s)",
+                self.validator_spec.validator_id, self.model,
+            )
+        else:
+            _logger.debug(
+                "Validator %s raw response (first 2KB): %s",
+                self.validator_spec.validator_id, _truncated_log(content),
+            )
+        return content
 
     def _call_llm_structured(self, prompt: str) -> ValidatorResult:
         """Call the LLM with response_format=ValidatorResult for structured output.
@@ -570,6 +584,16 @@ class LLMValidator(ValidatorBase):
             kwargs["temperature"] = 0.0
         response = self._completion_fn(**kwargs)
         content = response.choices[0].message.content
+        if not content:
+            _logger.warning(
+                "Validator %s returned empty structured response (model=%s)",
+                self.validator_spec.validator_id, self.model,
+            )
+        else:
+            _logger.debug(
+                "Validator %s raw response (first 2KB): %s",
+                self.validator_spec.validator_id, _truncated_log(content),
+            )
         return ValidatorResult.model_validate_json(content)
 
     def _parse_response(self, response_text: str) -> ValidatorResult:
@@ -641,6 +665,13 @@ class LLMValidator(ValidatorBase):
                 pass
 
         return None
+
+
+def _truncated_log(raw: str, max_chars: int = 2048) -> str:
+    """Truncate a raw response string for logging."""
+    if len(raw) <= max_chars:
+        return raw
+    return raw[:max_chars] + "...<truncated>"
 
 
 _default_registry.register_compound(LLMValidator.HANDLED_TYPES, LLMValidator)
