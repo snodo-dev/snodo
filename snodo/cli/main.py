@@ -273,6 +273,20 @@ def logs(
     return logs_command(args)
 
 
+# === Models ===
+
+@app.command()
+def models(
+    provider: Optional[str] = typer.Option(None, "--provider", "-p", help="Provider to list models for"),
+    flush: bool = typer.Option(False, "--flush", help="Ignore cache and refetch"),
+    filter: Optional[str] = typer.Option(None, "--filter", help="Filter expression (e.g. context_window>100000)"),
+):
+    """List configured providers and their models."""
+    from snodo.cli.commands.models_cmd import models_command
+    args = SimpleNamespace(provider=provider, flush=flush, filter=filter)
+    return models_command(args)
+
+
 # === Job sub-app ===
 
 job_app = typer.Typer(invoke_without_command=True)

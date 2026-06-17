@@ -177,10 +177,98 @@ def _discover_google(pc: ProviderConfig) -> List[ModelInfo]:
     return results
 
 
+def _substitute_account_id(url: str, pc: ProviderConfig) -> str:
+    """Replace {account_id} in *url* with pc.account_id or env var."""
+    if "{account_id}" not in url:
+        return url
+    account_id = pc.account_id
+    if not account_id and pc.account_id_env:
+        account_id = os.environ.get(pc.account_id_env, "")
+    return url.replace("{account_id}", account_id)
+
+
+def _discover_cloudflare(pc: ProviderConfig) -> List[ModelInfo]:
+    """GET /models/search?task=text-generation with Bearer auth."""
+    import httpx
+
+    api_key = _resolve_api_key("cloudflare", pc)
+    if not api_key:
+        return []
+
+    endpoint = _substitute_account_id(pc.models_endpoint, pc)
+
+    try:
+        resp = httpx.get(
+            endpoint,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+    except Exception as e:
+        _logger.warning("Cloudflare model discovery failed: %s", e)
+        return []
+
+    data = resp.json()
+    results = []
+    items = data.get("result", []) if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        items = []
+    for item in items:
+        mid = item.get("name") or item.get("id") or item.get("model_id") or ""
+        if mid:
+            results.append(ModelInfo(
+                provider="cloudflare",
+                id=mid,
+                full_string=f"openai/@cf/{mid}",
+                display_name=item.get("description") or item.get("display_name", mid),
+                context_window=item.get("context_window", 0),
+            ))
+    return results
+
+
+def _discover_deepseek(pc: ProviderConfig) -> List[ModelInfo]:
+    """GET /models with Bearer auth."""
+    import httpx
+
+    api_key = _resolve_api_key("deepseek", pc)
+    if not api_key:
+        return []
+
+    try:
+        resp = httpx.get(
+            pc.models_endpoint,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+    except Exception as e:
+        _logger.warning("DeepSeek model discovery failed: %s", e)
+        return []
+
+    data = resp.json()
+    results = []
+    items = data.get("data", []) if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        items = []
+    for item in items:
+        mid = item.get("id", "")
+        if mid:
+            results.append(ModelInfo(
+                provider="deepseek",
+                id=mid,
+                full_string=f"deepseek/{mid}",
+                display_name=item.get("display_name", mid),
+                context_window=item.get("context_window", 0),
+            ))
+    return results
+
+
 _DISCOVERY_DISPATCH = {
     "anthropic": _discover_anthropic,
     "openrouter": _discover_openrouter,
     "google": _discover_google,
+    "cloudflare": _discover_cloudflare,
+    "deepseek": _discover_deepseek,
 }
 
 
