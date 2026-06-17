@@ -482,6 +482,10 @@ TOOL_REGISTRY = {
                     "description": "Model strings; 'default' uses the configured model",
                     "default": ["default"],
                 },
+                "num_agents": {
+                    "type": "integer",
+                    "description": "Number of agents to fan out (uses config llm.recon.num_agents if omitted). Ignored if explicit agents list provided.",
+                },
             },
             "required": ["query", "paths"],
         },

@@ -13,7 +13,7 @@ This module provides the CLI entry point using Typer.
 import sys
 import warnings
 from types import SimpleNamespace
-from typing import Optional
+from typing import List, Optional
 
 # TODO: remove once langchain_core fixes pydantic v1 detection on 3.14+
 # https://github.com/langchain-ai/langchain/issues/33926
@@ -279,12 +279,38 @@ def logs(
 def models(
     provider: Optional[str] = typer.Option(None, "--provider", "-p", help="Provider to list models for"),
     flush: bool = typer.Option(False, "--flush", help="Ignore cache and refetch"),
-    filter: Optional[str] = typer.Option(None, "--filter", help="Filter expression (e.g. context_window>100000)"),
+    id_contains: Optional[str] = typer.Option(None, "--id-contains", help="Substring on id/display_name (case-insensitive)"),
+    max_output_cost: Optional[float] = typer.Option(None, "--max-output-cost", help="Output cost/1M <= value. Excludes unknown costs."),
+    min_output_cost: Optional[float] = typer.Option(None, "--min-output-cost", help="Output cost/1M >= value. Excludes unknown costs."),
+    max_input_cost: Optional[float] = typer.Option(None, "--max-input-cost", help="Input cost/1M <= value. Excludes unknown costs."),
+    min_context: Optional[int] = typer.Option(None, "--min-context", help="Context window >= value. Excludes context==0."),
 ):
     """List configured providers and their models."""
     from snodo.cli.commands.models_cmd import models_command
-    args = SimpleNamespace(provider=provider, flush=flush, filter=filter)
+    args = SimpleNamespace(
+        provider=provider,
+        flush=flush,
+        id_contains=id_contains,
+        max_output_cost=max_output_cost,
+        min_output_cost=min_output_cost,
+        max_input_cost=max_input_cost,
+        min_context=min_context,
+    )
     return models_command(args)
+
+
+# === Recon ===
+
+@app.command()
+def recon(
+    query: str = typer.Argument(..., help="The exploration question to answer"),
+    paths: Optional[List[str]] = typer.Argument(None, help="Paths to search (default: current directory)"),
+    num_agents: Optional[int] = typer.Option(None, "--agents", "-n", help="Number of agents to fan out (uses config if omitted)"),
+):
+    """Dispatch a read-only exploration query to one or more agents."""
+    from snodo.cli.commands.recon_cmd import recon_command
+    args = SimpleNamespace(query=query, paths=paths or ["./"], num_agents=num_agents)
+    return recon_command(args)
 
 
 # === Job sub-app ===
