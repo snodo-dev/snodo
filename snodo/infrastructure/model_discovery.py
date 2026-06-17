@@ -216,10 +216,13 @@ def _discover_cloudflare(pc: ProviderConfig) -> List[ModelInfo]:
     for item in items:
         mid = item.get("name") or item.get("id") or item.get("model_id") or ""
         if mid:
+            # CF returns ids already prefixed @cf/. Strip it so we emit
+            # openai/@cf/{rest} with exactly one @cf/ segment.
+            rest = mid.removeprefix("@cf/")
             results.append(ModelInfo(
                 provider="cloudflare",
                 id=mid,
-                full_string=f"openai/@cf/{mid}",
+                full_string=f"openai/@cf/{rest}",
                 display_name=item.get("description") or item.get("display_name", mid),
                 context_window=item.get("context_window", 0),
             ))
