@@ -200,7 +200,7 @@ def _call_agent(
 
     from snodo.cli.config import provider_env
     _logger.debug("recon: injecting API key for model=%s", model)
-    with provider_env(model) as mgr:
+    with provider_env(model):
         for _turn in range(max_turns):
             try:
                 response = litellm.completion(
