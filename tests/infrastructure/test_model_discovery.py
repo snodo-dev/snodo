@@ -256,4 +256,4 @@ class TestDiscoverModels:
         """ProviderConfig is importable from infrastructure.config."""
         from snodo.infrastructure.config import ProviderConfig, DEFAULT_PROVIDER_CATALOG
         assert ProviderConfig is not None
-        assert len(DEFAULT_PROVIDER_CATALOG) == 4
+        assert len(DEFAULT_PROVIDER_CATALOG) == 6

@@ -46,6 +46,11 @@ DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
     "cloudflare": ProviderConfig(
         api_key_env="CLOUDFLARE_API_KEY",
         account_id_env="CLOUDFLARE_ACCOUNT_ID",
+        models_endpoint="https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/models",
+    ),
+    "deepseek": ProviderConfig(
+        api_key_env="DEEPSEEK_API_KEY",
+        models_endpoint="https://api.deepseek.com/models",
     ),
 }
 
