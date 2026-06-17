@@ -273,6 +273,18 @@ def logs(
     return logs_command(args)
 
 
+# === Meta ===
+
+@app.command()
+def meta(
+    composite_id: str = typer.Argument(..., help="Job ID (j_xxx) or Task ID (task_xxx)"),
+):
+    """Show a compact summary for a job or task."""
+    from snodo.cli.commands.meta_cmd import meta_command
+    args = SimpleNamespace(composite_id=composite_id)
+    return meta_command(args)
+
+
 # === Models ===
 
 @app.command()
