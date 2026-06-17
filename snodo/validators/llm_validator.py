@@ -79,6 +79,14 @@ class LLMValidator(ValidatorBase):
         self._job_id: str = ""
         self._task_id: str = ""
 
+    def _resolve_cf_headers(self) -> Optional[dict]:
+        """Return extra_headers for Cloudflare Workers AI session affinity."""
+        from snodo.cli.config import ConfigManager
+        provider = ConfigManager._provider_for_model(self.model)
+        if provider == "cloudflare":
+            return {"x-session-affinity": self._task_id or "unknown"}
+        return None
+
     @classmethod
     def registered_type(cls) -> str:
         return "llm"
@@ -239,6 +247,9 @@ class LLMValidator(ValidatorBase):
                 }
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = 0.0
+                cf_headers = self._resolve_cf_headers()
+                if cf_headers:
+                    kwargs["extra_headers"] = cf_headers
                 response = self._completion_fn(**kwargs)
             except Exception as e:
                 return ValidatorResult(
