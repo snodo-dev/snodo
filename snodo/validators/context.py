@@ -34,6 +34,8 @@ class ValidatorContext:
     phase: str = ""
     max_tokens: Optional[int] = None
     max_tool_turns: Optional[int] = None
+    job_id: str = ""
+    task_id: str = ""
 
 
 class ValidatorBase(ABC):

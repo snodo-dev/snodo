@@ -34,6 +34,7 @@ class ValidatorRunner:
         self.git_mcp = git_mcp
         self._session_manager = session_manager
         self._validator_config = validator_config
+        self._session_id: str = ""
 
     def resolve_validators(
         self, mode_id: str, phase: str = "pre_execute"
@@ -96,6 +97,8 @@ class ValidatorRunner:
             phase=phase,
             max_tokens=_vcfg.max_tokens,
             max_tool_turns=_vcfg.max_tool_turns,
+            job_id=getattr(self, "_session_id", ""),
+            task_id=task.id,
         )
 
         # Resolve set_model overrides once per pass
