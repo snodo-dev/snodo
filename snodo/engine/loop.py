@@ -643,6 +643,7 @@ class GraphBuilder:
         })
 
         loop_state.stage = LoopStage.BLOCKED
+        self._auto_write_halt_payload(loop_state)
         return self._state_to_dict(loop_state)
     
     def _complete_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -664,6 +665,7 @@ class GraphBuilder:
                        f"Iterations: {loop_state.iteration}. "
                        f"Artifacts: {len(loop_state.artifacts)}."
         })
+        self._auto_write_halt_payload(loop_state)
         return self._state_to_dict(loop_state)
     
     def _route_after_validation(self, state: Dict[str, Any]) -> str:
@@ -901,6 +903,46 @@ class GraphBuilder:
                 )
             except Exception:
                 pass
+
+    def _auto_write_halt_payload(self, loop_state: Any) -> None:
+        """Persist halt payload to session checkpoint decisions for meta."""
+        if not self._session_manager or not self._session_id:
+            return
+
+        task_id = loop_state.task.id
+        try:
+            session = self._session_manager.load_session(self._session_id)
+        except Exception:
+            return
+
+        halt = session.checkpoint.decisions.get("halt", {})
+        if not isinstance(halt, dict):
+            halt = {}
+
+        meta = loop_state.metadata
+        phase = "unknown"
+        if loop_state.is_complete:
+            phase = "complete"
+        elif loop_state.is_blocked:
+            phase = "pre_execute" if meta.get("post_validation") is None else "post_execute"
+        if loop_state.halt_type == "escalated":
+            phase = loop_state.pending_disagreement.get("phase", "unknown") if loop_state.pending_disagreement else "unknown"
+
+        blocker_reason = "; ".join(loop_state.constraint_violations) if loop_state.constraint_violations else None
+
+        halt[task_id] = {
+            "final_decision": "blocked" if loop_state.is_blocked else "completed",
+            "phase": phase,
+            "halt_type": loop_state.halt_type,
+            "pre_validation": meta.get("pre_validation"),
+            "post_validation": meta.get("post_validation"),
+            "blocker_reason": blocker_reason,
+            "artifacts_count": len(loop_state.artifacts),
+        }
+
+        self._session_manager.update_decision(
+            self._session_id, "halt", halt,
+        )
 
     def _maybe_respawn_coder(self) -> None:
         """Respawn the coder if a verified set_model(scope=coder) override exists.
