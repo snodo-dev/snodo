@@ -510,10 +510,10 @@ class TestRunPlan:
 
     @patch("snodo.cli.commands.plan_run._execute_waves", return_value=False)
     @patch("snodo.cli.commands.plan_run._print_plan_progress")
-    @patch("snodo.cli.commands.run_cmd._set_api_key_env")
+    @patch("snodo.cli.commands.run_cmd.provider_env")
     @patch("snodo.cli.commands.run_cmd.ConfigManager")
     @patch("snodo.cli.commands.run_cmd.load_protocol")
-    def test_run_plan_success(self, mock_load, mock_cm, mock_api, mock_progress,
+    def test_run_plan_success(self, mock_load, mock_cm, mock_provider_env, mock_progress,
                               mock_waves, temp_project, capsys):
         from snodo.cli.commands.plan_run import _run_plan
 
@@ -545,10 +545,9 @@ class TestRunPlan:
         result = _run_plan(args)
         assert result == 1
 
-    @patch("snodo.cli.commands.run_cmd._set_api_key_env")
     @patch("snodo.cli.commands.run_cmd.ConfigManager")
     @patch("snodo.cli.commands.run_cmd.load_protocol")
-    def test_run_plan_planner_error(self, mock_load, mock_cm, mock_api, capsys):
+    def test_run_plan_planner_error(self, mock_load, mock_cm, capsys):
         from snodo.cli.commands.plan_run import _run_plan
         from snodo.mcp.planner import PlannerError
 
@@ -786,10 +785,10 @@ class TestRunPlanAuditLogFix:
 
     @patch("snodo.cli.commands.plan_run._execute_waves", return_value=False)
     @patch("snodo.cli.commands.plan_run._print_plan_progress")
-    @patch("snodo.cli.commands.run_cmd._set_api_key_env")
+    @patch("snodo.cli.commands.run_cmd.provider_env")
     @patch("snodo.cli.commands.run_cmd.ConfigManager")
     @patch("snodo.cli.commands.run_cmd.load_protocol")
-    def test_planner_gets_audit_log(self, mock_load, mock_cm, mock_api,
+    def test_planner_gets_audit_log(self, mock_load, mock_cm, mock_provider_env,
                                      mock_progress, mock_waves, temp_project):
         from snodo.cli.commands.plan_run import _run_plan
 
