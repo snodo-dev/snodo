@@ -729,13 +729,14 @@ class TestProviders:
         assert "api_key" not in providers.get("openai", {})
 
 
-    def test_default_catalog_has_five_providers(self):
-        """DEFAULT_PROVIDER_CATALOG has anthropic, openai, openrouter, google, cloudflare."""
+    def test_default_catalog_has_six_providers(self):
+        """DEFAULT_PROVIDER_CATALOG has anthropic, openai, openrouter, google, cloudflare, deepseek."""
         from snodo.infrastructure.config import DEFAULT_PROVIDER_CATALOG
-        assert set(DEFAULT_PROVIDER_CATALOG.keys()) == {"anthropic", "openai", "openrouter", "google", "cloudflare"}
+        assert set(DEFAULT_PROVIDER_CATALOG.keys()) == {"anthropic", "openai", "openrouter", "google", "cloudflare", "deepseek"}
         assert DEFAULT_PROVIDER_CATALOG["openrouter"].models_endpoint == "https://openrouter.ai/api/v1/models"
         assert DEFAULT_PROVIDER_CATALOG["google"].api_key_env == "GEMINI_API_KEY"
         assert DEFAULT_PROVIDER_CATALOG["cloudflare"].api_key_env == "CLOUDFLARE_API_KEY"
+        assert DEFAULT_PROVIDER_CATALOG["deepseek"].api_key_env == "DEEPSEEK_API_KEY"
 
     def test_provider_for_model_resolves(self, mgr):
         """_provider_for_model maps model prefixes to provider names."""
