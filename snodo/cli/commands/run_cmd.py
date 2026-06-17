@@ -13,7 +13,7 @@ from typing import Optional
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
 from snodo.engine.loop import build_protocol_graph, LoopStage
-from snodo.cli.config import ConfigManager, provider_env, _set_api_key_env
+from snodo.cli.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 
 _logger = logging.getLogger(__name__)
