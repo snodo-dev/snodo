@@ -158,9 +158,6 @@ def _lookup_price(full_string: str) -> tuple:
     return "unknown", "unknown"
 
 
-from typing import Optional
-
-
 def _apply_discrete_filters(
     models: list,
     id_contains: Optional[str] = None,
