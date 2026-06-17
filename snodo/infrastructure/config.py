@@ -82,10 +82,16 @@ class ValidatorLLMConfig(BaseModel):
     model: Optional[str] = Field(default=None, description="Validator LLM model. None = use default_model.")
 
 
+class ReconConfig(BaseModel):
+    num_agents: int = Field(default=1, ge=1, description="Default number of agents for recon fan-out")
+    models: list[str] = Field(default_factory=list, description="Ordered model priority list for recon")
+
+
 class LlmConfig(BaseModel):
     coder: CoderConfig = Field(default_factory=CoderConfig)
     validator: ValidatorConfig = Field(default_factory=ValidatorConfig)
     validator_llm: ValidatorLLMConfig = Field(default_factory=ValidatorLLMConfig)
+    recon: ReconConfig = Field(default_factory=ReconConfig)
 
 
 def load_llm_config(config_dir: Optional[str] = None) -> LlmConfig:

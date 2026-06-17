@@ -97,6 +97,51 @@ def _resolve_agent_model(agent: str) -> str:
     return agent
 
 
+def resolve_recon_agents(
+    requested_n: int | None = None,
+    recon_models: list[str] | None = None,
+    recon_default_n: int = 1,
+    explicit_agents: list[str] | None = None,
+) -> list[str]:
+    """Resolve recon agents from config + CLI/MCP request.
+
+    Precedence (most specific wins):
+      1. explicit_agents non-empty → return as-is
+      2. n = requested_n or recon_default_n or 1
+      3. resolve n against recon_models:
+         - models empty: n≤1 → ["default"]; n>1 → ["default"] + warn
+         - models present: first n; slots beyond len → warn per slot, skip
+    """
+    if explicit_agents:
+        return explicit_agents
+
+    n = requested_n or recon_default_n or 1
+    models = recon_models or []
+
+    if not models:
+        if n <= 1:
+            return ["default"]
+        import sys
+        print(
+            f"Warning: num_agents={n} but no recon models configured. "
+            "Using 'default' once (duplicates add no value).",
+            file=sys.stderr,
+        )
+        return ["default"]
+
+    results = []
+    for i in range(n):
+        if i < len(models):
+            results.append(models[i])
+        else:
+            print(
+                f"Warning: slot {i + 1}/{n} beyond configured models "
+                f"({len(models)}). Skipped.",
+                file=sys.stderr,
+            )
+    return results if results else ["default"]
+
+
 def _read_file(project_root: str, path: str) -> str:
     """Read a file within *project_root*, rejecting path traversal."""
     resolved = (Path(project_root) / path).resolve()
