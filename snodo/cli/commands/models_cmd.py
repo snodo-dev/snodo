@@ -49,7 +49,13 @@ def models_command(args) -> int:
     """List configured providers or their models."""
     provider_name = getattr(args, "provider", None)
     flush = getattr(args, "flush", False)
-    filter_expr = getattr(args, "filter", "")
+
+    # Discrete filter flags
+    id_contains = getattr(args, "id_contains", None)
+    max_output_cost = getattr(args, "max_output_cost", None)
+    min_output_cost = getattr(args, "min_output_cost", None)
+    max_input_cost = getattr(args, "max_input_cost", None)
+    min_context = getattr(args, "min_context", None)
 
     from snodo.cli.config import ConfigManager
     mgr = ConfigManager()
@@ -70,10 +76,23 @@ def models_command(args) -> int:
         print(f"No models discovered for {provider_name}")
         return 0
 
-    if filter_expr:
-        models = _apply_filter(models, filter_expr)
+    # Apply filters
+    if (id_contains is not None or
+        max_output_cost is not None or
+        min_output_cost is not None or
+        max_input_cost is not None or
+        min_context is not None):
+
+        models = _apply_discrete_filters(
+            models,
+            id_contains=id_contains,
+            max_output_cost=max_output_cost,
+            min_output_cost=min_output_cost,
+            max_input_cost=max_input_cost,
+            min_context=min_context,
+        )
         if not models:
-            print(f"No models matched filter: {filter_expr}")
+            print("No models matched the specified filters.")
             return 0
 
     _print_model_table(provider_name, models)
@@ -139,71 +158,71 @@ def _lookup_price(full_string: str) -> tuple:
     return "unknown", "unknown"
 
 
-_FILTER_OPS = {">", "<", ">=", "<=", "=", "=="}
+from typing import Optional
 
 
-def _apply_filter(models: list, expr: str) -> list:
-    """Filter models by a simple expression: field op value."""
-    expr = expr.strip()
+def _apply_discrete_filters(
+    models: list,
+    id_contains: Optional[str] = None,
+    max_output_cost: Optional[float] = None,
+    min_output_cost: Optional[float] = None,
+    max_input_cost: Optional[float] = None,
+    min_context: Optional[int] = None,
+) -> list:
+    """Filter models using discrete shell-safe criteria combined with AND."""
+    filtered = []
+    for m in models:
+        # 1. ID / display name check (case-insensitive substring match)
+        if id_contains:
+            mid = str(m.get("id", "")).lower()
+            disp = str(m.get("display_name", "")).lower()
+            query = id_contains.lower()
+            if query not in mid and query not in disp:
+                continue
 
-    # Find the operator
-    for op in [">=", "<=", "==", "!=", ">", "<", "="]:
-        if op in expr:
-            parts = expr.split(op, 1)
-            field = parts[0].strip()
-            value = parts[1].strip()
-            break
-    else:
-        # No operator found — substring match on id/display_name
-        return [m for m in models
-                if expr.lower() in (m.get("id", "") + m.get("display_name", "")).lower()]
-
-    numeric_fields = {"context_window"}
-    cost_fields = {"input_cost", "output_cost", "input_cost_per_1m", "output_cost_per_1m"}
-
-    def _numeric_val(model: dict, f: str) -> float:
-        if f in cost_fields:
+        # Helper to get cost per 1M tokens
+        def get_cost_per_1m(cost_type: str) -> Optional[float]:
             try:
                 import litellm
-                info = litellm.model_cost.get(model.get("full_string", ""))
+                info = litellm.model_cost.get(m.get("full_string", ""))
                 if info:
-                    if f in ("input_cost", "input_cost_per_1m"):
-                        return info.get("input_cost_per_token", 0) * 1_000_000
-                    else:
-                        return info.get("output_cost_per_token", 0) * 1_000_000
+                    val = info.get(f"{cost_type}_cost_per_token")
+                    if val is not None:
+                        return float(val) * 1_000_000
             except Exception:
                 pass
-            return 0.0
-        return float(model.get(f, 0))
+            return None
 
-    if field in numeric_fields or field in cost_fields:
-        try:
-            val = float(value)
-        except ValueError:
-            return models
+        # 2. Max output cost (excludes unknown output cost)
+        if max_output_cost is not None:
+            out_cost = get_cost_per_1m("output")
+            if out_cost is None or out_cost > max_output_cost:
+                continue
 
-        def _pred(model: dict) -> bool:
-            n = _numeric_val(model, field)
-            if op == ">":
-                return n > val
-            elif op == "<":
-                return n < val
-            elif op == ">=":
-                return n >= val
-            elif op == "<=":
-                return n <= val
-            elif op in ("=", "=="):
-                return abs(n - val) < 1e-10
-            elif op == "!=":
-                return abs(n - val) >= 1e-10
-            return True
-        return [m for m in models if _pred(m)]
+        # 3. Min output cost (excludes unknown output cost)
+        if min_output_cost is not None:
+            out_cost = get_cost_per_1m("output")
+            if out_cost is None or out_cost < min_output_cost:
+                continue
 
-    # String field — substring match
-    def _str_pred(model: dict) -> bool:
-        haystack = str(model.get(field, "")).lower()
-        return value.lower() in haystack
-    return [m for m in models if _str_pred(m)]
+        # 4. Max input cost (excludes unknown input cost)
+        if max_input_cost is not None:
+            in_cost = get_cost_per_1m("input")
+            if in_cost is None or in_cost > max_input_cost:
+                continue
+
+        # 5. Min context (excludes context_window == 0)
+        if min_context is not None:
+            ctx = m.get("context_window", 0)
+            try:
+                ctx_val = int(ctx) if ctx is not None else 0
+            except (ValueError, TypeError):
+                ctx_val = 0
+            if ctx_val == 0 or ctx_val < min_context:
+                continue
+
+        filtered.append(m)
+    return filtered
 
 
 def _print_model_table(provider: str, models: list) -> None:
