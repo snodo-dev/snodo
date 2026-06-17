@@ -192,6 +192,7 @@ class GraphBuilder:
             git_mcp=git_mcp,
             session_manager=session_manager,
         )
+        self._validator_runner._session_id = self._session_id or ""
 
         self.governance_fn = governance_fn or self._default_governance
         self.validator_fn = validator_fn or self._validator_runner.run
@@ -752,6 +753,8 @@ class GraphBuilder:
             phase=phase,
             max_tokens=_vcfg.max_tokens,
             max_tool_turns=_vcfg.max_tool_turns,
+            job_id=self._session_id or "",
+            task_id=task.id,
         )
 
         results = []

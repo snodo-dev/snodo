@@ -101,6 +101,8 @@ class LLMValidator(ValidatorBase):
             ctx_tokens = getattr(context, "max_tokens", None)
             if ctx_tokens is not None:
                 self.completion_tokens = ctx_tokens
+            self._job_id = getattr(context, "job_id", "") or ""
+            self._task_id = getattr(context, "task_id", "") or ""
 
         # Capability gate: tool-loop runs iff validator declares tools
         # AND MCPs + completion_fn are present. Empty/absent tools =>
