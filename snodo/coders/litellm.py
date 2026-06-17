@@ -113,6 +113,14 @@ class LiteLLMAdapter(CoderAdapter):
                 return pc.base_url
         return None
 
+    def _resolve_cf_headers(self) -> Optional[dict]:
+        """Return extra_headers for Cloudflare Workers AI session affinity."""
+        from snodo.cli.config import ConfigManager
+        provider = ConfigManager._provider_for_model(self.model)
+        if provider == "cloudflare":
+            return {"x-session-affinity": self._task_id or "unknown"}
+        return None
+
     def implement(self, spec: TaskSpec) -> CodeArtifact:
         prompt = self._build_prompt(spec)
         response = self._call_llm(prompt)
@@ -136,10 +144,6 @@ class LiteLLMAdapter(CoderAdapter):
                 prompt_parts.append(f"Directory structure:\n```\n{structure}\n```\n")
             for cfg_name, cfg_content in config_files.items():
                 prompt_parts.append(f"{cfg_name}:\n```\n{cfg_content}\n```\n")
-
-        # Memory summary section
-        if spec.memory_summary:
-            prompt_parts.append(f"\n## Session History\n{spec.memory_summary}\n")
 
         # Task section
         prompt_parts.append(f"\n## Task\nDescription: {spec.description}\n")
@@ -181,9 +185,12 @@ Return ONLY the JSON array, no other text.
   {"path": "tests/test_module.py", "content": "def test_my_function():\\n    assert my_function() is not None\\n", "action": "write"}
 ]
 ```
-
-Now generate the implementation:
 """)
+
+        if spec.memory_summary:
+            prompt_parts.append(f"\n## Session History\n{spec.memory_summary}\n")
+
+        prompt_parts.append("Now generate the implementation:\n")
 
         return "".join(prompt_parts)
 
@@ -212,6 +219,9 @@ Now generate the implementation:
             api_base = self._resolve_api_base()
             if api_base:
                 kwargs["api_base"] = api_base
+            cf_headers = self._resolve_cf_headers()
+            if cf_headers:
+                kwargs["extra_headers"] = cf_headers
             if not _is_gemini3_plus(self.model):
                 kwargs["temperature"] = self.temperature
             response = self._completion_fn(**kwargs)
