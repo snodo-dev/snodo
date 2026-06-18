@@ -102,13 +102,22 @@ def models_command(args) -> int:
 
 
 def _list_providers(providers: dict) -> int:
-    print("Configured providers:")
-    print()
+    configured = []
     for name in sorted(providers.keys()):
         pc = providers[name]
         has_key = bool(pc.api_key or (pc.api_key_env and os.environ.get(pc.api_key_env)))
-        status = "configured" if has_key else "no key"
-        print(f"  {name:<14} {status}")
+        if has_key:
+            configured.append(name)
+
+    if not configured:
+        print("No providers configured. Add a key with: snodo config add <provider> <key>")
+        print("  Then run: snodo models --provider=<name>")
+        return 0
+
+    print("Configured providers:")
+    print()
+    for name in configured:
+        print(f"  {name:<14} configured")
     print()
     print("Run: snodo models --provider=<name> to list models")
     return 0
