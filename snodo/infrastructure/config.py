@@ -87,11 +87,17 @@ class ReconConfig(BaseModel):
     models: list[str] = Field(default_factory=list, description="Ordered model priority list for recon")
 
 
+class WaveConfig(BaseModel):
+    max_age_days: int = Field(default=14, ge=1, description="Hard expiry age for a wave")
+    max_idle_days: int = Field(default=5, ge=1, description="Idle timeout before wave closes")
+
+
 class LlmConfig(BaseModel):
     coder: CoderConfig = Field(default_factory=CoderConfig)
     validator: ValidatorConfig = Field(default_factory=ValidatorConfig)
     validator_llm: ValidatorLLMConfig = Field(default_factory=ValidatorLLMConfig)
     recon: ReconConfig = Field(default_factory=ReconConfig)
+    wave: WaveConfig = Field(default_factory=WaveConfig)
 
 
 def load_llm_config(config_dir: Optional[str] = None) -> LlmConfig:

@@ -106,6 +106,7 @@ class GraphBuilder:
         predicate_registry: Any = None,
         session_id: Optional[str] = None,
         validator_config: Any = None,
+        project_root: Optional[str] = None,
     ):
         """Initialize graph builder with real MCP services.
 
@@ -210,6 +211,7 @@ class GraphBuilder:
             decision_issuer=self._decision_issuer,
         )
         self._summary_model = self._init_summary_model()
+        self._project_root = project_root or ""
         self._project_context_cache: Optional[Dict[str, Any]] = None
     
     def build_graph(self) -> StateGraph:
@@ -312,6 +314,25 @@ class GraphBuilder:
 
         # Summarize messages if they've grown too large
         loop_state = self._maybe_summarize(loop_state)
+
+        # On first iteration, classify flow_type and assign/ mint wave
+        if loop_state.iteration == 1 and self._project_root:
+            try:
+                from snodo.infrastructure.wave_registry import WaveRegistry
+                from snodo.infrastructure.config import load_llm_config
+                llm_cfg = load_llm_config()
+                registry = WaveRegistry(self._project_root, config=llm_cfg.wave)
+                result = registry.classify_task(
+                    loop_state.task.spec,
+                    loop_state.task.id,
+                    self._completion_fn,
+                    self._default_model,
+                )
+                loop_state.task.flow_type = result.get("flow_type") or "feature"
+                loop_state.task.wave_id = result.get("wave_id") or ""
+                self._auto_write_classification(loop_state)
+            except Exception:
+                pass
 
         loop_state = self.governance_fn(loop_state, self.protocol)
 
@@ -944,6 +965,27 @@ class GraphBuilder:
             self._session_id, "halt", halt,
         )
 
+    def _auto_write_classification(self, loop_state: Any) -> None:
+        """Persist flow_type / wave_id to session checkpoint for state.json flush."""
+        if not self._session_manager or not self._session_id:
+            return
+        task_id = loop_state.task.id
+        try:
+            session = self._session_manager.load_session(self._session_id)
+        except Exception:
+            return
+        classifications = session.checkpoint.decisions.get("classification", {})
+        if not isinstance(classifications, dict):
+            classifications = {}
+        classifications[task_id] = {
+            "flow_type": loop_state.task.flow_type,
+            "wave_id": loop_state.task.wave_id,
+            "task_spec": loop_state.task.spec[:200],
+        }
+        self._session_manager.update_decision(
+            self._session_id, "classification", classifications,
+        )
+
     def _maybe_respawn_coder(self) -> None:
         """Respawn the coder if a verified set_model(scope=coder) override exists.
 
@@ -1453,6 +1495,7 @@ def build_protocol_graph(
         session_manager=session_manager,
         session_id=session_id,
         validator_config=llm_cfg.validator,
+        project_root=project_root,
         **custom_functions
     )
     return builder.build_graph()
