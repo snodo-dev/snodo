@@ -39,6 +39,8 @@ class Task(BaseModel):
     spec: str
     parent_task_ref: Optional[str] = None
     depth: int = 0
+    flow_type: Optional[str] = None
+    wave_id: Optional[str] = None
 
 
 class ValidatorResult(BaseModel):

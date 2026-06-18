@@ -82,6 +82,15 @@ def main():
                 if isinstance(halt, dict) and halt:
                     task_ids = list(halt.keys())
                     state["halt"] = halt[task_ids[0]] if len(task_ids) == 1 else halt
+                classifications = session.checkpoint.decisions.get("classification", {})
+                if isinstance(classifications, dict) and classifications:
+                    task_ids = list(classifications.keys())
+                    entry = classifications[task_ids[0]] if len(task_ids) == 1 else classifications
+                    if isinstance(entry, dict):
+                        if entry.get("flow_type"):
+                            state["flow_type"] = entry["flow_type"]
+                        if entry.get("wave_id"):
+                            state["wave_id"] = entry["wave_id"]
     except Exception:
         pass
 
