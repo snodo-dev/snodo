@@ -33,6 +33,7 @@ if not getattr(_litellm, "callbacks", None):
     _litellm.callbacks = []
 _litellm.callbacks.append(UsageTracker())
 
+# CF models absent from models.dev catalog — price via register_model.
 _litellm.register_model({
     "openai/@cf/google/gemma-4-26b-a4b-it": {
         "input_cost_per_token": 0.10 / 1_000_000,
