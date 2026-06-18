@@ -12,6 +12,7 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 
 def _save_state(job_dir: str, state: dict) -> None:
@@ -65,6 +66,25 @@ def main():
         state["status"] = status
     state["exit_code"] = exit_code
     state["completed_at"] = time.time()
+
+    # Extract halt payload from the session checkpoint and flush to state.json
+    try:
+        project_root = str(Path(job_dir).parent.parent.parent)
+        from snodo.infrastructure.state import read_state
+        pstate = read_state(project_root)
+        mode = pstate.current_mode
+        if mode:
+            from snodo.infrastructure.session import SessionManager
+            sm = SessionManager()
+            session = sm.get_active_session(mode, project_root)
+            if session:
+                halt = session.checkpoint.decisions.get("halt", {})
+                if isinstance(halt, dict) and halt:
+                    task_ids = list(halt.keys())
+                    state["halt"] = halt[task_ids[0]] if len(task_ids) == 1 else halt
+    except Exception:
+        pass
+
     _save_state(job_dir, state)
 
     sys.exit(exit_code)

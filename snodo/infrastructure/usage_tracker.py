@@ -53,10 +53,11 @@ class UsageTracker:
             except Exception:
                 pass
 
-        meta = (
-            kwargs.get("litellm_params", {}).get("metadata", {})
-            if isinstance(kwargs, dict) else {}
-        )
+        meta: dict = {}
+        if isinstance(kwargs, dict):
+            meta_top = kwargs.get("metadata", {}) or {}
+            meta_params = kwargs.get("litellm_params", {}).get("metadata", {}) or {}
+            meta = {**meta_top, **meta_params}
 
         job_id = meta.get("job_id", "unknown")
         task_id = meta.get("task_id", "unknown")
