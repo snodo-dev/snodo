@@ -147,23 +147,21 @@ def _get_models(provider_name: str, pc, force_refresh: bool = False) -> list:
 
 def _lookup_price(full_string: str) -> tuple:
     """Return (input_cost_per_1M, output_cost_per_1M) or ("unknown", "unknown")."""
-    try:
-        import litellm
-        info = litellm.model_cost.get(full_string)
-        if info:
-            inp = info.get("input_cost_per_token", 0)
-            outp = info.get("output_cost_per_token", 0)
-            if inp:
-                inp_str = f"${inp * 1_000_000:.2f}"
-            else:
-                inp_str = "unknown"
-            if outp:
-                outp_str = f"${outp * 1_000_000:.2f}"
-            else:
-                outp_str = "unknown"
-            return inp_str, outp_str
-    except Exception:
-        pass
+    from snodo.infrastructure.model_catalog import lookup as catalog_lookup
+    meta = catalog_lookup(full_string)
+    inp = meta.get("input_cost")
+    outp = meta.get("output_cost")
+    inp_str = f"${float(inp) * 1_000_000:.2f}" if isinstance(inp, (int, float)) else "unknown"
+    outp_str = f"${float(outp) * 1_000_000:.2f}" if isinstance(outp, (int, float)) else "unknown"
+    return inp_str, outp_str
+
+
+def _lookup_context(full_string: str) -> str:
+    """Return context window as string, or '—' if unknown."""
+    from snodo.infrastructure.model_catalog import lookup as catalog_lookup
+    meta = catalog_lookup(full_string)
+    ctx = meta.get("context", 0)
+    return str(ctx) if ctx else "—"
     return "unknown", "unknown"
 
 
@@ -249,8 +247,7 @@ def _print_model_table(provider: str, models: list) -> None:
 
     for m in models:
         mid = m.get("full_string", m.get("id", ""))
-        ctx = m.get("context_window", 0)
-        ctx_str = str(ctx) if ctx else "—"
+        ctx_str = _lookup_context(mid)
         inp, outp = _lookup_price(m.get("full_string", ""))
         cost_str = f"{inp} / {outp}"
         print(f" {mid:<{col_model}}  {ctx_str:>{col_ctx}}  {cost_str:<{col_cost}}")

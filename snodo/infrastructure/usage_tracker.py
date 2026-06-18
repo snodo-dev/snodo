@@ -41,6 +41,18 @@ class UsageTracker:
         except Exception:
             cost = None
 
+        if cost is None and prompt_tokens + completion_tokens > 0:
+            model_name = kwargs.get("model", "") if isinstance(kwargs, dict) else ""
+            try:
+                from snodo.infrastructure.model_catalog import lookup as catalog_lookup
+                meta = catalog_lookup(model_name)
+                inp = meta.get("input_cost")
+                outp = meta.get("output_cost")
+                if isinstance(inp, (int, float)) and isinstance(outp, (int, float)):
+                    cost = (prompt_tokens * inp) + (completion_tokens * outp)
+            except Exception:
+                pass
+
         meta = (
             kwargs.get("litellm_params", {}).get("metadata", {})
             if isinstance(kwargs, dict) else {}
