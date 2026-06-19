@@ -32,9 +32,15 @@ def resolve_project_root(start: Optional[str] = None) -> Optional[str]:
 
     Returns the directory that contains .snodo (the project root),
     or None if no .snodo is found anywhere up to the filesystem root.
+
+    ``~/.snodo/`` (global config directory) is explicitly excluded
+    from project-marker detection.
     """
+    home = Path.home()
     directory = Path(start).resolve() if start else Path.cwd()
     for parent in [directory] + list(directory.parents):
+        if parent == home:
+            continue  # ~/.snodo is global config, not a project marker
         if (parent / ".snodo").is_dir():
             return str(parent)
     return None

@@ -288,12 +288,25 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
     job_id = os.environ.get("SNODO_JOB_ID") or None
 
+    # Create git worktree for task isolation
+    worktree_path_val = None
+    try:
+        from snodo.infrastructure.worktree import create_worktree, remove_worktree
+        worktree_path_val = str(create_worktree(project_root, task.id, task.spec))
+        print(f"  Worktree: {worktree_path_val}")
+    except Exception as e:
+        print(f"  Worktree: skipped ({e})")
+        worktree_path_val = None
+
     compiled_graph = _build_graph(
         args, protocol, project_root, model, checkpointer,
         audit_log=audit_log, session_manager=session_manager,
         session_id=session_id, job_id=job_id,
+        worktree_path=worktree_path_val,
     )
     if compiled_graph is None:
+        if worktree_path_val:
+            remove_worktree(project_root, task.id)
         if checkpointer:
             _close_checkpointer(checkpointer)
         return 1
@@ -328,6 +341,12 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         if session_id and session_manager:
             try:
                 session_manager.save_checkpoint(session_id)
+            except Exception:
+                pass
+        # Clean up worktree
+        if worktree_path_val:
+            try:
+                remove_worktree(project_root, task.id)
             except Exception:
                 pass
         _close_checkpointer(checkpointer)
@@ -429,15 +448,17 @@ def _close_checkpointer(checkpointer) -> None:
 
 def _build_graph(args, protocol: Protocol, project_root: str, model: str,
                  checkpointer=None, audit_log=None, session_manager=None,
-                 session_id=None, job_id=None):
+                 session_id=None, job_id=None, worktree_path=None):
     """Build and compile the protocol execution graph.
 
     Returns:
         Compiled graph, or None on failure.
     """
     try:
+        mcp_root = worktree_path or project_root
         print("Building execution graph with MCP services...")
         print(f"  Project root: {project_root}")
+        print(f"  MCP root: {mcp_root}")
         print("  MCPs: workspace, git, shell")
         print(f"  Coder: {'mock' if args.mock else 'real LLM'}")
         if checkpointer:
@@ -454,6 +475,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             session_manager=session_manager,
             session_id=session_id,
             job_id=job_id,
+            worktree_path=worktree_path,
         )
         compiled_graph = graph.compile(checkpointer=checkpointer)
         print("✓ Graph compiled with MCP integration")
