@@ -76,6 +76,30 @@ def create_worktree(
     return wt_path
 
 
+def setup_for_task(
+    project_root: str,
+    task_id: str,
+    spec: str,
+    existing_worktree_path: Optional[str] = None,
+) -> Optional[str]:
+    """Set up a worktree for *task_id* — create if needed, return path.
+
+    When *existing_worktree_path* is provided (set by an upstream caller
+    such as ``JobManager.submit``), it is returned as-is.  Otherwise a
+    fresh worktree is created.
+
+    This is the ONE shared setup helper called by BOTH:
+    - ``JobManager.submit`` (background path — sets existing before spawn)
+    - ``_execute_task`` (CLI inline path — creates fresh)
+    """
+    if existing_worktree_path:
+        return existing_worktree_path
+    try:
+        return str(create_worktree(project_root, task_id, spec))
+    except Exception:
+        return None
+
+
 def remove_worktree(project_root: str, task_id: str) -> None:
     """Remove the worktree for *task_id* (force, best-effort)."""
     wt_path = worktree_path(project_root, task_id)
