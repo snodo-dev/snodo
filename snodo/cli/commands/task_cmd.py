@@ -89,13 +89,19 @@ def task_abandon_command(args) -> int:
         for head in git.repo.heads:
             if head.name.startswith(branch_name):
                 git.repo.git.branch("-D", head.name)
-                print("Branch deleted. Task abandoned.")
-                return 0
-        print(f"No branch found for task {task_id}.")
-        return 0
     except Exception as e:
         print(f"Error deleting branch: {e}", file=sys.stderr)
         return 1
+
+    # Remove worktree
+    try:
+        from snodo.infrastructure.worktree import remove_worktree
+        remove_worktree(project_root, task_id)
+    except Exception:
+        pass
+
+    print("Task abandoned.")
+    return 0
 
 
 def task_prune_command(args) -> int:
@@ -159,6 +165,7 @@ def task_prune_command(args) -> int:
 
     try:
         from snodo.mcp.git import GitMCP
+        from snodo.infrastructure.worktree import remove_worktree
         git = GitMCP(project_root)
         deleted = 0
         for tid, branch, _ in stale:
@@ -168,6 +175,7 @@ def task_prune_command(args) -> int:
                     git.repo.git.branch("-D", head.name)
                     deleted += 1
                     break
+            remove_worktree(project_root, tid)
         print(f"Deleted {deleted} stale branch(es).")
     except Exception as e:
         print(f"Error pruning branches: {e}", file=sys.stderr)

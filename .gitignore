@@ -42,3 +42,6 @@ studies/*/outputs/*.csv
 .DS_Store
 site/
 .snodo/
+
+# Git worktrees for parallel task execution
+.snodo-worktrees/

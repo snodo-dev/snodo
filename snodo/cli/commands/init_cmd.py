@@ -107,6 +107,16 @@ def init_command(args) -> int:
     """Initialize Snodo project structure."""
     from snodo.infrastructure.paths import resolve_project_root
 
+    # Hard-block: refuse to initialise at or inside the home directory
+    from pathlib import Path as _Path
+    if _Path.cwd().resolve() == _Path.home():
+        print(
+            "Error: Cannot initialise a Snodo project at your home directory. "
+            "Create a project directory first.",
+            file=sys.stderr,
+        )
+        return 1
+
     # Git requirement: check .git exists in project root or any parent
     try:
         from git import Repo, InvalidGitRepositoryError

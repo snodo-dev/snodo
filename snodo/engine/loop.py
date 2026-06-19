@@ -108,6 +108,7 @@ class GraphBuilder:
         validator_config: Any = None,
         project_root: Optional[str] = None,
         job_id: Optional[str] = None,
+        worktree_path: Optional[str] = None,
     ):
         """Initialize graph builder with real MCP services.
 
@@ -214,6 +215,7 @@ class GraphBuilder:
         self._summary_model = self._init_summary_model()
         self._project_root = project_root or ""
         self._job_id = job_id or ""
+        self._worktree_path = worktree_path or ""
         self._project_context_cache: Optional[Dict[str, Any]] = None
     
     def build_graph(self) -> StateGraph:
@@ -1262,8 +1264,8 @@ class GraphBuilder:
             project_context=project_context or {},
         )
 
-        # Branch isolation: create/checkout task branch before coder runs
-        if git_mcp:
+        # Branch isolation: worktree already on correct branch when active
+        if git_mcp and not self._worktree_path:
             branch_name = _task_branch_name(task.id, task.spec)
             if _branch_exists(git_mcp, branch_name):
                 git_mcp.checkout_branch(branch_name)
@@ -1485,6 +1487,7 @@ def build_protocol_graph(
     session_manager: Any = None,
     session_id: Optional[str] = None,
     job_id: Optional[str] = None,
+    worktree_path: Optional[str] = None,
     **custom_functions
 ) -> StateGraph:
     """Convenience function to build graph with MCP integration.
@@ -1499,6 +1502,7 @@ def build_protocol_graph(
         session_manager: Optional SessionManager for INV5 session state
         session_id: Optional active session ID to tag on every audit event
         job_id: Job identifier for direct job state.json writes
+        worktree_path: When set, MCPs root at the worktree instead of project_root
         **custom_functions: Optional overrides
 
     Returns:
@@ -1508,10 +1512,13 @@ def build_protocol_graph(
         from snodo.infrastructure.paths import resolve_project_root
         project_root = str(resolve_project_root() or Path.cwd())
 
+    # Use worktree as the working root when isolating tasks
+    mcp_root = worktree_path or project_root
+
     # Initialize MCP services
-    workspace_mcp = WorkspaceMCP(project_root)
-    git_mcp = GitMCP(project_root)
-    shell_mcp = ShellMCP(project_root)
+    workspace_mcp = WorkspaceMCP(mcp_root)
+    git_mcp = GitMCP(mcp_root)
+    shell_mcp = ShellMCP(mcp_root)
 
     # Initialize coder with LLM config knobs
     from snodo.infrastructure.config import load_llm_config
@@ -1543,6 +1550,7 @@ def build_protocol_graph(
         validator_config=llm_cfg.validator,
         project_root=project_root,
         job_id=job_id,
+        worktree_path=worktree_path,
         **custom_functions
     )
     return builder.build_graph()
