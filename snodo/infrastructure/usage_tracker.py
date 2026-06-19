@@ -9,6 +9,7 @@ Persists records to job state.json keyed by job_id.
 
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -59,7 +60,10 @@ class UsageTracker:
             meta_params = kwargs.get("litellm_params", {}).get("metadata", {}) or {}
             meta = {**meta_top, **meta_params}
 
-        job_id = meta.get("job_id", "unknown")
+        # SNODO_JOB_ID is the authoritative source for background jobs
+        # (set by wrapper.py before calling cli_main). Metadata is the
+        # fallback for inline runs (where no env var exists).
+        job_id = os.environ.get("SNODO_JOB_ID") or meta.get("job_id", "unknown")
         task_id = meta.get("task_id", "unknown")
         role = meta.get("role", "unknown")
         model = kwargs.get("model", "unknown") if isinstance(kwargs, dict) else "unknown"
