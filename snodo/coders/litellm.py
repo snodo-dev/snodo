@@ -36,9 +36,9 @@ try:
 except Exception:
     _litellm.num_retries = 3
 
-if not getattr(_litellm, "callbacks", None):
-    _litellm.callbacks = []
-_litellm.callbacks.append(UsageTracker())
+if not getattr(_litellm, "success_callback", None):
+    _litellm.success_callback = []
+_litellm.success_callback.append(UsageTracker())
 
 # CF models absent from models.dev catalog — price via register_model.
 _litellm.register_model({

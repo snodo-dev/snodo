@@ -64,14 +64,12 @@ class TestGenerateWaveId:
 
 
 class TestFallback:
-    def test_defaults_to_new(self):
+    def test_defaults(self):
         result = _fallback()
         assert result["flow_type"] == "feature"
         assert result["wave_id"] == "new"
-
-    def test_custom_result(self):
-        result = _fallback(result="w_0001")
-        assert result["wave_id"] == "w_0001"
+        assert result["task_summary"] == "Unclassified task"
+        assert result["feature_description"] == "Unclassified feature"
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +225,8 @@ class TestClassifyTask:
         mock_completion.return_value.choices[0].message.content = json.dumps({
             "flow_type": "feature",
             "wave_id": "new",
-            "new_wave_description": "implement auth",
+            "task_summary": "Build login system",
+            "feature_description": "implement auth",
         })
         result = reg.classify_task("build login system", "task_001", mock_completion, "gemma-model")
         assert result["flow_type"] == "feature"
@@ -236,6 +235,7 @@ class TestClassifyTask:
         waves = reg._read_waves()
         assert len(waves) == 1
         assert waves[0].feature_description == "implement auth"
+        assert not waves[0].feature_description.startswith("build login system")
 
     def test_matched_wave_assigns(self, tmp_path):
         _write_waves(tmp_path, [
@@ -246,6 +246,7 @@ class TestClassifyTask:
         mock_completion.return_value.choices[0].message.content = json.dumps({
             "flow_type": "feature",
             "wave_id": "w_0001",
+            "task_summary": "Add OAuth support",
         })
         result = reg.classify_task("add oauth", "task_001", mock_completion, "gemma-model")
         assert result["wave_id"] == "w_0001"
@@ -265,6 +266,8 @@ class TestClassifyTask:
         mock_completion.return_value.choices[0].message.content = json.dumps({
             "flow_type": "invalid_type",
             "wave_id": "new",
+            "task_summary": "Some task",
+            "feature_description": "Some feature",
         })
         result = reg.classify_task("task", "task_001", mock_completion, "gemma-model")
         assert result["flow_type"] == "feature"
@@ -279,7 +282,8 @@ class TestClassifyTask:
         mock_completion.return_value.choices[0].message.content = json.dumps({
             "flow_type": "feature",
             "wave_id": "new",
-            "new_wave_description": "new auth wave",
+            "task_summary": "Add OAuth",
+            "feature_description": "new auth wave",
         })
         result = reg.classify_task("add oauth", "task_001", mock_completion, "gemma-model")
         assert result["wave_id"] != "w_0001"
@@ -297,18 +301,42 @@ class TestClassifyTask:
         mock_completion.return_value.choices[0].message.content = json.dumps({
             "flow_type": "feature",
             "wave_id": "new",
+            "task_summary": "Add OAuth",
+            "feature_description": "Auth overhaul",
         })
         result = reg.classify_task("add oauth", "task_001", mock_completion, "gemma-model")
         assert result["wave_id"].startswith("w_")
         assert result["wave_id"] != "w_0001"
 
-    def test_llm_parse_error_mints_new(self, tmp_path):
+    def test_llm_parse_error_falls_back(self, tmp_path):
         reg = _make_registry(tmp_path)
         mock_completion = MagicMock()
         mock_completion.return_value.choices[0].message.content = "not valid json"
         result = reg.classify_task("task", "task_001", mock_completion, "gemma-model")
         assert result["flow_type"] == "feature"
         assert result["wave_id"].startswith("w_")
+        assert result["task_summary"] == "Unclassified task"
+
+    def test_classified_fields_are_not_raw_spec_slices(self, tmp_path):
+        reg = _make_registry(tmp_path)
+        mock_completion = MagicMock()
+        spec = "VALIDATION TOKEN: migrate-dashboard\n\nCONTEXT: Migrate the dashboard page to SvelteKit"
+        mock_completion.return_value.choices[0].message.content = json.dumps({
+            "flow_type": "feature",
+            "wave_id": "new",
+            "task_summary": "Migrate Dashboard to SvelteKit",
+            "feature_description": "SvelteKit dashboard migration",
+        })
+        result = reg.classify_task(spec, "task_001", mock_completion, "gemma-model")
+        assert result["task_summary"] == "Migrate Dashboard to SvelteKit"
+        assert not result["task_summary"].startswith("VALIDATION TOKEN")
+
+        waves = reg._read_waves()
+        assert len(waves) == 1
+        assert not waves[0].feature_description.startswith("VALIDATION TOKEN")
+        assert not waves[0].feature_description.startswith(spec[:20])
+        for anchor in waves[0].anchor_summaries:
+            assert not anchor.startswith("VALIDATION TOKEN")
 
     def test_file_lock_acquired(self, tmp_path):
         reg = _make_registry(tmp_path)
@@ -319,6 +347,8 @@ class TestClassifyTask:
             mock_completion.return_value.choices[0].message.content = json.dumps({
                 "flow_type": "defect",
                 "wave_id": "new",
+                "task_summary": "Fix bug",
+                "feature_description": "Bug fixes",
             })
             reg.classify_task("fix bug", "task_001", mock_completion, "gemma-model")
             mock_lock.__enter__.assert_called_once()
@@ -336,11 +366,18 @@ class TestPrompts:
         for t in ("feature", "defect", "debt", "risk"):
             assert t in prompt.lower()
 
-    def test_prompt_requests_json(self, tmp_path):
+    def test_prompt_requests_required_fields(self, tmp_path):
         reg = _make_registry(tmp_path)
         prompt = reg._build_prompt("task", [])
         assert "flow_type" in prompt
         assert "wave_id" in prompt
+        assert "task_summary" in prompt
+        assert "feature_description" in prompt
+
+    def test_prompt_requires_task_summary_not_spec_copy(self, tmp_path):
+        reg = _make_registry(tmp_path)
+        prompt = reg._build_prompt("task", [])
+        assert "NEVER copy the spec" in prompt
 
     def test_prompt_with_multiple_open_waves(self, tmp_path):
         reg = _make_registry(tmp_path)
