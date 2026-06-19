@@ -120,7 +120,17 @@ def _persist_usage(job_id: str, record: dict) -> None:
 
 
 def _find_project_root(job_id: str) -> str | None:
-    """Walk up from cwd to find .snodo/ containing job_id."""
+    """Resolve project root for *job_id*.
+
+    Priority:
+      1. ``SNODO_PROJECT_ROOT`` env var (set by wrapper.py for bg jobs)
+      2. Walk up from cwd (fallback for inline runs)
+    """
+    env_root = os.environ.get("SNODO_PROJECT_ROOT")
+    if env_root:
+        candidate = Path(env_root) / ".snodo" / "jobs" / job_id
+        if candidate.is_dir():
+            return env_root
     from pathlib import Path as _Path
     d = _Path.cwd()
     for parent in [d] + list(d.parents):

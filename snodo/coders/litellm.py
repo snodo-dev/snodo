@@ -29,6 +29,13 @@ from snodo.infrastructure.usage_tracker import UsageTracker
 import litellm as _litellm
 _litellm.drop_params = True
 
+# Retry transient errors (5xx, 429, connection) with exponential backoff
+try:
+    from snodo.infrastructure.config import load_llm_config
+    _litellm.num_retries = load_llm_config().num_retries
+except Exception:
+    _litellm.num_retries = 3
+
 if not getattr(_litellm, "callbacks", None):
     _litellm.callbacks = []
 _litellm.callbacks.append(UsageTracker())

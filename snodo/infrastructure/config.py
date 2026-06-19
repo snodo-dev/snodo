@@ -93,6 +93,7 @@ class WaveConfig(BaseModel):
 
 
 class LlmConfig(BaseModel):
+    num_retries: int = Field(default=3, ge=0, le=10, description="litellm retry count for transient errors")
     coder: CoderConfig = Field(default_factory=CoderConfig)
     validator: ValidatorConfig = Field(default_factory=ValidatorConfig)
     validator_llm: ValidatorLLMConfig = Field(default_factory=ValidatorLLMConfig)
