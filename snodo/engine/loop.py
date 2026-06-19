@@ -109,6 +109,7 @@ class GraphBuilder:
         project_root: Optional[str] = None,
         job_id: Optional[str] = None,
         worktree_path: Optional[str] = None,
+        worktree_degraded: bool = False,
     ):
         """Initialize graph builder with real MCP services.
 
@@ -216,6 +217,7 @@ class GraphBuilder:
         self._project_root = project_root or ""
         self._job_id = job_id or ""
         self._worktree_path = worktree_path or ""
+        self._worktree_degraded = worktree_degraded
         self._project_context_cache: Optional[Dict[str, Any]] = None
     
     def build_graph(self) -> StateGraph:
@@ -1264,8 +1266,10 @@ class GraphBuilder:
             project_context=project_context or {},
         )
 
-        # Branch isolation: worktree already on correct branch when active
-        if git_mcp and not self._worktree_path:
+        # Branch isolation: skip when worktree is active OR worktree failed
+        # (failed means worktree creation errored — running degraded in main
+        # repo without branch isolation. A loud warning was already emitted.)
+        if git_mcp and not self._worktree_path and not self._worktree_degraded:
             branch_name = _task_branch_name(task.id, task.spec)
             if _branch_exists(git_mcp, branch_name):
                 git_mcp.checkout_branch(branch_name)
@@ -1488,6 +1492,7 @@ def build_protocol_graph(
     session_id: Optional[str] = None,
     job_id: Optional[str] = None,
     worktree_path: Optional[str] = None,
+    worktree_degraded: bool = False,
     **custom_functions
 ) -> StateGraph:
     """Convenience function to build graph with MCP integration.
@@ -1503,6 +1508,7 @@ def build_protocol_graph(
         session_id: Optional active session ID to tag on every audit event
         job_id: Job identifier for direct job state.json writes
         worktree_path: When set, MCPs root at the worktree instead of project_root
+        worktree_degraded: Worktree creation failed — skip branch ops
         **custom_functions: Optional overrides
 
     Returns:
@@ -1551,6 +1557,7 @@ def build_protocol_graph(
         project_root=project_root,
         job_id=job_id,
         worktree_path=worktree_path,
+        worktree_degraded=worktree_degraded,
         **custom_functions
     )
     return builder.build_graph()
