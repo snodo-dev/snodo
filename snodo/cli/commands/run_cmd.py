@@ -5,6 +5,7 @@ FILE: snodo/cli/commands/run_cmd.py
 
 import json
 import logging
+import os
 import sys
 from dataclasses import is_dataclass, asdict
 from pathlib import Path
@@ -285,10 +286,12 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     # Set up agent memory
     memory_mgr, checkpointer, thread_config = _setup_memory(project_root, protocol)
 
+    job_id = os.environ.get("SNODO_JOB_ID") or None
+
     compiled_graph = _build_graph(
         args, protocol, project_root, model, checkpointer,
         audit_log=audit_log, session_manager=session_manager,
-        session_id=session_id,
+        session_id=session_id, job_id=job_id,
     )
     if compiled_graph is None:
         if checkpointer:
@@ -426,7 +429,7 @@ def _close_checkpointer(checkpointer) -> None:
 
 def _build_graph(args, protocol: Protocol, project_root: str, model: str,
                  checkpointer=None, audit_log=None, session_manager=None,
-                 session_id=None):
+                 session_id=None, job_id=None):
     """Build and compile the protocol execution graph.
 
     Returns:
@@ -450,6 +453,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             audit_log=audit_log,
             session_manager=session_manager,
             session_id=session_id,
+            job_id=job_id,
         )
         compiled_graph = graph.compile(checkpointer=checkpointer)
         print("✓ Graph compiled with MCP integration")

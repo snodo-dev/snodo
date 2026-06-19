@@ -107,6 +107,7 @@ class GraphBuilder:
         session_id: Optional[str] = None,
         validator_config: Any = None,
         project_root: Optional[str] = None,
+        job_id: Optional[str] = None,
     ):
         """Initialize graph builder with real MCP services.
 
@@ -212,6 +213,7 @@ class GraphBuilder:
         )
         self._summary_model = self._init_summary_model()
         self._project_root = project_root or ""
+        self._job_id = job_id or ""
         self._project_context_cache: Optional[Dict[str, Any]] = None
     
     def build_graph(self) -> StateGraph:
@@ -925,21 +927,31 @@ class GraphBuilder:
             except Exception:
                 pass
 
+    def _merge_into_job_state(self, updates: dict) -> None:
+        """Atomically merge *updates* into the job's state.json (direct write)."""
+        if not self._job_id or not self._project_root:
+            return
+        import json
+        import os as _os
+        from pathlib import Path
+        job_dir = Path(self._project_root) / ".snodo" / "jobs" / self._job_id
+        if not job_dir.is_dir():
+            return
+        state_path = job_dir / "state.json"
+        state = {}
+        if state_path.exists():
+            try:
+                state = json.loads(state_path.read_text())
+            except Exception:
+                pass
+        state.update(updates)
+        tmp = job_dir / "state.json.tmp"
+        tmp.write_text(json.dumps(state, indent=2))
+        _os.replace(str(tmp), str(state_path))
+
     def _auto_write_halt_payload(self, loop_state: Any) -> None:
-        """Persist halt payload to session checkpoint decisions for meta."""
-        if not self._session_manager or not self._session_id:
-            return
-
-        task_id = loop_state.task.id
-        try:
-            session = self._session_manager.load_session(self._session_id)
-        except Exception:
-            return
-
-        halt = session.checkpoint.decisions.get("halt", {})
-        if not isinstance(halt, dict):
-            halt = {}
-
+        """Persist halt payload — dual-write: session checkpoint + job state.json."""
+        # Build the halt payload from the loop state
         meta = loop_state.metadata
         phase = "unknown"
         if loop_state.is_complete:
@@ -951,7 +963,7 @@ class GraphBuilder:
 
         blocker_reason = "; ".join(loop_state.constraint_violations) if loop_state.constraint_violations else None
 
-        halt[task_id] = {
+        halt_payload = {
             "final_decision": "blocked" if loop_state.is_blocked else "completed",
             "phase": phase,
             "halt_type": loop_state.halt_type,
@@ -961,12 +973,40 @@ class GraphBuilder:
             "artifacts_count": len(loop_state.artifacts),
         }
 
+        # Direct write to job state.json
+        self._merge_into_job_state({"halt": halt_payload})
+
+        # Dual-write to session for orchestrator / dashboard
+        if not self._session_manager or not self._session_id:
+            return
+        task_id = loop_state.task.id
+        try:
+            session = self._session_manager.load_session(self._session_id)
+        except Exception:
+            return
+        halt = session.checkpoint.decisions.get("halt", {})
+        if not isinstance(halt, dict):
+            halt = {}
+        halt[task_id] = halt_payload
         self._session_manager.update_decision(
             self._session_id, "halt", halt,
         )
 
     def _auto_write_classification(self, loop_state: Any) -> None:
-        """Persist flow_type / wave_id to session checkpoint for state.json flush."""
+        """Persist flow_type / wave_id — dual-write: session + job state.json."""
+        flow_type = loop_state.task.flow_type
+        wave_id = loop_state.task.wave_id
+
+        # Direct write to job state.json
+        updates = {}
+        if flow_type:
+            updates["flow_type"] = flow_type
+        if wave_id:
+            updates["wave_id"] = wave_id
+        if updates:
+            self._merge_into_job_state(updates)
+
+        # Dual-write to session
         if not self._session_manager or not self._session_id:
             return
         task_id = loop_state.task.id
@@ -978,8 +1018,8 @@ class GraphBuilder:
         if not isinstance(classifications, dict):
             classifications = {}
         classifications[task_id] = {
-            "flow_type": loop_state.task.flow_type,
-            "wave_id": loop_state.task.wave_id,
+            "flow_type": flow_type,
+            "wave_id": wave_id,
             "task_spec": loop_state.task.spec[:200],
         }
         self._session_manager.update_decision(
@@ -1293,6 +1333,8 @@ class GraphBuilder:
             spec=task_dict.get("spec", ""),
             parent_task_ref=task_dict.get("parent_task_ref"),
             depth=task_dict.get("depth", 0),
+            flow_type=task_dict.get("flow_type"),
+            wave_id=task_dict.get("wave_id"),
         )
         
         results = []
@@ -1350,6 +1392,8 @@ class GraphBuilder:
                 "spec": state.task.spec,
                 "parent_task_ref": state.task.parent_task_ref,
                 "depth": state.task.depth,
+                "flow_type": state.task.flow_type,
+                "wave_id": state.task.wave_id,
             },
             "current_mode": state.current_mode,
             "validation_results": [
@@ -1440,6 +1484,7 @@ def build_protocol_graph(
     audit_log: Any = None,
     session_manager: Any = None,
     session_id: Optional[str] = None,
+    job_id: Optional[str] = None,
     **custom_functions
 ) -> StateGraph:
     """Convenience function to build graph with MCP integration.
@@ -1453,6 +1498,7 @@ def build_protocol_graph(
         audit_log: Optional AuditLog for INV4 event logging
         session_manager: Optional SessionManager for INV5 session state
         session_id: Optional active session ID to tag on every audit event
+        job_id: Job identifier for direct job state.json writes
         **custom_functions: Optional overrides
 
     Returns:
@@ -1496,6 +1542,7 @@ def build_protocol_graph(
         session_id=session_id,
         validator_config=llm_cfg.validator,
         project_root=project_root,
+        job_id=job_id,
         **custom_functions
     )
     return builder.build_graph()
