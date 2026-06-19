@@ -40,8 +40,9 @@ def main():
     job_dir = sys.argv[1]
     argv = sys.argv[2:]  # Everything after job_dir goes to snodo CLI
 
-    # Export job_id so the engine can write directly to job state.json
+    # Export job_id + project_root so the engine can write to job state.json
     os.environ["SNODO_JOB_ID"] = Path(job_dir).name
+    os.environ["SNODO_PROJECT_ROOT"] = str(Path(job_dir).parent.parent.parent)
 
     # Export worktree_path if the job was set up with one
     try:
