@@ -292,14 +292,23 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     from snodo.infrastructure.worktree import setup_for_task, remove_worktree
     existing_wt = os.environ.get("SNODO_WORKTREE_PATH")
     worktree_path_val = setup_for_task(project_root, task.id, task.spec, existing_worktree_path=existing_wt)
+    worktree_degraded = False
     if worktree_path_val:
         print(f"  Worktree: {worktree_path_val}")
+    elif existing_wt:
+        print("  Worktree: pre-created worktree not found — running without isolation")
+        worktree_degraded = True
+    else:
+        print("  WARNING: Worktree creation failed — running WITHOUT isolation.")
+        print("  WARNING: No task branch will be created. Files change current working tree.")
+        worktree_degraded = True
 
     compiled_graph = _build_graph(
         args, protocol, project_root, model, checkpointer,
         audit_log=audit_log, session_manager=session_manager,
         session_id=session_id, job_id=job_id,
         worktree_path=worktree_path_val,
+        worktree_degraded=worktree_degraded,
     )
     if compiled_graph is None:
         if worktree_path_val:
@@ -445,7 +454,8 @@ def _close_checkpointer(checkpointer) -> None:
 
 def _build_graph(args, protocol: Protocol, project_root: str, model: str,
                  checkpointer=None, audit_log=None, session_manager=None,
-                 session_id=None, job_id=None, worktree_path=None):
+                 session_id=None, job_id=None, worktree_path=None,
+                 worktree_degraded=False):
     """Build and compile the protocol execution graph.
 
     Returns:
@@ -473,6 +483,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             session_id=session_id,
             job_id=job_id,
             worktree_path=worktree_path,
+            worktree_degraded=worktree_degraded,
         )
         compiled_graph = graph.compile(checkpointer=checkpointer)
         print("✓ Graph compiled with MCP integration")

@@ -34,7 +34,7 @@ def worktree_dir(project_root: str) -> Path:
 
 
 def worktree_path(project_root: str, task_id: str) -> Path:
-    return worktree_dir(project_root) / f"task_{task_id}"
+    return worktree_dir(project_root) / task_id
 
 
 def create_worktree(
@@ -71,7 +71,7 @@ def create_worktree(
     except GitCommandError:
         pass
 
-    repo.git.worktree("add", str(wt_path), branch_name, "main")
+    repo.git.worktree("add", str(wt_path), "-b", branch_name, "main")
     _logger.info("Created worktree %s on branch %s", wt_path, branch_name)
     return wt_path
 
@@ -96,7 +96,8 @@ def setup_for_task(
         return existing_worktree_path
     try:
         return str(create_worktree(project_root, task_id, spec))
-    except Exception:
+    except Exception as exc:
+        _logger.warning("Worktree creation failed for task %s: %s", task_id, exc)
         return None
 
 
