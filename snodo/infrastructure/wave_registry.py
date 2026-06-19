@@ -8,6 +8,9 @@ Every task gets a one-shot classification at governance time:
   - wave_id:  matched existing wave or newly minted
 
 Waves expire after max_age_days or max_idle_days (configurable).
+
+All feature_description and task_summary values MUST be LLM-generated
+summaries. Raw task_spec slices are NEVER assigned to these fields.
 """
 
 import json
@@ -88,36 +91,32 @@ class WaveRegistry:
             open_waves = self._filter_open(waves)
             prompt = self._build_prompt(task_spec, open_waves)
             result = self._call_classifier(prompt, completion_fn, model)
-            flow_type = result.get("flow_type", "feature")
-            if flow_type not in FLOW_TYPES:
-                flow_type = "feature"
-
+            flow_type = result["flow_type"]
+            task_summary = result["task_summary"]
             existing_ids = {w.wave_id for w in waves}
 
-            if result.get("wave_id") and result["wave_id"] != "new":
+            # Match existing wave
+            if result["wave_id"] != "new":
                 wave_id = result["wave_id"]
                 matched = next((w for w in waves if w.wave_id == wave_id), None)
                 if matched:
-                    self._assign_to_wave(matched, task_id, task_spec)
+                    self._assign_to_wave(matched, task_id, task_summary)
                     self._write_waves(waves)
-                    return {"flow_type": flow_type, "wave_id": wave_id, "task_summary": task_spec[:120]}
+                    return {"flow_type": flow_type, "wave_id": wave_id, "task_summary": task_summary}
 
-            new_desc = result.get("new_wave_description", "") or task_spec[:80]
+            # Mint new wave
+            feature_description = result.get("feature_description", "") or "Unclassified feature"
             new_wave = WaveEntry(
                 wave_id=_generate_wave_id(existing_ids),
-                feature_description=new_desc,
-                anchor_summaries=[task_spec[:120]],
+                feature_description=feature_description,
+                anchor_summaries=[task_summary],
                 created=_now(),
                 last_activity=_now(),
                 task_ids=[task_id],
             )
             waves.append(new_wave)
             self._write_waves(waves)
-            return {
-                "flow_type": flow_type,
-                "wave_id": new_wave.wave_id,
-                "task_summary": task_spec[:120],
-            }
+            return {"flow_type": flow_type, "wave_id": new_wave.wave_id, "task_summary": task_summary}
 
     def open_waves(self) -> list[WaveEntry]:
         """Return waves that are still OPEN (non-expired)."""
@@ -159,15 +158,14 @@ class WaveRegistry:
         return result
 
     def _assign_to_wave(
-        self, wave: WaveEntry, task_id: str, task_spec: str
+        self, wave: WaveEntry, task_id: str, task_summary: str
     ) -> None:
         wave.last_activity = _now()
         if task_id not in wave.task_ids:
             wave.task_ids.append(task_id)
         if len(wave.anchor_summaries) < 3:
-            summary = task_spec[:120]
-            if summary not in wave.anchor_summaries:
-                wave.anchor_summaries.append(summary)
+            if task_summary not in wave.anchor_summaries:
+                wave.anchor_summaries.append(task_summary)
 
     def _build_prompt(
         self, task_spec: str, open_waves: list[WaveEntry]
@@ -190,59 +188,92 @@ class WaveRegistry:
                     parts.append(f"  anchors ({len(anchors)}/3):")
                     for a in anchors:
                         parts.append(f"    - {a}")
+
         parts.append(
             "\n\n## Instructions\n"
-            "Classify this task's flow_type (one of: feature, defect, debt, risk) "
-            "and decide whether it belongs to an open wave or starts a new one.\n\n"
-            "flow_type meanings:\n"
+            "Classify this task's flow_type and decide whether it belongs to an "
+            "open wave or starts a new one.\n\n"
+            "flow_type (one of feature, defect, debt, risk):\n"
             "  feature — new capability or enhancement\n"
             "  defect  — bug fix or regression\n"
             "  debt    — refactor, tech-debt cleanup, test improvement\n"
             "  risk    — security, compliance, or reliability\n\n"
-            "Wave matching:\n"
-            "- If this task belongs to an existing open wave, return its wave_id.\n"
-            "- If uncertain, return \"new\" — fragmentation is recoverable.\n"
-            "- If \"new\", provide a short feature_description for the new wave.\n\n"
-            "Respond with ONLY this JSON:\n"
-            '{"flow_type": "...", "wave_id": "<id>|new", '
-            '"new_wave_description": "..."}\n'
+            "## Required output fields — ALL REQUIRED\n"
+            "- flow_type\n"
+            "- wave_id: an existing wave_id from the list above, or \"new\"\n"
+            "- task_summary: ONE LINE describing THIS task "
+            "(e.g. \"Migrate Team page to SvelteKit\"). "
+            "NEVER copy the spec literally — write a concise label.\n"
+            "- feature_description: REQUIRED when wave_id=\"new\". "
+            "A short feature label for the body of work, broader than one task "
+            "(e.g. \"SvelteKit dashboard migration\"). "
+            "NEVER copy the spec literally.\n\n"
+            "## Wave matching\n"
+            "- Assign to an existing wave when this task is part of the same "
+            "feature or effort as that wave's description.\n"
+            "- Only return \"new\" if this is genuinely a different feature.\n"
+            "- If uncertain, lean toward the closest existing wave — "
+            "over-grouping is preferable to fragmentation.\n\n"
+            "## Examples\n"
+            'Good: {"flow_type": "feature", "wave_id": "w_0001", '
+            '"task_summary": "Migrate Team page to SvelteKit"}\n'
+            'Good: {"flow_type": "feature", "wave_id": "new", '
+            '"task_summary": "Migrate Dashboard page to SvelteKit", '
+            '"feature_description": "SvelteKit dashboard migration"}\n'
+            'Bad: {"flow_type": "feature", "wave_id": "new", '
+            '"task_summary": "VALIDATION TOKEN: ..."}\n\n'
+            "Respond with ONLY the JSON object. All listed fields are required.\n"
         )
         return "".join(parts)
 
     def _call_classifier(
         self, prompt: str, completion_fn, model: str
     ) -> dict:
-        """Call LLM classifier, parse JSON response."""
-        try:
-            if completion_fn is None:
-                from litellm import completion as completion_fn
-            kwargs = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 300,
-                "temperature": 0.0,
-            }
-            response = completion_fn(**kwargs)
-            content = response.choices[0].message.content
-            if not content:
-                return _fallback(result="new")
-            parsed = json.loads(content)
-            if isinstance(parsed, dict):
-                return parsed
-            import re
-            m = re.search(r'\{.*\}', content, re.DOTALL)
-            if m:
-                parsed = json.loads(m.group(0))
+        """Call LLM classifier, validate required fields, retry once on failure."""
+        for attempt in range(2):
+            try:
+                if completion_fn is None:
+                    from litellm import completion as completion_fn
+                kwargs = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 400,
+                    "temperature": 0.0,
+                }
+                response = completion_fn(**kwargs)
+                content = response.choices[0].message.content
+                if not content:
+                    continue
+                parsed = json.loads(content)
+                if not isinstance(parsed, dict):
+                    import re
+                    m = re.search(r'\{.*\}', content, re.DOTALL)
+                    if m:
+                        parsed = json.loads(m.group(0))
                 if isinstance(parsed, dict):
-                    return parsed
-        except Exception as e:
-            _logger.warning("Classifier LLM call failed: %s", e)
+                    flow_type = parsed.get("flow_type", "")
+                    wave_id = parsed.get("wave_id", "")
+                    task_summary = parsed.get("task_summary", "")
+                    if (
+                        flow_type in FLOW_TYPES
+                        and wave_id
+                        and task_summary
+                        and (wave_id != "new" or parsed.get("feature_description"))
+                    ):
+                        return parsed
+            except Exception as e:
+                _logger.warning(
+                    "Classifier LLM call attempt %d failed: %s",
+                    attempt + 1, e,
+                )
+        _logger.error("Classifier LLM failed after 2 attempts — using fallback")
         return _fallback()
 
 
-def _fallback(result: str = "new") -> dict:
+def _fallback() -> dict:
     return {
         "flow_type": "feature",
-        "wave_id": result,
-        "new_wave_description": "",
+        "wave_id": "new",
+        "task_summary": "Unclassified task",
+        "feature_description": "Unclassified feature",
     }

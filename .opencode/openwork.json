@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "workspace": {
+    "name": "snodo-public",
+    "createdAt": 1781900094570,
+    "preset": "starter"
+  },
+  "authorizedRoots": [
+    "/Users/ylliprifti/Dev/snodo-public"
+  ],
+  "reload": null
+}

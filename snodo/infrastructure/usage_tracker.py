@@ -13,10 +13,12 @@ import os
 import time
 from pathlib import Path
 
+from litellm import CustomLogger
+
 _logger = logging.getLogger(__name__)
 
 
-class UsageTracker:
+class UsageTracker(CustomLogger):
     """litellm CustomLogger — captures usage, cost, timing per completion.
 
     Instantiated once at module level in coders/litellm.py:28.
@@ -24,6 +26,7 @@ class UsageTracker:
     """
 
     def __init__(self):
+        super().__init__()
         self._calls: list[dict] = []
 
     def log_success_event(self, kwargs, response_obj, start_time, end_time):
