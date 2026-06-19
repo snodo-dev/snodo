@@ -1075,6 +1075,8 @@ class GraphBuilder:
             max_tool_turns=llm_cfg.coder.max_tool_turns,
             workspace_mcp=self.workspace_mcp,
         )
+        if hasattr(fresh_coder, "_job_id") and self._job_id:
+            fresh_coder._job_id = self._job_id
 
         old_model = getattr(self.coder, "model", "")
         self.coder = fresh_coder
@@ -1278,7 +1280,7 @@ class GraphBuilder:
 
         # Thread job_id / task_id for usage tracking
         if hasattr(coder, "_job_id"):
-            coder._job_id = self._session_id or ""
+            coder._job_id = self._job_id or self._session_id or ""
         if hasattr(coder, "_task_id"):
             coder._task_id = task.id
 
