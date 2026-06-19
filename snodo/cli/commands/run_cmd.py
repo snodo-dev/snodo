@@ -288,15 +288,12 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
     job_id = os.environ.get("SNODO_JOB_ID") or None
 
-    # Create git worktree for task isolation
-    worktree_path_val = None
-    try:
-        from snodo.infrastructure.worktree import create_worktree, remove_worktree
-        worktree_path_val = str(create_worktree(project_root, task.id, task.spec))
+    # Set up git worktree — shared helper used by BOTH CLI inline and background
+    from snodo.infrastructure.worktree import setup_for_task, remove_worktree
+    existing_wt = os.environ.get("SNODO_WORKTREE_PATH")
+    worktree_path_val = setup_for_task(project_root, task.id, task.spec, existing_worktree_path=existing_wt)
+    if worktree_path_val:
         print(f"  Worktree: {worktree_path_val}")
-    except Exception as e:
-        print(f"  Worktree: skipped ({e})")
-        worktree_path_val = None
 
     compiled_graph = _build_graph(
         args, protocol, project_root, model, checkpointer,

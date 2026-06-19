@@ -133,6 +133,7 @@ class JobManager:
             Job ID string
         """
         from snodo.jobs.runner import build_command, spawn_background
+        from snodo.infrastructure.worktree import create_worktree, remove_worktree
 
         job_id = self._generate_id()
         job_dir = self.jobs_dir / job_id
@@ -154,13 +155,28 @@ class JobManager:
         }
         self._save_state(job_dir, state)
 
+        # Create git worktree for isolation BEFORE spawn
+        wt_path: Optional[str] = None
+        try:
+            task_desc = task_args.get("description", "")
+            wt_path = str(create_worktree(self.project_root, job_id, task_desc))
+            task_args["worktree_path"] = wt_path
+        except Exception as e:
+            print(f"Worktree: skipped ({e})")
+
         # Build command and spawn
         stdout_path = job_dir / "stdout.log"
         stderr_path = job_dir / "stderr.log"
 
         cmd = build_command(str(job_dir), task_args)
-        cwd = task_args.get("cwd", self.project_root)
-        pid = spawn_background(cmd, str(stdout_path), str(stderr_path), cwd)
+        cwd = wt_path or task_args.get("cwd", self.project_root)
+        try:
+            pid = spawn_background(cmd, str(stdout_path), str(stderr_path), cwd)
+        except BaseException:
+            # Spawn failed — clean up worktree before re-raising
+            if wt_path:
+                remove_worktree(self.project_root, job_id)
+            raise
 
         # Update state with PID
         state["status"] = "running"

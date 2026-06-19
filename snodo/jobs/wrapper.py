@@ -43,6 +43,18 @@ def main():
     # Export job_id so the engine can write directly to job state.json
     os.environ["SNODO_JOB_ID"] = Path(job_dir).name
 
+    # Export worktree_path if the job was set up with one
+    try:
+        task_path = Path(job_dir) / "task.json"
+        if task_path.exists():
+            import json as _json
+            task_data = _json.loads(task_path.read_text())
+            wt = task_data.get("worktree_path")
+            if wt:
+                os.environ["SNODO_WORKTREE_PATH"] = wt
+    except Exception:
+        pass
+
     # Load current state and mark as running
     state = _load_state(job_dir)
     state["status"] = "running"
@@ -60,6 +72,17 @@ def main():
     except Exception as e:
         print(f"Job wrapper error: {e}", file=sys.stderr)
         exit_code = 1
+    finally:
+        # Clean up worktree on completion (belt-and-suspenders)
+        wt = os.environ.get("SNODO_WORKTREE_PATH")
+        if wt:
+            try:
+                from snodo.infrastructure.worktree import remove_worktree
+                project_root = str(Path(job_dir).parent.parent.parent)
+                job_id = Path(job_dir).name
+                remove_worktree(project_root, job_id)
+            except Exception:
+                pass
 
     # Write final state
     state = _load_state(job_dir)
