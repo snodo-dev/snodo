@@ -82,6 +82,12 @@ class ValidatorLLMConfig(BaseModel):
     model: Optional[str] = Field(default=None, description="Validator LLM model. None = use default_model.")
 
 
+class ClassifierConfig(BaseModel):
+    model: Optional[str] = Field(default=None, description="Classifier LLM model. None = use default_model.")
+    max_tokens: int = Field(default=500, ge=1, description="Max tokens for classifier completion")
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Temperature for classifier completion")
+
+
 class ReconConfig(BaseModel):
     num_agents: int = Field(default=1, ge=1, description="Default number of agents for recon fan-out")
     models: list[str] = Field(default_factory=list, description="Ordered model priority list for recon")
@@ -90,6 +96,8 @@ class ReconConfig(BaseModel):
 class WaveConfig(BaseModel):
     max_age_days: int = Field(default=14, ge=1, description="Hard expiry age for a wave")
     max_idle_days: int = Field(default=5, ge=1, description="Idle timeout before wave closes")
+    max_tokens: int = Field(default=500, ge=1, description="Max tokens for classifier completion")
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Temperature for classifier completion")
 
 
 class LlmConfig(BaseModel):
@@ -97,6 +105,7 @@ class LlmConfig(BaseModel):
     coder: CoderConfig = Field(default_factory=CoderConfig)
     validator: ValidatorConfig = Field(default_factory=ValidatorConfig)
     validator_llm: ValidatorLLMConfig = Field(default_factory=ValidatorLLMConfig)
+    classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
     recon: ReconConfig = Field(default_factory=ReconConfig)
     wave: WaveConfig = Field(default_factory=WaveConfig)
 

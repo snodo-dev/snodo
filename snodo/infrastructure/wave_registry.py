@@ -15,6 +15,7 @@ summaries. Raw task_spec slices are NEVER assigned to these fields.
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -82,8 +83,13 @@ class WaveRegistry:
     ) -> dict:
         """Read wave registry, classify via LLM, update wave.json, return result.
 
+        When classification fails (unparseable, missing fields, exception)
+        the task is left unwaved: ``wave_id`` is ``None``.  No wave is ever
+        fabricated.  A warning is logged.
+
         Returns:
-            dict with keys ``flow_type``, ``wave_id``, ``task_summary``.
+            dict with keys ``flow_type``, ``wave_id`` (str or None),
+            ``task_summary`` (str or None).
         """
         lock = FileLock(str(self._lock_path))
         with lock:
@@ -91,32 +97,49 @@ class WaveRegistry:
             open_waves = self._filter_open(waves)
             prompt = self._build_prompt(task_spec, open_waves)
             result = self._call_classifier(prompt, completion_fn, model)
-            flow_type = result["flow_type"]
-            task_summary = result["task_summary"]
+
+            flow_type = result.get("flow_type", "feature")
+            task_summary = result.get("task_summary")
+            wave_id = result.get("wave_id")
+
+            if flow_type not in FLOW_TYPES:
+                flow_type = "feature"
+
+            # No valid classification — leave task unwaved (R3)
+            if not wave_id:
+                return {"flow_type": flow_type, "wave_id": None, "task_summary": task_summary}
+
             existing_ids = {w.wave_id for w in waves}
 
             # Match existing wave
-            if result["wave_id"] != "new":
-                wave_id = result["wave_id"]
+            if wave_id != "new":
                 matched = next((w for w in waves if w.wave_id == wave_id), None)
                 if matched:
                     self._assign_to_wave(matched, task_id, task_summary)
                     self._write_waves(waves)
-                    return {"flow_type": flow_type, "wave_id": wave_id, "task_summary": task_summary}
+                    return {
+                        "flow_type": flow_type,
+                        "wave_id": wave_id,
+                        "task_summary": task_summary,
+                    }
 
             # Mint new wave
-            feature_description = result.get("feature_description", "") or "Unclassified feature"
+            feature_description = result.get("feature_description", "") or task_summary or "Unclassified"
             new_wave = WaveEntry(
                 wave_id=_generate_wave_id(existing_ids),
                 feature_description=feature_description,
-                anchor_summaries=[task_summary],
+                anchor_summaries=[task_summary] if task_summary else [],
                 created=_now(),
                 last_activity=_now(),
                 task_ids=[task_id],
             )
             waves.append(new_wave)
             self._write_waves(waves)
-            return {"flow_type": flow_type, "wave_id": new_wave.wave_id, "task_summary": task_summary}
+            return {
+                "flow_type": flow_type,
+                "wave_id": new_wave.wave_id,
+                "task_summary": task_summary,
+            }
 
     def open_waves(self) -> list[WaveEntry]:
         """Return waves that are still OPEN (non-expired)."""
@@ -136,8 +159,8 @@ class WaveRegistry:
             if not isinstance(raw, list):
                 return []
             return [WaveEntry(**e) for e in raw if isinstance(e, dict)]
-        except (json.JSONDecodeError, TypeError, KeyError):
-            _logger.warning("Corrupt wave.json — returning empty")
+        except (json.JSONDecodeError, TypeError, KeyError) as e:
+            _logger.warning("Corrupt wave.json (%s) — returning empty", e)
             return []
 
     def _write_waves(self, waves: list[WaveEntry]) -> None:
@@ -158,12 +181,12 @@ class WaveRegistry:
         return result
 
     def _assign_to_wave(
-        self, wave: WaveEntry, task_id: str, task_summary: str
+        self, wave: WaveEntry, task_id: str, task_summary: Optional[str]
     ) -> None:
         wave.last_activity = _now()
         if task_id not in wave.task_ids:
             wave.task_ids.append(task_id)
-        if len(wave.anchor_summaries) < 3:
+        if task_summary and len(wave.anchor_summaries) < 3:
             if task_summary not in wave.anchor_summaries:
                 wave.anchor_summaries.append(task_summary)
 
@@ -209,11 +232,13 @@ class WaveRegistry:
             "(e.g. \"SvelteKit dashboard migration\"). "
             "NEVER copy the spec literally.\n\n"
             "## Wave matching\n"
-            "- Assign to an existing wave when this task is part of the same "
-            "feature or effort as that wave's description.\n"
-            "- Only return \"new\" if this is genuinely a different feature.\n"
-            "- If uncertain, lean toward the closest existing wave — "
-            "over-grouping is preferable to fragmentation.\n\n"
+            "- Evaluate the task against each open wave's description and "
+            "anchor summaries.\n"
+            "- If the task shares a feature area with an open wave, return that "
+            "wave's id.\n"
+            "- If it does not match any open wave, return \"new\".\n"
+            "- Make a clear evidence-based decision — do not bias toward either "
+            "matching or minting.\n\n"
             "## Examples\n"
             'Good: {"flow_type": "feature", "wave_id": "w_0001", '
             '"task_summary": "Migrate Team page to SvelteKit"}\n'
@@ -229,27 +254,42 @@ class WaveRegistry:
     def _call_classifier(
         self, prompt: str, completion_fn, model: str
     ) -> dict:
-        """Call LLM classifier, validate required fields, retry once on failure."""
+        """Call LLM classifier, validate required fields, retry once on failure.
+
+        Returns a dict with at minimum ``flow_type``.  On total failure
+        after retry, ``wave_id`` and ``task_summary`` are None — the caller
+        must not mint a wave.
+        """
         for attempt in range(2):
             try:
                 if completion_fn is None:
                     from litellm import completion as completion_fn
-                kwargs = {
+
+                kwargs: dict = {
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 400,
-                    "temperature": 0.0,
+                    "max_tokens": self._config.max_tokens,
+                    "temperature": self._config.temperature,
                 }
+
+                # Request structured JSON when the provider supports it (R4)
+                try:
+                    from litellm import supports_response_format
+                    if supports_response_format(
+                        model, {"type": "json_object"}
+                    ):
+                        kwargs["response_format"] = {"type": "json_object"}
+                except Exception:
+                    pass
+
                 response = completion_fn(**kwargs)
                 content = response.choices[0].message.content
                 if not content:
                     continue
-                parsed = json.loads(content)
-                if not isinstance(parsed, dict):
-                    import re
-                    m = re.search(r'\{.*\}', content, re.DOTALL)
-                    if m:
-                        parsed = json.loads(m.group(0))
+
+                # Primary: direct JSON parse
+                parsed = _parse_json(content)
+
                 if isinstance(parsed, dict):
                     flow_type = parsed.get("flow_type", "")
                     wave_id = parsed.get("wave_id", "")
@@ -266,14 +306,45 @@ class WaveRegistry:
                     "Classifier LLM call attempt %d failed: %s",
                     attempt + 1, e,
                 )
-        _logger.error("Classifier LLM failed after 2 attempts — using fallback")
+
+        _logger.warning(
+            "Classifier failed after 2 attempts — leaving task unwaved"
+        )
         return _fallback()
 
 
+def _parse_json(content: str) -> Optional[dict]:
+    """Parse JSON from LLM response.  Tries direct parse first, then
+    extracts from markdown fences, then bare ``{...}`` as backstop."""
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+
+    # Backstop: extract from markdown fence
+    m = re.search(r'```(?:json)?\s*\n(.*?)```', content, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # Last resort: bare JSON object anywhere in the text
+    m = re.search(r'\{.*\}', content, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
 def _fallback() -> dict:
+    """Return a result that leaves the task unwaved — no fabricated wave_id."""
     return {
         "flow_type": "feature",
-        "wave_id": "new",
-        "task_summary": "Unclassified task",
-        "feature_description": "Unclassified feature",
+        "wave_id": None,
+        "task_summary": None,
+        "feature_description": None,
     }
