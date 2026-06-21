@@ -64,12 +64,12 @@ class TestGenerateWaveId:
 
 
 class TestFallback:
-    def test_defaults(self):
+    def test_leaves_task_unwaved(self):
         result = _fallback()
         assert result["flow_type"] == "feature"
-        assert result["wave_id"] == "new"
-        assert result["task_summary"] == "Unclassified task"
-        assert result["feature_description"] == "Unclassified feature"
+        assert result["wave_id"] is None
+        assert result["task_summary"] is None
+        assert result["feature_description"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -254,13 +254,14 @@ class TestClassifyTask:
         assert len(waves) == 1
         assert "task_001" in waves[0].task_ids
 
-    def test_no_completion_fn_falls_back(self, tmp_path):
+    def test_no_completion_fn_leaves_unwaved(self, tmp_path):
         reg = _make_registry(tmp_path)
         result = reg.classify_task("any task", "task_001", None, "gemma-model")
         assert result["flow_type"] == "feature"
-        assert result["wave_id"].startswith("w_")
+        assert result["wave_id"] is None
+        assert result["task_summary"] is None
 
-    def test_invalid_flow_type_defaults_to_feature(self, tmp_path):
+    def test_invalid_flow_type_defaults_to_feature_unwaved(self, tmp_path):
         reg = _make_registry(tmp_path)
         mock_completion = MagicMock()
         mock_completion.return_value.choices[0].message.content = json.dumps({
@@ -271,6 +272,7 @@ class TestClassifyTask:
         })
         result = reg.classify_task("task", "task_001", mock_completion, "gemma-model")
         assert result["flow_type"] == "feature"
+        assert result["wave_id"] is None
 
     def test_stale_wave_mints_new(self, tmp_path):
         old = time.time() - 30 * 86400
@@ -308,14 +310,14 @@ class TestClassifyTask:
         assert result["wave_id"].startswith("w_")
         assert result["wave_id"] != "w_0001"
 
-    def test_llm_parse_error_falls_back(self, tmp_path):
+    def test_llm_parse_error_leaves_unwaved(self, tmp_path):
         reg = _make_registry(tmp_path)
         mock_completion = MagicMock()
         mock_completion.return_value.choices[0].message.content = "not valid json"
         result = reg.classify_task("task", "task_001", mock_completion, "gemma-model")
         assert result["flow_type"] == "feature"
-        assert result["wave_id"].startswith("w_")
-        assert result["task_summary"] == "Unclassified task"
+        assert result["wave_id"] is None
+        assert result["task_summary"] is None
 
     def test_classified_fields_are_not_raw_spec_slices(self, tmp_path):
         reg = _make_registry(tmp_path)
@@ -353,6 +355,49 @@ class TestClassifyTask:
             reg.classify_task("fix bug", "task_001", mock_completion, "gemma-model")
             mock_lock.__enter__.assert_called_once()
 
+    def test_related_task_matches_existing_wave(self, tmp_path):
+        """Two related tasks land in the same wave (R2 matching)."""
+        _write_waves(tmp_path, [
+            {"wave_id": "w_0001", "feature_description": "SvelteKit dashboard migration", "anchor_summaries": ["Migrate Dashboard to SvelteKit"], "created": time.time(), "last_activity": time.time(), "task_ids": ["task_001"]},
+        ])
+        reg = _make_registry(tmp_path)
+        mock_completion = MagicMock()
+        mock_completion.return_value.choices[0].message.content = json.dumps({
+            "flow_type": "feature",
+            "wave_id": "w_0001",
+            "task_summary": "Migrate Team page to SvelteKit",
+        })
+        result = reg.classify_task("Migrate Team page to SvelteKit framework", "task_002", mock_completion, "gemma-model")
+        assert result["wave_id"] == "w_0001"
+        waves = reg._read_waves()
+        assert len(waves) == 1
+        assert "task_002" in waves[0].task_ids
+
+    def test_markdown_fence_json_parses(self, tmp_path):
+        """JSON inside ``` fences parses correctly (R4 backstop)."""
+        reg = _make_registry(tmp_path)
+        mock_completion = MagicMock()
+        mock_completion.return_value.choices[0].message.content = (
+            "Here is the classification:\n\n```json\n"
+            + json.dumps({"flow_type": "feature", "wave_id": "new", "task_summary": "Add login", "feature_description": "Auth system"})
+            + "\n```"
+        )
+        result = reg.classify_task("build login", "task_001", mock_completion, "gemma-model")
+        assert result["flow_type"] == "feature"
+        assert result["wave_id"].startswith("w_")
+        assert result["task_summary"] == "Add login"
+
+    def test_null_wave_id_on_total_failure_logged(self, tmp_path, caplog):
+        """Unparseable classifier response returns null wave_id (R3) and logs a warning."""
+        import logging
+        reg = _make_registry(tmp_path)
+        mock_completion = MagicMock()
+        mock_completion.return_value.choices[0].message.content = "totally broken response"
+        with caplog.at_level(logging.WARNING):
+            result = reg.classify_task("task", "task_001", mock_completion, "gemma-model")
+        assert result["wave_id"] is None
+        assert any("failed" in msg or "unwaved" in msg for msg in caplog.messages)
+
 
 # ---------------------------------------------------------------------------
 # Classification prompt
@@ -388,3 +433,17 @@ class TestPrompts:
         prompt = reg._build_prompt("task", waves)
         assert "w_0001" in prompt
         assert "w_0002" in prompt
+
+    def test_prompt_has_no_bias_toward_minting(self, tmp_path):
+        """Prompt must not instruct 'if uncertain return new' (R2)."""
+        reg = _make_registry(tmp_path)
+        prompt = reg._build_prompt("task", [])
+        assert "uncertain" not in prompt.lower() or "evidence" in prompt.lower()
+
+    def test_classifier_config_resolves_model(self):
+        """Classifier model resolves from llm.classifier.model -> DEFAULT_MODEL (C1)."""
+        from snodo.infrastructure.config import LlmConfig, DEFAULT_MODEL
+        cfg = LlmConfig()
+        model = (cfg.classifier.model if cfg.classifier and cfg.classifier.model else None) or DEFAULT_MODEL
+        assert model == DEFAULT_MODEL
+        assert model != "gemini/gemini-2.0-flash"

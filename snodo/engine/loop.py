@@ -328,17 +328,28 @@ class GraphBuilder:
                 from snodo.infrastructure.config import load_llm_config
                 llm_cfg = load_llm_config()
                 registry = WaveRegistry(self._project_root, config=llm_cfg.wave)
+                classifier_model = (
+                    llm_cfg.classifier.model
+                    if llm_cfg.classifier and llm_cfg.classifier.model
+                    else self._default_model
+                )
                 result = registry.classify_task(
                     loop_state.task.spec,
                     loop_state.task.id,
                     self._completion_fn,
-                    self._default_model,
+                    classifier_model,
                 )
                 loop_state.task.flow_type = result.get("flow_type") or "feature"
                 loop_state.task.wave_id = result.get("wave_id") or ""
+                if result.get("task_summary"):
+                    loop_state.metadata["task_summary"] = result["task_summary"]
                 self._auto_write_classification(loop_state)
-            except Exception:
-                pass
+            except Exception as exc:
+                import sys as _sys
+                print(
+                    f"[WAVE] classification failed for {loop_state.task.id}: {exc}",
+                    file=_sys.stderr,
+                )
 
         loop_state = self.governance_fn(loop_state, self.protocol)
 
