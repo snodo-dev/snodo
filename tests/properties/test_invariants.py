@@ -288,10 +288,10 @@ def test_files_in_scope_deterministic(artifacts):
 @_HYP_SETTINGS
 @pytest.mark.property
 def test_policy_error_severity_always_halts(results):
-    """Any 'error' severity → HALT under ALL disagreement policies."""
+    """Any result with error=True → HALT under ALL disagreement policies."""
     forced = [ValidatorResult(
-        validator_id="err_v", severity="error",
-        justification="validator failure",
+        validator_id="err_v", severity="blocker",
+        justification="validator failure", error=True,
     )] + list(results)
     for policy in [DisagreementPolicy.UNANIMOUS, DisagreementPolicy.MAJORITY,
                    DisagreementPolicy.QUORUM, DisagreementPolicy.ANY]:

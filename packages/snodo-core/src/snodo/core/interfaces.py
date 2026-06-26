@@ -46,8 +46,9 @@ class Task(BaseModel):
 class ValidatorResult(BaseModel):
     """Output from a single validator."""
     validator_id: str
-    severity: Literal["pass", "warn", "blocker", "error"]
+    severity: Literal["pass", "warn", "blocker"]
     justification: str
+    error: bool = False
 
 
 class TaskSpec(BaseModel):
