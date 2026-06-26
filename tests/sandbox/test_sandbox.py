@@ -712,7 +712,7 @@ class TestRunInSandbox:
         assert "not built" in captured.err
 
     @patch("docker.from_env")
-    def test_successful_docker_execution(self, mock_from_env, capsys):
+    def test_successful_docker_execution(self, mock_from_env, temp_project, capsys):
         """Should run task in Docker container when available."""
         mock_client = MagicMock()
         mock_client.ping.return_value = True
@@ -769,7 +769,7 @@ class TestRunInSandbox:
             sandbox.run_task(["echo", "test"], Path("."), config=config)
 
     @patch("docker.from_env")
-    def test_sandbox_run_catches_sandbox_error(self, mock_from_env, capsys):
+    def test_sandbox_run_catches_sandbox_error(self, mock_from_env, temp_project, capsys):
         """_run_in_sandbox catches SandboxError and returns exit code 1."""
         mock_client = MagicMock()
         mock_client.ping.return_value = True

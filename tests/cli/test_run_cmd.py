@@ -393,7 +393,7 @@ class TestStreamExecution:
 class TestBuildGraph:
     """Tests for _build_graph."""
 
-    @patch("snodo.cli.commands.run_cmd.build_protocol_graph")
+    @patch("snodo.engine.loop.build_protocol_graph")
     def test_build_success(self, mock_build, capsys):
         from snodo.cli.commands.run_cmd import _build_graph
 
@@ -408,7 +408,7 @@ class TestBuildGraph:
         out = capsys.readouterr().out
         assert "Graph compiled" in out
 
-    @patch("snodo.cli.commands.run_cmd.build_protocol_graph",
+    @patch("snodo.engine.loop.build_protocol_graph",
            side_effect=Exception("Import error"))
     def test_build_failure(self, mock_build, capsys):
         from snodo.cli.commands.run_cmd import _build_graph
@@ -419,7 +419,7 @@ class TestBuildGraph:
         err = capsys.readouterr().err
         assert "Failed to build graph" in err
 
-    @patch("snodo.cli.commands.run_cmd.build_protocol_graph",
+    @patch("snodo.engine.loop.build_protocol_graph",
            side_effect=Exception("oops"))
     def test_build_failure_verbose(self, mock_build, capsys):
         from snodo.cli.commands.run_cmd import _build_graph
@@ -428,7 +428,7 @@ class TestBuildGraph:
         result = _build_graph(args, MagicMock(), "/tmp/proj", "gpt-4")
         assert result is None
 
-    @patch("snodo.cli.commands.run_cmd.build_protocol_graph")
+    @patch("snodo.engine.loop.build_protocol_graph")
     def test_build_with_checkpointer(self, mock_build, capsys):
         from snodo.cli.commands.run_cmd import _build_graph
 
