@@ -4,6 +4,64 @@ FILE: snodo/cli/commands/plan_cmd.py
 """
 
 import sys
+from types import SimpleNamespace
+from typing import Optional
+
+import typer
+
+# ---------------------------------------------------------------------------
+# Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
+# ---------------------------------------------------------------------------
+
+COMMAND_NAME = "plan"
+
+app = typer.Typer(invoke_without_command=True, help="Manage plans")
+
+
+@app.callback()
+def _plan_callback(ctx: typer.Context):
+    """Manage plans."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@app.command("list")
+def plan_list():
+    """List all plans."""
+    args = SimpleNamespace(plan_action="list")
+    return plan_command(args)
+
+
+@app.command("status")
+def plan_status(name: str = typer.Argument(..., help="Plan name")):
+    """Show plan progress."""
+    args = SimpleNamespace(plan_action="status", name=name)
+    return plan_command(args)
+
+
+@app.command("create")
+def plan_create(
+    description: str = typer.Argument(..., help="Intent/goal description for the plan"),
+    plan_name: Optional[str] = typer.Option(
+        None, "--name", "-n", help="Plan name (auto-generated if omitted)",
+    ),
+    protocol: str = typer.Option(
+        ".snodo/protocol.yml", "--protocol", help="Path to protocol file",
+    ),
+    model: Optional[str] = typer.Option(
+        None, "--model", "-m", help="Model to use",
+    ),
+    mock: bool = typer.Option(
+        False, "--mock", help="Use mock coder instead of real LLM",
+    ),
+):
+    """Create a new plan from an intent description."""
+    args = SimpleNamespace(
+        plan_action="create", description=description,
+        plan_name=plan_name, protocol=protocol, model=model, mock=mock,
+    )
+    return plan_command(args)
+
 
 
 def plan_command(args) -> int:

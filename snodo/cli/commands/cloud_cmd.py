@@ -5,6 +5,54 @@ FILE: snodo/cli/commands/cloud_cmd.py
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import typer
+
+# ---------------------------------------------------------------------------
+# Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
+# ---------------------------------------------------------------------------
+
+COMMAND_NAME = "cloud"
+
+app = typer.Typer(invoke_without_command=True, help="Manage snodo cloud connection and audit sync")
+
+
+@app.callback()
+def _cloud_callback(ctx: typer.Context):
+    """Manage snodo cloud connection and audit sync."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@app.command(name="connect")
+def cloud_connect(
+    api_key: str = typer.Argument(..., help="Snodo cloud API key (starts with sndo_staging_ or sndo_live_)"),
+):
+    """Connect to snodo cloud and enable audit sync."""
+    return cloud_connect_command(api_key)
+
+
+@app.command(name="disconnect")
+def cloud_disconnect():
+    """Disconnect from snodo cloud and disable sync."""
+    return cloud_disconnect_command()
+
+
+@app.command(name="status")
+def cloud_status():
+    """Show cloud connection and sync status."""
+    return cloud_status_command()
+
+
+@app.command(name="sync")
+def cloud_sync(
+    sync_all: bool = typer.Option(False, "--all", help="Sync all sessions for the current project"),
+    session: str = typer.Option("", "--session", help="Sync a specific session by ID"),
+):
+    """Ship unsynced audit events to snodo cloud."""
+    return cloud_sync_command(sync_all=sync_all, session_id=session)
+
 
 
 def cloud_connect_command(api_key: str) -> int:

@@ -5,6 +5,44 @@ FILE: snodo/cli/commands/sandbox_cmd.py (Task 5.4)
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Optional
+
+import typer
+
+# ---------------------------------------------------------------------------
+# Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
+# ---------------------------------------------------------------------------
+
+COMMAND_NAME = "sandbox"
+
+app = typer.Typer(invoke_without_command=True, help="Manage Docker sandbox")
+
+
+@app.callback()
+def _sandbox_callback(ctx: typer.Context):
+    """Manage Docker sandbox."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@app.command("build")
+def sandbox_build(
+    tag: Optional[str] = typer.Option(
+        None, "--tag", "-t", help="Image tag (default: snodo-worker:latest)",
+    ),
+):
+    """Build the snodo-worker Docker image."""
+    args = SimpleNamespace(sandbox_action="build", tag=tag)
+    return sandbox_command(args)
+
+
+@app.command("status")
+def sandbox_status():
+    """Check Docker availability and image status."""
+    args = SimpleNamespace(sandbox_action="status")
+    return sandbox_command(args)
+
 
 
 def sandbox_command(args) -> int:

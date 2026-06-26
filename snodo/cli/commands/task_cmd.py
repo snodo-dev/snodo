@@ -4,8 +4,49 @@ FILE: snodo/cli/commands/task_cmd.py
 """
 
 import sys
+from types import SimpleNamespace
+
+import typer
 
 from snodo.infrastructure.paths import resolve_project_root
+
+# ---------------------------------------------------------------------------
+# Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
+# ---------------------------------------------------------------------------
+
+COMMAND_NAME = "task"
+
+app = typer.Typer(invoke_without_command=True, help="Manage task branches")
+
+
+@app.callback()
+def _task_callback(ctx: typer.Context):
+    """Manage task branches."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@app.command(name="list")
+def task_list():
+    """List all task branches in the current project."""
+    return task_list_command(SimpleNamespace())
+
+
+@app.command(name="abandon")
+def task_abandon(
+    task_id: str = typer.Argument(..., help="Task ID to abandon (e.g. task_a1b2c3)"),
+):
+    """Delete a task branch and clear its failure context."""
+    return task_abandon_command(SimpleNamespace(task_id=task_id))
+
+
+@app.command(name="prune")
+def task_prune(
+    stale_days: int = typer.Option(7, "--stale-days", help="Days without activity before pruning"),
+):
+    """List and delete stale task branches."""
+    return task_prune_command(SimpleNamespace(stale_days=stale_days))
+
 
 
 def task_list_command(args) -> int:
