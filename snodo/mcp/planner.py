@@ -231,33 +231,81 @@ class PlannerMCP:
         plan_dir = self.plans_dir / plan_name
         if not plan_dir.exists():
             raise PlannerError(f"Plan not found: {plan_name}")
-
         if not task_id or not task_id.strip():
             raise PlannerError("Task ID cannot be empty")
-
         if not spec or not spec.strip():
             raise PlannerError("Spec cannot be empty")
 
-        # Parse wave number from task_id
+        wave_num = self._parse_wave_num(task_id)
+
+        status_file = plan_dir / "status.json"
+        with open(status_file) as f:
+            status_data = json.load(f)
+        tasks = status_data.setdefault("tasks", {})
+
+        old_spec_hash = self._handle_existing_task(
+            tasks, task_id, parent_task_ref, plan_name, replace
+        )
+        normalized_spec = self._normalize_spec(spec)
+        new_depth = self._resolve_parent_and_depth(
+            plan_name, task_id, parent_task_ref, normalized_spec
+        )
+        spec_hash = hashlib.sha256(normalized_spec.encode()).hexdigest()[:16]
+
+        spec_file = self._write_spec_and_update(
+            plan_dir, wave_num, task_id, spec,
+            status_file, status_data, tasks,
+            parent_task_ref, new_depth, spec_hash,
+        )
+
+        if old_spec_hash is not None:
+            self._audit("task_replaced", {
+                "task_id": task_id,
+                "old_spec_hash": old_spec_hash,
+                "new_spec_hash": spec_hash,
+                "plan_name": plan_name,
+            })
+        self._audit("task_added", {
+            "task_id": task_id,
+            "parent_task_ref": parent_task_ref,
+            "depth": new_depth,
+            "spec_hash": spec_hash,
+            "plan_name": plan_name,
+        })
+        return str(spec_file.relative_to(self.project_root))
+
+    def _parse_wave_num(self, task_id: str) -> int:
+        """Parse and return the wave number from a task_id.
+
+        Raises:
+            PlannerError: If task_id has no dot or wave part is not an integer
+        """
         if "." not in task_id:
             raise PlannerError(
                 f"Invalid task_id format: {task_id}. Expected: <wave>.<seq>_<name>"
             )
-
         wave_str = task_id.split(".")[0]
         try:
-            wave_num = int(wave_str)
+            return int(wave_str)
         except ValueError:
             raise PlannerError(f"Invalid wave number in task_id: {task_id}")
 
-        # Load current status
-        status_file = plan_dir / "status.json"
-        with open(status_file) as f:
-            status_data = json.load(f)
+    def _handle_existing_task(
+        self,
+        tasks: dict,
+        task_id: str,
+        parent_task_ref: Optional[str],
+        plan_name: str,
+        replace: bool,
+    ) -> Optional[str]:
+        """Guard against duplicate task_id and capture the old spec_hash for replace.
 
-        tasks = status_data.setdefault("tasks", {})
+        Raises:
+            PlannerError: If task already exists and replace is False
 
-        # Check for existing task (replace guard)
+        Returns:
+            old_spec_hash string if replacing an existing task, else None
+        """
         existing_entry = tasks.get(task_id)
         if existing_entry is not None and not replace:
             self._audit("task_add_rejected", {
@@ -268,106 +316,100 @@ class PlannerMCP:
                 "plan_name": plan_name,
             })
             raise PlannerError(f"task_exists: {task_id} already exists in plan {plan_name}")
-
-        # Track old spec_hash for replace audit
-        old_spec_hash = None
         if existing_entry is not None and replace:
             normalized_existing = self._normalize_task_entry(existing_entry)
-            old_spec_hash = normalized_existing.get("spec_hash")
+            return normalized_existing.get("spec_hash")
+        return None
 
-        # Parent lookup and depth calculation
-        new_depth = 0
-        if parent_task_ref:
-            parent_entry = self._get_task_status(plan_name, parent_task_ref)
-            if parent_entry is None:
-                self._audit("task_add_rejected", {
-                    "task_id": task_id,
-                    "parent_task_ref": parent_task_ref,
-                    "depth": 0,
-                    "reason": "parent_not_found",
-                    "plan_name": plan_name,
-                })
-                raise PlannerError(
-                    f"parent_not_found: {parent_task_ref} not in plan {plan_name}"
-                )
-            new_depth = parent_entry["depth"] + 1
+    def _resolve_parent_and_depth(
+        self,
+        plan_name: str,
+        task_id: str,
+        parent_task_ref: Optional[str],
+        normalized_spec: str,
+    ) -> int:
+        """Look up parent, enforce depth limit, and check for spec cycles.
 
-        # Depth enforcement
-        if parent_task_ref:
-            from snodo.config import ConfigManager
-            max_depth = ConfigManager().load().get("engine", {}).get(
-                "max_subtask_depth", 3
+        Raises:
+            PlannerError: If parent not found, depth limit exceeded, or cycle detected
+
+        Returns:
+            Computed depth for the new task (0 if no parent)
+        """
+        if not parent_task_ref:
+            return 0
+        parent_entry = self._get_task_status(plan_name, parent_task_ref)
+        if parent_entry is None:
+            self._audit("task_add_rejected", {
+                "task_id": task_id,
+                "parent_task_ref": parent_task_ref,
+                "depth": 0,
+                "reason": "parent_not_found",
+                "plan_name": plan_name,
+            })
+            raise PlannerError(
+                f"parent_not_found: {parent_task_ref} not in plan {plan_name}"
             )
-            if new_depth > max_depth:
-                self._audit("task_add_rejected", {
-                    "task_id": task_id,
-                    "parent_task_ref": parent_task_ref,
-                    "depth": new_depth,
-                    "reason": "max_subtask_depth_exceeded",
-                    "plan_name": plan_name,
-                })
-                raise PlannerError(
-                    f"max_subtask_depth_exceeded: depth {new_depth} > max {max_depth}"
-                )
+        new_depth = parent_entry["depth"] + 1
+        from snodo.config import ConfigManager
+        max_depth = ConfigManager().load().get("engine", {}).get("max_subtask_depth", 3)
+        if new_depth > max_depth:
+            self._audit("task_add_rejected", {
+                "task_id": task_id,
+                "parent_task_ref": parent_task_ref,
+                "depth": new_depth,
+                "reason": "max_subtask_depth_exceeded",
+                "plan_name": plan_name,
+            })
+            raise PlannerError(
+                f"max_subtask_depth_exceeded: depth {new_depth} > max {max_depth}"
+            )
+        self._check_cycle(plan_name, normalized_spec, parent_task_ref)
+        return new_depth
 
-        # Cycle detection
-        normalized_spec = self._normalize_spec(spec)
-        if parent_task_ref:
-            self._check_cycle(plan_name, normalized_spec, parent_task_ref)
+    def _write_spec_and_update(
+        self,
+        plan_dir: Path,
+        wave_num: int,
+        task_id: str,
+        spec: str,
+        status_file: Path,
+        status_data: dict,
+        tasks: dict,
+        parent_task_ref: Optional[str],
+        new_depth: int,
+        spec_hash: str,
+    ) -> Path:
+        """Write the spec file, update plan.yml, and persist status.json.
 
-        # Compute spec_hash
-        spec_hash = hashlib.sha256(normalized_spec.encode()).hexdigest()[:16]
-
-        # Create wave directory and spec file
+        Returns:
+            Path to the written spec file
+        """
         wave_dir = plan_dir / f"wave_{wave_num}"
         wave_dir.mkdir(exist_ok=True)
-
         spec_file = wave_dir / f"{task_id}_task.md"
         spec_file.write_text(spec)
 
-        # Update plan.yml
         plan_file = plan_dir / "plan.yml"
         with open(plan_file) as f:
             plan_data = yaml.safe_load(f) or {}
-
         waves = plan_data.setdefault("waves", [])
         wave_entry = self._find_or_create_wave(waves, wave_num)
-
         if task_id not in wave_entry["tasks"]:
             wave_entry["tasks"].append(task_id)
-
         with open(plan_file, "w") as f:
             yaml.dump(plan_data, f, default_flow_style=False)
 
-        # Update status.json with dict format
         tasks[task_id] = {
             "status": "pending",
             "parent_task_ref": parent_task_ref,
             "depth": new_depth,
             "spec_hash": spec_hash,
         }
-
         with open(status_file, "w") as f:
             json.dump(status_data, f, indent=2)
 
-        # Audit events
-        if old_spec_hash is not None:
-            self._audit("task_replaced", {
-                "task_id": task_id,
-                "old_spec_hash": old_spec_hash,
-                "new_spec_hash": spec_hash,
-                "plan_name": plan_name,
-            })
-
-        self._audit("task_added", {
-            "task_id": task_id,
-            "parent_task_ref": parent_task_ref,
-            "depth": new_depth,
-            "spec_hash": spec_hash,
-            "plan_name": plan_name,
-        })
-
-        return str(spec_file.relative_to(self.project_root))
+        return spec_file
 
     @staticmethod
     def _find_or_create_wave(waves: list, wave_num: int) -> dict:
@@ -633,29 +675,12 @@ class PlannerMCP:
         if not tasks:
             return {}
 
-        # Normalize all entries
         normalized: Dict[str, dict] = {}
         for tid, entry in tasks.items():
             normalized[tid] = self._normalize_task_entry(entry)
 
-        # Pass 1: roots get depth 0
-        for tid, entry in normalized.items():
-            if not entry.get("parent_task_ref"):
-                entry["depth"] = 0
+        self._propagate_depths(normalized)
 
-        # Pass 2: propagate depths until stable
-        changed = True
-        while changed:
-            changed = False
-            for tid, entry in normalized.items():
-                parent_ref = entry.get("parent_task_ref")
-                if parent_ref and parent_ref in normalized:
-                    expected = normalized[parent_ref]["depth"] + 1
-                    if entry["depth"] != expected:
-                        entry["depth"] = expected
-                        changed = True
-
-        # Write back to status.json
         for tid, entry in normalized.items():
             tasks[tid] = entry
 
@@ -663,3 +688,25 @@ class PlannerMCP:
             json.dump(status_data, f, indent=2)
 
         return {tid: entry["depth"] for tid, entry in normalized.items()}
+
+    @staticmethod
+    def _propagate_depths(normalized: Dict[str, dict]) -> None:
+        """Two-pass in-place depth propagation over a normalized task dict.
+
+        Pass 1: roots (no parent_task_ref) get depth=0.
+        Pass 2: iterate until stable — each child's depth = parent.depth + 1.
+        """
+        for entry in normalized.values():
+            if not entry.get("parent_task_ref"):
+                entry["depth"] = 0
+
+        changed = True
+        while changed:
+            changed = False
+            for entry in normalized.values():
+                parent_ref = entry.get("parent_task_ref")
+                if parent_ref and parent_ref in normalized:
+                    expected = normalized[parent_ref]["depth"] + 1
+                    if entry["depth"] != expected:
+                        entry["depth"] = expected
+                        changed = True

@@ -1128,3 +1128,66 @@ class TestToolRegistryUpdate:
 
         import shutil
         shutil.rmtree(d, ignore_errors=True)
+
+
+# ========== PART A: characterization — 8 missing lines ==========
+
+class TestReadTaskSpecEdgePaths:
+    def test_no_dot_returns_none(self, planner):
+        """Line 119: task_id with no dot → None."""
+        result = planner._read_task_spec("any_plan", "nodot")
+        assert result is None
+
+    def test_non_int_wave_returns_none(self, planner):
+        """Lines 123-124: wave part can't be int → ValueError → None."""
+        result = planner._read_task_spec("any_plan", "abc.1_x")
+        assert result is None
+
+    def test_spec_file_missing_returns_none(self, planner):
+        """Line 127: valid format, dir exists, but spec file absent → None."""
+        planner.decompose("Intent", "p")
+        # wave_1 dir doesn't exist yet, so spec_file.exists() is False
+        result = planner._read_task_spec("p", "1.1_missing")
+        assert result is None
+
+
+class TestCheckCycleAncestorMissing:
+    def test_ancestor_not_in_status_breaks(self, planner):
+        """Line 152: ancestor_entry is None → loop breaks cleanly (no error)."""
+        planner.decompose("Intent", "p")
+        # Write status with a dangling parent reference
+        import json
+        status_file = planner.plans_dir / "p" / "status.json"
+        with open(status_file, "w") as f:
+            json.dump({"tasks": {
+                "1.1_child": {
+                    "status": "pending",
+                    "parent_task_ref": "ghost_parent",
+                    "depth": 1,
+                    "spec_hash": "x",
+                },
+            }}, f)
+        # _check_cycle walks to ghost_parent, finds no entry, breaks — no error
+        planner._check_cycle("p", "some new spec", "1.1_child")
+
+
+class TestDecomposeMkdirFails:
+    def test_oserror_raises_planner_error(self, temp_dir):
+        """Lines 183-184: OSError during plan_dir.mkdir → PlannerError."""
+        from pathlib import Path
+        planner = PlannerMCP(temp_dir)
+        # Pre-create plans_dir so the OSError comes from the inner mkdir
+        planner.plans_dir.mkdir(parents=True, exist_ok=True)
+        target = planner.plans_dir / "p"
+        with patch.object(Path, "mkdir", side_effect=OSError("disk full")):
+            with pytest.raises(PlannerError, match="Failed to create plan directory"):
+                planner.decompose("Intent", "p")
+
+
+class TestRecomputeDepthsNoStatusFile:
+    def test_no_status_json_returns_empty(self, planner):
+        """Line 627: plan dir exists but status.json absent → {}."""
+        plan_dir = planner.plans_dir / "no_status"
+        plan_dir.mkdir(parents=True)
+        result = planner.recompute_depths("no_status")
+        assert result == {}
