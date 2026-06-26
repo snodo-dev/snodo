@@ -4,8 +4,80 @@ FILE: snodo/cli/commands/config_cmd.py
 """
 
 import sys
+from types import SimpleNamespace
+from typing import Optional
+
+import typer
 
 from snodo.config import ConfigManager, ConfigError, DEFAULT_MODEL
+
+# ---------------------------------------------------------------------------
+# Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
+# ---------------------------------------------------------------------------
+
+COMMAND_NAME = "config"
+
+app = typer.Typer(invoke_without_command=True, help="Manage API keys and configuration")
+
+
+@app.callback()
+def _config_callback(ctx: typer.Context):
+    """Manage API keys and configuration."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@app.command("show")
+def config_show():
+    """Show configured keys (masked)."""
+    args = SimpleNamespace(config_action="show")
+    return config_command(args)
+
+
+@app.command("add")
+def config_add(
+    provider: str = typer.Argument(..., help="Provider name (openai, anthropic, google)"),
+    key: str = typer.Argument(..., help="API key"),
+):
+    """Store an API key."""
+    args = SimpleNamespace(config_action="add", provider=provider, key=key)
+    return config_command(args)
+
+
+@app.command("remove")
+def config_remove(
+    provider: str = typer.Argument(..., help="Provider name to remove"),
+):
+    """Remove an API key."""
+    args = SimpleNamespace(config_action="remove", provider=provider)
+    return config_command(args)
+
+
+@app.command("test")
+def config_test():
+    """Validate all configured keys."""
+    args = SimpleNamespace(config_action="test")
+    return config_command(args)
+
+
+@app.command("set")
+def config_set_cmd(
+    key: str = typer.Argument(..., help="Config key (e.g., engine.max_subtask_depth)"),
+    value: str = typer.Argument(..., help="Value to set"),
+):
+    """Set a configuration value."""
+    args = SimpleNamespace(config_action="set", key=key, value=value)
+    return config_command(args)
+
+
+@app.command("get")
+def config_get_cmd(
+    key: str = typer.Argument(..., help="Config key (e.g., engine.max_subtask_depth)"),
+):
+    """Get a configuration value."""
+    args = SimpleNamespace(config_action="get", key=key)
+    return config_command(args)
+
 
 
 def config_command(args) -> int:

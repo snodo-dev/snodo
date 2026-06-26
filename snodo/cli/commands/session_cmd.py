@@ -4,8 +4,62 @@ FILE: snodo/cli/commands/session_cmd.py
 """
 
 import sys
+from types import SimpleNamespace
+from typing import Optional
+
+import typer
 
 from snodo.infrastructure.session import SessionManager
+
+# ---------------------------------------------------------------------------
+# Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
+# ---------------------------------------------------------------------------
+
+COMMAND_NAME = "session"
+
+app = typer.Typer(invoke_without_command=True, help="Manage protocol sessions")
+
+
+@app.callback()
+def _session_callback(ctx: typer.Context):
+    """Manage protocol execution sessions."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@app.command("list")
+def session_list(
+    mode: Optional[str] = typer.Option(None, "--mode", help="Filter by mode"),
+    project: Optional[str] = typer.Option(None, "--project", help="Filter by project path"),
+    status: Optional[str] = typer.Option(None, "--status", help="Filter by status"),
+):
+    """List sessions."""
+    args = SimpleNamespace(
+        session_action="list", mode=mode, project=project, status=status,
+    )
+    return session_command(args)
+
+
+@app.command("show")
+def session_show(session_id: str = typer.Argument(..., help="Session ID")):
+    """Show session details."""
+    args = SimpleNamespace(session_action="show", session_id=session_id)
+    return session_command(args)
+
+
+@app.command("delete")
+def session_delete(session_id: str = typer.Argument(..., help="Session ID")):
+    """Delete a session."""
+    args = SimpleNamespace(session_action="delete", session_id=session_id)
+    return session_command(args)
+
+
+@app.command("prune")
+def session_prune():
+    """Remove stale sessions."""
+    args = SimpleNamespace(session_action="prune")
+    return session_command(args)
+
 
 
 def session_command(args) -> int:

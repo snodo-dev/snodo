@@ -5,6 +5,53 @@ FILE: snodo/cli/commands/agent_cmd.py (Task 5.2)
 
 import sys
 import time
+from types import SimpleNamespace
+
+import typer
+
+# ---------------------------------------------------------------------------
+# Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
+# ---------------------------------------------------------------------------
+
+COMMAND_NAME = "agent"
+
+app = typer.Typer(invoke_without_command=True, help="Manage agent memory and threads")
+
+
+@app.callback()
+def _agent_callback(ctx: typer.Context):
+    """Manage agent memory and threads."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@app.command("list")
+def agent_list():
+    """List all agents."""
+    args = SimpleNamespace(agent_action="list")
+    return agent_command(args)
+
+
+@app.command("memory")
+def agent_memory(agent_id: str = typer.Argument(..., help="Agent ID (project:mode)")):
+    """Show agent memory summary."""
+    args = SimpleNamespace(agent_action="memory", agent_id=agent_id)
+    return agent_command(args)
+
+
+@app.command("reset")
+def agent_reset(agent_id: str = typer.Argument(..., help="Agent ID (project:mode)")):
+    """Clear agent memory and assign new thread."""
+    args = SimpleNamespace(agent_action="reset", agent_id=agent_id)
+    return agent_command(args)
+
+
+@app.command("rotate")
+def agent_rotate(agent_id: str = typer.Argument(..., help="Agent ID (project:mode)")):
+    """Rotate agent thread ID (keeps old checkpoints)."""
+    args = SimpleNamespace(agent_action="rotate", agent_id=agent_id)
+    return agent_command(args)
+
 
 
 def agent_command(args) -> int:
