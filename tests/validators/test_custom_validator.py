@@ -281,12 +281,12 @@ class TestCustomValidatorDispatch:
 
         assert len(results) == 1
         assert results[0].validator_id == "unk"
-        # Stub result — no crash
+        # Stub result — no crash; no-criteria → warn
         assert results[0].severity in ("pass", "blocker", "warn")
-        assert "Stub" in results[0].justification or "No validators configured" in results[0].justification
+        assert "criteria" in results[0].justification.lower() or "No validators configured" in results[0].justification
 
-    def test_custom_validator_error_returns_warn(self, project_dir):
-        """A validator that raises during evaluate() returns a warn result."""
+    def test_custom_validator_error_returns_blocker(self, project_dir):
+        """A validator that raises during evaluate() returns a blocker result."""
 
         class BrokenValidator(ValidatorBase):
             def __init__(self, validator_spec: Validator = None, **kwargs):
@@ -327,7 +327,8 @@ class TestCustomValidatorDispatch:
 
             assert len(results) == 1
             assert results[0].validator_id == "broken"
-            assert results[0].severity == "warn"
+            assert results[0].severity == "blocker"
+            assert results[0].error is True
             assert "Validator error" in results[0].justification
             assert "simulated validator crash" in results[0].justification
         finally:
