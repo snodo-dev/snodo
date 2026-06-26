@@ -134,8 +134,9 @@ class ValidatorRunner:
                 except Exception as e:
                     result = ValidatorResult(
                         validator_id=vid,
-                        severity="warn",
+                        severity="blocker",
                         justification=f"Validator error: {e}",
+                        error=True,
                     )
                 if result is not None:
                     v_obj = next((v for v in validators if v.validator_id == vid), None)
@@ -165,8 +166,9 @@ class ValidatorRunner:
             except Exception as e:
                 return ValidatorResult(
                     validator_id=v.validator_id,
-                    severity="warn",
+                    severity="blocker",
                     justification=f"Validator error: {e}",
+                    error=True,
                 )
 
         if context.completion_fn and v.criteria:
@@ -177,19 +179,21 @@ class ValidatorRunner:
             except Exception as e:
                 return ValidatorResult(
                     validator_id=v.validator_id,
-                    severity="warn",
+                    severity="blocker",
                     justification=f"LLM validation failed: {e}",
+                    error=True,
                 )
 
         if v.criteria:
             return ValidatorResult(
                 validator_id=v.validator_id,
-                severity="warn",
+                severity="blocker",
                 justification=f"LLM unavailable for {v.validator_type} validation",
+                error=True,
             )
 
         return ValidatorResult(
             validator_id=v.validator_id,
-            severity="pass",
-            justification=f"Stub validation for {v.validator_type}",
+            severity="warn",
+            justification=f"No criteria configured for {v.validator_type} — nothing to evaluate",
         )

@@ -32,7 +32,7 @@ class WritebackMixin:
         now = datetime.now(timezone.utc).isoformat()
 
         for r in results:
-            if r.severity not in ("blocker", "warn", "error"):
+            if r.severity not in ("blocker", "warn"):
                 continue
             entry = {
                 "type": "adjudicate",
@@ -80,7 +80,7 @@ class WritebackMixin:
                     "justification": r.justification,
                 }
                 for r in results
-                if r.severity in ("blocker", "warn", "error")
+                if r.severity in ("blocker", "warn")
             ],
             "files_changed": list(loop_state.artifacts),
             "timestamp": datetime.now(timezone.utc).isoformat(),
