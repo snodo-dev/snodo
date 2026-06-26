@@ -5,7 +5,10 @@ FILE: snodo/cli/commands/install_cmd.py (Task 7.14)
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Optional
 
+import typer
 import yaml
 
 from snodo.compiler.models import Protocol
@@ -15,6 +18,43 @@ from snodo.mcp.installer import (
     purge_project_state, scan_orphans, remove_orphans,
     derive_project_name, get_claude_config_path,
 )
+
+
+def register(app: typer.Typer) -> None:
+    """Register top-level CLI commands onto app (called by discovery loop)."""
+
+    @app.command(name="install")
+    def install_cmd(
+        protocol: str = typer.Option(
+            ".snodo/protocol.yml", "--protocol", help="Path to protocol file",
+        ),
+    ):
+        """Install MCP servers into Claude Desktop config."""
+        return install_command(SimpleNamespace(protocol=protocol))
+
+    @app.command(name="uninstall")
+    def uninstall_cmd(
+        mode: Optional[str] = typer.Option(
+            None, "--mode", help="Remove a single mode entry",
+        ),
+        all_entries: bool = typer.Option(
+            False, "--all", help="Remove ALL snodo-* entries from Claude config",
+        ),
+        purge: bool = typer.Option(
+            False, "--purge", help="Also delete .snodo/ directory and sessions",
+        ),
+        orphans: bool = typer.Option(
+            False, "--orphans", help="Detect and remove orphan MCP entries",
+        ),
+        yes: bool = typer.Option(
+            False, "--yes", "-y", help="Skip confirmation prompts",
+        ),
+    ):
+        """Remove MCP servers from Claude Desktop config."""
+        return uninstall_command(SimpleNamespace(
+            mode=mode, all_entries=all_entries, purge=purge, orphans=orphans, yes=yes,
+        ))
+
 
 
 def install_command(args) -> int:

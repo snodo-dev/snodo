@@ -5,8 +5,22 @@ FILE: snodo/cli/commands/dashboard_cmd.py (Task 5.3)
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import typer
 
 from snodo.infrastructure.paths import resolve_project_root
+
+
+def register(app: typer.Typer) -> None:
+    """Register top-level CLI commands onto app (called by discovery loop)."""
+
+    @app.command()
+    def dashboard():
+        """Launch the TUI dashboard."""
+        args = SimpleNamespace()
+        return dashboard_command(args)
+
 
 
 def snop_entry():

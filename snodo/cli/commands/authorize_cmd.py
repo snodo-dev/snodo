@@ -14,10 +14,37 @@ exact content.
 """
 
 import sys
+from types import SimpleNamespace
+
+import typer
 
 from snodo.infrastructure.paths import require_project_root
 from snodo.infrastructure.state import read_state
 from snodo.infrastructure.session import SessionManager
+
+
+def register(app: typer.Typer) -> None:
+    """Register top-level CLI commands onto app (called by discovery loop)."""
+
+    @app.command()
+    def authorize(
+        task_id: str = typer.Argument(None, help="Task ID of the pending decision to authorize"),
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+        reject_all: bool = typer.Option(False, "--reject-all", help="Bulk reject all pending decisions"),
+    ):
+        """Authorize a pending decision (human-only — requires private signing key).
+
+        Reviews the proposal stored by the agent via propose_adjudicate or
+        propose_set_model, shows it to the human, and on confirmation mints
+        an RS256-signed record.  The agent cannot self-authorize — it has
+        no access to the private key.
+
+        When called without a task_id, lists all pending decisions in the active session.
+        Use --reject-all to mint signed reject records for all pending decisions at once.
+        """
+        args = SimpleNamespace(task_id=task_id, yes=yes, reject_all=reject_all)
+        return authorize_command(args)
+
 
 
 def authorize_command(args) -> int:

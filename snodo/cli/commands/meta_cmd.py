@@ -7,8 +7,24 @@ import json
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
+
+import typer
 
 from snodo.infrastructure.paths import resolve_project_root
+
+
+def register(app: typer.Typer) -> None:
+    """Register top-level CLI commands onto app (called by discovery loop)."""
+
+    @app.command()
+    def meta(
+        composite_id: str = typer.Argument(..., help="Job ID (j_xxx) or Task ID (task_xxx)"),
+    ):
+        """Show a compact summary for a job or task."""
+        args = SimpleNamespace(composite_id=composite_id)
+        return meta_command(args)
+
 
 
 def _project_root_or_error() -> str:
