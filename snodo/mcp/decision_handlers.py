@@ -127,3 +127,9 @@ class DecisionToolHandler:
             "instruction": f"Run: snodo authorize {task_id}",
             "proposal": proposal,
         }
+
+    def tool_handlers(self) -> dict:
+        return {
+            "propose_adjudicate": self.handle_propose_adjudicate,
+            "propose_set_model": self.handle_propose_set_model,
+        }
