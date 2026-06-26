@@ -279,7 +279,7 @@ def create_summary_model():
     back to DEFAULT_MODEL.  Returns None if no API keys are configured
     for the resolved provider.
     """
-    from snodo.cli.config import ConfigManager
+    from snodo.config import ConfigManager
     from snodo.infrastructure.config import DEFAULT_MODEL
 
     mgr = ConfigManager()

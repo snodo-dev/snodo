@@ -14,7 +14,7 @@ from typing import Optional
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
 from snodo.engine.loop import build_protocol_graph, LoopStage
-from snodo.cli.config import ConfigManager, provider_env
+from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 
 _logger = logging.getLogger(__name__)
@@ -287,6 +287,29 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     memory_mgr, checkpointer, thread_config = _setup_memory(project_root, protocol)
 
     job_id = os.environ.get("SNODO_JOB_ID") or None
+
+    # Background job only: prefer stored task_id over hash-computed one.
+    # Guard against leaked env var (test isolation gap) — skip silently when
+    # the job dir does not exist (e.g. inline / non-background runs).
+    if job_id:
+        from snodo.jobs import JobManager
+        mgr = JobManager(project_root)
+        job_dir = mgr.jobs_dir / job_id
+        if job_dir.is_dir():
+            stored = mgr._load_task(job_dir)
+            stored_task_id = stored.get("task_id") or stored.get("retry_task_id")
+            if stored_task_id and stored_task_id != task.id:
+                task = Task(id=stored_task_id, spec=task.spec)
+
+            # Persist task_id into task.json for same-task retry lookup
+            task_json_path = job_dir / "task.json"
+            if task_json_path.exists():
+                try:
+                    data = json.loads(task_json_path.read_text())
+                    data["task_id"] = task.id
+                    task_json_path.write_text(json.dumps(data, indent=2) + "\n")
+                except Exception:
+                    pass
 
     # Set up git worktree — shared helper used by BOTH CLI inline and background
     from snodo.infrastructure.worktree import setup_for_task, remove_worktree

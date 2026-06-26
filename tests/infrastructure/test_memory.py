@@ -536,7 +536,7 @@ class TestSummaryModel:
     def test_create_summary_model_returns_none_no_keys(self):
         """create_summary_model returns None when no API keys configured."""
         from snodo.infrastructure.memory import create_summary_model
-        with patch("snodo.cli.config.ConfigManager") as mock_cm:
+        with patch("snodo.config.ConfigManager") as mock_cm:
             mock_cm.return_value.get_key.return_value = None
             model = create_summary_model()
         assert model is None

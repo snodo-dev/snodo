@@ -24,7 +24,7 @@ def recon_command(args) -> int:
 
     project_root = require_project_root()
 
-    from snodo.cli.config import ConfigManager
+    from snodo.config import ConfigManager
     config = ConfigManager().load()
     recon_cfg = config.get("llm", {}).get("recon", {})
     recon_models = recon_cfg.get("models", [])

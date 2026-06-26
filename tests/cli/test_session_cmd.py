@@ -142,7 +142,7 @@ class TestSessionPrune:
         args = SimpleNamespace(
             session_action="prune", sessions_dir=mgr.sessions_dir,
         )
-        with patch("snodo.cli.config.ConfigManager") as mock_cm:
+        with patch("snodo.config.ConfigManager") as mock_cm:
             mock_cm.return_value.get_engine_value.return_value = 30
             result = session_command(args)
 
@@ -154,7 +154,7 @@ class TestSessionPrune:
         args = SimpleNamespace(
             session_action="prune", sessions_dir=mgr.sessions_dir,
         )
-        with patch("snodo.cli.config.ConfigManager") as mock_cm:
+        with patch("snodo.config.ConfigManager") as mock_cm:
             mock_cm.return_value.get_engine_value.return_value = 30
             result = session_command(args)
 

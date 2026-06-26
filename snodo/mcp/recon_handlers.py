@@ -32,7 +32,7 @@ class ReconToolHandler:
         num_agents = arguments.get("num_agents")
 
         from snodo.recon import ReconManager, ReconError, resolve_recon_agents
-        from snodo.cli.config import ConfigManager
+        from snodo.config import ConfigManager
 
         config = ConfigManager().load()
         recon_cfg = config.get("llm", {}).get("recon", {})

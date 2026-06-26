@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from snodo.core.interfaces import Task
-from snodo.cli.config import ConfigManager, provider_env
+from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 
 

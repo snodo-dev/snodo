@@ -113,7 +113,7 @@ class LiteLLMAdapter(CoderAdapter):
 
     def _resolve_api_base(self) -> Optional[str]:
         """Return api_base for the current model, if provider has base_url set."""
-        from snodo.cli.config import ConfigManager
+        from snodo.config import ConfigManager
         provider = ConfigManager._provider_for_model(self.model)
         if provider:
             pc = ConfigManager().get_providers().get(provider)
@@ -123,7 +123,7 @@ class LiteLLMAdapter(CoderAdapter):
 
     def _resolve_cf_headers(self) -> Optional[dict]:
         """Return extra_headers for Cloudflare Workers AI session affinity."""
-        from snodo.cli.config import ConfigManager
+        from snodo.config import ConfigManager
         provider = ConfigManager._provider_for_model(self.model)
         if provider == "cloudflare":
             return {"x-session-affinity": self._task_id or "unknown"}

@@ -56,6 +56,7 @@ dev = [
     "hypothesis>=6.100.0",
     "ruff>=0.1.0",
     "radon>=6.0.0",
+    "import-linter",
 ]
 studies = [
     "marimo>=0.9.0",
@@ -90,4 +91,9 @@ markers = [
 ]
 filterwarnings = [
     "ignore::UserWarning:langchain_core.utils.pydantic",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.4.0",
 ]

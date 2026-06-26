@@ -405,9 +405,24 @@ def test_multiple_artifacts_created(temp_git_repo, sample_protocol):
 
 def test_cli_integration_with_mock(temp_git_repo):
     """Test CLI can execute task end-to-end with mock coder."""
+    import json
+    import os
+    import subprocess
+    from unittest.mock import MagicMock, patch
+
     from snodo.cli.main import run_command
     import argparse
-    
+    from snodo.coders.mock import MockAdapter
+
+    # Mock the classifier completion so no live LLM call is made
+    mock_completion = MagicMock()
+    mock_completion.return_value.choices[0].message.content = json.dumps({
+        "flow_type": "feature",
+        "wave_id": "new",
+        "task_summary": "Test task",
+        "feature_description": "Test feature",
+    })
+
     snodo_dir = temp_git_repo / ".snodo"
     snodo_dir.mkdir(exist_ok=True)
     
@@ -429,7 +444,6 @@ disagreement_policy: "unanimous"
 initial_mode: "producer"
 """)
     
-    import os
     original_cwd = os.getcwd()
     os.chdir(temp_git_repo)
     
@@ -442,12 +456,20 @@ initial_mode: "producer"
             model=None
         )
         
-        result = run_command(args)
+        with patch.object(MockAdapter, "completion_fn", mock_completion, create=True):
+            run_command(args)
         
-        # Should complete (may be 0 or 1 depending on test execution)
-        # Files should be created either way
-        assert (temp_git_repo / "src" / "hello.py").exists()
-        assert (temp_git_repo / "tests" / "test_hello.py").exists()
+        # Execution writes to a worktree that is cleaned up after run.
+        # Files were committed to git (worktree shares history with main repo).
+        # The worktree commits on its own branch, so scan all branches.
+        # Verify via git log rather than disk existence.
+        log = subprocess.run(
+            ["git", "log", "--all", "--oneline", "--name-only", "--format="],
+            cwd=temp_git_repo, capture_output=True, text=True,
+        )
+        assert log.returncode == 0, log.stderr
+        assert "src/hello.py" in log.stdout, f"src/hello.py not in git log:\n{log.stdout}"
+        assert "tests/test_hello.py" in log.stdout, f"tests/test_hello.py not in git log:\n{log.stdout}"
         
     finally:
         os.chdir(original_cwd)

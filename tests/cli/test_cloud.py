@@ -17,7 +17,7 @@ class TestCloudConnect:
         """snodo cloud connect stores key and enables sync."""
         from snodo.cli.commands.cloud_cmd import cloud_connect_command
 
-        with patch("snodo.cli.config.ConfigManager") as MockCM:
+        with patch("snodo.config.ConfigManager") as MockCM:
             mock_mgr = MockCM.return_value
             mock_mgr.load.return_value = {"model": "gpt-4"}
 
@@ -32,7 +32,7 @@ class TestCloudConnect:
         """Staging key prefix is accepted."""
         from snodo.cli.commands.cloud_cmd import cloud_connect_command
 
-        with patch("snodo.cli.config.ConfigManager") as MockCM:
+        with patch("snodo.config.ConfigManager") as MockCM:
             mock_mgr = MockCM.return_value
             mock_mgr.load.return_value = {}
 
@@ -59,7 +59,7 @@ class TestCloudDisconnect:
     def test_clears_key_and_disables_sync(self):
         from snodo.cli.commands.cloud_cmd import cloud_disconnect_command
 
-        with patch("snodo.cli.config.ConfigManager") as MockCM:
+        with patch("snodo.config.ConfigManager") as MockCM:
             mock_mgr = MockCM.return_value
             mock_mgr.load.return_value = {
                 "cloud": {"api_key": "sndo_live_xxx", "sync_enabled": True},
@@ -77,7 +77,7 @@ class TestCloudStatus:
     def test_connected_shows_key_prefix(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_status_command
 
-        with patch("snodo.cli.config.ConfigManager") as MockCM:
+        with patch("snodo.config.ConfigManager") as MockCM:
             mock_mgr = MockCM.return_value
             mock_mgr.load.return_value = {
                 "cloud": {
@@ -99,7 +99,7 @@ class TestCloudStatus:
     def test_disconnected_shows_not_connected(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_status_command
 
-        with patch("snodo.cli.config.ConfigManager") as MockCM:
+        with patch("snodo.config.ConfigManager") as MockCM:
             mock_mgr = MockCM.return_value
             mock_mgr.load.return_value = {"cloud": {"api_key": "", "sync_enabled": False}}
 
@@ -114,7 +114,7 @@ class TestCloudStatus:
     def test_shows_sync_per_session(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_status_command
 
-        with patch("snodo.cli.config.ConfigManager") as MockCM:
+        with patch("snodo.config.ConfigManager") as MockCM:
             mock_mgr = MockCM.return_value
             mock_mgr.load.return_value = {
                 "cloud": {"api_key": "sndo_live_xxx", "sync_enabled": True},
@@ -407,7 +407,7 @@ class TestCloudSyncCommand:
     def test_no_api_key_errors(self):
         from snodo.cli.commands.cloud_cmd import cloud_sync_command
 
-        with patch("snodo.cli.config.ConfigManager") as MockCM:
+        with patch("snodo.config.ConfigManager") as MockCM:
             MockCM.return_value.load.return_value = {"cloud": {"api_key": ""}}
             result = cloud_sync_command()
         assert result == 1
@@ -420,7 +420,7 @@ class TestCloudSyncCommand:
                 with patch("snodo.infrastructure.session.SessionManager") as MockSM:
                     with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
                         with patch("snodo.infrastructure.state.read_state") as mock_rs:
-                            with patch("snodo.cli.config.ConfigManager") as MockCM:
+                            with patch("snodo.config.ConfigManager") as MockCM:
                                 MockCM.return_value.load.return_value = {
                                     "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
                                 }
@@ -446,7 +446,7 @@ class TestCloudSyncCommand:
             with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher") as MockDisp:
                 with patch("snodo.infrastructure.session.SessionManager") as MockSM:
                     with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
-                        with patch("snodo.cli.config.ConfigManager") as MockCM:
+                        with patch("snodo.config.ConfigManager") as MockCM:
                             MockCM.return_value.load.return_value = {
                                 "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
                             }
@@ -477,7 +477,7 @@ class TestCloudSyncCommand:
             with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher") as MockDisp:
                 with patch("snodo.infrastructure.session.SessionManager") as MockSM:
                     with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
-                        with patch("snodo.cli.config.ConfigManager") as MockCM:
+                        with patch("snodo.config.ConfigManager") as MockCM:
                             MockCM.return_value.load.return_value = {
                                 "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
                             }
@@ -502,7 +502,7 @@ class TestCloudSyncCommand:
             with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher") as MockDisp:
                 with patch("snodo.infrastructure.session.SessionManager") as MockSM:
                     with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
-                        with patch("snodo.cli.config.ConfigManager") as MockCM:
+                        with patch("snodo.config.ConfigManager") as MockCM:
                             MockCM.return_value.load.return_value = {
                                 "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
                             }
@@ -530,7 +530,7 @@ class TestCloudSyncCommand:
 
         with patch("snodo.infrastructure.session.SessionManager") as MockSM:
             with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
-                with patch("snodo.cli.config.ConfigManager") as MockCM:
+                with patch("snodo.config.ConfigManager") as MockCM:
                     MockCM.return_value.load.return_value = {
                         "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
                     }

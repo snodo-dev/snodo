@@ -244,7 +244,7 @@ def _build_provider_env() -> dict:
     """Read provider API keys from snodo config and return env vars for opencode."""
     env: dict[str, str] = {}
     try:
-        from snodo.cli.config import ConfigManager
+        from snodo.config import ConfigManager
         import os as _os
         config = ConfigManager().load()
         providers = config.get("providers", {})

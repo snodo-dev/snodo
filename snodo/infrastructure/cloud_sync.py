@@ -251,7 +251,7 @@ class CloudSyncDispatcher:
 def _should_sync(config: Optional[dict] = None) -> bool:
     """Return True if cloud sync is enabled and an API key is configured."""
     if config is None:
-        from snodo.cli.config import ConfigManager
+        from snodo.config import ConfigManager
         config = ConfigManager().load()
     cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
     return bool(cloud.get("sync_enabled")) and bool(cloud.get("api_key", "").strip())
@@ -270,7 +270,7 @@ def sync_if_enabled(
         return
 
     if config is None:
-        from snodo.cli.config import ConfigManager
+        from snodo.config import ConfigManager
         config = ConfigManager().load()
 
     cloud = config.get("cloud", {})

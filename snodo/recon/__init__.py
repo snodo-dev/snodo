@@ -92,7 +92,7 @@ _READ_ONLY_TOOLS = [_READ_FILE_TOOL, _LIST_FILES_TOOL]
 def _resolve_agent_model(agent: str) -> str:
     """Resolve 'default' to the configured model; pass-through otherwise."""
     if agent == "default":
-        from snodo.cli.config import ConfigManager
+        from snodo.config import ConfigManager
         return ConfigManager().get_model()
     return agent
 
@@ -198,7 +198,7 @@ def _call_agent(
 
     final_answer = ""
 
-    from snodo.cli.config import provider_env
+    from snodo.config import provider_env
     _logger.debug("recon: injecting API key for model=%s", model)
     with provider_env(model):
         for _turn in range(max_turns):

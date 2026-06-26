@@ -221,7 +221,7 @@ class TestResolveAgentModel:
     def test_default_resolves_to_configured_model(self):
         from snodo.recon import _resolve_agent_model
 
-        with patch("snodo.cli.config.ConfigManager") as MockCM:
+        with patch("snodo.config.ConfigManager") as MockCM:
             MockCM.return_value.get_model.return_value = "gpt-4"
             result = _resolve_agent_model("default")
             assert result == "gpt-4"

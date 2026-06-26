@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from snodo.cli.config import ConfigManager
+from snodo.config import ConfigManager
 from snodo.infrastructure.paths import resolve_home
 
 _logger = logging.getLogger(__name__)

@@ -63,7 +63,7 @@ class GitHubProvider(CodeHostProvider):
         if token:
             return token
         try:
-            from snodo.cli.config import ConfigManager
+            from snodo.config import ConfigManager
             return ConfigManager().get_key("github")
         except Exception:
             return None

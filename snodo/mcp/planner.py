@@ -294,7 +294,7 @@ class PlannerMCP:
 
         # Depth enforcement
         if parent_task_ref:
-            from snodo.cli.config import ConfigManager
+            from snodo.config import ConfigManager
             max_depth = ConfigManager().load().get("engine", {}).get(
                 "max_subtask_depth", 3
             )

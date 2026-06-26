@@ -5,7 +5,7 @@ FILE: snodo/cli/commands/config_cmd.py
 
 import sys
 
-from snodo.cli.config import ConfigManager, ConfigError, DEFAULT_MODEL
+from snodo.config import ConfigManager, ConfigError, DEFAULT_MODEL
 
 
 def config_command(args) -> int:
