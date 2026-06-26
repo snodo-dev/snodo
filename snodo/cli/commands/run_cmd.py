@@ -16,7 +16,6 @@ import typer
 
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
-from snodo.engine.loop import build_protocol_graph, LoopStage
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 
@@ -539,6 +538,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
     Returns:
         Compiled graph, or None on failure.
     """
+    from snodo.engine.loop import build_protocol_graph
     try:
         mcp_root = worktree_path or project_root
         print("Building execution graph with MCP services...")
@@ -769,6 +769,7 @@ def _report_result(final_state: Optional[dict]) -> int:
     Returns:
         0 on success, 1 on failure.
     """
+    from snodo.engine.loop import LoopStage
     if final_state and final_state.get("stage") == LoopStage.COMPLETE.value:
         artifacts = final_state.get("artifacts", [])
         print("\n✓ Task completed successfully!")
