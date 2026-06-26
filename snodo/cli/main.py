@@ -228,55 +228,8 @@ def dashboard():
     return dashboard_command(args)
 
 
-# === Plan sub-app ===
-
-plan_app = typer.Typer(invoke_without_command=True)
-app.add_typer(plan_app, name="plan", help="Manage plans")
-
-
-@plan_app.callback()
-def _plan_callback(ctx: typer.Context):
-    """Manage plans."""
-    if ctx.invoked_subcommand is None:
-        print(ctx.get_help())
-
-
-@plan_app.command("list")
-def plan_list():
-    """List all plans."""
-    args = SimpleNamespace(plan_action="list")
-    return plan_command(args)
-
-
-@plan_app.command("status")
-def plan_status(name: str = typer.Argument(..., help="Plan name")):
-    """Show plan progress."""
-    args = SimpleNamespace(plan_action="status", name=name)
-    return plan_command(args)
-
-
-@plan_app.command("create")
-def plan_create(
-    description: str = typer.Argument(..., help="Intent/goal description for the plan"),
-    plan_name: Optional[str] = typer.Option(
-        None, "--name", "-n", help="Plan name (auto-generated if omitted)",
-    ),
-    protocol: str = typer.Option(
-        ".snodo/protocol.yml", "--protocol", help="Path to protocol file",
-    ),
-    model: Optional[str] = typer.Option(
-        None, "--model", "-m", help="Model to use",
-    ),
-    mock: bool = typer.Option(
-        False, "--mock", help="Use mock coder instead of real LLM",
-    ),
-):
-    """Create a new plan from an intent description."""
-    args = SimpleNamespace(
-        plan_action="create", description=description,
-        plan_name=plan_name, protocol=protocol, model=model, mock=mock,
-    )
-    return plan_command(args)
+# plan sub-app is now defined in snodo/cli/commands/plan_cmd.py
+# and mounted automatically by the discovery loop above.
 
 
 # === Logs ===
@@ -364,35 +317,8 @@ def recon(
 # and mounted automatically by the discovery loop above.
 
 
-# === Sandbox sub-app ===
-
-sandbox_app = typer.Typer(invoke_without_command=True)
-app.add_typer(sandbox_app, name="sandbox", help="Manage Docker sandbox")
-
-
-@sandbox_app.callback()
-def _sandbox_callback(ctx: typer.Context):
-    """Manage Docker sandbox."""
-    if ctx.invoked_subcommand is None:
-        print(ctx.get_help())
-
-
-@sandbox_app.command("build")
-def sandbox_build(
-    tag: Optional[str] = typer.Option(
-        None, "--tag", "-t", help="Image tag (default: snodo-worker:latest)",
-    ),
-):
-    """Build the snodo-worker Docker image."""
-    args = SimpleNamespace(sandbox_action="build", tag=tag)
-    return sandbox_command(args)
-
-
-@sandbox_app.command("status")
-def sandbox_status():
-    """Check Docker availability and image status."""
-    args = SimpleNamespace(sandbox_action="status")
-    return sandbox_command(args)
+# sandbox sub-app is now defined in snodo/cli/commands/sandbox_cmd.py
+# and mounted automatically by the discovery loop above.
 
 
 # === Install / Uninstall ===
@@ -457,81 +383,12 @@ def authorize(
     return authorize_command(args)
 
 
-# === Cloud ===
-
-cloud_app = typer.Typer(help="Manage snodo cloud connection and audit sync")
-
-
-@cloud_app.command(name="connect")
-def cloud_connect(
-    api_key: str = typer.Argument(..., help="Snodo cloud API key (starts with sndo_staging_ or sndo_live_)"),
-):
-    """Connect to snodo cloud and enable audit sync."""
-    from snodo.cli.commands.cloud_cmd import cloud_connect_command
-    return cloud_connect_command(api_key)
+# cloud sub-app is now defined in snodo/cli/commands/cloud_cmd.py
+# and mounted automatically by the discovery loop above.
 
 
-@cloud_app.command(name="disconnect")
-def cloud_disconnect():
-    """Disconnect from snodo cloud and disable sync."""
-    from snodo.cli.commands.cloud_cmd import cloud_disconnect_command
-    return cloud_disconnect_command()
-
-
-@cloud_app.command(name="status")
-def cloud_status():
-    """Show cloud connection and sync status."""
-    from snodo.cli.commands.cloud_cmd import cloud_status_command
-    return cloud_status_command()
-
-
-@cloud_app.command(name="sync")
-def cloud_sync(
-    sync_all: bool = typer.Option(False, "--all", help="Sync all sessions for the current project"),
-    session: str = typer.Option("", "--session", help="Sync a specific session by ID"),
-):
-    """Ship unsynced audit events to snodo cloud."""
-    from snodo.cli.commands.cloud_cmd import cloud_sync_command
-    return cloud_sync_command(sync_all=sync_all, session_id=session)
-
-
-app.add_typer(cloud_app, name="cloud")
-
-
-# === Task ===
-
-task_app = typer.Typer(help="Manage task branches")
-
-
-@task_app.command(name="list")
-def task_list():
-    """List all task branches in the current project."""
-    from snodo.cli.commands.task_cmd import task_list_command
-    from types import SimpleNamespace
-    return task_list_command(SimpleNamespace())
-
-
-@task_app.command(name="abandon")
-def task_abandon(
-    task_id: str = typer.Argument(..., help="Task ID to abandon (e.g. task_a1b2c3)"),
-):
-    """Delete a task branch and clear its failure context."""
-    from snodo.cli.commands.task_cmd import task_abandon_command
-    from types import SimpleNamespace
-    return task_abandon_command(SimpleNamespace(task_id=task_id))
-
-
-@task_app.command(name="prune")
-def task_prune(
-    stale_days: int = typer.Option(7, "--stale-days", help="Days without activity before pruning"),
-):
-    """List and delete stale task branches."""
-    from snodo.cli.commands.task_cmd import task_prune_command
-    from types import SimpleNamespace
-    return task_prune_command(SimpleNamespace(stale_days=stale_days))
-
-
-app.add_typer(task_app, name="task")
+# task sub-app is now defined in snodo/cli/commands/task_cmd.py
+# and mounted automatically by the discovery loop above.
 
 
 # === Entry point ===
