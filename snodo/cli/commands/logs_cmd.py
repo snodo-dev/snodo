@@ -5,6 +5,23 @@ FILE: snodo/cli/commands/logs_cmd.py
 
 import sys
 import time
+from types import SimpleNamespace
+
+import typer
+
+
+def register(app: typer.Typer) -> None:
+    """Register top-level CLI commands onto app (called by discovery loop)."""
+
+    @app.command()
+    def logs(
+        composite_id: str = typer.Argument(..., help="Job ID (j_xxx) or Recon ID (rec_xxx)"),
+        watch: bool = typer.Option(False, "--watch", "-w", help="Tail job logs in real time until job completes"),
+    ):
+        """Show output for a job or recon by ID."""
+        args = SimpleNamespace(composite_id=composite_id, watch=watch)
+        return logs_command(args)
+
 
 
 def logs_command(args) -> int:

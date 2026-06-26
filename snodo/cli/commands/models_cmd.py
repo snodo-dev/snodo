@@ -8,7 +8,37 @@ import os
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
+
+import typer
+
+
+def register(app: typer.Typer) -> None:
+    """Register top-level CLI commands onto app (called by discovery loop)."""
+
+    @app.command()
+    def models(
+        provider: Optional[str] = typer.Option(None, "--provider", "-p", help="Provider to list models for"),
+        flush: bool = typer.Option(False, "--flush", help="Ignore cache and refetch"),
+        id_contains: Optional[str] = typer.Option(None, "--id-contains", help="Substring on id/display_name (case-insensitive)"),
+        max_output_cost: Optional[float] = typer.Option(None, "--max-output-cost", help="Output cost/1M <= value. Excludes unknown costs."),
+        min_output_cost: Optional[float] = typer.Option(None, "--min-output-cost", help="Output cost/1M >= value. Excludes unknown costs."),
+        max_input_cost: Optional[float] = typer.Option(None, "--max-input-cost", help="Input cost/1M <= value. Excludes unknown costs."),
+        min_context: Optional[int] = typer.Option(None, "--min-context", help="Context window >= value. Excludes context==0."),
+    ):
+        """List configured providers and their models."""
+        args = SimpleNamespace(
+            provider=provider,
+            flush=flush,
+            id_contains=id_contains,
+            max_output_cost=max_output_cost,
+            min_output_cost=min_output_cost,
+            max_input_cost=max_input_cost,
+            min_context=min_context,
+        )
+        return models_command(args)
+
 
 from snodo.infrastructure.paths import resolve_home
 
