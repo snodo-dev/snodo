@@ -510,3 +510,63 @@ def test_validator_id_custom(temp_project):
     result = shell_mcp.parse_output(0, "passed", "")
     
     assert result.validator_id == "custom_validator"
+
+
+def test_fallback_validator_result_used_when_import_fails():
+    """Trigger the ImportError fallback for ValidatorResult (lines 18-27)."""
+    import subprocess
+    import sys
+
+    code = """
+import sys
+import types
+
+# Fake snodo.core.interfaces without ValidatorResult to trigger ImportError
+sys.modules['snodo.core'] = types.ModuleType('snodo.core')
+sys.modules['snodo.core.interfaces'] = types.ModuleType('snodo.core.interfaces')
+
+from snodo.mcp.shell import ShellMCP, ValidatorResult
+
+# The fallback ValidatorResult should be a BaseModel that works
+r = ValidatorResult(validator_id="test", severity="pass", justification="ok")
+print(f"severity={r.severity}")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, f"stdout: {result.stdout}, stderr: {result.stderr}"
+    assert "severity=pass" in result.stdout
+
+
+def test_fallback_validator_result_in_process(monkeypatch):
+    """Trigger the fallback in-process for coverage (lines 18-27)."""
+    import sys
+    import types
+    import importlib
+
+    old_core = sys.modules.get("snodo.core")
+    old_interfaces = sys.modules.get("snodo.core.interfaces")
+
+    fake_core = types.ModuleType("snodo.core")
+    monkeypatch.setitem(sys.modules, "snodo.core", fake_core)
+
+    fake_interfaces = types.ModuleType("snodo.core.interfaces")
+    monkeypatch.setitem(sys.modules, "snodo.core.interfaces", fake_interfaces)
+
+    import snodo.mcp.shell as shell_mod
+
+    importlib.reload(shell_mod)
+
+    r = shell_mod.ValidatorResult(
+        validator_id="test", severity="pass", justification="ok"
+    )
+    assert r.severity == "pass"
+
+    # Restore real modules so subsequent tests are unaffected
+    if old_core is not None:
+        sys.modules["snodo.core"] = old_core
+    if old_interfaces is not None:
+        sys.modules["snodo.core.interfaces"] = old_interfaces
+    importlib.reload(shell_mod)
