@@ -473,7 +473,64 @@ def test_delete_branch_nonexistent(temp_git_repo):
         git_mcp.delete_branch("nonexistent-branch")
 
 
+# ========== CHECKOUT BRANCH TESTS ==========
+
+def test_checkout_branch_nonexistent_raises(temp_git_repo):
+    git_mcp, _ = temp_git_repo
+
+    with pytest.raises(GitError, match="Git command failed"):
+        git_mcp.checkout_branch("nonexistent-branch")
+
+
 # ========== ERROR HANDLING TESTS ==========
+
+@pytest.fixture
+def empty_git_repo():
+    """Create a git repo with no commits (triggers errors on diff/log)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(["git", "init"], cwd=tmpdir, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=tmpdir, check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"],
+            cwd=tmpdir, check=True, capture_output=True,
+        )
+        git_mcp = GitMCP(tmpdir)
+        yield git_mcp
+
+
+def test_read_diff_empty_repo_raises(empty_git_repo):
+    """read_diff raises on repo with no commits (no HEAD)."""
+    with pytest.raises(GitError, match="Git command failed"):
+        empty_git_repo.read_diff()
+
+
+def test_log_empty_repo_raises(empty_git_repo):
+    """log raises on repo with no commits."""
+    with pytest.raises(GitError, match="Git command failed"):
+        empty_git_repo.log()
+
+
+def test_get_status_git_command_error(temp_git_repo):
+    """get_status wraps GitCommandError as GitError."""
+    import git as git_lib
+    from unittest.mock import patch, MagicMock
+
+    git_mcp, _ = temp_git_repo
+
+    # Mock repo.git so that status() raises GitCommandError
+    mock_git = MagicMock()
+    mock_git.status.side_effect = git_lib.GitCommandError(
+        "git status", 128, "fatal: something went wrong"
+    )
+
+    with patch.object(git_mcp, "repo") as mock_repo:
+        mock_repo.git = mock_git
+        with pytest.raises(GitError, match="Git command failed"):
+            git_mcp.get_status()
+
 
 def test_git_error_message_from_command(temp_git_repo):
     """Test that GitCommandError is wrapped with message."""
