@@ -144,12 +144,19 @@ class TestDecisionRecordINV3:
         assert "blocker" in str(exc_info.value).lower()
         assert "non-overridable" in str(exc_info.value).lower()
 
-    def test_reject_error_severity(self):
+    def test_reject_blocker_severity_from_error_flag(self):
+        """A result with error=True but severity='blocker' is still rejectable."""
         issuer = _make_issuer()
-        result = _make_result("llm_security", "error", "LLM failed to produce verdict")
+        from snodo.core.interfaces import ValidatorResult
+        result = ValidatorResult(
+            validator_id="llm_security",
+            severity="blocker",
+            justification="LLM failed to produce verdict",
+            error=True,
+        )
         with pytest.raises(DecisionInvalidSeverityError) as exc_info:
             issuer.issue_record("t1", "llm_security", result, "proceed", "Retry")
-        assert "error" in str(exc_info.value).lower()
+        assert "blocker" in str(exc_info.value).lower()
 
     def test_invalid_decision_rejected(self):
         issuer = _make_issuer()
@@ -251,7 +258,8 @@ class TestPolicyDecisionRecordConsultation:
         issuer = _make_issuer()
         evaluator, policy = self._make_evaluator(issuer)
         results = [
-            _make_result("llm_security", "error", "LLM failed"),
+            ValidatorResult(validator_id="llm_security", severity="blocker",
+                            justification="LLM failed", error=True),
             _make_result("architecture", "pass"),
         ]
         decision = evaluator.evaluate(

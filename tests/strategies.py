@@ -40,7 +40,7 @@ def hypothesis_settings():
 
 severities = st.sampled_from([Severity.PASS, Severity.WARN, Severity.BLOCKER])
 
-severity_strings = st.sampled_from(["pass", "warn", "blocker", "error"])
+severity_strings = st.sampled_from(["pass", "warn", "blocker"])
 
 validator_types = st.sampled_from([
     "security", "architecture", "conventions", "quality", "planning", "protocol",

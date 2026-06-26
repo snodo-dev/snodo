@@ -59,7 +59,7 @@ def _is_gemini3_plus(model: str) -> bool:
 class LLMValidator(ValidatorBase):
     """Evaluates tasks against protocol criteria using an LLM judge."""
 
-    VALID_SEVERITIES = {"pass", "warn", "blocker", "error"}
+    VALID_SEVERITIES = {"pass", "warn", "blocker"}
 
     HANDLED_TYPES = {
         "architecture", "security", "conventions",
@@ -328,21 +328,23 @@ class LLMValidator(ValidatorBase):
             # Still no valid verdict after retry — fail closed
             return ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
-                severity="error",
+                severity="blocker",
                 justification=(
                     f"Validator did not call submit_verdict after {turn + 1} turn(s). "
                     "No reliable verdict could be obtained."
                 ),
+                error=True,
             )
 
         # Hit the turn cap — fail closed
         return ValidatorResult(
             validator_id=self.validator_spec.validator_id,
-            severity="error",
+            severity="blocker",
             justification=(
                 f"Validator tool-loop reached the maximum of {tool_turns} "
                 "turns without calling submit_verdict."
             ),
+            error=True,
         )
 
     @staticmethod

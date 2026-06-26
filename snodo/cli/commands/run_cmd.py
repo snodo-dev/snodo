@@ -725,7 +725,7 @@ def _stream_execution(compiled_graph, initial_state: dict, args,
                     error_validators = [
                         r["validator_id"]
                         for r in node_state.get("validation_results", [])
-                        if r.get("severity") == "error"
+                        if r.get("error")
                     ]
                     names = ", ".join(error_validators) if error_validators else "unknown"
                     print(f"\n✗ VALIDATOR ERROR: {names} produced no verdict — resolve or retry")

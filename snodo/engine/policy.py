@@ -128,7 +128,7 @@ class PolicyEvaluator:
         pass_count = sum(1 for r in results if r.severity == "pass")
         warn_count = sum(1 for r in results if r.severity == "warn")
         blocker_count = sum(1 for r in results if r.severity == "blocker")
-        error_count = sum(1 for r in results if r.severity == "error")
+        error_count = sum(1 for r in results if getattr(r, 'error', False))
         total_count = len(results)
 
         # Validator error always halts fail-closed (hard invariant)

@@ -121,7 +121,7 @@ class TestAutoWritePendingDecisions:
         builder, mgr, session = _make_builder_with_session()
         session.checkpoint.decisions = {"pending_decisions": "invalid"}
         state = _make_loop_state()
-        results = [ValidatorResult(validator_id="v1", severity="error", justification="crash")]
+        results = [ValidatorResult(validator_id="v1", severity="blocker", justification="crash", error=True)]
         builder._auto_write_pending_decisions(state, results)
         pending = mgr.update_decision.call_args[0][2]
         assert isinstance(pending, dict)
