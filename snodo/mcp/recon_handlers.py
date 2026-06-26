@@ -90,3 +90,10 @@ class ReconToolHandler:
             return mgr.get_results(recon_id)
         except ReconError as e:
             raise MCPError(str(e))
+
+    def tool_handlers(self) -> dict:
+        return {
+            "recon": self.handle_recon,
+            "get_recon_status": self.handle_get_recon_status,
+            "get_recon_results": self.handle_get_recon_results,
+        }
