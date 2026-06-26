@@ -414,8 +414,8 @@ class TestEngineLoopIntegration:
         results = builder._default_validator(task, validators, None)
 
         assert len(results) == 1
-        assert results[0].severity == "pass"
-        assert "Stub" in results[0].justification
+        assert results[0].severity == "warn"
+        assert "No criteria" in results[0].justification
 
     def test_llm_failure_returns_warn_in_loop(self):
         """LLM failure in loop should return warn, not crash."""
@@ -812,7 +812,8 @@ class TestPostExecuteToolLoop:
 
         result = validator.evaluate(ctx)
 
-        assert result.severity == "error"
+        assert result.severity == "blocker"
+        assert result.error
         assert "maximum" in result.justification.lower()
         assert completion_fn.call_count == _DEFAULT_MAX_TOOL_TURNS
 
@@ -925,7 +926,8 @@ class TestPostExecuteToolLoop:
 
         result = validator.evaluate(ctx)
 
-        assert result.severity == "error"
+        assert result.severity == "blocker"
+        assert result.error
         assert "submit_verdict" in result.justification
 
     def test_tool_loop_uses_tools_kwarg_in_completion_call(self, security_validator):
