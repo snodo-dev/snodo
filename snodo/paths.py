@@ -23,7 +23,7 @@ def resolve_home() -> Path:
         Path to the Snodo home directory.
     """
     if "SNODO_HOME" in os.environ:
-        return Path(os.environ["SNODO_HOME"])
+        return Path(os.environ["SNODO_HOME"]).expanduser()
     return Path.home() / ".snodo"
 
 

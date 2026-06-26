@@ -10,7 +10,29 @@ from unittest.mock import patch
 
 import pytest
 
-from snodo.infrastructure.paths import resolve_project_root, require_project_root
+from snodo.infrastructure.paths import (
+    resolve_home,
+    resolve_project_root,
+    require_project_root,
+)
+
+
+class TestResolveHome:
+    def test_tilde_path_expands_to_absolute(self, monkeypatch):
+        monkeypatch.setenv("SNODO_HOME", "~/snodo_test")
+        result = resolve_home()
+        assert result.is_absolute()
+        assert "~" not in str(result)
+
+    def test_absolute_path_returned_as_is(self, monkeypatch):
+        monkeypatch.setenv("SNODO_HOME", "/tmp/snodo_abs")
+        result = resolve_home()
+        assert result == Path("/tmp/snodo_abs")
+
+    def test_unset_falls_back_to_default(self, monkeypatch):
+        monkeypatch.delenv("SNODO_HOME", raising=False)
+        result = resolve_home()
+        assert result == Path.home() / ".snodo"
 
 
 class TestResolveProjectRoot:
