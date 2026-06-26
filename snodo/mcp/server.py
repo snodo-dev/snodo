@@ -90,6 +90,23 @@ class ProtocolMCPServer:
         self._recon_handler = ReconToolHandler(project_root)
         self._tools = self._resolve_tools()
 
+        self._core_handler = CoreToolHandler(self)
+
+        # Build registry of tool handlers, detecting collisions
+        self._dispatch = {}
+        handlers = [
+            self._job_handler,
+            self._model_handler,
+            self._decision_handler,
+            self._recon_handler,
+            self._core_handler,
+        ]
+        for h in handlers:
+            for tool_name, handler_fn in h.tool_handlers().items():
+                if tool_name in self._dispatch:
+                    raise ValueError(f"Duplicate tool handler registered for tool: {tool_name}")
+                self._dispatch[tool_name] = handler_fn
+
     def _audit(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log to injected audit log if available."""
         if self._audit_log is not None:
@@ -186,33 +203,16 @@ class ProtocolMCPServer:
             "args_hash": self._args_hash(arguments),
         })
 
-        # Handle meta-tools
-        if name == "validate_task":
-            return self._handle_validate_task(arguments)
-        if name == "dispatch_task":
-            return self._handle_dispatch_task(arguments)
-        if name == "get_job_status":
-            return self._job_handler.handle_get_job_status(arguments)
-        if name == "list_jobs":
-            return self._job_handler.handle_list_jobs(arguments)
-        if name == "get_job_logs":
-            return self._job_handler.handle_get_job_logs(arguments)
-        if name == "list_models":
-            return self._model_handler.handle_list_models(arguments)
-        if name == "resolve_model":
-            return self._model_handler.handle_resolve_model(arguments)
-        if name == "propose_adjudicate":
-            return self._decision_handler.handle_propose_adjudicate(arguments)
-        if name == "propose_set_model":
-            return self._decision_handler.handle_propose_set_model(arguments)
-        if name == "recon":
-            return self._recon_handler.handle_recon(arguments)
-        if name == "get_recon_status":
-            return self._recon_handler.handle_get_recon_status(arguments)
-        if name == "get_recon_results":
-            return self._recon_handler.handle_get_recon_results(arguments)
-        if name == "retry_job":
-            return self._handle_retry_job(arguments)
+        handler = self._dispatch.get(name)
+        if handler:
+            # Check if the handler method has been replaced (e.g. mocked in tests)
+            instance = getattr(handler, "__self__", None)
+            func_name = getattr(handler, "__name__", None)
+            if instance is not None and func_name is not None:
+                current_attr = getattr(instance, func_name, None)
+                if current_attr is not handler:
+                    return current_attr(arguments)
+            return handler(arguments)
 
         # Dispatch to backing MCP
         return self._dispatch_tool(name, schema, arguments)
@@ -301,14 +301,22 @@ class ProtocolMCPServer:
             raise MCPError(f"Tool execution failed: {e}")
 
     def _handle_validate_task(self, arguments: Dict[str, Any]) -> dict:
-        """Run validators and issue a token (WF1).
+        return self._core_handler.handle_validate_task(arguments)
 
-        Args:
-            arguments: Must contain task_id
+    def _handle_dispatch_task(self, arguments: Dict[str, Any]) -> dict:
+        return self._core_handler.handle_dispatch_task(arguments)
 
-        Returns:
-            Dict with token and validation results
-        """
+    def _handle_retry_job(self, arguments: Dict[str, Any]) -> dict:
+        return self._core_handler.handle_retry_job(arguments)
+
+class CoreToolHandler:
+    """Handles validate_task, dispatch_task, and retry_job tool calls."""
+
+    def __init__(self, server: "ProtocolMCPServer"):
+        self.server = server
+
+    def handle_validate_task(self, arguments: Dict[str, Any]) -> dict:
+        """Run validators and issue a token (WF1)."""
         task_id = arguments.get("task_id")
         if not task_id:
             raise MCPError("validate_task requires task_id")
@@ -316,7 +324,7 @@ class ProtocolMCPServer:
         # Run shell tests as validator (permissive: treat failures as warnings)
         results = []
         try:
-            test_result = self.shell.run_tests("tests/", command_type="pytest")
+            test_result = self.server.shell.run_tests("tests/", command_type="pytest")
             if test_result.severity == "blocker":
                 results.append(ValidatorResult(
                     validator_id=test_result.validator_id,
@@ -333,7 +341,7 @@ class ProtocolMCPServer:
             ))
 
         # Add stub pass results for protocol validators
-        for v in self.protocol.validators:
+        for v in self.server.protocol.validators:
             results.append(ValidatorResult(
                 validator_id=v.validator_id,
                 severity="pass",
@@ -341,17 +349,17 @@ class ProtocolMCPServer:
             ))
 
         # Issue token
-        token = self.token_issuer.issue_token(
+        token = self.server.token_issuer.issue_token(
             task_id=task_id,
             validator_results=results,
-            consensus=self.protocol.disagreement_policy.value,
+            consensus=self.server.protocol.disagreement_policy.value,
         )
 
         if token:
-            with self._token_lock:
-                self._validation_token = token
+            with self.server._token_lock:
+                self.server._validation_token = token
 
-        self._audit("validator_results", {
+        self.server._audit("validator_results", {
             "op": "validator_results",
             "task_id": task_id,
             "validator_outcomes": [
@@ -368,15 +376,8 @@ class ProtocolMCPServer:
             ],
         }
 
-    def _handle_dispatch_task(self, arguments: Dict[str, Any]) -> dict:
-        """Submit a task spec to JobManager for background execution.
-
-        Args:
-            arguments: Must contain task_spec
-
-        Returns:
-            Dict with status, task_id (job ID), and task_spec
-        """
+    def handle_dispatch_task(self, arguments: Dict[str, Any]) -> dict:
+        """Submit a task spec to JobManager for background execution."""
         task_spec = arguments.get("task_spec")
         if not task_spec:
             raise MCPError("dispatch_task requires task_spec")
@@ -384,35 +385,35 @@ class ProtocolMCPServer:
 
         from snodo.jobs import JobManager
 
-        job_mgr = JobManager(self.project_root)
+        job_mgr = JobManager(self.server.project_root)
         task_args: Dict[str, Any] = {
             "description": task_spec,
-            "cwd": self.project_root,
+            "cwd": self.server.project_root,
         }
         if coding_model:
             task_args["model"] = coding_model
-        if self.mode_id:
-            task_args["mode"] = self.mode_id
+        if self.server.mode_id:
+            task_args["mode"] = self.server.mode_id
 
         job_id = job_mgr.submit(task_args)
 
         task_spec_hash = hashlib.sha256(task_spec.encode()).hexdigest()[:16]
-        self._audit("dispatch_request", {
+        self.server._audit("dispatch_request", {
             "op": "dispatch_request",
             "task_spec_hash": task_spec_hash,
             "job_id": job_id,
-            "mode": self.mode_id or "all",
+            "mode": self.server.mode_id or "all",
         })
 
         # Single-use: consume the token after successful dispatch
-        with self._token_lock:
-            if self._validation_token:
-                self._validation_token = None
+        with self.server._token_lock:
+            if self.server._validation_token:
+                self.server._validation_token = None
                 consumed = True
             else:
                 consumed = False
         if consumed:
-            self._audit("token_consumed", {
+            self.server._audit("token_consumed", {
                 "op": "token_consumed",
                 "task_spec_hash": task_spec_hash,
             })
@@ -426,12 +427,8 @@ class ProtocolMCPServer:
             result["coding_model"] = coding_model
         return result
 
-    def _handle_retry_job(self, arguments: Dict[str, Any]) -> dict:
-        """Look up task_id from a failed job and dispatch a retry.
-
-        Reads the job's task.json, extracts the original task_id, and
-        submits a new background job with retry context.
-        """
+    def handle_retry_job(self, arguments: Dict[str, Any]) -> dict:
+        """Look up task_id from a failed job and dispatch a retry."""
         from snodo.jobs import JobManager
 
         job_id = arguments.get("job_id", "")
@@ -440,7 +437,7 @@ class ProtocolMCPServer:
 
         revised_spec = arguments.get("revised_spec", "")
 
-        job_mgr = JobManager(self.project_root)
+        job_mgr = JobManager(self.server.project_root)
         job_dir = job_mgr._job_dir(job_id)
 
         import json
@@ -460,11 +457,11 @@ class ProtocolMCPServer:
         description = revised_spec or original_spec
         task_args: Dict[str, Any] = {
             "description": description,
-            "cwd": self.project_root,
+            "cwd": self.server.project_root,
             "retry_task_id": task_id,
         }
-        if self.mode_id:
-            task_args["mode"] = self.mode_id
+        if self.server.mode_id:
+            task_args["mode"] = self.server.mode_id
 
         new_job_id = job_mgr.submit(task_args)
 
@@ -473,4 +470,11 @@ class ProtocolMCPServer:
             "job_id": new_job_id,
             "task_id": task_id,
             "description": description,
+        }
+
+    def tool_handlers(self) -> dict:
+        return {
+            "validate_task": self.server._handle_validate_task,
+            "dispatch_task": self.server._handle_dispatch_task,
+            "retry_job": self.server._handle_retry_job,
         }

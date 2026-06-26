@@ -69,3 +69,10 @@ class JobToolHandler:
             "tail": tail,
             "log": log_content,
         }
+
+    def tool_handlers(self) -> dict:
+        return {
+            "get_job_status": self.handle_get_job_status,
+            "list_jobs": self.handle_list_jobs,
+            "get_job_logs": self.handle_get_job_logs,
+        }
