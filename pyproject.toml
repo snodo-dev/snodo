@@ -2,10 +2,17 @@
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+snodo-core = { workspace = true }
+
 [project]
 name = "snodo"
 version = "0.4.0"
 dependencies = [
+    "snodo-core",
     "pydantic>=2.12.0",
     "pyyaml>=6.0",
     "langchain>=0.3.0",
@@ -96,5 +103,7 @@ filterwarnings = [
 [dependency-groups]
 dev = [
     "httpx2>=2.4.0",
+    "hypothesis>=6.155.2",
+    "import-linter>=2.12",
     "pytest-xdist>=3.8.0",
 ]
