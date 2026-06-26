@@ -94,3 +94,9 @@ class ModelToolHandler:
             "status": "not_found",
             "query": query,
         }
+
+    def tool_handlers(self) -> dict:
+        return {
+            "list_models": self.handle_list_models,
+            "resolve_model": self.handle_resolve_model,
+        }
