@@ -83,7 +83,7 @@ class DashboardDataProvider:
             self._protocol_error = "No protocol.yml found"
             return None
         try:
-            from snodo.cli.commands import load_protocol
+            from snodo.protocols import load_protocol
             self._protocol = load_protocol(protocol_path)
         except Exception as e:
             self._protocol_error = str(e)

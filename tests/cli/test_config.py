@@ -19,7 +19,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from snodo.cli.config import ConfigManager, ConfigError, DEFAULT_MODEL
+from snodo.config import ConfigManager, ConfigError, DEFAULT_MODEL
 from snodo.cli.main import main
 
 
@@ -209,7 +209,7 @@ class TestTestKeys:
         results = mgr.test_keys()
         assert results == {}
 
-    @patch("snodo.cli.config.ConfigManager._test_single_key")
+    @patch("snodo.config.ConfigManager._test_single_key")
     def test_test_keys_calls_per_provider(self, mock_test, mgr):
         mgr.add_key("openai", "sk-test")
         mgr.add_key("anthropic", "sk-ant")
@@ -219,7 +219,7 @@ class TestTestKeys:
         assert results == {"openai": True, "anthropic": True}
         assert mock_test.call_count == 2
 
-    @patch("snodo.cli.config.ConfigManager._test_single_key")
+    @patch("snodo.config.ConfigManager._test_single_key")
     def test_test_keys_mixed_results(self, mock_test, mgr):
         mgr.add_key("openai", "sk-good")
         mgr.add_key("anthropic", "sk-bad")
@@ -238,7 +238,7 @@ class TestTestKeys:
             assert result is False
 
     def test_test_single_key_unknown_provider(self, mgr):
-        with patch("snodo.cli.config.completion", create=True):
+        with patch("snodo.config.completion", create=True):
             result = mgr._test_single_key("unknown_provider", "key")
             assert result is False
 
@@ -350,7 +350,7 @@ class TestCLIConfigRemove:
 
 
 class TestCLIConfigTest:
-    @patch("snodo.cli.config.ConfigManager._test_single_key")
+    @patch("snodo.config.ConfigManager._test_single_key")
     def test_test_keys_all_valid(self, mock_test, cli_config_dir, capsys):
         cli_config_dir.add_key("openai", "sk-good")
         mock_test.return_value = True
@@ -360,7 +360,7 @@ class TestCLIConfigTest:
         out = capsys.readouterr().out
         assert "valid" in out
 
-    @patch("snodo.cli.config.ConfigManager._test_single_key")
+    @patch("snodo.config.ConfigManager._test_single_key")
     def test_test_keys_some_invalid(self, mock_test, cli_config_dir, capsys):
         cli_config_dir.add_key("openai", "sk-bad")
         mock_test.return_value = False

@@ -20,8 +20,10 @@ FastMCP handles:
 
 import inspect
 import json
-from typing import Any
+from typing import Any, Optional
 
+from mcp.server.auth.provider import TokenVerifier
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 
 from snodo.mcp.server import ProtocolMCPServer
@@ -107,7 +109,12 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
     )
 
 
-def build_fastmcp_server(protocol_server: ProtocolMCPServer) -> FastMCP:
+def build_fastmcp_server(
+    protocol_server: ProtocolMCPServer,
+    *,
+    token_verifier: Optional[TokenVerifier] = None,
+    auth_settings: Optional[AuthSettings] = None,
+) -> FastMCP:
     """Build a FastMCP server that delegates to a ProtocolMCPServer.
 
     Creates a FastMCP instance with tools matching the protocol configuration,
@@ -115,6 +122,11 @@ def build_fastmcp_server(protocol_server: ProtocolMCPServer) -> FastMCP:
 
     Args:
         protocol_server: ProtocolMCPServer with resolved tools and WF1 state
+        token_verifier: Optional OAuth TokenVerifier for Bearer JWT validation.
+            When set, FastMCP wraps the /mcp endpoint with auth middleware.
+        auth_settings: Optional OAuth settings (issuer_url, resource_server_url).
+            When set with resource_server_url, FastMCP serves
+            /.well-known/oauth-protected-resource for client discovery.
 
     Returns:
         Configured FastMCP instance ready to run
@@ -125,7 +137,12 @@ def build_fastmcp_server(protocol_server: ProtocolMCPServer) -> FastMCP:
 
     instructions = _build_instructions(protocol_server)
 
-    mcp = FastMCP(server_name, instructions=instructions)
+    mcp = FastMCP(
+        server_name,
+        instructions=instructions,
+        token_verifier=token_verifier,
+        auth=auth_settings,
+    )
 
     for tool_info in protocol_server.get_tools():
         fn = _make_tool_handler(protocol_server, tool_info)

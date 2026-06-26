@@ -81,7 +81,7 @@ class LLMValidator(ValidatorBase):
 
     def _resolve_cf_headers(self) -> Optional[dict]:
         """Return extra_headers for Cloudflare Workers AI session affinity."""
-        from snodo.cli.config import ConfigManager
+        from snodo.config import ConfigManager
         provider = ConfigManager._provider_for_model(self.model)
         if provider == "cloudflare":
             return {"x-session-affinity": self._task_id or "unknown"}

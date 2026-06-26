@@ -57,7 +57,7 @@ def models_command(args) -> int:
     max_input_cost = getattr(args, "max_input_cost", None)
     min_context = getattr(args, "min_context", None)
 
-    from snodo.cli.config import ConfigManager
+    from snodo.config import ConfigManager
     mgr = ConfigManager()
     providers = mgr.get_providers()
 

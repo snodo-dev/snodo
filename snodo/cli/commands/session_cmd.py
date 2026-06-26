@@ -87,7 +87,7 @@ def _session_delete(mgr: SessionManager, args) -> int:
 
 def _session_prune(mgr: SessionManager, args) -> int:
     """Prune stale sessions."""
-    from snodo.cli.config import ConfigManager
+    from snodo.config import ConfigManager
     config_mgr = ConfigManager()
     max_age = config_mgr.get_engine_value("max_session_age_days", 30)
 

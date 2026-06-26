@@ -16,7 +16,7 @@ def cloud_connect_command(api_key: str) -> int:
         )
         return 1
 
-    from snodo.cli.config import ConfigManager
+    from snodo.config import ConfigManager
 
     mgr = ConfigManager()
     config = mgr.load()
@@ -34,7 +34,7 @@ def cloud_connect_command(api_key: str) -> int:
 
 def cloud_disconnect_command() -> int:
     """Clear the snodo cloud API key and disable sync."""
-    from snodo.cli.config import ConfigManager
+    from snodo.config import ConfigManager
 
     mgr = ConfigManager()
     config = mgr.load()
@@ -49,7 +49,7 @@ def cloud_disconnect_command() -> int:
 
 def cloud_status_command() -> int:
     """Show cloud connection and sync state."""
-    from snodo.cli.config import ConfigManager
+    from snodo.config import ConfigManager
     from snodo.infrastructure.cloud_sync import CloudSyncState
 
     mgr = ConfigManager()
@@ -109,7 +109,7 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "") -> int:
     --session <id>: sync a specific session
     (no flags): sync the current active session
     """
-    from snodo.cli.config import ConfigManager
+    from snodo.config import ConfigManager
     from snodo.infrastructure.paths import require_project_root
     from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
     from snodo.infrastructure.audit import AuditLog

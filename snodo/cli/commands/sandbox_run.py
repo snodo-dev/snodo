@@ -6,7 +6,7 @@ Extracted from cli/commands/run_cmd.py to isolate sandbox/job logic.
 import sys
 from pathlib import Path
 
-from snodo.cli.config import ConfigManager, provider_env
+from snodo.config import ConfigManager, provider_env
 
 
 def _build_sandbox_command(args) -> list:

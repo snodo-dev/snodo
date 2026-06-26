@@ -1,0 +1,19 @@
+[importlinter]
+root_package = snodo
+
+[importlinter:contract:layers]
+name = Snodo architectural layers
+type = layers
+layers =
+    snodo.dashboard
+    snodo.cli
+    snodo.engine
+    snodo.mcp
+    snodo.jobs
+    snodo.agents
+    snodo.coders | snodo.validators | snodo.protocols
+    snodo.infrastructure | snodo.compiler | snodo.providers | snodo.recon
+    snodo.core | snodo.config | snodo.predicates | snodo.sandbox
+ignore_imports =
+    snodo.jobs.wrapper -> snodo.cli.main
+    snodo.cli.commands.dashboard_cmd -> snodo.dashboard.app

@@ -86,7 +86,28 @@ def _run_server(args, protocol) -> int:
         print(f"Error: Failed to create MCP server: {e}", file=sys.stderr)
         return 1
 
-    mcp = build_fastmcp_server(protocol_server)
+    # Detect tunnel mode and wire OAuth 2.1 if active
+    tunnel_config = _load_tunnel_config(project_root)
+    tunnel_hostname = tunnel_config.get("hostname")
+    extra_kwargs = {}
+    if tunnel_hostname:
+        from snodo.infrastructure.jwks import JwksClient
+        from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
+        from mcp.server.auth.settings import AuthSettings
+        from pydantic import AnyHttpUrl
+
+        jwks = JwksClient()
+        if jwks.fetch():
+            extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks)
+            extra_kwargs["auth_settings"] = AuthSettings(
+                issuer_url=AnyHttpUrl("https://mcp-auth.snodo.dev"),
+                resource_server_url=AnyHttpUrl(f"https://{tunnel_hostname}"),
+            )
+            print("  OAuth 2.1 enabled (RS256 JWTs from mcp-auth.snodo.dev)", file=sys.stderr)
+        else:
+            print("  Warning: OAuth 2.1 disabled — could not load JWKS", file=sys.stderr)
+
+    mcp = build_fastmcp_server(protocol_server, **extra_kwargs)
     tools = protocol_server.get_tools()
     mode_label = mode_id or "all"
 
@@ -105,7 +126,7 @@ def _run_server(args, protocol) -> int:
         file=sys.stderr,
     )
 
-    if transport != "stdio":
+    if transport != "stdio" and not tunnel_hostname:
         print()
         print("To expose this server remotely, use your own tunneling tool:")
         print(f"  ngrok:        ngrok http {port}")
@@ -191,7 +212,7 @@ def _check_cloudflared() -> bool:
 
 def _get_cloud_api_url() -> str:
     """Read the cloud API URL from ~/.snodo/config.yml."""
-    from snodo.cli.config import ConfigManager
+    from snodo.config import ConfigManager
 
     config = ConfigManager().load()
     return config.get("cloud", {}).get("api_url", "https://api.snodo.dev")
@@ -199,7 +220,7 @@ def _get_cloud_api_url() -> str:
 
 def _get_snodo_api_key() -> str:
     """Read the snodo API key from ~/.snodo/config.yml cloud section."""
-    from snodo.cli.config import ConfigManager
+    from snodo.config import ConfigManager
 
     config = ConfigManager().load()
     return config.get("cloud", {}).get("api_key", "")
@@ -216,7 +237,7 @@ def _provision_tunnel(
 ) -> dict:
     """Provision a tunnel via the snodo-cloud API.
 
-    Returns a dict with hostname, tunnel_token, client_id, client_secret.
+    Returns a dict with hostname, tunnel_token.
     Raises RuntimeError on failure.
     """
     try:
@@ -250,31 +271,8 @@ def _provision_tunnel(
 
 
 def _rotate_tunnel_token(api_key: str, hostname: str) -> dict:
-    """Rotate the service token for an existing tunnel.
-
-    Returns a dict with client_id and client_secret.
-    """
-    try:
-        import httpx
-
-        api_url = _get_cloud_api_url()
-
-        url = f"{api_url.rstrip('/')}/tunnel/{hostname}/token"
-        resp = httpx.post(
-            url,
-            json={},
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=30.0,
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"Token rotation failed (HTTP {resp.status_code}): {resp.text[:500]}"
-            )
-        return resp.json()
-    except RuntimeError:
-        raise
-    except Exception as e:
-        raise RuntimeError(f"Token rotation failed: {e}")
+    """Deprecated — token rotation is no longer supported (OAuth 2.1 only)."""
+    raise RuntimeError("Token rotation is no longer supported (OAuth 2.1 only).")
 
 
 def _deprovision_tunnel(api_key: str, hostname: str) -> bool:
@@ -348,13 +346,12 @@ def _load_tunnel_config(project_root: str) -> dict:
 
 
 def _save_tunnel_config(project_root: str, config: dict) -> None:
-    """Write .snodo/tunnel.json (never includes client_secret)."""
+    """Write .snodo/tunnel.json."""
     path = Path(project_root) / ".snodo" / "tunnel.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     to_save = {
         "hostname": config.get("hostname", ""),
         "tunnel_token": config.get("tunnel_token", ""),
-        "client_id": config.get("client_id", ""),
         "created_at": config.get("created_at", ""),
     }
     path.write_text(json.dumps(to_save, indent=2) + "\n")
@@ -401,21 +398,9 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     if delete:
         return _handle_tunnel_delete(project_root, tunnel_config, api_key)
 
-    # --rotate flow
+    # --rotate flow (no-op)
     if rotate:
-        if not tunnel_config.get("hostname"):
-            print("Error: No existing tunnel to rotate. Run without --rotate first.", file=sys.stderr)
-            return 1
-        try:
-            new_token = _rotate_tunnel_token(api_key, tunnel_config["hostname"])
-        except RuntimeError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-        tunnel_config["client_id"] = new_token["client_id"]
-        _save_tunnel_config(project_root, tunnel_config)
-        _print_first_run_info(tunnel_config["hostname"], new_token["client_id"], new_token["client_secret"])
-        print()
-        print("Token rotated successfully.")
+        print("Token rotation is no longer supported (OAuth 2.1 only).")
         return 0
 
     # First run: provision
@@ -436,20 +421,15 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         tunnel_config = {
             "hostname": provisioned["hostname"],
             "tunnel_token": provisioned["tunnel_token"],
-            "client_id": provisioned["client_id"],
             "created_at": provisioned.get("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
         }
         _save_tunnel_config(project_root, tunnel_config)
 
-        _print_first_run_info(
-            provisioned["hostname"],
-            provisioned["client_id"],
-            provisioned["client_secret"],
-        )
+        _print_first_run_info(provisioned["hostname"])
     else:
         # Subsequent runs
         print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
-        print("  (Use your saved CF-Access-Client-Id and CF-Access-Client-Secret)")
+        print("  (OAuth 2.1 — Bearer JWT from mcp-auth.snodo.dev)")
         print()
 
     # 4. Start MCP server subprocess
@@ -550,17 +530,16 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     return 0
 
 
-def _print_first_run_info(hostname: str, client_id: str, client_secret: str) -> None:
+def _print_first_run_info(hostname: str) -> None:
     """Print the first-run tunnel configuration block."""
     print()
     print("✓ Snodo MCP tunnel active")
     print()
-    print("Configure in your AI provider (Claude, Gemini, ChatGPT, etc.):")
+    print("Configure your MCP client with OAuth 2.1:")
     print()
-    print(f"  URL:    https://{hostname}/mcp")
-    print(f"  Header: CF-Access-Client-Id: {client_id}")
-    print(f"  Header: CF-Access-Client-Secret: {client_secret}")
+    print(f"  URL:              https://{hostname}/mcp")
+    print("  Auth server:      https://mcp-auth.snodo.dev")
     print()
-    print("⚠  Save the Client Secret — it will not be shown again.")
-    print("   Rotate with: snodo serve --tunnel --rotate")
+    print("  Your MCP client will redirect to mcp-auth.snodo.dev")
+    print("  to obtain a Bearer JWT automatically.")
     print()

@@ -1031,7 +1031,7 @@ class TestTunnelProvisioning:
         saved = _load_tunnel_config(project_root)
         assert saved["hostname"] == "test.tunnel.snodo.dev"
         assert saved["tunnel_token"] == "eyJ..."
-        assert saved["client_id"] == "abc123.access"
+        assert "client_id" not in saved
         assert "client_secret" not in saved
 
     def test_load_missing_tunnel_config(self, tmp_path):
@@ -1107,8 +1107,8 @@ class TestTunnelRunErrors:
 
         assert result == 1
 
-    def test_rotate_with_no_existing_tunnel(self):
-        """--rotate without an existing tunnel.json errors."""
+    def test_rotate_is_no_op(self):
+        """--rotate is now a no-op that prints a message."""
         from snodo.cli.commands.serve_cmd import _run_tunnel
         from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
@@ -1124,7 +1124,7 @@ class TestTunnelRunErrors:
                 with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
                     result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
-        assert result == 1
+        assert result == 0
 
     def test_first_run_provisions_and_starts_services(self):
         """First run provisions tunnel, saves config, starts subprocesses."""
@@ -1201,8 +1201,8 @@ class TestTunnelRunErrors:
         assert result == 0
         mock_provision.assert_not_called()  # No provisioning on subsequent run
 
-    def test_rotate_calls_api_and_updates_config(self):
-        """--rotate calls rotation API and saves updated config."""
+    def test_rotate_is_no_op_ignores_tunnel_config(self):
+        """--rotate is a no-op regardless of existing tunnel config."""
         from snodo.cli.commands.serve_cmd import _run_tunnel
         from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
@@ -1216,24 +1216,18 @@ class TestTunnelRunErrors:
         stored = {
             "hostname": "existing.tunnel.snodo.dev",
             "tunnel_token": "tok_old",
-            "client_id": "client_old.access",
-        }
-
-        new_token = {
-            "client_id": "client_new.access",
-            "client_secret": "new_secret",
         }
 
         with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
             with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
                 with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=stored):
-                    with patch("snodo.cli.commands.serve_cmd._rotate_tunnel_token", return_value=new_token) as mock_rotate:
+                    with patch("snodo.cli.commands.serve_cmd._rotate_tunnel_token") as mock_rotate:
                         with patch("snodo.cli.commands.serve_cmd._save_tunnel_config") as mock_save:
                             result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
         assert result == 0
-        mock_rotate.assert_called_once_with("key123", "existing.tunnel.snodo.dev")
-        mock_save.assert_called_once()
+        mock_rotate.assert_not_called()
+        mock_save.assert_not_called()
 
 class TestServerAuditLog:
     """Tests for audit log wiring in ProtocolMCPServer."""

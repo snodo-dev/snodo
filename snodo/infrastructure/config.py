@@ -13,54 +13,13 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
-from snodo.infrastructure.paths import resolve_home
-
-
-class ProviderConfig(BaseModel):
-    """Provider configuration with API credential env var and /models endpoint."""
-    api_key: str = ""
-    api_key_env: str = ""
-    models_endpoint: str = ""
-    account_id: str = ""
-    account_id_env: str = ""
-    base_url: str = ""
-
-
-DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
-    "anthropic": ProviderConfig(
-        api_key_env="ANTHROPIC_API_KEY",
-        models_endpoint="https://api.anthropic.com/v1/models",
-    ),
-    "openai": ProviderConfig(
-        api_key_env="OPENAI_API_KEY",
-        models_endpoint="https://api.openai.com/v1/models",
-    ),
-    "openrouter": ProviderConfig(
-        api_key_env="OPENROUTER_API_KEY",
-        models_endpoint="https://openrouter.ai/api/v1/models",
-    ),
-    "google": ProviderConfig(
-        api_key_env="GEMINI_API_KEY",
-        models_endpoint="https://generativelanguage.googleapis.com/v1beta/models",
-    ),
-    "cloudflare": ProviderConfig(
-        api_key_env="CLOUDFLARE_API_KEY",
-        account_id_env="CLOUDFLARE_ACCOUNT_ID",
-        models_endpoint="https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/models",
-    ),
-    "deepseek": ProviderConfig(
-        api_key_env="DEEPSEEK_API_KEY",
-        models_endpoint="https://api.deepseek.com/models",
-    ),
-}
-
+from snodo.paths import resolve_home
+from snodo.config import ProviderConfig, DEFAULT_PROVIDER_CATALOG, DEFAULT_MODEL
 
 _CODER_MAX_TOKENS_DEFAULT = 16000
 _CODER_MAX_TOOL_TURNS_DEFAULT = 6
 _VALIDATOR_MAX_TOKENS_DEFAULT = 1500
 _VALIDATOR_MAX_TOOL_TURNS_DEFAULT = 6
-
-DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
 
 class ConfigLoadError(Exception):
