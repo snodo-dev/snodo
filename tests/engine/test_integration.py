@@ -438,8 +438,10 @@ modes:
     validators: ["test"]
 validators:
   - validator_id: "test"
-    validator_type: "testing"
+    validator_type: "quality"
     evaluation_phase: "pre_execute"
+    tooling:
+      test_command: "true"
 disagreement_policy: "unanimous"
 initial_mode: "producer"
 """)

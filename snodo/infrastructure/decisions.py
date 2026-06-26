@@ -274,10 +274,10 @@ class DecisionRecordIssuer:
 
     @staticmethod
     def _validate_severity(severity: str) -> None:
-        if severity in ("blocker", "error"):
+        if severity == "blocker":
             raise DecisionInvalidSeverityError(
                 f"Cannot mint DecisionRecord for severity '{severity}'. "
-                "Blockers and errors are non-overridable (INV3)."
+                "Blockers are non-overridable (INV3)."
             )
 
     @staticmethod

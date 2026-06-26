@@ -431,7 +431,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             outcome = "passed"
         elif decision.action == PolicyAction.HALT:
             loop_state.is_blocked = True
-            has_errors = any(r.severity == "error" for r in results)
+            has_errors = any(getattr(r, 'error', False) for r in results)
             loop_state.halt_type = "validator_error" if has_errors else "blocked"
         elif decision.action == PolicyAction.ESCALATE:
             loop_state.is_blocked = True
@@ -588,7 +588,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         post_outcome = "passed"
         if decision.action == PolicyAction.HALT:
             loop_state.is_blocked = True
-            has_errors = any(r.severity == "error" for r in results)
+            has_errors = any(getattr(r, 'error', False) for r in results)
             loop_state.halt_type = "validator_error" if has_errors else "blocked"
             loop_state.constraint_violations.append(
                 "Post-execute validation failed: " + decision.justification

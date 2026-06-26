@@ -23,8 +23,9 @@ except ImportError:
     class ValidatorResult(BaseModel):  # type: ignore[no-redef]
         """Output from a single validator."""
         validator_id: str
-        severity: Literal["pass", "warn", "blocker", "error"]
+        severity: Literal["pass", "warn", "blocker"]
         justification: str
+        error: bool = False
 
 
 class ShellError(Exception):

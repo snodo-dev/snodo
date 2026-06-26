@@ -644,7 +644,8 @@ class TestLoopPhases:
             "is_blocked": False,
             "metadata": {},
         })
-        assert result["stage"] == LoopStage.COMPLETE.value
+        # No-criteria validator now returns warn → policy escalates → blocked
+        assert result["stage"] == LoopStage.BLOCKED.value
 
 
 # === Loop: Quality Validator Dispatch ===
@@ -741,8 +742,8 @@ class TestQualityDispatch:
         results = builder._default_validator(task, validators, None)
 
         assert len(results) == 1
-        assert results[0].severity == "pass"
-        assert "Stub" in results[0].justification
+        assert results[0].severity == "warn"
+        assert "No criteria" in results[0].justification
 
     def test_quality_validator_gets_workspace_root(self, project_dir):
         """QualityValidator receives workspace root via context."""
