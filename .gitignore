@@ -46,3 +46,6 @@ site/
 # Git worktrees for parallel task execution
 .snodo-worktrees/
 .snodo-bak/
+
+importtime.log
+*.importtime
