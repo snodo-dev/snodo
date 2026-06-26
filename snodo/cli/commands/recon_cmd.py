@@ -4,6 +4,25 @@ FILE: snodo/cli/commands/recon_cmd.py
 """
 
 import sys
+from types import SimpleNamespace
+from typing import List, Optional
+
+import typer
+
+
+def register(app: typer.Typer) -> None:
+    """Register top-level CLI commands onto app (called by discovery loop)."""
+
+    @app.command()
+    def recon(
+        query: str = typer.Argument(..., help="The exploration question to answer"),
+        paths: Optional[List[str]] = typer.Argument(None, help="Paths to search (default: current directory)"),
+        num_agents: Optional[int] = typer.Option(None, "--agents", "-n", help="Number of agents to fan out (uses config if omitted)"),
+    ):
+        """Dispatch a read-only exploration query to one or more agents."""
+        args = SimpleNamespace(query=query, paths=paths or ["./"], num_agents=num_agents)
+        return recon_command(args)
+
 
 
 def recon_command(args) -> int:

@@ -5,11 +5,36 @@ FILE: snodo/cli/commands/init_cmd.py
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Optional
 
+import typer
 import yaml
 
 from snodo.cli.commands import PROTOCOL_TEMPLATES
 from snodo.infrastructure.state import ProjectState, write_state
+
+
+def register(app: typer.Typer) -> None:
+    """Register top-level CLI commands onto app (called by discovery loop)."""
+
+    @app.command()
+    def init(
+        template: Optional[str] = typer.Option(
+            None, "--template", "-t", help="Protocol template: solo, team, or 2+n",
+        ),
+        force: bool = typer.Option(
+            False, "--force", "-f", help="Overwrite existing .snodo/ directory",
+        ),
+        mode: Optional[str] = typer.Option(
+            None, "--mode", "-m", help="Starting mode (skips interactive picker)",
+        ),
+    ):
+        """Initialize Snodo project structure."""
+        args = SimpleNamespace(template=template, force=force, mode=mode)
+        return init_command(args)
+
+
 
 
 def _select_template(args) -> str:

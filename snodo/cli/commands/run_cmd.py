@@ -9,13 +9,68 @@ import os
 import sys
 from dataclasses import is_dataclass, asdict
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
+
+import typer
 
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
 from snodo.engine.loop import build_protocol_graph, LoopStage
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
+
+
+def register(app: typer.Typer) -> None:
+    """Register top-level CLI commands onto app (called by discovery loop)."""
+
+    @app.command()
+    def run(
+        description: Optional[str] = typer.Argument(
+            None, help="Task description (required unless --plan is used)",
+        ),
+        protocol: str = typer.Option(
+            ".snodo/protocol.yml", "--protocol", help="Path to protocol file",
+        ),
+        model: Optional[str] = typer.Option(
+            None, "--model", "-m", help="Model to use (e.g., claude-sonnet-4-20250514, gpt-4)",
+        ),
+        verbose: bool = typer.Option(False, "--verbose", help="Show detailed output"),
+        mock: bool = typer.Option(False, "--mock", help="Use mock coder instead of real LLM"),
+        plan: Optional[str] = typer.Option(
+            None, "--plan", "-p", help="Execute a plan by name",
+        ),
+        wave: Optional[int] = typer.Option(
+            None, "--wave", "-w", help="Execute only a specific wave (requires --plan)",
+        ),
+        interactive: bool = typer.Option(
+            False, "--interactive", "-i", help="Confirm each task before execution",
+        ),
+        from_pr: Optional[int] = typer.Option(
+            None, "--from-pr", help="Fetch PR comments as task context",
+        ),
+        background: bool = typer.Option(
+            False, "--background", "-b", help="Run task in background",
+        ),
+        sandbox: str = typer.Option(
+            "local", "--sandbox", help="Sandbox type: local or docker",
+        ),
+        resume: Optional[str] = typer.Option(
+            None, "--resume", help="Resume execution from session ID",
+        ),
+        retry: Optional[str] = typer.Option(
+            None, "--retry", help="Retry a failed task by ID (requires P0 branch isolation)",
+        ),
+    ):
+        """Execute a task through the protocol."""
+        args = SimpleNamespace(
+            description=description, protocol=protocol, model=model,
+            verbose=verbose, mock=mock, plan=plan, wave=wave,
+            interactive=interactive, from_pr=from_pr, background=background,
+            sandbox=sandbox, resume=resume, retry=retry,
+        )
+        return run_command(args)
+
 
 _logger = logging.getLogger(__name__)
 

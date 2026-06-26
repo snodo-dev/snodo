@@ -12,8 +12,61 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Optional
+
+import typer
 
 from snodo.cli.commands import load_protocol
+
+
+def register(app: typer.Typer) -> None:
+    """Register top-level CLI commands onto app (called by discovery loop)."""
+
+    @app.command()
+    def serve(
+        protocol: str = typer.Option(
+            ".snodo/protocol.yml", "--protocol", help="Path to protocol file",
+        ),
+        mode: Optional[str] = typer.Option(
+            None, "--mode", help="Serve a single mode (default: all modes)",
+        ),
+        transport: str = typer.Option(
+            "stdio", "--transport", help="Transport type: stdio, sse, or streamable-http",
+        ),
+        port: int = typer.Option(55441, "--port", help="Port for SSE/streamable-http transport"),
+        tunnel: bool = typer.Option(
+            False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
+        ),
+        rotate: bool = typer.Option(
+            False, "--rotate", help="Rotate the Cloudflare service token for an existing tunnel",
+        ),
+        delete: bool = typer.Option(
+            False, "--delete", help="Deprovision and remove the managed tunnel",
+        ),
+        install: bool = typer.Option(
+            False, "--install", help="Install MCP servers into Claude Desktop config",
+        ),
+        uninstall: bool = typer.Option(
+            False, "--uninstall", help="Remove this project's MCP entries",
+        ),
+        uninstall_all: bool = typer.Option(
+            False, "--uninstall-all", help="Remove ALL snodo MCP entries",
+        ),
+        project_name: Optional[str] = typer.Option(
+            None, "--project-name", help="Override project name for MCP entry naming",
+        ),
+    ):
+        """Start MCP server from protocol definition."""
+        args = SimpleNamespace(
+            protocol=protocol, mode=mode, transport=transport, port=port,
+            tunnel=tunnel, rotate=rotate, delete=delete,
+            install=install, uninstall=uninstall, uninstall_all=uninstall_all,
+            project_name=project_name,
+        )
+        return serve_command(args)
+
+
 
 
 def _derive_project_root(protocol_path: str) -> str:
