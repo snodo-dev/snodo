@@ -5,6 +5,109 @@ FILE: snodo/cli/commands/job_cmd.py
 
 import sys
 import time
+from types import SimpleNamespace
+from typing import Optional
+
+import typer
+
+# ---------------------------------------------------------------------------
+# Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
+# ---------------------------------------------------------------------------
+
+COMMAND_NAME = "job"
+
+app = typer.Typer(invoke_without_command=True, help="Manage background jobs")
+
+
+@app.callback()
+def _job_callback(ctx: typer.Context):
+    """Manage background jobs."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@app.command("list")
+def job_list():
+    """List all jobs."""
+    args = SimpleNamespace(job_action="list")
+    return job_command(args)
+
+
+@app.command("status")
+def job_status(job_id: str = typer.Argument(..., help="Job ID")):
+    """Show job status."""
+    args = SimpleNamespace(job_action="status", job_id=job_id)
+    return job_command(args)
+
+
+@app.command("logs")
+def job_logs(
+    job_id: str = typer.Argument(..., help="Job ID"),
+    stream: str = typer.Option("stdout", "--stream", "-s", help="Log stream: stdout or stderr"),
+    tail: Optional[int] = typer.Option(None, "--tail", "-n", help="Show last N lines"),
+    watch: bool = typer.Option(False, "--watch", "-w", help="Tail logs in real time until job completes"),
+):
+    """Show job logs."""
+    args = SimpleNamespace(job_action="logs", job_id=job_id, stream=stream, tail=tail, watch=watch)
+    return job_command(args)
+
+
+@app.command("wait")
+def job_wait(
+    job_id: str = typer.Argument(..., help="Job ID"),
+    timeout: Optional[float] = typer.Option(None, "--timeout", "-t", help="Max seconds to wait"),
+):
+    """Wait for job completion."""
+    args = SimpleNamespace(job_action="wait", job_id=job_id, timeout=timeout)
+    return job_command(args)
+
+
+@app.command("cancel")
+def job_cancel(job_id: str = typer.Argument(..., help="Job ID")):
+    """Cancel a running job."""
+    args = SimpleNamespace(job_action="cancel", job_id=job_id)
+    return job_command(args)
+
+
+@app.command("archive")
+def job_archive(
+    days: int = typer.Option(10, "--days", help="Archive jobs older than N days"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Archive old terminal jobs to .snodo/jobs_archive/."""
+    args = SimpleNamespace(job_action="archive", days=days, yes=yes)
+    return job_command(args)
+
+
+@app.command("prune")
+def job_prune(
+    days: int = typer.Option(10, "--days", help="Prune jobs older than N days"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Permanently delete old terminal jobs."""
+    args = SimpleNamespace(job_action="prune", days=days, yes=yes)
+    return job_command(args)
+
+
+@app.command("unarchive")
+def job_unarchive(
+    days: int = typer.Option(12, "--days", help="Restore jobs archived within N days"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Restore jobs from .snodo/jobs_archive/."""
+    args = SimpleNamespace(job_action="unarchive", days=days, yes=yes)
+    return job_command(args)
+
+
+@app.command("retry")
+def job_retry(
+    job_id: str = typer.Argument(..., help="Job ID to retry (e.g., j_abc123)"),
+    description: str = typer.Argument("", help="Optional revised spec (replaces original)"),
+):
+    """Retry the task associated with a failed job."""
+    args = SimpleNamespace(job_action="retry", job_id=job_id, description=description)
+    return job_command(args)
+
 
 
 def job_command(args) -> int:
