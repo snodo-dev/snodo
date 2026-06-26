@@ -84,6 +84,25 @@ def _app_callback(
         print(ctx.get_help())
 
 
+# === Auto-discovery: mount command modules that expose a top-level `app` ===
+# Any snodo/cli/commands/*_cmd.py that defines `app = typer.Typer(...)` and
+# optionally `COMMAND_NAME` is automatically mounted here.  Currently only
+# mode_cmd qualifies; others will be migrated in subsequent Wave-4 steps.
+
+import pkgutil as _pkgutil
+import importlib as _importlib
+import snodo.cli.commands as _cli_commands
+
+for _, _mod_name, _ in _pkgutil.iter_modules(_cli_commands.__path__):
+    _mod = _importlib.import_module(f"{_cli_commands.__name__}.{_mod_name}")
+    _sub_app = getattr(_mod, "app", None)
+    if isinstance(_sub_app, typer.Typer):
+        _cmd_name = getattr(_mod, "COMMAND_NAME", _mod_name.replace("_cmd", ""))
+        app.add_typer(_sub_app, name=_cmd_name)
+
+del _pkgutil, _importlib, _cli_commands, _mod_name, _mod, _sub_app, _cmd_name
+
+
 # === Init ===
 
 @app.command()
@@ -574,33 +593,8 @@ def session_prune():
     return session_command(args)
 
 
-# === Mode sub-app ===
-
-mode_app = typer.Typer(invoke_without_command=True)
-app.add_typer(mode_app, name="mode", help="Manage active protocol mode")
-
-
-@mode_app.callback()
-def _mode_callback(ctx: typer.Context):
-    """Manage active protocol mode."""
-    if ctx.invoked_subcommand is None:
-        print(ctx.get_help())
-
-
-@mode_app.command("show")
-def mode_show():
-    """Show the current active mode."""
-    args = SimpleNamespace(mode_action="show")
-    return mode_command(args)
-
-
-@mode_app.command("change")
-def mode_change(
-    new_mode: str = typer.Argument(..., help="Mode to switch to"),
-):
-    """Change the active protocol mode."""
-    args = SimpleNamespace(mode_action="change", new_mode=new_mode)
-    return mode_command(args)
+# mode sub-app is now defined in snodo/cli/commands/mode_cmd.py
+# and mounted automatically by the discovery loop above.
 
 
 # === Sandbox sub-app ===

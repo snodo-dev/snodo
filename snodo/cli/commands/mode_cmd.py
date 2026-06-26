@@ -5,8 +5,43 @@ FILE: snodo/cli/commands/mode_cmd.py (Task 7.19)
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import typer
 
 from snodo.infrastructure.state import read_state, write_state
+
+# ---------------------------------------------------------------------------
+# Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
+# ---------------------------------------------------------------------------
+
+COMMAND_NAME = "mode"
+
+app = typer.Typer(invoke_without_command=True, help="Manage active protocol mode")
+
+
+@app.callback()
+def _mode_callback(ctx: typer.Context):
+    """Manage active protocol mode."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@app.command("show")
+def mode_show():
+    """Show the current active mode."""
+    args = SimpleNamespace(mode_action="show")
+    return mode_command(args)
+
+
+@app.command("change")
+def mode_change(
+    new_mode: str = typer.Argument(..., help="Mode to switch to"),
+):
+    """Change the active protocol mode."""
+    args = SimpleNamespace(mode_action="change", new_mode=new_mode)
+    return mode_command(args)
+
 
 
 def mode_command(args) -> int:
