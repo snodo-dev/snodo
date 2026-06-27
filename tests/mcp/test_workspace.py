@@ -13,7 +13,7 @@ import pytest
 import tempfile
 from pathlib import Path
 
-from snodo.mcp.workspace import (
+from snodo.tools.workspace import (
     WorkspaceMCP, PathValidationError, get_workspace
 )
 
@@ -363,7 +363,7 @@ def test_get_workspace_reuses_instance():
 def test_get_workspace_no_init_raises():
     """Test get_workspace without init raises."""
     # Reset global instance
-    import snodo.mcp.workspace as ws_module
+    import snodo.tools.workspace as ws_module
     ws_module._workspace_instance = None
     
     with pytest.raises(ValueError, match="not initialized"):

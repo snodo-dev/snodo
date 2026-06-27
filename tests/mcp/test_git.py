@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 import subprocess
 
-from snodo.mcp.git import GitMCP, GitError, PathValidationError, get_git
+from snodo.tools.git import GitMCP, GitError, PathValidationError, get_git
 
 
 @pytest.fixture
@@ -563,7 +563,7 @@ def test_get_git_reuses_instance(temp_git_repo):
 def test_get_git_no_init_raises():
     """Test get_git without init raises."""
     # Reset global instance
-    import snodo.mcp.git as git_module
+    import snodo.tools.git as git_module
     git_module._git_instance = None
     
     with pytest.raises(ValueError, match="not initialized"):

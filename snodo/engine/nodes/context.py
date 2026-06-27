@@ -5,7 +5,7 @@ FILE: snodo/engine/nodes/context.py
 
 from typing import Dict, Any, List, Optional
 from snodo.engine.state import LoopState
-from snodo.mcp.workspace import WorkspaceMCP
+from snodo.tools.workspace import WorkspaceMCP
 
 
 class ContextMixin:

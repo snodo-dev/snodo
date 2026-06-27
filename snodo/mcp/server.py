@@ -16,9 +16,9 @@ from typing import Any, Dict, List, Optional
 from snodo.compiler.models import Protocol
 from snodo.infrastructure.tokens import TokenIssuer, ValidationToken
 from snodo.core.interfaces import ValidatorResult
-from snodo.mcp.workspace import WorkspaceMCP
-from snodo.mcp.git import GitMCP
-from snodo.mcp.shell import ShellMCP
+from snodo.tools.workspace import WorkspaceMCP
+from snodo.tools.git import GitMCP
+from snodo.tools.shell import ShellMCP
 from snodo.mcp.pr import PrMCP
 from snodo.mcp.planner import PlannerMCP
 from snodo.mcp.tools import TOOL_REGISTRY, MODE_TOOL_MAP
