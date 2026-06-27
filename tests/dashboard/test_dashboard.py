@@ -226,3 +226,129 @@ class TestRunDashboard:
 
         MockApp.assert_called_once_with(project_root=None)
         MockApp.return_value.run.assert_called_once()
+
+
+# === Characterization Tests ===
+
+class TestDashboardDataProvider:
+    """Characterization tests for DashboardDataProvider."""
+
+    def test_get_protocol_and_sessions(self, temp_project):
+        from snodo.dashboard.providers import DashboardDataProvider
+        provider = DashboardDataProvider(str(temp_project))
+        
+        # Test protocol resolution
+        protocol = provider.get_protocol()
+        assert protocol is not None
+        assert protocol.protocol_id == "test"
+        
+        # Test empty sessions list initially
+        sessions = provider.get_sessions()
+        assert isinstance(sessions, list)
+
+    def test_get_session_detail_not_found(self, temp_project):
+        from snodo.dashboard.providers import DashboardDataProvider
+        provider = DashboardDataProvider(str(temp_project))
+        
+        detail = provider.get_session_detail("nonexistent_session")
+        assert detail is None
+
+
+class TestSessionsScreen:
+    """Characterization tests for SessionsScreen."""
+
+    def test_sessions_screen_instantiation(self, temp_project):
+        from snodo.dashboard.providers import DashboardDataProvider
+        from snodo.dashboard.screens import SessionsScreen
+
+        provider = DashboardDataProvider(str(temp_project))
+        screen = SessionsScreen(provider)
+        assert screen.provider == provider
+
+
+class TestDashboardDataProviderExtended:
+    """Extended tests for new DashboardDataProvider data access methods."""
+
+    def test_get_waves_and_tasks(self, temp_project):
+        import json
+        from snodo.dashboard.providers import DashboardDataProvider
+        
+        # Write mock wave.json
+        wave_path = temp_project / ".snodo" / "wave.json"
+        wave_data = [{"wave_id": "w_0001", "feature_description": "Test Wave", "task_ids": ["task_1"]}]
+        wave_path.write_text(json.dumps(wave_data))
+        
+        # Write mock plan & status.json
+        plans_dir = temp_project / ".snodo" / "plans" / "main"
+        plans_dir.mkdir(parents=True)
+        status_file = plans_dir / "status.json"
+        status_data = {"tasks": {"task_1": {"status": "completed", "parent_task_ref": None, "depth": 0}}}
+        status_file.write_text(json.dumps(status_data))
+        
+        provider = DashboardDataProvider(str(temp_project))
+        
+        # Verify get_waves
+        waves = provider.get_waves("sess_1")
+        assert len(waves) == 1
+        assert waves[0]["wave_id"] == "w_0001"
+        assert waves[0]["feature_description"] == "Test Wave"
+        
+        # Verify get_tasks
+        tasks = provider.get_tasks("sess_1")
+        assert len(tasks) == 1
+        assert tasks[0]["task_id"] == "task_1"
+        assert tasks[0]["status"] == "completed"
+
+    def test_get_jobs_and_logs(self, temp_project):
+        import json
+        from snodo.dashboard.providers import DashboardDataProvider
+        
+        # Write mock job directories
+        job_dir = temp_project / ".snodo" / "jobs" / "job_123"
+        job_dir.mkdir(parents=True)
+        (job_dir / "task.json").write_text(json.dumps({"task_id": "task_1"}))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "completed",
+            "created_at": 100.0,
+            "started_at": 101.0,
+            "completed_at": 105.0,
+            "exit_code": 0
+        }))
+        (job_dir / "stdout.log").write_text("Hello stdout\n")
+        (job_dir / "stderr.log").write_text("Hello stderr\n")
+        
+        provider = DashboardDataProvider(str(temp_project))
+        
+        # Verify get_jobs
+        jobs = provider.get_jobs("sess_1", "main:task_1")
+        assert len(jobs) == 1
+        assert jobs[0]["job_id"] == "job_123"
+        assert jobs[0]["status"] == "completed"
+        assert jobs[0]["duration"] == 4.0
+        
+        # Verify get_job_log
+        log = provider.get_job_log("sess_1", "main:task_1", "job_123")
+        assert "Hello stdout" in log
+        assert "Hello stderr" in log
+
+
+class TestPanelRegistry:
+    """Tests for the dashboard panel registry."""
+
+    def test_registry_discovery_and_retrieval(self, temp_project):
+        from snodo.dashboard.providers import DashboardDataProvider
+        from snodo.dashboard.panels import get_panel, list_panels
+        
+        panels = list_panels()
+        assert "sessions" in panels
+        assert "cockpit" in panels
+        
+        provider = DashboardDataProvider(str(temp_project))
+        
+        # Verify retrieving sessions panel
+        sess_panel = get_panel("sessions", provider)
+        assert sess_panel.__class__.__name__ == "SessionsScreen"
+        
+        # Verify retrieving cockpit panel
+        cockpit_panel = get_panel("cockpit", provider)
+        assert cockpit_panel.__class__.__name__ == "CockpitScreen"
