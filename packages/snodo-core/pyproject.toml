@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snodo-core"
-version = "0.5.0"
+version = "0.5.1"
 description = "Snodo kernel — core abstractions, config, paths, predicates, sandbox"
 requires-python = ">=3.12"
 license = "AGPL-3.0-only"
