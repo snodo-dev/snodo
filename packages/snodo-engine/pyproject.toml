@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snodo-engine"
-version = "0.4.0"
+version = "0.5.0"
 description = "Snodo engine — protocol loop graph, coders, and validators"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-only" }
