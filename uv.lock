@@ -3220,7 +3220,7 @@ wheels = [
 
 [[package]]
 name = "snodo"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "gitpython" },
@@ -3302,7 +3302,7 @@ dev = [
 
 [[package]]
 name = "snodo-core"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "packages/snodo-core" }
 dependencies = [
     { name = "pydantic" },
@@ -3313,7 +3313,7 @@ requires-dist = [{ name = "pydantic", specifier = ">=2.12.0" }]
 
 [[package]]
 name = "snodo-engine"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "packages/snodo-engine" }
 dependencies = [
     { name = "langchain" },
@@ -3344,7 +3344,7 @@ requires-dist = [
 
 [[package]]
 name = "snodo-foundation"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "packages/snodo-foundation" }
 dependencies = [
     { name = "filelock" },
@@ -3369,7 +3369,7 @@ requires-dist = [
 
 [[package]]
 name = "snodo-mcp"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "packages/snodo-mcp" }
 dependencies = [
     { name = "docker" },
@@ -3402,7 +3402,7 @@ requires-dist = [
 
 [[package]]
 name = "snodo-tools"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "packages/snodo-tools" }
 dependencies = [
     { name = "gitpython" },
