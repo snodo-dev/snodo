@@ -16,6 +16,7 @@ dependencies = [
     "pyjwt>=2.8.0",
     "filelock>=3.0.0",
     "langgraph>=0.2.0",
+    "langgraph-checkpoint-sqlite>=3.0.0",
 ]
 
 [project.urls]
