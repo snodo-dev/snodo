@@ -5,7 +5,6 @@ FILE: snodo/cli/commands/cloud_cmd.py
 
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import typer
 

@@ -2,11 +2,10 @@
 
 import json
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from snodo.coders.litellm import LiteLLMAdapter
-from snodo.coders.base import ParseError, LLMCallError
-from snodo.core.interfaces import TaskSpec
+from snodo.coders.base import ParseError
 
 
 def _make_mock_response(content=None, tool_calls=None, finish_reason="stop"):

@@ -3,7 +3,7 @@
 Shared utilities used across command modules live here.
 """
 
-from snodo.protocols import (
+from snodo.protocols import (  # noqa: F401
     load_protocol,
     DEFAULT_PROTOCOL,
     SOLO_PROTOCOL,

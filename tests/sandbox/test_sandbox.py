@@ -647,7 +647,7 @@ class TestSandboxCLI:
         from snodo.cli.main import main
 
         # This will fail at execution stage but should get past sandbox routing
-        result = main(argv=["run", "test task", "--mock", "--sandbox", "local"])
+        main(argv=["run", "test task", "--mock", "--sandbox", "local"])
         # Should proceed to normal execution (may fail due to graph setup, that's OK)
         # The key assertion is that it doesn't error with "Docker not available"
         captured = capsys.readouterr()
@@ -683,7 +683,7 @@ class TestRunInSandbox:
 
         # _run_in_sandbox should detect unavailable docker and recurse with sandbox=local
         # This will proceed to normal execution
-        result = _run_in_sandbox(args)
+        _run_in_sandbox(args)
         captured = capsys.readouterr()
         assert "falling back to local" in captured.err
 

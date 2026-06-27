@@ -13,7 +13,7 @@ from snodo.compiler.models import (
     Protocol, Mode, Validator, Severity, DisagreementPolicy
 )
 from snodo.core.interfaces import Task, ValidatorResult
-from snodo.infrastructure.tokens import ValidationToken, TokenIssuer
+from snodo.infrastructure.tokens import TokenIssuer
 from snodo.engine.loop import (
     GraphBuilder, LoopState, LoopStage, build_protocol_graph, _build_audit_results
 )

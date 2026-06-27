@@ -4,7 +4,6 @@ FILE: tests/infrastructure/test_jwks.py
 """
 
 import base64
-import json
 import time
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +12,7 @@ import pytest
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from snodo.infrastructure.jwks import JwksClient, JWKS_KID, JWKS_URI, OAUTH_ISSUER
+from snodo.infrastructure.jwks import JwksClient, JWKS_KID, OAUTH_ISSUER
 
 
 def _b64url(n: int) -> str:

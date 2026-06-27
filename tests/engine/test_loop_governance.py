@@ -4,9 +4,9 @@ FILE: tests/engine/test_loop_governance.py
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from snodo.compiler.models import Protocol
-from snodo.engine.loop import GraphBuilder, LoopStage, LoopState
+from snodo.engine.loop import GraphBuilder
 from snodo.core.interfaces import Task
 
 

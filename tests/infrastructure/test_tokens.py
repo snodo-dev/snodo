@@ -14,8 +14,7 @@ Tests cover:
 """
 
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
 from unittest.mock import Mock
 
 import jwt
@@ -27,11 +26,6 @@ from snodo.core.interfaces import ValidatorResult
 from snodo.infrastructure.tokens import (
     TokenIssuer,
     ValidationToken,
-    TokenError,
-    TokenVerificationError,
-    TokenExpiredError,
-    TokenTaskMismatchError,
-    TokenIssuanceError,
     issue_token,
     verify_token,
     decode_token,

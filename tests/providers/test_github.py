@@ -36,7 +36,7 @@ class TestGitHubProviderInit:
         with patch("snodo.providers.github.Github", mock_github):
             with patch.dict("os.environ", {"GITHUB_TOKEN": "ghp_env"}):
                 from snodo.providers.github import GitHubProvider
-                provider = GitHubProvider("owner/repo")
+                GitHubProvider("owner/repo")
 
         mock_github.assert_called_once_with("ghp_env")
 
