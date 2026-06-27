@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snodo-mcp"
-version = "0.4.0"
+version = "0.5.0"
 description = "Snodo MCP — MCP servers, planning, recon, and jobs"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-only" }
