@@ -2,6 +2,14 @@
 
 Thanks for your interest in contributing.
 
+## Coverage badge
+
+After meaningful coverage changes, regenerate and commit the badge:
+```bash
+uv run pytest tests/ -m "" --cov=snodo --cov-report=xml
+uv run genbadge coverage -i coverage.xml -o .github/badges/coverage.svg
+```
+
 ## Before you start
 
 A **Contributor License Agreement (CLA)** is required before any contribution
