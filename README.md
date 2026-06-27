@@ -4,12 +4,30 @@
 [![Python](https://img.shields.io/pypi/pyversions/snodo)](https://pypi.org/project/snodo/)
 [![License: AGPLv3](https://img.shields.io/badge/License-AGPLv3-blue)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-snodo.dev-2DD4BF)](https://docs.snodo.dev)
+[![arXiv](https://img.shields.io/badge/arXiv-2606.20615-b31b1b)](https://arxiv.org/abs/2606.20615)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Tests](https://img.shields.io/badge/tests-2124%20passing-3DBF4F)](https://github.com/snodo-dev/snodo/actions/workflows/ci.yml)
 
 **AI-SDLC Protocol Engine** — a governance layer for AI-assisted software development.
 
 snodo lets you define a *protocol* — a YAML specification of operational modes, validators, and constraints — and then executes tasks through that protocol. Each task passes through validation gates before and after execution, with disagreement policies (unanimous, majority, quorum, any) determining whether work proceeds, escalates, or halts. The result is a structured, auditable workflow where AI-generated code is checked against your standards before it lands.
 
-Preprint: coming soon on arXiv
+**Preprint:** [*Specifying AI-SDLC Processes: A Protocol Language for Human-Agent Boundaries*](https://arxiv.org/abs/2606.20615) — arXiv:2606.20615 ([doi:10.48550/arXiv.2606.20615](https://doi.org/10.48550/arXiv.2606.20615)).
+
+## Project status
+
+snodo is an actively-developed research implementation (beta). Current state of the codebase:
+
+| Metric | Value |
+|---|---|
+| Tests | **2,124 passing** across 88 files — unit, integration, end-to-end, and property-based |
+| Coverage | ~95% on core modules |
+| Code | ~24,700 lines across **6 packages** |
+| Complexity | average cyclomatic complexity **A (3.9)** — no high-complexity hotspots |
+| Lint / architecture | `ruff` clean; package layering enforced in CI by `import-linter` |
+| Python | 3.12 and 3.13 (CI matrix) |
+
+The enforcement invariants (token integrity, capability boundaries, non-overridable blockers, audit completeness) are verified by property-based tests over randomized inputs.
 
 ## Install
 
@@ -21,10 +39,12 @@ pip install snodo
 
 ### From source
 
+snodo is a [`uv`](https://docs.astral.sh/uv/) workspace of modular packages:
+
 ```bash
 git clone https://github.com/snodo-dev/snodo.git
 cd snodo
-pip install -e ".[dev]"
+uv sync --all-extras   # installs all workspace packages editable, plus dev + studies extras
 ```
 
 ### Requirements
@@ -290,6 +310,8 @@ Launch the TUI dashboard (`snop`).
 
 - **LangGraph execution engine.** The protocol is compiled into a LangGraph `StateGraph` with nodes for governance, validation, execution, and completion. The graph is dynamically built from the protocol YAML, supporting arbitrary mode and validator configurations.
 
+- **Modular package layout.** The codebase is split into independently-installable packages under a `uv` workspace: `snodo-core` (kernel — config, predicates, sandbox), `snodo-tools` (workspace/git/shell primitives and code-host providers), `snodo-foundation` (infrastructure, compiler, protocols), `snodo-engine` (execution engine, validators, coders), and `snodo-mcp` (MCP servers, recon, jobs) — with the root `snodo` package as the CLI and dashboard app. Dependency layering is enforced in CI by `import-linter`.
+
 ## Environment Variables
 
 | Variable | Purpose |
@@ -303,14 +325,26 @@ Launch the TUI dashboard (`snop`).
 
 ## Research
 
-snodo is described in a research paper covering the protocol language, well-formedness conditions, and empirical evaluation of disagreement policies.
+snodo is described in a research paper covering the protocol language, well-formedness conditions, enforcement invariants, and empirical evaluation of disagreement policies.
 
-> Preprint: coming soon on arXiv
+> Prifti, Y. (2026). *Specifying AI-SDLC Processes: A Protocol Language for Human-Agent Boundaries.* arXiv:2606.20615. <https://doi.org/10.48550/arXiv.2606.20615>
+
+```bibtex
+@misc{prifti2026snodo,
+  title         = {Specifying AI-SDLC Processes: A Protocol Language for Human-Agent Boundaries},
+  author        = {Prifti, Ylli},
+  year          = {2026},
+  eprint        = {2606.20615},
+  archivePrefix = {arXiv},
+  doi           = {10.48550/arXiv.2606.20615},
+  url           = {https://arxiv.org/abs/2606.20615}
+}
+```
 
 Empirical studies are included in the `studies/` directory and can be run with:
 
 ```bash
-pip install -e ".[studies]"
+uv sync --extra studies
 make studies
 ```
 
