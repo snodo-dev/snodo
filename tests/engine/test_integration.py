@@ -17,9 +17,9 @@ from snodo.compiler.models import (
 from snodo.core.interfaces import Task, TaskSpec, ValidatorResult
 from snodo.engine.loop import build_protocol_graph, LoopStage
 from snodo.agents.adapter import MockCoderAdapter
-from snodo.mcp.workspace import WorkspaceMCP
-from snodo.mcp.git import GitMCP
-from snodo.mcp.shell import ShellMCP
+from snodo.tools.workspace import WorkspaceMCP
+from snodo.tools.git import GitMCP
+from snodo.tools.shell import ShellMCP
 
 
 @pytest.fixture
