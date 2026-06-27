@@ -73,7 +73,7 @@ def test_init_creates_directory(temp_project_dir):
 def test_init_creates_protocol_file(temp_project_dir):
     """Test snodo init creates protocol.yml."""
     with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
-        result = main()
+        main()
 
     protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
     assert protocol_file.exists()
@@ -90,7 +90,7 @@ def test_init_creates_protocol_file(temp_project_dir):
 def test_init_protocol_is_valid(temp_project_dir):
     """Test generated team protocol can be loaded as Protocol object."""
     with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
-        result = main()
+        main()
 
     protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
     protocol = load_protocol(protocol_file)

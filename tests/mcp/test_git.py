@@ -197,7 +197,7 @@ def test_stage_files(temp_git_repo):
     test_file = Path(tmpdir) / "new_file.txt"
     test_file.write_text("new content")
     
-    result = git_mcp.stage_files(["new_file.txt"])
+    git_mcp.stage_files(["new_file.txt"])
     
     # Verify file was staged
     status = subprocess.run(
@@ -290,7 +290,7 @@ def test_commit_with_multiline_message(temp_git_repo):
     git_mcp.stage_files(["multiline.txt"])
     
     message = "Title\n\nBody line 1\nBody line 2"
-    result = git_mcp.commit(message)
+    git_mcp.commit(message)
     
     # Verify commit created
     log = subprocess.run(
@@ -394,7 +394,7 @@ def test_merge_branch(temp_git_repo):
     git_mcp.commit("Add merge file")
 
     # Merge back to main
-    result = git_mcp.merge_branch("feature-merge")
+    git_mcp.merge_branch("feature-merge")
 
     # Verify we're on main and the file exists
     branch_output = subprocess.run(
@@ -444,7 +444,7 @@ def test_delete_branch(temp_git_repo):
     git_mcp.create_branch("to-delete")
     subprocess.run(["git", "checkout", "main"], cwd=tmpdir, check=True, capture_output=True)
 
-    result = git_mcp.delete_branch("to-delete")
+    git_mcp.delete_branch("to-delete")
 
     # Verify branch is gone
     branches = subprocess.run(

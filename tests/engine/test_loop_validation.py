@@ -4,9 +4,9 @@ FILE: tests/engine/test_loop_validation.py
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 from snodo.compiler.models import Protocol, Mode, Validator, DisagreementPolicy
-from snodo.engine.loop import GraphBuilder, LoopStage
+from snodo.engine.loop import GraphBuilder
 from snodo.core.interfaces import Task, ValidatorResult
 
 

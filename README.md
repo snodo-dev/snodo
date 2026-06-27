@@ -83,6 +83,7 @@ modes:
       - "security"
       - "architecture"
       - "quality"
+      - "meta-spec"
     transitions: {}
 
 validators:
@@ -242,15 +243,14 @@ Manage API keys and configuration. Subcommands: `show`, `add`, `remove`, `test`,
 snodo config add PROVIDER KEY    Store an API key (provider: openai, anthropic, google)
 ```
 
-### `snodo resolve`
+### `snodo authorize`
 
-Resolve an escalated validator disagreement.
+Review and authorize (or reject) pending decisions the orchestrator escalated to a human — disagreement adjudications and `set_model` proposals.
 
 ```
-SESSION_ID TASK_ID               Session and task to resolve
---decision, -d TEXT              Resolution: proceed or halt [required]
---justification, -j TEXT         Justification for the decision [required]
---resolved-by TEXT               Who resolved (default: cli)
+snodo authorize [TASK_ID]
+  --yes, -y       Skip the confirmation prompt
+  --reject-all    Bulk-reject all pending decisions
 ```
 
 ### `snodo job`
@@ -300,6 +300,51 @@ Remove MCP servers from Claude Desktop config.
 
 Launch the TUI dashboard (`snop`).
 
+### `snodo recon`
+
+Fan out read-only exploration agents to answer a question about the codebase.
+
+```
+snodo recon "how does token issuance work?" [PATHS...]
+  --agents, -n INTEGER   Number of agents to fan out (default: from config)
+```
+
+### `snodo models`
+
+List available models for a provider, with cost and capability filters.
+
+```
+snodo models --provider anthropic --id-contains sonnet
+```
+
+### `snodo logs`
+
+Stream logs for a job or recon run.
+
+```
+snodo logs <j_xxx | rec_xxx> [--watch]
+```
+
+### `snodo meta`
+
+Show metadata and usage for a job or task.
+
+```
+snodo meta <j_xxx | task_xxx>
+```
+
+### `snodo cloud`
+
+Manage the snodo cloud connection and audit sync. Subcommands: `connect`, `disconnect`, `status`.
+
+```
+snodo cloud connect <api-key>
+```
+
+### `snodo task`
+
+Manage task branches. Subcommands: `list`, `abandon`, `prune`.
+
 ## Architecture
 
 - **Mode-based capability separation.** Each mode declares its available tools. Disjoint tool sets between modes (enforced by WF1 well-formedness checks) ensure structural separation of duties — a producer cannot merge, a reviewer cannot edit.
@@ -308,9 +353,9 @@ Launch the TUI dashboard (`snop`).
 
 - **JWT validation tokens.** When validators agree, a signed JWT token is issued. Mutating MCP tools require a valid token (WF1 enforcement at the server level), making validation non-overridable at the capability boundary.
 
-- **Session resumability.** Execution state is checkpointed to `~/.snodo/sessions/` (or `$SNODO_HOME/sessions/`). Sessions can be resumed with `snodo run --resume <session_id>`. Escalated disagreements are resolved via `snodo resolve` and the session continues.
+- **Session resumability.** Execution state is checkpointed to `~/.snodo/sessions/` (or `$SNODO_HOME/sessions/`). Sessions can be resumed with `snodo run --resume <session_id>`. Escalated disagreements are adjudicated via `snodo authorize` and the session continues.
 
-- **Coder adapter pattern.** The code generation backend is abstracted behind a `CoderAdapter` interface. Built-in adapters include `LiteLLMAdapter` (any LiteLLM-supported model) and `MockAdapter` (deterministic stubs for testing). New backends can be plugged in without changing the engine.
+- **Coder adapter pattern.** The code generation backend is abstracted behind a `CoderAdapter` interface. Built-in adapters include `LiteLLMAdapter` (any LiteLLM-supported model), provider-specific adapters (Anthropic, OpenAI, Gemini), an `OpenCodeAdapter` (containerised OpenCode), and `MockAdapter` (deterministic stubs for testing). New backends can be plugged in without changing the engine.
 
 - **LangGraph execution engine.** The protocol is compiled into a LangGraph `StateGraph` with nodes for governance, validation, execution, and completion. The graph is dynamically built from the protocol YAML, supporting arbitrary mode and validator configurations.
 

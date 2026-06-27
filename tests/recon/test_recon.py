@@ -6,7 +6,7 @@ FILE: tests/recon/test_recon.py
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -36,7 +36,7 @@ def recon_mgr(project_with_snodo):
 
 class TestReconManagerConstruction:
     def test_creates_recons_dir(self, project_with_snodo):
-        mgr = ReconManager(project_with_snodo)
+        ReconManager(project_with_snodo)
         recons_dir = Path(project_with_snodo) / ".snodo" / "recons"
         assert recons_dir.is_dir()
 

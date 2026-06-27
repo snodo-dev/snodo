@@ -63,7 +63,7 @@ def test_wildcard_pattern():
         artifacts=["any/file/here.txt"],
         phase="post_validate",
     )
-    result = pred.evaluate(ctx, scope_paths=["*"])  # No-op if default
+    pred.evaluate(ctx, scope_paths=["*"])  # No-op if default
     # Default in the code is ["*"] which matches everything with fnmatch
     # But wildcard 'any/file/here.txt' against '*' does not match in fnmatch
     # (fnmatch matches just the basename). Let me test with "any/**/*"

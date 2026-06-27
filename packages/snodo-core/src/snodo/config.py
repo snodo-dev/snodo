@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from snodo.paths import resolve_home
 

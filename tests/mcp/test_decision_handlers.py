@@ -146,7 +146,7 @@ class TestProposeAdjudicate:
             session_decisions={"pending_decisions": "corrupt"}
         )
         with patch.object(handler, "_get_active_session", return_value=(session, mgr)):
-            result = handler.handle_propose_adjudicate({
+            handler.handle_propose_adjudicate({
                 "task_id": "t1",
                 "validator_id": "sec",
                 "decision": "proceed",
@@ -214,7 +214,7 @@ class TestProposeSetModel:
             session_decisions={"pending_decisions": 42}
         )
         with patch.object(handler, "_get_active_session", return_value=(session, mgr)):
-            result = handler.handle_propose_set_model({
+            handler.handle_propose_set_model({
                 "task_id": "t1",
                 "proposed_model": "gpt-4o",
                 "scope": "coder",

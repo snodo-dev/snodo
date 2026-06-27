@@ -207,7 +207,7 @@ class TestSubmit:
         """submit() passes correct paths to spawn_background."""
         mock_spawn.return_value = 99999
 
-        job_id = manager.submit(sample_task_args)
+        manager.submit(sample_task_args)
 
         mock_spawn.assert_called_once()
         call_args = mock_spawn.call_args

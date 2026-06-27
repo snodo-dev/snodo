@@ -5,7 +5,6 @@ Targets missing lines:
   116-117 — _build_dir_tree outer except (FileNotFoundError, ValueError): continue
 """
 
-import pytest
 from unittest.mock import MagicMock
 
 from snodo.compiler.models import Protocol, Mode, Validator
