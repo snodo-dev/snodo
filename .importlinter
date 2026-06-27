@@ -7,10 +7,6 @@ type = layers
 layers =
     snodo.dashboard
     snodo.cli
-    snodo.mcp
-    snodo.jobs
     snodo.agents
-    snodo.recon
 ignore_imports =
-    snodo.jobs.wrapper -> snodo.cli.main
     snodo.cli.commands.dashboard_cmd -> snodo.dashboard.app
