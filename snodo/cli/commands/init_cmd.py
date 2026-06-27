@@ -29,9 +29,12 @@ def register(app: typer.Typer) -> None:
         mode: Optional[str] = typer.Option(
             None, "--mode", "-m", help="Starting mode (skips interactive picker)",
         ),
+        project_id: Optional[str] = typer.Option(
+            None, "--project-id", help="Override the project identity (caches with scope 'override')",
+        ),
     ):
         """Initialize Snodo project structure."""
-        args = SimpleNamespace(template=template, force=force, mode=mode)
+        args = SimpleNamespace(template=template, force=force, mode=mode, project_id=project_id)
         return init_command(args)
 
 
@@ -175,7 +178,30 @@ def init_command(args) -> int:
     except Exception as e:
         print(f"Error: Failed to create .snodo/ directory: {e}", file=sys.stderr)
         return 1
-
+    # Resolve and cache project identity
+    try:
+        from snodo.config import ConfigManager
+        config_data = {}
+        try:
+            config_data = ConfigManager().load()
+        except Exception:
+            pass
+        
+        cfg_project_id = config_data.get("project.id") or config_data.get("project_id")
+        override_id = getattr(args, "project_id", None) or cfg_project_id
+        
+        if override_id:
+            pid = override_id
+            scope = "override"
+        else:
+            from snodo.project import resolve_project_id
+            pid, scope = resolve_project_id(".")
+            
+        from snodo.project import cache_project_id
+        cache_project_id(".", pid, scope)
+        print(f"Project ID:  {pid} ({scope})")
+    except Exception as e:
+        print(f"Warning: Could not initialize project identity: {e}", file=sys.stderr)
     # Select template
     template = _select_template(args)
 
