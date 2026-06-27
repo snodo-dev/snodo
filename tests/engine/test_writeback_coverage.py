@@ -6,9 +6,7 @@ No source changes — stubs only.
 """
 
 import json
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from snodo.compiler.models import Protocol, Mode, Validator
 from snodo.core.interfaces import Task, ValidatorResult
@@ -422,7 +420,7 @@ class TestMaybeRespawnCoderJobId:
         from datetime import datetime, timezone
 
         priv = rsa.generate_private_key(65537, 2048, backend=default_backend())
-        signer = SigningDecisionRecordIssuer(priv)
+        SigningDecisionRecordIssuer(priv)
         verifier = VerifyOnlyDecisionRecordIssuer(priv.public_key())
 
         payload = {

@@ -3,7 +3,6 @@
 Uses fake stubs — no real LLM or filesystem access.
 """
 
-import pytest
 from unittest.mock import MagicMock
 from snodo.compiler.models import Constraint, Protocol, Severity
 from snodo.engine.constraints import ConstraintEngine

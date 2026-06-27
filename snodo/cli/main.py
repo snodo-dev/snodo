@@ -12,8 +12,7 @@ This module provides the CLI entry point using Typer.
 
 import sys
 import warnings
-from types import SimpleNamespace
-from typing import List, Optional
+from typing import Optional
 
 # TODO: remove once langchain_core fixes pydantic v1 detection on 3.14+
 # https://github.com/langchain-ai/langchain/issues/33926

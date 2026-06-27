@@ -6,7 +6,6 @@ the re-exported copies in snodo.engine.loop.
 """
 
 from unittest.mock import MagicMock
-import pytest
 
 from snodo.engine.state import _build_audit_results, _branch_exists, _slugify, _task_branch_name
 from snodo.core.interfaces import ValidatorResult
@@ -44,7 +43,6 @@ class TestBuildAuditResults:
 
     def test_severity_at_cap_flagged(self):
         """When result.severity equals validator severity_cap.value → flag set."""
-        from snodo.compiler.models import Severity
         cap = MagicMock()
         cap.value = "warn"
         v = self._make_validator(vid="v1", severity_cap=cap)
@@ -79,7 +77,6 @@ class TestBuildAuditResults:
 
     def test_multiple_results_mixed_caps(self):
         """Multiple results: first at cap, second not at cap."""
-        from snodo.compiler.models import Severity
         cap = MagicMock()
         cap.value = "warn"
         v1 = self._make_validator(vid="v1", severity_cap=cap)
