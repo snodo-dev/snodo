@@ -105,3 +105,13 @@ dev = [
     "pytest-xdist>=3.8.0",
     "radon>=6.0.1",
 ]
+
+[tool.coverage.run]
+source_pkgs = ["snodo"]
+branch = true
+relative_files = true
+parallel = true
+omit = ["*/tests/*", "*/__main__.py", "*/site-packages/*"]
+
+[tool.coverage.paths]
+snodo = ["snodo/", "packages/*/src/snodo/"]

@@ -6,7 +6,7 @@
 [![Docs](https://img.shields.io/badge/docs-snodo.dev-2DD4BF)](https://docs.snodo.dev)
 [![arXiv](https://img.shields.io/badge/arXiv-2606.20615-b31b1b)](https://arxiv.org/abs/2606.20615)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Tests](https://img.shields.io/badge/tests-2124%20passing-3DBF4F)](https://github.com/snodo-dev/snodo/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-2125%20passing-3DBF4F)](https://github.com/snodo-dev/snodo/actions/workflows/ci.yml)
 [![Coverage](https://raw.githubusercontent.com/snodo-dev/snodo/main/.github/badges/coverage.svg)](.github/badges/coverage.svg)
 
 **AI-SDLC Protocol Engine** — a governance layer for AI-assisted software development.
@@ -21,8 +21,8 @@ snodo is an actively-developed research implementation (beta). Current state of 
 
 | Metric | Value |
 |---|---|
-| Tests | **2,124 passing** across 88 files — unit, integration, end-to-end, and property-based |
-| Coverage | **48%** — gated in CI (fail under 45%); badge committed at `.github/badges/coverage.svg` |
+| Tests | **2,125 passing** across 88 files — unit, integration, end-to-end, and property-based |
+| Coverage | **67%** (whole-repo) — gated in CI (fail under 63%); badge committed at `.github/badges/coverage.svg` |
 | Code | ~24,700 lines across **6 packages** |
 | Complexity | average cyclomatic complexity **A (3.9)** — no high-complexity hotspots |
 | Lint / architecture | `ruff` clean; package layering enforced in CI by `import-linter` |
