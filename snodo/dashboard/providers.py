@@ -209,6 +209,136 @@ class DashboardDataProvider:
         return audit.get_history()[-limit:]
 
     # ------------------------------------------------------------------
+    # Waves, Tasks, Jobs, and Logs (Cockpit support)
+    # ------------------------------------------------------------------
+
+    def get_waves(self, session_id: str) -> List[Dict[str, Any]]:
+        wave_path = Path(self.project_root) / ".snodo" / "wave.json"
+        if not wave_path.exists():
+            return []
+        try:
+            import json
+            with open(wave_path) as f:
+                data = json.load(f)
+            res = []
+            for item in data:
+                res.append({
+                    "wave_id": item.get("wave_id"),
+                    "feature_description": item.get("feature_description"),
+                    "task_ids": item.get("task_ids", []),
+                    "created": item.get("created"),
+                    "last_activity": item.get("last_activity"),
+                })
+            return res
+        except Exception:
+            return []
+
+    def get_tasks(self, session_id: str) -> List[Dict[str, Any]]:
+        plans_dir = Path(self.project_root) / ".snodo" / "plans"
+        if not plans_dir.exists():
+            return []
+        tasks = []
+        try:
+            import json
+            for plan_path in plans_dir.iterdir():
+                if plan_path.is_dir():
+                    status_file = plan_path / "status.json"
+                    if status_file.exists():
+                        with open(status_file) as f:
+                            data = json.load(f)
+                        for tid, entry in data.get("tasks", {}).items():
+                            status = entry if isinstance(entry, str) else entry.get("status", "unknown")
+                            parent = None if isinstance(entry, str) else entry.get("parent_task_ref")
+                            depth = 0 if isinstance(entry, str) else entry.get("depth", 0)
+                            tasks.append({
+                                "plan_name": plan_path.name,
+                                "task_id": tid,
+                                "task_ref": f"{plan_path.name}:{tid}",
+                                "status": status,
+                                "parent_task_ref": parent,
+                                "depth": depth,
+                            })
+        except Exception:
+            pass
+        return tasks
+
+    def get_jobs(self, session_id: str, task_ref: str) -> List[Dict[str, Any]]:
+        jobs_dir = Path(self.project_root) / ".snodo" / "jobs"
+        if not jobs_dir.exists():
+            return []
+        
+        target_task_id = task_ref.split(":")[-1] if ":" in task_ref else task_ref
+        
+        import json
+        import time
+        jobs = []
+        try:
+            for job_path in jobs_dir.iterdir():
+                if job_path.is_dir():
+                    task_path = job_path / "task.json"
+                    state_path = job_path / "state.json"
+                    if task_path.exists() and state_path.exists():
+                        with open(task_path) as f:
+                            task_data = json.load(f)
+                        
+                        job_task_id = task_data.get("task_id", "")
+                        job_retry_task_id = task_data.get("retry_task_id", "")
+                        if job_task_id != target_task_id and job_retry_task_id != target_task_id:
+                            continue
+                            
+                        with open(state_path) as f:
+                            state_data = json.load(f)
+                        
+                        started = state_data.get("started_at")
+                        completed = state_data.get("completed_at")
+                        duration = 0.0
+                        if started:
+                            if completed:
+                                duration = completed - started
+                            else:
+                                duration = time.time() - started
+                        
+                        jobs.append({
+                            "job_id": job_path.name,
+                            "status": state_data.get("status", "unknown"),
+                            "duration": duration,
+                            "created_at": state_data.get("created_at"),
+                            "started_at": started,
+                            "completed_at": completed,
+                            "exit_code": state_data.get("exit_code"),
+                        })
+        except Exception:
+            pass
+            
+        jobs.sort(key=lambda x: x.get("created_at") or 0.0)
+        return jobs
+
+    def get_job_log(self, session_id: str, task_ref: str, job_id: str) -> str:
+        job_dir = Path(self.project_root) / ".snodo" / "jobs" / job_id
+        if not job_dir.exists():
+            return "No log found: job directory does not exist."
+        
+        log_content = []
+        stdout_file = job_dir / "stdout.log"
+        stderr_file = job_dir / "stderr.log"
+        
+        if stdout_file.exists():
+            try:
+                log_content.append(stdout_file.read_text(errors="replace"))
+            except Exception as e:
+                log_content.append(f"Error reading stdout: {e}")
+        
+        if stderr_file.exists():
+            try:
+                err_text = stderr_file.read_text(errors="replace")
+                if err_text.strip():
+                    log_content.append("\n--- STDERR ---\n" + err_text)
+            except Exception as e:
+                log_content.append(f"Error reading stderr: {e}")
+                 
+        return "".join(log_content) if log_content else "No log records found."
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
