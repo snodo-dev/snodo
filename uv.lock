@@ -17,6 +17,7 @@ resolution-markers = [
 members = [
     "snodo",
     "snodo-core",
+    "snodo-engine",
     "snodo-foundation",
     "snodo-tools",
 ]
@@ -3325,6 +3326,7 @@ dependencies = [
     { name = "pyjwt" },
     { name = "pyyaml" },
     { name = "snodo-core" },
+    { name = "snodo-engine" },
     { name = "snodo-foundation" },
     { name = "snodo-tools" },
     { name = "textual" },
@@ -3387,6 +3389,7 @@ requires-dist = [
     { name = "radon", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "snodo-core", editable = "packages/snodo-core" },
+    { name = "snodo-engine", editable = "packages/snodo-engine" },
     { name = "snodo-foundation", editable = "packages/snodo-foundation" },
     { name = "snodo-tools", editable = "packages/snodo-tools" },
     { name = "textual", specifier = ">=1.0.0" },
@@ -3413,6 +3416,37 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.12.0" }]
+
+[[package]]
+name = "snodo-engine"
+version = "0.4.0"
+source = { editable = "packages/snodo-engine" }
+dependencies = [
+    { name = "langchain" },
+    { name = "langchain-community" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
+    { name = "litellm" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "snodo-core" },
+    { name = "snodo-foundation" },
+    { name = "snodo-tools" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "langchain", specifier = ">=0.3.0" },
+    { name = "langchain-community", specifier = ">=0.4.0" },
+    { name = "langchain-core", specifier = ">=0.3.0" },
+    { name = "langgraph", specifier = ">=0.2.0" },
+    { name = "litellm", specifier = ">=1.80.0" },
+    { name = "pydantic", specifier = ">=2.12.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "snodo-core", editable = "packages/snodo-core" },
+    { name = "snodo-foundation", editable = "packages/snodo-foundation" },
+    { name = "snodo-tools", editable = "packages/snodo-tools" },
+]
 
 [[package]]
 name = "snodo-foundation"
