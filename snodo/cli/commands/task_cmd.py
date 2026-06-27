@@ -124,7 +124,7 @@ def task_abandon_command(args) -> int:
 
     # Delete the branch
     try:
-        from snodo.mcp.git import GitMCP
+        from snodo.tools.git import GitMCP
         git = GitMCP(project_root)
         branch_name = f"task/{task_id}"
         for head in git.repo.heads:
@@ -205,7 +205,7 @@ def task_prune_command(args) -> int:
         return 0
 
     try:
-        from snodo.mcp.git import GitMCP
+        from snodo.tools.git import GitMCP
         from snodo.infrastructure.worktree import remove_worktree
         git = GitMCP(project_root)
         deleted = 0

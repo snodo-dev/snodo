@@ -669,7 +669,7 @@ class TestQualityDispatch:
             ],
             initial_mode="m1",
         )
-        from snodo.mcp.workspace import WorkspaceMCP
+        from snodo.tools.workspace import WorkspaceMCP
         builder = GraphBuilder(
             protocol,
             workspace_mcp=WorkspaceMCP(project_dir),
@@ -704,7 +704,7 @@ class TestQualityDispatch:
             ],
             initial_mode="m1",
         )
-        from snodo.mcp.workspace import WorkspaceMCP
+        from snodo.tools.workspace import WorkspaceMCP
         builder = GraphBuilder(
             protocol,
             workspace_mcp=WorkspaceMCP(project_dir),
@@ -747,7 +747,7 @@ class TestQualityDispatch:
 
     def test_quality_validator_gets_workspace_root(self, project_dir):
         """QualityValidator receives workspace root via context."""
-        from snodo.mcp.workspace import WorkspaceMCP
+        from snodo.tools.workspace import WorkspaceMCP
         spec = Validator(
             validator_id="quality",
             validator_type="quality",

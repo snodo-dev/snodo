@@ -7,8 +7,8 @@ from typing import Dict, Any, List, Optional, Union
 from snodo.core.interfaces import Task, TaskSpec, ExecutionError
 from snodo.infrastructure.tokens import ValidationToken
 from snodo.coders import LiteLLMAdapter, MockAdapter
-from snodo.mcp.workspace import WorkspaceMCP
-from snodo.mcp.git import GitMCP
+from snodo.tools.workspace import WorkspaceMCP
+from snodo.tools.git import GitMCP
 from snodo.engine.state import _task_branch_name, _branch_exists
 
 

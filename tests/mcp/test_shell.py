@@ -17,7 +17,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import subprocess
 
-from snodo.mcp.shell import (
+from snodo.tools.shell import (
     ShellMCP, CommandNotAllowedError, get_shell
 )
 from snodo.core.interfaces import ValidatorResult
@@ -435,7 +435,7 @@ def test_get_shell_reuses_instance(temp_project):
 def test_get_shell_no_init_raises():
     """Test get_shell without init raises."""
     # Reset global instance
-    import snodo.mcp.shell as shell_module
+    import snodo.tools.shell as shell_module
     shell_module._shell_instance = None
     
     with pytest.raises(ValueError, match="not initialized"):
@@ -525,7 +525,7 @@ import types
 sys.modules['snodo.core'] = types.ModuleType('snodo.core')
 sys.modules['snodo.core.interfaces'] = types.ModuleType('snodo.core.interfaces')
 
-from snodo.mcp.shell import ShellMCP, ValidatorResult
+from snodo.tools.shell import ShellMCP, ValidatorResult
 
 # The fallback ValidatorResult should be a BaseModel that works
 r = ValidatorResult(validator_id="test", severity="pass", justification="ok")
@@ -555,7 +555,7 @@ def test_fallback_validator_result_in_process(monkeypatch):
     fake_interfaces = types.ModuleType("snodo.core.interfaces")
     monkeypatch.setitem(sys.modules, "snodo.core.interfaces", fake_interfaces)
 
-    import snodo.mcp.shell as shell_mod
+    import snodo.tools.shell as shell_mod
 
     importlib.reload(shell_mod)
 

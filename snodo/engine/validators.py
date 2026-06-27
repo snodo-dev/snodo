@@ -8,7 +8,7 @@ from typing import Any, Callable, List, Optional
 from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.infrastructure.config import DEFAULT_MODEL
-from snodo.mcp.shell import ShellMCP
+from snodo.tools.shell import ShellMCP
 from snodo.validators.context import ValidatorContext
 
 

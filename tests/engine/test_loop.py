@@ -18,9 +18,9 @@ from snodo.engine.loop import (
     GraphBuilder, LoopState, LoopStage, build_protocol_graph, _build_audit_results
 )
 from snodo.agents.adapter import MockCoderAdapter
-from snodo.mcp.workspace import WorkspaceMCP
-from snodo.mcp.git import GitMCP
-from snodo.mcp.shell import ShellMCP
+from snodo.tools.workspace import WorkspaceMCP
+from snodo.tools.git import GitMCP
+from snodo.tools.shell import ShellMCP
 import tempfile
 import shutil
 import subprocess

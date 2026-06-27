@@ -36,9 +36,9 @@ from snodo.engine.validators import ValidatorRunner
 
 # Import real implementations
 from snodo.coders import LiteLLMAdapter, MockAdapter
-from snodo.mcp.workspace import WorkspaceMCP
-from snodo.mcp.git import GitMCP
-from snodo.mcp.shell import ShellMCP
+from snodo.tools.workspace import WorkspaceMCP
+from snodo.tools.git import GitMCP
+from snodo.tools.shell import ShellMCP
 import snodo.predicates.scope  # noqa: F401 — registers predicates on import
 import snodo.predicates.tests  # noqa: F401
 import snodo.predicates.secrets  # noqa: F401
