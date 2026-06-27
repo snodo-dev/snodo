@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snodo-mcp"
-version = "0.5.0"
+version = "0.5.1"
 description = "Snodo MCP — MCP servers, planning, recon, and jobs"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-only" }
 authors = [{ name = "The Snodo Authors", email = "noreply@snodo.dev" }]
 dependencies = [
-    "snodo-core",
-    "snodo-tools",
-    "snodo-foundation",
+    "snodo-core==0.5.1",
+    "snodo-tools==0.5.1",
+    "snodo-foundation==0.5.1",
     "pydantic>=2.12.0",
     "mcp>=1.0.0",
     "PyGithub>=2.0.0",
