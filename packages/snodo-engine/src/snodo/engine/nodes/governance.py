@@ -3,7 +3,7 @@
 FILE: snodo/engine/nodes/governance.py
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 from snodo.engine.state import LoopStage, LoopState
 
 

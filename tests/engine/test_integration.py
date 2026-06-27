@@ -110,7 +110,7 @@ def test_end_to_end_with_mock_coder(temp_git_repo, sample_protocol):
     assert result["stage"] in [LoopStage.COMPLETE.value, LoopStage.BLOCKED.value]
     
     # Verify artifacts were attempted
-    artifacts = result["artifacts"]
+    result["artifacts"]
     # May have artifacts even if blocked
     
     # Verify files exist (MockAdapter defaults: src/hello.py, tests/test_hello.py)
@@ -154,7 +154,7 @@ def test_git_mcp_integration(temp_git_repo):
     
     git_mcp.stage_files(["feature.py"])
     
-    output = git_mcp.commit("Add feature")
+    git_mcp.commit("Add feature")
     
     log = subprocess.run(
         ["git", "log", "--oneline"],

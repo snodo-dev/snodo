@@ -350,9 +350,9 @@ class TestFastMCPBridge:
         assert "path" in sig.parameters
         assert "count" in sig.parameters
         assert "flag" in sig.parameters
-        assert sig.parameters["path"].annotation == str
-        assert sig.parameters["count"].annotation == int
-        assert sig.parameters["flag"].annotation == bool
+        assert sig.parameters["path"].annotation is str
+        assert sig.parameters["count"].annotation is int
+        assert sig.parameters["flag"].annotation is bool
         assert sig.parameters["flag"].default is False
         # path is required (no default)
         assert sig.parameters["path"].default is inspect.Parameter.empty
@@ -829,7 +829,7 @@ class TestServePortAndProxy:
     def test_port_passed_to_fastmcp_settings(self):
         """Port arg is set on mcp.settings.port before run."""
         from snodo.cli.commands.serve_cmd import _run_server
-        from unittest.mock import MagicMock, patch, PropertyMock
+        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
 
         mock_protocol = MagicMock()
@@ -1129,7 +1129,7 @@ class TestTunnelRunErrors:
     def test_first_run_provisions_and_starts_services(self):
         """First run provisions tunnel, saves config, starts subprocesses."""
         from snodo.cli.commands.serve_cmd import _run_tunnel
-        from unittest.mock import MagicMock, patch, ANY
+        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
 
         mock_protocol = MagicMock()

@@ -20,9 +20,8 @@ from snodo.infrastructure.tokens import ValidationToken
 from tests.strategies import (
     hypothesis_settings,
     protocols, tasks, validator_results,
-    severity_strings, identifiers,
+    identifiers,
     jwt_tokens, gen_audit_events,
-    severities,
 )
 
 severity_enum_strings = st.sampled_from(["pass", "warn", "blocker"])
@@ -335,7 +334,8 @@ def test_jwt_expired_token_rejected(token_data):
     token, issuer, task_id = token_data
     assert token is not None
     parts = token.jwt.split(".")
-    import base64, json
+    import base64
+    import json
     payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
     payload["exp"] = int(time.time()) - 3600
     new_payload = base64.urlsafe_b64encode(

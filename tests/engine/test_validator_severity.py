@@ -102,9 +102,8 @@ def test_dispatch_one_future_exception_returns_blocker_error():
     runner = _make_runner()
     ctx = MagicMock()
     ctx.completion_fn = None
-    reg = MagicMock()
+    MagicMock()
     # Make _dispatch_one raise inside the pool
-    original = runner._dispatch_one
 
     def exploding_dispatch(*args, **kwargs):
         raise RuntimeError("pool crash")
@@ -155,8 +154,7 @@ class TestPolicyErrorFlagHalts:
 def test_loop_sets_validator_error_halt_type():
     """Simulate how _validate_node sets halt_type from the error flag."""
     from snodo.engine.loop import GraphBuilder
-    from snodo.engine.state import LoopState, LoopStage
-    from dataclasses import dataclass, field
+    from snodo.engine.state import LoopState
 
     protocol = MagicMock()
     protocol.get_mode.return_value = MagicMock()
@@ -215,15 +213,13 @@ def test_loop_sets_validator_error_halt_type():
 
 def test_loop_blocked_halt_type_no_errors():
     """Without error flag, blockers produce halt_type='blocked'."""
-    from snodo.engine.policy import PolicyAction
 
-    state = MagicMock()
+    MagicMock()
     results = [
         ValidatorResult(validator_id="v1", severity="blocker",
                         justification="blocker", error=False),
     ]
     # Simulate halt_type logic
-    is_blocked = True
     has_errors = any(getattr(r, 'error', False) for r in results)
     halt_type = "validator_error" if has_errors else "blocked"
 

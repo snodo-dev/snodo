@@ -4,7 +4,7 @@ FILE: tests/predicates/test_registry.py (Task 7.8)
 """
 
 import pytest
-from snodo.predicates.base import Predicate, PredicateContext, PredicateResult
+from snodo.predicates.base import Predicate, PredicateResult
 from snodo.predicates.registry import PredicateRegistry
 
 

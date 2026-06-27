@@ -13,7 +13,6 @@ All tests run against the CURRENT (unrefactored) code and pin observable
 CLI output / state so regressions are caught immediately after Wave 4.
 """
 
-import json
 import re
 import time
 

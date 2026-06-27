@@ -95,7 +95,7 @@ class TestManagerInit:
     def test_creates_home_dir(self, temp_home):
         """Manager creates ~/.snodo directory."""
         home = os.path.join(temp_home, "subdir")
-        mgr = AgentMemoryManager(home_dir=home)
+        AgentMemoryManager(home_dir=home)
         assert Path(home).is_dir()
 
     def test_db_path(self, manager, temp_home):
