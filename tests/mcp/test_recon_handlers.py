@@ -5,7 +5,7 @@ handle_get_recon_results — all success + guard branches.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from snodo.mcp.recon_handlers import ReconToolHandler
 from snodo.mcp.server import MCPError
@@ -73,7 +73,7 @@ class TestHandleRecon:
             MockCM.return_value.load.return_value = {}
             mock_rra.return_value = ["claude-sonnet", "gemini"]
             MockRM.return_value.submit.return_value = "recon-xy"
-            result = handler.handle_recon({
+            handler.handle_recon({
                 "query": "what is X",
                 "paths": ["./src"],
                 "agents": ["claude-sonnet", "gemini"],

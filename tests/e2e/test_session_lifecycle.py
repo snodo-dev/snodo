@@ -42,7 +42,7 @@ def test_session_delete(snodo_cli):
     # Verify the session no longer appears in the list
     r3 = snodo_cli(["session", "list"])
     assert r3.returncode == 0
-    lines_after = [l for l in r3.stdout.strip().splitlines() if l.strip().startswith("sess_")]
+    lines_after = [ln for ln in r3.stdout.strip().splitlines() if ln.strip().startswith("sess_")]
     assert session_id not in " ".join(lines_after), f"Session {session_id} still present after delete"
 
 

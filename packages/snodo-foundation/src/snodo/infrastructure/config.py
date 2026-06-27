@@ -9,12 +9,23 @@ The ``llm`` section is optional — absent file or missing keys default to the
 current code defaults.
 """
 
-from typing import Dict, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
 from snodo.paths import resolve_home
-from snodo.config import ProviderConfig, DEFAULT_PROVIDER_CATALOG, DEFAULT_MODEL
+from snodo.config import ProviderConfig, DEFAULT_PROVIDER_CATALOG, DEFAULT_MODEL  # noqa: F401
+
+__all__ = [
+    "ProviderConfig",
+    "DEFAULT_PROVIDER_CATALOG",
+    "DEFAULT_MODEL",
+    "load_llm_config",
+    "ConfigLoadError",
+    "CoderConfig",
+    "ValidatorConfig",
+    "LlmConfig",
+]
 
 _CODER_MAX_TOKENS_DEFAULT = 16000
 _CODER_MAX_TOOL_TURNS_DEFAULT = 6

@@ -194,7 +194,7 @@ def test_emit_command_inventory(snodo_cli, capsys):
         "=" * 60,
         "CLI COMMAND INVENTORY (Wave 4 safety net)",
         "=" * 60,
-        f"  --version flag (top-level)",
+        "  --version flag (top-level)",
     ]
     for cmd in STANDALONE_COMMANDS:
         lines.append(f"  {cmd}")

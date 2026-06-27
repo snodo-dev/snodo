@@ -11,6 +11,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
 
+from snodo.infrastructure.paths import resolve_home
+
 import typer
 
 
@@ -40,7 +42,6 @@ def register(app: typer.Typer) -> None:
         return models_command(args)
 
 
-from snodo.infrastructure.paths import resolve_home
 
 _CACHE_TTL = 24 * 3600
 _CACHE_DIR = resolve_home() / "models"
