@@ -14,7 +14,7 @@ from textual.binding import Binding
 from textual.widgets import Footer, Header
 
 from snodo.dashboard.providers import DashboardDataProvider
-from snodo.dashboard.screens import SessionsScreen
+from snodo.dashboard.panels import get_panel
 
 
 def _snodo_version() -> str:
@@ -64,7 +64,7 @@ class SnodoDashboard(App):
         yield Footer()
 
     def on_mount(self):
-        self.push_screen(SessionsScreen(self.provider))
+        self.push_screen(get_panel("cockpit", self.provider))
 
 
 def run_dashboard(project_root: Optional[str] = None):
