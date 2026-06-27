@@ -17,6 +17,7 @@ resolution-markers = [
 members = [
     "snodo",
     "snodo-core",
+    "snodo-foundation",
     "snodo-tools",
 ]
 
@@ -3324,6 +3325,7 @@ dependencies = [
     { name = "pyjwt" },
     { name = "pyyaml" },
     { name = "snodo-core" },
+    { name = "snodo-foundation" },
     { name = "snodo-tools" },
     { name = "textual" },
     { name = "typer" },
@@ -3385,6 +3387,7 @@ requires-dist = [
     { name = "radon", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "snodo-core", editable = "packages/snodo-core" },
+    { name = "snodo-foundation", editable = "packages/snodo-foundation" },
     { name = "snodo-tools", editable = "packages/snodo-tools" },
     { name = "textual", specifier = ">=1.0.0" },
     { name = "typer", specifier = ">=0.9.0" },
@@ -3410,6 +3413,29 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.12.0" }]
+
+[[package]]
+name = "snodo-foundation"
+version = "0.4.0"
+source = { editable = "packages/snodo-foundation" }
+dependencies = [
+    { name = "filelock" },
+    { name = "langgraph" },
+    { name = "pydantic" },
+    { name = "pyjwt" },
+    { name = "pyyaml" },
+    { name = "snodo-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "filelock", specifier = ">=3.0.0" },
+    { name = "langgraph", specifier = ">=0.2.0" },
+    { name = "pydantic", specifier = ">=2.12.0" },
+    { name = "pyjwt", specifier = ">=2.8.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "snodo-core", editable = "packages/snodo-core" },
+]
 
 [[package]]
 name = "snodo-tools"

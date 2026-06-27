@@ -10,7 +10,8 @@ from snodo.compiler.models import Protocol
 from snodo.compiler.verifier import verify_protocol
 
 
-TEMPLATES_DIR = Path(__file__).parent.parent.parent / "snodo" / "protocols" / "templates"
+import snodo.protocols
+TEMPLATES_DIR = Path(snodo.protocols.__file__).parent / "templates"
 
 
 def _load(name: str) -> Protocol:
