@@ -11,7 +11,7 @@ from textual.coordinate import Coordinate
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
-from snodo.dashboard.panels import register_panel
+from snodo.dashboard.panels import register_panel, get_panel
 from snodo.dashboard.screens import _relative_time, _short_id, SessionDetailScreen
 
 
@@ -131,6 +131,25 @@ class SessionsScreen(Screen):
         self._filter_text = ""
         self.query_one("#session-table", DataTable).focus()
         self._rebuild_rows()
+
+    def on_input_submitted(self, event: Input.Submitted):
+        if event.input.id == "command-bar":
+            raw = event.value.strip()
+            event.input.value = ""
+            event.input.visible = False
+            self.query_one("#session-table", DataTable).focus()
+            if raw.startswith(":"):
+                cmd = raw[1:].strip().lower()
+                self._handle_command(cmd)
+
+    def _handle_command(self, cmd: str):
+        known = {"cockpit", "protocol", "settings"}
+        if cmd in known:
+            self.app.push_screen(get_panel(cmd, self.provider))
+        elif cmd == "sessions":
+            self.notify("Already in sessions view")
+        else:
+            self.notify(f"Unknown command: :{cmd}", severity="error")
 
     def _match_filter(self, s: Any) -> bool:
         if not self._filter_text:
