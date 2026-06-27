@@ -30,8 +30,8 @@ jobs:
       - name: Test + coverage
         run: |
           uv run pytest tests/ -m "" --tb=short --timeout=60 \
-            --cov=snodo --cov-report=xml --cov-report=term-missing \
-            --cov-fail-under=45 | tee coverage-output.txt
+            --cov --cov-report=xml --cov-report=term-missing \
+            --cov-fail-under=63 | tee coverage-output.txt
           echo '## Coverage' >> "$GITHUB_STEP_SUMMARY"
           grep '^TOTAL' coverage-output.txt >> "$GITHUB_STEP_SUMMARY" || true
 
