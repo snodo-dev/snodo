@@ -115,11 +115,14 @@ global_constraints: []
 
 ### 2. Configure your API key
 
+Configuration lives in `~/.snodo/config.yml`, managed via the `snodo config` commands:
+
 ```bash
-snodo config add anthropic sk-ant-...
+snodo config add anthropic sk-ant-...      # store a provider key
+snodo config set model claude-sonnet-4     # set the default model
 ```
 
-Or set the environment variable directly (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`).
+A provider key already exported in your environment (e.g. `ANTHROPIC_API_KEY`) is auto-detected if it isn't in the config. See [Configuration](#configuration) for the full file format.
 
 ### 3. Run a task
 
@@ -313,16 +316,71 @@ Launch the TUI dashboard (`snop`).
 
 - **Modular package layout.** The codebase is split into independently-installable packages under a `uv` workspace: `snodo-core` (kernel — config, predicates, sandbox), `snodo-tools` (workspace/git/shell primitives and code-host providers), `snodo-foundation` (infrastructure, compiler, protocols), `snodo-engine` (execution engine, validators, coders), and `snodo-mcp` (MCP servers, recon, jobs) — with the root `snodo` package as the CLI and dashboard app. Dependency layering is enforced in CI by `import-linter`.
 
-## Environment Variables
+## Configuration
+
+snodo stores its configuration in `~/.snodo/config.yml` (override the location with `$SNODO_HOME`). Manage it with the `snodo config` commands rather than editing by hand:
+
+```bash
+snodo config add anthropic sk-ant-...        # add a provider API key
+snodo config set model deepseek/deepseek-v4  # default model for all roles
+snodo config set engine.max_subtask_depth 3
+snodo config show
+```
+
+A typical `config.yml`:
+
+```yaml
+model: deepseek/deepseek-v4                   # default model for all roles
+
+llm:
+  coder:                                      # per-role overrides
+    max_tokens: 64000
+    temperature: 0.1
+  validator:
+    model: openai/@cf/google/gemma-4          # role-specific model override
+    max_tokens: 25000
+  classifier:
+    model: openai/@cf/google/gemma-4          # omit -> falls back to top-level `model`
+  recon:
+    num_agents: 2
+    models:
+      - deepseek/deepseek-v4
+
+engine:
+  max_subtask_depth: 3
+  max_session_age_days: 30
+  token_ttl_seconds: 1200
+
+providers:
+  anthropic:
+    api_key: sk-ant-...
+    api_key_env: ANTHROPIC_API_KEY            # env var the key is injected into at runtime
+  deepseek:
+    api_key: sk-...
+    api_key_env: DEEPSEEK_API_KEY
+  cloudflare:
+    api_key: cfut_...
+    api_key_env: OPENAI_API_KEY               # Cloudflare Workers AI via the OpenAI-compatible endpoint
+    account_id: <account-id>
+    base_url: https://api.cloudflare.com/client/v4/accounts/<account-id>/ai/v1
+
+cloud:                                        # optional: snodo cloud sync
+  api_url: https://api.snodo.dev
+  sync_enabled: true
+```
+
+Each provider's `api_key` is injected into its `api_key_env` environment variable when a matching model runs, so provider SDKs pick it up automatically.
+
+### Environment variables
+
+These are read directly from the environment (not stored in `config.yml`):
 
 | Variable | Purpose |
 |---|---|
-| `SNODO_HOME` | Override the snodo home directory (default: `~/.snodo`). Config, sessions, and agent memory all live under this path. |
-| `SNODO_TOKEN_SECRET` | Override the HMAC secret for JWT validation token signing (default: randomly generated per process). |
-| `ANTHROPIC_API_KEY` | Anthropic API key (auto-detected for `claude-*` models). |
-| `OPENAI_API_KEY` | OpenAI API key (auto-detected for `gpt-*` and `o1-*`/`o3-*` models). |
-| `GEMINI_API_KEY` | Google API key (auto-detected for `gemini-*` models). |
+| `SNODO_HOME` | Override the snodo home directory (default: `~/.snodo`). Config, sessions, and agent memory live here. |
+| `SNODO_TOKEN_SECRET` | Override the HMAC secret for JWT validation-token signing (default: randomly generated per process). |
 | `GITHUB_TOKEN` | GitHub token for PR-related features (`--from-pr`). |
+| `<PROVIDER>_API_KEY` | Any provider key set in the environment is auto-detected if it isn't already in `config.yml`. |
 
 ## Research
 
