@@ -331,6 +331,83 @@ class TestDashboardDataProviderExtended:
         assert "Hello stdout" in log
         assert "Hello stderr" in log
 
+    # ------------------------------------------------------------------
+    # PART A: Cascade data wiring verification
+    # ------------------------------------------------------------------
+
+    def test_cascade_populates_tasks_jobs_log(self, temp_project):
+        """Verify cascade: wave with N tasks → get_tasks returns N; task with
+        a job → get_jobs returns the job; running job → log tail nonempty."""
+        import json
+        from snodo.dashboard.providers import DashboardDataProvider
+
+        # Write wave.json with task_ids referencing 3 tasks
+        wave_path = temp_project / ".snodo" / "wave.json"
+        wave_data = [{"wave_id": "w_0001", "feature_description": "Cascade Wave",
+                       "task_ids": ["task_a", "task_b", "task_c"]}]
+        wave_path.write_text(json.dumps(wave_data))
+
+        # Write plans/plan1/status.json with 3 tasks, one with parent_task_ref
+        plans_dir = temp_project / ".snodo" / "plans" / "plan1"
+        plans_dir.mkdir(parents=True)
+        status_data = {"tasks": {
+            "task_a": {"status": "completed", "parent_task_ref": None, "depth": 0},
+            "task_b": {"status": "running", "parent_task_ref": "task_a", "depth": 1},
+            "task_c": {"status": "pending", "parent_task_ref": None, "depth": 0},
+        }}
+        (plans_dir / "status.json").write_text(json.dumps(status_data))
+
+        # Write a job for task_b with state.json and log files
+        job_dir = temp_project / ".snodo" / "jobs" / "job_456"
+        job_dir.mkdir(parents=True)
+        (job_dir / "task.json").write_text(json.dumps({"task_id": "task_b"}))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "running",
+            "created_at": 200.0,
+            "started_at": 201.0,
+            "completed_at": None,
+            "exit_code": None
+        }))
+        (job_dir / "stdout.log").write_text("Building feature X\nStep 2/5\n")
+        (job_dir / "stderr.log").write_text("")
+
+        provider = DashboardDataProvider(str(temp_project))
+
+        # --- Wave → Tasks cascade ---
+        tasks = provider.get_tasks("sess_1")
+        assert len(tasks) == 3
+
+        # --- Task → Jobs cascade ---
+        jobs_for_a = provider.get_jobs("sess_1", "plan1:task_a")
+        assert len(jobs_for_a) == 0  # no job for task_a
+
+        jobs_for_b = provider.get_jobs("sess_1", "plan1:task_b")
+        assert len(jobs_for_b) == 1
+        assert jobs_for_b[0]["job_id"] == "job_456"
+        assert jobs_for_b[0]["status"] == "running"
+
+        # --- Running job → Log tail ---
+        log = provider.get_job_log("sess_1", "plan1:task_b", "job_456")
+        assert "Building feature X" in log
+        assert "Step 2/5" in log
+
+    def test_task_hierarchy_flattening(self, temp_project):
+        """Verify _flatten_tasks correctly orders parent→child tasks."""
+        from snodo.dashboard.panels.cockpit import _flatten_tasks
+
+        tasks = [
+            {"task_ref": "plan1:root", "task_id": "root", "parent_task_ref": None, "depth": 0},
+            {"task_ref": "plan1:child1", "task_id": "child1", "parent_task_ref": "plan1:root", "depth": 1},
+            {"task_ref": "plan1:child2", "task_id": "child2", "parent_task_ref": "plan1:root", "depth": 1},
+            {"task_ref": "plan1:orphan", "task_id": "orphan", "parent_task_ref": None, "depth": 0},
+        ]
+        flat = _flatten_tasks(tasks)
+        # root should come before its children; orphan anywhere after
+        refs = [t["task_ref"] for t in flat]
+        assert refs.index("plan1:root") < refs.index("plan1:child1")
+        assert refs.index("plan1:root") < refs.index("plan1:child2")
+        assert "plan1:orphan" in refs
+
 
 class TestPanelRegistry:
     """Tests for the dashboard panel registry."""
@@ -342,6 +419,8 @@ class TestPanelRegistry:
         panels = list_panels()
         assert "sessions" in panels
         assert "cockpit" in panels
+        assert "protocol" in panels
+        assert "settings" in panels
         
         provider = DashboardDataProvider(str(temp_project))
         
@@ -352,3 +431,11 @@ class TestPanelRegistry:
         # Verify retrieving cockpit panel
         cockpit_panel = get_panel("cockpit", provider)
         assert cockpit_panel.__class__.__name__ == "CockpitScreen"
+
+        # Verify retrieving protocol panel
+        proto_panel = get_panel("protocol", provider)
+        assert proto_panel.__class__.__name__ == "ProtocolScreen"
+
+        # Verify retrieving settings panel
+        sett_panel = get_panel("settings", provider)
+        assert sett_panel.__class__.__name__ == "SettingsScreen"
