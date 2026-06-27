@@ -7,11 +7,9 @@ type = layers
 layers =
     snodo.dashboard
     snodo.cli
-    snodo.engine
     snodo.mcp
     snodo.jobs
     snodo.agents
-    snodo.coders | snodo.validators
     snodo.recon
 ignore_imports =
     snodo.jobs.wrapper -> snodo.cli.main
