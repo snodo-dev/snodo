@@ -10,9 +10,9 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header, RichLog, Static
+from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 
-from snodo.dashboard.panels import register_panel
+from snodo.dashboard.panels import register_panel, get_panel
 from snodo.dashboard.screens import _short_id
 
 
@@ -65,6 +65,7 @@ class CockpitScreen(Screen):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),
+        Binding(":", "command_mode", "Command"),
     ]
 
     CSS = """
@@ -99,6 +100,15 @@ class CockpitScreen(Screen):
     RichLog {
         height: 1fr;
         background: $surface;
+    }
+    #command-bar {
+        height: 1;
+        dock: bottom;
+        visibility: hidden;
+        border-top: solid $primary;
+    }
+    #command-bar:focus-within {
+        visibility: visible;
     }
     """
 
@@ -136,6 +146,7 @@ class CockpitScreen(Screen):
                 yield Static("Live Log", classes="pane-title")
                 yield RichLog(id="log-pane", highlight=True, markup=True)
                 
+        yield Input(id="command-bar", placeholder=":command  (e.g. :protocol, :settings, :sessions)")
         yield Footer()
 
     def on_mount(self):
@@ -160,6 +171,30 @@ class CockpitScreen(Screen):
 
     def action_refresh(self):
         self._refresh()
+
+    def action_command_mode(self):
+        cmd = self.query_one("#command-bar", Input)
+        cmd.visible = True
+        cmd.focus()
+
+    def on_input_submitted(self, event: Input.Submitted):
+        if event.input.id == "command-bar":
+            raw = event.value.strip()
+            event.input.value = ""
+            event.input.visible = False
+            self.query_one(DataTable).focus()
+            if raw.startswith(":"):
+                cmd = raw[1:].strip().lower()
+                self._handle_command(cmd)
+
+    def _handle_command(self, cmd: str):
+        known = {"sessions", "protocol", "settings"}
+        if cmd in known:
+            self.app.push_screen(get_panel(cmd, self.provider))
+        elif cmd in ("cockpit", "dashboard"):
+            self.notify("Already in cockpit view")
+        else:
+            self.notify(f"Unknown command: :{cmd}", severity="error")
 
     def _refresh(self):
         """Standard refresh to query provider and update pane hierarchies."""
@@ -324,4 +359,7 @@ class CockpitScreen(Screen):
             f"  [bold]{project}[/] > Cockpit  "
             f"|  Active Mode: [bold green]{active_mode or '—'}[/]  "
             f"|  Active Session: [bold green]{active_short}[/]"
+        )
+        self.app.sub_title = (
+            "  :protocol  :settings  :sessions  |  r:refresh  ::command  q:quit"
         )
