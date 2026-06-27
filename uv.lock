@@ -17,6 +17,7 @@ resolution-markers = [
 members = [
     "snodo",
     "snodo-core",
+    "snodo-tools",
 ]
 
 [[package]]
@@ -3323,6 +3324,7 @@ dependencies = [
     { name = "pyjwt" },
     { name = "pyyaml" },
     { name = "snodo-core" },
+    { name = "snodo-tools" },
     { name = "textual" },
     { name = "typer" },
 ]
@@ -3383,6 +3385,7 @@ requires-dist = [
     { name = "radon", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "snodo-core", editable = "packages/snodo-core" },
+    { name = "snodo-tools", editable = "packages/snodo-tools" },
     { name = "textual", specifier = ">=1.0.0" },
     { name = "typer", specifier = ">=0.9.0" },
 ]
@@ -3407,6 +3410,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.12.0" }]
+
+[[package]]
+name = "snodo-tools"
+version = "0.4.0"
+source = { editable = "packages/snodo-tools" }
+dependencies = [
+    { name = "gitpython" },
+    { name = "pygithub" },
+    { name = "snodo-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "gitpython", specifier = ">=3.1.0" },
+    { name = "pygithub", specifier = ">=2.0.0" },
+    { name = "snodo-core", editable = "packages/snodo-core" },
+]
 
 [[package]]
 name = "sortedcontainers"

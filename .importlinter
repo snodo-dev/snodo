@@ -12,8 +12,7 @@ layers =
     snodo.jobs
     snodo.agents
     snodo.coders | snodo.validators | snodo.protocols
-    snodo.infrastructure | snodo.compiler | snodo.providers | snodo.recon
-    snodo.tools
+    snodo.infrastructure | snodo.compiler | snodo.recon
 ignore_imports =
     snodo.jobs.wrapper -> snodo.cli.main
     snodo.cli.commands.dashboard_cmd -> snodo.dashboard.app
