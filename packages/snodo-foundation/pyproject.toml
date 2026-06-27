@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snodo-foundation"
+version = "0.4.0"
+description = "Snodo foundation — compiler, protocols, and infrastructure"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-only" }
+authors = [{ name = "The Snodo Authors", email = "noreply@snodo.dev" }]
+dependencies = [
+    "snodo-core",
+    "pydantic>=2.12.0",
+    "pyyaml>=6.0",
+    "pyjwt>=2.8.0",
+    "filelock>=3.0.0",
+    "langgraph>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://snodo.dev"
+Repository = "https://github.com/snodo-dev/snodo"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+
+[tool.setuptools.package-data]
+snodo = ["py.typed"]
+"snodo.protocols.templates" = ["*.yml"]

@@ -29,7 +29,8 @@ def _load_protocol(template_name: str):
     import yaml
     from snodo.compiler.models import Protocol
 
-    template_path = Path(__file__).parent.parent.parent / "snodo" / "protocols" / "templates" / f"{template_name}.yml"
+    import snodo.protocols
+    template_path = Path(snodo.protocols.__file__).parent / "templates" / f"{template_name}.yml"
     data = yaml.safe_load(template_path.read_text())
     return Protocol(**data)
 
