@@ -28,17 +28,12 @@ jobs:
       - name: Install (uv workspace)
         run: uv sync --all-extras
       - name: Test + coverage
-        run: >
-          uv run pytest tests/ -m "" --tb=short --timeout=60
-          --cov=snodo --cov-report=xml --cov-report=term-missing
-      - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v5
-        with:
-          files: ./coverage.xml
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          uv run pytest tests/ -m "" --tb=short --timeout=60 \
+            --cov=snodo --cov-report=xml --cov-report=term-missing \
+            --cov-fail-under=45 | tee coverage-output.txt
+          echo '## Coverage' >> "$GITHUB_STEP_SUMMARY"
+          grep '^TOTAL' coverage-output.txt >> "$GITHUB_STEP_SUMMARY" || true
 
   lint:
     runs-on: ubuntu-latest
