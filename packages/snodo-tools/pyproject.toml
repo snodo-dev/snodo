@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snodo-tools"
+version = "0.4.0"
+description = "Snodo tools — git, shell, workspace primitives + providers"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-only" }
+authors = [{ name = "The Snodo Authors", email = "noreply@snodo.dev" }]
+dependencies = [
+    "snodo-core",
+    "GitPython>=3.1.0",
+    "PyGithub>=2.0.0",
+]
+
+[project.urls]
+Homepage = "https://snodo.dev"
+Repository = "https://github.com/snodo-dev/snodo"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+
+[tool.setuptools.package-data]
+snodo = ["py.typed"]
