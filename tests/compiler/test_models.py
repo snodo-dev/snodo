@@ -367,7 +367,7 @@ def test_all_severity_levels():
     assert Severity.BLOCKER == "blocker"
 
 
-def test_all_disagreement_policies():
+def test_disagreement_policy_enum_values():
     """Test all DisagreementPolicy enum values."""
     assert DisagreementPolicy.UNANIMOUS == "unanimous"
     assert DisagreementPolicy.MAJORITY == "majority"

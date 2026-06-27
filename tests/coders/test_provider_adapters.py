@@ -8,9 +8,7 @@ from snodo.coders import (
     AnthropicAdapter,
     GeminiAdapter,
     LiteLLMAdapter,
-    MockAdapter,
 )
-from snodo.coders.litellm import _truncated_log
 
 
 class TestResolveAdapterClass:

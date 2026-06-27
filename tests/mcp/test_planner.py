@@ -75,7 +75,7 @@ class TestPlannerMCPInit:
 
 class TestDecompose:
     def test_creates_plan_directory(self, planner):
-        result = planner.decompose("Build feature X", "feature_x")
+        planner.decompose("Build feature X", "feature_x")
         plan_dir = planner.plans_dir / "feature_x"
         assert plan_dir.exists()
         assert plan_dir.is_dir()
@@ -1178,7 +1178,7 @@ class TestDecomposeMkdirFails:
         planner = PlannerMCP(temp_dir)
         # Pre-create plans_dir so the OSError comes from the inner mkdir
         planner.plans_dir.mkdir(parents=True, exist_ok=True)
-        target = planner.plans_dir / "p"
+        planner.plans_dir / "p"
         with patch.object(Path, "mkdir", side_effect=OSError("disk full")):
             with pytest.raises(PlannerError, match="Failed to create plan directory"):
                 planner.decompose("Intent", "p")

@@ -19,7 +19,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from snodo.compiler.models import Protocol
-from snodo.infrastructure.tokens import TokenIssuer
 from snodo.mcp.server import MCPError, ProtocolMCPServer
 
 
@@ -149,7 +148,7 @@ class TestCallToolDispatchBranches:
     def test_propose_set_model_routed(self, server):
         mock_result = {"status": "pending", "task_id": "t1", "instruction": "...", "proposal": {}}
         server._decision_handler.handle_propose_set_model = MagicMock(return_value=mock_result)
-        result = server.call_tool("propose_set_model", {
+        server.call_tool("propose_set_model", {
             "task_id": "t1",
             "proposed_model": "gpt-4o",
             "scope": "coder",
@@ -167,13 +166,13 @@ class TestCallToolDispatchBranches:
     def test_get_recon_status_routed(self, server):
         mock_result = {"status": "running"}
         server._recon_handler.handle_get_recon_status = MagicMock(return_value=mock_result)
-        result = server.call_tool("get_recon_status", {"recon_id": "r1"})
+        server.call_tool("get_recon_status", {"recon_id": "r1"})
         server._recon_handler.handle_get_recon_status.assert_called_once()
 
     def test_get_recon_results_routed(self, server):
         mock_result = {"results": []}
         server._recon_handler.handle_get_recon_results = MagicMock(return_value=mock_result)
-        result = server.call_tool("get_recon_results", {"recon_id": "r1"})
+        server.call_tool("get_recon_results", {"recon_id": "r1"})
         server._recon_handler.handle_get_recon_results.assert_called_once()
 
     def test_retry_job_routed(self, server):
@@ -181,7 +180,7 @@ class TestCallToolDispatchBranches:
         _issue_token(server)
         mock_result = {"status": "accepted", "job_id": "j2", "task_id": "t1", "description": "d"}
         server._handle_retry_job = MagicMock(return_value=mock_result)
-        result = server.call_tool("retry_job", {"job_id": "j1"})
+        server.call_tool("retry_job", {"job_id": "j1"})
         server._handle_retry_job.assert_called_once()
 
 
@@ -249,7 +248,7 @@ class TestDispatchTaskBranches:
         captured = {}
         with patch("snodo.jobs.JobManager") as MockJM:
             MockJM.return_value.submit.side_effect = lambda args: (captured.update(args) or "j1")
-            result = srv._handle_dispatch_task({"task_spec": "do something"})
+            srv._handle_dispatch_task({"task_spec": "do something"})
         assert captured.get("mode") == "full"
 
     def test_no_token_to_consume_consumed_false(self, protocol, project_dir):
@@ -262,7 +261,7 @@ class TestDispatchTaskBranches:
 
         with patch("snodo.jobs.JobManager") as MockJM:
             MockJM.return_value.submit.return_value = "j-notokenconsumed"
-            result = srv._handle_dispatch_task({"task_spec": "spec without token"})
+            srv._handle_dispatch_task({"task_spec": "spec without token"})
         # token_consumed event should NOT have been emitted
         assert "token_consumed" not in audit_calls
 

@@ -9,13 +9,10 @@ ever imports compiler, engine, cli.commands, coders, or langchain.
 
 import ast
 import json
-import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
-import pytest
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _PROMPT_FILE = _PROJECT_ROOT / "snodo" / "prompt_cmd.py"

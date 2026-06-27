@@ -27,7 +27,7 @@ from pathlib import Path
 from langgraph.graph import StateGraph, END
 
 from snodo.compiler.models import Protocol, Validator
-from snodo.core.interfaces import Task, ValidatorResult, TaskSpec, ExecutionError
+from snodo.core.interfaces import Task, ValidatorResult, ExecutionError
 from snodo.infrastructure.tokens import ValidationToken, TokenIssuer
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.engine.policy import PolicyEvaluator, PolicyAction, policy_decision_to_dict
@@ -79,12 +79,12 @@ class LoopState:
     summary: str = ""
 
 
-from snodo.engine.nodes.governance import GovernanceNodeMixin
-from snodo.engine.nodes.validation import ValidationNodeMixin
-from snodo.engine.nodes.executor import ExecutorMixin
-from snodo.engine.nodes.state import SerdeMixin
-from snodo.engine.nodes.writeback import WritebackMixin
-from snodo.engine.nodes.context import ContextMixin
+from snodo.engine.nodes.governance import GovernanceNodeMixin  # noqa: E402
+from snodo.engine.nodes.validation import ValidationNodeMixin  # noqa: E402
+from snodo.engine.nodes.executor import ExecutorMixin  # noqa: E402
+from snodo.engine.nodes.state import SerdeMixin  # noqa: E402
+from snodo.engine.nodes.writeback import WritebackMixin  # noqa: E402
+from snodo.engine.nodes.context import ContextMixin  # noqa: E402
 
 
 class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, SerdeMixin, WritebackMixin, ContextMixin):

@@ -5,7 +5,6 @@ FILE: snodo/cli/commands/config_cmd.py
 
 import sys
 from types import SimpleNamespace
-from typing import Optional
 
 import typer
 
