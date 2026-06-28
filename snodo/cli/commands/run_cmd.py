@@ -156,7 +156,9 @@ def run_command(args) -> int:
     from snodo.cli.commands.sandbox_run import _run_in_sandbox, _submit_background_job
 
     project_root = require_project_root()
-    audit_log = get_audit_log()
+    from snodo.project import get_project_id
+    project_id, _ = get_project_id(project_root)
+    audit_log = get_audit_log(project_id=project_id)
     session_manager = SessionManager(audit_log=audit_log)
     args.audit_log = audit_log
     args.session_manager = session_manager
