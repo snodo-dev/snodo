@@ -24,6 +24,7 @@ class AuditEvent:
     sequence: int
     timestamp: str
     event_type: str
+    project_id: str
     data: Dict[str, Any]
     previous_hash: str
     event_hash: str
@@ -43,13 +44,15 @@ class AuditLog:
     gaps on crash).
     """
 
-    def __init__(self, log_path: str = ".snodo/audit.log"):
+    def __init__(self, log_path: str = ".snodo/audit.log", project_id: str = ""):
         """Initialize audit log.
 
         Args:
             log_path: Path to audit log file
+            project_id: Optional project identifier
         """
         self.log_path = Path(log_path)
+        self._project_id = project_id
         self.events: List[AuditEvent] = []
         self._lock = threading.Lock()
         self._load_existing_log()
@@ -76,13 +79,14 @@ class AuditLog:
             previous_hash = self.events[-1].event_hash if self.events else "0" * 64
 
             event_hash = self._compute_hash(
-                sequence, timestamp, event_type, data, previous_hash
+                sequence, timestamp, event_type, data, previous_hash, self._project_id
             )
 
             event = AuditEvent(
                 sequence=sequence,
                 timestamp=timestamp,
                 event_type=event_type,
+                project_id=self._project_id,
                 data=data,
                 previous_hash=previous_hash,
                 event_hash=event_hash,
@@ -134,6 +138,7 @@ class AuditLog:
                 event.event_type,
                 event.data,
                 event.previous_hash,
+                event.project_id,
             )
             if event.event_hash != expected_hash:
                 return False
@@ -147,12 +152,14 @@ class AuditLog:
         event_type: str,
         data: Dict[str, Any],
         previous_hash: str,
+        project_id: str = "",
     ) -> str:
         """Compute cryptographic hash for an event."""
         payload = {
             "sequence": sequence,
             "timestamp": timestamp,
             "event_type": event_type,
+            "project_id": project_id,
             "data": data,
             "previous_hash": previous_hash,
         }
@@ -170,6 +177,8 @@ class AuditLog:
                     if not line.strip():
                         continue
                     event_dict = json.loads(line)
+                    if "project_id" not in event_dict:
+                        event_dict["project_id"] = ""
                     event = AuditEvent(**event_dict)
                     self.events.append(event)
         except Exception:
@@ -210,18 +219,16 @@ class AuditLog:
 _global_audit_log = None
 
 
-def get_audit_log(log_path: str = ".snodo/audit.log") -> AuditLog:
+def get_audit_log(log_path: str = ".snodo/audit.log", project_id: str = "") -> AuditLog:
     """Get global audit log instance.
 
     Args:
         log_path: Path to audit log file
-
-    Returns:
-        Global AuditLog instance
+        project_id: Optional project identifier
     """
     global _global_audit_log
     if _global_audit_log is None:
-        _global_audit_log = AuditLog(log_path)
+        _global_audit_log = AuditLog(log_path, project_id=project_id)
     return _global_audit_log
 
 
