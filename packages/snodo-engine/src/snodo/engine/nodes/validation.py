@@ -226,20 +226,27 @@ class ValidationNodeMixin:
 
         post_outcome = "passed"
         if decision.action == PolicyAction.HALT:
-            loop_state.is_blocked = True
             has_errors = any(getattr(r, 'error', False) for r in results)
-            loop_state.halt_type = "validator_error" if has_errors else "blocked"
-            loop_state.constraint_violations.append(
-                "Post-execute validation failed: " + decision.justification
-            )
-            post_outcome = "blocked"
+            if has_errors:
+                loop_state.is_blocked = True
+                loop_state.halt_type = "validator_error"
+                loop_state.constraint_violations.append(
+                    "Validator error: " + decision.justification
+                )
+                post_outcome = "blocked"
+            elif self._is_recoverable(loop_state, results):
+                self._spawn_recovery_subtask(loop_state, results, decision)
+                post_outcome = "recovery"
+            else:
+                loop_state.is_blocked = True
+                loop_state.halt_type = "blocked"
+                loop_state.constraint_violations.append(
+                    "Post-execute validation failed: " + decision.justification
+                )
+                post_outcome = "blocked"
         elif decision.action == PolicyAction.ESCALATE:
-            loop_state.is_blocked = True
-            loop_state.halt_type = "escalated"
-            loop_state.pending_disagreement = self._build_pending_disagreement(
-                loop_state, "post_execute", results, decision
-            )
-            post_outcome = "escalated"
+            self._spawn_recovery_subtask(loop_state, results, decision)
+            post_outcome = "recovery"
 
         loop_state.policy_decision = decision
         loop_state.metadata["post_validation"] = {
@@ -278,9 +285,14 @@ class ValidationNodeMixin:
             return "governance"
 
     def _route_after_post_validation(self, state: Dict[str, Any]) -> str:
-        """Route after post-validation: proceed or block."""
+        """Route after post-validation: recovery, proceed, or block."""
         loop_state = self._dict_to_state(state)
-        decision = "blocked" if loop_state.is_blocked else "move_next"
+        if loop_state.needs_recovery:
+            decision = "recovery"
+        elif loop_state.is_blocked:
+            decision = "blocked"
+        else:
+            decision = "move_next"
         self._audit("post_validation_route", {
             "op": "post_validation_route",
             "task_ref": loop_state.task.id,
