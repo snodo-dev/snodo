@@ -19,7 +19,6 @@ from snodo.core.interfaces import ValidatorResult
 from snodo.validators.context import ValidatorBase
 from snodo.validators.registry import _default_registry
 
-
 # Auto-detection rules: (marker file, test command)
 _DETECT_RULES = [
     ("package.json", "npm test"),
@@ -118,6 +117,9 @@ class QualityValidator(ValidatorBase):
         Returns:
             ValidatorResult based on exit code
         """
+        if timeout is None or timeout <= 0:
+            timeout = self.DEFAULT_TIMEOUT
+
         try:
             result = subprocess.run(
                 command,
