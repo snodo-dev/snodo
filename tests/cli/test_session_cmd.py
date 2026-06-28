@@ -132,12 +132,21 @@ class TestSessionDelete:
 
 class TestSessionPrune:
     def test_prune(self, mgr, capsys):
+        from snodo.infrastructure.state import read_state, write_state
+
         session = mgr.create_session("producer", PROJECT_ROOT)
         # Backdate
         path = mgr.sessions_dir / f"{session.session_id}.json"
         data = json.loads(path.read_text())
         data["updated_at"] = (datetime.now(UTC) - timedelta(days=31)).isoformat()
         path.write_text(json.dumps(data, indent=2))
+        # Clear active pointer (no-op for non-existent PROJECT_ROOT, but correct regardless)
+        try:
+            state = read_state(PROJECT_ROOT)
+            state.active_session.pop("producer", None)
+            write_state(PROJECT_ROOT, state)
+        except (OSError, PermissionError):
+            pass
 
         args = SimpleNamespace(
             session_action="prune", sessions_dir=mgr.sessions_dir,

@@ -7,7 +7,6 @@ Sessions are scoped to (mode, project). Tokens are deliberately
 excluded - revalidation on resume is required.
 """
 
-import hashlib
 import json
 import logging
 import secrets
@@ -17,6 +16,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
 from snodo.infrastructure.paths import resolve_home
+from snodo.project import get_project_id
 
 _logger = logging.getLogger(__name__)
 
@@ -32,10 +32,6 @@ def _mode_prefix(mode: str) -> str:
     """Get short prefix for mode in session IDs."""
     return MODE_PREFIXES.get(mode, mode[:4])
 
-
-def _project_id(project_root: str) -> str:
-    """Compute stable project identifier from project root path."""
-    return hashlib.sha256(project_root.encode()).hexdigest()[:16]
 
 
 @dataclass
@@ -116,7 +112,7 @@ class SessionManager:
             session_id=session_id,
             mode=mode,
             project_root=project_root,
-            project_id=_project_id(project_root),
+            project_id=get_project_id(project_root)[0],
             created_at=now,
             updated_at=now,
             checkpoint=Checkpoint(timestamp=now),
@@ -155,18 +151,18 @@ class SessionManager:
 
         state = read_state(project_root)
         pointer = state.active_session.get(mode)
+        pid = get_project_id(project_root)[0]
 
         # Pointer set and valid → authoritative
         if pointer:
             try:
                 session = self.load_session(pointer)
-                if session.mode == mode and session.project_id == _project_id(project_root):
+                if session.mode == mode and session.project_id == pid:
                     return session
             except FileNotFoundError:
                 pass  # stale pointer — fall through to auto-adopt
 
         # No pointer or stale — find all sessions for this (project, mode)
-        pid = _project_id(project_root)
         candidates: List[SessionState] = []
         for session_file in self.sessions_dir.glob("*.json"):
             try:
@@ -307,7 +303,7 @@ class SessionManager:
                 f"Session {session_id} is mode={session.mode}, "
                 f"not {mode}"
             )
-        pid = _project_id(project_root)
+        pid = get_project_id(project_root)[0]
         if session.project_id != pid:
             raise ValueError(
                 f"Session {session_id} is for a different project"
@@ -367,7 +363,7 @@ class SessionManager:
         Returns:
             List of matching SessionState objects
         """
-        pid = _project_id(project_root) if project_root else None
+        pid = get_project_id(project_root)[0] if project_root else None
         results: List[SessionState] = []
         for session_file in sorted(self.sessions_dir.glob("*.json")):
             try:
