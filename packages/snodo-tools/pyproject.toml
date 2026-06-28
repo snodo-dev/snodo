@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snodo-tools"
-version = "0.5.1"
+version = "0.5.2"
 description = "Snodo tools — git, shell, workspace primitives + providers"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-only" }
 authors = [{ name = "The Snodo Authors", email = "noreply@snodo.dev" }]
 dependencies = [
-    "snodo-core==0.5.1",
+    "snodo-core==0.5.2",
     "GitPython>=3.1.0",
     "PyGithub>=2.0.0",
 ]
