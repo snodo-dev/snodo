@@ -396,30 +396,33 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             _close_checkpointer(checkpointer)
         return 1
 
-    initial_state = {
-        "task": {"id": task.id, "spec": task.spec, "parent_task_ref": task.parent_task_ref, "depth": task.depth},
-        "current_mode": protocol.initial_mode,
-        "iteration": 0,
-        "stage": "governance",
-        "validation_results": [],
-        "validation_token": None,
-        "artifacts": [],
-        "constraints_passed": True,
-        "constraint_violations": [],
-        "policy_decision": None,
-        "pending_disagreement": None,
-        "halt_type": None,
-        "is_complete": False,
-        "is_blocked": False,
-        "metadata": {},
-        "messages": [],
+    root_task_dict = {
+        "id": task.id,
+        "spec": task.spec,
+        "parent_task_ref": task.parent_task_ref,
+        "depth": task.depth,
     }
 
     try:
-        result = _stream_execution(compiled_graph, initial_state, args, thread_config)
+        from snodo.engine.closure import run_to_closure
+
+        max_attempts = getattr(protocol.execution, "max_total_fix_attempts", 10)
+        max_depth = getattr(protocol.execution, "max_recovery_depth", 3)
+        final_state, closure_tree = run_to_closure(
+            compiled_graph,
+            root_task_dict,
+            mode=protocol.initial_mode,
+            audit_log=audit_log,
+            max_total_fix_attempts=max_attempts,
+            max_recovery_depth=max_depth,
+            session_id=session_id,
+            thread_config=thread_config,
+        )
         if memory_mgr:
             project_name = Path(project_root).name
             memory_mgr.record_task(project_name, protocol.initial_mode)
+
+        result = _report_closure(closure_tree, final_state)
         return result
     finally:
         # Save session checkpoint on exit
@@ -763,6 +766,50 @@ def _stream_execution(compiled_graph, initial_state: dict, args,
             import traceback
             traceback.print_exc()
         return 1
+
+
+def _report_closure(tree, final_state: dict) -> int:
+    """Print the aggregate closure result and return the exit code."""
+    from snodo.engine.closure import ClosureNode
+
+    def _format_outcome(outcome: str) -> str:
+        if outcome == "resolved":
+            return "resolved"
+        elif outcome == "recovery_exhausted":
+            return "recovery_exhausted"
+        elif outcome == "blocked" or outcome == "validator_error":
+            return outcome
+        elif outcome == "escalated":
+            return "escalated"
+        return outcome
+
+    def _print_tree(node: ClosureNode, indent: str = "") -> None:
+        outcome_fmt = _format_outcome(node.outcome)
+        print(f"{indent}{node.task_id}  {outcome_fmt}  (depth={node.depth})")
+        for child in node.subtasks:
+            _print_tree(child, indent + "  ")
+
+    print()
+    print("=" * 60)
+    print("CLOSURE RESULT")
+    print("-" * 60)
+    _print_tree(tree)
+    print("-" * 60)
+    print(f"  Total attempts: {tree.attempts_used}")
+    print()
+
+    if tree.outcome == "resolved":
+        is_blocked = final_state.get("is_blocked", False)
+        if not is_blocked:
+            artifacts = final_state.get("artifacts", [])
+            print("✓ Task completed successfully!")
+            if artifacts:
+                print(f"  Artifacts ({len(artifacts)}):")
+                for artifact in artifacts:
+                    print(f"    - {artifact}")
+            return 0
+    print("✗ Task did not complete successfully", file=sys.stderr)
+    return 1
 
 
 def _report_result(final_state: Optional[dict]) -> int:
