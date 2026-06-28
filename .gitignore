@@ -51,3 +51,4 @@ site/
 
 importtime.log
 *.importtime
+.snodo*bak/
