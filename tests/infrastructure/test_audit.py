@@ -390,3 +390,31 @@ def test_session_resume_extends_chain(temp_audit_log):
     assert resumed.events[2].previous_hash == last_hash
     assert resumed.verify_chain() is True
 
+
+def test_audit_log_project_stamping(tmpdir):
+    """Verify that AuditLog stamps project_id on every event and verify_chain passes."""
+    from snodo.infrastructure.audit import AuditLog
+    
+    log_path = Path(tmpdir) / "audit.log"
+    # Construct with specific project_id
+    audit = AuditLog(str(log_path), project_id="my-test-project-123")
+    
+    # Append multiple events
+    audit.append_event("event1", {"data": 1})
+    audit.append_event("event2", {"data": 2})
+    
+    # 1. verify_chain() returns True
+    assert audit.verify_chain() is True
+    
+    # 2. Assert events in memory have project_id
+    assert len(audit.events) == 2
+    assert audit.events[0].project_id == "my-test-project-123"
+    assert audit.events[1].project_id == "my-test-project-123"
+    
+    # 3. Assert events on disk have project_id
+    resumed = AuditLog(str(log_path))
+    assert len(resumed.events) == 2
+    assert resumed.events[0].project_id == "my-test-project-123"
+    assert resumed.events[1].project_id == "my-test-project-123"
+    assert resumed.verify_chain() is True
+

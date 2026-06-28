@@ -437,7 +437,9 @@ def _job_retry(manager, args) -> int:
     from snodo.infrastructure.paths import require_project_root
 
     project_root = require_project_root()
-    audit_log = get_audit_log()
+    from snodo.project import get_project_id
+    project_id, _ = get_project_id(project_root)
+    audit_log = get_audit_log(project_id=project_id)
     session_manager = SessionManager(audit_log=audit_log)
 
     retry_args = SimpleNamespace(
@@ -463,7 +465,9 @@ def _dispatch_as_new_task(args, task_data: dict, job_id: str) -> int:
 
     description = getattr(args, "description", "") or task_data.get("description", "")
     project_root = require_project_root()
-    audit_log = get_audit_log()
+    from snodo.project import get_project_id
+    project_id, _ = get_project_id(project_root)
+    audit_log = get_audit_log(project_id=project_id)
     session_manager = SessionManager(audit_log=audit_log)
 
     protocol_path = getattr(args, "protocol", ".snodo/protocol.yml")
