@@ -1,0 +1,14 @@
+[
+  {
+    "wave_id": "w_0001",
+    "feature_description": "OAuth 2.1 authentication infrastructure",
+    "anchor_summaries": [
+      "Implement JWKS client for JWT verification"
+    ],
+    "created": 1782061937.613497,
+    "last_activity": 1782061937.613497,
+    "task_ids": [
+      "task_956c84"
+    ]
+  }
+]
