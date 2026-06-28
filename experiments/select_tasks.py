@@ -67,8 +67,10 @@ def _patch_stats(patch: str) -> dict:
 def _contamination_flag(created_at: str, model_cutoff: Optional[str]) -> str:
     """Compare task created_at against model cutoff date.
 
-    Returns "contaminated" if created_at after cutoff, "unknown" if no cutoff,
-    "clean" otherwise. Cutoff format: YYYY-MM-DD.
+    A task that predates the model cutoff could be in the model's training data,
+    so it is "contaminated". A task created after the cutoff is "clean" (the
+    model could not have trained on its solution). "unknown" if no cutoff or
+    date. Cutoff format: YYYY-MM-DD.
     """
     if not model_cutoff:
         return "unknown"
@@ -76,7 +78,7 @@ def _contamination_flag(created_at: str, model_cutoff: Optional[str]) -> str:
         return "unknown"
     try:
         task_date = created_at[:10]
-        return "contaminated" if task_date > model_cutoff else "clean"
+        return "contaminated" if task_date < model_cutoff else "clean"
     except (IndexError, ValueError):
         return "unknown"
 
@@ -157,18 +159,20 @@ def _filter_and_enrich(rows: List[dict], config: dict) -> List[dict]:
 
 def _stratified_pick(
     candidates: List[dict],
-    strata: List[str],
+    strata: list,
     n_total: int,
     min_repos: int,
     seed: int,
 ) -> List[dict]:
     """Stratified sampling across difficulty strata.
 
-    Allocates n_total proportionally to stratum pool sizes, with at least 1
-    per requested stratum. Falls back to filling remaining slots from the
-    largest stratum.
+    *strata* can be either:
+      - A list of stratum names (e.g. ``["easy", "medium", "hard"]``): allocates
+        *n_total* proportionally to pool sizes, at least 1 per stratum.
+      - A dict ``{stratum: count, ...}``: explicit per-stratum counts that must
+        sum to *n_total*.  Each stratum must have enough candidates.
 
-    Returns exactly n_total candidates spread across >= min_repos distinct repos.
+    Returns exactly *n_total* candidates spread across >= *min_repos* distinct repos.
     """
     rng = random.Random(seed)
 
@@ -176,43 +180,50 @@ def _stratified_pick(
     by_stratum: Dict[str, List[dict]] = defaultdict(list)
     for c in candidates:
         d = c.get("difficulty", "unknown")
-        if d in strata:
-            by_stratum[d].append(c)
+        by_stratum[d].append(c)
 
-    # Check each requested stratum has at least 1
-    for s in strata:
-        if s not in by_stratum or not by_stratum[s]:
-            avail = ", ".join(sorted(by_stratum.keys()))
-            raise ValueError(
-                f"Stratum '{s}' has 0 candidates (available: {avail}). "
-                "Adjust config strata or check pool."
-            )
+    if isinstance(strata, dict):
+        allocation = dict(strata)
+        for s, count in allocation.items():
+            pool_size = len(by_stratum.get(s, []))
+            if count > 0 and pool_size < count:
+                raise ValueError(
+                    f"Stratum '{s}': requested {count} but pool has only "
+                    f"{pool_size} candidates."
+                )
+        strata_order = [s for s, c in allocation.items() if c > 0]
+    else:
+        for s in strata:
+            if s not in by_stratum or not by_stratum[s]:
+                avail = ", ".join(sorted(by_stratum.keys()))
+                raise ValueError(
+                    f"Stratum '{s}' has 0 candidates (available: {avail}). "
+                    "Adjust config strata or check pool."
+                )
 
-    # Allocate proportionally, minimum 1 per stratum
-    total_pool = sum(len(v) for v in by_stratum.values())
-    allocation: Dict[str, int] = {}
-    allocated = 0
-    for s in strata:
-        pool = len(by_stratum[s])
-        share = max(1, round(n_total * pool / total_pool))
-        allocation[s] = share
-        allocated += share
+        total_pool = sum(len(by_stratum[s]) for s in strata)
+        allocation = {}
+        allocated = 0
+        for s in strata:
+            pool = len(by_stratum[s])
+            share = max(1, round(n_total * pool / total_pool))
+            allocation[s] = share
+            allocated += share
 
-    # Adjust if over/under allocated
-    diff = n_total - allocated
-    if diff > 0:
-        # Give extras to the largest stratum
-        largest = max(strata, key=lambda s: len(by_stratum[s]))
-        allocation[largest] += diff
-    elif diff < 0:
-        # Take from largest stratum (but keep at least 1)
-        largest = max(strata, key=lambda s: len(by_stratum[s]))
-        allocation[largest] = max(1, allocation[largest] + diff)
+        diff = n_total - allocated
+        if diff > 0:
+            largest = max(strata, key=lambda s: len(by_stratum[s]))
+            allocation[largest] += diff
+        elif diff < 0:
+            largest = max(strata, key=lambda s: len(by_stratum[s]))
+            allocation[largest] = max(1, allocation[largest] + diff)
+
+        strata_order = list(strata)
 
     selected: List[dict] = []
     used_repos: set = set()
     # Phase 1: pick one per stratum, ensuring repo diversity
-    for s in strata:
+    for s in strata_order:
         pool = sorted(by_stratum[s], key=lambda x: x["instance_id"])
         rng.shuffle(pool)
         allocation[s] -= 1
@@ -221,7 +232,7 @@ def _stratified_pick(
         by_stratum[s] = pool[1:]
 
     # Phase 2: fill remaining, prioritizing repo diversity
-    for s in strata:
+    for s in strata_order:
         pool = list(by_stratum[s])
         rng.shuffle(pool)
         need = allocation[s]

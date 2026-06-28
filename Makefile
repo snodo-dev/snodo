@@ -62,7 +62,7 @@ release:
 .PHONY: exp-select
 
 exp-select:
-	uv run python experiments/select_tasks.py
+	uv run python -m experiments.select_tasks
 
 # ──────────────────────────────────────────────
 # Studies
