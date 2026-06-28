@@ -15,6 +15,8 @@ class ExecutionConfig(BaseModel):
     max_retries: int = Field(default=3, ge=0, le=10)
     branch_ttl_days: int = Field(default=7, ge=1, le=30)
     branch_prefix: str = Field(default="task")
+    max_recovery_depth: int = Field(default=3, ge=0, le=20)
+    max_total_fix_attempts: int = Field(default=10, ge=1, le=100)
 
 
 class DisagreementPolicy(str, Enum):

@@ -36,9 +36,10 @@ class LoopState:
     policy_decision: Optional[Any] = None
     is_complete: bool = False
     is_blocked: bool = False
-    halt_type: Optional[str] = None  # "blocked" | "escalated" | "resolution" | "constraint" | "max_iterations" | "wf3" | "validator_error"
+    halt_type: Optional[str] = None  # "blocked" | "escalated" | "resolution" | "constraint" | "max_iterations" | "wf3" | "validator_error" | "recovery_exhausted"
     pending_disagreement: Optional[Dict[str, Any]] = None
     spawned_subtasks: List[Task] = field(default_factory=list)
+    needs_recovery: bool = False
     metadata: Dict[str, Any] = field(default_factory=dict)
     messages: List[Dict[str, Any]] = field(default_factory=list)
     summary: str = ""
