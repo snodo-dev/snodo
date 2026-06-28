@@ -351,8 +351,9 @@ class DashboardDataProvider:
         # Reset the global singleton so we always get a fresh load
         import snodo.infrastructure.audit as _audit_mod
         _audit_mod._global_audit_log = None  # type: ignore[attr-defined]
-        from snodo.infrastructure.audit import AuditLog
-        self._audit_log = AuditLog(str(log_path))
+        from snodo.project import get_project_id
+        project_id, _ = get_project_id(self.project_root)
+        self._audit_log = AuditLog(str(log_path), project_id=project_id)
         return self._audit_log
 
     def _get_mode(self, mode_id: str) -> Optional[Mode]:
