@@ -6,12 +6,38 @@ TEST_SECRET: 32+ byte HMAC key to avoid JWT InsecureKeyLengthWarning
 (RFC 7518 Section 3.2 recommends ≥32 bytes for SHA256).
 """
 
+import os
 import tempfile
 import shutil
 
 import pytest
 
 TEST_SECRET = "test-secret-key-that-is-at-least-32-bytes!!"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_tempdir(tmp_path_factory):
+    """Redirect all temp allocation under a private per-session directory.
+
+    On macOS ``$TMPDIR`` (``/var/folders/.../T``) is shared across every
+    process and persists indefinitely. Tests that run ``init`` or resolve a
+    project root via ``tempfile.mkdtemp()`` could otherwise write a ``.snodo``
+    at — or walk up into — that shared root, tripping the nested-init guard
+    for every other test and run on the machine. Pinning ``tempfile.tempdir``
+    (and ``$TMPDIR`` for subprocesses) to an isolated session dir makes that
+    impossible. Linux CI is unaffected (fresh ``/tmp`` per job).
+    """
+    root = str(tmp_path_factory.mktemp("snodo_session"))
+    old_tempdir = tempfile.tempdir
+    old_env = os.environ.get("TMPDIR")
+    tempfile.tempdir = root
+    os.environ["TMPDIR"] = root
+    yield
+    tempfile.tempdir = old_tempdir
+    if old_env is None:
+        os.environ.pop("TMPDIR", None)
+    else:
+        os.environ["TMPDIR"] = old_env
 
 
 @pytest.fixture(autouse=True)
