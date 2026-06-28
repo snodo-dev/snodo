@@ -15,7 +15,7 @@ selection:
   seed: 42
 
 sampling:
-  temperature: 0
+  temperature: 0.0
   k_trials: 3
 
 bounds:
@@ -23,6 +23,7 @@ bounds:
   max_total_fix_attempts: 10
 
 models:
+  cutoff: "2025-06-01"
   expensive:
     - claude-sonnet-4-20250514
     - gpt-4o-2025-05-13
