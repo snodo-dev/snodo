@@ -11,7 +11,7 @@ drop-in — no hydra dependency required now.
 import copy
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 _CONFIG_PATH = Path(__file__).resolve().parent / "config.yml"
 
@@ -27,6 +27,20 @@ _CONSTRAINTS: Dict[str, tuple] = {
     "stats.equivalence_margin_pp": (int, 1, 50),
     "stats.min_meaningful_effect_pp": (int, 1, 50),
 }
+
+
+def _parse_json_value(raw: str):
+    """Parse a CLI override value that looks like JSON (dict or list).
+
+    Falls back to raw string if parsing fails.
+    """
+    stripped = raw.strip()
+    if stripped.startswith(("{", "[")):
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+    return raw
 
 
 def _load_yaml(path: Path) -> dict:
@@ -67,6 +81,36 @@ def _coerce_value(raw: str, type_fn) -> Any:
     return raw
 
 
+def _validate_strata(config: dict) -> None:
+    """Validate selection.strata: list (proportional) or dict (explicit counts).
+
+    Raises ValueError on failure.
+    """
+    sel = config.get("selection", {})
+    strata = sel.get("strata")
+    n = sel.get("n")
+    if isinstance(strata, dict):
+        valid_keys = {"easy", "medium", "hard"}
+        for key in strata:
+            if key not in valid_keys:
+                raise ValueError(
+                    f"selection.strata key {key!r} is not valid. "
+                    f"Must be one of {sorted(valid_keys)}"
+                )
+        for key, count in strata.items():
+            if not isinstance(count, int) or count < 0:
+                raise ValueError(
+                    f"selection.strata.{key}: expected non-negative int, "
+                    f"got {count!r}"
+                )
+        total = sum(strata.values())
+        if total != n:
+            raise ValueError(
+                f"selection.strata counts sum to {total}, but "
+                f"selection.n={n}"
+            )
+
+
 def _validate(config: dict) -> None:
     """Validate all constrained keys in-place. Raises ValueError on failure."""
     for key, (type_fn, lo, hi) in _CONSTRAINTS.items():
@@ -86,6 +130,7 @@ def _validate(config: dict) -> None:
             raise ValueError(
                 f"{key}={val} exceeds maximum {hi}"
             )
+    _validate_strata(config)
 
 
 def load_config(
@@ -131,9 +176,9 @@ def load_config(
                 elif isinstance(existing, float):
                     value = float(raw_value)
                 else:
-                    value = raw_value
+                    value = _parse_json_value(raw_value)
             except (KeyError, ValueError):
-                value = raw_value
+                value = _parse_json_value(raw_value)
             _set_nested(config, key, value)
 
     _validate(config)
