@@ -56,6 +56,15 @@ release:
 	git push origin main --follow-tags
 
 # ──────────────────────────────────────────────
+# Experiment task selection
+# ──────────────────────────────────────────────
+
+.PHONY: exp-select
+
+exp-select:
+	uv run python experiments/select_tasks.py
+
+# ──────────────────────────────────────────────
 # Studies
 # ──────────────────────────────────────────────
 
