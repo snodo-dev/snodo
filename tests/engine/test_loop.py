@@ -5,26 +5,34 @@ FILE: tests/engine/test_loop.py
 Updated to match new MCP-integrated signatures.
 """
 
-import pytest
-
-from tests.conftest import TEST_SECRET
-
-from snodo.compiler.models import (
-    Protocol, Mode, Validator, Severity, DisagreementPolicy
-)
-from snodo.core.interfaces import Task, ValidatorResult
-from snodo.infrastructure.tokens import TokenIssuer
-from snodo.engine.loop import (
-    GraphBuilder, LoopState, LoopStage, build_protocol_graph, _build_audit_results
-)
-from snodo.agents.adapter import MockCoderAdapter
-from snodo.tools.workspace import WorkspaceMCP
-from snodo.tools.git import GitMCP
-from snodo.tools.shell import ShellMCP
-import tempfile
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
+
+import pytest
+from snodo.compiler.models import (
+    DisagreementPolicy,
+    Mode,
+    Protocol,
+    Severity,
+    Validator,
+)
+from snodo.core.interfaces import Task, ValidatorResult
+from snodo.engine.loop import (
+    GraphBuilder,
+    LoopStage,
+    LoopState,
+    _build_audit_results,
+    build_protocol_graph,
+)
+from snodo.infrastructure.tokens import TokenIssuer
+from snodo.tools.git import GitMCP
+from snodo.tools.shell import ShellMCP
+from snodo.tools.workspace import WorkspaceMCP
+
+from snodo.agents.adapter import MockCoderAdapter
+from tests.conftest import TEST_SECRET
 
 
 def _make_test_token(task_id, issuer=None):
@@ -687,8 +695,9 @@ def test_default_validator(sample_protocol, sample_task, temp_workspace):
 
 def test_default_validator_config_error_returns_blocker(sample_protocol, sample_task, temp_workspace):
     """When load_llm_config raises ConfigLoadError, _default_validator returns blocker."""
-    from snodo.infrastructure.config import ConfigLoadError
     from unittest.mock import patch
+
+    from snodo.infrastructure.config import ConfigLoadError
 
     builder = GraphBuilder(sample_protocol)
     validators = [
@@ -1065,6 +1074,7 @@ def test_end_to_end_messages_include_summary_field(sample_protocol, sample_task,
 def _make_audit_log():
     """Create a temp AuditLog for testing."""
     import tempfile
+
     from snodo.infrastructure.audit import AuditLog
     f = tempfile.NamedTemporaryFile(suffix=".log", delete=False)
     f.close()
@@ -1577,8 +1587,16 @@ def test_post_validate_bypassed_logs_audit(sample_task, temp_workspace):
     assert events[0].data["mode"] == "producer"
 
 
+@pytest.mark.timeout(15)
 def test_post_validate_no_bypass_with_post_validators(sample_task, temp_workspace):
     """_post_validate_node does NOT log bypass when post_execute validators exist."""
+    def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
+        return [
+            ValidatorResult(validator_id=v.validator_id, severity="pass",
+                            justification="mock ok")
+            for v in validators
+        ]
+
     protocol = Protocol(
         protocol_id="test",
         name="Test",
@@ -1605,7 +1623,7 @@ def test_post_validate_no_bypass_with_post_validators(sample_task, temp_workspac
         initial_mode="producer",
     )
     audit = _make_audit_log()
-    builder = GraphBuilder(protocol, audit_log=audit)
+    builder = GraphBuilder(protocol, audit_log=audit, validator_fn=_all_pass)
 
     state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
@@ -1690,7 +1708,7 @@ def test_validate_node_escalate_sets_blocked(sample_protocol, sample_task, temp_
 
 def test_validate_node_escalate_majority_pending_disagreement(sample_task, temp_workspace):
     """ESCALATE under majority policy populates pending_disagreement."""
-    from snodo.compiler.models import Protocol, Mode, Validator, DisagreementPolicy
+    from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 
     protocol = Protocol(
         protocol_id="test",
@@ -1765,7 +1783,7 @@ def test_route_after_governance_blocked(sample_protocol):
 
 def test_max_iterations_hard_stop():
     """Iteration 51+ → is_blocked=True (infinite loop safety net)."""
-    from snodo.compiler.models import Protocol, Mode, Validator
+    from snodo.compiler.models import Mode, Protocol, Validator
 
     protocol = Protocol(
         protocol_id="test",
@@ -1802,7 +1820,7 @@ def test_max_iterations_hard_stop():
 
 def test_validate_node_escalate_audit_event(sample_task, temp_workspace):
     """ESCALATE emits disagreement_escalated audit event."""
-    from snodo.compiler.models import Protocol, Mode, Validator
+    from snodo.compiler.models import Mode, Protocol, Validator
 
     protocol = Protocol(
         protocol_id="test",
@@ -1862,7 +1880,7 @@ def test_validate_node_escalate_audit_event(sample_task, temp_workspace):
 
 def _builder_with_cap_validator(cap_val, validator_fn=None, mode="producer"):
     """Build a GraphBuilder with a single capped validator."""
-    from snodo.compiler.models import Protocol, Mode, Validator
+    from snodo.compiler.models import Mode, Protocol, Validator
 
     protocol = Protocol(
         protocol_id="test", name="Test",
