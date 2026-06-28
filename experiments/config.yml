@@ -9,9 +9,9 @@ selection:
   n: 10
   min_repos: 5
   strata:
-    - easy          # <15 min
-    - medium        # 15 min – 1 hr
-    - hard          # > 1 hr
+    easy: 4
+    medium: 4
+    hard: 2
   seed: 42
 
 sampling:

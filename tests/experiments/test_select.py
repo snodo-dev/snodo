@@ -6,15 +6,16 @@ SWE-bench_Verified). No network calls.
 
 import csv
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
 
 from experiments.select_tasks import (
-    _filter_and_enrich,
-    _stratified_pick,
-    _patch_stats,
     _contamination_flag,
+    _filter_and_enrich,
+    _patch_stats,
+    _stratified_pick,
     select_tasks,
 )
 
@@ -66,10 +67,10 @@ class TestContaminationFlag:
         assert _contamination_flag("2024-06-01", None) == "unknown"
 
     def test_clean(self):
-        assert _contamination_flag("2024-01-01", "2024-06-01") == "clean"
+        assert _contamination_flag("2024-12-01", "2024-06-01") == "clean"
 
     def test_contaminated(self):
-        assert _contamination_flag("2024-12-01", "2024-06-01") == "contaminated"
+        assert _contamination_flag("2024-01-01", "2024-06-01") == "contaminated"
 
 
 class TestFilterAndEnrich:
@@ -98,7 +99,7 @@ class TestFilterAndEnrich:
                  "FAIL_TO_PASS": '["test_a.py::test1"]',
                  "PASS_TO_PASS": "[]",
                  "difficulty": "<15 min fix", "repo": "a/b",
-                 "created_at": "2025-01-01"}]
+                 "created_at": "2024-01-01"}]
         config = {"models": {"cutoff": "2024-06-01"}}
         result = _filter_and_enrich(rows, config)
         assert result[0]["contamination_flag"] == "contaminated"
@@ -142,6 +143,79 @@ class TestStratifiedPick:
         ids2 = [c["instance_id"] for c in pick2]
         assert ids1 == ids2
 
+    def test_explicit_counts_happy_path(self):
+        """Dict strata: picks exactly the requested counts per stratum."""
+        candidates = []
+        for i in range(30):
+            diff = "easy" if i < 10 else "medium" if i < 20 else "hard"
+            candidates.append({
+                "instance_id": f"t{i:04d}",
+                "repo": f"org/repo{i % 5}",
+                "difficulty": diff,
+            })
+        picked = _stratified_pick(
+            candidates, {"easy": 2, "medium": 3, "hard": 1},
+            n_total=6, min_repos=1, seed=42,
+        )
+        assert len(picked) == 6
+        counts = Counter(c["difficulty"] for c in picked)
+        assert counts["easy"] == 2
+        assert counts["medium"] == 3
+        assert counts["hard"] == 1
+
+    def test_explicit_counts_pool_underfill_raises(self):
+        """Dict strata: loud-fail when a stratum can't supply its count."""
+        candidates = []
+        for i in range(3):
+            candidates.append({
+                "instance_id": f"t{i:04d}",
+                "repo": f"org/repo{i % 2}",
+                "difficulty": "easy",
+            })
+        with pytest.raises(ValueError, match="requested 5 but pool has only"):
+            _stratified_pick(
+                candidates, {"easy": 5}, n_total=5, min_repos=1, seed=42,
+            )
+
+    def test_explicit_counts_zero_stratum_skipped(self):
+        """Dict strata: stratum with count 0 is skipped (no phase-1 pick)."""
+        candidates = []
+        for i in range(10):
+            diff = "easy" if i < 5 else "medium"
+            candidates.append({
+                "instance_id": f"t{i:04d}",
+                "repo": f"org/repo{i % 3}",
+                "difficulty": diff,
+            })
+        picked = _stratified_pick(
+            candidates, {"easy": 2, "medium": 0},
+            n_total=2, min_repos=1, seed=42,
+        )
+        assert len(picked) == 2
+        assert all(c["difficulty"] == "easy" for c in picked)
+
+    def test_explicit_counts_deterministic(self):
+        """Dict strata: same seed produces same selection."""
+        candidates = []
+        for i in range(30):
+            diff = "easy" if i < 10 else "medium" if i < 20 else "hard"
+            candidates.append({
+                "instance_id": f"t{i:04d}",
+                "repo": f"org/repo{i % 5}",
+                "difficulty": diff,
+            })
+        pick1 = _stratified_pick(
+            candidates, {"easy": 2, "medium": 2, "hard": 1},
+            n_total=5, min_repos=1, seed=42,
+        )
+        pick2 = _stratified_pick(
+            candidates, {"easy": 2, "medium": 2, "hard": 1},
+            n_total=5, min_repos=1, seed=42,
+        )
+        ids1 = [c["instance_id"] for c in pick1]
+        ids2 = [c["instance_id"] for c in pick2]
+        assert ids1 == ids2
+
 
 class TestSelectTasksOffline:
 
@@ -150,7 +224,8 @@ class TestSelectTasksOffline:
         out = tmp_path / "tasks"
         selected = select_tasks(
             dataset_path=str(_FIXTURE),
-            cli_overrides=["selection.n=5", "selection.min_repos=1"],
+            cli_overrides=["selection.n=5", "selection.min_repos=1",
+                           'selection.strata={"easy":2,"medium":2,"hard":1}'],
             output_dir=out,
         )
         assert len(selected) == 5
@@ -164,7 +239,8 @@ class TestSelectTasksOffline:
         out = tmp_path / "tasks"
         select_tasks(
             dataset_path=str(_FIXTURE),
-            cli_overrides=["selection.n=4", "selection.min_repos=1"],
+            cli_overrides=["selection.n=4", "selection.min_repos=1",
+                           'selection.strata={"easy":2,"medium":1,"hard":1}'],
             output_dir=out,
         )
         assert (out / "selection.jsonl").exists()
@@ -175,7 +251,8 @@ class TestSelectTasksOffline:
         out = tmp_path / "tasks"
         select_tasks(
             dataset_path=str(_FIXTURE),
-            cli_overrides=["selection.n=4", "selection.min_repos=1"],
+            cli_overrides=["selection.n=4", "selection.min_repos=1",
+                           'selection.strata={"easy":2,"medium":1,"hard":1}'],
             output_dir=out,
         )
         with open(out / "selection.csv") as f:
@@ -191,7 +268,8 @@ class TestSelectTasksOffline:
         out = tmp_path / "tasks"
         select_tasks(
             dataset_path=str(_FIXTURE),
-            cli_overrides=["selection.n=4", "selection.min_repos=1"],
+            cli_overrides=["selection.n=4", "selection.min_repos=1",
+                           'selection.strata={"easy":2,"medium":1,"hard":1}'],
             output_dir=out,
         )
         with open(out / "selection.jsonl") as f:
