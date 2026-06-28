@@ -1,0 +1,38 @@
+# snodo experiment configuration — single source of truth for EXP1/EXP2.
+#
+# Sections map 1:1 onto Hydra config groups.  All values are overridable
+# via CLI (--set section.key=value).  A verbatim copy is snapshotted into
+# every run's results directory for provenance.
+
+selection:
+  dataset: swe_bench_verified
+  n: 10
+  min_repos: 5
+  strata:
+    - easy          # <15 min
+    - medium        # 15 min – 1 hr
+    - hard          # > 1 hr
+  seed: 42
+
+sampling:
+  temperature: 0
+  k_trials: 3
+
+bounds:
+  max_recovery_depth: 3
+  max_total_fix_attempts: 10
+
+models:
+  expensive:
+    - claude-sonnet-4-20250514
+    - gpt-4o-2025-05-13
+  commodity:
+    - deepseek/deepseek-v4-flash
+    - openai/gpt-4o-mini
+    - google/gemini-2.5-flash
+  reference: claude-sonnet-4-20250514
+
+stats:
+  primary_metric: pass_at_1
+  equivalence_margin_pp: 10
+  min_meaningful_effect_pp: 15
