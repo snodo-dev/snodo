@@ -66,10 +66,21 @@ class SerdeMixin:
             is_blocked=d.get("is_blocked", False),
             halt_type=d.get("halt_type"),
             pending_disagreement=d.get("pending_disagreement"),
-            spawned_subtasks=[],
+            spawned_subtasks=[
+                Task(
+                    id=s.get("id", ""),
+                    spec=s.get("spec", ""),
+                    parent_task_ref=s.get("parent_task_ref"),
+                    depth=s.get("depth", 0),
+                    flow_type=s.get("flow_type"),
+                    wave_id=s.get("wave_id"),
+                )
+                for s in d.get("spawned_subtasks", [])
+            ],
             metadata=d.get("metadata", {}),
             messages=d.get("messages", []),
             summary=d.get("summary", ""),
+            needs_recovery=d.get("needs_recovery", False),
         )
 
     def _state_to_dict(self, state: LoopState) -> Dict[str, Any]:
@@ -108,4 +119,16 @@ class SerdeMixin:
             "metadata": state.metadata,
             "messages": state.messages,
             "summary": state.summary,
+            "spawned_subtasks": [
+                {
+                    "id": s.id,
+                    "spec": s.spec,
+                    "parent_task_ref": s.parent_task_ref,
+                    "depth": s.depth,
+                    "flow_type": s.flow_type,
+                    "wave_id": s.wave_id,
+                }
+                for s in state.spawned_subtasks
+            ],
+            "needs_recovery": state.needs_recovery,
         }

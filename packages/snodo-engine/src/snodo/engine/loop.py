@@ -71,9 +71,10 @@ class LoopState:
     policy_decision: Optional[Any] = None
     is_complete: bool = False
     is_blocked: bool = False
-    halt_type: Optional[str] = None  # "blocked" | "escalated" | "resolution" | "constraint" | "max_iterations" | "wf3" | "validator_error"
+    halt_type: Optional[str] = None  # "blocked" | "escalated" | "resolution" | "constraint" | "max_iterations" | "wf3" | "validator_error" | "recovery_exhausted"
     pending_disagreement: Optional[Dict[str, Any]] = None
     spawned_subtasks: List[Task] = field(default_factory=list)
+    needs_recovery: bool = False
     metadata: Dict[str, Any] = field(default_factory=dict)
     messages: List[Dict[str, Any]] = field(default_factory=list)
     summary: str = ""
@@ -246,6 +247,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         workflow.add_node("move_next", self._move_next_node)  # type: ignore[type-var]
         workflow.add_node("blocked", self._blocked_node)  # type: ignore[type-var]
         workflow.add_node("complete", self._complete_node)  # type: ignore[type-var]
+        workflow.add_node("recovery", self._recovery_node)  # type: ignore[type-var]
 
         # Set entry point
         workflow.set_entry_point("governance")
@@ -275,9 +277,11 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             self._route_after_post_validation,
             {
                 "move_next": "move_next",
-                "blocked": "blocked"
+                "blocked": "blocked",
+                "recovery": "recovery",
             }
         )
+        workflow.add_edge("recovery", END)
         workflow.add_conditional_edges(
             "move_next",
             self._route_after_move,
@@ -587,40 +591,31 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
 
         post_outcome = "passed"
         if decision.action == PolicyAction.HALT:
-            loop_state.is_blocked = True
             has_errors = any(getattr(r, 'error', False) for r in results)
-            loop_state.halt_type = "validator_error" if has_errors else "blocked"
-            loop_state.constraint_violations.append(
-                "Post-execute validation failed: " + decision.justification
-            )
-            post_outcome = "blocked"
+            if has_errors:
+                # Validator error — TERMINAL (INV3)
+                loop_state.is_blocked = True
+                loop_state.halt_type = "validator_error"
+                loop_state.constraint_violations.append(
+                    "Validator error: " + decision.justification
+                )
+                post_outcome = "blocked"
+            elif self._is_recoverable(loop_state, results):
+                # Overridable blocker / warning — RECOVERABLE
+                self._spawn_recovery_subtask(loop_state, results, decision)
+                post_outcome = "recovery"
+            else:
+                # Non-overridable blocker — TERMINAL
+                loop_state.is_blocked = True
+                loop_state.halt_type = "blocked"
+                loop_state.constraint_violations.append(
+                    "Post-execute validation failed: " + decision.justification
+                )
+                post_outcome = "blocked"
         elif decision.action == PolicyAction.ESCALATE:
-            loop_state.is_blocked = True
-            loop_state.halt_type = "escalated"
-            loop_state.pending_disagreement = {
-                "phase": "post_execute",
-                "policy": self.protocol.disagreement_policy.value,
-                "validator_results": [
-                    {"validator_id": r.validator_id, "severity": r.severity, "justification": r.justification}
-                    for r in results
-                ],
-                "policy_decision": {
-                    "pass_count": decision.pass_count,
-                    "warn_count": decision.warn_count,
-                    "blocker_count": decision.blocker_count,
-                    "total_count": decision.total_count,
-                    "justification": decision.justification,
-                },
-            }
-            post_outcome = "escalated"
-            self._audit("disagreement_escalated", {
-                "op": "disagreement_escalated",
-                "phase": "post_execute",
-                "task_ref": loop_state.task.id,
-                "policy": self.protocol.disagreement_policy.value,
-                "validator_results": loop_state.pending_disagreement["validator_results"],
-                "policy_decision": loop_state.pending_disagreement["policy_decision"],
-            })
+            # ESCALATE is always RECOVERABLE — spawn fix subtask
+            self._spawn_recovery_subtask(loop_state, results, decision)
+            post_outcome = "recovery"
 
         loop_state.policy_decision = decision
         loop_state.metadata["post_validation"] = {
@@ -644,10 +639,83 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
 
         return self._state_to_dict(loop_state)
 
+    def _is_recoverable(self, loop_state: LoopState, results: list) -> bool:
+        """Determine whether a HALT outcome is recoverable (overridable).
+
+        Does NOT check depth bounds — that is handled by
+        _spawn_recovery_subtask which distinguishes within-budget
+        vs recovery_exhausted.
+        """
+        # Non-error blockers from validators WITHOUT severity_cap are structural
+        for r in results:
+            if r.severity == "blocker" and not getattr(r, 'error', False):
+                v = self._find_validator(r.validator_id)
+                if v is not None and v.severity_cap is None:
+                    return False
+        return True
+
+    def _spawn_recovery_subtask(self, loop_state: LoopState, results: list, decision: Any) -> None:
+        """Spawn a recovery subtask or mark recovery_exhausted if at depth cap."""
+        current_depth = loop_state.task.depth or 0
+        max_depth = self.protocol.execution.max_recovery_depth
+
+        if current_depth >= max_depth:
+            loop_state.is_blocked = True
+            loop_state.halt_type = "recovery_exhausted"
+            loop_state.constraint_violations.append(
+                f"Recovery depth exhausted (depth={current_depth}, max={max_depth})"
+            )
+            self._audit("recovery_exhausted", {
+                "op": "recovery_exhausted",
+                "task_ref": loop_state.task.id,
+                "depth": current_depth,
+                "max_depth": max_depth,
+            })
+            return
+
+        # Identify triggering validators (warn / blocker)
+        trigger_ids = [
+            r.validator_id for r in results
+            if r.severity in ("warn", "blocker")
+        ]
+        justifications = [
+            r.justification for r in results
+            if r.severity in ("warn", "blocker")
+        ]
+        spec = "Fix post-validation issues: " + "; ".join(justifications[:3])
+        if len(justifications) > 3:
+            spec += " (and " + str(len(justifications) - 3) + " more)"
+
+        fix_task = Task(
+            id=f"{loop_state.task.id}_fix_{len(loop_state.spawned_subtasks) + 1}",
+            spec=spec[:500],
+            parent_task_ref=loop_state.task.id,
+            depth=current_depth + 1,
+        )
+        loop_state.spawned_subtasks.append(fix_task)
+        loop_state.needs_recovery = True
+
+        self._audit("subtask_spawned", {
+            "op": "subtask_spawned",
+            "parent_ref": loop_state.task.id,
+            "task_ref": fix_task.id,
+            "depth": fix_task.depth,
+            "triggering_validator_ids": trigger_ids,
+        })
+
+    def _find_validator(self, validator_id: str):
+        """Look up a validator spec by ID from the protocol."""
+        return self.protocol.get_validator(validator_id)
+
     def _route_after_post_validation(self, state: Dict[str, Any]) -> str:
-        """Route after post-validation: proceed or block."""
+        """Route after post-validation: recovery, proceed, or block."""
         loop_state = self._dict_to_state(state)
-        decision = "blocked" if loop_state.is_blocked else "move_next"
+        if loop_state.needs_recovery:
+            decision = "recovery"
+        elif loop_state.is_blocked:
+            decision = "blocked"
+        else:
+            decision = "move_next"
         self._audit("post_validation_route", {
             "op": "post_validation_route",
             "task_ref": loop_state.task.id,
@@ -713,7 +781,19 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         })
         self._auto_write_halt_payload(loop_state)
         return self._state_to_dict(loop_state)
-    
+
+    def _recovery_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Terminal node: Records spawned recovery subtask.
+
+        Returns control to the outer driver (K2) which will invoke
+        the graph again for each spawned subtask. Does NOT set
+        is_blocked — the subtask should be picked up for execution.
+        """
+        loop_state = self._dict_to_state(state)
+        loop_state.stage = LoopStage.MOVE_NEXT
+        self._auto_write_halt_payload(loop_state)
+        return self._state_to_dict(loop_state)
+
     def _route_after_validation(self, state: Dict[str, Any]) -> str:
         """Route after validation based on policy decision."""
         loop_state = self._dict_to_state(state)
