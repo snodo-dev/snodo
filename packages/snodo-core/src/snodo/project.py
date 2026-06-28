@@ -100,9 +100,9 @@ def get_project_id(project_root: str) -> tuple[str, str]:
 def cache_project_id(project_root: str, project_id: str, scope: str) -> None:
     """Caches the project ID and scope to .snodo/project.json."""
     snodo_dir = Path(project_root) / ".snodo"
-    snodo_dir.mkdir(parents=True, exist_ok=True)
     project_json_path = snodo_dir / "project.json"
     try:
+        snodo_dir.mkdir(parents=True, exist_ok=True)
         data = {}
         if project_json_path.exists():
             with open(project_json_path) as f:
