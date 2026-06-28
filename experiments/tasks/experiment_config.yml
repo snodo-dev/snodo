@@ -1,0 +1,29 @@
+selection:
+  dataset: swe_bench_verified
+  n: 10
+  min_repos: 5
+  strata:
+    easy: 4
+    medium: 4
+    hard: 2
+  seed: 42
+sampling:
+  temperature: 0.0
+  k_trials: 3
+bounds:
+  max_recovery_depth: 3
+  max_total_fix_attempts: 10
+models:
+  cutoff: '2025-06-01'
+  expensive:
+  - claude-sonnet-4-20250514
+  - gpt-4o-2025-05-13
+  commodity:
+  - deepseek/deepseek-v4-flash
+  - openai/gpt-4o-mini
+  - google/gemini-2.5-flash
+  reference: claude-sonnet-4-20250514
+stats:
+  primary_metric: pass_at_1
+  equivalence_margin_pp: 10
+  min_meaningful_effect_pp: 15

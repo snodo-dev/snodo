@@ -1,0 +1,19 @@
+Pool stats before selection:
+  easy: 194
+  hard: 39
+  medium: 257
+
+Selected: 10
+  easy: 4
+  hard: 2
+  medium: 4
+
+Distinct repos: 8
+  django/django
+  matplotlib/matplotlib
+  pydata/xarray
+  pylint-dev/pylint
+  pytest-dev/pytest
+  scikit-learn/scikit-learn
+  sphinx-doc/sphinx
+  sympy/sympy

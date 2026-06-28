@@ -1,0 +1,11 @@
+instance_id,repo,difficulty,difficulty_source,n_files,added_loc,created_at,contamination_flag,n_fail_to_pass
+django__django-14011,django/django,hard,swe_bench_verified_label,2,24,2021-02-15T06:15:21Z,contaminated,17
+matplotlib__matplotlib-20676,matplotlib/matplotlib,easy,swe_bench_verified_label,1,6,2021-07-19T10:10:07Z,contaminated,2
+pydata__xarray-4687,pydata/xarray,medium,swe_bench_verified_label,1,12,2020-12-13T20:42:40Z,contaminated,1
+pylint-dev__pylint-6528,pylint-dev/pylint,medium,swe_bench_verified_label,2,28,2022-05-06T21:03:37Z,contaminated,4
+pytest-dev__pytest-10356,pytest-dev/pytest,hard,swe_bench_verified_label,1,30,2022-10-08T06:20:42Z,contaminated,1
+scikit-learn__scikit-learn-14053,scikit-learn/scikit-learn,medium,swe_bench_verified_label,1,2,2019-06-09T15:36:55Z,contaminated,1
+scikit-learn__scikit-learn-26194,scikit-learn/scikit-learn,medium,swe_bench_verified_label,1,9,2023-04-17T16:33:08Z,contaminated,2
+sphinx-doc__sphinx-9698,sphinx-doc/sphinx,easy,swe_bench_verified_label,1,1,2021-10-03T04:04:04Z,contaminated,1
+sympy__sympy-13372,sympy/sympy,easy,swe_bench_verified_label,1,4,2017-09-30T16:05:48Z,contaminated,1
+sympy__sympy-15345,sympy/sympy,easy,swe_bench_verified_label,1,4,2018-10-05T06:00:31Z,contaminated,1
