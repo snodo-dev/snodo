@@ -11,7 +11,53 @@
 
 PYTHON := .venv/bin/python
 
-.PHONY: studies study clean
+# ──────────────────────────────────────────────
+# Lockstep version management (uv workspace)
+# ──────────────────────────────────────────────
+# Read current root version at make-parse time.
+# Recipe-level targets re-read at execution time.
+_V := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+PACKAGES := snodo-core snodo-tools snodo-foundation snodo-engine snodo-mcp
+PART ?= patch
+
+.PHONY: studies study clean version sync-versions bump release
+
+version:
+	@echo $(_V)
+
+sync-versions:
+	$(eval V := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml))
+	@echo "Syncing all packages to v$(V)"
+	for p in $(PACKAGES); do \
+		uv version "$(V)" --package "$$p" 2>/dev/null; \
+	done
+	# Rewrite all snodo-<name>==X.Y.Z pins across the workspace
+	sed -i.bak 's/snodo-\([a-z]*\)==[0-9]*\.[0-9]*\.[0-9]*/snodo-\1==$(V)/g' \
+		pyproject.toml packages/*/pyproject.toml
+	rm -f pyproject.toml.bak packages/*/pyproject.toml.bak
+	uv lock
+	@echo "Done — all packages at v$(V)"
+
+bump:
+	uv version --bump $(PART)
+	$(MAKE) sync-versions
+
+release:
+	@echo "Running test suite..."
+	uv run pytest tests/ -q || { \
+		echo "Tests failed. Aborting release."; \
+		exit 1; \
+	}
+	$(MAKE) bump PART=$(PART)
+	$(eval V := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml))
+	git add -A
+	git commit -m "release: v$(V)"
+	git tag -a "v$(V)" -m "snodo v$(V)"
+	git push origin main --follow-tags
+
+# ──────────────────────────────────────────────
+# Studies
+# ──────────────────────────────────────────────
 
 studies:
 	$(PYTHON) studies/run_all.py
