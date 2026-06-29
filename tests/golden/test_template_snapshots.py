@@ -19,3 +19,7 @@ def test_team_golden(snapshots_dir, update_goldens):
 
 def test_2plus_n_golden(snapshots_dir, update_goldens):
     verify_golden("2+n", snapshots_dir, update_goldens)
+
+
+def test_intent_golden(snapshots_dir, update_goldens):
+    verify_golden("intent", snapshots_dir, update_goldens)

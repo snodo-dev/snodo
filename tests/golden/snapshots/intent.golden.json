@@ -1,0 +1,94 @@
+{
+  "disagreement_policy": "unanimous",
+  "execution": {
+    "branch_prefix": "task",
+    "branch_ttl_days": 7,
+    "max_recovery_depth": 3,
+    "max_retries": 3,
+    "max_total_fix_attempts": 10
+  },
+  "global_constraints": [
+    {
+      "constraint_id": "no_secrets",
+      "description": "No secrets or credentials in the produced diff",
+      "expression": "git diff has no credential patterns",
+      "params": {},
+      "predicate": "no_secrets_in_diff",
+      "severity": "blocker"
+    },
+    {
+      "constraint_id": "files_in_scope",
+      "description": "All modified files stay within the repository (no escape)",
+      "expression": "artifact_paths all match scope_paths",
+      "params": {
+        "scope_paths": [
+          "**"
+        ]
+      },
+      "predicate": "files_in_scope",
+      "severity": "blocker"
+    }
+  ],
+  "initial_mode": "producer",
+  "metadata": {},
+  "modes": [
+    {
+      "coder": null,
+      "coder_config": {},
+      "constraints": [],
+      "mode_id": "producer",
+      "name": "Producer Mode",
+      "tools": [
+        "edit",
+        "test",
+        "validate",
+        "commit"
+      ],
+      "transitions": {},
+      "validators": [
+        "spec-manners",
+        "review"
+      ]
+    }
+  ],
+  "name": "Intent-Driven Protocol",
+  "protocol_id": "intent",
+  "roles": [],
+  "validators": [
+    {
+      "constraints": [],
+      "criteria": [
+        "Treat the input as INTENT. A good spec, authored from it, restates the desired outcome in one or two sentences \u2014 not a copy of the raw issue.",
+        "WARN if no explicit acceptance criterion is present (how we'll know it's resolved).",
+        "WARN if scope is unstated (which area/behavior the change should touch).",
+        "WARN if the spec is code-prescriptive (transcribed implementation) rather than intent + constraints.",
+        "Do not block: these are good-manners nudges meant to improve the spec on the next iteration, not stop the work."
+      ],
+      "evaluation_phase": "pre_execute",
+      "model": null,
+      "severity_cap": "warn",
+      "tooling": {},
+      "tools": [],
+      "validator_id": "spec-manners",
+      "validator_type": "conventions"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "You are reviewing a CODE DIFF that attempts to resolve the issue described in the task. Judge the diff, not the wording of the task.",
+        "BLOCK if the diff is empty, unrelated to the issue, or clearly fails to address the described problem.",
+        "BLOCK if the change introduces obvious breakage: syntax errors, undefined names, or removal of unrelated functionality.",
+        "The fix should be minimal and focused on the issue; flag large unrelated rewrites as a concern.",
+        "Do NOT require the author to add or modify tests \u2014 correctness is verified separately. Judge only whether the change plausibly and cleanly resolves the issue."
+      ],
+      "evaluation_phase": "post_execute",
+      "model": null,
+      "severity_cap": null,
+      "tooling": {},
+      "tools": [],
+      "validator_id": "review",
+      "validator_type": "architecture"
+    }
+  ],
+  "version": "1.0.0"
+}

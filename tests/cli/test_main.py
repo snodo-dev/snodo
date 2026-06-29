@@ -15,6 +15,7 @@ import subprocess
 
 from snodo.cli.main import (
     main, load_protocol, DEFAULT_PROTOCOL, SOLO_PROTOCOL, TWO_PLUS_N_PROTOCOL,
+    INTENT_PROTOCOL,
 )
 from snodo.compiler.models import Protocol
 
@@ -681,3 +682,101 @@ def test_shipped_default_protocol_passes_verification():
     protocol = Protocol(**data)
     result = verify_protocol(protocol)
     assert result.passed, f"DEFAULT_PROTOCOL failed verification: {result.errors}"
+
+
+# ============================================================================
+# Intent template tests
+# ============================================================================
+
+
+def test_init_template_intent(temp_project_dir):
+    """Test snodo init --template intent exits 0 and writes protocol.yml."""
+    with patch('sys.argv', ['snodo', 'init', '--template', 'intent']):
+        result = main()
+
+    assert result == 0
+    assert (temp_project_dir / ".snodo").exists()
+    assert (temp_project_dir / ".snodo" / "protocol.yml").exists()
+
+
+def test_init_template_intent_loads_as_protocol(temp_project_dir):
+    """Test the generated intent protocol loads as a Protocol object."""
+    with patch('sys.argv', ['snodo', 'init', '--template', 'intent']):
+        main()
+
+    protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
+    protocol = load_protocol(protocol_file)
+
+    assert protocol is not None
+    assert protocol.protocol_id == "intent"
+    assert len(protocol.modes) == 1
+    assert protocol.modes[0].mode_id == "producer"
+
+
+def test_intent_protocol_validators(temp_project_dir):
+    """Test intent template has spec-manners (pre, warn-cap) + review (post)."""
+    with patch('sys.argv', ['snodo', 'init', '--template', 'intent']):
+        main()
+
+    protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
+    protocol = load_protocol(protocol_file)
+
+    assert protocol is not None
+    validator_ids = {v.validator_id for v in protocol.validators}
+    assert validator_ids == {"spec-manners", "review"}
+
+    pre = [v for v in protocol.validators if v.evaluation_phase == "pre_execute"]
+    post = [v for v in protocol.validators if v.evaluation_phase == "post_execute"]
+    assert len(pre) == 1
+    assert len(post) == 1
+    assert pre[0].validator_id == "spec-manners"
+    assert pre[0].severity_cap == "warn"
+    assert post[0].validator_id == "review"
+
+
+def test_intent_protocol_global_constraints(temp_project_dir):
+    """Test intent template has the two expected global constraints."""
+    with patch('sys.argv', ['snodo', 'init', '--template', 'intent']):
+        main()
+
+    protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
+    protocol = load_protocol(protocol_file)
+
+    assert protocol is not None
+    constraint_ids = {c.constraint_id for c in protocol.global_constraints}
+    assert constraint_ids == {"no_secrets", "files_in_scope"}
+
+
+def test_intent_interactive_prompt(temp_project_dir):
+    """Test interactive picker selecting option 4 produces intent template."""
+    with patch('sys.argv', ['snodo', 'init']):
+        with patch('builtins.input', return_value='4'):
+            result = main()
+
+    assert result == 0
+    protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
+    protocol = load_protocol(protocol_file)
+
+    assert protocol is not None
+    assert protocol.protocol_id == "intent"
+
+
+def test_intent_protocol_constant_is_valid():
+    """Test INTENT_PROTOCOL string constant parses and constructs."""
+    data = yaml.safe_load(INTENT_PROTOCOL)
+    protocol = Protocol(**data)
+
+    assert protocol.protocol_id == "intent"
+    assert len(protocol.modes) == 1
+    assert len(protocol.validators) == 2
+    assert protocol.initial_mode == "producer"
+
+
+def test_shipped_intent_protocol_passes_verification():
+    """INTENT_PROTOCOL template passes all WF1-WF5 checks."""
+    from snodo.compiler.verifier import verify_protocol
+    import yaml
+    data = yaml.safe_load(INTENT_PROTOCOL)
+    protocol = Protocol(**data)
+    result = verify_protocol(protocol)
+    assert result.passed, f"INTENT_PROTOCOL failed verification: {result.errors}"
