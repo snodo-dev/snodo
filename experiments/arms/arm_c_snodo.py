@@ -118,8 +118,11 @@ def run(
         except Exception as exc:
             return _result("", 0.0, None, f"graph build failed: {exc}", None)
 
-        # Set up audit log
-        audit_log = AuditLog()
+        # Set up audit log in the gitignored results dir (NOT the repo's .snodo)
+        # so we can inspect snodo's decisions and don't pollute the codebase.
+        audit_dir = Path("experiments/results/exp1/runs") / run_id
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        audit_log = AuditLog(log_path=str(audit_dir / "arm-c-audit.log"))
 
         # Run closure
         task_dict = {
