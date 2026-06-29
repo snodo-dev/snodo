@@ -33,19 +33,26 @@ def _snodo_config_with_model(experiment_model: str) -> Path:
     Returns the config dir path.  The caller must set SNODO_HOME to this
     dir before building the graph, and restore afterwards.
     """
+    # Read the operator's real config (SNODO_HOME already popped by caller) so we
+    # carry the provider API keys and cloud settings into the temp config —
+    # otherwise snodo has the model but no key (DeepSeek "Authentication Fails").
+    from snodo.config import ConfigManager
+    real = ConfigManager().load()
+
     config_dir = Path(tempfile.mkdtemp(prefix="snodo-exp-config-"))
     config_path = config_dir / "config.yml"
     config = {
         "model": experiment_model,
+        "providers": real.get("providers", {}),   # carry API keys
+        "cloud": real.get("cloud", {              # carry cloud sync (prod logs)
+            "api_key": "",
+            "api_url": "",
+            "sync_enabled": False,
+        }),
         "engine": {
             "max_subtask_depth": 3,
             "max_session_age_days": 30,
             "token_ttl_seconds": 600,
-        },
-        "cloud": {
-            "api_key": "",
-            "api_url": "",
-            "sync_enabled": False,
         },
         "llm": {
             "validator": {"model": experiment_model},

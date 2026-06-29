@@ -101,19 +101,19 @@ class TestProseGenerator:
         assert len(prose) > 100
         assert "Protocol:" in prose
         assert "Producer" in prose
-        assert "Reviewer" in prose
+        assert "Intent-Driven" in prose
 
     def test_protocol_to_prose_mentions_validators(self):
         protocol = _load_protocol()
         prose = protocol_to_prose(protocol)
-        assert "security" in prose
-        assert "quality" in prose
+        assert "spec-manners" in prose
+        assert "review" in prose
 
     def test_protocol_to_prose_mentions_modes_and_tools(self):
         protocol = _load_protocol()
         prose = protocol_to_prose(protocol)
         assert "edit" in prose
-        assert "merge" in prose
+        assert "validate" in prose
 
     def test_protocol_to_prose_mentions_execution_config(self):
         protocol = _load_protocol()
@@ -496,3 +496,58 @@ class TestConfigSnapshot:
         assert snap["_run_id"].startswith("exp1-")
         assert "_arms" in snap
         assert snap["_arms"] == ["a"]
+
+
+# ---------------------------------------------------------------------------
+# Workspace cache tests
+# ---------------------------------------------------------------------------
+
+
+class TestWorkspaceCache:
+    def test_cleanup_cache_clears(self):
+        from experiments.workspace import cleanup_cache, _CACHE, _CACHE_DIR
+        # Prime the cache with a sentinel
+        _CACHE[("test/repo", "abc123")] = "/tmp/sentinel"
+        cleanup_cache()
+        assert len(_CACHE) == 0
+        assert _CACHE_DIR is None
+
+    def test_cache_key_creation(self):
+        """Verify the cache key format used by _get_cached."""
+        from experiments.workspace import _CACHE
+        _CACHE.clear()
+        key = ("test/repo", "deadbeef")
+        _CACHE[key] = "/tmp/cached"
+        assert _CACHE.get(key) == "/tmp/cached"
+        _CACHE.clear()
+
+    def test_mock_workspace_extract_patch(self):
+        """MockWorkspace still returns its predetermined patch."""
+        from experiments.workspace import MockWorkspace
+        mw = MockWorkspace(patch="custom-mock-patch")
+        ws = mw.setup({"instance_id": "test"})
+        assert mw.extract_patch(ws) == "custom-mock-patch"
+        mw.teardown(ws)
+
+    def test_mock_workspace_base_commit(self):
+        """MockWorkspace returns base_commit='HEAD'."""
+        from experiments.workspace import MockWorkspace
+        mw = MockWorkspace()
+        ws = mw.setup({"instance_id": "test"})
+        assert ws.base_commit == "HEAD"
+        mw.teardown(ws)
+
+    def test_shallow_fetch_git_init(self, tmp_path):
+        """_do_shallow_fetch: git init + remote add (no network)."""
+        from experiments.workspace import _run
+        dest = tmp_path / "shallow-test"
+        dest.mkdir()
+        _run(["git", "init"], cwd=dest)
+        _run(["git", "remote", "add", "origin", "https://github.com/test/repo.git"], cwd=dest)
+        assert (dest / ".git").exists()
+        result = subprocess.run(
+            ["git", "remote", "-v"],
+            cwd=dest, capture_output=True, text=True,
+        )
+        assert "test/repo" in result.stdout
+        assert result.returncode == 0

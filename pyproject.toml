@@ -105,6 +105,8 @@ dev = [
     "import-linter>=2.12",
     "pytest-xdist>=3.8.0",
     "radon>=6.0.1",
+    "swebench>=4.0.0",
+    "paramiko>=3.0.0",
 ]
 
 [tool.coverage.run]
