@@ -28,6 +28,8 @@ _CONSTRAINTS: Dict[str, tuple] = {
     "stats.min_meaningful_effect_pp": (int, 1, 50),
 }
 
+_VALID_CLOUD_TARGETS = {"staging", "live", "off"}
+
 
 def _parse_json_value(raw: str):
     """Parse a CLI override value that looks like JSON (dict or list).
@@ -111,6 +113,19 @@ def _validate_strata(config: dict) -> None:
             )
 
 
+def _validate_cloud(config: dict) -> None:
+    """Validate cloud.* keys.  Fill defaults when absent."""
+    cloud = config.setdefault("cloud", {})
+    cloud.setdefault("sync", False)
+    cloud.setdefault("target", "staging")
+    target = cloud.get("target")
+    if target not in _VALID_CLOUD_TARGETS:
+        raise ValueError(
+            f"cloud.target must be one of {sorted(_VALID_CLOUD_TARGETS)}, "
+            f"got {target!r}"
+        )
+
+
 def _validate(config: dict) -> None:
     """Validate all constrained keys in-place. Raises ValueError on failure."""
     for key, (type_fn, lo, hi) in _CONSTRAINTS.items():
@@ -131,6 +146,7 @@ def _validate(config: dict) -> None:
                 f"{key}={val} exceeds maximum {hi}"
             )
     _validate_strata(config)
+    _validate_cloud(config)
 
 
 def load_config(
