@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
-
 from pydantic import BaseModel
 
 from snodo.paths import resolve_home
@@ -194,6 +193,20 @@ class ConfigManager:
             if name not in result:
                 result[name] = pc
         return result
+
+    @staticmethod
+    def resolve_api_base(model: str) -> Optional[str]:
+        """Return the API base URL for *model*'s provider, or ``None``.
+
+        Checks the provider's ``base_url`` in the merged provider config.
+        """
+        provider = ConfigManager._provider_for_model(model)
+        if provider is None:
+            return None
+        pc = ConfigManager().get_providers().get(provider)
+        if pc and pc.base_url:
+            return pc.base_url
+        return None
 
     @staticmethod
     def _provider_for_model(model: str) -> Optional[str]:

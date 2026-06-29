@@ -2009,3 +2009,62 @@ def test_audit_results_no_cap_no_flag(sample_task):
     audit_results = _build_audit_results([no_cap_v], results_list)
     assert len(audit_results) == 1
     assert "severity_at_cap" not in audit_results[0]
+
+
+def test_classifier_completion_fn_binds_api_base_for_its_provider():
+    """Classifier completion_fn must bind api_base for its provider.
+
+    Regression guard: when the classifier model lives on a provider with a
+    custom base_url (e.g. Cloudflare) but the coder/default model is on a
+    different provider (e.g. Deepseek), the classifier call must route to
+    the classifier's base_url, not the coder's default endpoint.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from snodo.compiler.models import Mode, Protocol
+    from snodo.engine.loop import GraphBuilder
+
+    cf_model = "openai/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+    ds_model = "deepseek/deepseek-v4-flash"
+    cf_api_base = "https://api.cloudflare.com/client/v4"
+
+    fake_config = {
+        "model": ds_model,
+        "llm": {
+            "classifier": {"model": cf_model},
+            "validator": {"model": ds_model},
+        },
+    }
+
+    def _fake_resolve_api_base(model: str) -> str | None:
+        return cf_api_base if model == cf_model else None
+
+    with (
+        patch("snodo.config.ConfigManager.load", return_value=fake_config),
+        patch("snodo.config.ConfigManager.resolve_api_base", side_effect=_fake_resolve_api_base),
+    ):
+        from snodo.compiler.models import Validator as ValidatorModel
+        protocol = Protocol(
+            protocol_id="test", name="Test",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"], validators=["dummy"])],
+            validators=[ValidatorModel(validator_id="dummy", validator_type="security")],
+            initial_mode="producer",
+        )
+        coder = MagicMock()
+        coder.model = ds_model
+        coder._completion_fn = lambda **kw: None
+
+        builder = GraphBuilder(protocol, coder=coder)
+
+    # Inspect the classifier completion partial
+    cc_fn = builder._classifier_completion_fn
+    cc_keywords = getattr(cc_fn, "keywords", {})
+    assert cc_keywords.get("api_base") == cf_api_base, (
+        f"Classifier completion_fn should have api_base={cf_api_base!r}, "
+        f"got {cc_keywords.get('api_base')!r}"
+    )
+    assert cc_keywords.get("model") == cf_model
+
+    # Construction succeeded — coder model (deepseek) does not have CF api_base
+    # In the test fixture the coder uses raw _completion_fn without api_base
+    assert builder._default_model == "deepseek/deepseek-v4-flash"

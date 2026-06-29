@@ -3,7 +3,8 @@
 FILE: snodo/engine/nodes/governance.py
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
+
 from snodo.engine.state import LoopStage, LoopState
 
 
@@ -30,8 +31,8 @@ class GovernanceNodeMixin:
         """On first iteration, classify flow_type and assign/ mint wave."""
         if loop_state.iteration == 1 and self._project_root:
             try:
-                from snodo.infrastructure.wave_registry import WaveRegistry
                 from snodo.infrastructure.config import load_llm_config
+                from snodo.infrastructure.wave_registry import WaveRegistry
                 llm_cfg = load_llm_config()
                 registry = WaveRegistry(self._project_root, config=llm_cfg.wave)
                 classifier_model = (
@@ -42,7 +43,7 @@ class GovernanceNodeMixin:
                 result = registry.classify_task(
                     loop_state.task.spec,
                     loop_state.task.id,
-                    self._completion_fn,
+                    getattr(self, '_classifier_completion_fn', self._completion_fn),
                     classifier_model,
                 )
                 loop_state.task.flow_type = result.get("flow_type") or "feature"
