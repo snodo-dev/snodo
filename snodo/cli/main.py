@@ -30,7 +30,7 @@ except ImportError:
     from click.exceptions import UsageError
 
 # Re-export command functions and shared utilities so existing imports keep working
-from snodo.cli.commands import DEFAULT_PROTOCOL, SOLO_PROTOCOL, TEAM_PROTOCOL, TWO_PLUS_N_PROTOCOL, PROTOCOL_TEMPLATES, load_protocol  # noqa: F401
+from snodo.cli.commands import DEFAULT_PROTOCOL, SOLO_PROTOCOL, TEAM_PROTOCOL, TWO_PLUS_N_PROTOCOL, INTENT_PROTOCOL, PROTOCOL_TEMPLATES, load_protocol  # noqa: F401
 from snodo.cli.commands.init_cmd import init_command  # noqa: F401
 from snodo.cli.commands.config_cmd import config_command  # noqa: F401
 from snodo.cli.commands.serve_cmd import serve_command  # noqa: F401

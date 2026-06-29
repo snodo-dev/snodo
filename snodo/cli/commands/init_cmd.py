@@ -21,7 +21,7 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def init(
         template: Optional[str] = typer.Option(
-            None, "--template", "-t", help="Protocol template: solo, team, or 2+n",
+            None, "--template", "-t", help="Protocol template: solo, team, 2+n, or intent",
         ),
         force: bool = typer.Option(
             False, "--force", "-f", help="Overwrite existing .snodo/ directory",
@@ -53,10 +53,11 @@ def _select_template(args) -> str:
 
     # Interactive prompt
     print("Choose protocol template:")
-    print("  1. solo  - Single developer (producer merges directly)")
-    print("  2. team  - Team workflow (producer + reviewer + planner)")
-    print("  3. 2+n   - Paper reference config (producer + reviewer)")
-    choice = input("Select [1/2/3]: ").strip()
+    print("  1. solo   - Single developer (producer merges directly)")
+    print("  2. team   - Team workflow (producer + reviewer + planner)")
+    print("  3. 2+n    - Paper reference config (producer + reviewer)")
+    print("  4. intent - Intent-driven (no hard pre-execute gates)")
+    choice = input("Select [1/2/3/4]: ").strip()
 
     if choice == "1":
         return PROTOCOL_TEMPLATES["solo"]
@@ -64,6 +65,8 @@ def _select_template(args) -> str:
         return PROTOCOL_TEMPLATES["team"]
     elif choice == "3":
         return PROTOCOL_TEMPLATES["2+n"]
+    elif choice == "4":
+        return PROTOCOL_TEMPLATES["intent"]
     else:
         print(f"Invalid choice: {choice!r}. Using team template.", file=sys.stderr)
         return PROTOCOL_TEMPLATES["team"]
