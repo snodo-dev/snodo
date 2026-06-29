@@ -1,0 +1,447 @@
+"""EXP1-RUN: Enforcement ablation runner.
+
+Runs the frozen task set through 3 arms and scores with the SWE-bench
+oracle.  All knobs come from experiments/config.py; results are committed;
+stats are NOT computed here (EXP-REPORT owns analysis).
+
+Invocation:
+    uv run python -m experiments.run_exp1          # full matrix
+    uv run python -m experiments.run_exp1 --smoke   # 1 task, mocks
+
+Real execution requires Docker + swebench + opencode + model API keys.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from copy import deepcopy
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from experiments.arms.arm_a_opencode import MockArmA
+from experiments.arms.arm_a_opencode import run as run_arm_a
+from experiments.arms.arm_b_prose import MockArmB
+from experiments.arms.arm_b_prose import run as run_arm_b
+from experiments.arms.arm_c_snodo import MockArmC
+from experiments.arms.arm_c_snodo import run as run_arm_c
+from experiments.arms.prose import protocol_to_prose
+from experiments.config import load_config, write_snapshot
+from experiments.scoring import make_scorer
+from experiments.workspace import MockWorkspace, setup_instance_workspace, teardown
+
+_HERE = Path(__file__).resolve().parent
+_DEFAULT_SELECTION = _HERE / "tasks" / "selection.jsonl"
+_DEFAULT_RESULTS = _HERE / "results" / "exp1"
+_ARMS = ["a", "b", "c"]
+
+# ---------------------------------------------------------------------------
+# Protocol loader (shared by parity gate)
+# ---------------------------------------------------------------------------
+
+_EXP_PROTOCOL = None
+
+
+def _load_protocol() -> Any:
+    """Load the 2+n protocol template.  Cache after first load."""
+    global _EXP_PROTOCOL
+    if _EXP_PROTOCOL is not None:
+        return _EXP_PROTOCOL
+
+    import yaml
+    from snodo.compiler.models import Protocol
+
+    import snodo.protocols
+
+    template_path = Path(snodo.protocols.__file__).parent / "templates" / "2+n.yml"
+    data = yaml.safe_load(template_path.read_text())
+    _EXP_PROTOCOL = Protocol(**data)
+    return _EXP_PROTOCOL
+
+
+# ---------------------------------------------------------------------------
+# Results helpers
+# ---------------------------------------------------------------------------
+
+_RESULTS_KEYS = [
+    "instance_id",
+    "arm",
+    "trial_id",
+    "run_id",
+    "base_model",
+    "temperature",
+    "model_name_or_path",
+    "resolved",
+    "n_fail_to_pass_passed",
+    "regressions",
+    "wall_s",
+    "cost_usd",
+    "closure_json",
+    "exclusion_reason",
+    "error",
+]
+
+
+def _make_result_row(
+    instance_id: str,
+    arm: str,
+    trial_id: int,
+    run_id: str,
+    config: dict,
+    arm_result: dict,
+    score_result: dict,
+    exclusion_reason: Optional[str] = None,
+) -> dict:
+    model = config["models"]["reference"]
+    temp = config["sampling"]["temperature"]
+    return {
+        "instance_id": instance_id,
+        "arm": arm,
+        "trial_id": trial_id,
+        "run_id": run_id,
+        "base_model": model,
+        "temperature": temp,
+        "model_name_or_path": f"exp1-{arm}-{instance_id}-{run_id}-t{trial_id}",
+        "resolved": score_result.get("resolved", False),
+        "n_fail_to_pass_passed": score_result.get("n_fail_to_pass_passed", 0),
+        "regressions": score_result.get("regressions", 0),
+        "wall_s": arm_result.get("wall_s", 0.0),
+        "cost_usd": arm_result.get("cost_usd"),
+        "closure_json": arm_result.get("closure_json"),
+        "exclusion_reason": exclusion_reason,
+        "error": arm_result.get("error"),
+        "data": {
+            "experiment": "exp1",
+            "run_id": run_id,
+        },
+    }
+
+
+def _load_existing_results(results_path: Path) -> List[dict]:
+    """Load existing results for idempotency check."""
+    if not results_path.exists():
+        return []
+    rows = []
+    with open(results_path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    return rows
+
+
+def _write_results_row(results_path: Path, row: dict) -> None:
+    """Append a single result row to results.jsonl."""
+    results_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(results_path, "a") as f:
+        f.write(json.dumps(row, default=str) + "\n")
+
+
+def _row_completed(existing: List[dict], instance_id: str, arm: str, trial_id: int) -> bool:
+    """Check if a (task, arm, trial) has already been completed."""
+    for r in existing:
+        if (
+            r.get("instance_id") == instance_id
+            and r.get("arm") == arm
+            and r.get("trial_id") == trial_id
+        ):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Positive control
+# ---------------------------------------------------------------------------
+
+def _positive_control(
+    task: dict,
+    scorer: Any,
+) -> tuple[bool, Optional[str]]:
+    """Run the task's reference (gold) patch through the scorer.
+
+    Checks ``gold_patch`` first, then falls back to ``patch`` for raw
+    SWE-bench fixture rows.
+
+    Returns (passes, exclusion_reason).
+    """
+    gold_patch = task.get("gold_patch") or task.get("patch", "")
+    if not gold_patch:
+        return False, "no_gold_patch"
+    result = scorer.score(task, gold_patch, "gold-baseline")
+    if not result.get("resolved", False):
+        err = result.get("error")
+        reason = "harness_broken" if not err else f"harness_broken: {err}"
+        return False, reason
+    return True, None
+
+
+# ---------------------------------------------------------------------------
+# Arm dispatch
+# ---------------------------------------------------------------------------
+
+def _dispatch_arm(
+    arm: str,
+    task: dict,
+    config: dict,
+    run_id: str,
+    trial_id: int,
+    prose: str = "",
+    protocol: Any = None,
+    workspace: Any = None,
+    mock: bool = False,
+) -> dict:
+    """Dispatch a single arm run and return the arm result."""
+    if mock:
+        if arm == "a":
+            return MockArmA().run(task, config, run_id, trial_id, workspace=workspace)
+        elif arm == "b":
+            return MockArmB().run(task, config, run_id, trial_id, prose=prose, workspace=workspace)
+        elif arm == "c":
+            return MockArmC().run(task, config, run_id, trial_id, protocol=protocol, workspace=workspace)
+    else:
+        if arm == "a":
+            return run_arm_a(task, config, run_id, trial_id, workspace=workspace)
+        elif arm == "b":
+            return run_arm_b(task, config, run_id, trial_id, prose=prose, workspace=workspace)
+        elif arm == "c":
+            return run_arm_c(task, config, run_id, trial_id, protocol=protocol, workspace=workspace)
+    return {"patch": "", "wall_s": 0.0, "cost_usd": None, "error": f"unknown arm: {arm}"}
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def run_exp1(
+    config: Optional[dict] = None,
+    selection_path: Optional[Path] = None,
+    results_dir: Optional[Path] = None,
+    arms: Optional[List[str]] = None,
+    force: bool = False,
+    smoke: bool = False,
+    mock: bool = False,
+    tasks_override: Optional[List[dict]] = None,
+    scorer_override: Any = None,
+    limit: Optional[int] = None,
+    instance_id: Optional[str] = None,
+) -> List[dict]:
+    """Run EXP1 matrix: tasks x arms x trials.
+
+    Args:
+        config: Resolved config dict (loaded from config.yml if None).
+        selection_path: Path to selection.jsonl.
+        results_dir: Output directory for results.
+        arms: List of arm names to run (default: ["a", "b", "c"]).
+        force: Re-run even if already completed.
+        smoke: Run only 1 task, use mocks.
+        mock: Use mock arms and mock scorer.
+        scorer_override: Inject a custom scorer (for testing).
+        tasks_override: Optional pre-loaded task list (for testing).
+        limit: Max number of tasks to process.
+        instance_id: Run only this specific instance (bypasses smoke/limit).
+
+    Returns:
+        List of result rows written.
+    """
+    if config is None:
+        config = load_config()
+    if selection_path is None:
+        selection_path = _DEFAULT_SELECTION
+    if results_dir is None:
+        results_dir = _DEFAULT_RESULTS
+    if arms is None:
+        arms = list(_ARMS)
+
+    run_id = datetime.now(timezone.utc).strftime("exp1-%Y%m%d-%H%M%S-%f")
+
+    # Load tasks
+    tasks = tasks_override if tasks_override is not None else _load_tasks(selection_path)
+
+    # Filter by --instance
+    if instance_id is not None:
+        tasks = [t for t in tasks if t.get("instance_id") == instance_id]
+        if not tasks:
+            raise ValueError(f"Instance {instance_id!r} not found in selection")
+
+    # Filter by --limit (applied before --smoke so --limit takes precedence)
+    if limit is not None and len(tasks) > limit:
+        tasks = tasks[:limit]
+
+    if smoke and len(tasks) > 1:
+        tasks = tasks[:1]
+
+    # Parity gate: load protocol and generate prose
+    protocol = _load_protocol()
+    prose = protocol_to_prose(protocol)
+    # Assert arm-B prose matches arm-C protocol
+    _parity_gate(protocol, prose)
+
+    # Workspace manager
+    ws_manager = MockWorkspace() if mock else None
+
+    # Scorer
+    scorer = scorer_override if scorer_override is not None else make_scorer(mock=mock)
+
+    # Results file
+    results_path = results_dir / "results.jsonl"
+
+    # Idempotency: load existing results
+    existing = _load_existing_results(results_path)
+    rows_written: List[dict] = []
+
+    for task in tasks:
+        instance_id = task.get("instance_id", "?")
+
+        # Positive control
+        gold_ok, exclusion = _positive_control(task, scorer)
+        if not gold_ok:
+            exclusion_row = _make_result_row(
+                instance_id, "positive_control", 0, run_id, config,
+                {"patch": task.get("gold_patch", ""), "wall_s": 0.0, "cost_usd": None, "error": None},
+                {"resolved": False},
+                exclusion_reason=exclusion,
+            )
+            rows_written.append(exclusion_row)
+            _write_results_row(results_path, exclusion_row)
+            continue
+
+        for arm in arms:
+            for trial_id in range(1, config["sampling"]["k_trials"] + 1):
+                if not force and _row_completed(existing, instance_id, arm, trial_id):
+                    continue
+
+                # Setup workspace
+                try:
+                    if mock:
+                        workspace = ws_manager.setup(task)
+                    else:
+                        workspace = setup_instance_workspace(task)
+                except Exception as exc:
+                    exclusion_row = _make_result_row(
+                        instance_id, arm, trial_id, run_id, config,
+                        {"patch": "", "wall_s": 0.0, "cost_usd": None, "error": None},
+                        {"resolved": False},
+                        exclusion_reason=f"workspace_setup_failed: {exc}",
+                    )
+                    rows_written.append(exclusion_row)
+                    _write_results_row(results_path, exclusion_row)
+                    continue
+
+                # Run arm
+                try:
+                    arm_result = _dispatch_arm(arm, task, config, run_id, trial_id, prose, protocol, workspace, mock=mock)
+                    patch = arm_result.get("patch", "")
+                finally:
+                    teardown(workspace)
+
+                score_result = scorer.score(task, patch, f"exp1-{arm}-{instance_id}-t{trial_id}")
+
+                row = _make_result_row(
+                    instance_id, arm, trial_id, run_id, config,
+                    arm_result, score_result,
+                )
+                rows_written.append(row)
+                _write_results_row(results_path, row)
+
+    # Snapshot config for provenance
+    snapshot_cfg = deepcopy(config)
+    snapshot_cfg["_run_id"] = run_id
+    snapshot_cfg["_arms"] = arms
+    write_snapshot(results_dir, snapshot_cfg)
+
+    return rows_written
+
+
+def _load_tasks(selection_path: Path) -> List[dict]:
+    """Load tasks from selection.jsonl."""
+    tasks = []
+    with open(selection_path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                tasks.append(json.loads(line))
+    return tasks
+
+
+def _parity_gate(protocol: Any, prose: str) -> None:
+    """Assert arm-B prose matches arm-C's protocol methodology.
+
+    Regenerates prose from the protocol object and compares — if they
+    differ, the methodology content has drifted and the run must fail.
+    """
+    regenerated = protocol_to_prose(protocol)
+    if regenerated != prose:
+        raise RuntimeError(
+            "PARITY GATE FAILED: arm-B prose does not match arm-C protocol.\n"
+            "The methodology content has drifted between the prose generator\n"
+            "and the protocol object used for enforcement.  Fix the prose\n"
+            "generator or the protocol before running EXP1."
+        )
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="EXP1: Enforcement ablation runner")
+    parser.add_argument("--smoke", action="store_true", help="Run 1 task with mocks")
+    parser.add_argument("--force", action="store_true", help="Re-run completed trials")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Max number of tasks to process")
+    parser.add_argument("--instance", type=str, default=None, dest="instance_id",
+                        help="Run only a single instance by instance_id")
+    parser.add_argument("--set", action="append", dest="overrides", default=[],
+                        help="Override config key=value")
+    args = parser.parse_args()
+
+    cli_overrides = args.overrides if args.overrides else None
+    config = load_config(cli_overrides=cli_overrides)
+
+    rows = run_exp1(
+        config=config,
+        force=args.force,
+        smoke=args.smoke,
+        mock=args.smoke,
+        limit=args.limit,
+        instance_id=args.instance_id,
+    )
+
+    summary = _summarize(rows)
+    print(f"\nEXP1 complete — {len(rows)} result rows")
+    for line in summary:
+        print(line)
+
+
+def _summarize(rows: List[dict]) -> List[str]:
+    """Build a short summary of results."""
+    from collections import Counter
+
+    lines: List[str] = []
+    total = len(rows)
+    resolved = sum(1 for r in rows if r.get("resolved"))
+    excluded = sum(1 for r in rows if r.get("exclusion_reason"))
+
+    lines.append(f"Total rows: {total}")
+    lines.append(f"Resolved:   {resolved}")
+    lines.append(f"Excluded:   {excluded}")
+
+    by_arm: Dict[str, Counter] = {}
+    for r in rows:
+        arm = r.get("arm", "?")
+        if arm not in by_arm:
+            by_arm[arm] = Counter()
+        by_arm[arm]["total"] += 1
+        if r.get("resolved"):
+            by_arm[arm]["resolved"] += 1
+
+    for arm in sorted(by_arm):
+        c = by_arm[arm]
+        lines.append(f"  Arm {arm}: {c['resolved']}/{c['total']} resolved")
+
+    return lines
+
+
+if __name__ == "__main__":
+    main()
