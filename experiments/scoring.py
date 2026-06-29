@@ -84,30 +84,39 @@ def score_prediction(
         ]
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout_s
+                cmd, capture_output=True, text=True, timeout=timeout_s,
+                cwd=td,  # run inside temp dir so swebench's logs/ + summary JSON
+                         # do NOT litter the repo root
             )
         except subprocess.TimeoutExpired:
             return {**_FAIL, "error": f"harness timeout >{timeout_s}s"}
         except FileNotFoundError as exc:
             return {**_FAIL, "error": f"swebench not runnable: {exc}"}
 
-    # Per-instance report: logs/run_evaluation/<run_id>/<model>/<iid>/report.json
-    report = (
-        Path("logs/run_evaluation") / run_id / safe_model / iid / "report.json"
-    )
-    if not report.exists():
-        run_dir = Path("logs/run_evaluation") / run_id
-        matches = list(run_dir.rglob("report.json")) if run_dir.exists() else []
-        report = matches[0] if matches else None
+        # Report under <td>/logs/run_evaluation/...; read it BEFORE the temp dir
+        # is removed on exiting the `with` block.
+        report = (
+            Path(td) / "logs" / "run_evaluation" / run_id
+            / safe_model / iid / "report.json"
+        )
+        if not report.exists():
+            run_dir = Path(td) / "logs" / "run_evaluation" / run_id
+            matches = list(run_dir.rglob("report.json")) if run_dir.exists() else []
+            report = matches[0] if matches else None
 
-    if not report or not report.exists():
-        tail = (proc.stderr or proc.stdout or "")[-800:]
-        return {**_FAIL, "error": f"no report.json (rc={proc.returncode}). {tail}"}
+        if not report or not report.exists():
+            tail = (proc.stderr or proc.stdout or "")[-800:]
+            return {**_FAIL, "error": f"no report.json (rc={proc.returncode}). {tail}"}
+
+        try:
+            report_text = report.read_text()
+        except Exception as exc:
+            return {**_FAIL, "error": f"unreadable report.json: {exc}"}
 
     try:
-        data = json.loads(report.read_text())
+        data = json.loads(report_text)
     except Exception as exc:
-        return {**_FAIL, "error": f"unreadable report.json: {exc}"}
+        return {**_FAIL, "error": f"invalid report.json: {exc}"}
 
     rec = data.get(iid, {})
     tests = rec.get("tests_status", {})
