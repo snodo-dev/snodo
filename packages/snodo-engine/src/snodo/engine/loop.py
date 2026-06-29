@@ -375,7 +375,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                 result = registry.classify_task(
                     loop_state.task.spec,
                     loop_state.task.id,
-                    self._completion_fn,
+                    getattr(self, "_classifier_completion_fn", self._completion_fn),
                     classifier_model,
                 )
                 loop_state.task.flow_type = result.get("flow_type") or "feature"

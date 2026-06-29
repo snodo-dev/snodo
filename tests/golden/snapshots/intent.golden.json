@@ -85,7 +85,9 @@
       "model": null,
       "severity_cap": null,
       "tooling": {},
-      "tools": [],
+      "tools": [
+        "read_diff_between_refs"
+      ],
       "validator_id": "review",
       "validator_type": "architecture"
     }
