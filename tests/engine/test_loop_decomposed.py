@@ -82,6 +82,9 @@ def test_init_api_base_set(sample_protocol):
         @staticmethod
         def _provider_for_model(model):
             return "openai"
+        @staticmethod
+        def resolve_api_base(model):
+            return "https://custom-api.openai.com/v1"
             
     class MockProviderManager:
         def get_providers(self):

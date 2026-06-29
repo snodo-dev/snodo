@@ -19,30 +19,30 @@ INV3 (non-overridable validation) is structural/emergent — no single site:
   blocks mutation tools → validation cannot be bypassed.
 """
 
-from typing import Dict, Any, List, Optional, Callable, Union
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Union
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 
-from snodo.compiler.models import Protocol, Validator
-from snodo.core.interfaces import Task, ValidatorResult, ExecutionError
-from snodo.infrastructure.tokens import ValidationToken, TokenIssuer
-from snodo.infrastructure.config import DEFAULT_MODEL
-from snodo.engine.policy import PolicyEvaluator, PolicyAction, policy_decision_to_dict
-from snodo.engine.constraints import ConstraintEngine
-from snodo.engine.validators import ValidatorRunner
+import snodo.predicates.scope  # noqa: F401 — registers predicates on import
+import snodo.predicates.secrets  # noqa: F401
+import snodo.predicates.tests  # noqa: F401
+import snodo.validators  # noqa: F401 — registers validators on import
 
 # Import real implementations
 from snodo.coders import LiteLLMAdapter, MockAdapter
-from snodo.tools.workspace import WorkspaceMCP
+from snodo.compiler.models import Protocol, Validator
+from snodo.core.interfaces import ExecutionError, Task, ValidatorResult
+from snodo.engine.constraints import ConstraintEngine
+from snodo.engine.policy import PolicyAction, PolicyEvaluator, policy_decision_to_dict
+from snodo.engine.validators import ValidatorRunner
+from snodo.infrastructure.config import DEFAULT_MODEL
+from snodo.infrastructure.tokens import TokenIssuer, ValidationToken
 from snodo.tools.git import GitMCP
 from snodo.tools.shell import ShellMCP
-import snodo.predicates.scope  # noqa: F401 — registers predicates on import
-import snodo.predicates.tests  # noqa: F401
-import snodo.predicates.secrets  # noqa: F401
-import snodo.validators  # noqa: F401 — registers validators on import
+from snodo.tools.workspace import WorkspaceMCP
 from snodo.validators.context import ValidatorContext
 
 
@@ -80,12 +80,42 @@ class LoopState:
     summary: str = ""
 
 
-from snodo.engine.nodes.governance import GovernanceNodeMixin  # noqa: E402
-from snodo.engine.nodes.validation import ValidationNodeMixin  # noqa: E402
-from snodo.engine.nodes.executor import ExecutorMixin  # noqa: E402
-from snodo.engine.nodes.state import SerdeMixin  # noqa: E402
-from snodo.engine.nodes.writeback import WritebackMixin  # noqa: E402
 from snodo.engine.nodes.context import ContextMixin  # noqa: E402
+from snodo.engine.nodes.executor import ExecutorMixin  # noqa: E402
+from snodo.engine.nodes.governance import GovernanceNodeMixin  # noqa: E402
+from snodo.engine.nodes.state import SerdeMixin  # noqa: E402
+from snodo.engine.nodes.validation import ValidationNodeMixin  # noqa: E402
+from snodo.engine.nodes.writeback import WritebackMixin  # noqa: E402
+
+
+def _resolve_model_for_role(config: dict, role: str, fallback: str) -> str:
+    """Resolve the LLM model for a given role from snodo config.
+
+    Roles: ``validator``, ``classifier``, or any key under ``llm``.
+    Falls back to top-level ``model``, then *fallback*.
+    """
+    return (
+        config.get("llm", {}).get(role, {}).get("model")
+        or config.get("llm", {}).get(f"{role}_llm", {}).get("model")
+        or config.get("model")
+        or fallback
+    )
+
+
+def _build_completion_fn(model: str, base_fn: Callable) -> Callable:
+    """Build a ``functools.partial`` of *base_fn* bound to *model*.
+
+    If the model's provider has a ``base_url`` configured, ``api_base``
+    is also bound so the call routes to the correct endpoint.
+    """
+    import functools
+
+    from snodo.config import ConfigManager
+    kwargs: dict[str, Any] = {"model": model}
+    api_base = ConfigManager.resolve_api_base(model)
+    if api_base:
+        kwargs["api_base"] = api_base
+    return functools.partial(base_fn, **kwargs)
 
 
 class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, SerdeMixin, WritebackMixin, ContextMixin):
@@ -163,42 +193,39 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                               getattr(self.coder, "completion_fn", None)
         self._default_model = getattr(self.coder, "model", DEFAULT_MODEL)
 
-        # Validators need their own completion_fn — the coder may not
-        # use LiteLLM (e.g. OpenCodeAdapter uses HTTP).  Fall back to a
-        # partial litellm.completion bound to the configured default model.
-        # We use ConfigManager directly — self._default_model may be a
-        # non-LiteLLM string like "opencode/google/gemini-3.5-flash".
-        # Always bind the validator model explicitly — the coder's
-        # _completion_fn (if present) provides the authenticated call
-        # mechanism but has no model bound.
+        # Coder, validator, and classifier each need their own
+        # completion_fn — the coder may not use LiteLLM (e.g.
+        # OpenCodeAdapter uses HTTP).  Fall back to a partial
+        # litellm.completion bound to each model with its provider's
+        # api_base.  We use ConfigManager directly — self._default_model
+        # may be a non-LiteLLM string like "opencode/google/gemini-3.5-flash".
+        # Always bind the model explicitly — the coder's _completion_fn
+        # (if present) provides the authenticated call mechanism but has
+        # no model bound.
         from litellm import completion as litellm_completion
-        import functools
+
         from snodo.config import ConfigManager, provider_env
 
         config = ConfigManager().load()
-        validator_model = (
-            config.get("llm", {}).get("validator", {}).get("model")
-            or config.get("llm", {}).get("validator_llm", {}).get("model")
-            or config.get("model")
-            or DEFAULT_MODEL
-        )
-        with provider_env(validator_model) as mgr:
-            base_fn = getattr(self.coder, "_completion_fn", None) or litellm_completion
-            partial_kwargs: dict[str, Any] = {"model": validator_model}
-            provider = ConfigManager._provider_for_model(validator_model)
-            if provider:
-                pc = mgr.get_providers().get(provider)
-                if pc and pc.base_url:
-                    partial_kwargs["api_base"] = pc.base_url
-            validator_completion_fn = functools.partial(
-                base_fn, **partial_kwargs,
-            )
-            validator_default_model = validator_model
+        _base_fn = getattr(self.coder, "_completion_fn", None) or litellm_completion
 
+        validator_model = _resolve_model_for_role(config, "validator", DEFAULT_MODEL)
+        classifier_model = _resolve_model_for_role(config, "classifier", DEFAULT_MODEL)
+
+        # Inject provider API keys for both models
+        with provider_env(validator_model), provider_env(classifier_model):
+            validator_completion_fn = _build_completion_fn(validator_model, _base_fn)
+            classifier_completion_fn = _build_completion_fn(classifier_model, _base_fn)
+
+        # Reuse validator fn when classifier model matches (avoids extra partial)
+        if classifier_model == validator_model:
+            classifier_completion_fn = validator_completion_fn
+
+        self._classifier_completion_fn = classifier_completion_fn
         self._validator_runner = ValidatorRunner(
             protocol=self.protocol,
             completion_fn=validator_completion_fn,
-            default_model=validator_default_model,
+            default_model=validator_model,
             validator_config=validator_config,
             audit_log=self._audit_log,
             workspace_mcp=workspace_mcp,
@@ -336,8 +363,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         # On first iteration, classify flow_type and assign/ mint wave
         if loop_state.iteration == 1 and self._project_root:
             try:
-                from snodo.infrastructure.wave_registry import WaveRegistry
                 from snodo.infrastructure.config import load_llm_config
+                from snodo.infrastructure.wave_registry import WaveRegistry
                 llm_cfg = load_llm_config()
                 registry = WaveRegistry(self._project_root, config=llm_cfg.wave)
                 classifier_model = (
@@ -851,7 +878,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         mode_obj = self.protocol.get_mode(current_mode)
         _vcfg = self._validator_runner._validator_config
         if _vcfg is None:
-            from snodo.infrastructure.config import load_llm_config, ConfigLoadError
+            from snodo.infrastructure.config import ConfigLoadError, load_llm_config
             try:
                 _vcfg = load_llm_config().validator
             except ConfigLoadError as e:
@@ -1021,8 +1048,8 @@ def build_protocol_graph(
     shell_mcp = ShellMCP(mcp_root)
 
     # Initialize coder with LLM config knobs
-    from snodo.infrastructure.config import load_llm_config
     from snodo.coders import resolve_adapter_class
+    from snodo.infrastructure.config import load_llm_config
     llm_cfg = load_llm_config()
     resolved_model = model or DEFAULT_MODEL
     adapter_cls = resolve_adapter_class(resolved_model)
