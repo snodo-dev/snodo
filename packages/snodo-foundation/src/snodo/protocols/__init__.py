@@ -40,7 +40,14 @@ SOLO_PROTOCOL = _load_template("solo")
 
 TWO_PLUS_N_PROTOCOL = _load_template("2+n")
 
-PROTOCOL_TEMPLATES = {"solo": SOLO_PROTOCOL, "team": TEAM_PROTOCOL, "2+n": TWO_PLUS_N_PROTOCOL}
+INTENT_PROTOCOL = _load_template("intent")
+
+PROTOCOL_TEMPLATES = {
+    "solo": SOLO_PROTOCOL,
+    "team": TEAM_PROTOCOL,
+    "2+n": TWO_PLUS_N_PROTOCOL,
+    "intent": INTENT_PROTOCOL,
+}
 
 
 def load_protocol(protocol_path: Path) -> Optional[Protocol]:

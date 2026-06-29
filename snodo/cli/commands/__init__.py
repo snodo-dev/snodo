@@ -9,6 +9,7 @@ from snodo.protocols import (  # noqa: F401
     SOLO_PROTOCOL,
     TEAM_PROTOCOL,
     TWO_PLUS_N_PROTOCOL,
+    INTENT_PROTOCOL,
     PROTOCOL_TEMPLATES,
 )
 
