@@ -52,7 +52,9 @@ def run(
         proc = subprocess.run(
             [
                 "opencode", "run",
-                "--prompt", prompt,
+                "--dir", str(workspace.path),       # root opencode at the workspace
+                "--dangerously-skip-permissions",   # auto-approve edits (non-interactive)
+                prompt,            # message is a POSITIONAL for `opencode run`
                 "-m", model,
             ],
             cwd=str(workspace.path),
@@ -69,6 +71,12 @@ def run(
             )
 
         patch = extract_patch(workspace)
+        if not patch:
+            combined = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+            return _result(
+                patch, wall_s, None,
+                f"empty patch (rc={proc.returncode}); opencode output tail: {combined[-1000:]}",
+            )
         return _result(patch, wall_s, None, None)
     except FileNotFoundError:
         wall_s = time.monotonic() - start

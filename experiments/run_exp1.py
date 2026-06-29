@@ -44,7 +44,13 @@ _EXP_PROTOCOL = None
 
 
 def _load_protocol() -> Any:
-    """Load the 2+n protocol template.  Cache after first load."""
+    """Load the intent-driven protocol template.  Cache after first load.
+
+    Uses the `intent` template: no hard pre-execute spec gates (so externally
+    authored problem statements aren't blocked before the coder runs), and a
+    post-execute `review` validator (with read_diff_between_refs) that judges
+    the produced diff. arm-b renders this same protocol as prose.
+    """
     global _EXP_PROTOCOL
     if _EXP_PROTOCOL is not None:
         return _EXP_PROTOCOL
@@ -54,7 +60,7 @@ def _load_protocol() -> Any:
 
     import snodo.protocols
 
-    template_path = Path(snodo.protocols.__file__).parent / "templates" / "2+n.yml"
+    template_path = Path(snodo.protocols.__file__).parent / "templates" / "intent.yml"
     data = yaml.safe_load(template_path.read_text())
     _EXP_PROTOCOL = Protocol(**data)
     return _EXP_PROTOCOL
@@ -109,6 +115,8 @@ def _make_result_row(
         "wall_s": arm_result.get("wall_s", 0.0),
         "cost_usd": arm_result.get("cost_usd"),
         "closure_json": arm_result.get("closure_json"),
+        "patch_len": len(arm_result.get("patch") or ""),
+        "patch_preview": (arm_result.get("patch") or "")[:400],
         "exclusion_reason": exclusion_reason,
         "error": arm_result.get("error"),
         "data": {
