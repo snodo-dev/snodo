@@ -33,6 +33,10 @@ models:
     - google/gemini-2.5-flash
   reference: claude-sonnet-4-20250514
 
+cloud:
+  sync: false
+  target: staging
+
 stats:
   primary_metric: pass_at_1
   equivalence_margin_pp: 10

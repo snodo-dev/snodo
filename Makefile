@@ -59,10 +59,13 @@ release:
 # Experiment task selection
 # ──────────────────────────────────────────────
 
-.PHONY: exp-select
+.PHONY: exp-select exp1
 
 exp-select:
 	uv run python -m experiments.select_tasks
+
+exp1:
+	uv run python -m experiments.run_exp1 $(ARGS)
 
 # ──────────────────────────────────────────────
 # Studies

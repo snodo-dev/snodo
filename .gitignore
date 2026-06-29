@@ -52,3 +52,6 @@ site/
 importtime.log
 *.importtime
 .snodo*bak/
+logs/
+*.score-*.json
+experiments/results/
