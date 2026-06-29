@@ -36,6 +36,8 @@ validators:
   - validator_id: "review"
     validator_type: "architecture"
     evaluation_phase: "post_execute"
+    tools:
+      - "read_diff_between_refs"   # REQUIRED: fetch the committed diff (HEAD~1..HEAD) to review
     criteria:
       - "You are reviewing a CODE DIFF that attempts to resolve the issue described in the task. Judge the diff, not the wording of the task."
       - "BLOCK if the diff is empty, unrelated to the issue, or clearly fails to address the described problem."
