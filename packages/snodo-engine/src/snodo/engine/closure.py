@@ -51,6 +51,8 @@ def _make_initial_state(task_dict: dict, mode: str) -> dict:
         "messages": [],
         "spawned_subtasks": [],
         "needs_recovery": False,
+        "needs_spec_authoring": False,
+        "spec_authoring_attempts": 0,
     }
 
 
