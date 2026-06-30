@@ -4,9 +4,13 @@ FILE: snodo/coders/opencode_adapter.py
 
 Implements CoderAdapter via the opencode HTTP API:
   POST /session       → session_id
-  POST /session/{id}/message  → submit spec
+  POST /session/{id}/message  → submit spec (model in message body)
   GET  /event          → SSE subscription for completion signal
   GET  /session/{id}/diff     → fetch changed files after completion
+
+After the session completes, changes are read from the volume-mounted
+workspace via git diff (the in-place edits are the source of truth).
+The /diff API is used as a best-effort fallback.
 
 The opencode server runs inside a Docker container managed by
 OpenCodeContainer.  Each implement() call creates a fresh session.
@@ -40,11 +44,22 @@ class OpenCodeAdapter(CoderAdapter):
         temperature: float = 0.7,
         workspace: Optional[Path] = None,
         container: Optional[Any] = None,
+        workspace_mcp: Optional[Any] = None,
         **kwargs,
     ):
         self.model = model
         self.temperature = temperature
-        self._workspace = workspace or Path.cwd()
+
+        if workspace is not None:
+            self._workspace = workspace
+        elif workspace_mcp is not None:
+            from snodo.tools.workspace import WorkspaceMCP
+            if isinstance(workspace_mcp, WorkspaceMCP):
+                self._workspace = workspace_mcp.project_root
+            else:
+                self._workspace = Path.cwd()
+        else:
+            self._workspace = Path.cwd()
 
         if container is None:
             from snodo.coders.opencode_container import OpenCodeContainer
@@ -62,9 +77,11 @@ class OpenCodeAdapter(CoderAdapter):
         1. Ensure container is running (start if needed)
         2. Create session via POST /session
         3. Subscribe to SSE /event BEFORE sending message (race-safe)
-        4. Submit the task spec via POST /session/{id}/message
+        4. Submit the task spec via POST /session/{id}/message (with model)
         5. Wait for session.idle event (threading.Event, 300s timeout)
-        6. Fetch GET /session/{id}/diff → CodeArtifact
+        6. Read changed files from the volume-mounted workspace via git
+        7. Fall back to GET /session/{id}/diff if git readback is empty
+        8. Build CodeArtifact from on-disk file contents
         """
         if not self._container.is_running():
             self._start_container()
@@ -72,7 +89,12 @@ class OpenCodeAdapter(CoderAdapter):
         session_id = self._create_session()
         try:
             self._wait_for_completion(session_id, spec)
-            diff_entries = self._fetch_diff(session_id)
+            # Primary: read from the volume-mounted workspace (git diff)
+            diff_entries = self._read_changes_from_disk()
+            # Fallback: use the /diff API
+            if not diff_entries:
+                _logger.debug("git readback empty — trying /session/{id}/diff")
+                diff_entries = self._fetch_diff(session_id)
             return self._diff_to_artifact(diff_entries)
         finally:
             self._cleanup_session(session_id)
@@ -125,7 +147,7 @@ class OpenCodeAdapter(CoderAdapter):
             )
 
     def _fetch_diff(self, session_id: str) -> list:
-        """GET /session/{id}/diff — return changed files as a list."""
+        """GET /session/{id}/diff — return changed files as a list (fallback)."""
         diff_resp = httpx.get(
             f"{self.base_url}/session/{session_id}/diff",
             timeout=10.0,
@@ -135,6 +157,58 @@ class OpenCodeAdapter(CoderAdapter):
             "opencode diff received: %d entries", len(data),
         )
         return data
+
+    def _read_changes_from_disk(self) -> list:
+        """Read changed files from the volume-mounted workspace via git diff.
+
+        opencode edits files in-place through the Docker volume mount, so the
+        on-disk state at ``self._workspace`` is the source of truth.  This
+        method runs ``git diff`` to find what changed and returns entries in
+        the same ``{file, status}`` format as ``_fetch_diff``.
+
+        Returns:
+            List of ``{file, status}`` dicts, or empty list on failure.
+        """
+        from git import Repo, GitCommandError
+
+        try:
+            repo = Repo(str(self._workspace), search_parent_directories=True)
+        except (GitCommandError, Exception) as exc:
+            _logger.warning("git readback: cannot open repo at %s: %s", self._workspace, exc)
+            return []
+
+        changed: dict[str, str] = {}
+
+        try:
+            # Unstaged changes (modified / deleted / added in working tree)
+            for d in repo.index.diff(None):
+                path = d.b_path or d.a_path
+                if path:
+                    if d.change_type == "D":
+                        changed[path] = "deleted"
+                    else:
+                        changed[path] = d.change_type
+
+            # Staged changes
+            for d in repo.index.diff("HEAD"):
+                path = d.b_path or d.a_path
+                if path and path not in changed:
+                    changed[path] = d.change_type
+
+            # Untracked files (new files opencode created)
+            for path in repo.untracked_files:
+                changed[path] = "added"
+
+        except Exception as exc:
+            _logger.warning("git readback: diff failed: %s", exc)
+            return []
+
+        entries = []
+        for path, status in changed.items():
+            entries.append({"file": path, "status": status})
+
+        _logger.debug("git readback: %d changed files", len(entries))
+        return entries
 
     def _start_container(self) -> None:
         """Start the opencode container if not running."""
@@ -183,12 +257,13 @@ class OpenCodeAdapter(CoderAdapter):
             raise LLMCallError(f"opencode session creation error: {e}")
 
     def _send_message(self, session_id: str, spec: TaskSpec) -> None:
-        """POST /session/{id}/message — submit the task spec."""
+        """POST /session/{id}/message — submit the task spec with model."""
         prompt = self._build_prompt(spec)
         try:
             resp = httpx.post(
                 f"{self.base_url}/session/{session_id}/message",
                 json={
+                    "model": self._resolve_model_payload(),
                     "parts": [{"type": "text", "text": prompt}],
                 },
                 timeout=60.0,
@@ -248,16 +323,19 @@ class OpenCodeAdapter(CoderAdapter):
         return CodeArtifact(files=files)
 
     def _resolve_model_payload(self) -> dict:
-        """Map the snodo model string to an opencode model payload."""
+        """Map the snodo model string to an opencode model payload.
+
+        opencode's API expects ``{"providerID": <p>, "modelID": <m>}``
+        on ``POST /session/{id}/message``.
+        """
         model = self.model
         if model.startswith("opencode/"):
             provider_and_id = model[len("opencode/"):]
             if "/" in provider_and_id:
                 provider, model_id = provider_and_id.split("/", 1)
-                return {"providerID": provider, "id": model_id}
-            return {"id": provider_and_id}
-        # Fallback: pass through as model id
-        return {"id": model}
+                return {"providerID": provider, "modelID": model_id}
+            return {"modelID": provider_and_id}
+        return {"modelID": model}
 
     def _build_prompt(self, spec: TaskSpec) -> str:
         """Build a prompt from the TaskSpec for opencode."""
