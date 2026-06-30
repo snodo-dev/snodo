@@ -15,6 +15,7 @@ from snodo.coders.openai_adapter import OpenAIAdapter
 from snodo.coders.anthropic_adapter import AnthropicAdapter
 from snodo.coders.gemini_adapter import GeminiAdapter
 from snodo.coders.opencode_adapter import OpenCodeAdapter
+from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
 from snodo.infrastructure.config import DEFAULT_MODEL
 
 # Backward-compatible aliases
@@ -29,6 +30,7 @@ CODER_REGISTRY: Dict[str, Type[CoderAdapter]] = {
     "anthropic": AnthropicAdapter,
     "gemini": GeminiAdapter,
     "opencode": OpenCodeAdapter,
+    "opencode-cli": OpenCodeCLIAdapter,
 }
 
 
@@ -47,6 +49,8 @@ def resolve_adapter_class(model: str) -> Type[CoderAdapter]:
         return AnthropicAdapter
     if model.startswith(("gemini", "google/")):
         return GeminiAdapter
+    if model.startswith("opencode-cli/"):
+        return OpenCodeCLIAdapter
     if model.startswith("opencode/"):
         return OpenCodeAdapter
     return LiteLLMAdapter

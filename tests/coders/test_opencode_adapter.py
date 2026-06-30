@@ -10,16 +10,14 @@ Covers:
 - Full implement flow with mocked HTTP + git
 """
 
-import json
 import subprocess
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, PropertyMock
+from unittest.mock import Mock, patch
 
 import pytest
-import httpx
 
-from snodo.core.interfaces import TaskSpec, FileArtifact
+from snodo.core.interfaces import TaskSpec
 from snodo.coders.opencode_adapter import OpenCodeAdapter
 from snodo.tools.workspace import WorkspaceMCP
 
