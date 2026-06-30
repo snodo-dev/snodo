@@ -120,8 +120,8 @@ def test_validate_node_wf3_empty_validators(sample_task):
     })
 
 
-def test_validate_node_escalate(sample_task):
-    """ESCALATE -> halt_type="escalated\" + pending_disagreement + audit"""
+def test_validate_node_escalate_spec_authoring(sample_task):
+    """Warn-only ESCALATE routes to spec authoring, not blocked."""
     # Unanimous policy with a 'warn' result triggers ESCALATE
     protocol = Protocol(
         protocol_id="test_protocol",
@@ -167,8 +167,10 @@ def test_validate_node_escalate(sample_task):
         "metadata": {}
     }
     result = builder._validate_node(initial_state)
-    assert result["is_blocked"] is True
-    assert result["halt_type"] == "escalated"
+    # Warn-only ESCALATE now routes to spec authoring instead of blocking
+    assert result.get("is_blocked") is False
+    assert result.get("needs_spec_authoring") is True
+    assert result.get("halt_type") is None or result["halt_type"] != "escalated"
     assert result["pending_disagreement"] is not None
     assert result["pending_disagreement"]["phase"] == "pre_execute"
     mock_audit.append_event.assert_any_call("disagreement_escalated", {
@@ -185,6 +187,58 @@ def test_validate_node_escalate(sample_task):
             "justification": "Unanimous policy requires all validators to pass"
         }
     })
+
+
+def test_validate_node_escalate_with_blocker_still_blocks(sample_task):
+    """Blocker result leads to HALT, not spec authoring."""
+    protocol = Protocol(
+        protocol_id="test_protocol",
+        name="Test Protocol",
+        version="1.0.0",
+        modes=[
+            Mode(
+                mode_id="producer",
+                name="Producer Mode",
+                tools=["edit", "test"],
+                validators=["security"]
+            )
+        ],
+        validators=[
+            Validator(
+                validator_id="security",
+                validator_type="security",
+                criteria=["Check OWASP Top 10"]
+            )
+        ],
+        disagreement_policy=DisagreementPolicy.UNANIMOUS,
+        initial_mode="producer"
+    )
+    
+    def mock_validator_fn(task, validators, shell_mcp, **kwargs):
+        return [ValidatorResult(validator_id="security", severity="blocker", justification="Blocker justification")]
+        
+    mock_audit = MagicMock()
+    builder = GraphBuilder(protocol, validator_fn=mock_validator_fn, audit_log=mock_audit)
+    initial_state = {
+        "task": {"id": sample_task.id, "spec": sample_task.spec},
+        "current_mode": "producer",
+        "iteration": 0,
+        "stage": "validate",
+        "validation_results": [],
+        "validation_token": None,
+        "artifacts": [],
+        "constraints_passed": True,
+        "constraint_violations": [],
+        "policy_decision": None,
+        "is_complete": False,
+        "is_blocked": False,
+        "metadata": {}
+    }
+    result = builder._validate_node(initial_state)
+    # Blocker → HALT → is_blocked, halt_type="blocked" (not spec authoring)
+    assert result.get("is_blocked") is True
+    assert result.get("halt_type") == "blocked"
+    assert not result.get("needs_spec_authoring", False)
 
 
 def test_validate_node_halt_blocker(sample_task):

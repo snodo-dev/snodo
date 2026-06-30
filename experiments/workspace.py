@@ -25,9 +25,12 @@ _CACHE: Dict[Tuple[str, str], Path] = {}
 
 
 def _ensure_cache_dir() -> Path:
+    # Stable path so the shallow checkouts persist ACROSS runs/processes — the
+    # first run fetches, every later run is an instant local copy.
     global _CACHE_DIR
     if _CACHE_DIR is None:
-        _CACHE_DIR = Path(tempfile.mkdtemp(prefix="swe-cache-"))
+        _CACHE_DIR = Path(tempfile.gettempdir()) / "swe-bench-cache"
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     return _CACHE_DIR
 
 
@@ -108,7 +111,7 @@ def setup_instance_workspace(instance: dict) -> Workspace:
 
     # 2. Copy cache -> workspace (fast local copy, one per arm/trial)
     try:
-        shutil.copytree(cache_dir, dest, symlinks=False)
+        shutil.copytree(cache_dir, dest, symlinks=False, dirs_exist_ok=True)
         return Workspace(path=dest, base_commit=base_commit)
     except Exception as exc:
         shutil.rmtree(dest, ignore_errors=True)
@@ -118,16 +121,20 @@ def setup_instance_workspace(instance: dict) -> Workspace:
 def _get_cached(repo: str, base_commit: str, clone_url: str) -> Path:
     """Return a cached shallow checkout of (repo, base_commit), fetching if needed."""
     key = (repo, base_commit)
-    if key not in _CACHE:
-        cache_dir = _ensure_cache_dir() / f"{repo.replace('/', '__')}__{base_commit}"
+    if key in _CACHE:
+        return _CACHE[key]
+    cache_dir = _ensure_cache_dir() / f"{repo.replace('/', '__')}__{base_commit}"
+    # Reuse an existing on-disk checkout (from a previous run/process).
+    if not (cache_dir / ".git").exists():
         _do_shallow_fetch(cache_dir, clone_url, base_commit)
-        _CACHE[key] = cache_dir
-    return _CACHE[key]
+    _CACHE[key] = cache_dir
+    return cache_dir
 
 
 def _do_shallow_fetch(dest: Path, clone_url: str, base_commit: str) -> None:
     """Shallow fetch of a single commit into an empty git repo."""
-    _run(["git", "init"], cwd=dest)  # will create dest
+    dest.mkdir(parents=True, exist_ok=True)  # git init needs cwd to exist
+    _run(["git", "init"], cwd=dest)
     _run(["git", "remote", "add", "origin", clone_url], cwd=dest)
     _run(
         ["git", "fetch", "--depth", "1", "origin", base_commit],

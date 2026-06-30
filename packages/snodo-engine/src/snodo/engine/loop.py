@@ -75,6 +75,8 @@ class LoopState:
     pending_disagreement: Optional[Dict[str, Any]] = None
     spawned_subtasks: List[Task] = field(default_factory=list)
     needs_recovery: bool = False
+    needs_spec_authoring: bool = False
+    spec_authoring_attempts: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
     messages: List[Dict[str, Any]] = field(default_factory=list)
     summary: str = ""
@@ -337,6 +339,15 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             )
             return self._state_to_dict(loop_state)
 
+        # Spec-authoring follow-through: a warn-only pre-execute escalation routed
+        # back here. Author an improved spec from the intent + critique, then let
+        # it re-validate fresh. Lives in this (live) _governance_node because it
+        # shadows the mixin version that holds the same logic.
+        if getattr(loop_state, "needs_spec_authoring", False):
+            loop_state = self._spec_authoring_reentry(loop_state)
+            loop_state.needs_spec_authoring = False
+            return self._state_to_dict(loop_state)
+
         # Load DecisionRecords from session for policy-layer consultation.
         # DecisionRecords are consulted AFTER the blocker HALT in the policy
         # evaluator, so they can NEVER override a genuine blocker (INV3).
@@ -465,8 +476,20 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             has_errors = any(getattr(r, 'error', False) for r in results)
             loop_state.halt_type = "validator_error" if has_errors else "blocked"
         elif decision.action == PolicyAction.ESCALATE:
-            loop_state.is_blocked = True
-            loop_state.halt_type = "escalated"
+            has_blocker = any(r.severity == "blocker" and not getattr(r, 'error', False) for r in results)
+            has_error = any(getattr(r, 'error', False) for r in results)
+            if not has_blocker and not has_error and loop_state.spec_authoring_attempts < 2:
+                loop_state.needs_spec_authoring = True
+                loop_state.metadata["spec_critique"] = [
+                    {"validator_id": r.validator_id, "justification": r.justification}
+                    for r in results if r.severity != "pass"
+                ]
+                outcome = "escalated"
+            else:
+                loop_state.is_blocked = True
+                loop_state.halt_type = "escalated"
+                outcome = "escalated"
+
             loop_state.pending_disagreement = {
                 "phase": "pre_execute",
                 "policy": self.protocol.disagreement_policy.value,
@@ -482,7 +505,6 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                     "justification": decision.justification,
                 },
             }
-            outcome = "escalated"
             self._audit("disagreement_escalated", {
                 "op": "disagreement_escalated",
                 "phase": "pre_execute",

@@ -40,6 +40,8 @@ class LoopState:
     pending_disagreement: Optional[Dict[str, Any]] = None
     spawned_subtasks: List[Task] = field(default_factory=list)
     needs_recovery: bool = False
+    needs_spec_authoring: bool = False
+    spec_authoring_attempts: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
     messages: List[Dict[str, Any]] = field(default_factory=list)
     summary: str = ""
