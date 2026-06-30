@@ -122,7 +122,7 @@ def run(
             # OpenCodeAdapter — the SAME coder as arms a/b.  Classifier and
             # validator models remain the bare experiment_model (set via the
             # snodo config dir above).
-            coder_model = f"opencode/{experiment_model}" if not experiment_model.startswith("opencode/") else experiment_model
+            coder_model = f"opencode-cli/{experiment_model}" if not experiment_model.startswith(("opencode/", "opencode-cli/")) else experiment_model
             graph = build_protocol_graph(
                 protocol,
                 project_root=project_root,
