@@ -32,9 +32,12 @@ def register(app: typer.Typer) -> None:
         project_id: Optional[str] = typer.Option(
             None, "--project-id", help="Override the project identity (caches with scope 'override')",
         ),
+        force_keygen: bool = typer.Option(
+            False, "--force-keygen", help="Force-regenerate RS256 signing keypair",
+        ),
     ):
         """Initialize Snodo project structure."""
-        args = SimpleNamespace(template=template, force=force, mode=mode, project_id=project_id)
+        args = SimpleNamespace(template=template, force=force, mode=mode, project_id=project_id, force_keygen=force_keygen)
         return init_command(args)
 
 
@@ -235,9 +238,14 @@ def init_command(args) -> int:
 
     # Generate RS256 keypair for HI-CTRL decision record signing
     try:
-        from snodo.infrastructure.signing_keys import generate_keypair
-        priv_path, pub_path = generate_keypair()
-        print("RS256 keypair generated:")
+        from snodo.infrastructure.signing_keys import generate_keypair, keypair_exists
+        force_keygen = getattr(args, "force_keygen", False)
+        keys_existed = keypair_exists() and not force_keygen
+        priv_path, pub_path = generate_keypair(force=force_keygen)
+        if keys_existed:
+            print("Using existing RS256 keypair:")
+        else:
+            print("RS256 keypair generated:")
         print(f"  Private: {priv_path}")
         print(f"  Public:  {pub_path}")
     except Exception as e:

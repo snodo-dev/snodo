@@ -51,19 +51,23 @@ def keypair_exists() -> bool:
     return priv.exists() and pub.exists()
 
 
-def generate_keypair() -> tuple:
+def generate_keypair(*, force: bool = False) -> tuple:
     """Generate an RSA 2048-bit keypair at ~/.ssh/NO-AGENT/.
 
     Creates the directory (0700) if absent.  Writes the private key
     (0600) and public key (0644).  Idempotent — does not overwrite
-    existing keys.  Writes a README explaining the danger.
+    existing keys unless *force* is True.  Writes a README explaining
+    the danger.
+
+    Args:
+        force: If True, regenerate even if keys already exist.
 
     Returns:
         (private_key_path, public_key_path) tuple.
     """
     priv, pub = _key_paths()
 
-    if keypair_exists():
+    if not force and keypair_exists():
         return str(priv), str(pub)
 
     _KEY_DIR.mkdir(parents=True, exist_ok=True)

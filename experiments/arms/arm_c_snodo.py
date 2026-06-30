@@ -118,11 +118,16 @@ def run(
 
         # Build and compile graph
         try:
+            # Coder model is prefixed with "opencode/" so snodo uses the
+            # OpenCodeAdapter — the SAME coder as arms a/b.  Classifier and
+            # validator models remain the bare experiment_model (set via the
+            # snodo config dir above).
+            coder_model = f"opencode/{experiment_model}" if not experiment_model.startswith("opencode/") else experiment_model
             graph = build_protocol_graph(
                 protocol,
                 project_root=project_root,
                 use_mock_coder=False,
-                model=experiment_model,
+                model=coder_model,
                 audit_log=audit_log,
             )
             compiled = graph.compile()
