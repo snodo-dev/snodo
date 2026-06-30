@@ -90,15 +90,33 @@ class ValidationNodeMixin:
             outcome = "passed"
         elif decision.action == PolicyAction.HALT:
             loop_state.is_blocked = True
+            loop_state.is_blocked = True
             has_errors = any(getattr(r, 'error', False) for r in results)
             loop_state.halt_type = "validator_error" if has_errors else "blocked"
         elif decision.action == PolicyAction.ESCALATE:
-            loop_state.is_blocked = True
-            loop_state.halt_type = "escalated"
-            loop_state.pending_disagreement = self._build_pending_disagreement(
-                loop_state, "pre_execute", results, decision
-            )
-            outcome = "escalated"
+            # Check if the escalation is triggered by warn-only spec validators
+            # (no hard blockers, no errors).  If so, route to spec authoring
+            # instead of halting — the intent needs translation into a proper spec.
+            has_blocker = any(r.severity == "blocker" and not getattr(r, 'error', False) for r in results)
+            has_error = any(getattr(r, 'error', False) for r in results)
+            if not has_blocker and not has_error and loop_state.spec_authoring_attempts < 2:
+                loop_state.needs_spec_authoring = True
+                loop_state.metadata["spec_critique"] = [
+                    {"validator_id": r.validator_id, "justification": r.justification}
+                    for r in results if r.severity != "pass"
+                ]
+                loop_state.pending_disagreement = self._build_pending_disagreement(
+                    loop_state, "pre_execute", results, decision
+                )
+                outcome = "escalated"
+                # NOT is_blocked — will route back to governance
+            else:
+                loop_state.is_blocked = True
+                loop_state.halt_type = "escalated"
+                loop_state.pending_disagreement = self._build_pending_disagreement(
+                    loop_state, "pre_execute", results, decision
+                )
+                outcome = "escalated"
 
         loop_state.metadata["pre_validation"] = {
             "policy_decision": policy_decision_to_dict(decision),
@@ -273,7 +291,11 @@ class ValidationNodeMixin:
     def _route_after_validation(self, state: Dict[str, Any]) -> str:
         """Route after validation based on policy decision."""
         loop_state = self._dict_to_state(state)
-        
+
+        # Spec authoring takes precedence over blocking — re-enter governance
+        if loop_state.needs_spec_authoring:
+            return "governance"
+
         if loop_state.is_blocked:
             return "blocked"
         elif loop_state.validation_token and self._token_issuer.verify_token(
