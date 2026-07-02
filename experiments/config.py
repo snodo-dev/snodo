@@ -24,6 +24,7 @@ _CONSTRAINTS: Dict[str, tuple] = {
     "sampling.k_trials": (int, 1, 100),
     "bounds.max_recovery_depth": (int, 0, 20),
     "bounds.max_total_fix_attempts": (int, 1, 100),
+    "bounds.scoring.max_workers": (int, 1, 32),
     "stats.equivalence_margin_pp": (int, 1, 50),
     "stats.min_meaningful_effect_pp": (int, 1, 50),
 }

@@ -21,6 +21,8 @@ sampling:
 bounds:
   max_recovery_depth: 3
   max_total_fix_attempts: 10
+  scoring:
+    max_workers: 4
 
 models:
   cutoff: "2025-06-01"
