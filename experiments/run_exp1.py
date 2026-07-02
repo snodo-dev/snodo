@@ -18,7 +18,7 @@ import json
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from experiments.arms.arm_a_opencode import MockArmA
 from experiments.arms.arm_a_opencode import run as run_arm_a
@@ -28,7 +28,7 @@ from experiments.arms.arm_c_snodo import MockArmC
 from experiments.arms.arm_c_snodo import run as run_arm_c
 from experiments.arms.prose import protocol_to_prose
 from experiments.config import load_config, write_snapshot
-from experiments.scoring import make_scorer
+from experiments.scoring import RealScorer, MockScorer, make_scorer
 from experiments.workspace import MockWorkspace, setup_instance_workspace, teardown
 
 _HERE = Path(__file__).resolve().parent
@@ -169,14 +169,20 @@ def _positive_control(
     """Run the task's reference (gold) patch through the scorer.
 
     Checks ``gold_patch`` first, then falls back to ``patch`` for raw
-    SWE-bench fixture rows.
+    SWE-bench fixture rows.  Uses the gold cache (RealScorer) to avoid
+    re-running the harness for the same deterministic result.
 
     Returns (passes, exclusion_reason).
     """
     gold_patch = task.get("gold_patch") or task.get("patch", "")
     if not gold_patch:
         return False, "no_gold_patch"
-    result = scorer.score(task, gold_patch, "gold-baseline")
+
+    if isinstance(scorer, RealScorer):
+        result = scorer.score_gold_with_cache(task)
+    else:
+        result = scorer.score(task, gold_patch, "gold-baseline")
+
     if not result.get("resolved", False):
         err = result.get("error")
         reason = "harness_broken" if not err else f"harness_broken: {err}"
@@ -314,6 +320,10 @@ def run_exp1(
             _write_results_row(results_path, exclusion_row)
             continue
 
+        # Collect all (arm, trial) results for this task, then score in batch
+        max_workers = config.get("bounds", {}).get("scoring", {}).get("max_workers", 1)
+        pending: List[Tuple[str, int, dict]] = []
+
         for arm in arms:
             for trial_id in range(1, config["sampling"]["k_trials"] + 1):
                 if not force and _row_completed(existing, instance_id, arm, trial_id):
@@ -339,11 +349,27 @@ def run_exp1(
                 # Run arm
                 try:
                     arm_result = _dispatch_arm(arm, task, config, run_id, trial_id, prose, protocol, workspace, mock=mock)
-                    patch = arm_result.get("patch", "")
                 finally:
                     teardown(workspace)
 
-                score_result = scorer.score(task, patch, f"exp1-{arm}-{instance_id}-t{trial_id}")
+                pending.append((arm, trial_id, arm_result))
+
+        # Score all pending predictions for this task in a single harness call
+        if pending:
+            batch_input = [
+                (task, arm_result.get("patch", ""), f"exp1-{arm}-{instance_id}-t{trial_id}")
+                for arm, trial_id, arm_result in pending
+            ]
+            batch_results = scorer.score_batch(batch_input, max_workers=max_workers)
+
+            for (arm, trial_id, arm_result) in pending:
+                patch = arm_result.get("patch", "")
+                model_name = f"exp1-{arm}-{instance_id}-t{trial_id}"
+                safe_name = model_name.replace("/", "__")
+                score_result = batch_results.get(
+                    (instance_id, safe_name),
+                    batch_results.get((instance_id, model_name), {"resolved": False, "n_fail_to_pass_passed": 0, "regressions": 0, "error": "missing_from_batch"}),
+                )
 
                 row = _make_result_row(
                     instance_id, arm, trial_id, run_id, config,

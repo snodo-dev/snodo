@@ -31,7 +31,7 @@ def mini_config() -> dict:
         "selection": {"n": 10, "min_repos": 1, "seed": 42, "strata": {"easy": 4, "medium": 4, "hard": 2}},
         "sampling": {"temperature": 0.0, "k_trials": 2},
         "models": {"reference": "mock-model", "cutoff": None},
-        "bounds": {"max_recovery_depth": 3, "max_total_fix_attempts": 10},
+        "bounds": {"max_recovery_depth": 3, "max_total_fix_attempts": 10, "scoring": {"max_workers": 2}},
         "stats": {"equivalence_margin_pp": 10, "min_meaningful_effect_pp": 15},
         "cloud": {"sync": False, "target": "staging"},
     }
@@ -408,6 +408,83 @@ class TestScoringModule:
         with pytest.raises(FileNotFoundError):
             from experiments.scoring import get_instance
             get_instance("non-existent", Path("/nonexistent/file"))
+
+
+# ---------------------------------------------------------------------------
+# Batch scoring tests
+# ---------------------------------------------------------------------------
+
+
+class TestBatchScoring:
+    """score_batch returns correct results for mock scorer."""
+
+    def test_batch_single_prediction(self):
+        scorer = MockScorer()
+        instance = {"instance_id": "t1", "gold_patch": "patch-abc"}
+        results = scorer.score_batch([
+            (instance, "patch-abc", "model-a"),
+        ])
+        key = ("t1", "model-a")
+        assert key in results
+        assert results[key]["resolved"] is True  # matches gold
+
+    def test_batch_multiple_predictions(self):
+        scorer = MockScorer()
+        instance = {"instance_id": "t1", "gold_patch": "patch-abc"}
+        results = scorer.score_batch([
+            (instance, "patch-abc", "model-a"),   # gold → resolved
+            (instance, "patch-xyz", "model-b"),   # not gold → not resolved
+        ])
+        assert results[("t1", "model-a")]["resolved"] is True
+        assert results[("t1", "model-b")]["resolved"] is False
+
+    def test_batch_empty_input(self):
+        scorer = MockScorer()
+        results = scorer.score_batch([])
+        assert results == {}
+
+    def test_batch_with_empty_patch(self):
+        scorer = MockScorer()
+        instance = {"instance_id": "t1", "gold_patch": "patch-abc"}
+        results = scorer.score_batch([
+            (instance, "", "model-empty"),
+        ])
+        key = ("t1", "model-empty")
+        assert key in results
+        assert results[key]["resolved"] is False
+
+
+# ---------------------------------------------------------------------------
+# Gold cache tests
+# ---------------------------------------------------------------------------
+
+
+class TestGoldCache:
+    """Gold-patch result cache avoids redundant harness invocations."""
+
+    def setup_method(self):
+        from experiments.scoring import clear_gold_cache
+        clear_gold_cache()
+
+    def test_cache_hit_returns_same_result(self):
+        from experiments.scoring import _cached_gold_result, _set_cached_gold_result
+        instance = {"instance_id": "t1"}
+        result = {"resolved": True, "n_fail_to_pass_passed": 5, "regressions": 0, "error": None}
+        _set_cached_gold_result(instance, result)
+        cached = _cached_gold_result(instance)
+        assert cached == result
+
+    def test_cache_miss_returns_none(self):
+        from experiments.scoring import _cached_gold_result
+        instance = {"instance_id": "never-cached"}
+        assert _cached_gold_result(instance) is None
+
+    def test_clear_cache(self):
+        from experiments.scoring import _cached_gold_result, _set_cached_gold_result, clear_gold_cache
+        instance = {"instance_id": "t1"}
+        _set_cached_gold_result(instance, {"resolved": True})
+        clear_gold_cache()
+        assert _cached_gold_result(instance) is None
 
 
 # ---------------------------------------------------------------------------
