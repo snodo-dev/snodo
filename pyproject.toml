@@ -107,6 +107,7 @@ dev = [
     "radon>=6.0.1",
     "swebench>=4.0.0",
     "paramiko>=3.0.0",
+    "scipy>=1.13",   # numpy-2.0-compatible; older scipy uses removed np.long and breaks swebench scoring
 ]
 
 [tool.coverage.run]
