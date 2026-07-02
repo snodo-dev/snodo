@@ -29,6 +29,7 @@ _VALID_CONFIG = {
         "max_recovery_depth": 3,
         "max_total_fix_attempts": 10,
         "scoring": {"max_workers": 4},
+        "dispatch": {"max_parallel": 4},
     },
     "models": {
         "expensive": ["claude-sonnet-4", "gpt-4o"],
