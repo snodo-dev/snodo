@@ -23,6 +23,10 @@ bounds:
   max_total_fix_attempts: 10
   scoring:
     max_workers: 4
+    namespace: swebench
+    cache_level: instance
+  dispatch:
+    max_parallel: 6
 
 models:
   cutoff: "2025-06-01"

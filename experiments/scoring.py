@@ -92,19 +92,24 @@ def score_predictions_batch(
     dataset_name: str = "princeton-nlp/SWE-bench_Verified",
     timeout_s: int = 2400,
     max_workers: int = 1,
+    namespace: str = "swebench",
+    cache_level: str = "instance",
 ) -> Dict[Tuple[str, str], dict]:
     """Score multiple predictions in a SINGLE harness invocation.
 
     Writes all predictions into one JSONL, invokes the swebench harness ONCE
     with ``--max_workers N``, and returns a dict keyed by ``(instance_id, model_name)``.
 
-    This avoids paying harness + Docker startup costs per prediction.
+    Uses prebuilt Docker images from *namespace* (default ``swebench``) and
+    *cache_level* ``instance`` so per-task image pulls are reused across runs.
 
     Args:
         instances: List of ``(instance_dict, model_patch, model_name)`` tuples.
         dataset_name: HuggingFace dataset for the oracle.
         timeout_s: Per-harness-invocation timeout (wall clock).
         max_workers: Number of parallel Docker containers (``--max_workers``).
+        namespace: Docker Hub namespace for eval images (``--namespace``).
+        cache_level: Cache reuse level (``env``, ``instance``, or ``none``).
 
     Returns:
         Dict mapping ``(instance_id, model_name)`` to result dicts.
@@ -143,7 +148,8 @@ def score_predictions_batch(
             "--instance_ids", iid_arg,
             "--max_workers", str(max_workers),
             "--run_id", run_id,
-            "--cache_level", "env",
+            "--namespace", namespace,
+            "--cache_level", cache_level,
         ]
 
         try:
@@ -280,8 +286,10 @@ class RealScorer:
     Supports batch scoring (``score_batch``) and caches gold-patch results.
     """
 
-    def __init__(self, max_workers: int = 1):
+    def __init__(self, max_workers: int = 1, namespace: str = "swebench", cache_level: str = "instance"):
         self._max_workers = max_workers
+        self._namespace = namespace
+        self._cache_level = cache_level
 
     def score(
         self,
@@ -308,6 +316,8 @@ class RealScorer:
         return score_predictions_batch(
             instances,
             max_workers=max_workers if max_workers is not None else self._max_workers,
+            namespace=self._namespace,
+            cache_level=self._cache_level,
         )
 
     def score_prediction_record(self, instance: dict, prediction: dict) -> dict:
@@ -345,13 +355,15 @@ class RealScorer:
         return self.score(instance, model_patch, **kwargs)
 
 
-def make_scorer(mock: bool = False, max_workers: int = 1, **kwargs) -> MockScorer | RealScorer:
+def make_scorer(mock: bool = False, max_workers: int = 1, namespace: str = "swebench", cache_level: str = "instance", **kwargs) -> MockScorer | RealScorer:
     """Factory: return a MockScorer or a RealScorer (both expose .score).
 
     Args:
         mock: If True, return MockScorer (no Docker needed).
         max_workers: Default parallelism for RealScorer.score_batch.
+        namespace: Docker Hub namespace for prebuilt eval images.
+        cache_level: Cache reuse level (``instance``, ``env``, ``none``).
     """
     if mock:
         return MockScorer(**kwargs)
-    return RealScorer(max_workers=max_workers)
+    return RealScorer(max_workers=max_workers, namespace=namespace, cache_level=cache_level)

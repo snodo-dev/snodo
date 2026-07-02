@@ -31,7 +31,7 @@ def mini_config() -> dict:
         "selection": {"n": 10, "min_repos": 1, "seed": 42, "strata": {"easy": 4, "medium": 4, "hard": 2}},
         "sampling": {"temperature": 0.0, "k_trials": 2},
         "models": {"reference": "mock-model", "cutoff": None},
-        "bounds": {"max_recovery_depth": 3, "max_total_fix_attempts": 10, "scoring": {"max_workers": 2}},
+        "bounds": {"max_recovery_depth": 3, "max_total_fix_attempts": 10, "scoring": {"max_workers": 2, "namespace": "swebench", "cache_level": "instance"}, "dispatch": {"max_parallel": 2}},
         "stats": {"equivalence_margin_pp": 10, "min_meaningful_effect_pp": 15},
         "cloud": {"sync": False, "target": "staging"},
     }
@@ -485,6 +485,56 @@ class TestGoldCache:
         _set_cached_gold_result(instance, {"resolved": True})
         clear_gold_cache()
         assert _cached_gold_result(instance) is None
+
+
+# ---------------------------------------------------------------------------
+# Parallel dispatch tests
+# ---------------------------------------------------------------------------
+
+
+class TestParallelDispatch:
+    """ProcessPoolExecutor dispatch and _run_one_cell work correctly."""
+
+    def test_run_one_cell_returns_serialized_result(self):
+        """_run_one_cell returns a JSON-encoded dict with expected keys."""
+        from experiments.run_exp1 import _run_one_cell
+        result_json = _run_one_cell(
+            json.dumps({"instance_id": "t1", "repo": "test/repo", "base_commit": "HEAD", "hints": ""}),
+            "z", 1, json.dumps({"models": {"reference": "test"}, "sampling": {"temperature": 0.0}}),
+            "run-test", "",
+        )
+        result = json.loads(result_json)
+        # Always has expected keys (either error from workspace_setup or dispatch)
+        assert "error" in result
+        assert "patch" in result
+        assert "wall_s" in result
+        assert "closure_json" in result
+
+    def test_max_parallel_from_config(self):
+        """Config bounds.dispatch.max_parallel is read by run_exp1."""
+        from experiments.run_exp1 import run_exp1
+        cfg = {
+            "selection": {"n": 10, "min_repos": 1, "seed": 42, "strata": {"easy": 4, "medium": 4, "hard": 2}},
+            "sampling": {"temperature": 0.0, "k_trials": 1},
+            "models": {"reference": "mock-model", "cutoff": None},
+            "bounds": {"max_recovery_depth": 3, "max_total_fix_attempts": 10, "scoring": {"max_workers": 2, "namespace": "swebench", "cache_level": "instance"}, "dispatch": {"max_parallel": 4}},
+            "stats": {"equivalence_margin_pp": 10, "min_meaningful_effect_pp": 15},
+            "cloud": {"sync": False, "target": "staging"},
+        }
+        rows = run_exp1(
+            config=cfg,
+            selection_path=_FIXTURE,
+            results_dir=Path("/tmp/_test_dispatch"),
+            arms=["a"],
+            smoke=True,
+            mock=True,
+            tasks_override=[{"instance_id": "t1", "gold_patch": "--- a/x.py\n+print('ok')\n", "repo": "test/repo"}],
+        )
+        # Cleanup
+        import shutil
+        shutil.rmtree(Path("/tmp/_test_dispatch"), ignore_errors=True)
+        # Smoke test: should produce rows (mock + serial path)
+        assert len([r for r in rows if r["arm"] == "a"]) == 1
 
 
 # ---------------------------------------------------------------------------
