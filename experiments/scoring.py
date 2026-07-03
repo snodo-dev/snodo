@@ -98,7 +98,8 @@ def score_predictions_batch(
     """Score multiple predictions in a SINGLE harness invocation.
 
     Writes all predictions into one JSONL, invokes the swebench harness ONCE
-    with ``--max_workers N``, and returns a dict keyed by ``(instance_id, model_name)``.
+    with ``--max_workers N``, and returns a dict keyed by ``(instance_id, model_name)``
+    where *model_name* is the **original** caller-provided name (not a sanitized copy).
 
     Uses prebuilt Docker images from *namespace* (default ``swebench``) and
     *cache_level* ``instance`` so per-task image pulls are reused across runs.
@@ -108,11 +109,12 @@ def score_predictions_batch(
         dataset_name: HuggingFace dataset for the oracle.
         timeout_s: Per-harness-invocation timeout (wall clock).
         max_workers: Number of parallel Docker containers (``--max_workers``).
-        namespace: Docker Hub namespace for eval images (``--namespace``).
-        cache_level: Cache reuse level (``env``, ``instance``, or ``none``).
+        namespace: Docker Hub namespace for prebuilt eval images.
+        cache_level: Cache reuse level (``instance``, ``env``, ``none``).
 
     Returns:
-        Dict mapping ``(instance_id, model_name)`` to result dicts.
+        Dict mapping ``(instance_id, model_name)`` — with the ORIGINAL caller-provided
+        model_name — to result dicts.
     """
     if not instances:
         return {}
@@ -123,15 +125,21 @@ def score_predictions_batch(
         preds_path = Path(td) / "preds.jsonl"
         instance_ids: set[str] = set()
 
+        # Build a map: (instance_id, original_model_name) -> safe_model_name
+        # so we can look up results by the original name the caller used.
+        safe_map: dict[tuple[str, str], str] = {}
+
         lines = []
         for instance, model_patch, model_name in instances:
             if not model_patch:
                 continue
             iid = instance["instance_id"]
             instance_ids.add(iid)
+            safe = model_name.replace("/", "__")
+            safe_map[(iid, model_name)] = safe
             lines.append(json.dumps({
                 "instance_id": iid,
-                "model_name_or_path": model_name.replace("/", "__"),
+                "model_name_or_path": safe,
                 "model_patch": model_patch,
             }))
 
@@ -170,8 +178,8 @@ def score_predictions_batch(
                 for iid in instance_ids
             }
 
-        # Walk the report tree and parse per-(iid, model_name) results
-        results: Dict[Tuple[str, str], dict] = {}
+        # Walk the report tree and build (iid, safe_model) -> result map
+        safe_results: Dict[Tuple[str, str], dict] = {}
         log_root = Path(td) / "logs" / "run_evaluation" / run_id
         if log_root.exists():
             for report in log_root.rglob("report.json"):
@@ -180,18 +188,23 @@ def score_predictions_batch(
                 if len(parts) >= 2:
                     safe_model = parts[0]
                     iid = parts[1]
-                    results[(iid, safe_model)] = _parse_report(report, iid)
+                    safe_results[(iid, safe_model)] = _parse_report(report, iid)
 
-        # Fill in missing predictions with fallback error
+        # Map back to caller-provided (instance_id, original_model_name) keys
+        results: Dict[Tuple[str, str], dict] = {}
         for instance, model_patch, model_name in instances:
-            safe = model_name.replace("/", "__")
-            key = (instance["instance_id"], safe)
-            if key not in results:
-                if not model_patch:
-                    results[key] = {**_FAIL, "error": "empty_patch"}
-                else:
-                    tail = (proc.stderr or proc.stdout or "")[-800:]
-                    results[key] = {**_FAIL, "error": f"no report.json (rc={proc.returncode}). {tail}"}
+            iid = instance["instance_id"]
+            safe = safe_map.get((iid, model_name), model_name.replace("/", "__"))
+            key = (iid, model_name)
+
+            safe_key = (iid, safe)
+            if safe_key in safe_results:
+                results[key] = safe_results[safe_key]
+            elif not model_patch:
+                results[key] = {**_FAIL, "error": "empty_patch"}
+            else:
+                tail = (proc.stderr or proc.stdout or "")[-800:]
+                results[key] = {**_FAIL, "error": f"no report.json (rc={proc.returncode}). {tail}"}
 
         return results
 

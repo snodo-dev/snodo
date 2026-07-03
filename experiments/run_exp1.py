@@ -392,10 +392,9 @@ def _run_one_task(
 
     for (arm, trial_id, arm_result) in pending:
         model_name = f"exp1-{arm}-{instance_id}-t{trial_id}"
-        safe_name = model_name.replace("/", "__")
         score_result = batch_results.get(
-            (instance_id, safe_name),
-            batch_results.get((instance_id, model_name), {"resolved": False, "n_fail_to_pass_passed": 0, "regressions": 0, "error": "missing_from_batch"}),
+            (instance_id, model_name),
+            {"resolved": False, "n_fail_to_pass_passed": 0, "regressions": 0, "error": "missing_from_batch"},
         )
         row = _make_result_row(instance_id, arm, trial_id, run_id, config, arm_result, score_result)
         rows.append(row)
