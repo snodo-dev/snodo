@@ -494,6 +494,22 @@ class TestBatchScoring:
         assert key in results
         assert results[key]["resolved"] is True
 
+    def test_same_instance_different_model_names_both_scored(self):
+        """Two predictions for the SAME instance_id with DIFFERENT model_names
+        must BOTH be evaluated (regression: swebench dedupes by instance_id)."""
+        # MockScorer doesn't dedupe — this tests the contract.
+        scorer = MockScorer()
+        instance = {"instance_id": "sympy-13372", "gold_patch": "real-fix"}
+        results = scorer.score_batch([
+            (instance, "patch-arm-a", "exp1-a-sympy-13372-t1"),
+            (instance, "patch-arm-b", "exp1-b-sympy-13372-t1"),
+        ])
+        assert ("sympy-13372", "exp1-a-sympy-13372-t1") in results
+        assert ("sympy-13372", "exp1-b-sympy-13372-t1") in results
+        # Both entries exist with correct keys — the bug was one being dropped
+        assert results[("sympy-13372", "exp1-a-sympy-13372-t1")]["resolved"] is False
+        assert results[("sympy-13372", "exp1-b-sympy-13372-t1")]["resolved"] is False
+
 
 # ---------------------------------------------------------------------------
 # Gold cache tests
