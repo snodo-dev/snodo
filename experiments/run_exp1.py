@@ -23,7 +23,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from experiments.arms.arm_a_opencode import MockArmA
 from experiments.arms.arm_a_opencode import run as run_arm_a
@@ -33,7 +33,7 @@ from experiments.arms.arm_c_snodo import MockArmC
 from experiments.arms.arm_c_snodo import run as run_arm_c
 from experiments.arms.prose import protocol_to_prose
 from experiments.config import load_config, write_snapshot
-from experiments.scoring import RealScorer, MockScorer, make_scorer
+from experiments.scoring import RealScorer
 from experiments.workspace import MockWorkspace, setup_instance_workspace, teardown
 
 _HERE = Path(__file__).resolve().parent
@@ -350,7 +350,7 @@ def _run_one_task(
             return json.dumps([exclusion_row])
 
     # --- Dispatch all (arm, trial) cells ---
-    from experiments.workspace import MockWorkspace, teardown
+    from experiments.workspace import teardown
     ws_manager = MockWorkspace() if mock else None
 
     pending: list = []

@@ -86,6 +86,7 @@ snodo = ["py.typed"]
 # Run only e2e:       pytest -m e2e
 # CI always runs the full suite regardless of addopts.
 addopts = "-m 'not e2e'"
+
 markers = [
     "e2e: end-to-end tests using subprocess invocation of the snodo CLI",
     "slow: tests that take more than a second to complete",

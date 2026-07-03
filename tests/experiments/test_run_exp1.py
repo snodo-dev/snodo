@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -536,16 +537,18 @@ class TestParallelDispatch:
     """ProcessPoolExecutor dispatch and _run_one_cell work correctly."""
 
     def test_run_one_cell_returns_serialized_result(self):
-        """_run_one_cell returns a JSON-encoded dict with expected keys."""
+        """_run_one_cell returns a JSON-encoded dict with expected keys (no network)."""
         from experiments.run_exp1 import _run_one_cell
-        result_json = _run_one_cell(
-            json.dumps({"instance_id": "t1", "repo": "test/repo", "base_commit": "HEAD", "hints": ""}),
-            "z", 1, json.dumps({"models": {"reference": "test"}, "sampling": {"temperature": 0.0}}),
-            "run-test", "",
-        )
+        with patch("experiments.run_exp1.setup_instance_workspace",
+                    side_effect=Exception("mocked failure")):
+            result_json = _run_one_cell(
+                json.dumps({"instance_id": "t1", "repo": "test/repo", "base_commit": "HEAD", "hints": ""}),
+                "z", 1, json.dumps({"models": {"reference": "test"}, "sampling": {"temperature": 0.0}}),
+                "run-test", "",
+            )
         result = json.loads(result_json)
-        # Always has expected keys (either error from workspace_setup or dispatch)
-        assert "error" in result
+        # Always has expected keys (error from workspace_setup)
+        assert result["error"] is not None
         assert "patch" in result
         assert "wall_s" in result
         assert "closure_json" in result
@@ -672,12 +675,12 @@ class TestConfigSnapshot:
 
 class TestWorkspaceCache:
     def test_cleanup_cache_clears(self):
-        from experiments.workspace import cleanup_cache, _CACHE, _CACHE_DIR
+        import experiments.workspace as ws
         # Prime the cache with a sentinel
-        _CACHE[("test/repo", "abc123")] = "/tmp/sentinel"
-        cleanup_cache()
-        assert len(_CACHE) == 0
-        assert _CACHE_DIR is None
+        ws._CACHE[("test/repo", "abc123")] = "/tmp/sentinel"
+        ws.cleanup_cache()
+        assert len(ws._CACHE) == 0
+        assert ws._CACHE_DIR is None
 
     def test_cache_key_creation(self):
         """Verify the cache key format used by _get_cached."""

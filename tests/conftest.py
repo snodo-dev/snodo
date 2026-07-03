@@ -46,8 +46,11 @@ def isolate_snodo_home(monkeypatch):
 
     Sets SNODO_HOME to a unique temp directory per test session
     so that resolve_home() never falls back to the real home dir.
+    Also sets GIT_TERMINAL_PROMPT=0 so no test hangs on a git
+    credential prompt (offline safety net).
     The fixture cleans up after itself.
     """
+    monkeypatch.setenv("GIT_TERMINAL_PROMPT", "0")
     home = tempfile.mkdtemp(prefix="snodo_test_")
     monkeypatch.setenv("SNODO_HOME", home)
     yield
