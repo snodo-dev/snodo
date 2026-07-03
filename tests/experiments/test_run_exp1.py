@@ -453,6 +453,46 @@ class TestBatchScoring:
         assert key in results
         assert results[key]["resolved"] is False
 
+    def test_identical_patches_get_same_result(self):
+        """Two arms with the same patch for the same instance get the SAME result."""
+        scorer = MockScorer()
+        instance = {"instance_id": "sympy-13372", "gold_patch": "real-fix"}
+        same_patch = "identical-patch-765"
+        results = scorer.score_batch([
+            (instance, same_patch, "exp1-a-sympy-13372-t1"),
+            (instance, same_patch, "exp1-b-sympy-13372-t1"),
+        ])
+        key_a = ("sympy-13372", "exp1-a-sympy-13372-t1")
+        key_b = ("sympy-13372", "exp1-b-sympy-13372-t1")
+        assert key_a in results
+        assert key_b in results
+        assert results[key_a]["resolved"] == results[key_b]["resolved"]
+        assert results[key_a]["regressions"] == results[key_b]["regressions"]
+
+    def test_distinct_patches_independent_results(self):
+        """Two arms with different patches get correct (different) results."""
+        scorer = MockScorer()
+        instance = {"instance_id": "sympy-13372", "gold_patch": "real-fix"}
+        results = scorer.score_batch([
+            (instance, "real-fix", "exp1-a-sympy-13372-t1"),   # gold → resolved
+            (instance, "wrong-fix", "exp1-b-sympy-13372-t1"),  # not gold → not resolved
+        ])
+        assert results[("sympy-13372", "exp1-a-sympy-13372-t1")]["resolved"] is True
+        assert results[("sympy-13372", "exp1-b-sympy-13372-t1")]["resolved"] is False
+
+    def test_results_keyed_by_original_model_name(self):
+        """Return keys use original model_name (not sanitized copy)."""
+        scorer = MockScorer()
+        instance = {"instance_id": "t1", "gold_patch": "patch"}
+        model_name = "provider/model-name/v4"
+        results = scorer.score_batch([
+            (instance, "patch", model_name),
+        ])
+        # Key should be (instance_id, original_model_name with /), not sanitized
+        key = ("t1", model_name)
+        assert key in results
+        assert results[key]["resolved"] is True
+
 
 # ---------------------------------------------------------------------------
 # Gold cache tests

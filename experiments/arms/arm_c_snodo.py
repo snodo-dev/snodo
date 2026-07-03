@@ -10,6 +10,7 @@ snodo may create task/* branches that need removal.
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import tempfile
@@ -159,6 +160,12 @@ def run(
         patch = extract_patch(workspace)
 
         closure_json = _closure_to_dict(closure_tree)
+
+        # Cloud sync: push arm-c's audit events to snodo cloud
+        # Reads credentials from the snodo temp config; honors the experiment
+        # config's cloud.sync + cloud.target to decide whether/how to sync.
+        _do_cloud_sync(config, run_id, task, trial_id, project_root, audit_log)
+
         return _result(patch, wall_s, None, None, closure_json)
     finally:
         # Restore SNODO_HOME
@@ -199,6 +206,60 @@ def cleanup_branches(instance_id: str, run_id: str, project_root: Optional[str] 
                 cwd=root,
                 capture_output=True,
             )
+
+
+def _do_cloud_sync(
+    config: dict,
+    run_id: str,
+    task: dict,
+    trial_id: int,
+    project_root: str,
+    audit_log: Any,
+) -> None:
+    """Sync arm-c's audit events to snodo cloud (blocking, never raises).
+
+    Called inside the ProcessPool worker — blocks until the sync completes
+    so events aren't lost when the worker exits.
+    """
+    try:
+        cloud_cfg = config.get("cloud", {})
+        if not cloud_cfg.get("sync", False):
+            return
+
+        target = cloud_cfg.get("target", "staging")
+        if target == "off":
+            return
+
+        # Load credentials from the snodo temp config (set up in run())
+        from snodo.config import ConfigManager as _CM
+        snodo_cfg = _CM().load()
+        snodo_cloud = snodo_cfg.get("cloud", {})
+        api_key = snodo_cloud.get("api_key", "")
+        api_url = snodo_cloud.get("api_url", "")
+
+        if not api_key or not api_url:
+            _logger = logging.getLogger(__name__)
+            _logger.warning("Cloud sync skipped: no api_key or api_url in snodo config")
+            return
+
+        session_id = f"exp1-arm-c-{task.get('instance_id', '?')}-{run_id}-t{trial_id}"
+
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
+        result = CloudSyncDispatcher().sync(
+            session_id=session_id,
+            project_root=project_root,
+            audit_log=audit_log,
+            api_key=api_key,
+            api_url=api_url,
+        )
+        _logger = logging.getLogger(__name__)
+        _logger.debug(
+            "Cloud sync for %s: synced=%d, failed=%s",
+            session_id, result.get("synced", 0), result.get("failed", False),
+        )
+    except Exception as exc:
+        _logger = logging.getLogger(__name__)
+        _logger.warning("Cloud sync error (non-fatal): %s", exc)
 
 
 def _closure_to_dict(node: ClosureNode) -> dict:
