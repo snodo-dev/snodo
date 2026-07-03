@@ -33,7 +33,7 @@ from experiments.arms.arm_c_snodo import MockArmC
 from experiments.arms.arm_c_snodo import run as run_arm_c
 from experiments.arms.prose import protocol_to_prose
 from experiments.config import load_config, write_snapshot
-from experiments.scoring import RealScorer
+from experiments.scoring import MockScorer, RealScorer, score_predictions_batch
 from experiments.workspace import MockWorkspace, setup_instance_workspace, teardown
 
 _HERE = Path(__file__).resolve().parent
@@ -304,25 +304,26 @@ def _run_one_task(
 ) -> str:
     """Run the complete per-task workflow in a worker subprocess.
 
-    Positive control -> dispatch all (arm, trial) cells (serial within task) ->
-    batch score all predictions.  Returns a JSON list of result rows.
+    Positive control -> dispatch all (arm, trial) cells (serial within task).
+    Returns a JSON list of cell records WITHOUT scores — scoring happens
+    later OUTSIDE the worker, grouped by arm to avoid swebench's
+    per-instance_id deduplication.
 
-    In mock mode (no process pool), *scorer_override* (e.g. a MockScorer) can
-    be passed for test gold-scoring.  In real mode scoring runs via the
-    swebench harness inside the worker so image pulls overlap across tasks.
+    Each cell record: ``{inst_id, arm, trial_id, model_name, patch, ...}``.
+    Excluded tasks return a single record with ``arm="positive_control"`` and
+    an ``exclusion_reason``.
     """
     import time as _time
 
     task = json.loads(task_json)
     config = json.loads(config_json)
-    instance_id = task.get("instance_id", "?")
-    rows: list = []
+    inst_id = task.get("instance_id", "?")
+    records: list = []
 
     # --- Positive control ---
     gold_patch = task.get("gold_patch") or task.get("patch", "")
     if gold_patch:
         if mock:
-            # Mock mode: use the injected scorer (or a default MockScorer)
             from experiments.scoring import MockScorer as _MockScorer
             _scorer = scorer_override if scorer_override is not None else _MockScorer()
             gold_result = _scorer.score(task, gold_patch, "gold-baseline")
@@ -341,19 +342,17 @@ def _run_one_task(
                 gold_error = gold_result.get("error")
 
         if not gold_ok:
-            exclusion_row = _make_result_row(
-                instance_id, "positive_control", 0, run_id, config,
-                {"patch": gold_patch, "wall_s": 0.0, "cost_usd": None, "error": None},
-                {"resolved": False},
-                exclusion_reason="harness_broken" if not gold_error else f"harness_broken: {gold_error}",
-            )
-            return json.dumps([exclusion_row])
+            return json.dumps([{
+                "inst_id": inst_id, "arm": "positive_control", "trial_id": 0,
+                "model_name": "", "patch": gold_patch,
+                "wall_s": 0.0, "cost_usd": None, "closure_json": None, "error": None,
+                "exclusion_reason": "harness_broken" if not gold_error else f"harness_broken: {gold_error}",
+            }])
 
     # --- Dispatch all (arm, trial) cells ---
     from experiments.workspace import teardown
     ws_manager = MockWorkspace() if mock else None
 
-    pending: list = []
     for arm in arms:
         for trial_id in range(1, config["sampling"]["k_trials"] + 1):
             if mock:
@@ -361,45 +360,40 @@ def _run_one_task(
                 try:
                     workspace = ws_manager.setup(task)
                 except Exception as exc:
-                    pending.append((arm, trial_id, {"patch": "", "wall_s": _time.monotonic() - start, "cost_usd": None, "closure_json": None, "error": f"workspace_setup_failed: {exc}"}))
+                    records.append({
+                        "inst_id": inst_id, "arm": arm, "trial_id": trial_id,
+                        "model_name": f"exp1-{arm}-{inst_id}-t{trial_id}",
+                        "patch": "", "wall_s": _time.monotonic() - start,
+                        "cost_usd": None, "closure_json": None,
+                        "error": f"workspace_setup_failed: {exc}",
+                    })
                     continue
                 try:
                     result = _dispatch_arm(arm, task, config, run_id, trial_id, prose=prose, protocol=None, workspace=workspace, mock=True)
                 finally:
                     teardown(workspace)
-                pending.append((arm, trial_id, result))
+                records.append({
+                    "inst_id": inst_id, "arm": arm, "trial_id": trial_id,
+                    "model_name": f"exp1-{arm}-{inst_id}-t{trial_id}",
+                    "patch": result.get("patch", ""),
+                    "wall_s": result.get("wall_s", 0.0),
+                    "cost_usd": result.get("cost_usd"),
+                    "closure_json": result.get("closure_json"),
+                    "error": result.get("error"),
+                })
             else:
-                cell_json = _run_one_cell(task_json, arm, trial_id, config_json, run_id, prose)
-                cell = json.loads(cell_json)
-                pending.append((arm, trial_id, cell))
+                cell = json.loads(_run_one_cell(task_json, arm, trial_id, config_json, run_id, prose))
+                records.append({
+                    "inst_id": inst_id, "arm": arm, "trial_id": trial_id,
+                    "model_name": f"exp1-{arm}-{inst_id}-t{trial_id}",
+                    "patch": cell.get("patch", ""),
+                    "wall_s": cell.get("wall_s", 0.0),
+                    "cost_usd": cell.get("cost_usd"),
+                    "closure_json": cell.get("closure_json"),
+                    "error": cell.get("error"),
+                })
 
-    # --- Batch score all predictions ---
-    from experiments.scoring import score_predictions_batch
-    max_workers = config.get("bounds", {}).get("scoring", {}).get("max_workers", 1)
-    ns = config.get("bounds", {}).get("scoring", {}).get("namespace", "swebench")
-    cl = config.get("bounds", {}).get("scoring", {}).get("cache_level", "instance")
-    batch_input = [
-        (task, r.get("patch", ""), f"exp1-{arm}-{instance_id}-t{tid}")
-        for arm, tid, r in pending
-    ]
-
-    if mock:
-        from experiments.scoring import MockScorer as _MockScorer
-        _batch_scorer = scorer_override if scorer_override is not None else _MockScorer()
-        batch_results = _batch_scorer.score_batch(batch_input)
-    else:
-        batch_results = score_predictions_batch(batch_input, max_workers=max_workers, namespace=ns, cache_level=cl)
-
-    for (arm, trial_id, arm_result) in pending:
-        model_name = f"exp1-{arm}-{instance_id}-t{trial_id}"
-        score_result = batch_results.get(
-            (instance_id, model_name),
-            {"resolved": False, "n_fail_to_pass_passed": 0, "regressions": 0, "error": "missing_from_batch"},
-        )
-        row = _make_result_row(instance_id, arm, trial_id, run_id, config, arm_result, score_result)
-        rows.append(row)
-
-    return json.dumps(rows)
+    return json.dumps(records)
 
 
 # ---------------------------------------------------------------------------
@@ -491,17 +485,16 @@ def run_exp1(
 
     tasks_to_run = [t for t in tasks if force or not _all_cells_completed(t.get("instance_id", "?"))]
 
+    # Phase 1: collect all cell records from all tasks
+    all_cells: List[dict] = []
+
     if mock:
-        # Serial mock mode (in-process, no pool overhead for fast mocks)
         for task in tasks_to_run:
             task_json = json.dumps(task)
             config_json = json.dumps(config)
-            task_rows = json.loads(_run_one_task(task_json, config_json, run_id, arms, prose, True, scorer_override=scorer_override))
-            for row in task_rows:
-                rows_written.append(row)
-                _write_results_row(results_path, row)
+            records = json.loads(_run_one_task(task_json, config_json, run_id, arms, prose, True, scorer_override=scorer_override))
+            all_cells.extend(records)
     else:
-        # Real mode: concurrent tasks via process pool
         max_parallel = config.get("bounds", {}).get("dispatch", {}).get("max_parallel", 4)
         n_workers = min(max_parallel, len(tasks_to_run)) if tasks_to_run else 1
         config_json = json.dumps(config)
@@ -511,37 +504,82 @@ def run_exp1(
                 pool.submit(_run_one_task, json.dumps(task), config_json, run_id, arms, prose, False): idx
                 for idx, task in enumerate(tasks_to_run)
             }
-
             for future in as_completed(futures):
                 idx = futures[future]
-                task = tasks_to_run[idx]
                 try:
-                    task_rows = json.loads(future.result())
+                    all_cells.extend(json.loads(future.result()))
                 except Exception as exc:
-                    task_rows = [{
-                        "instance_id": task.get("instance_id", "?"),
-                        "arm": "error",
-                        "trial_id": 0,
-                        "run_id": run_id,
-                        "base_model": config["models"]["reference"],
-                        "temperature": config["sampling"]["temperature"],
-                        "model_name_or_path": "",
-                        "resolved": False,
-                        "n_fail_to_pass_passed": 0,
-                        "regressions": 0,
-                        "wall_s": 0.0,
-                        "cost_usd": None,
+                    task = tasks_to_run[idx]
+                    all_cells.append({
+                        "inst_id": task.get("instance_id", "?"),
+                        "arm": "error", "trial_id": 0, "model_name": "",
+                        "patch": "", "wall_s": 0.0, "cost_usd": None,
                         "closure_json": None,
-                        "patch_len": 0,
-                        "patch_preview": "",
-                        "exclusion_reason": None,
                         "error": f"task worker failed: {exc}",
-                        "data": {"experiment": "exp1", "run_id": run_id},
-                    }]
+                    })
 
-                for row in task_rows:
-                    rows_written.append(row)
-                    _write_results_row(results_path, row)
+    # Phase 2: write exclusion rows immediately (positive_control / worker errors)
+    max_workers = config.get("bounds", {}).get("scoring", {}).get("max_workers", 1)
+    ns = config.get("bounds", {}).get("scoring", {}).get("namespace", "swebench")
+    cl = config.get("bounds", {}).get("scoring", {}).get("cache_level", "instance")
+
+    excluded = [c for c in all_cells if c.get("arm") == "positive_control" or c.get("arm") == "error"]
+    to_score = [c for c in all_cells if c.get("arm") not in ("positive_control", "error")]
+
+    for rec in excluded:
+        row = _make_result_row(
+            rec["inst_id"], rec["arm"], rec["trial_id"], run_id, config,
+            {"patch": rec.get("patch", ""), "wall_s": rec.get("wall_s", 0.0),
+             "cost_usd": rec.get("cost_usd"), "closure_json": rec.get("closure_json"),
+             "error": rec.get("error")},
+            {"resolved": False},
+            exclusion_reason=rec.get("exclusion_reason"),
+        )
+        rows_written.append(row)
+        _write_results_row(results_path, row)
+
+    # Phase 3: score by arm (one harness call per arm — no instance_id collision)
+    if to_score:
+        for a in arms:
+            arm_cells = [c for c in to_score if c["arm"] == a]
+            if not arm_cells:
+                continue
+
+            # Build a dict mapping instance_id -> task dict for score_predictions_batch
+            inst_map: Dict[str, dict] = {}
+            for t in tasks:
+                iid = t.get("instance_id", "")
+                if iid:
+                    inst_map[iid] = t
+
+            batch_input = [
+                (inst_map.get(c["inst_id"], {"instance_id": c["inst_id"]}),
+                 c.get("patch", ""), c["model_name"])
+                for c in arm_cells
+            ]
+
+            if mock:
+                _batch_scorer = scorer_override if scorer_override is not None else MockScorer()
+                batch_results = _batch_scorer.score_batch(batch_input)
+            else:
+                batch_results = score_predictions_batch(
+                    batch_input, max_workers=max_workers, namespace=ns, cache_level=cl,
+                )
+
+            for c in arm_cells:
+                score_result = batch_results.get(
+                    (c["inst_id"], c["model_name"]),
+                    {"resolved": False, "n_fail_to_pass_passed": 0, "regressions": 0, "error": "missing_from_batch"},
+                )
+                row = _make_result_row(
+                    c["inst_id"], c["arm"], c["trial_id"], run_id, config,
+                    {"patch": c.get("patch", ""), "wall_s": c.get("wall_s", 0.0),
+                     "cost_usd": c.get("cost_usd"), "closure_json": c.get("closure_json"),
+                     "error": c.get("error")},
+                    score_result,
+                )
+                rows_written.append(row)
+                _write_results_row(results_path, row)
 
     # Snapshot config for provenance
     snapshot_cfg = deepcopy(config)
