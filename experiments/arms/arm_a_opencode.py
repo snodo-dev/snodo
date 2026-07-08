@@ -56,7 +56,7 @@ def run(
             cwd=str(workspace.path),
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=1800,
         )
         wall_s = time.monotonic() - start
 

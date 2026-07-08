@@ -21,7 +21,7 @@ import argparse
 import json
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -40,6 +40,27 @@ _HERE = Path(__file__).resolve().parent
 _DEFAULT_SELECTION = _HERE / "tasks" / "selection.jsonl"
 _DEFAULT_RESULTS = _HERE / "results" / "exp1"
 _ARMS = ["a", "b", "c"]
+
+
+def _quiet_litellm() -> None:
+    """Silence litellm's chatty banners/info logs. Safe if litellm absent.
+
+    Called at module import (main process) AND inside each ProcessPool worker,
+    since workers are fresh interpreters that re-import litellm.
+    """
+    import logging as _lg
+    for _name in ("LiteLLM", "litellm", "httpx", "httpcore"):
+        _lg.getLogger(_name).setLevel(_lg.ERROR)
+    try:
+        import litellm as _ll
+        _ll.suppress_debug_info = True
+        _ll.set_verbose = False
+        _ll.telemetry = False
+    except Exception:
+        pass
+
+
+_quiet_litellm()
 
 # ---------------------------------------------------------------------------
 # Protocol loader (shared by parity gate + process-pool workers)
@@ -182,6 +203,7 @@ def _make_result_row(
         "closure_json": arm_result.get("closure_json"),
         "patch_len": len(arm_result.get("patch") or ""),
         "patch_preview": (arm_result.get("patch") or "")[:400],
+        "patch": arm_result.get("patch") or "",
         "exclusion_reason": exclusion_reason,
         "error": arm_result.get("error"),
         "data": {
@@ -313,6 +335,7 @@ def _run_one_task(
     Excluded tasks return a single record with ``arm="positive_control"`` and
     an ``exclusion_reason``.
     """
+    _quiet_litellm()  # worker is a fresh interpreter; re-suppress litellm here
     import time as _time
 
     task = json.loads(task_json)
@@ -499,6 +522,11 @@ def run_exp1(
         n_workers = min(max_parallel, len(tasks_to_run)) if tasks_to_run else 1
         config_json = json.dumps(config)
 
+        import time as _time
+        _t0 = _time.monotonic()
+        _total = len(tasks_to_run)
+        _done = 0
+
         with ProcessPoolExecutor(max_workers=n_workers) as pool:
             futures = {
                 pool.submit(_run_one_task, json.dumps(task), config_json, run_id, arms, prose, False): idx
@@ -506,10 +534,10 @@ def run_exp1(
             }
             for future in as_completed(futures):
                 idx = futures[future]
+                task = tasks_to_run[idx]
                 try:
                     all_cells.extend(json.loads(future.result()))
                 except Exception as exc:
-                    task = tasks_to_run[idx]
                     all_cells.append({
                         "inst_id": task.get("instance_id", "?"),
                         "arm": "error", "trial_id": 0, "model_name": "",
@@ -517,6 +545,19 @@ def run_exp1(
                         "closure_json": None,
                         "error": f"task worker failed: {exc}",
                     })
+                # --- progress + ETA (dispatch phase; scoring runs after) ---
+                _done += 1
+                _elapsed = _time.monotonic() - _t0
+                _rate = _elapsed / _done
+                _eta = timedelta(seconds=int(_rate * (_total - _done)))
+                _finish = (datetime.now() + _eta).strftime("%H:%M:%S")
+                print(
+                    f"--> task done {_done}/{_total} "
+                    f"[{task.get('instance_id','?')}] "
+                    f"{datetime.now().strftime('%H:%M:%S')} "
+                    f"| ETA {_eta} (~{_finish})",
+                    flush=True,
+                )
 
     # Phase 2: write exclusion rows immediately (positive_control / worker errors)
     max_workers = config.get("bounds", {}).get("scoring", {}).get("max_workers", 1)
@@ -636,6 +677,8 @@ def main() -> None:
     cli_overrides = args.overrides if args.overrides else None
     config = load_config(cli_overrides=cli_overrides)
 
+    import time as _time
+    _start = _time.monotonic()
     rows = run_exp1(
         config=config,
         force=args.force,
@@ -644,11 +687,15 @@ def main() -> None:
         limit=args.limit,
         instance_id=args.instance_id,
     )
+    _elapsed = _time.monotonic() - _start
 
     summary = _summarize(rows)
     print(f"\nEXP1 complete — {len(rows)} result rows")
     for line in summary:
         print(line)
+    _h, _rem = divmod(int(_elapsed), 3600)
+    _m, _s = divmod(_rem, 60)
+    print(f"Wall time:  {_h}h{_m:02d}m{_s:02d}s ({_elapsed:.0f}s)")
 
 
 def _summarize(rows: List[dict]) -> List[str]:

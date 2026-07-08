@@ -45,6 +45,20 @@ def get_instance(instance_id: str, selection_path: Path) -> Optional[dict]:
 
 _FAIL = {"resolved": False, "n_fail_to_pass_passed": 0, "regressions": 0}
 
+# Frozen local copy of the SWE-bench records for our selection. swebench's
+# HF loader re-fetches the dataset on every call and its `datasets` cache can
+# go stale, intermittently raising "Some instance IDs not found in dataset!"
+# mid-run. Passing a local .jsonl to --dataset_name bypasses HF entirely and
+# is deterministic. Generated once from the HF dataset (see README/task docs).
+_LOCAL_DATASET = Path(__file__).parent / "tasks" / "swebench_local.jsonl"
+
+
+def _resolve_dataset(dataset_name: str) -> str:
+    """Prefer the frozen local dataset file over the flaky HF loader."""
+    if dataset_name.startswith("princeton-nlp/") and _LOCAL_DATASET.exists():
+        return str(_LOCAL_DATASET)
+    return dataset_name
+
 
 def _parse_report(report: Path, iid: str) -> dict:
     """Parse a swebench report.json and return the result dict."""
@@ -129,17 +143,23 @@ def score_predictions_batch(
         # so we can look up results by the original name the caller used.
         safe_map: dict[tuple[str, str], str] = {}
 
+        # swebench is built for ONE model_name_or_path per predictions file
+        # (its summary report is named after a single model). Feeding it a
+        # distinct model_name per line makes it warn "Missing predictions" and
+        # skip instances. Instances within a batch are already unique by
+        # instance_id, so we write every prediction under ONE constant model
+        # dir and map results back to the caller's model_name by instance_id.
+        batch_model = "batch"
         lines = []
         for instance, model_patch, model_name in instances:
             if not model_patch:
                 continue
             iid = instance["instance_id"]
             instance_ids.add(iid)
-            safe = model_name.replace("/", "__")
-            safe_map[(iid, model_name)] = safe
+            safe_map[(iid, model_name)] = batch_model
             lines.append(json.dumps({
                 "instance_id": iid,
-                "model_name_or_path": safe,
+                "model_name_or_path": batch_model,
                 "model_patch": model_patch,
             }))
 
@@ -148,12 +168,17 @@ def score_predictions_batch(
 
         preds_path.write_text("\n".join(lines) + "\n")
 
-        iid_arg = ",".join(sorted(instance_ids))
+        # swebench's --instance_ids is space-separated (nargs="+"). Passing a
+        # single comma-joined string makes it treat the whole string as ONE
+        # instance_id, which is never in the dataset -> "Some instance IDs not
+        # found" -> rc=1 -> no reports -> every arm scores 0. Spread the ids as
+        # separate argv tokens. (Single-instance batches happened to work only
+        # because one id has no comma.)
         cmd = [
             sys.executable, "-m", "swebench.harness.run_evaluation",
-            "--dataset_name", dataset_name,
+            "--dataset_name", _resolve_dataset(dataset_name),
             "--predictions_path", str(preds_path),
-            "--instance_ids", iid_arg,
+            "--instance_ids", *sorted(instance_ids),
             "--max_workers", str(max_workers),
             "--run_id", run_id,
             "--namespace", namespace,

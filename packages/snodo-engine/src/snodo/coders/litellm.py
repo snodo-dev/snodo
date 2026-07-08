@@ -28,6 +28,7 @@ from snodo.infrastructure.usage_tracker import UsageTracker
 
 import litellm as _litellm
 _litellm.drop_params = True
+_litellm.suppress_debug_info = True
 
 # Retry transient errors (5xx, 429, connection) with exponential backoff
 try:
@@ -39,6 +40,9 @@ except Exception:
 if not getattr(_litellm, "success_callback", None):
     _litellm.success_callback = []
 _litellm.success_callback.append(UsageTracker())
+
+import logging as _logging
+_logging.getLogger("LiteLLM").setLevel(_logging.WARNING)
 
 # CF models absent from models.dev catalog — price via register_model.
 _litellm.register_model({
