@@ -134,14 +134,15 @@ def _get_cached(repo: str, base_commit: str, clone_url: str) -> Path:
 def _do_shallow_fetch(dest: Path, clone_url: str, base_commit: str) -> None:
     """Shallow fetch of a single commit into an empty git repo."""
     dest.mkdir(parents=True, exist_ok=True)  # git init needs cwd to exist
-    _run(["git", "init"], cwd=dest)
+    _run(["git", "init", "-q"], cwd=dest)
+    _run(["git", "config", "advice.detachedHead", "false"], cwd=dest)
     _run(["git", "remote", "add", "origin", clone_url], cwd=dest)
     _run(
-        ["git", "fetch", "--depth", "1", "origin", base_commit],
+        ["git", "fetch", "-q", "--depth", "1", "origin", base_commit],
         cwd=dest,
         timeout=120,
     )
-    _run(["git", "checkout", "FETCH_HEAD"], cwd=dest, timeout=30)
+    _run(["git", "checkout", "-q", "FETCH_HEAD"], cwd=dest, timeout=30)
     # Tag the base_commit so extract_patch's diff --cached <base_commit> works
     _run(["git", "tag", "-f", base_commit, "FETCH_HEAD"], cwd=dest, timeout=10)
 
