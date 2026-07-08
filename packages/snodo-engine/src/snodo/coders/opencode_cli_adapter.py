@@ -20,7 +20,7 @@ from snodo.coders.base import CoderAdapter, LLMCallError
 
 _logger = logging.getLogger(__name__)
 
-_OPENCODE_TIMEOUT = 600  # 10 minutes
+_OPENCODE_TIMEOUT = 1800  # 30 minutes (big repos e.g. django/matplotlib need >10m)
 
 
 class OpenCodeCLIAdapter(CoderAdapter):

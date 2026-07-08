@@ -53,7 +53,7 @@ def _snodo_config_with_model(experiment_model: str) -> Path:
         "engine": {
             "max_subtask_depth": 3,
             "max_session_age_days": 30,
-            "token_ttl_seconds": 600,
+            "token_ttl_seconds": 3600,  # coder may run up to 30m; keep token valid across it
         },
         "llm": {
             "validator": {"model": experiment_model},

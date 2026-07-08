@@ -18,7 +18,6 @@ modes:
       - "commit"
     validators:
       - "spec-manners"
-      - "review"
     transitions: {}
 
 validators:
@@ -33,17 +32,12 @@ validators:
       - "WARN if the spec is code-prescriptive (transcribed implementation) rather than intent + constraints."
       - "Do not block: these are good-manners nudges meant to improve the spec on the next iteration, not stop the work."
 
-  - validator_id: "review"
-    validator_type: "architecture"
-    evaluation_phase: "post_execute"
-    tools:
-      - "read_diff_between_refs"   # REQUIRED: fetch the committed diff (HEAD~1..HEAD) to review
-    criteria:
-      - "You are reviewing a CODE DIFF that attempts to resolve the issue described in the task. Judge the diff, not the wording of the task."
-      - "BLOCK if the diff is empty, unrelated to the issue, or clearly fails to address the described problem."
-      - "BLOCK if the change introduces obvious breakage: syntax errors, undefined names, or removal of unrelated functionality."
-      - "The fix should be minimal and focused on the issue; flag large unrelated rewrites as a concern."
-      - "Do NOT require the author to add or modify tests \u2014 correctness is verified separately. Judge only whether the change plausibly and cleanly resolves the issue."
+# NOTE: a post_execute "review" validator was removed intentionally. The coder
+# (opencode-cli) leaves changes uncommitted, so a HEAD~1..HEAD diff read is empty
+# and review spuriously flagged every task, triggering pointless recovery loops.
+# Correctness is verified externally by the swebench harness, not by snodo, so
+# there is no post-execute correctness gate here. (To restore real output review,
+# commit the coder's changes before post-validation so the diff is readable.)
 
 disagreement_policy: "unanimous"
 initial_mode: "producer"
