@@ -108,7 +108,49 @@ class OpenCodeCLIAdapter(CoderAdapter):
                 "(rc=0). output tail: %s", tail,
             )
 
+        # Commit the coder's changes so post-execute validators that read the
+        # committed diff (read_diff_between_refs -> HEAD~1..HEAD) can actually
+        # SEE the fix. opencode writes files in place and never commits; without
+        # this the committed diff is empty and any post-execute reviewer is
+        # blind (this is what silently neutered arm-c review in EXP1).
+        self._commit_changes(diff_entries)
+
         return self._diff_to_artifact(diff_entries)
+
+    def _commit_changes(self, diff_entries: list) -> None:
+        """Stage + commit the working-tree changes with an explicit identity.
+
+        The SWE-bench workspace is a detached checkout with no configured git
+        user, so we pass identity via ``-c``. Non-fatal on failure — extraction
+        still reads the working tree — but the post-execute diff would be empty.
+        """
+        if not diff_entries:
+            return
+        root = str(self._workspace)
+        try:
+            subprocess.run(
+                ["git", "add", "-A", "--",
+                 ".", ":(exclude).snodo", ":(exclude).snodo/**",
+                 # keep coder-created virtualenvs / caches / build junk out of
+                 # the committed diff (else review + extract_patch see MBs of it)
+                 ":(exclude,glob)**/venv/**", ":(exclude,glob)**/.venv/**",
+                 ":(exclude,glob)**/.venv_test/**", ":(exclude,glob)**/env/**",
+                 ":(exclude,glob)**/__pycache__/**", ":(exclude,glob)**/*.egg-info/**",
+                 ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.tox/**",
+                 ":(exclude,glob)**/.pytest_cache/**", ":(exclude,glob)**/.mypy_cache/**"],
+                cwd=root, capture_output=True, text=True, timeout=60, check=True,
+            )
+            subprocess.run(
+                ["git",
+                 "-c", "user.email=coder@snodo.exp",
+                 "-c", "user.name=snodo-coder",
+                 "commit", "-q", "-m", "coder: apply changes"],
+                cwd=root, capture_output=True, text=True, timeout=60, check=True,
+            )
+        except Exception as exc:
+            _logger.warning(
+                "coder commit failed (post-validation diff may be empty): %s", exc
+            )
 
     def _read_changes_from_disk(self) -> list:
         """Detect changed files via git in the workspace.
