@@ -8,6 +8,12 @@ coverage-output.txt
 htmlcov/
 .orchestrator/
 
+results/**/runs/        # per-run arm-c audit logs (large)
+results/**/*.pre-fix*.jsonl
+*.log
+tmp/
+
+
 # Build artifacts
 build/
 dist/

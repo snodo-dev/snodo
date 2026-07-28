@@ -1,0 +1,75 @@
+# Bug-Fix "Surgeon" Protocol — EXP1b hypothesis #1 (soft minimality)
+#
+# WHY: EXP1 showed the `intent` protocol HURT single-shot bug fixes. Mechanism:
+# spec-authoring induces over-elaboration — arm-c wrote larger patches (median
+# 1523 vs 909/1031), and larger patches resolve LESS (resolved-median ~1000,
+# failed-median ~2050). So this protocol inverts snodo's bias:
+#   * NO spec-authoring — the raw issue + failing test go straight to the coder.
+#   * Enforcement points at MINIMALITY, not structure: a post-execute reviewer
+#     rejects sprawling / out-of-scope diffs, and K-recovery re-runs the coder
+#     for a TIGHTER fix (validate-and-recover aimed at localization).
+#
+# ENGINE DEPENDENCIES (must be satisfied by the EXP1b harness — not by EXP1's):
+#   1. Post-execute diff visibility. opencode-cli leaves changes UNCOMMITTED, so
+#      read_diff_between_refs (HEAD~1..HEAD) is empty (this is what silently broke
+#      arm-c review in EXP1). The only read-only diff tool the engine allows is
+#      read_diff_between_refs, so EXP1b MUST commit the coder's changes before
+#      post-validation. (There is no working-tree validator tool.)
+#   2. Recovery must re-prompt the CODER with the reviewer's critique ("tighten:
+#      drop unrelated changes, minimize"), NOT re-author an intermediate spec.
+
+protocol_id: "bugfix-surgeon"
+name: "Bug-Fix Surgeon Protocol"
+version: "0.1.0"
+
+modes:
+  - mode_id: "producer"
+    name: "Producer Mode"
+    tools:
+      - "edit"
+      - "test"
+      - "validate"
+      - "commit"
+    validators:
+      - "triage"
+      - "minimal-diff"
+    transitions: {}
+
+validators:
+  # PRE-EXECUTE: WF3 requires >=1 pre-execute validator. This one exists only to
+  # let the raw issue through and must PASS — a warn/escalate here would trigger
+  # snodo's spec-authoring re-entry, the exact behavior we want to avoid.
+  - validator_id: "triage"
+    validator_type: "conventions"
+    evaluation_phase: "pre_execute"
+    severity_cap: "warn"
+    criteria:
+      - "ALWAYS PASS. This validator exists only to satisfy the requirement that a mode has a pre-execute validator; it is a no-op gate."
+      - "Do NOT warn and do NOT block under any circumstances. Return pass. The raw issue text must reach the coder unmodified — no spec-authoring."
+
+  # POST-EXECUTE: the real enforcement. severity_cap=warn so a violation routes
+  # to RECOVERY (re-tighten) rather than a hard halt.
+  - validator_id: "minimal-diff"
+    validator_type: "architecture"
+    evaluation_phase: "post_execute"
+    severity_cap: "warn"
+    tools:
+      - "read_diff_between_refs"   # HEAD~1..HEAD — EXP1b MUST commit the coder's
+                                   # changes before post-validation, else empty.
+    criteria:
+      - "Review the code diff that fixes the issue. The correct fix is the SMALLEST change that makes the reported failure pass."
+      - "WARN (send back to tighten) if the diff touches files unrelated to the reported defect."
+      - "WARN if the change refactors, renames, reformats, or adds functionality beyond the fix."
+      - "WARN if the diff is large relative to the defect — a sprawling rewrite where a few lines would do."
+      - "Do NOT require new tests; correctness is verified separately. Judge ONLY minimality and localization."
+
+disagreement_policy: "any"
+initial_mode: "producer"
+
+global_constraints:
+  - constraint_id: "no_secrets"
+    description: "No secrets or credentials in the produced diff"
+    expression: "git diff has no credential patterns"
+    severity: "blocker"
+    predicate: "no_secrets_in_diff"
+    params: {}

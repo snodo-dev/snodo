@@ -81,12 +81,14 @@ def _load_protocol() -> Any:
     if _EXP_PROTOCOL is not None:
         return _EXP_PROTOCOL
 
+    import os
     import yaml
     from snodo.compiler.models import Protocol
 
     import snodo.protocols
 
-    template_path = Path(snodo.protocols.__file__).parent / "templates" / "intent.yml"
+    name = os.environ.get("SNODO_EXP_PROTOCOL", "intent")
+    template_path = Path(snodo.protocols.__file__).parent / "templates" / f"{name}.yml"
     data = yaml.safe_load(template_path.read_text())
     _EXP_PROTOCOL = Protocol(**data)
     return _EXP_PROTOCOL
@@ -144,10 +146,12 @@ def _run_one_cell(
 
 def _load_protocol_for_worker() -> Any:
     """Load protocol inside a worker process (no global cache)."""
+    import os
     import yaml as _yaml
     from snodo.compiler.models import Protocol as _Protocol
     import snodo.protocols as _protos
-    _path = Path(_protos.__file__).parent / "templates" / "intent.yml"
+    _name = os.environ.get("SNODO_EXP_PROTOCOL", "intent")
+    _path = Path(_protos.__file__).parent / "templates" / f"{_name}.yml"
     _data = _yaml.safe_load(_path.read_text())
     return _Protocol(**_data)
 
@@ -344,8 +348,14 @@ def _run_one_task(
     records: list = []
 
     # --- Positive control ---
+    # SNODO_SKIP_GOLD lets a DISPATCH-ONLY node (e.g. an ARM box that can't run
+    # the x86 swebench scorer) skip the gold gate and always dispatch the arms.
+    # Patches are saved; scoring (incl. the positive control) is done later on an
+    # x86 host via rescore_exp1.py.
+    import os as _os
+    _skip_gold = bool(_os.environ.get("SNODO_SKIP_GOLD"))
     gold_patch = task.get("gold_patch") or task.get("patch", "")
-    if gold_patch:
+    if gold_patch and not _skip_gold:
         if mock:
             from experiments.scoring import MockScorer as _MockScorer
             _scorer = scorer_override if scorer_override is not None else _MockScorer()
@@ -672,15 +682,32 @@ def main() -> None:
                         help="Run only a single instance by instance_id")
     parser.add_argument("--set", action="append", dest="overrides", default=[],
                         help="Override config key=value")
+    # --- isolation flags: run multiple experiments in parallel in ONE repo ---
+    parser.add_argument("--selection", type=str, default=None,
+                        help="Path to selection.jsonl (default experiments/tasks/selection.jsonl)")
+    parser.add_argument("--results-dir", type=str, default=None, dest="results_dir",
+                        help="Output dir for results.jsonl + runs/ (default experiments/results/exp1)")
+    parser.add_argument("--dataset", type=str, default=None,
+                        help="Path to the local swebench dataset .jsonl used for scoring "
+                             "(default experiments/tasks/swebench_local.jsonl). Set per-run so "
+                             "parallel runs don't read each other's dataset.")
     args = parser.parse_args()
 
     cli_overrides = args.overrides if args.overrides else None
     config = load_config(cli_overrides=cli_overrides)
 
+    # Per-run scoring dataset via env (scoring._resolve_dataset honors this),
+    # so parallel runs each score against their own frozen dataset file.
+    import os as _os
+    if args.dataset:
+        _os.environ["SNODO_EXP_DATASET"] = str(Path(args.dataset).resolve())
+
     import time as _time
     _start = _time.monotonic()
     rows = run_exp1(
         config=config,
+        selection_path=Path(args.selection) if args.selection else None,
+        results_dir=Path(args.results_dir) if args.results_dir else None,
         force=args.force,
         smoke=args.smoke,
         mock=args.smoke,
