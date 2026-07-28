@@ -1,0 +1,9 @@
+# Raw run noise — keep the science, drop the bulk/junk
+results/**/runs/            # per-run arm-c audit logs (large)
+results/**/*.pre-fix*.jsonl
+results/**/preds.jsonl
+*.log
+tmp/
+temp.md
+**/.DS_Store
+._*

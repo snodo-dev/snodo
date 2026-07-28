@@ -28,11 +28,18 @@ from snodo.infrastructure.audit import AuditLog
 from experiments.workspace import Workspace, extract_patch
 
 
-def _snodo_config_with_model(experiment_model: str) -> Path:
+def _snodo_config_with_model(experiment_model: str, validator_model: Optional[str] = None) -> Path:
     """Create a temporary snodo config dir that pins the experiment model.
 
     Returns the config dir path.  The caller must set SNODO_HOME to this
     dir before building the graph, and restore afterwards.
+
+    ``experiment_model`` is the coder string (opencode format, e.g.
+    ``google/gemini-3.6-flash``). ``validator_model`` is the string snodo's
+    litellm calls (classifier + validators) use — litellm needs its OWN
+    provider prefixes (``gemini/...``, ``vertex_ai/...``) which differ from
+    opencode's (``google/...``). Defaults to ``experiment_model`` (fine for
+    providers litellm and opencode name identically, e.g. ``deepseek/``).
     """
     # Read the operator's real config (SNODO_HOME already popped by caller) so we
     # carry the provider API keys and cloud settings into the temp config —
@@ -40,10 +47,12 @@ def _snodo_config_with_model(experiment_model: str) -> Path:
     from snodo.config import ConfigManager
     real = ConfigManager().load()
 
+    validator_model = validator_model or experiment_model
+
     config_dir = Path(tempfile.mkdtemp(prefix="snodo-exp-config-"))
     config_path = config_dir / "config.yml"
     config = {
-        "model": experiment_model,
+        "model": validator_model,   # litellm default for classifier/validator calls
         "providers": real.get("providers", {}),   # carry API keys
         "cloud": real.get("cloud", {              # carry cloud sync (prod logs)
             "api_key": "",
@@ -56,8 +65,8 @@ def _snodo_config_with_model(experiment_model: str) -> Path:
             "token_ttl_seconds": 3600,  # coder may run up to 30m; keep token valid across it
         },
         "llm": {
-            "validator": {"model": experiment_model},
-            "classifier": {"model": experiment_model},
+            "validator": {"model": validator_model},
+            "classifier": {"model": validator_model},
         },
     }
     with open(config_path, "w") as f:
@@ -94,6 +103,12 @@ def run(
 
     project_root = str(workspace.path)
     experiment_model = config["models"]["reference"]
+    # Coder (opencode) and snodo's litellm validators use DIFFERENT provider
+    # prefixes for the same model (e.g. opencode 'google/gemini-3.6-flash' vs
+    # litellm 'gemini/gemini-3.6-flash'). SNODO_VALIDATOR_MODEL lets the run
+    # pin the litellm string for classifier/validators; defaults to the coder
+    # string (correct when both name the provider identically, e.g. deepseek/).
+    validator_model = os.environ.get("SNODO_VALIDATOR_MODEL") or experiment_model
     root_task_id = f"exp1-{task['instance_id']}-{run_id}-t{trial_id}"
 
     # Stamp environment for K3 traceability
@@ -103,7 +118,7 @@ def run(
     # Pin ALL snodo LLM calls to the experiment model by setting SNODO_HOME
     # to a temp config dir with the experiment model configured.
     saved_snodo_home = os.environ.pop("SNODO_HOME", None)
-    exp_config_dir = _snodo_config_with_model(experiment_model)
+    exp_config_dir = _snodo_config_with_model(experiment_model, validator_model)
     os.environ["SNODO_HOME"] = str(exp_config_dir)
 
     try:

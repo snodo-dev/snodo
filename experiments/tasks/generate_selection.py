@@ -30,6 +30,10 @@ HERE = Path(__file__).parent
 def main() -> None:
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 100
     seed = int(sys.argv[2]) if len(sys.argv) > 2 else 13
+    # Optional 3rd arg = tag: writes <tag>.selection.jsonl + <tag>.local.jsonl
+    # instead of the default selection.jsonl/swebench_local.jsonl, so parallel
+    # experiments don't clobber each other's sample.
+    tag = sys.argv[3] if len(sys.argv) > 3 else None
     rng = random.Random(seed)
 
     from datasets import load_dataset
@@ -64,8 +68,12 @@ def main() -> None:
 
     rng.shuffle(picked)
 
-    sel_path = HERE / "selection.jsonl"
-    loc_path = HERE / "swebench_local.jsonl"
+    if tag:
+        sel_path = HERE / f"{tag}.selection.jsonl"
+        loc_path = HERE / f"{tag}.local.jsonl"
+    else:
+        sel_path = HERE / "selection.jsonl"
+        loc_path = HERE / "swebench_local.jsonl"
     with open(sel_path, "w") as f:
         f.write("\n".join(json.dumps(r) for r in picked) + "\n")
     with open(loc_path, "w") as f:

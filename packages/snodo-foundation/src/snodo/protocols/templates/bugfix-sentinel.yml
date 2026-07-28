@@ -1,0 +1,64 @@
+# Bug-Fix "Sentinel" Protocol — EXP1b hypothesis #2 (hard/deterministic minimality)
+#
+# WHY: same finding as the Surgeon protocol (minimal patches win), but enforce
+# it DETERMINISTICALLY instead of with an LLM reviewer. No spec-authoring; a
+# sprawling or out-of-scope diff is a hard blocker, and K-recovery re-runs the
+# coder for a smaller fix. Deterministic gates remove reviewer flakiness/cost —
+# the tradeoff is they can't judge *relevance*, only size and scope.
+#
+# ENGINE DEPENDENCIES (EXP1b):
+#   1. Post-execute diff visibility (as in bugfix-surgeon.yml).
+#   2. NEW predicate `diff_within_size` (cap on changed lines) — NOT yet
+#      implemented; add to the predicate framework for EXP1b.
+#   3. `files_in_scope` should be tightened per-task to the dirs implicated by
+#      the failing test (here left as ** = repo-wide; only blocks escapes).
+#   4. Recovery re-prompts the coder to shrink the diff on a blocker.
+
+protocol_id: "bugfix-sentinel"
+name: "Bug-Fix Sentinel Protocol"
+version: "0.1.0"
+
+modes:
+  - mode_id: "producer"
+    name: "Producer Mode"
+    tools:
+      - "edit"
+      - "test"
+      - "validate"
+      - "commit"
+    validators:
+      - "triage"
+    transitions: {}
+
+validators:
+  - validator_id: "triage"
+    validator_type: "conventions"
+    evaluation_phase: "pre_execute"
+    severity_cap: "warn"
+    criteria:
+      - "PASS for concrete bug reports; do not author, expand, or rewrite the task into a spec."
+
+disagreement_policy: "any"
+initial_mode: "producer"
+
+global_constraints:
+  - constraint_id: "diff_size"
+    description: "The fix must be minimal — bounded number of changed lines."
+    expression: "changed_lines <= max_changed_lines"
+    severity: "blocker"
+    predicate: "diff_within_size"     # NEW predicate — implement for EXP1b
+    params:
+      max_changed_lines: 60
+  - constraint_id: "files_in_scope"
+    description: "Only touch files implicated by the defect (no repo-wide sprawl)."
+    expression: "artifact_paths all match scope_paths"
+    severity: "blocker"
+    predicate: "files_in_scope"
+    params:
+      scope_paths: ["**"]             # EXP1b: tighten per-task to implicated dirs
+  - constraint_id: "no_secrets"
+    description: "No secrets or credentials in the produced diff"
+    expression: "git diff has no credential patterns"
+    severity: "blocker"
+    predicate: "no_secrets_in_diff"
+    params: {}

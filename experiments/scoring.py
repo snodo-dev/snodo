@@ -54,9 +54,19 @@ _LOCAL_DATASET = Path(__file__).parent / "tasks" / "swebench_local.jsonl"
 
 
 def _resolve_dataset(dataset_name: str) -> str:
-    """Prefer the frozen local dataset file over the flaky HF loader."""
-    if dataset_name.startswith("princeton-nlp/") and _LOCAL_DATASET.exists():
-        return str(_LOCAL_DATASET)
+    """Prefer a frozen local dataset file over the flaky HF loader.
+
+    Per-run override via SNODO_EXP_DATASET (set by run_exp1 --dataset) so
+    parallel experiments each score against their own frozen dataset; falls
+    back to the repo-default local file, then the HF name.
+    """
+    import os
+    if dataset_name.startswith("princeton-nlp/"):
+        env = os.environ.get("SNODO_EXP_DATASET")
+        if env and Path(env).exists():
+            return env
+        if _LOCAL_DATASET.exists():
+            return str(_LOCAL_DATASET)
     return dataset_name
 
 
@@ -192,15 +202,13 @@ def score_predictions_batch(
             )
         except subprocess.TimeoutExpired:
             return {
-                (iid, mn): {**_FAIL, "error": f"harness timeout >{timeout_s}s"}
-                for _, _, mn in instances
-                for iid in instance_ids
+                (inst["instance_id"], mn): {**_FAIL, "error": f"harness timeout >{timeout_s}s"}
+                for inst, _, mn in instances
             }
         except FileNotFoundError as exc:
             return {
-                (iid, mn): {**_FAIL, "error": f"swebench not runnable: {exc}"}
-                for _, _, mn in instances
-                for iid in instance_ids
+                (inst["instance_id"], mn): {**_FAIL, "error": f"swebench not runnable: {exc}"}
+                for inst, _, mn in instances
             }
 
         # Walk the report tree and build (iid, safe_model) -> result map

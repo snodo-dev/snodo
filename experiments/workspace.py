@@ -179,12 +179,28 @@ def extract_patch(workspace: Workspace) -> str:
     result = _run(
         [
             "git", "diff", "--cached", workspace.base_commit,
-            "--", ".", ":(exclude).snodo", ":(exclude).snodo/**",
+            "--", ".",
+            # snodo bookkeeping
+            ":(exclude).snodo", ":(exclude).snodo/**",
+            # junk the coder sometimes creates (virtualenvs, caches, build
+            # artifacts) that must NOT pollute the model_patch — a committed
+            # venv balloons the diff to MB and fails to apply -> spurious fail.
+            ":(exclude,glob)**/venv/**", ":(exclude,glob)**/.venv/**",
+            ":(exclude,glob)**/.venv_test/**", ":(exclude,glob)**/env/**",
+            ":(exclude,glob)**/__pycache__/**", ":(exclude,glob)**/*.egg-info/**",
+            ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.tox/**",
+            ":(exclude,glob)**/.pytest_cache/**", ":(exclude,glob)**/.mypy_cache/**",
         ],
         cwd=workspace.path,
         capture_output=True,
     )
-    return result.stdout.strip()
+    # Do NOT .strip() — a unified diff MUST end in a newline or `patch`/`git
+    # apply` reject it ("patch unexpectedly ends in middle of line"). Preserve
+    # exactly one trailing newline; return "" only when there is no diff.
+    out = result.stdout
+    if not out.strip():
+        return ""
+    return out.rstrip("\n") + "\n"
 
 
 # ---------------------------------------------------------------------------
