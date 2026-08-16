@@ -63,6 +63,7 @@ class ValidatorRunner:
     ) -> List[ValidatorResult]:
         from snodo.validators.registry import _default_registry as reg
 
+        self.last_cap_originals: dict = {}
         mode_obj = self.protocol.get_mode(current_mode)
         _vcfg = self._validator_config
         if _vcfg is None:
@@ -143,11 +144,24 @@ class ValidatorRunner:
                     if v_obj is not None and v_obj.severity_cap is not None:
                         from snodo.compiler.models import Severity
                         if Severity(result.severity) > v_obj.severity_cap:
+                            original_severity = result.severity
                             result = ValidatorResult(
                                 validator_id=result.validator_id,
                                 severity=v_obj.severity_cap.value,
                                 justification=result.justification,
                             )
+                            self.last_cap_originals[result.validator_id] = original_severity
+                            if self._audit_log is not None:
+                                _cap_data = {
+                                    "validator_id": result.validator_id,
+                                    "original": original_severity,
+                                    "capped": result.severity,
+                                }
+                                if getattr(self, "_session_id", ""):
+                                    _cap_data["session_id"] = self._session_id
+                                self._audit_log.append_event(
+                                    "severity_cap_applied", _cap_data
+                                )
                     results_by_id[vid] = result
 
         # Return in original order
