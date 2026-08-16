@@ -2,7 +2,7 @@
 [![CI](https://github.com/snodo-dev/snodo/actions/workflows/ci.yml/badge.svg)](https://github.com/snodo-dev/snodo/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/snodo)](https://pypi.org/project/snodo/)
 [![Python](https://img.shields.io/pypi/pyversions/snodo)](https://pypi.org/project/snodo/)
-[![License: AGPLv3](https://img.shields.io/badge/License-AGPLv3-blue)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-snodo.dev-2DD4BF)](https://docs.snodo.dev)
 [![arXiv](https://img.shields.io/badge/arXiv-2606.20615-b31b1b)](https://arxiv.org/abs/2606.20615)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
@@ -460,5 +460,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 Copyright (C) 2026 The snodo Authors
 
-Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
+Licensed under the Apache License, Version 2.0.
 See the [LICENSE](LICENSE) file for details.

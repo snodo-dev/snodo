@@ -7,7 +7,7 @@ name = "snodo-tools"
 version = "0.5.4"
 description = "Snodo tools — git, shell, workspace primitives + providers"
 requires-python = ">=3.12"
-license = { text = "AGPL-3.0-only" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "The Snodo Authors", email = "noreply@snodo.dev" }]
 dependencies = [
     "snodo-core==0.5.4",

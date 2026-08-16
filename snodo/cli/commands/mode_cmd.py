@@ -121,8 +121,23 @@ def _mode_change(args, state, project_root) -> int:
         return 1
 
     # Update state
+    old_mode = state.current_mode
     state.current_mode = new_mode
     write_state(project_root, state)
+
+    # Audit the human-initiated mode change (best-effort)
+    try:
+        from snodo.infrastructure.audit import AuditLog
+        audit_log = AuditLog(str(Path(project_root) / ".snodo" / "audit.log"))
+        audit_log.append_event("mode_change", {
+            "from_mode": old_mode,
+            "to_mode": new_mode,
+            "actor": "human",
+            "command": "snodo mode",
+        })
+    except Exception as e:
+        import sys as _sys
+        print(f"Warning: failed to write audit event: {e}", file=_sys.stderr)
 
     print(f"Mode changed to: {mode.name} ({new_mode})")
 

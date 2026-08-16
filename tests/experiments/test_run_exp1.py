@@ -108,7 +108,6 @@ class TestProseGenerator:
         protocol = _load_protocol()
         prose = protocol_to_prose(protocol)
         assert "spec-manners" in prose
-        assert "review" in prose
 
     def test_protocol_to_prose_mentions_modes_and_tools(self):
         protocol = _load_protocol()

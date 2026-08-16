@@ -48,12 +48,33 @@ def mcnemar_exact(b: int, c: int) -> float:
     return min(1.0, 2 * tail)
 
 
+_INFRA_MARKERS = (
+    "timeout", "429", "rate limit", "rate_limit", "resource_exhausted",
+    "utf-8", "codec can't decode", "no report",
+    "provider not", "connection", "quota", "overloaded", "503", "502",
+)
+# NOTE: a clean-exit empty patch ("empty patch (rc=0)") is a GENUINE model miss,
+# not infra — the agent ran fine and produced no fix. Do NOT mark it infra, or
+# weak-model whiffs get excluded and inflate that arm (seen on gpt-oss:20b: 46
+# bare / 25 prose empties wrongly dropped). Real transient empties still match
+# timeout/429/connection above.
+
+
+def _is_infra(err) -> bool:
+    """True if an unresolved row failed for infra/transient reasons (not a real
+    model miss) — these should be excluded from the denominator, not counted as
+    failures, or rate-limit/timeout noise falsifies the resolve rate."""
+    s = str(err or "").lower()
+    return any(m in s for m in _INFRA_MARKERS)
+
+
 def main() -> None:
     path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT
     rows = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
 
     # Collapse to one resolved bool per (instance, arm): resolved if ANY trial did.
     res = collections.defaultdict(dict)   # instance -> arm -> bool
+    infra = collections.defaultdict(dict)  # instance -> arm -> infra-failed bool
     repo = {}
     for r in rows:
         a = r.get("arm")
@@ -61,6 +82,11 @@ def main() -> None:
             continue
         iid = r["instance_id"]
         res[iid][a] = res[iid].get(a, False) or bool(r["resolved"])
+        # infra failure = unresolved AND error looks transient/infrastructure
+        # (rate-limit/timeout/empty/decode/no-report), NOT a genuine model miss.
+        # These must be EXCLUDED, not counted as failures, or they falsify rates.
+        if not bool(r["resolved"]):
+            infra[iid][a] = infra[iid].get(a, False) or _is_infra(r.get("error"))
         repo[iid] = r.get("repo") or (rows and "?")
     tasks = sorted(res)
 
@@ -79,14 +105,33 @@ def main() -> None:
         lo, hi = wilson(k, n)
         print(f"  arm {a}: {k:3d}/{n:<3d} = {k/n if n else 0:.1%}  [{lo:.1%}, {hi:.1%}]")
 
-    # 2. Paired McNemar
+    # 1b. Infra-failure-adjusted (clean) rates — exclude transient failures
+    print("\n--- infra failures + clean rate (excludes rate-limit/timeout/empty/decode) ---")
+    inf_by = {}
+    for a in ARMS:
+        n = sum(1 for t in tasks if a in res[t])
+        nf = sum(1 for t in tasks if infra[t].get(a))
+        k = sum(1 for t in tasks if res[t].get(a))
+        cn = n - nf
+        inf_by[a] = nf
+        lo, hi = wilson(k, cn) if cn else (0.0, 0.0)
+        print(f"  arm {a}: infra-fails={nf:3d}  clean {k}/{cn} = {k/cn if cn else 0:.1%}  [{lo:.1%}, {hi:.1%}]")
+    if inf_by and max(inf_by.values()) - min(inf_by.values()) >= 5:
+        print(f"  ** WARNING: infra-fails arm-SKEWED {inf_by} — biases the comparison; retry/exclude those rows before trusting it.")
+
+    # 2. Paired McNemar — raw, and "clean" (drop tasks where EITHER arm infra-failed)
     print("\n--- paired McNemar (exact, two-sided) ---")
     for x, y in (("a", "c"), ("b", "c"), ("a", "b")):
         both = [t for t in tasks if x in res[t] and y in res[t]]
-        b = sum(1 for t in both if res[t][x] and not res[t][y])   # x only
-        c = sum(1 for t in both if res[t][y] and not res[t][x])   # y only
+        b = sum(1 for t in both if res[t][x] and not res[t][y])
+        c = sum(1 for t in both if res[t][y] and not res[t][x])
         p = mcnemar_exact(b, c)
-        print(f"  {x} vs {y}: {x}-only={b}  {y}-only={c}  concordant={len(both)-b-c}  p={p:.4f}")
+        clean = [t for t in both if not infra[t].get(x) and not infra[t].get(y)]
+        cb = sum(1 for t in clean if res[t][x] and not res[t][y])
+        cc = sum(1 for t in clean if res[t][y] and not res[t][x])
+        cp = mcnemar_exact(cb, cc)
+        print(f"  {x} vs {y}: {x}-only={b} {y}-only={c} concordant={len(both)-b-c} p={p:.4f}"
+              f"   | clean(n={len(clean)}): {x}-only={cb} {y}-only={cc} p={cp:.4f}")
 
     # 3. Per-repo
     print("\n--- resolve rate per repo (a / b / c) ---")

@@ -1,0 +1,85 @@
+# Feature-Development "Warden" Protocol — EXP2 (containment over long horizons)
+#
+# WHY (and why it is the OPPOSITE of bugfix-surgeon):
+#   Bug fixes fail by OVER-elaboration: the smallest change wins, so surgeon
+#   strips structure (no spec-authoring) and enforces MINIMALITY. Feature
+#   development fails the other way — by UNDER-implementation and, over a long
+#   multi-step horizon, by loss of containment: the agent drifts out of scope,
+#   half-implements the required components, and silently breaks previously
+#   working behaviour. A one-shot minimality gate is exactly wrong here.
+#
+#   So this protocol INVERTS the tailoring, which is the paper's thesis in
+#   action — the right process is task-dependent:
+#     * PRE-execute: engage planning. The feature is decomposed into the
+#       components/interfaces it must add; the coder is expected to implement
+#       them COMPLETELY (completeness, not minimality).
+#     * POST-execute: a CONTAINMENT reviewer that (1) checks every required
+#       component is implemented, (2) rejects out-of-scope / unrelated edits,
+#       and (3) treats regression of existing behaviour as a hard stop.
+#     K-recovery re-runs the coder to finish the feature and undo collateral
+#     damage. The containment gate is the structural mechanism advisory
+#     feedback (arm B') cannot guarantee: the agent CANNOT proceed while it has
+#     broken earlier work — which is precisely what compounds over horizon.
+
+protocol_id: "feature-warden"
+name: "Feature-Development Warden Protocol"
+version: "0.1.0"
+
+modes:
+  - mode_id: "producer"
+    name: "Producer Mode"
+    tools:
+      - "edit"
+      - "test"
+      - "validate"
+      - "commit"
+    validators:
+      - "feature-scope"
+      - "containment"
+    transitions: {}
+
+validators:
+  # PRE-EXECUTE: unlike surgeon's no-op triage, this ENGAGES structure. Features
+  # need decomposition; under-specification is a primary failure mode. It passes
+  # once the work is grounded in an explicit component/interface plan, and warns
+  # (routing to spec-authoring re-entry) if the feature is being attempted
+  # ad-hoc without one.
+  - validator_id: "feature-scope"
+    validator_type: "conventions"
+    evaluation_phase: "pre_execute"
+    severity_cap: "warn"
+    criteria:
+      - "Establish the feature's scope BEFORE coding: enumerate the new components, functions, classes, or interfaces the request requires, and the acceptance behaviour each must satisfy."
+      - "PASS once the task is grounded in an explicit list of components to add and their intended behaviour."
+      - "WARN (route to planning) if the feature is being implemented ad-hoc with no decomposition — under-specified features are implemented incompletely."
+
+  # POST-EXECUTE: the real enforcement — CONTAINMENT, not minimality.
+  # severity_cap=warn routes scope/completeness misses to K-recovery; the
+  # regression clause is escalated to blocker via the global constraint below.
+  - validator_id: "containment"
+    validator_type: "architecture"
+    evaluation_phase: "post_execute"
+    severity_cap: "warn"
+    tools:
+      - "read_diff_between_refs"   # HEAD~1..HEAD — coder changes committed pre-validation
+    criteria:
+      - "Completeness: WARN (send back to finish) if any component/interface from the declared feature scope is missing, stubbed, or only partially implemented."
+      - "Scope containment: WARN if the diff edits files or behaviour unrelated to the feature — feature work drifts into collateral change over long horizons."
+      - "No regression: the change must not remove, weaken, or break existing behaviour or previously-passing tests. Treat any such regression as a BLOCKER (see global constraints), not a warning."
+      - "Do NOT reward larger diffs; reward COMPLETE and CONTAINED ones. Judge completeness of the feature and containment of its blast radius, not raw size."
+
+disagreement_policy: "any"
+initial_mode: "producer"
+
+global_constraints:
+  - constraint_id: "no_secrets"
+    description: "No secrets or credentials in the produced diff"
+    expression: "git diff has no credential patterns"
+    severity: "blocker"
+    predicate: "no_secrets_in_diff"
+    params: {}
+  # NOTE: the structural regression gate (a deterministic PASS_TO_PASS
+  # before/after check) is the strongest containment mechanism and the one
+  # advisory feedback cannot replicate — but it needs a registered
+  # `no_regression_in_diff` predicate. Deferred to after the pilot; for now the
+  # `containment` validator judges regression via its criteria (severity warn).

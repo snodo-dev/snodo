@@ -7,7 +7,7 @@ name = "snodo-engine"
 version = "0.5.4"
 description = "Snodo engine — protocol loop graph, coders, and validators"
 requires-python = ">=3.12"
-license = { text = "AGPL-3.0-only" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "The Snodo Authors", email = "noreply@snodo.dev" }]
 dependencies = [
     "snodo-core==0.5.4",

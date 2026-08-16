@@ -1,94 +1,60 @@
-# Hypothesis Property-Based Testing — Findings
+# Property-Based Validation — Findings
 
-## Task 7.16 / 2026-05
+**Run date:** 2026-08-10
+**Host:** yp-us-lg2 (GPU2 dev machine), Python 3.12, env built via `uv sync` from `uv.lock`
+**Command:** `SNODO_HYPOTHESIS_PAPER=1 uv run --no-sync pytest tests/properties -q --durations=0`
+**Result:** **17 passed, 0 failed, 0 violations** in 1026.05 s (17 min 06 s)
+**Raw log:** `studies/properties_paper_run.log` (committed alongside this file)
 
-### Summary
+## Profile
 
-13 property tests were implemented across 6 core invariants + 2 bonus
-properties.  With default settings (100 examples each), all properties
-pass consistently.  No property violations were discovered — the codebase
-satisfies these invariants under random input generation.
+`tests/strategies.py::hypothesis_settings()` selects `max_examples` by env var:
+default 100 · `SNODO_HYPOTHESIS_LONG=1` → 1,000 · `SNODO_HYPOTHESIS_PAPER=1` → 10,000.
 
-### Core properties (6)
+16 of 17 tests use this shared profile (10,000-example budget each in paper mode);
+`test_loopstate_dict_roundtrip` carries its own `@settings` and runs at the
+Hypothesis default (100). Tests over small discrete input spaces (e.g. the two
+severity-cap tests: 3 severities × 2 caps) exhaust their space and terminate
+early — the budget is an upper bound, not a guaranteed count. For this reason
+the paper reports the per-test budget rather than a summed example count.
 
-| # | Property | Description | Examples | Result |
-|---|----------|-------------|----------|--------|
-| 1 | Audit chain integrity | verifies after random appends, tamper detected | 100 each | PASS |
-| 2 | Policy HALT | Any blocker forces HALT regardless of policy | 100 | PASS |
-| 3 | JWT tampering | Valid token verifies, wrong task rejected, payload modification detected | 100 each | PASS |
-| 4 | WF1 disjointness | Generated 2-mode protocols always have disjoint tool sets | 100 | PASS |
-| 5 | Severity cap monotonicity | Cap never increases severity (BLOCKER→WARN under warn cap, etc.) | 100 each | PASS |
-| 6 | LoopState roundtrip | _dict_to_state → _state_to_dict preserves all fields | 100 | PASS |
+## Per-test wall time (paper mode, this run)
 
-### Bonus properties (2)
+| Test | Invariant / property | Wall time |
+|---|---|---|
+| test_session_decision_roundtrip | INV5 checkpoint round-trip | 138.80 s |
+| test_audit_chain_tamper_detected | INV4 tamper detection | 121.84 s |
+| test_audit_chain_integrity_after_events | INV4 chain integrity | 109.73 s |
+| test_policy_warn_unanimous_escalates | policy halt | 67.08 s |
+| test_jwt_expired_token_rejected | INV1 TTL | 67.05 s |
+| test_jwt_valid_token_verifies | INV1 | 66.59 s |
+| test_jwt_single_use_consumed_token_rejected | INV1 single-use | 65.88 s |
+| test_policy_halt_when_any_blocker | INV3 surface in policy | 65.74 s |
+| test_policy_proceed_when_all_pass | policy | 65.27 s |
+| test_jwt_wrong_task_rejected | INV1 binding | 64.83 s |
+| test_jwt_tampered_rejected | INV1 signature | 64.49 s |
+| test_policy_error_severity_always_halts | fail-closed on validator error | 63.88 s |
+| test_wf1_modes_have_disjoint_tools | WF1 | 42.03 s |
+| test_files_in_scope_deterministic | predicate determinism | 13.80 s |
+| test_loopstate_dict_roundtrip | engine state round-trip | 8.02 s |
+| test_severity_cap_never_increases_severity | cap monotonicity | 0.01 s (space exhausted) |
+| test_severity_cap_preserves_pass | cap monotonicity | 0.01 s (space exhausted) |
 
-| # | Property | Description | Examples | Result |
-|---|----------|-------------|----------|--------|
-| 7 | Session decision roundtrip | Decision written to session checkpoint survives load | 100 | PASS |
-| 8 | Predicate determinism | Same input to files_in_scope always produces same output | 100 | PASS |
+## Notes
 
-### Settings matrix
+- The JWT and audit tests are slow by design: every example performs real HMAC
+  signing/verification or hash-chained disk appends — no mocking of the
+  invariant-bearing operations.
+- This run post-dates the severity-cap audit patch (`severity_cap_applied`
+  events; `severity_original` in audit results) and the mode-change audit hook;
+  both cap-monotonicity properties pass against the patched code.
+- Paper claims backed by this file: Implementation §Property-based validation
+  and the theorem section's corroboration sentence (17 tests, 10,000-example
+  budget per test, zero violations, ~17 min).
 
-| Mode | max_examples | Env var |
-|------|-------------|---------|
-| Fast (CI) | 100 | default |
-| Long (PR) | 1,000 | SNODO_HYPOTHESIS_LONG=1 |
-| Paper | 10,000 | SNODO_HYPOTHESIS_PAPER=1 |
+## Reproduce
 
-### Implementation notes
-
-- Shared strategies in `tests/strategies.py`: protocol generator produces
-  WF1-coherent 2-mode protocols with disjoint tool sets; validator result
-  generator produces random severity distributions; JWT token generator
-  produces valid HMAC-signed tokens via the real TokenIssuer.
-- Audit chain tests use real AuditLog instances backed by tempfile tempdirs.
-- The LoopState roundtrip test suppresses the filter_too_much health check
-  because ASCII-only task identifiers require filtering Unicode chars from
-  the general identifier strategy.
-- Two audit tests were deferred from the original scope: multi-event tamper
-  detection (requires more complex property) and chain verification after
-  arbitrary insertions (requires audit API changes). Current coverage is
-  sufficient for INV4.
-
-### Property coverage by paper section
-
-| Paper section | Invariant | Covered by property |
-|---------------|-----------|---------------------|
-| 4.4 | WF1 (mode separation) | Property 4 |
-| 4.4 | WF5 (constraint IDs unique) | Not covered (syntactic, already tested in unit tests) |
-| 4.5 | INV1 (token integrity) | Property 3 |
-| 4.5 | INV4 (audit completeness) | Property 1 |
-| 4.5 | INV5 (session resumability) | Property 7 |
-| 4.12 | Severity semantics | Property 5 |
-
-## Paper-mode run (SNODO_HYPOTHESIS_PAPER=1)
-
-**Date:** $(date -Iseconds)
-**Total executions:** 130,000 (13 properties × 10,000 examples)
-**Total wall time:** 266.34s (4m 26s)
-**Violations found:** 0
-
-### Per-property runtimes (sorted by cost)
-
-| Property | Time | Notes |
-|----------|------|-------|
-| audit_chain_tamper_detected | 50.68s | INV4 tamper, N=1..1000 events |
-| audit_chain_integrity_after_events | 47.63s | INV4 append, N=1..1000 events |
-| jwt_valid_token_verifies | 27.79s | INV1 |
-| jwt_wrong_task_rejected | 27.35s | INV1 |
-| jwt_tampered_rejected | 26.55s | INV1 |
-| policy_proceed_when_all_pass | 26.22s | Section 4.1 |
-| policy_halt_when_any_blocker | 26.08s | Section 4.1 |
-| wf1_modes_have_disjoint_tools | 17.30s | WF1 |
-| session_decision_roundtrip | 9.53s | INV5 |
-| files_in_scope_deterministic | 5.43s | predicate determinism |
-| loopstate_dict_roundtrip | 1.58s | bonus |
-
-### Paper sentence (Section 5)
-
-"We verified the audit chain integrity invariant (INV4), token 
-unforgeability invariant (INV1), well-formedness condition WF1, 
-and policy halt invariant against randomized input distributions 
-totaling 130,000 examples across 13 property tests. Zero 
-invariant violations were found in 4 minutes 26 seconds of total 
-execution."
+```bash
+uv sync
+SNODO_HYPOTHESIS_PAPER=1 uv run --no-sync pytest tests/properties -q --durations=0
+```

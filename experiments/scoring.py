@@ -12,10 +12,23 @@ For testing, use MockScorer which returns deterministic results.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import uuid
+
+
+def _swebench_python() -> str:
+    """Python used to invoke the swebench harness subprocess.
+
+    Defaults to the current interpreter, but SNODO_SWEBENCH_PYTHON lets a run
+    point scoring at a DIFFERENT swebench install — e.g. the FEA-Bench-patched
+    swebench in its own venv (which carries FEA's per-instance env specs) —
+    while dispatch/orchestration keep running in the experiments .venv. Keeps
+    the FEA-patched swebench (numpy2/vllm-era deps) out of the experiments env.
+    """
+    return os.environ.get("SNODO_SWEBENCH_PYTHON") or sys.executable
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -44,6 +57,27 @@ def get_instance(instance_id: str, selection_path: Path) -> Optional[dict]:
 
 
 _FAIL = {"resolved": False, "n_fail_to_pass_passed": 0, "regressions": 0}
+
+
+def _cleanup_eval_containers(run_id: str) -> None:
+    """Remove any swebench eval containers spawned by this scoring run.
+
+    swebench names its per-instance containers `sweb.eval.<iid>.<run_id>` and
+    leaves them idling (`tail -f /dev/null`); a timed-out or killed harness
+    leaks them, and they accumulate until Docker starves and future evals hang.
+    Reaping by run_id after every scoring call keeps the scorer self-cleaning.
+    Best-effort: never raise into the caller.
+    """
+    try:
+        ids = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", f"name={run_id}"],
+            capture_output=True, text=True, timeout=30,
+        ).stdout.split()
+        if ids:
+            subprocess.run(["docker", "rm", "-f", *ids],
+                           capture_output=True, timeout=90)
+    except Exception:
+        pass
 
 # Frozen local copy of the SWE-bench records for our selection. swebench's
 # HF loader re-fetches the dataset on every call and its `datasets` cache can
@@ -94,7 +128,7 @@ def score_prediction(
     model_patch: str,
     model_name: str = "experiment-model",
     dataset_name: str = "princeton-nlp/SWE-bench_Verified",
-    timeout_s: int = 2400,
+    timeout_s: int = 1800,
 ) -> dict:
     """Score a single prediction via the OFFICIAL swebench CLI harness.
 
@@ -114,7 +148,7 @@ def score_prediction(
 def score_predictions_batch(
     instances: List[Tuple[dict, str, str]],
     dataset_name: str = "princeton-nlp/SWE-bench_Verified",
-    timeout_s: int = 2400,
+    timeout_s: int = 1800,
     max_workers: int = 1,
     namespace: str = "swebench",
     cache_level: str = "instance",
@@ -184,62 +218,94 @@ def score_predictions_batch(
         # found" -> rc=1 -> no reports -> every arm scores 0. Spread the ids as
         # separate argv tokens. (Single-instance batches happened to work only
         # because one id has no comma.)
+        # --namespace <org> makes the harness PULL prebuilt eval images from that
+        # Docker Hub org — correct for OFFICIAL SWE-bench (images published under
+        # swebench/), but FEA-Bench images are NOT published and must be BUILT
+        # locally. Omitting --namespace = local build. Override per run with
+        # SNODO_SWEBENCH_NAMESPACE (set it to "none"/"" for FEA).
+        ns = os.environ.get("SNODO_SWEBENCH_NAMESPACE", namespace)
         cmd = [
-            sys.executable, "-m", "swebench.harness.run_evaluation",
+            _swebench_python(), "-m", "swebench.harness.run_evaluation",
             "--dataset_name", _resolve_dataset(dataset_name),
             "--predictions_path", str(preds_path),
             "--instance_ids", *sorted(instance_ids),
             "--max_workers", str(max_workers),
             "--run_id", run_id,
-            "--namespace", namespace,
             "--cache_level", cache_level,
         ]
+        if ns and ns.lower() not in ("none", "local", ""):
+            cmd += ["--namespace", ns]
 
         try:
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout_s,
-                cwd=td,
-            )
-        except subprocess.TimeoutExpired:
-            return {
-                (inst["instance_id"], mn): {**_FAIL, "error": f"harness timeout >{timeout_s}s"}
-                for inst, _, mn in instances
-            }
-        except FileNotFoundError as exc:
-            return {
-                (inst["instance_id"], mn): {**_FAIL, "error": f"swebench not runnable: {exc}"}
-                for inst, _, mn in instances
-            }
+            try:
+                proc = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=timeout_s,
+                    cwd=td,
+                )
+            except subprocess.TimeoutExpired:
+                return {
+                    (inst["instance_id"], mn): {**_FAIL, "error": f"harness timeout >{timeout_s}s"}
+                    for inst, _, mn in instances
+                }
+            except FileNotFoundError as exc:
+                return {
+                    (inst["instance_id"], mn): {**_FAIL, "error": f"swebench not runnable: {exc}"}
+                    for inst, _, mn in instances
+                }
 
-        # Walk the report tree and build (iid, safe_model) -> result map
-        safe_results: Dict[Tuple[str, str], dict] = {}
-        log_root = Path(td) / "logs" / "run_evaluation" / run_id
-        if log_root.exists():
-            for report in log_root.rglob("report.json"):
-                parts = report.relative_to(log_root).parts
-                # path: <safe_model>/<iid>/report.json
-                if len(parts) >= 2:
-                    safe_model = parts[0]
-                    iid = parts[1]
-                    safe_results[(iid, safe_model)] = _parse_report(report, iid)
+            # PRIMARY source: the run summary the harness always writes to cwd
+            # as `<model>.<run_id>.json` (resolved_ids / error_ids / empty_patch_ids).
+            # It is version-stable and survives the harness's result caching, which
+            # can skip re-writing the per-instance report.json into this tempdir
+            # (seen on the FEA-patched a0536ee harness -> "no report.json").
+            summary: dict = {}
+            for _sp in Path(td).glob(f"*.{run_id}.json"):
+                try:
+                    summary = json.loads(_sp.read_text())
+                    break
+                except Exception:
+                    pass
+            resolved_ids = set(summary.get("resolved_ids", []))
+            error_ids = set(summary.get("error_ids", []))
+            empty_ids = set(summary.get("empty_patch_ids", []))
 
-        # Map back to caller-provided (instance_id, original_model_name) keys
-        results: Dict[Tuple[str, str], dict] = {}
-        for instance, model_patch, model_name in instances:
-            iid = instance["instance_id"]
-            safe = safe_map.get((iid, model_name), model_name.replace("/", "__"))
-            key = (iid, model_name)
+            # SECONDARY: per-instance report tree, for pass/fail counts when present.
+            safe_results: Dict[Tuple[str, str], dict] = {}
+            log_root = Path(td) / "logs" / "run_evaluation" / run_id
+            if log_root.exists():
+                for report in log_root.rglob("report.json"):
+                    parts = report.relative_to(log_root).parts
+                    if len(parts) >= 2:
+                        safe_results[(parts[1], parts[0])] = _parse_report(report, parts[1])
 
-            safe_key = (iid, safe)
-            if safe_key in safe_results:
-                results[key] = safe_results[safe_key]
-            elif not model_patch:
-                results[key] = {**_FAIL, "error": "empty_patch"}
-            else:
-                tail = (proc.stderr or proc.stdout or "")[-800:]
-                results[key] = {**_FAIL, "error": f"no report.json (rc={proc.returncode}). {tail}"}
+            results: Dict[Tuple[str, str], dict] = {}
+            for instance, model_patch, model_name in instances:
+                iid = instance["instance_id"]
+                safe = safe_map.get((iid, model_name), model_name.replace("/", "__"))
+                key = (iid, model_name)
+                safe_key = (iid, safe)
+                if safe_key in safe_results:            # full detail from report.json
+                    results[key] = safe_results[safe_key]
+                elif iid in resolved_ids:               # summary says resolved
+                    results[key] = {"resolved": True, "n_fail_to_pass_passed": 0, "regressions": 0}
+                elif iid in empty_ids or not model_patch:
+                    results[key] = {**_FAIL, "error": "empty_patch"}
+                elif iid in error_ids:
+                    results[key] = {**_FAIL, "error": "harness error (per summary)"}
+                elif summary:                           # ran, not resolved -> genuine fail
+                    results[key] = {**_FAIL}
+                else:                                   # no summary at all -> real infra failure
+                    tail = (proc.stderr or proc.stdout or "")[-400:]
+                    results[key] = {**_FAIL, "error": f"no report.json (rc={proc.returncode}). {tail}"}
 
-        return results
+            return results
+        finally:
+            # Always reap this run's eval containers — even on timeout/exception.
+            # swebench leaves `sweb.eval.<iid>.<run_id>` containers idling on
+            # `tail -f /dev/null`; a killed/timed-out harness leaks them, and they
+            # pile up (seen: containers Up 28-39h) until Docker starves and new
+            # evals hang. Removing by run_id keeps scoring self-cleaning.
+            _cleanup_eval_containers(run_id)
 
 
 def _gold_cache_key(instance: dict, dataset_name: str) -> str:

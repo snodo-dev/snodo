@@ -42,11 +42,17 @@ TWO_PLUS_N_PROTOCOL = _load_template("2+n")
 
 INTENT_PROTOCOL = _load_template("intent")
 
+BUGFIX_SURGEON_PROTOCOL = _load_template("bugfix-surgeon")
+
+FEATURE_WARDEN_PROTOCOL = _load_template("feature-warden")
+
 PROTOCOL_TEMPLATES = {
     "solo": SOLO_PROTOCOL,
     "team": TEAM_PROTOCOL,
     "2+n": TWO_PLUS_N_PROTOCOL,
     "intent": INTENT_PROTOCOL,
+    "bugfix-surgeon": BUGFIX_SURGEON_PROTOCOL,
+    "feature-warden": FEATURE_WARDEN_PROTOCOL,
 }
 
 

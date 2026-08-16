@@ -80,7 +80,9 @@ def __():
     def sha256(p):
         return hashlib.sha256(p.read_bytes()).hexdigest()
 
-    outputs = Plib(__file__).resolve().parent / "outputs"
+    import os as _os
+    _env_out = _os.environ.get("MARIMO_STUDY_OUTPUT")
+    outputs = Plib(_env_out) if _env_out else Plib(__file__).resolve().parent / "outputs"
     svg_hash = sha256(outputs / "smoke_test.svg")
     csv_hash = sha256(outputs / "smoke_data.csv")
     print(f"SVG hash: {svg_hash}")

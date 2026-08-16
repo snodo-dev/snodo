@@ -111,7 +111,13 @@ def setup_instance_workspace(instance: dict) -> Workspace:
 
     # 2. Copy cache -> workspace (fast local copy, one per arm/trial)
     try:
-        shutil.copytree(cache_dir, dest, symlinks=False, dirs_exist_ok=True)
+        # symlinks=True: PRESERVE symlinks. With symlinks=False, copytree
+        # dereferences them — a repo symlink like docs/changelog.md -> ../CHANGELOG.md
+        # becomes a regular file with the target's content, so git sees a
+        # symlink(120000)->file(100644) conversion and sweeps the whole target
+        # into the diff (seen on FEA-Bench aiplatform: 285KB of CHANGELOG). Keep
+        # symlinks intact so the diff reflects only the coder's real changes.
+        shutil.copytree(cache_dir, dest, symlinks=True, dirs_exist_ok=True)
         return Workspace(path=dest, base_commit=base_commit)
     except Exception as exc:
         shutil.rmtree(dest, ignore_errors=True)

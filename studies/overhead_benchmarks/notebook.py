@@ -258,9 +258,17 @@ def __(time, statistics, tempfile, shutil, MIN_PROTOCOL, build_protocol_graph,
     is benchmarked — not a pre_execute ESCALATE into blocked.
     """
 
-    def _all_pass(task, validators, shell_mcp, current_mode=""):
+    def _all_pass(task, validators, shell_mcp, current_mode="", **_kwargs):
         return [ValidatorResult(validator_id=v.validator_id, severity="pass",
                                 justification="ok") for v in validators]
+
+    # Stub the wave classifier: it is an LLM call (inference-class cost, like
+    # the coder and validators, which are already stubbed). Without this, two
+    # failed LLM attempts + fallback per run are measured as governance
+    # overhead, which is precisely what this benchmark must exclude.
+    from snodo.infrastructure.wave_registry import WaveRegistry as _WR
+    _WR.classify_task = lambda self, spec, task_id, completion_fn, model: {
+        "flow_type": "feature", "wave_id": "", "task_summary": "bench"}
 
     N_E2E = 10
     GOVERNED = []

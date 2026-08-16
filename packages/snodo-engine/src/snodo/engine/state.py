@@ -47,7 +47,9 @@ class LoopState:
     summary: str = ""
 
 
-def _build_audit_results(validators: list, results: list) -> list:
+def _build_audit_results(
+    validators: list, results: list, cap_originals: Optional[dict] = None
+) -> list:
     """Build audit results array with capping metadata.
 
     Compares each result against its validator spec's severity_cap.
@@ -66,9 +68,9 @@ def _build_audit_results(validators: list, results: list) -> list:
             v = validators[i]
             if v.severity_cap is not None and r.severity == v.severity_cap.value:
                 # Severity matches the cap — may have been downgraded.
-                # We don't have the original here, but we can flag that
-                # the result sits at the cap boundary
                 entry["severity_at_cap"] = True
+        if cap_originals and r.validator_id in cap_originals:
+            entry["severity_original"] = cap_originals[r.validator_id]
         audit_results.append(entry)
     return audit_results
 

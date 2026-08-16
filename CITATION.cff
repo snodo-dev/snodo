@@ -4,11 +4,19 @@ title: Snodo
 abstract: "An AI-SDLC protocol engine: a specification language for human-agent responsibility boundaries, approval gates, and governance constraints in software teams where AI agents are first-class members."
 type: software
 authors:
-  - name: "The Snodo Authors"
+  - family-names: "Prifti"
+    given-names: "Ylli"
+    affiliation: "Birkbeck, University of London"
+  - family-names: "De Meo"
+    given-names: "Pasquale"
+    affiliation: "University of Messina"
+  - family-names: "Provetti"
+    given-names: "Alessandro"
+    affiliation: "Birkbeck, University of London"
 repository-code: "https://github.com/snodo-dev/snodo"
 url: "https://snodo.dev"
-license: AGPL-3.0-or-later
-version: "0.1.0"
+license: Apache-2.0
+version: "0.9.0"
 keywords:
   - AI-SDLC
   - protocol specification

@@ -23,8 +23,9 @@ from pathlib import Path
 
 from experiments.scoring import score_predictions_batch
 
-ARMS = ("a", "b", "c")
+ARMS = ("a", "b", "c", "bprime")
 HUGE = 200_000  # skip pathological patches (e.g. a committed venv) — score them False
+CHUNK = 20      # score in chunks so one stuck instance can't fail a 100-wide batch
 
 
 def main() -> None:
@@ -50,7 +51,14 @@ def main() -> None:
             print(f"arm {arm}: nothing to score ({skipped} skipped)")
             continue
         print(f"arm {arm}: scoring {len(batch)} patches ({skipped} empty/huge skipped)...")
-        res = score_predictions_batch(batch, max_workers=4)
+        # Chunk the batch: a single 100-instance harness call can exceed the
+        # per-invocation timeout, and a stuck instance would fail the whole
+        # batch. Small chunks fail-isolate and stay well under the timeout.
+        res: dict = {}
+        for i in range(0, len(batch), CHUNK):
+            chunk = batch[i:i + CHUNK]
+            print(f"  chunk {i // CHUNK + 1}: {len(chunk)} patches...", flush=True)
+            res.update(score_predictions_batch(chunk, max_workers=4))
         for r in arm_rows:
             mn = f"{arm}-{r['instance_id']}"
             v = res.get((r["instance_id"], mn))

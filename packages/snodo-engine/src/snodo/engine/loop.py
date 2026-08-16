@@ -529,7 +529,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             "phase": "pre_execute",
             "task_ref": loop_state.task.id,
             "validators_invoked": [v.validator_id for v in validators],
-            "results": _build_audit_results(validators, results),
+            "results": _build_audit_results(validators, results, getattr(getattr(self, "_validator_runner", None), "last_cap_originals", None)),
             "outcome": outcome,
             "policy_decision": str(decision.action.value) if decision else None,
         })
@@ -682,7 +682,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             "phase": "post_execute",
             "task_ref": loop_state.task.id,
             "validators_invoked": [v.validator_id for v in post_validators],
-            "results": _build_audit_results(post_validators, results),
+            "results": _build_audit_results(post_validators, results, getattr(getattr(self, "_validator_runner", None), "last_cap_originals", None)),
             "outcome": post_outcome,
         })
 
@@ -935,17 +935,26 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         )
 
         results = []
+        cap_originals: Dict[str, str] = {}
         for v in validators:
             result = self._dispatch_one(v, context, reg)
             if v.severity_cap is not None:
                 from snodo.compiler.models import Severity
                 if Severity(result.severity) > v.severity_cap:
+                    original_severity = result.severity
                     result = ValidatorResult(
                         validator_id=result.validator_id,
                         severity=v.severity_cap.value,
                         justification=result.justification,
                     )
+                    cap_originals[result.validator_id] = original_severity
+                    self._audit("severity_cap_applied", {
+                        "validator_id": result.validator_id,
+                        "original": original_severity,
+                        "capped": result.severity,
+                    })
             results.append(result)
+        self._validator_runner.last_cap_originals = cap_originals
         return results
 
     def _get_completion_fn(self):
@@ -972,7 +981,9 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             self._audit_log.append_event(event_type, data)
 
 
-def _build_audit_results(validators: list, results: list) -> list:
+def _build_audit_results(
+    validators: list, results: list, cap_originals: Optional[dict] = None
+) -> list:
     """Build audit results array with capping metadata.
 
     Compares each result against its validator spec's severity_cap.
@@ -991,9 +1002,9 @@ def _build_audit_results(validators: list, results: list) -> list:
             v = validators[i]
             if v.severity_cap is not None and r.severity == v.severity_cap.value:
                 # Severity matches the cap — may have been downgraded.
-                # We don't have the original here, but we can flag that
-                # the result sits at the cap boundary
                 entry["severity_at_cap"] = True
+        if cap_originals and r.validator_id in cap_originals:
+            entry["severity_original"] = cap_originals[r.validator_id]
         audit_results.append(entry)
     return audit_results
 

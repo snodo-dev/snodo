@@ -7,7 +7,7 @@ name = "snodo-core"
 version = "0.5.4"
 description = "Snodo kernel — core abstractions, config, paths, predicates, sandbox"
 requires-python = ">=3.12"
-license = "AGPL-3.0-only"
+license = "Apache-2.0"
 authors = [{ name = "The Snodo Authors", email = "noreply@snodo.dev" }]
 dependencies = [
     "pydantic>=2.12.0",

@@ -29,6 +29,8 @@ from experiments.arms.arm_a_opencode import MockArmA
 from experiments.arms.arm_a_opencode import run as run_arm_a
 from experiments.arms.arm_b_prose import MockArmB
 from experiments.arms.arm_b_prose import run as run_arm_b
+from experiments.arms.arm_b_prime import MockArmBPrime
+from experiments.arms.arm_b_prime import run as run_arm_bprime
 from experiments.arms.arm_c_snodo import MockArmC
 from experiments.arms.arm_c_snodo import run as run_arm_c
 from experiments.arms.prose import protocol_to_prose
@@ -249,6 +251,98 @@ def _row_completed(existing: List[dict], instance_id: str, arm: str, trial_id: i
     return False
 
 
+def _score_and_write_task(
+    records: List[dict],
+    inst_map: Dict[str, dict],
+    config: dict,
+    run_id: str,
+    results_path: Path,
+    mock: bool,
+    scorer_override: Any,
+    max_workers: int,
+    ns: str,
+    cl: str,
+    do_score: bool = True,
+) -> List[dict]:
+    """Score ONE task's cell records and append the rows to results.jsonl now.
+
+    Called as each task finishes dispatching, so results are durable
+    incrementally: a crash (reboot, OOM, rate-limit abort) loses at most the
+    single in-flight task, and re-running WITHOUT --force resumes from where it
+    stopped.  Excluded cells (positive_control / worker error) are written
+    straight through.  The remaining cells are scored in a small per-task batch
+    grouped by arm — same instance_id but distinct model_name, so there is no
+    swebench dedup collision, and the batch is far too small to trip the
+    large-batch scorer timeout.
+    """
+    written: List[dict] = []
+
+    excluded = [c for c in records if c.get("arm") in ("positive_control", "error")]
+    to_score = [c for c in records if c.get("arm") not in ("positive_control", "error")]
+
+    for rec in excluded:
+        row = _make_result_row(
+            rec["inst_id"], rec["arm"], rec["trial_id"], run_id, config,
+            {"patch": rec.get("patch", ""), "wall_s": rec.get("wall_s", 0.0),
+             "cost_usd": rec.get("cost_usd"), "closure_json": rec.get("closure_json"),
+             "error": rec.get("error")},
+            {"resolved": False},
+            exclusion_reason=rec.get("exclusion_reason"),
+        )
+        written.append(row)
+        _write_results_row(results_path, row)
+
+    if to_score and not do_score:
+        # DISPATCH-ONLY: save the patch rows now, leave resolved unscored (None).
+        # Scoring is decoupled and run afterward via rescore_exp1, so a flaky/
+        # hanging Docker scorer can never stall the (reliable) GPU dispatch.
+        for c in to_score:
+            row = _make_result_row(
+                c["inst_id"], c["arm"], c["trial_id"], run_id, config,
+                {"patch": c.get("patch", ""), "wall_s": c.get("wall_s", 0.0),
+                 "cost_usd": c.get("cost_usd"), "closure_json": c.get("closure_json"),
+                 "error": c.get("error")},
+                {"resolved": None},
+            )
+            written.append(row)
+            _write_results_row(results_path, row)
+        return written
+
+    if to_score:
+        by_arm: Dict[str, List[dict]] = {}
+        for c in to_score:
+            by_arm.setdefault(c["arm"], []).append(c)
+        for a, arm_cells in by_arm.items():
+            batch_input = [
+                (inst_map.get(c["inst_id"], {"instance_id": c["inst_id"]}),
+                 c.get("patch", ""), c["model_name"])
+                for c in arm_cells
+            ]
+            if mock:
+                _batch_scorer = scorer_override if scorer_override is not None else MockScorer()
+                batch_results = _batch_scorer.score_batch(batch_input)
+            else:
+                batch_results = score_predictions_batch(
+                    batch_input, max_workers=max_workers, namespace=ns, cache_level=cl,
+                )
+            for c in arm_cells:
+                score_result = batch_results.get(
+                    (c["inst_id"], c["model_name"]),
+                    {"resolved": False, "n_fail_to_pass_passed": 0, "regressions": 0, "error": "missing_from_batch"},
+                )
+                row = _make_result_row(
+                    c["inst_id"], c["arm"], c["trial_id"], run_id, config,
+                    {"patch": c.get("patch", ""), "wall_s": c.get("wall_s", 0.0),
+                     "cost_usd": c.get("cost_usd"), "closure_json": c.get("closure_json"),
+                     "error": c.get("error")},
+                    score_result,
+                )
+                written.append(row)
+                _write_results_row(results_path, row)
+
+    return written
+
+
 # ---------------------------------------------------------------------------
 # Positive control
 # ---------------------------------------------------------------------------
@@ -302,6 +396,8 @@ def _dispatch_arm(
             return MockArmA().run(task, config, run_id, trial_id, workspace=workspace)
         elif arm == "b":
             return MockArmB().run(task, config, run_id, trial_id, prose=prose, workspace=workspace)
+        elif arm == "bprime":
+            return MockArmBPrime().run(task, config, run_id, trial_id, prose=prose, workspace=workspace)
         elif arm == "c":
             return MockArmC().run(task, config, run_id, trial_id, protocol=protocol, workspace=workspace)
     else:
@@ -309,6 +405,8 @@ def _dispatch_arm(
             return run_arm_a(task, config, run_id, trial_id, workspace=workspace)
         elif arm == "b":
             return run_arm_b(task, config, run_id, trial_id, prose=prose, workspace=workspace)
+        elif arm == "bprime":
+            return run_arm_bprime(task, config, run_id, trial_id, prose=prose, workspace=workspace)
         elif arm == "c":
             return run_arm_c(task, config, run_id, trial_id, protocol=protocol, workspace=workspace)
     return {"patch": "", "wall_s": 0.0, "cost_usd": None, "error": f"unknown arm: {arm}"}
@@ -445,6 +543,7 @@ def run_exp1(
     scorer_override: Any = None,
     limit: Optional[int] = None,
     instance_id: Optional[str] = None,
+    no_score: bool = False,
 ) -> List[dict]:
     """Run EXP1 matrix: tasks x arms x trials.
 
@@ -501,8 +600,11 @@ def run_exp1(
     prose = protocol_to_prose(protocol)
     _parity_gate(protocol, prose)
 
-    # Results file + idempotency
+    # Results file + idempotency / resume
     results_path = results_dir / "results.jsonl"
+    if force and results_path.exists():
+        # --force starts a fresh file so a re-run does not append duplicate rows.
+        results_path.unlink()
     existing = _load_existing_results(results_path)
     rows_written: List[dict] = []
 
@@ -516,17 +618,31 @@ def run_exp1(
                     return False
         return True
 
+    # Without --force, skip tasks already fully present in results.jsonl (RESUME).
     tasks_to_run = [t for t in tasks if force or not _all_cells_completed(t.get("instance_id", "?"))]
+    if existing and not force:
+        print(f"--> resume: {len(tasks) - len(tasks_to_run)} tasks already in "
+              f"{results_path.name}, {len(tasks_to_run)} remaining", flush=True)
 
-    # Phase 1: collect all cell records from all tasks
-    all_cells: List[dict] = []
+    # Scoring config + instance lookup, used to score each task as it finishes.
+    max_workers = config.get("bounds", {}).get("scoring", {}).get("max_workers", 1)
+    ns = config.get("bounds", {}).get("scoring", {}).get("namespace", "swebench")
+    cl = config.get("bounds", {}).get("scoring", {}).get("cache_level", "instance")
+    inst_map: Dict[str, dict] = {t.get("instance_id", ""): t for t in tasks if t.get("instance_id")}
 
+    # Dispatch -> score -> WRITE per task. results.jsonl grows incrementally, so a
+    # crash mid-run loses at most the in-flight task and re-running (without
+    # --force) resumes.  Scoring one task's arm cells is a small, collision-free
+    # batch (distinct model_name per arm; too small to trip the scorer timeout).
     if mock:
         for task in tasks_to_run:
-            task_json = json.dumps(task)
-            config_json = json.dumps(config)
-            records = json.loads(_run_one_task(task_json, config_json, run_id, arms, prose, True, scorer_override=scorer_override))
-            all_cells.extend(records)
+            records = json.loads(_run_one_task(
+                json.dumps(task), json.dumps(config), run_id, arms, prose, True,
+                scorer_override=scorer_override))
+            rows_written.extend(_score_and_write_task(
+                records, inst_map, config, run_id, results_path,
+                mock=True, scorer_override=scorer_override,
+                max_workers=max_workers, ns=ns, cl=cl, do_score=not no_score))
     else:
         max_parallel = config.get("bounds", {}).get("dispatch", {}).get("max_parallel", 4)
         n_workers = min(max_parallel, len(tasks_to_run)) if tasks_to_run else 1
@@ -546,16 +662,22 @@ def run_exp1(
                 idx = futures[future]
                 task = tasks_to_run[idx]
                 try:
-                    all_cells.extend(json.loads(future.result()))
+                    records = json.loads(future.result())
                 except Exception as exc:
-                    all_cells.append({
+                    records = [{
                         "inst_id": task.get("instance_id", "?"),
                         "arm": "error", "trial_id": 0, "model_name": "",
                         "patch": "", "wall_s": 0.0, "cost_usd": None,
                         "closure_json": None,
                         "error": f"task worker failed: {exc}",
-                    })
-                # --- progress + ETA (dispatch phase; scoring runs after) ---
+                    }]
+                # score this task's cells and durably append the rows NOW
+                rows_written.extend(_score_and_write_task(
+                    records, inst_map, config, run_id, results_path,
+                    mock=False, scorer_override=None,
+                    max_workers=max_workers, ns=ns, cl=cl, do_score=not no_score))
+
+                # --- progress + ETA ---
                 _done += 1
                 _elapsed = _time.monotonic() - _t0
                 _rate = _elapsed / _done
@@ -568,69 +690,6 @@ def run_exp1(
                     f"| ETA {_eta} (~{_finish})",
                     flush=True,
                 )
-
-    # Phase 2: write exclusion rows immediately (positive_control / worker errors)
-    max_workers = config.get("bounds", {}).get("scoring", {}).get("max_workers", 1)
-    ns = config.get("bounds", {}).get("scoring", {}).get("namespace", "swebench")
-    cl = config.get("bounds", {}).get("scoring", {}).get("cache_level", "instance")
-
-    excluded = [c for c in all_cells if c.get("arm") == "positive_control" or c.get("arm") == "error"]
-    to_score = [c for c in all_cells if c.get("arm") not in ("positive_control", "error")]
-
-    for rec in excluded:
-        row = _make_result_row(
-            rec["inst_id"], rec["arm"], rec["trial_id"], run_id, config,
-            {"patch": rec.get("patch", ""), "wall_s": rec.get("wall_s", 0.0),
-             "cost_usd": rec.get("cost_usd"), "closure_json": rec.get("closure_json"),
-             "error": rec.get("error")},
-            {"resolved": False},
-            exclusion_reason=rec.get("exclusion_reason"),
-        )
-        rows_written.append(row)
-        _write_results_row(results_path, row)
-
-    # Phase 3: score by arm (one harness call per arm — no instance_id collision)
-    if to_score:
-        for a in arms:
-            arm_cells = [c for c in to_score if c["arm"] == a]
-            if not arm_cells:
-                continue
-
-            # Build a dict mapping instance_id -> task dict for score_predictions_batch
-            inst_map: Dict[str, dict] = {}
-            for t in tasks:
-                iid = t.get("instance_id", "")
-                if iid:
-                    inst_map[iid] = t
-
-            batch_input = [
-                (inst_map.get(c["inst_id"], {"instance_id": c["inst_id"]}),
-                 c.get("patch", ""), c["model_name"])
-                for c in arm_cells
-            ]
-
-            if mock:
-                _batch_scorer = scorer_override if scorer_override is not None else MockScorer()
-                batch_results = _batch_scorer.score_batch(batch_input)
-            else:
-                batch_results = score_predictions_batch(
-                    batch_input, max_workers=max_workers, namespace=ns, cache_level=cl,
-                )
-
-            for c in arm_cells:
-                score_result = batch_results.get(
-                    (c["inst_id"], c["model_name"]),
-                    {"resolved": False, "n_fail_to_pass_passed": 0, "regressions": 0, "error": "missing_from_batch"},
-                )
-                row = _make_result_row(
-                    c["inst_id"], c["arm"], c["trial_id"], run_id, config,
-                    {"patch": c.get("patch", ""), "wall_s": c.get("wall_s", 0.0),
-                     "cost_usd": c.get("cost_usd"), "closure_json": c.get("closure_json"),
-                     "error": c.get("error")},
-                    score_result,
-                )
-                rows_written.append(row)
-                _write_results_row(results_path, row)
 
     # Snapshot config for provenance
     snapshot_cfg = deepcopy(config)
@@ -675,7 +734,9 @@ def _parity_gate(protocol: Any, prose: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="EXP1: Enforcement ablation runner")
     parser.add_argument("--smoke", action="store_true", help="Run 1 task with mocks")
-    parser.add_argument("--force", action="store_true", help="Re-run completed trials")
+    parser.add_argument("--force", action="store_true",
+                        help="Start fresh: truncate results.jsonl and re-run all tasks. "
+                             "OMIT --force to RESUME (skip tasks already in results.jsonl).")
     parser.add_argument("--limit", type=int, default=None,
                         help="Max number of tasks to process")
     parser.add_argument("--instance", type=str, default=None, dest="instance_id",
@@ -691,6 +752,13 @@ def main() -> None:
                         help="Path to the local swebench dataset .jsonl used for scoring "
                              "(default experiments/tasks/swebench_local.jsonl). Set per-run so "
                              "parallel runs don't read each other's dataset.")
+    parser.add_argument("--arms", type=str, default=None,
+                        help="Comma-separated arms to run (default a,b,c). "
+                             "Use e.g. --arms bprime to run only the advisory-feedback control.")
+    parser.add_argument("--no-score", action="store_true", dest="no_score",
+                        help="DISPATCH-ONLY: save patches to results.jsonl without running the "
+                             "Docker scorer (and skip the gold gate). Decouples the flaky/slow "
+                             "scorer from GPU dispatch; score afterward with rescore_exp1.")
     args = parser.parse_args()
 
     cli_overrides = args.overrides if args.overrides else None
@@ -701,6 +769,10 @@ def main() -> None:
     import os as _os
     if args.dataset:
         _os.environ["SNODO_EXP_DATASET"] = str(Path(args.dataset).resolve())
+
+    # Dispatch-only: also skip the gold positive-control gate (it runs the scorer).
+    if args.no_score:
+        _os.environ["SNODO_SKIP_GOLD"] = "1"
 
     import time as _time
     _start = _time.monotonic()
@@ -713,6 +785,8 @@ def main() -> None:
         mock=args.smoke,
         limit=args.limit,
         instance_id=args.instance_id,
+        no_score=args.no_score,
+        arms=[a.strip() for a in args.arms.split(",")] if args.arms else None,
     )
     _elapsed = _time.monotonic() - _start
 
