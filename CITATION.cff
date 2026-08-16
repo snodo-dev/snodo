@@ -17,6 +17,11 @@ repository-code: "https://github.com/snodo-dev/snodo"
 url: "https://snodo.dev"
 license: Apache-2.0
 version: "0.9.0"
+doi: 10.5281/zenodo.21967946
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.21967946
+    description: "Zenodo archive of the TOSEM submission artifact (v0.9.0-tosem)"
 keywords:
   - AI-SDLC
   - protocol specification
