@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Generate temp.md with complete EXP1 diagnostic analysis."""
 import json
-import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
 OUT = Path(__file__).parent / "temp.md"
 RESULTS = Path(__file__).parent / "results" / "exp1" / "results.jsonl"
-ROWS = [json.loads(l) for l in open(RESULTS) if l.strip()]
+ROWS = [json.loads(line) for line in open(RESULTS) if line.strip()]
 ARMS = ("a", "b", "c")
 
 lines = []
@@ -100,7 +99,7 @@ for t, d in sorted(both2):
             b_detail = f"error={r.get('error','-')[:80]} patch_len={len(r.get('patch') or '')} wall={r.get('wall_s',0):.0f}s"
 
     if not a_ok and not b_ok:
-        w(f"- **GENUINE sole C win** — neither A nor B resolved")
+        w("- **GENUINE sole C win** — neither A nor B resolved")
         w(f"  - A: {a_detail}")
         w(f"  - B: {b_detail}")
     elif a_ok and not b_ok:
@@ -111,7 +110,7 @@ for t, d in sorted(both2):
         if "timeout" in b_err.lower():
             w(f"- **SHARED win (A also won)** — B timed out at {b_rows[0].get('wall_s',0):.0f}s")
         elif b_patch_len == 0:
-            w(f"- **SHARED win (A also won)** — B produced empty patch")
+            w("- **SHARED win (A also won)** — B produced empty patch")
         elif b_patch_len > 50000:
             w(f"- **SHARED win (A also won)** — B hallucinated ({b_patch_len} char patch)")
         else:
@@ -119,7 +118,7 @@ for t, d in sorted(both2):
     elif not a_ok and b_ok:
         w(f"- **SHARED win (B also won)** — A: {a_detail}")
     else:
-        w(f"- **SHARED win (both A and B won too)**")
+        w("- **SHARED win (both A and B won too)**")
     w()
 
 # ================================================================================
@@ -174,8 +173,8 @@ w()
 a_only = sum(1 for t in tasks if res[t].get("a") and not res[t].get("c"))
 c_only = sum(1 for t in tasks if not res[t].get("a") and res[t].get("c"))
 b_only = sum(1 for t in tasks if res[t].get("b") and not res[t].get("c"))
-w(f"| Metric | Count |")
-w(f"|--------|-------|")
+w("| Metric | Count |")
+w("|--------|-------|")
 w(f"| Tasks where A resolves, C does NOT | {a_only} |")
 w(f"| Tasks where C resolves, A does NOT | {c_only} |")
 w(f"| Tasks where B resolves, C does NOT | {b_only} |")
@@ -190,8 +189,8 @@ for r in c_rows:
     d = r.get("closure_json") or {}
     out = d.get("outcome", "no_closure")
     cj[out] += 1
-w(f"| outcome | count |")
-w(f"|---------|-------|")
+w("| outcome | count |")
+w("|---------|-------|")
 for k, v in cj.most_common():
     w(f"| {k} | {v} |")
 w()

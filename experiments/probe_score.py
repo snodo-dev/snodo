@@ -36,7 +36,7 @@ def _gold_map(instance_ids):
 
 def main() -> None:
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 3
-    sel = [json.loads(l) for l in SELECTION.read_text().splitlines() if l.strip()]
+    sel = [json.loads(line) for line in SELECTION.read_text().splitlines() if line.strip()]
     instance_ids = [s["instance_id"] for s in sel][:n]
     print("instances:", instance_ids)
     golds = _gold_map(instance_ids)
