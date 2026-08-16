@@ -32,7 +32,7 @@ def main() -> None:
     inp = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("experiments/results/exp1/results.jsonl")
     out = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("experiments/results/exp1/results.rescored.jsonl")
 
-    rows = [json.loads(l) for l in inp.read_text().splitlines() if l.strip()]
+    rows = [json.loads(line) for line in inp.read_text().splitlines() if line.strip()]
     print(f"loaded {len(rows)} rows from {inp}")
 
     # Re-score arm rows per arm (distinct instances within an arm -> one batch).

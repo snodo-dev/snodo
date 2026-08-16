@@ -5,7 +5,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-ROWS = [json.loads(l) for l in open(Path(__file__).parent / "results" / "exp1" / "results.jsonl") if l.strip()]
+ROWS = [json.loads(line) for line in open(Path(__file__).parent / "results" / "exp1" / "results.jsonl") if line.strip()]
 
 instance_id = sys.argv[1] if len(sys.argv) > 1 else None
 

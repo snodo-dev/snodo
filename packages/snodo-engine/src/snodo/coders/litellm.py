@@ -41,7 +41,7 @@ if not getattr(_litellm, "success_callback", None):
     _litellm.success_callback = []
 _litellm.success_callback.append(UsageTracker())
 
-import logging as _logging
+import logging as _logging  # noqa: E402  — must run after litellm is configured above
 _logging.getLogger("LiteLLM").setLevel(_logging.WARNING)
 
 # CF models absent from models.dev catalog — price via register_model.

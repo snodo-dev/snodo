@@ -4,7 +4,7 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
-ROWS = [json.loads(l) for l in open(Path(__file__).parent / "results" / "exp1" / "results.jsonl") if l.strip()]
+ROWS = [json.loads(line) for line in open(Path(__file__).parent / "results" / "exp1" / "results.jsonl") if line.strip()]
 ARMS = ("a", "b", "c")
 
 # ---- 1. Error breakdown per arm ----

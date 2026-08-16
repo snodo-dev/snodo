@@ -70,7 +70,7 @@ def _is_infra(err) -> bool:
 
 def main() -> None:
     path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT
-    rows = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
     # Collapse to one resolved bool per (instance, arm): resolved if ANY trial did.
     res = collections.defaultdict(dict)   # instance -> arm -> bool

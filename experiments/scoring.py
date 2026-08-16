@@ -17,6 +17,8 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 
 def _swebench_python() -> str:
@@ -29,8 +31,6 @@ def _swebench_python() -> str:
     the FEA-patched swebench (numpy2/vllm-era deps) out of the experiments env.
     """
     return os.environ.get("SNODO_SWEBENCH_PYTHON") or sys.executable
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 _INSTANCE_CACHE: Dict[str, dict] = {}
 
