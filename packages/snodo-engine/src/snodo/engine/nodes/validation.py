@@ -133,7 +133,7 @@ class ValidationNodeMixin:
             "phase": "pre_execute",
             "task_ref": loop_state.task.id,
             "validators_invoked": [v.validator_id for v in validators],
-            "results": _build_audit_results(validators, results),
+            "results": _build_audit_results(validators, results, getattr(getattr(self, "_validator_runner", None), "last_cap_originals", None)),
             "outcome": outcome,
             "policy_decision": str(decision.action.value) if decision else None,
         })
@@ -282,7 +282,7 @@ class ValidationNodeMixin:
             "phase": "post_execute",
             "task_ref": loop_state.task.id,
             "validators_invoked": [v.validator_id for v in post_validators],
-            "results": _build_audit_results(post_validators, results),
+            "results": _build_audit_results(post_validators, results, getattr(getattr(self, "_validator_runner", None), "last_cap_originals", None)),
             "outcome": post_outcome,
         })
 

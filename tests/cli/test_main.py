@@ -723,15 +723,18 @@ def test_intent_protocol_validators(temp_project_dir):
 
     assert protocol is not None
     validator_ids = {v.validator_id for v in protocol.validators}
-    assert validator_ids == {"spec-manners", "review"}
+    # The post_execute "review" validator was removed intentionally (see the
+    # NOTE in intent.yml: uncommitted coder diffs made it spuriously flag
+    # every task). Enforcement is WARN-only spec manners + blocker-level
+    # global constraints on the output.
+    assert validator_ids == {"spec-manners"}
 
     pre = [v for v in protocol.validators if v.evaluation_phase == "pre_execute"]
     post = [v for v in protocol.validators if v.evaluation_phase == "post_execute"]
     assert len(pre) == 1
-    assert len(post) == 1
+    assert len(post) == 0
     assert pre[0].validator_id == "spec-manners"
     assert pre[0].severity_cap == "warn"
-    assert post[0].validator_id == "review"
 
 
 def test_intent_protocol_global_constraints(temp_project_dir):
@@ -768,7 +771,7 @@ def test_intent_protocol_constant_is_valid():
 
     assert protocol.protocol_id == "intent"
     assert len(protocol.modes) == 1
-    assert len(protocol.validators) == 2
+    assert len(protocol.validators) == 1
     assert protocol.initial_mode == "producer"
 
 
