@@ -9,6 +9,7 @@ excluded - revalidation on resume is required.
 
 import json
 import logging
+import os
 import secrets
 from datetime import datetime, UTC, timedelta
 from typing import Dict, Any, Optional, List
@@ -19,6 +20,18 @@ from snodo.infrastructure.paths import resolve_home
 from snodo.project import get_project_id
 
 _logger = logging.getLogger(__name__)
+
+
+class SessionError(Exception):
+    """Session state is corrupt or unreadable."""
+
+
+# Exceptions that indicate a session file is corrupt/unreadable rather than
+# absent. Used to surface corruption (warn + audit) instead of silently
+# skipping, and to fail loud when resolving the active session.
+_CORRUPT_SESSION_EXCEPTIONS = (
+    json.JSONDecodeError, KeyError, TypeError, AttributeError, UnicodeDecodeError,
+)
 
 
 MODE_PREFIXES = {
@@ -87,6 +100,15 @@ class SessionManager:
         """Log an audit event if audit_log is available."""
         if self._audit_log is not None:
             self._audit_log.append_event(event_type, data)
+
+    def _warn_corrupt(self, path: Path, exc: Exception) -> None:
+        """Warn and audit a corrupt session file instead of skipping silently."""
+        _logger.warning("Skipping corrupt session file %s: %s", path, exc)
+        self._audit("session_corrupt", {
+            "op": "session_corrupt",
+            "session_file": str(path),
+            "error": str(exc),
+        })
 
     def create_session(
         self,
@@ -157,17 +179,24 @@ class SessionManager:
         if pointer:
             try:
                 session = self.load_session(pointer)
-                if session.mode == mode and session.project_id == pid:
-                    return session
             except FileNotFoundError:
                 pass  # stale pointer — fall through to auto-adopt
+            except _CORRUPT_SESSION_EXCEPTIONS as exc:
+                raise SessionError(
+                    f"Active session {pointer} for mode={mode} "
+                    f"project={project_root} is corrupt: {exc}"
+                ) from exc
+            else:
+                if session.mode == mode and session.project_id == pid:
+                    return session
 
         # No pointer or stale — find all sessions for this (project, mode)
         candidates: List[SessionState] = []
         for session_file in self.sessions_dir.glob("*.json"):
             try:
                 s = self._load_file(session_file)
-            except (json.JSONDecodeError, KeyError, TypeError):
+            except _CORRUPT_SESSION_EXCEPTIONS as exc:
+                self._warn_corrupt(session_file, exc)
                 continue
             if s.mode == mode and s.project_id == pid:
                 candidates.append(s)
@@ -368,7 +397,8 @@ class SessionManager:
         for session_file in sorted(self.sessions_dir.glob("*.json")):
             try:
                 session = self._load_file(session_file)
-            except (json.JSONDecodeError, KeyError, TypeError):
+            except _CORRUPT_SESSION_EXCEPTIONS as exc:
+                self._warn_corrupt(session_file, exc)
                 continue
             if mode and session.mode != mode:
                 continue
@@ -398,22 +428,25 @@ class SessionManager:
         for session_file in self.sessions_dir.glob("*.json"):
             try:
                 s = self._load_file(session_file)
-            except (json.JSONDecodeError, KeyError, TypeError):
+            except _CORRUPT_SESSION_EXCEPTIONS as exc:
+                self._warn_corrupt(session_file, exc)
                 continue
             try:
                 from snodo.infrastructure.state import read_state
                 state = read_state(s.project_root)
                 for sid in state.active_session.values():
                     active_ids.add(sid)
-            except Exception:
-                pass
+            except (OSError, PermissionError) as exc:
+                _logger.warning(
+                    "Could not read state for %s while pruning: %s",
+                    s.project_root, exc,
+                )
 
         for session_file in list(self.sessions_dir.glob("*.json")):
             try:
                 session = self._load_file(session_file)
-            except (json.JSONDecodeError, KeyError, TypeError):
-                session_file.unlink(missing_ok=True)
-                pruned += 1
+            except _CORRUPT_SESSION_EXCEPTIONS as exc:
+                self._warn_corrupt(session_file, exc)
                 continue
 
             if session.session_id in active_ids:
@@ -440,11 +473,23 @@ class SessionManager:
         return pruned
 
     def _save_session(self, session: SessionState) -> None:
-        """Save session state to JSON file."""
+        """Atomically save session state to JSON file.
+
+        Serialises to a same-directory ``.tmp`` file then ``os.replace`` onto
+        the target. Same-directory is required for atomicity (a cross-filesystem
+        rename is not atomic). A crash mid-write leaves the previous file
+        intact; the ``.tmp`` file is removed on failure.
+        """
         session_path = self.sessions_dir / f"{session.session_id}.json"
+        tmp_path = self.sessions_dir / f"{session.session_id}.json.tmp"
         data = asdict(session)
-        with open(session_path, "w") as f:
-            json.dump(data, f, indent=2)
+        try:
+            with open(tmp_path, "w") as f:
+                json.dump(data, f, indent=2)
+            os.replace(str(tmp_path), str(session_path))
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
     def _load_file(self, path: Path) -> SessionState:
         """Load session from a JSON file path.

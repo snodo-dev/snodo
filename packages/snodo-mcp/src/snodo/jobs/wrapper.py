@@ -16,12 +16,12 @@ from pathlib import Path
 
 
 def _save_state(job_dir: str, state: dict) -> None:
-    """Atomically write state.json (write tmp + os.rename)."""
+    """Atomically write state.json (write tmp + os.replace)."""
     state_path = os.path.join(job_dir, "state.json")
     tmp_path = os.path.join(job_dir, "state.json.tmp")
     with open(tmp_path, "w") as f:
         json.dump(state, f, indent=2)
-    os.rename(tmp_path, state_path)
+    os.replace(tmp_path, state_path)
 
 
 def _load_state(job_dir: str) -> dict:

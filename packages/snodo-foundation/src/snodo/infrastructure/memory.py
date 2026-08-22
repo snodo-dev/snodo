@@ -82,7 +82,7 @@ class AgentMemoryManager:
         tmp_path = self.agents_path.with_suffix(".json.tmp")
         with open(tmp_path, "w") as f:
             json.dump(registry, f, indent=2)
-        os.rename(str(tmp_path), str(self.agents_path))
+        os.replace(str(tmp_path), str(self.agents_path))
 
     def get_or_create_agent(self, project: str, mode: str) -> dict:
         """Get or create an agent entry, returning its config.

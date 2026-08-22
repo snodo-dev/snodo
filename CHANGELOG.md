@@ -36,6 +36,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
   returning a partial list. Appends are refused onto an unverified chain, and
   `verify_chain()` now also checks that the on-disk log agrees with the
   in-memory chain, so a forked or truncated chain is never certified (INV4).
+- Session writes are now atomic: `SessionManager._save_session` serialises to a
+  same-directory `.tmp` file and `os.replace`s onto the target, so a crash
+  mid-write leaves the previous session intact (INV5). Corrupt session files are
+  no longer skipped silently — enumeration warns and audits (`session_corrupt`),
+  and a corrupt *active* session raises `SessionError` instead of silently
+  adopting a different session. State-file writes across `memory.py`, `recon`,
+  and `jobs` now use `os.replace` (atomic overwrite on all platforms) instead of
+  `os.rename`.
 
 ---
 

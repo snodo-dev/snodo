@@ -66,12 +66,12 @@ class JobManager:
         return job_path
 
     def _save_state(self, job_dir: Path, state: dict) -> None:
-        """Atomically write state.json (write tmp + os.rename)."""
+        """Atomically write state.json (write tmp + os.replace)."""
         state_path = job_dir / "state.json"
         tmp_path = job_dir / "state.json.tmp"
         with open(tmp_path, "w") as f:
             json.dump(state, f, indent=2)
-        os.rename(str(tmp_path), str(state_path))
+        os.replace(str(tmp_path), str(state_path))
 
     def _load_state(self, job_dir: Path) -> dict:
         """Load state.json from a job directory."""

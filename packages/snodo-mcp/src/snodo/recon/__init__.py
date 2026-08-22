@@ -316,7 +316,7 @@ class ReconManager:
         tmp_path = recon_dir / "state.json.tmp"
         with open(tmp_path, "w") as f:
             json.dump(state, f, indent=2)
-        os.rename(str(tmp_path), str(state_path))
+        os.replace(str(tmp_path), str(state_path))
 
     def _load_state(self, recon_dir: Path) -> dict:
         state_path = recon_dir / "state.json"
@@ -336,7 +336,7 @@ class ReconManager:
                 payload.append(r)
         with open(tmp_path, "w") as f:
             json.dump(payload, f, indent=2)
-        os.rename(str(tmp_path), str(results_path))
+        os.replace(str(tmp_path), str(results_path))
 
     def _load_results(self, recon_dir: Path) -> list:
         results_path = recon_dir / "results.json"
