@@ -160,6 +160,12 @@ Session state is persisted per (mode, project) as JSON files under `~/.snodo/ses
 
 On restart, `get_active_session()` finds the matching session by mode + project hash. Resolution decisions (`proceed` or `halt` for escalated tasks) are stored in `checkpoint.decisions` and consumed on the next governance pass. Validation tokens are deliberately **excluded** from session state — context may have shifted during the pause, so revalidation on resume is required for soundness.
 
+Session writes are atomic (`_save_session` serialises to a same-directory `.tmp`
+file then `os.replace`s onto the target), so a crash mid-write leaves the previous
+session intact. Corrupt session files are surfaced rather than skipped: enumeration
+warns and audits (`session_corrupt`), and a corrupt *active* session raises
+`SessionError` instead of silently adopting a different session.
+
 ## Adapter pattern
 
 Coders implement a single interface:
