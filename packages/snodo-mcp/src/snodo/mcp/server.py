@@ -14,7 +14,7 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from snodo.compiler.models import Protocol
-from snodo.infrastructure.tokens import TokenIssuer, ValidationToken
+from snodo.infrastructure.tokens import TokenIssuer, TokenStoreError, ValidationToken
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.tools.git import GitMCP
@@ -278,7 +278,20 @@ class ProtocolMCPServer:
                     f"validate_task last returned status='{status}' — a token is "
                     f"only issued on status='pass'. Call validate_task first."
                 )
-            if not self.token_issuer.verify_token(self._validation_token):
+            try:
+                valid = self.token_issuer.verify_token(self._validation_token)
+            except TokenStoreError as e:
+                self._audit("wf1_violation", {
+                    "op": "wf1_violation",
+                    "tool": name,
+                    "mode": self.mode_id or "all",
+                    "reason": "token_store_unavailable",
+                })
+                raise MCPError(
+                    f"WF1 violation: cannot verify validation token for tool "
+                    f"'{name}' — token store unavailable: {e}"
+                )
+            if not valid:
                 self._audit("wf1_violation", {
                     "op": "wf1_violation",
                     "tool": name,
@@ -596,11 +609,19 @@ class CoreToolHandler:
             "mode": self.server.mode_id or "all",
         })
 
-        # Single-use: consume the token after successful dispatch
+        # Single-use: consume the token at the dispatch boundary (the point
+        # where the token authorises irreversible work). The INSERT is the
+        # claim — atomic across processes. Fail closed if the store is down.
         with self.server._token_lock:
-            if self.server._validation_token:
+            token = self.server._validation_token
+            if token is not None:
+                try:
+                    consumed = self.server.token_issuer.consume_token(token)
+                except TokenStoreError as e:
+                    raise MCPError(
+                        f"dispatch_task failed: token store unavailable: {e}"
+                    )
                 self.server._validation_token = None
-                consumed = True
             else:
                 consumed = False
         if consumed:

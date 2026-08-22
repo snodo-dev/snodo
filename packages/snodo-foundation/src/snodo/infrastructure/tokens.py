@@ -3,24 +3,32 @@
 FILE: snodo/infrastructure/tokens.py (Task 7.7)
 
 Consolidated token model using PyJWT for standard signing, expiry,
-and tamper detection. Replaces the previous two-class system
-(interfaces.ValidationToken + tokens.ValidationToken) with a single
-JWT-backed ValidationToken wrapper and a unified TokenIssuer.
+and tamper detection.  Single-use enforcement is backed by a shared
+SQLite store (``~/.snodo/tokens.db``) so consumption is atomic across
+processes and survives restarts.
 
 Standard claims: iat (issued at), exp (expiry at)
 Custom claims:  task_id, validator_signatures, consensus
 """
 
 import hashlib
+import logging
 import os
 import secrets
+import sqlite3
+import time
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import jwt
 
 from snodo.core.interfaces import ValidatorResult
+from snodo.paths import resolve_token_store
+
+_logger = logging.getLogger(__name__)
 
 
 class TokenError(Exception):
@@ -43,6 +51,10 @@ class TokenIssuanceError(TokenError):
     """Token could not be issued."""
 
 
+class TokenStoreError(TokenError):
+    """The consumed-token store could not be opened/read/written (fail closed)."""
+
+
 @dataclass
 class ValidationToken:
     """JWT-backed validation credential.
@@ -59,12 +71,111 @@ class ValidationToken:
     expires_at: str = ""
 
 
+class TokenStore:
+    """SQLite-backed consumed-token store (single-use enforcement).
+
+    The INSERT is the claim: success = first holder; ``IntegrityError`` =
+    already consumed.  This gives atomic compare-and-set across processes —
+    there is no read-then-write and no application-level locking.
+
+    The store is created lazily on first use (``mkdir(parents=True)``), NOT at
+    ``snodo init``, so existing installs keep working without re-init.
+    """
+
+    _PRUNE_EVERY = 100
+
+    def __init__(self, path: Optional[Path] = None):
+        self._path = Path(path) if path else resolve_token_store()
+        self._conn: Optional[sqlite3.Connection] = None
+        self._inserts_since_prune = 0
+
+    def _connect(self) -> sqlite3.Connection:
+        if self._conn is not None:
+            return self._conn
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(str(self._path), check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.execute("PRAGMA user_version=1")
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS consumed_tokens ("
+                " token_id TEXT PRIMARY KEY,"
+                " task_id TEXT NOT NULL,"
+                " exp INTEGER NOT NULL"
+                ")"
+            )
+            conn.commit()
+        except Exception as e:  # noqa: BLE001 — fail closed
+            raise TokenStoreError(
+                f"Could not open token store at {self._path}: {e}"
+            ) from e
+        self._conn = conn
+        self._prune()
+        return conn
+
+    def is_consumed(self, token_id: str) -> bool:
+        """Return True if *token_id* has already been consumed."""
+        try:
+            conn = self._connect()
+            cur = conn.execute(
+                "SELECT 1 FROM consumed_tokens WHERE token_id = ?", (token_id,)
+            )
+            return cur.fetchone() is not None
+        except TokenStoreError:
+            raise
+        except Exception as e:  # noqa: BLE001 — fail closed
+            raise TokenStoreError(f"Could not read token store: {e}") from e
+
+    def consume(self, token_id: str, task_id: str, exp: int) -> bool:
+        """Atomically claim a token.
+
+        Returns True if this call consumed it (first holder), False if it was
+        already consumed.  Raises TokenStoreError if the store is unwritable.
+        """
+        try:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO consumed_tokens (token_id, task_id, exp) "
+                "VALUES (?, ?, ?)",
+                (token_id, task_id, exp),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            return False
+        except TokenStoreError:
+            raise
+        except Exception as e:  # noqa: BLE001 — fail closed
+            raise TokenStoreError(f"Could not write token store: {e}") from e
+
+        self._inserts_since_prune += 1
+        if self._inserts_since_prune >= self._PRUNE_EVERY:
+            self._prune()
+        return True
+
+    def _prune(self) -> None:
+        """Opportunistically delete expired tokens (no scheduler)."""
+        try:
+            conn = self._connect()
+            conn.execute(
+                "DELETE FROM consumed_tokens WHERE exp < ?", (int(time.time()),)
+            )
+            conn.commit()
+            self._inserts_since_prune = 0
+        except Exception:  # noqa: BLE001 — opportunistic
+            pass
+
+
 class TokenIssuer:
     """Issues and verifies JWT validation tokens.
 
     Tokens are HS256-signed JWTs with standard iat/exp claims
     and custom claims for task_id, validator_signatures, and consensus.
     PyJWT handles signature verification and expiry automatically.
+
+    Single-use: ``verify_token`` CHECKS the shared consumed-token store but does
+    NOT consume (a dispatch may involve many mutating tool calls).  Consumption
+    happens at the dispatch boundary via ``consume_token``.
     """
 
     def __init__(
@@ -72,11 +183,35 @@ class TokenIssuer:
         secret: Optional[str] = None,
         ttl_seconds: int = 600,
         audit_log: Any = None,
+        store_path: Optional[Path] = None,
     ):
-        self.secret = secret or os.environ.get("SNODO_TOKEN_SECRET") or secrets.token_hex(32)
+        self.secret = self._resolve_secret(secret)
         self.ttl_seconds = ttl_seconds
         self._audit_log = audit_log
-        self._used_tokens: set[str] = set()
+        self._store = TokenStore(store_path)
+
+    @staticmethod
+    def _resolve_secret(secret: Optional[str]) -> str:
+        if secret:
+            return secret
+        env = os.environ.get("SNODO_TOKEN_SECRET")
+        if env is not None:
+            if env == "":
+                raise TokenError(
+                    "SNODO_TOKEN_SECRET is set but empty — refusing to use an "
+                    "empty signing secret."
+                )
+            return env
+        # Fall back to a random per-process secret, but warn loudly: tokens
+        # will NOT verify across processes (engine <-> MCP) without a shared
+        # secret.
+        warnings.warn(
+            "SNODO_TOKEN_SECRET is not set — using a random per-process secret. "
+            "Tokens will not verify across processes (engine <-> MCP). Set "
+            "SNODO_TOKEN_SECRET to a shared secret for cross-process validation.",
+            stacklevel=2,
+        )
+        return secrets.token_hex(32)
 
     def issue_token(
         self,
@@ -151,7 +286,11 @@ class TokenIssuer:
         token: Optional[ValidationToken],
         expected_task_id: Optional[str] = None,
     ) -> bool:
-        """Verify token signature, expiry, and optional task binding.
+        """Verify token signature, expiry, task binding, and single-use.
+
+        Checks the shared consumed-token store but does NOT consume (a dispatch
+        may involve many mutating tool calls).  Fails closed: if the store
+        cannot be read, raises TokenStoreError rather than accepting the token.
 
         Args:
             token: ValidationToken to verify (or None)
@@ -159,12 +298,14 @@ class TokenIssuer:
                               issued for this specific task
 
         Returns:
-            True if token is valid, unexpired, task-bound (if specified)
+            True if token is valid, unexpired, task-bound (if specified),
+            and not already consumed.
         """
         if token is None or not token.jwt:
             return False
 
-        if self._token_id(token.jwt) in self._used_tokens:
+        token_id = self._token_id(token.jwt)
+        if self._store.is_consumed(token_id):
             self._log_event("token_consumed", {
                 "task_ref": token.task_id or expected_task_id,
             })
@@ -199,14 +340,18 @@ class TokenIssuer:
 
         return True
 
-    def consume_token(self, token: Optional[ValidationToken]) -> None:
-        """Mark a token as consumed (single-use enforcement).
+    def consume_token(self, token: Optional[ValidationToken]) -> bool:
+        """Atomically mark a token as consumed (single-use enforcement).
 
-        Args:
-            token: ValidationToken to mark as used
+        Called at the dispatch boundary.  Returns True if this call consumed
+        the token (first holder), False if it was already consumed.  Raises
+        TokenStoreError if the store is unwritable (fail closed).
         """
-        if token is not None and token.jwt:
-            self._used_tokens.add(self._token_id(token.jwt))
+        if token is None or not token.jwt:
+            return False
+        token_id = self._token_id(token.jwt)
+        exp = self._decode_exp(token.jwt)
+        return self._store.consume(token_id, token.task_id or "", exp)
 
     def decode_token(self, token: Optional[ValidationToken]) -> Optional[Dict[str, Any]]:
         """Decode token payload for inspection (no signature verification).
@@ -229,6 +374,15 @@ class TokenIssuer:
         """Short stable identifier for a JWT (truncated SHA-256)."""
         return hashlib.sha256(jwt_str.encode()).hexdigest()[:16]
 
+    @staticmethod
+    def _decode_exp(jwt_str: str) -> int:
+        """Decode the exp claim (epoch seconds) without signature verification."""
+        try:
+            payload = jwt.decode(jwt_str, options={"verify_signature": False})
+            return int(payload.get("exp", 0))
+        except Exception:  # noqa: BLE001 — invalid token, exp irrelevant
+            return 0
+
     def _log_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log to injected audit log if available."""
         if self._audit_log is not None:
@@ -237,30 +391,3 @@ class TokenIssuer:
     @staticmethod
     def _has_blockers(results: List[ValidatorResult]) -> bool:
         return any(r.severity == "blocker" for r in results)
-
-
-# Default issuer (no audit_log, purely for convenience functions needing
-# the old API surface.  Engine and MCP server inject their own instances.)
-_default_issuer = TokenIssuer()
-
-
-def issue_token(
-    task_id: str,
-    validator_results: List[ValidatorResult],
-    consensus: str = "unanimous",
-) -> Optional[ValidationToken]:
-    """Convenience: issue a JWT-backed validation token (default issuer)."""
-    return _default_issuer.issue_token(task_id, validator_results, consensus)
-
-
-def verify_token(
-    token: Optional[ValidationToken],
-    expected_task_id: Optional[str] = None,
-) -> bool:
-    """Convenience: verify a JWT token (default issuer)."""
-    return _default_issuer.verify_token(token, expected_task_id=expected_task_id)
-
-
-def decode_token(token: Optional[ValidationToken]) -> Optional[Dict[str, Any]]:
-    """Convenience: decode a JWT token payload (default issuer)."""
-    return _default_issuer.decode_token(token)

@@ -27,6 +27,18 @@ def resolve_home() -> Path:
     return Path.home() / ".snodo"
 
 
+def resolve_token_store() -> Path:
+    """Return the path to the shared consumed-token store (SQLite).
+
+    Defaults to ``<snodo home>/tokens.db``.  Overridable via
+    ``SNODO_TOKEN_STORE`` so read-only-FS deployments can point the store
+    at a writable location (there is deliberately no "unsafe/skip" mode).
+    """
+    if "SNODO_TOKEN_STORE" in os.environ:
+        return Path(os.environ["SNODO_TOKEN_STORE"]).expanduser()
+    return resolve_home() / "tokens.db"
+
+
 def resolve_project_root(start: Optional[str] = None) -> Optional[str]:
     """Walk up from *start* (or cwd) looking for a .snodo/ directory.
 

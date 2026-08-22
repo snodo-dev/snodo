@@ -15,7 +15,7 @@ from snodo.engine.policy import PolicyEvaluator, PolicyAction
 from snodo.compiler.models import (
     Protocol, Severity, DisagreementPolicy,
 )
-from snodo.infrastructure.tokens import ValidationToken
+from snodo.infrastructure.tokens import TokenIssuer, ValidationToken
 
 from tests.strategies import (
     hypothesis_settings,
@@ -346,17 +346,25 @@ def test_jwt_expired_token_rejected(token_data):
 
 
 # ============================================================================
-# Bonus Property 12 — JWT single-use consumed token rejected
+# Bonus Property 12 — JWT single-use: the same token cannot gate two dispatches
 # ============================================================================
 
 @given(token_data=jwt_tokens())
 @_HYP_SETTINGS
 @pytest.mark.property
-def test_jwt_single_use_consumed_token_rejected(token_data):
-    """A consumed (used) token cannot be verified again."""
+def test_same_token_cannot_gate_two_dispatches(token_data):
+    """A token consumed at the dispatch boundary cannot authorise a second dispatch."""
     token, issuer, task_id = token_data
     assert token is not None
-    first_verify = issuer.verify_token(token)
-    assert first_verify is True
-    issuer.consume_token(token)
+    # Isolate the consumed-token store per example: Hypothesis may draw
+    # byte-identical JWTs (low-entropy strategy + 1s iat granularity), and a
+    # shared store would leak consumption across examples.
+    import tempfile
+    from pathlib import Path
+    store = Path(tempfile.mkdtemp()) / "tokens.db"
+    issuer = TokenIssuer(secret=issuer.secret, ttl_seconds=issuer.ttl_seconds, store_path=store)
+    # First dispatch: verify, then consume at the boundary.
+    assert issuer.verify_token(token) is True
+    assert issuer.consume_token(token) is True
+    # Second dispatch attempt: the same token must be rejected.
     assert not issuer.verify_token(token), "Consumed token should be rejected"
