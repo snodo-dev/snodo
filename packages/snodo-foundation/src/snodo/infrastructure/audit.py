@@ -18,6 +18,12 @@ from pathlib import Path
 from snodo.core.interfaces import AuditError
 
 
+_RECOVERY_GUIDANCE = (
+    "Inspect the log, truncate it deliberately, or archive it and start a "
+    "new chain. snodo will not auto-repair the audit log."
+)
+
+
 @dataclass
 class AuditEvent:
     """Single event in the audit log."""
@@ -55,7 +61,9 @@ class AuditLog:
         self._project_id = project_id
         self.events: List[AuditEvent] = []
         self._lock = threading.Lock()
+        self._load_ok = False
         self._load_existing_log()
+        self._load_ok = True
 
     def append_event(self, event_type: str, data: Dict[str, Any]) -> AuditEvent:
         """Append a new event to the log.
@@ -71,9 +79,15 @@ class AuditLog:
             The created AuditEvent
 
         Raises:
-            AuditError: If disk write fails after retry
+            AuditError: If disk write fails after retry, or if the log was not
+                loaded cleanly (appending onto an unverified chain is refused)
         """
         with self._lock:
+            if not self._load_ok:
+                raise AuditError(
+                    f"Refusing to append to audit log {self.log_path}: the log "
+                    f"did not load cleanly. {_RECOVERY_GUIDANCE}"
+                )
             sequence = len(self.events)
             timestamp = datetime.now(UTC).isoformat()
             previous_hash = self.events[-1].event_hash if self.events else "0" * 64
@@ -115,9 +129,17 @@ class AuditLog:
     def verify_chain(self) -> bool:
         """Verify integrity of the hash chain.
 
+        Validates the in-memory chain and confirms it agrees with the file on
+        disk. If the file contains events beyond those loaded into memory (for
+        example, after a truncated load), the chain is reported invalid rather
+        than certifying a record that no longer matches disk.
+
         Returns:
-            True if chain is valid, False if tampered
+            True if chain is valid, False if tampered or file/memory diverge
         """
+        if not self._load_ok:
+            return False
+
         if not self.events:
             return True
 
@@ -141,6 +163,39 @@ class AuditLog:
                 event.project_id,
             )
             if event.event_hash != expected_hash:
+                return False
+
+        if not self._file_matches_memory():
+            return False
+
+        return True
+
+    def _file_matches_memory(self) -> bool:
+        """Return True if the on-disk log contains exactly the loaded events.
+
+        Re-reads the file and compares each line's event hash against the
+        in-memory chain. Detects events on disk that are not represented in
+        memory (e.g. after a truncated load) as well as a file that has been
+        truncated or altered since load.
+        """
+        if not self.log_path.exists():
+            return len(self.events) == 0
+
+        try:
+            with open(self.log_path) as f:
+                lines = [line for line in f if line.strip()]
+        except OSError:
+            return False
+
+        if len(lines) != len(self.events):
+            return False
+
+        for i, line in enumerate(lines):
+            try:
+                event_dict = json.loads(line)
+            except json.JSONDecodeError:
+                return False
+            if event_dict.get("event_hash") != self.events[i].event_hash:
                 return False
 
         return True
@@ -167,22 +222,90 @@ class AuditLog:
         return hashlib.sha256(payload_bytes).hexdigest()
 
     def _load_existing_log(self) -> None:
-        """Load existing log file if it exists."""
+        """Load existing log file if it exists.
+
+        Fails loud on any malformed line, hash mismatch, or sequence
+        discontinuity — consistent with the append path, which raises
+        ``AuditError`` rather than silently dropping data. ``self.events`` is
+        only assigned once the whole file has been validated, so a failed load
+        leaves the object unusable for appends (see ``append_event``).
+
+        Raises:
+            AuditError: If the log cannot be parsed or its chain is broken,
+                naming the offending line number and the log path.
+        """
         if not self.log_path.exists():
             return
 
+        loaded: List[AuditEvent] = []
         try:
             with open(self.log_path) as f:
-                for line in f:
+                for line_no, line in enumerate(f, start=1):
                     if not line.strip():
                         continue
-                    event_dict = json.loads(line)
+                    try:
+                        event_dict = json.loads(line)
+                    except json.JSONDecodeError as err:
+                        raise AuditError(
+                            f"Failed to load audit log {self.log_path}: "
+                            f"malformed JSON on line {line_no}: {err}. "
+                            f"{_RECOVERY_GUIDANCE}"
+                        ) from err
+
                     if "project_id" not in event_dict:
                         event_dict["project_id"] = ""
-                    event = AuditEvent(**event_dict)
-                    self.events.append(event)
-        except Exception:
-            pass
+
+                    try:
+                        event = AuditEvent(**event_dict)
+                    except TypeError as err:
+                        raise AuditError(
+                            f"Failed to load audit log {self.log_path}: "
+                            f"invalid event on line {line_no}: {err}. "
+                            f"{_RECOVERY_GUIDANCE}"
+                        ) from err
+
+                    if event.sequence != len(loaded):
+                        raise AuditError(
+                            f"Failed to load audit log {self.log_path}: "
+                            f"sequence discontinuity on line {line_no} "
+                            f"(expected {len(loaded)}, got {event.sequence}). "
+                            f"{_RECOVERY_GUIDANCE}"
+                        )
+
+                    expected_previous = (
+                        loaded[-1].event_hash if loaded else "0" * 64
+                    )
+                    if event.previous_hash != expected_previous:
+                        raise AuditError(
+                            f"Failed to load audit log {self.log_path}: "
+                            f"hash mismatch on line {line_no} "
+                            f"(previous_hash does not match the prior event). "
+                            f"{_RECOVERY_GUIDANCE}"
+                        )
+
+                    expected_hash = self._compute_hash(
+                        event.sequence,
+                        event.timestamp,
+                        event.event_type,
+                        event.data,
+                        event.previous_hash,
+                        event.project_id,
+                    )
+                    if event.event_hash != expected_hash:
+                        raise AuditError(
+                            f"Failed to load audit log {self.log_path}: "
+                            f"event hash mismatch on line {line_no}. "
+                            f"{_RECOVERY_GUIDANCE}"
+                        )
+
+                    loaded.append(event)
+        except OSError as err:
+            raise AuditError(
+                f"Failed to load audit log {self.log_path}: {err}. "
+                f"{_RECOVERY_GUIDANCE}"
+            ) from err
+
+        self.events = loaded
 
     def _append_to_disk(self, event: AuditEvent) -> None:
         """Append event to log file (raw, no retry).

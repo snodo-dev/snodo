@@ -4,6 +4,7 @@ import asyncio
 import pytest
 import tempfile
 import json
+import threading
 from pathlib import Path
 
 from snodo.infrastructure.audit import (
@@ -205,6 +206,135 @@ def test_jsonl_format(temp_audit_log):
     # Each line should be valid JSON
     for line in lines:
         json.loads(line)  # Should not raise
+
+
+# ========== LOAD FAILURE TESTS (issue #10) ==========
+
+def _write_events(log_path, n):
+    """Write n valid chained events to disk and return the AuditLog."""
+    log = AuditLog(str(log_path))
+    for i in range(n):
+        log.append_event(f"e{i}", {"i": i})
+    return log
+
+
+def _corrupt_line(log_path, line_no, new_line):
+    """Replace line `line_no` (1-indexed) of the log file with `new_line`."""
+    lines = log_path.read_text().splitlines()
+    lines[line_no - 1] = new_line
+    log_path.write_text("\n".join(lines) + "\n")
+
+
+def test_load_raises_on_malformed_line(tmp_path):
+    """A malformed line raises AuditError naming the line and path."""
+    log_path = tmp_path / "audit.log"
+    _write_events(log_path, 5)
+    _corrupt_line(log_path, 2, "{not valid json")
+
+    with pytest.raises(AuditError, match="line 2"):
+        AuditLog(str(log_path))
+
+
+def test_load_raises_on_hash_mismatch(tmp_path):
+    """A tampered event hash raises AuditError naming the line."""
+    log_path = tmp_path / "audit.log"
+    _write_events(log_path, 5)
+    lines = log_path.read_text().splitlines()
+    event = json.loads(lines[1])
+    event["data"] = {"tampered": True}
+    lines[1] = json.dumps(event)
+    log_path.write_text("\n".join(lines) + "\n")
+
+    with pytest.raises(AuditError, match="line 2"):
+        AuditLog(str(log_path))
+
+
+def test_load_raises_on_sequence_discontinuity(tmp_path):
+    """A sequence gap raises AuditError naming the line."""
+    log_path = tmp_path / "audit.log"
+    _write_events(log_path, 5)
+    lines = log_path.read_text().splitlines()
+    event = json.loads(lines[2])
+    event["sequence"] = 99
+    lines[2] = json.dumps(event)
+    log_path.write_text("\n".join(lines) + "\n")
+
+    with pytest.raises(AuditError, match="line 3"):
+        AuditLog(str(log_path))
+
+
+def test_append_refused_after_failed_load(tmp_path):
+    """After a failed load, append_event raises rather than forking the chain."""
+    log_path = tmp_path / "audit.log"
+    _write_events(log_path, 5)
+    _corrupt_line(log_path, 2, "{not valid json")
+
+    with pytest.raises(AuditError):
+        AuditLog(str(log_path))
+
+    # Simulate the object that would exist after a truncated load: a log whose
+    # in-memory events are a strict prefix of the file on disk.
+    truncated = AuditLog.__new__(AuditLog)
+    truncated.log_path = log_path
+    truncated._project_id = ""
+    truncated._lock = threading.Lock()
+    truncated._load_ok = False
+    truncated.events = []
+
+    with pytest.raises(AuditError, match="did not load cleanly"):
+        truncated.append_event("forked", {})
+
+
+def test_verify_chain_detects_file_beyond_memory(tmp_path):
+    """verify_chain returns False when disk has events beyond those loaded."""
+    log_path = tmp_path / "audit.log"
+    _write_events(log_path, 5)
+
+    # Simulate a truncated load: memory holds only the first 2 events while the
+    # file still contains all 5.
+    truncated = AuditLog.__new__(AuditLog)
+    truncated.log_path = log_path
+    truncated._project_id = ""
+    truncated._lock = threading.Lock()
+    truncated._load_ok = True
+    truncated.events = [AuditLog(str(log_path)).events[i] for i in range(2)]
+
+    assert truncated.verify_chain() is False
+
+
+def test_verify_chain_false_after_failed_load(tmp_path):
+    """verify_chain returns False (not success) when load failed."""
+    log_path = tmp_path / "audit.log"
+    _write_events(log_path, 5)
+    _corrupt_line(log_path, 2, "{not valid json")
+
+    with pytest.raises(AuditError):
+        AuditLog(str(log_path))
+
+    truncated = AuditLog.__new__(AuditLog)
+    truncated.log_path = log_path
+    truncated._project_id = ""
+    truncated._lock = threading.Lock()
+    truncated._load_ok = False
+    truncated.events = []
+
+    assert truncated.verify_chain() is False
+
+
+def test_valid_log_still_loads_verifies_appends(tmp_path):
+    """Regression guard: a valid log loads, verifies, and appends unchanged."""
+    log_path = tmp_path / "audit.log"
+    _write_events(log_path, 5)
+
+    resumed = AuditLog(str(log_path))
+    assert len(resumed.events) == 5
+    assert resumed.verify_chain() is True
+
+    last_hash = resumed.events[-1].event_hash
+    resumed.append_event("e5", {"i": 5})
+    assert len(resumed.events) == 6
+    assert resumed.events[5].previous_hash == last_hash
+    assert resumed.verify_chain() is True
 
 
 # ========== HASH COMPUTATION TESTS ==========
