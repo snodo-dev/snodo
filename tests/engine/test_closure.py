@@ -36,6 +36,26 @@ def _success_state():
     }
 
 
+def _spawn_state(subtasks):
+    return {
+        "is_complete": False,
+        "is_blocked": False,
+        "halt_type": None,
+        "spawned_subtasks": subtasks,
+    }
+
+
+def _graph_by_task(states):
+    """Graph whose invoke() returns a state keyed by the invoked task id."""
+    g = MagicMock()
+
+    def invoke(initial, **kwargs):
+        return states[initial["task"]["id"]]
+
+    g.invoke.side_effect = invoke
+    return g
+
+
 class TestGraphFailureIsNotResolved:
     def test_graph_raises_internal_error(self):
         """A graph exception is reported as internal_error, never resolved."""
@@ -117,3 +137,82 @@ class TestLangGraphControlFlow:
             run_to_closure(
                 _graph(exc=GraphInterrupt("paused")), ROOT_TASK, "producer",
             )
+
+
+class TestOverDeepSiblingDoesNotSkipOthers:
+    """A per-branch depth violation must not cancel sibling work or the budget."""
+
+    def _run(self, spawned, max_recovery_depth=3, max_total_fix_attempts=10):
+        audit = MagicMock()
+        # Root spawns the given subtasks; each legal subtask resolves.
+        states = {
+            "t1": _spawn_state(spawned),
+            "legal_a": _success_state(),
+            "legal_b": _success_state(),
+        }
+        final, tree = run_to_closure(
+            _graph_by_task(states), ROOT_TASK, "producer",
+            audit_log=audit,
+            max_recovery_depth=max_recovery_depth,
+            max_total_fix_attempts=max_total_fix_attempts,
+        )
+        return final, tree, audit
+
+    def test_over_deep_sibling_does_not_skip_legal_siblings(self):
+        """[over-depth, legal, legal] → both legal siblings execute."""
+        spawned = [
+            {"id": "over_deep", "depth": 99},
+            {"id": "legal_a", "depth": 1},
+            {"id": "legal_b", "depth": 1},
+        ]
+        _, tree, audit = self._run(spawned)
+
+        child_ids = [c.task_id for c in tree.subtasks]
+        assert child_ids == ["over_deep", "legal_a", "legal_b"]
+
+        outcomes = {c.task_id: c.outcome for c in tree.subtasks}
+        assert outcomes["over_deep"] == "recovery_exhausted"
+        assert outcomes["legal_a"] == "resolved"
+        assert outcomes["legal_b"] == "resolved"
+
+        # Both legal siblings were actually invoked.
+        invoked = [c[0][1]["task_ref"] for c in audit.append_event.call_args_list
+                   if c[0][0] == "recovery_resolved"]
+        assert "legal_a" in invoked
+        assert "legal_b" in invoked
+
+    def test_depth_violation_does_not_zero_global_budget(self):
+        """A depth violation consumes no global budget; later siblings still run."""
+        spawned = [
+            {"id": "over_deep", "depth": 99},
+            {"id": "legal_a", "depth": 1},
+        ]
+        _, tree, _ = self._run(spawned, max_total_fix_attempts=1)
+
+        # legal_a must still execute (budget of 1 was not consumed by the
+        # depth violation), so it resolves.
+        outcomes = {c.task_id: c.outcome for c in tree.subtasks}
+        assert outcomes["over_deep"] == "recovery_exhausted"
+        assert outcomes["legal_a"] == "resolved"
+
+    def test_genuine_global_exhaustion_still_stops(self):
+        """Genuine global exhaustion still stops processing (regression guard)."""
+        spawned = [
+            {"id": "legal_a", "depth": 1},
+            {"id": "legal_b", "depth": 1},
+        ]
+        _, tree, _ = self._run(spawned, max_total_fix_attempts=1)
+
+        # Only one unit of budget: legal_a consumes it, legal_b is exhausted.
+        outcomes = {c.task_id: c.outcome for c in tree.subtasks}
+        assert outcomes["legal_a"] == "resolved"
+        assert outcomes["legal_b"] == "recovery_exhausted"
+
+    def test_parent_outcome_when_some_siblings_depth_exhausted(self):
+        """Parent is recovery_exhausted when any sibling is depth-exhausted."""
+        spawned = [
+            {"id": "over_deep", "depth": 99},
+            {"id": "legal_a", "depth": 1},
+        ]
+        _, tree, _ = self._run(spawned)
+        assert tree.outcome == "recovery_exhausted"
