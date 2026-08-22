@@ -140,6 +140,14 @@ Every event — governance checks, validations, dispatches, completions, halts �
 
 The chain is verifiable: `verify_chain()` recomputes every hash against the stored chain and returns false if tampered. The log is thread-safe (single lock wraps append + disk write).
 
+Loading is fail-loud, consistent with the append path: `_load_existing_log`
+raises `AuditError` (naming the offending line and log path) on a malformed
+line, hash mismatch, or sequence discontinuity rather than silently returning a
+partial list. A failed load leaves the object unusable for appends
+(`append_event` refuses to write onto an unverified chain), and `verify_chain()`
+also re-reads the file to confirm the on-disk log agrees with the in-memory
+chain — so a forked or truncated chain is never certified.
+
 The audit log is the **record**, not the gate: it proves what happened and that the
 record was not altered, but enforcement decisions are never derived from scanning it.
 
