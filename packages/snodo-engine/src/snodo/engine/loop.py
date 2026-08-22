@@ -39,7 +39,7 @@ from snodo.engine.constraints import ConstraintEngine
 from snodo.engine.policy import PolicyAction, PolicyEvaluator, policy_decision_to_dict
 from snodo.engine.validators import ValidatorRunner
 from snodo.infrastructure.config import DEFAULT_MODEL
-from snodo.infrastructure.tokens import TokenIssuer, ValidationToken
+from snodo.infrastructure.tokens import TokenIssuer, TokenStoreError, ValidationToken
 from snodo.tools.git import GitMCP
 from snodo.tools.shell import ShellMCP
 from snodo.tools.workspace import WorkspaceMCP
@@ -552,6 +552,23 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         ):
             # Token verified — safe to use (never None here)
             assert loop_state.validation_token is not None
+            # Single-use: consume at the dispatch boundary (the point where the
+            # token authorises irreversible work). The INSERT is the claim —
+            # atomic across processes. Fail closed if the store is down.
+            try:
+                self._token_issuer.consume_token(loop_state.validation_token)
+            except TokenStoreError as e:
+                loop_state.is_blocked = True
+                loop_state.halt_type = "internal_error"
+                loop_state.constraint_violations.append(
+                    f"Token store unavailable: {e}"
+                )
+                self._audit("token_store_unavailable", {
+                    "op": "token_store_unavailable",
+                    "task_ref": loop_state.task.id,
+                    "error": str(e),
+                })
+                return self._state_to_dict(loop_state)
             try:
                 artifacts = self.executor_fn(
                     loop_state.task,
@@ -575,7 +592,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
 
             loop_state.artifacts.extend(artifacts)
 
-            # Single-use: consume the token after successful dispatch
+            # Housekeeping: clear the in-memory slot (enforcement is the store).
             loop_state.validation_token = None
             self._audit("token_consumed", {
                 "op": "token_consumed",

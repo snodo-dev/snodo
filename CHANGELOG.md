@@ -24,6 +24,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   the canonical vocabulary (`escalate` / `blocker` / `validator_error` /
   `internal_error`). `validator_error` and `internal_error` no longer advise
   `snodo authorize`. The legacy single-invocation stream path was removed.
+- Validation-token single-use is now enforced by a shared SQLite store
+  (`~/.snodo/tokens.db`, overridable via `SNODO_TOKEN_STORE`). `consume_token`
+  is called at the dispatch boundary (engine + MCP); the INSERT is an atomic
+  claim across processes and survives restarts. Verification fails closed if
+  the store is unavailable. An empty `SNODO_TOKEN_SECRET` is an error; an unset
+  secret warns loudly.
 
 ---
 
