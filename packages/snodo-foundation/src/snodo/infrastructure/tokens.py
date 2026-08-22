@@ -16,6 +16,7 @@ import logging
 import os
 import secrets
 import sqlite3
+import threading
 import time
 import warnings
 from dataclasses import dataclass, field
@@ -29,6 +30,14 @@ from snodo.core.interfaces import ValidatorResult
 from snodo.paths import resolve_token_store
 
 _logger = logging.getLogger(__name__)
+
+# Serializes the one-time lazy store initialization (WAL + user_version +
+# CREATE TABLE).  DDL statements do not reliably honour ``busy_timeout``, so
+# rather than retrying on SQLITE_BUSY we remove the in-process contention
+# entirely: only one thread performs the DDL, and the rest observe the already
+# initialised file.  Cross-process first-creation is still protected by
+# ``busy_timeout`` plus the WAL/user_version "only when needed" guards below.
+_INIT_LOCK = threading.Lock()
 
 
 class TokenError(Exception):
@@ -95,17 +104,32 @@ class TokenStore:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(str(self._path), check_same_thread=False)
-            conn.execute("PRAGMA journal_mode=WAL")
+            # busy_timeout MUST be first: every subsequent statement that can
+            # contend (user_version, CREATE TABLE, INSERT) is then protected by
+            # a 5s wait instead of the default 0.
             conn.execute("PRAGMA busy_timeout=5000")
-            conn.execute("PRAGMA user_version=1")
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS consumed_tokens ("
-                " token_id TEXT PRIMARY KEY,"
-                " task_id TEXT NOT NULL,"
-                " exp INTEGER NOT NULL"
-                ")"
-            )
-            conn.commit()
+            # One-time DDL (WAL + user_version + CREATE TABLE) is serialized
+            # in-process so concurrent connections never race on it.  WAL is a
+            # persistent property of the database file, so it only needs to be
+            # set once, at creation; the guards below make the DDL idempotent
+            # for cross-process first-creation.
+            with _INIT_LOCK:
+                mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+                if mode != "wal":
+                    self._set_wal(conn)
+                # user_version is a schema marker; writing it takes a write
+                # lock even when the value is unchanged, so only write when it
+                # differs (the read is lock-free).
+                if conn.execute("PRAGMA user_version").fetchone()[0] != 1:
+                    conn.execute("PRAGMA user_version=1")
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS consumed_tokens ("
+                    " token_id TEXT PRIMARY KEY,"
+                    " task_id TEXT NOT NULL,"
+                    " exp INTEGER NOT NULL"
+                    ")"
+                )
+                conn.commit()
         except Exception as e:  # noqa: BLE001 — fail closed
             raise TokenStoreError(
                 f"Could not open token store at {self._path}: {e}"
@@ -113,6 +137,26 @@ class TokenStore:
         self._conn = conn
         self._prune()
         return conn
+
+    @staticmethod
+    def _set_wal(conn: sqlite3.Connection) -> None:
+        """Set WAL mode, tolerating the brief exclusive lock it acquires.
+
+        ``PRAGMA journal_mode=WAL`` does NOT honour ``busy_timeout`` (verified:
+        it fails immediately with "database is locked" even with a 5s timeout),
+        so a bounded retry is the only way to make first-creation safe when two
+        connections race.  WAL is persistent, so this runs at most once per
+        database file; the retry is scoped to this single pragma, not a general
+        retry-on-SQLITE_BUSY.
+        """
+        for attempt in range(5):
+            try:
+                conn.execute("PRAGMA journal_mode=WAL")
+                return
+            except sqlite3.OperationalError as e:
+                if "locked" not in str(e).lower() or attempt == 4:
+                    raise
+                time.sleep(0.01 * (2 ** attempt))
 
     def is_consumed(self, token_id: str) -> bool:
         """Return True if *token_id* has already been consumed."""
@@ -142,6 +186,10 @@ class TokenStore:
             )
             conn.commit()
         except sqlite3.IntegrityError:
+            # The failed INSERT leaves the implicit write transaction open,
+            # holding the write lock until the connection is closed.  Roll back
+            # so concurrent consumers are not blocked behind a no-op.
+            conn.rollback()
             return False
         except TokenStoreError:
             raise
