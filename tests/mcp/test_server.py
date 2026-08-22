@@ -26,6 +26,7 @@ from snodo.mcp.server import (
     MODE_TOOL_MAP,
 )
 from snodo.mcp.transport import build_fastmcp_server, _make_tool_handler, _build_instructions
+from tests.mcp._validate_helpers import validation_passing
 
 
 # === Fixtures ===
@@ -179,9 +180,11 @@ class TestWF1Enforcement:
             server.call_tool("stage_files", {"paths": ["file.txt"]})
 
     def test_commit_works_after_validate(self, server):
-        # Issue token via validate_task
-        result = server.call_tool("validate_task", {"task_id": "t1"})
+        # Issue token via validate_task (validators pass under the mock)
+        with validation_passing(server):
+            result = server.call_tool("validate_task", {"task_id": "t1"})
         assert result["token_issued"] is True
+        assert result["status"] == "pass"
 
         # Create a file to stage and commit
         (Path(server.project_root) / "new.txt").write_text("hello")
@@ -200,8 +203,10 @@ class TestWF1Enforcement:
             server.call_tool("stage_files", {"paths": ["x.txt"]})
 
     def test_validate_task_returns_results(self, server):
-        result = server.call_tool("validate_task", {"task_id": "t1"})
+        with validation_passing(server):
+            result = server.call_tool("validate_task", {"task_id": "t1"})
         assert "results" in result
+        assert "status" in result
         assert "token_issued" in result
         assert any(r["validator_id"] == "security" for r in result["results"])
 
@@ -551,7 +556,8 @@ class TestDispatchTask:
 
     def test_dispatch_task_submits_to_jobmanager(self, dispatch_server):
         """dispatch_task submits to JobManager and returns the job_id."""
-        dispatch_server.call_tool("validate_task", {"task_id": "t1"})
+        with validation_passing(dispatch_server):
+            dispatch_server.call_tool("validate_task", {"task_id": "t1"})
         with patch("snodo.jobs.JobManager") as mock_jm_cls:
             mock_jm = MagicMock()
             mock_jm.submit.return_value = "j_abc123"
@@ -573,7 +579,8 @@ class TestDispatchTask:
 
     def test_dispatch_task_sets_mode_from_server(self, dispatch_server):
         """dispatch_task includes the server's mode_id in submitted args."""
-        dispatch_server.call_tool("validate_task", {"task_id": "t2"})
+        with validation_passing(dispatch_server):
+            dispatch_server.call_tool("validate_task", {"task_id": "t2"})
         with patch("snodo.jobs.JobManager") as mock_jm_cls:
             mock_jm = MagicMock()
             mock_jm.submit.return_value = "j_mode_X"
@@ -587,7 +594,8 @@ class TestDispatchTask:
         assert submitted_args["mode"] == "producer"
 
     def test_dispatch_task_requires_task_spec(self, dispatch_server):
-        dispatch_server.call_tool("validate_task", {"task_id": "t1"})
+        with validation_passing(dispatch_server):
+            dispatch_server.call_tool("validate_task", {"task_id": "t1"})
         with pytest.raises(MCPError, match="requires task_spec"):
             dispatch_server.call_tool("dispatch_task", {})
 

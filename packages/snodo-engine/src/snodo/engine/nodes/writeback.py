@@ -8,7 +8,48 @@ import os as _os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from snodo.engine.policy import policy_decision_to_dict
 from snodo.engine.state import _task_branch_name
+
+
+# Canonical halt outcome. The halt payload's ``halt_type`` and ``final_decision``
+# are the SAME canonical value, so the payload is self-consistent (final_decision
+# always equals halt_type). The engine's specific halt_type is preserved in
+# ``raw_halt_type``; the coarse outcome is one of the four-status vocabulary
+# (escalate / blocker / validator_error / internal_error) plus "completed".
+_CANONICAL_HALT = {
+    "escalated": "escalate",
+    "blocked": "blocker",
+    "validator_error": "validator_error",
+    "internal_error": "internal_error",
+    "constraint": "blocker",
+    "wf3": "blocker",
+    "max_iterations": "blocker",
+    "execution_error": "blocker",
+    "recovery_exhausted": "blocker",
+}
+
+
+def _canonical_halt(halt_type: Optional[str]) -> str:
+    return _CANONICAL_HALT.get(halt_type or "", halt_type or "unknown")
+
+
+def _build_hint(halt: str) -> str:
+    if halt == "escalate":
+        return (
+            "Address the blocking concerns and re-run a revised task. "
+            "If you believe the block is incorrect, use "
+            "`snodo authorize <task_id>`.\n"
+            "Run: snodo authorize to list all pending decisions."
+        )
+    if halt in ("validator_error", "internal_error"):
+        return (
+            "A validator or the engine failed internally (not an authorisation "
+            "problem). Retry the task or inspect the logs."
+        )
+    if halt == "blocker":
+        return "Address the blocking concerns and re-run a revised task."
+    return ""
 
 
 class WritebackMixin:
@@ -131,7 +172,12 @@ class WritebackMixin:
         _os.replace(str(tmp), str(state_path))
 
     def _build_halt_payload(self, loop_state: Any) -> dict:
-        """Construct the halt payload dict from the loop state."""
+        """Construct the structured halt payload from the loop state.
+
+        This is the SINGLE authoritative halt payload, emitted by the CLI and
+        persisted to job state / session.  ``final_decision`` always equals
+        ``halt_type`` (canonical four-status vocabulary).
+        """
         meta = loop_state.metadata
         phase = "unknown"
         if loop_state.is_complete:
@@ -143,10 +189,26 @@ class WritebackMixin:
 
         blocker_reason = "; ".join(loop_state.constraint_violations) if loop_state.constraint_violations else None
 
+        halt = _canonical_halt(loop_state.halt_type) if loop_state.is_blocked else "completed"
+
         return {
-            "final_decision": "blocked" if loop_state.is_blocked else "completed",
+            "status": "blocked" if loop_state.is_blocked else "completed",
+            "halt_type": halt,
+            "final_decision": halt,
+            "raw_halt_type": loop_state.halt_type,
+            "reason": blocker_reason,
+            "task_id": loop_state.task.id,
+            "task_spec": loop_state.task.spec,
+            "iteration": loop_state.iteration,
+            "current_mode": loop_state.current_mode,
             "phase": phase,
-            "halt_type": loop_state.halt_type,
+            "validator_results": [
+                {"validator_id": r.validator_id, "severity": r.severity,
+                 "justification": r.justification}
+                for r in loop_state.validation_results
+            ],
+            "policy_decision": policy_decision_to_dict(loop_state.policy_decision),
+            "hint": _build_hint(halt),
             "pre_validation": meta.get("pre_validation"),
             "post_validation": meta.get("post_validation"),
             "blocker_reason": blocker_reason,
@@ -154,8 +216,16 @@ class WritebackMixin:
         }
 
     def _auto_write_halt_payload(self, loop_state: Any) -> None:
-        """Persist halt payload — dual-write: session checkpoint + job state.json."""
+        """Persist halt payload — dual-write: session checkpoint + job state.json.
+
+        Also attaches the payload to ``loop_state.metadata["halt_payload"]`` so
+        it flows through the graph state to the closure driver and the CLI (single
+        source of truth — the CLI does not re-derive it).
+        """
         halt_payload = self._build_halt_payload(loop_state)
+
+        # Attach to state so the closure driver / CLI can emit it.
+        loop_state.metadata["halt_payload"] = halt_payload
 
         # Direct write to job state.json
         self._merge_into_job_state({"halt": halt_payload})

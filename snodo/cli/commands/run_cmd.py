@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import sys
-from dataclasses import is_dataclass, asdict
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
@@ -580,196 +579,13 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
         return None
 
 
-def _serialize_policy_decision(pd: object) -> Optional[dict]:
-    """Serialize a PolicyDecision to a dict-safe form.
-
-    Delegates to the engine helper, with a local fallback for
-    belt-and-suspenders safety (handles live dataclass instances
-    that might still arrive before the checkpoint fix takes effect).
-    """
-    try:
-        from snodo.engine.policy import policy_decision_to_dict
-        return policy_decision_to_dict(pd)
-    except ImportError:
-        if pd is None:
-            return None
-        if isinstance(pd, dict):
-            return pd
-        if is_dataclass(pd) and not isinstance(pd, type):
-            return asdict(pd)
-        return {"value": str(pd)}
-
-
-def _render_halt_payload(node_state: dict) -> dict:
-    """Build a structured halt payload for any halt type.
-
-    Returns the payload dict (also printed to stdout).
-    The caller is responsible for printing the human summary
-    before calling this function.
-
-    halt_type is read from node_state if available; otherwise
-    inferred from existing fields for backward compatibility.
-    """
-    import json
-
-    halt_type = node_state.get("halt_type")
-    pending = node_state.get("pending_disagreement")
-
-    # Backward compat: infer halt_type if not set
-    if not halt_type:
-        if pending:
-            halt_type = "escalated"
-        elif node_state.get("constraint_violations"):
-            halt_type = "constraint"
-        else:
-            halt_type = "blocked"
-
-    task = node_state.get("task", {})
-    reason = "; ".join(node_state.get("constraint_violations", [])) or "blocker"
-
-    payload = {
-        "status": "blocked",
-        "halt_type": halt_type,
-        "reason": reason,
-        "task_id": task.get("id", ""),
-        "task_spec": task.get("spec", ""),
-        "iteration": node_state.get("iteration", 0),
-        "current_mode": node_state.get("current_mode", ""),
-        "validator_results": node_state.get("validation_results", []),
-        "policy_decision": _serialize_policy_decision(node_state.get("policy_decision")),
-        "hint": (
-            "Address the blocking concerns and re-run a revised task. "
-            "If you believe the block is incorrect, use "
-            "`snodo authorize <task_id>`.\n"
-            "Run: snodo authorize to list all pending decisions."
-        ),
-    }
-
-    # Carry escalation-specific fields when present
-    if pending:
-        payload["phase"] = pending.get("phase")
-        payload["policy"] = pending.get("policy")
-        payload["escalation_validator_results"] = pending.get("validator_results", [])
-        payload["escalation_policy_decision"] = pending.get("policy_decision", {})
-
-    meta = node_state.get("metadata", {})
-    payload["pre_validation"] = meta.get("pre_validation")
-    payload["post_validation"] = meta.get("post_validation")
-    payload["final_decision"] = "blocked"
-
-    print()
-    print("--- STRUCTURED HALT PAYLOAD ---")
-    print(json.dumps(payload, indent=2))
-    print("--- END STRUCTURED HALT PAYLOAD ---")
-    print()
-
-    if halt_type == "escalated" or (pending and halt_type != "escalated"):
-        print("Run: snodo authorize <task_id>")
-
-    return payload
-
-
-def _print_stage(node_state: dict) -> None:
-    """Print execution stage progress."""
-    stage = node_state.get("stage", "unknown")
-    iteration = node_state.get("iteration", 0)
-
-    print(f"  [{iteration}] {stage}", end="")
-
-    if stage == "validate":
-        results = node_state.get("validation_results", [])
-        if results:
-            severities = [r.get("severity") for r in results]
-            print(f" - {len(results)} validator(s): {', '.join(severities)}", end="")
-
-    if stage == "execute":
-        artifacts = node_state.get("artifacts", [])
-        if artifacts:
-            print(f" - {len(artifacts)} artifact(s) created", end="")
-
-    print()
-
-
-def _stream_execution(compiled_graph, initial_state: dict, args,
-                      thread_config=None) -> int:
-    """Stream graph execution and report progress.
-
-    Args:
-        compiled_graph: Compiled LangGraph
-        initial_state: Initial state dict
-        args: CLI args
-        thread_config: Optional dict with configurable.thread_id for checkpointing
-
-    Returns:
-        0 on success, 1 on failure.
-    """
-    print("Executing task through protocol...")
-    print("=" * 60)
-
-    try:
-        final_state = None
-        stream_kwargs = {}
-        if thread_config:
-            stream_kwargs["config"] = thread_config
-        for i, state in enumerate(compiled_graph.stream(initial_state, **stream_kwargs)):
-            if not isinstance(state, dict):
-                continue
-            node_state = next(iter(state.values()))
-            if not isinstance(node_state, dict) or "stage" not in node_state:
-                continue
-
-            _print_stage(node_state)
-
-            if node_state.get("is_blocked"):
-                halt_type = node_state.get("halt_type", "blocked")
-                violations = node_state.get("constraint_violations", [])
-
-                if halt_type == "escalated":
-                    print("\n✗ ESCALATED (warn): validation failed unanimously")
-                elif halt_type == "validator_error":
-                    error_validators = [
-                        r["validator_id"]
-                        for r in node_state.get("validation_results", [])
-                        if r.get("error")
-                    ]
-                    names = ", ".join(error_validators) if error_validators else "unknown"
-                    print(f"\n✗ VALIDATOR ERROR: {names} produced no verdict — resolve or retry")
-                else:
-                    print(f"\n✗ BLOCKED: {', '.join(violations) if violations else 'blocker'}")
-
-                # Print validator justifications (blockers and warns)
-                validation_results = node_state.get("validation_results", [])
-                if validation_results:
-                    blockers = [r for r in validation_results if r.get("severity") == "blocker"]
-                    warns = [r for r in validation_results if r.get("severity") == "warn"]
-                    if blockers:
-                        print("\n  Validator blockers:")
-                        for r in blockers:
-                            print(f"    {r['validator_id']} — blocker — {r['justification']}")
-                    if warns:
-                        print("\n  Validator warnings:")
-                        for r in warns:
-                            print(f"    {r['validator_id']} — warn — {r['justification']}")
-
-                # Emit structured halt payload for ALL halt types
-                _render_halt_payload(node_state)
-                return 1
-
-            final_state = node_state
-
-        print("=" * 60)
-        return _report_result(final_state)
-
-    except Exception as e:
-        print(f"\nError during execution: {e}", file=sys.stderr)
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
-        return 1
-
-
 def _report_closure(tree, final_state: dict) -> int:
-    """Print the aggregate closure result and return the exit code."""
+    """Print the aggregate closure result, emit the structured halt payload,
+    and return the exit code.
+
+    The structured halt payload is sourced from the engine (single source of
+    truth) — the CLI never re-derives it.
+    """
     from snodo.engine.closure import ClosureNode
 
     def _format_outcome(outcome: str) -> str:
@@ -781,6 +597,8 @@ def _report_closure(tree, final_state: dict) -> int:
             return outcome
         elif outcome == "escalated":
             return "escalated"
+        elif outcome == "internal_error":
+            return "internal_error"
         return outcome
 
     def _print_tree(node: ClosureNode, indent: str = "") -> None:
@@ -798,6 +616,21 @@ def _report_closure(tree, final_state: dict) -> int:
     print(f"  Total attempts: {tree.attempts_used}")
     print()
 
+    # Single emission site: emit the terminal halt's structured payload.
+    # Per-subtask halts are not re-emitted — the closure tree above lists each,
+    # and each subtask's payload is already in its own session checkpoint.
+    halt_payload = _find_terminal_halt_payload(tree, final_state)
+    if halt_payload is not None:
+        print("--- STRUCTURED HALT PAYLOAD ---")
+        print(json.dumps(halt_payload, indent=2, default=str))
+        print("--- END STRUCTURED HALT PAYLOAD ---")
+        print()
+
+    if tree.outcome == "internal_error" or final_state.get("halt_type") == "internal_error":
+        err = final_state.get("error", "unknown internal error")
+        print(f"✗ Internal error during execution: {err}", file=sys.stderr)
+        return 1
+
     if tree.outcome == "resolved":
         is_blocked = final_state.get("is_blocked", False)
         if not is_blocked:
@@ -812,22 +645,30 @@ def _report_closure(tree, final_state: dict) -> int:
     return 1
 
 
-def _report_result(final_state: Optional[dict]) -> int:
-    """Report task completion result.
+def _find_terminal_halt_payload(tree, final_state: dict) -> Optional[dict]:
+    """Return the halt payload for the terminal halt that produced the exit.
 
-    Returns:
-        0 on success, 1 on failure.
+    Multi-halt semantics: a closure run can contain several halted nodes. Emit
+    the DEEPEST non-completed halt payload (the one whose outcome propagated
+    non-"resolved" to the root). Falls back to the root final state's payload.
     """
-    from snodo.engine.loop import LoopStage
-    if final_state and final_state.get("stage") == LoopStage.COMPLETE.value:
-        artifacts = final_state.get("artifacts", [])
-        print("\n✓ Task completed successfully!")
-        print(f"  Iterations: {final_state.get('iteration', 0)}")
-        if artifacts:
-            print(f"  Artifacts ({len(artifacts)}):")
-            for artifact in artifacts:
-                print(f"    - {artifact}")
-        return 0
-    else:
-        print("\n✗ Task did not complete successfully", file=sys.stderr)
-        return 1
+    from snodo.engine.closure import ClosureNode
+
+    best: Optional[dict] = None
+    best_depth = -1
+
+    def walk(node: ClosureNode) -> None:
+        nonlocal best, best_depth
+        p = node.halt_payload
+        if p and p.get("final_decision") not in ("completed", None):
+            if best is None or node.depth > best_depth:
+                best = p
+                best_depth = node.depth
+        for child in node.subtasks:
+            walk(child)
+
+    walk(tree)
+    if best is not None:
+        return best
+    meta = (final_state or {}).get("metadata") or {}
+    return meta.get("halt_payload")

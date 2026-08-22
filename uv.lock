@@ -3922,6 +3922,7 @@ dependencies = [
     { name = "pygithub" },
     { name = "pyjwt" },
     { name = "snodo-core" },
+    { name = "snodo-engine" },
     { name = "snodo-foundation" },
     { name = "snodo-tools" },
 ]
@@ -3937,6 +3938,7 @@ requires-dist = [
     { name = "pygithub", specifier = ">=2.0.0" },
     { name = "pyjwt", specifier = ">=2.8.0" },
     { name = "snodo-core", editable = "packages/snodo-core" },
+    { name = "snodo-engine", editable = "packages/snodo-engine" },
     { name = "snodo-foundation", editable = "packages/snodo-foundation" },
     { name = "snodo-tools", editable = "packages/snodo-tools" },
 ]

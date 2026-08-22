@@ -7,6 +7,26 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- The Kleene-closure driver (`run_to_closure`) no longer reports graph
+  exceptions (coder/network/DB failures) as `resolved`. `resolved` now requires
+  positive completion evidence (`is_complete`); a graph exception, a non-dict
+  result, or a missing completion signal is reported as `internal_error` with a
+  non-zero exit code and a `recovery_internal_error` audit event. LangGraph
+  control-flow exceptions (`GraphInterrupt`/`GraphBubbleUp`) are propagated to
+  the caller rather than swallowed.
+- `snodo run` now emits the `--- STRUCTURED HALT PAYLOAD ---` block on the
+  closure path (the primary execution path). The payload is built by the engine
+  (single source of truth) and has `final_decision` equal to `halt_type`, using
+  the canonical vocabulary (`escalate` / `blocker` / `validator_error` /
+  `internal_error`). `validator_error` and `internal_error` no longer advise
+  `snodo authorize`. The legacy single-invocation stream path was removed.
+
+---
+
 ## [0.1.0] — 2026-06-01
 
 Initial public release.

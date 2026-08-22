@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from snodo.compiler.models import Protocol
 from snodo.infrastructure.tokens import TokenIssuer, ValidationToken
-from snodo.core.interfaces import ValidatorResult
+from snodo.core.interfaces import Task, ValidatorResult
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.tools.git import GitMCP
 from snodo.tools.shell import ShellMCP
@@ -63,6 +63,23 @@ class ProtocolMCPServer:
         self.token_issuer = token_issuer or TokenIssuer(audit_log=audit_log)
         self._validation_token: Optional[ValidationToken] = None
         self._token_lock = threading.Lock()
+
+        # Four-outcome validate_task state (pass | escalate | blocker | validator_error)
+        self._validation_status: Optional[str] = None
+
+        from snodo.engine.policy import PolicyEvaluator
+        from snodo.infrastructure.decisions import VerifyOnlyDecisionRecordIssuer
+        from snodo.infrastructure.signing_keys import load_public_key
+
+        try:
+            self._decision_issuer = VerifyOnlyDecisionRecordIssuer(
+                load_public_key(), audit_log=audit_log
+            )
+        except Exception:
+            self._decision_issuer = None
+        self._policy_evaluator = PolicyEvaluator(
+            decision_issuer=self._decision_issuer,
+        )
 
         # Tools whose handlers may block the event loop — dispatched async
         self._SLOW_TOOLS = {"validate_task", "run_tests"}
@@ -249,6 +266,7 @@ class ProtocolMCPServer:
             return
         with self._token_lock:
             if not self._validation_token:
+                status = getattr(self, "_validation_status", None) or "none"
                 self._audit("wf1_violation", {
                     "op": "wf1_violation",
                     "tool": name,
@@ -257,7 +275,8 @@ class ProtocolMCPServer:
                 })
                 raise MCPError(
                     f"WF1 violation: tool '{name}' requires a validation token. "
-                    "Call validate_task first."
+                    f"validate_task last returned status='{status}' — a token is "
+                    f"only issued on status='pass'. Call validate_task first."
                 )
             if not self.token_issuer.verify_token(self._validation_token):
                 self._audit("wf1_violation", {
@@ -316,65 +335,237 @@ class CoreToolHandler:
         self.server = server
 
     def handle_validate_task(self, arguments: Dict[str, Any]) -> dict:
-        """Run validators and issue a token (WF1)."""
+        """Run the real validators and return one of four discriminated outcomes.
+
+        ``pass`` / ``escalate`` / ``blocker`` / ``validator_error`` — see ADR 015.
+        A validation token is minted ONLY on ``pass`` (or on ``escalate`` after a
+        human has adjudicated via ``snodo authorize`` and the agent re-calls).
+        """
         task_id = arguments.get("task_id")
         if not task_id:
             raise MCPError("validate_task requires task_id")
+        task_spec = arguments.get("task_spec") or arguments.get("spec") or ""
 
-        # Run shell tests as validator (permissive: treat failures as warnings)
-        results = []
+        server = self.server
+        protocol = server.protocol
+        mode_id = server.mode_id or protocol.initial_mode
+
+        from snodo.validators.runner import (
+            classify_outcome,
+            resolve_validator_completion,
+            resolve_validators,
+            run_validators,
+        )
+        from snodo.engine.policy import policy_decision_to_dict
+
+        mode, validators = resolve_validators(protocol, mode_id, "pre_execute")
+
+        if mode is None:
+            server._validation_status = "validator_error"
+            return self._outcome(
+                "validator_error", task_id, [],
+                "No active mode — cannot resolve pre-execute validators.",
+            )
+
+        results: list = []
+
+        # 1. pytest run — one validator result. Blockers are NOT downgraded.
         try:
-            test_result = self.server.shell.run_tests("tests/", command_type="pytest")
-            if test_result.severity == "blocker":
-                results.append(ValidatorResult(
-                    validator_id=test_result.validator_id,
-                    severity="warn",
-                    justification=f"Tests (continuing): {test_result.justification}",
-                ))
-            else:
-                results.append(test_result)
-        except Exception as e:
+            results.append(server.shell.run_tests("tests/", command_type="pytest"))
+        except Exception as e:  # noqa: BLE001 — test runner crash is an error
             results.append(ValidatorResult(
                 validator_id="test_runner",
-                severity="warn",
-                justification=f"Test execution skipped: {e}",
+                severity="blocker",
+                justification=f"Test execution failed: {e}",
+                error=True,
             ))
 
-        # Add stub pass results for protocol validators
-        for v in self.server.protocol.validators:
-            results.append(ValidatorResult(
-                validator_id=v.validator_id,
-                severity="pass",
-                justification=f"Stub validation for {v.validator_type}",
-            ))
+        # 2. Resolve the validator LLM. Failure → validator_error (not a pass).
+        try:
+            completion_fn, validator_model, validator_config = resolve_validator_completion()
+        except Exception as e:  # noqa: BLE001
+            server._validation_status = "validator_error"
+            return self._outcome(
+                "validator_error", task_id,
+                [{"validator_id": "config", "severity": "blocker",
+                  "justification": f"Could not resolve validator LLM: {e}"}],
+                "Could not resolve validator LLM — retry or inspect logs.",
+            )
 
-        # Issue token
-        token = self.server.token_issuer.issue_token(
-            task_id=task_id,
-            validator_results=results,
-            consensus=self.server.protocol.disagreement_policy.value,
+        # 3. Run the protocol's real validators via the shared engine runner.
+        task = Task(id=task_id, spec=task_spec)
+        decision_records = self._load_decision_records(mode_id)
+        protocol_results, _ = run_validators(
+            protocol=protocol,
+            validators=validators,
+            task=task,
+            phase="pre_execute",
+            completion_fn=completion_fn,
+            default_model=validator_model,
+            validator_config=validator_config,
+            workspace_mcp=server.workspace,
+            git_mcp=server.git,
+            current_mode=mode_id,
+            session_id="",
+            audit_log=server._audit_log,
+        )
+        results.extend(protocol_results)
+
+        # 4. Evaluate policy (shared with the engine) — no hand-rolled logic.
+        decision = server._policy_evaluator.evaluate(
+            results,
+            protocol.disagreement_policy,
+            decision_records=decision_records if server._decision_issuer else None,
+            task_ref=task_id,
         )
 
-        if token:
-            with self.server._token_lock:
-                self.server._validation_token = token
+        status = classify_outcome(results, decision)
+        server._validation_status = status
 
-        self.server._audit("validator_results", {
+        serialized = [
+            {"validator_id": r.validator_id, "severity": r.severity,
+             "justification": r.justification}
+            for r in results
+        ]
+
+        server._audit("validator_results", {
             "op": "validator_results",
             "task_id": task_id,
+            "status": status,
             "validator_outcomes": [
                 {"validator_id": r.validator_id, "severity": r.severity}
                 for r in results
             ],
         })
 
+        if status == "pass":
+            token = server.token_issuer.issue_token(
+                task_id=task_id,
+                validator_results=results,
+                consensus=protocol.disagreement_policy.value,
+            )
+            if token:
+                with server._token_lock:
+                    server._validation_token = token
+            return {
+                "status": "pass",
+                "token_issued": token is not None,
+                "results": serialized,
+                "instruction": "Validation passed. Call dispatch_task with the task spec.",
+            }
+
+        if status == "escalate":
+            decision_id = self._persist_escalation(task_id, mode_id, results, decision)
+            return {
+                "status": "escalate",
+                "token_issued": False,
+                "decision_id": decision_id,
+                "policy": protocol.disagreement_policy.value,
+                "options": [
+                    {"validator_id": r.validator_id, "severity": r.severity,
+                     "justification": r.justification, "decision": "proceed"}
+                    for r in results if r.severity != "pass"
+                ],
+                "results": serialized,
+                "policy_decision": policy_decision_to_dict(decision),
+                "instruction": f"Human review required. Run: snodo authorize {decision_id}",
+            }
+
+        if status == "blocker":
+            return self._outcome(
+                "blocker", task_id, serialized,
+                "Blockers present. Fix the code and re-validate; if exhausted, revise the spec.",
+            )
+
+        # validator_error
+        return self._outcome(
+            "validator_error", task_id, serialized,
+            "A validator failed to produce a verdict. Retry or inspect logs.",
+        )
+
+    def _outcome(self, status: str, task_id: str, results: list, instruction: str) -> dict:
+        """Build a no-token four-outcome response."""
         return {
-            "token_issued": token is not None,
-            "results": [
-                {"validator_id": r.validator_id, "severity": r.severity, "justification": r.justification}
-                for r in results
-            ],
+            "status": status,
+            "token_issued": False,
+            "task_id": task_id,
+            "results": results,
+            "instruction": instruction,
         }
+
+    def _load_decision_records(self, mode_id: str) -> list:
+        """Load signed DecisionRecords from the active session (for policy consultation)."""
+        try:
+            from snodo.infrastructure.state import read_state
+            from snodo.infrastructure.session import SessionManager
+
+            state = read_state(self.server.project_root)
+            mode = state.current_mode or mode_id or self.server.protocol.initial_mode
+            mgr = SessionManager()
+            session = mgr.get_active_session(mode, self.server.project_root)
+            if session is None:
+                return []
+            records = session.checkpoint.decisions.get("decision_records", [])
+            if isinstance(records, list):
+                return [r for r in records if isinstance(r, str)]
+        except Exception:  # noqa: BLE001 — session read is best-effort
+            pass
+        return []
+
+    def _persist_escalation(
+        self, task_id: str, mode_id: str, results: list, decision: Any
+    ) -> str:
+        """Persist the escalation as a pending decision (engine shape) for authorize.
+
+        Mirrors ``engine/nodes/writeback._auto_write_pending_decisions`` and
+        ``decision_handlers.handle_propose_adjudicate``: an ``adjudicate`` entry is
+        written to ``session.checkpoint.decisions["pending_decisions"]`` keyed by
+        the task id (the ``decision_id``).
+        """
+        from datetime import datetime, timezone
+
+        from snodo.engine.policy import policy_decision_to_dict
+        from snodo.infrastructure.state import read_state
+        from snodo.infrastructure.session import SessionManager
+
+        try:
+            state = read_state(self.server.project_root)
+            mode = state.current_mode or mode_id or self.server.protocol.initial_mode
+            mgr = SessionManager(audit_log=self.server._audit_log)
+            session = mgr.get_active_session(mode, self.server.project_root)
+            if session is None:
+                return task_id
+
+            pending = session.checkpoint.decisions.get("pending_decisions", {})
+            if not isinstance(pending, dict):
+                pending = {}
+
+            now = datetime.now(timezone.utc).isoformat()
+            for r in results:
+                if r.severity not in ("warn", "blocker"):
+                    continue
+                pending[task_id] = {
+                    "type": "adjudicate",
+                    "validator_id": r.validator_id,
+                    "decision": "proceed",
+                    "justification": r.justification,
+                    "severity": r.severity,
+                    "proposed_by": "mcp",
+                    "timestamp": now,
+                    "policy_decision": policy_decision_to_dict(decision),
+                }
+
+            mgr.update_decision(session.session_id, "pending_decisions", pending)
+            self.server._audit("disagreement_escalated", {
+                "op": "disagreement_escalated",
+                "phase": "pre_execute",
+                "task_ref": task_id,
+                "policy": self.server.protocol.disagreement_policy.value,
+                "decision_id": task_id,
+            })
+        except Exception:  # noqa: BLE001 — best-effort persistence
+            pass
+        return task_id
 
     def handle_dispatch_task(self, arguments: Dict[str, Any]) -> dict:
         """Submit a task spec to JobManager for background execution."""

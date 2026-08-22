@@ -56,7 +56,7 @@ class TestAuthorize:
     @pytest.mark.e2e
     def test_authorize_list_no_active_session(self, snodo_cli):
         """authorize lists pending decisions; with no active session, error is clean."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["authorize"])
         # With no active session yet, must exit non-zero with a clear message
         assert r.returncode != 0
@@ -69,7 +69,7 @@ class TestAuthorize:
     @pytest.mark.e2e
     def test_authorize_list_after_run_shows_no_pending(self, snodo_cli):
         """After a --mock run attempt, authorize reports no pending decisions."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         # Run may exit non-zero in e2e env (no initial git commit / no API key)
         # — that is acceptable; we only care about authorize's response.
         snodo_cli(["run", "add a comment", "--mock"])
@@ -87,7 +87,7 @@ class TestAuthorize:
     @pytest.mark.e2e
     def test_authorize_reject_all_no_pending(self, snodo_cli):
         """authorize --reject-all with no pending decisions exits 0 and says so."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         snodo_cli(["run", "add a comment", "--mock"])
 
         r = snodo_cli(["authorize", "--reject-all"])
@@ -102,7 +102,7 @@ class TestAuthorize:
     @pytest.mark.e2e
     def test_authorize_bad_task_id_exits_nonzero(self, snodo_cli):
         """authorize <nonexistent_task_id> exits non-zero with a clear message."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         snodo_cli(["run", "add a comment", "--mock"])
 
         r = snodo_cli(["authorize", "task_does_not_exist_xyz"])
@@ -125,7 +125,7 @@ class TestJobLifecycle:
     @pytest.mark.e2e
     def test_job_list_empty(self, snodo_cli):
         """job list in a fresh project exits 0 and reports no jobs."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["job", "list"])
         assert r.returncode == 0
         out = _strip_ansi(r.stdout).lower()
@@ -136,7 +136,7 @@ class TestJobLifecycle:
     @pytest.mark.e2e
     def test_job_status_unknown_id_errors(self, snodo_cli):
         """job status with an unknown ID exits non-zero with a clear message."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["job", "status", "j_does_not_exist"])
         assert r.returncode != 0
         assert "Traceback" not in r.stderr
@@ -144,7 +144,7 @@ class TestJobLifecycle:
     @pytest.mark.e2e
     def test_job_cancel_unknown_id_errors(self, snodo_cli):
         """job cancel with an unknown ID exits non-zero cleanly."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["job", "cancel", "j_does_not_exist"])
         assert r.returncode != 0
         assert "Traceback" not in r.stderr
@@ -152,7 +152,7 @@ class TestJobLifecycle:
     @pytest.mark.e2e
     def test_job_archive_prune_empty(self, snodo_cli):
         """job archive and job prune with --yes on an empty project exit 0."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
 
         r_archive = snodo_cli(["job", "archive", "--yes"])
         assert r_archive.returncode == 0, (
@@ -167,7 +167,7 @@ class TestJobLifecycle:
     @pytest.mark.e2e
     def test_job_background_create_then_list_and_status(self, snodo_cli):
         """Create a background job, then list and status it."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
 
         # Dispatch in background; --mock ensures it finishes quickly
         run_r = snodo_cli(["run", "add a comment", "--mock", "--background"])
@@ -205,7 +205,7 @@ class TestJobLifecycle:
     @pytest.mark.e2e
     def test_job_logs_on_existing_job(self, snodo_cli):
         """job logs on a completed --mock background job exits 0."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         run_r = snodo_cli(["run", "add a comment", "--mock", "--background"])
         assert run_r.returncode == 0
 
@@ -228,7 +228,7 @@ class TestJobLifecycle:
     @pytest.mark.e2e
     def test_job_retry_unknown_exits_nonzero(self, snodo_cli):
         """job retry on an unknown job ID exits non-zero cleanly."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["job", "retry", "j_nonexistent_abc123"])
         assert r.returncode != 0
         assert "Traceback" not in r.stderr
@@ -236,7 +236,7 @@ class TestJobLifecycle:
     @pytest.mark.e2e
     def test_job_unarchive_empty(self, snodo_cli):
         """job unarchive --yes with no archive exits 0."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["job", "unarchive", "--yes"])
         assert r.returncode == 0, (
             f"job unarchive failed: {r.stderr}"
@@ -253,7 +253,7 @@ class TestAgent:
     @pytest.mark.e2e
     def test_agent_list_no_agents(self, snodo_cli):
         """agent list on a fresh project exits 0 and says no agents."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["agent", "list"])
         assert r.returncode == 0
         out = _strip_ansi(r.stdout).lower()
@@ -264,7 +264,7 @@ class TestAgent:
     @pytest.mark.e2e
     def test_agent_list_after_mock_run(self, snodo_cli):
         """After a --mock run, agent list exits 0 (agent may or may not appear)."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         snodo_cli(["run", "add a comment", "--mock"])
 
         r = snodo_cli(["agent", "list"])
@@ -274,7 +274,7 @@ class TestAgent:
     @pytest.mark.e2e
     def test_agent_memory_unknown_id_exits_nonzero(self, snodo_cli):
         """agent memory with an unknown agent ID exits non-zero cleanly."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["agent", "memory", "unknown:nonexistent"])
         assert r.returncode != 0
         assert "Traceback" not in r.stderr
@@ -286,7 +286,7 @@ class TestAgent:
     @pytest.mark.e2e
     def test_agent_memory_registered_agent(self, snodo_cli):
         """After a --mock run, if an agent was registered, memory shows its details."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         snodo_cli(["run", "add a comment", "--mock"])
 
         list_r = snodo_cli(["agent", "list"])
@@ -318,7 +318,7 @@ class TestAgent:
     @pytest.mark.e2e
     def test_agent_rotate_unknown_id_exits_nonzero(self, snodo_cli):
         """agent rotate with an unknown agent ID exits non-zero cleanly."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["agent", "rotate", "unknown:nonexistent"])
         # rotate may succeed (creating a new agent) or fail — either is fine
         # but it must never crash with a traceback
@@ -327,6 +327,6 @@ class TestAgent:
     @pytest.mark.e2e
     def test_agent_reset_unknown_id_behavior(self, snodo_cli):
         """agent reset with an unknown agent ID does not crash with a traceback."""
-        snodo_cli(["init", "--template", "solo", "--force"])
+        snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["agent", "reset", "unknown:nonexistent"])
         assert "Traceback" not in r.stderr

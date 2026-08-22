@@ -35,9 +35,15 @@ def register(app: typer.Typer) -> None:
         force_keygen: bool = typer.Option(
             False, "--force-keygen", help="Force-regenerate RS256 signing keypair",
         ),
+        yes: bool = typer.Option(
+            False, "--yes", "-y", help="Skip the trusted-repository consent prompt",
+        ),
+        no_input: bool = typer.Option(
+            False, "--no-input", help="Skip the trusted-repository consent prompt (alias for --yes)",
+        ),
     ):
         """Initialize Snodo project structure."""
-        args = SimpleNamespace(template=template, force=force, mode=mode, project_id=project_id, force_keygen=force_keygen)
+        args = SimpleNamespace(template=template, force=force, mode=mode, project_id=project_id, force_keygen=force_keygen, yes=yes, no_input=no_input)
         return init_command(args)
 
 
@@ -137,6 +143,72 @@ def _pick_mode(args, modes: list, default_mode: str) -> str:
     return default_mode
 
 
+CONSENT_WARNING = (
+    "snodo runs AI agents that execute code in this repository — "
+    "including your test and build commands. Only continue if this "
+    "repository is yours or you trust its contents."
+)
+
+GITIGNORE_ENTRY = ".snodo/"
+
+
+def _confirm_consent(args) -> bool:
+    """Gate init behind explicit trusted-repository consent.
+
+    Returns True if the user consents (or passed --yes/--no-input),
+    False to abort. Never writes anything before this returns True.
+
+    Non-TTY stdin without an explicit flag fails with guidance to use
+    --yes, rather than hanging or silently defaulting.
+    """
+    if getattr(args, "yes", False) or getattr(args, "no_input", False):
+        return True
+
+    print(CONSENT_WARNING, flush=True)
+
+    if not sys.stdin.isatty():
+        print(
+            "Error: refusing to continue — standard input is not a terminal. "
+            "Re-run with --yes to acknowledge the trusted-repository model.",
+            file=sys.stderr,
+        )
+        return False
+
+    try:
+        answer = input("Continue? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = ""
+
+    if answer not in ("y", "yes"):
+        print("Aborted: no files were created.", file=sys.stderr)
+        return False
+    return True
+
+
+def _ensure_gitignore_entry(gitignore_path: Path) -> bool:
+    """Ensure .gitignore contains exactly one '.snodo/' entry.
+
+    Creates .gitignore if absent; appends the entry if missing; never
+    duplicates an existing entry.
+
+    Returns True if the entry was added, False if already present.
+    """
+    existing = ""
+    if gitignore_path.exists():
+        existing = gitignore_path.read_text()
+
+    if any(line.strip() == GITIGNORE_ENTRY for line in existing.splitlines()):
+        return False
+
+    prefix = ""
+    if existing and not existing.endswith("\n"):
+        prefix = "\n"
+
+    with gitignore_path.open("a") as f:
+        f.write(prefix + GITIGNORE_ENTRY + "\n")
+    return True
+
+
 def init_command(args) -> int:
     """Initialize Snodo project structure."""
     from snodo.infrastructure.paths import resolve_project_root
@@ -178,12 +250,23 @@ def init_command(args) -> int:
             return 1
         print("Warning: Overwriting existing .snodo/ directory")
 
+    # Trusted-repository consent gate — must run before any file write.
+    if not _confirm_consent(args):
+        return 1
+
     try:
         snodo_dir.mkdir(exist_ok=True)
         print(f"Created {snodo_dir}/")
     except Exception as e:
         print(f"Error: Failed to create .snodo/ directory: {e}", file=sys.stderr)
         return 1
+
+    # .snodo/ hygiene: keep the protocol state out of git by default.
+    try:
+        if _ensure_gitignore_entry(Path(".gitignore")):
+            print("Added .snodo/ to .gitignore")
+    except Exception as e:
+        print(f"Warning: Could not update .gitignore: {e}", file=sys.stderr)
     # Resolve and cache project identity
     try:
         from snodo.config import ConfigManager

@@ -128,21 +128,22 @@ def test_default_validator_fallback_and_error(sample_protocol, sample_task):
 
 def test_auto_write_halt_payload_scenarios(sample_protocol, sample_task):
     """_auto_write_halt_payload: handles complete, blocked (pre/post), escalated, and no session"""
+    from snodo.engine.loop import LoopState
+
     builder = GraphBuilder(sample_protocol)
-    
+
     # Mock _merge_into_job_state
     builder._merge_into_job_state = MagicMock()
-    
+
     # Setup state
-    loop_state = MagicMock()
-    loop_state.task = sample_task
+    loop_state = LoopState(task=sample_task, current_mode="producer")
     loop_state.is_complete = True
     loop_state.is_blocked = False
     loop_state.halt_type = None
     loop_state.constraint_violations = []
     loop_state.artifacts = ["art1"]
     loop_state.metadata = {}
-    
+
     # 1. Complete path, no session
     builder._session_manager = None
     builder._auto_write_halt_payload(loop_state)
@@ -158,21 +159,44 @@ def test_auto_write_halt_payload_scenarios(sample_protocol, sample_task):
     loop_state.halt_type = "constraint"
     loop_state.constraint_violations = ["violation 1"]
     loop_state.metadata = {"pre_validation": "dummy_pre"}
-    
+
     session_manager = MagicMock()
     session = MagicMock()
     session.checkpoint.decisions = {}
     session_manager.load_session.return_value = session
     builder._session_manager = session_manager
     builder._session_id = "session_123"
-    
+
     builder._auto_write_halt_payload(loop_state)
     builder._merge_into_job_state.assert_called_once()
     payload = builder._merge_into_job_state.call_args[0][0]["halt"]
-    assert payload["final_decision"] == "blocked"
+    assert payload["final_decision"] == "blocker"
     assert payload["phase"] == "pre_execute"
     assert payload["blocker_reason"] == "violation 1"
     session_manager.update_decision.assert_called_once_with("session_123", "halt", {"task_001": payload})
+
+
+def test_build_halt_payload_final_decision_equals_halt_type(sample_protocol, sample_task):
+    """final_decision always equals halt_type (canonical four-status vocabulary)."""
+    from snodo.engine.loop import LoopState
+
+    builder = GraphBuilder(sample_protocol)
+
+    cases = [
+        ("escalated", "escalate"),
+        ("blocked", "blocker"),
+        ("validator_error", "validator_error"),
+        ("internal_error", "internal_error"),
+    ]
+    for raw, canonical in cases:
+        ls = LoopState(task=sample_task, current_mode="producer")
+        ls.is_blocked = True
+        ls.is_complete = False
+        ls.halt_type = raw
+        ls.constraint_violations = []
+        ls.metadata = {}
+        payload = builder._build_halt_payload(ls)
+        assert payload["final_decision"] == payload["halt_type"] == canonical, raw
 
 
 def test_maybe_respawn_coder_scenarios(sample_protocol):

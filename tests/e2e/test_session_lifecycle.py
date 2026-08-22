@@ -9,7 +9,7 @@ import pytest
 @pytest.mark.e2e
 def test_session_auto_create_and_list(snodo_cli):
     # Init and run, session auto-created
-    snodo_cli(["init", "--template", "solo"])
+    snodo_cli(["init", "--template", "solo", "--yes"])
     snodo_cli(["run", "task A", "--mock"])
 
     result = snodo_cli(["session", "list"])
@@ -21,7 +21,7 @@ def test_session_auto_create_and_list(snodo_cli):
 
 @pytest.mark.e2e
 def test_session_delete(snodo_cli):
-    snodo_cli(["init", "--template", "solo"])
+    snodo_cli(["init", "--template", "solo", "--yes"])
     snodo_cli(["run", "task A", "--mock"])
 
     # Find session ID from session list output
@@ -48,7 +48,7 @@ def test_session_delete(snodo_cli):
 
 @pytest.mark.e2e
 def test_session_show(snodo_cli):
-    snodo_cli(["init", "--template", "solo"])
+    snodo_cli(["init", "--template", "solo", "--yes"])
     snodo_cli(["run", "task A", "--mock"])
 
     r = snodo_cli(["session", "list"])
@@ -67,7 +67,7 @@ def test_session_show(snodo_cli):
 
 @pytest.mark.e2e
 def test_session_prune(snodo_cli):
-    snodo_cli(["init", "--template", "solo"])
+    snodo_cli(["init", "--template", "solo", "--yes"])
     snodo_cli(["run", "task A", "--mock"])
 
     r = snodo_cli(["session", "prune"])

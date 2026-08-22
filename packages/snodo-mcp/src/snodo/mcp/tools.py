@@ -346,6 +346,7 @@ TOOL_REGISTRY = {
             "type": "object",
             "properties": {
                 "task_id": {"type": "string", "description": "Task identifier"},
+                "task_spec": {"type": "string", "description": "Optional task specification the validators evaluate"},
             },
             "required": ["task_id"],
         },

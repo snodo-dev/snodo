@@ -63,7 +63,7 @@ def snodo_cli(tmp_path):
 def initialized_project(snodo_cli):
     """Return a tmp_path with snodo init already run (team template by default)."""
     def _init(template: str = "team") -> Path:
-        result = snodo_cli(["init", "--template", template, "--force"])
+        result = snodo_cli(["init", "--template", template, "--force", "--yes"])
         assert result.returncode == 0, f"init failed: {result.stderr}"
         return snodo_cli.home
     return _init
