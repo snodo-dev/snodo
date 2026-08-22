@@ -30,6 +30,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   claim across processes and survives restarts. Verification fails closed if
   the store is unavailable. An empty `SNODO_TOKEN_SECRET` is an error; an unset
   secret warns loudly.
+- The audit log no longer silently truncates on load. `AuditLog` now raises
+  `AuditError` (naming the offending line and log path, with recovery guidance)
+  on a malformed line, hash mismatch, or sequence discontinuity instead of
+  returning a partial list. Appends are refused onto an unverified chain, and
+  `verify_chain()` now also checks that the on-disk log agrees with the
+  in-memory chain, so a forked or truncated chain is never certified (INV4).
 
 ---
 
