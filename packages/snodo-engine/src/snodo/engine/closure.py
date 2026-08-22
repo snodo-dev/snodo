@@ -188,7 +188,12 @@ def run_to_closure(
             for sub in spawned:
                 sub_depth = sub.get("depth", depth + 1)
 
-                # Check per-branch depth cap
+                # Per-branch depth cap.  A violation records the exhausted
+                # child and moves on to the next sibling: it must NOT cancel
+                # unrelated sibling work (break) nor consume the global budget
+                # (remaining = -1).  The parent is marked recovery_exhausted
+                # because the closure is incomplete, but a later non-resolved
+                # child may still override it (last-non-resolved-wins, below).
                 if sub_depth > max_recovery_depth:
                     outcome = "recovery_exhausted"
                     _audit("recovery_exhausted", {
@@ -203,8 +208,7 @@ def run_to_closure(
                         depth=sub_depth,
                         outcome="recovery_exhausted",
                     ))
-                    remaining = -1
-                    break
+                    continue
 
                 remaining -= 1
                 if remaining < 0:
