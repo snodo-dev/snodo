@@ -18,3 +18,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [013](013-kleene-closure-auto-fix-recovery.md) | Kleene-closure auto-fix recovery loop | 2026-06-28 | Recovery driver (`closure.py`) |
 | [014](014-trusted-repository-threat-model.md) | Trusted-repository threat model and `init` consent gate | 2026-08-21 | Threat-model decision (`init_cmd.py`) |
 | [015](015-mcp-validation-four-outcome-contract.md) | Real validation on the MCP path + four-outcome `validate_task` | 2026-08-21 | `handle_validate_task` (`server.py`) |
+| [016](016-token-single-use-sqlite-store.md) | Shared SQLite store for validation-token single-use | 2026-08-22 | `TokenStore` (`tokens.py`) |

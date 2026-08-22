@@ -9,7 +9,9 @@ Tests cover:
 - Tampering detection
 - Token decoding (inspection without verification)
 - Audit log integration
-- Single-use semantics
+- Single-use semantics (shared SQLite store)
+- Fail-closed store behaviour
+- Secret handling (empty errors, unset warns)
 - Config-driven TTL
 """
 
@@ -24,11 +26,10 @@ from tests.conftest import TEST_SECRET
 
 from snodo.core.interfaces import ValidatorResult
 from snodo.infrastructure.tokens import (
+    TokenError,
     TokenIssuer,
+    TokenStoreError,
     ValidationToken,
-    issue_token,
-    verify_token,
-    decode_token,
 )
 
 
@@ -184,30 +185,112 @@ def test_decode_token_does_not_verify_signature(issuer, no_blockers):
 
 
 # ---------------------------------------------------------------------------
-# Console functions
+# Single-use semantics (shared SQLite store)
 # ---------------------------------------------------------------------------
 
-def test_convenience_issue_token(no_blockers):
-    token = issue_token("task_1", no_blockers)
-    assert isinstance(token, ValidationToken)
+def test_consume_then_verify_fails(issuer, no_blockers):
+    token = issuer.issue_token("task_1", no_blockers)
+    assert issuer.verify_token(token) is True
+    assert issuer.consume_token(token) is True
+    assert issuer.verify_token(token) is False
 
 
-def test_convenience_verify_token(no_blockers):
-    token = issue_token("task_1", no_blockers)
-    assert verify_token(token) is True
+def test_consume_twice_returns_false(issuer, no_blockers):
+    token = issuer.issue_token("task_1", no_blockers)
+    assert issuer.consume_token(token) is True
+    assert issuer.consume_token(token) is False
 
 
-def test_convenience_verify_token_task_binding(no_blockers):
-    token = issue_token("task_1", no_blockers)
-    assert verify_token(token, expected_task_id="task_1") is True
-    assert verify_token(token, expected_task_id="wrong") is False
+def test_verify_does_not_consume(issuer, no_blockers):
+    """Decision A: verify_token checks but does NOT consume (multi-edit dispatch)."""
+    token = issuer.issue_token("task_1", no_blockers)
+    for _ in range(5):
+        assert issuer.verify_token(token) is True
+    # Still verifiable — consumption happens at the dispatch boundary.
+    assert issuer.verify_token(token) is True
 
 
-def test_convenience_decode_token(no_blockers):
-    token = issue_token("task_1", no_blockers)
-    payload = decode_token(token)
-    assert payload is not None
-    assert payload["task_id"] == "task_1"
+def test_consumption_survives_new_issuer_instance(no_blockers, tmp_path):
+    """Consumption is shared across TokenIssuer instances (same store)."""
+    store = tmp_path / "tokens.db"
+    a = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+    b = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+    token = a.issue_token("task_1", no_blockers)
+    assert b.verify_token(token) is True
+    assert a.consume_token(token) is True
+    assert b.verify_token(token) is False
+
+
+def test_consumption_survives_process_restart(no_blockers, tmp_path):
+    """Consumption persists across a fresh TokenIssuer (simulated restart)."""
+    store = tmp_path / "tokens.db"
+    a = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+    token = a.issue_token("task_1", no_blockers)
+    assert a.consume_token(token) is True
+
+    # Simulate restart: a brand-new issuer against the same store file.
+    b = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+    assert b.verify_token(token) is False
+
+
+def test_concurrent_consume_exactly_one_wins(no_blockers, tmp_path):
+    """Two simultaneous consume attempts (separate connections) → exactly one wins."""
+    import threading
+
+    store = tmp_path / "tokens.db"
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+    token = issuer.issue_token("task_1", no_blockers)
+
+    # Two independent issuers (separate SQLite connections) — the realistic
+    # cross-process scenario.
+    a = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+    b = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+
+    results = []
+    barrier = threading.Barrier(2)
+
+    def _consume(iss):
+        barrier.wait()
+        results.append(iss.consume_token(token))
+
+    threads = [
+        threading.Thread(target=_consume, args=(a,)),
+        threading.Thread(target=_consume, args=(b,)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert sorted(results) == [False, True]
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed store behaviour
+# ---------------------------------------------------------------------------
+
+def test_store_unavailable_fails_closed(no_blockers, tmp_path):
+    """A corrupt/unwritable store makes verification fail closed."""
+    store = tmp_path / "tokens.db"
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+    token = issuer.issue_token("task_1", no_blockers)
+
+    # Corrupt the store: replace the DB file with garbage.
+    store.write_text("this is not a sqlite database")
+
+    with pytest.raises(TokenStoreError):
+        issuer.verify_token(token)
+
+
+def test_store_unavailable_consume_fails_closed(no_blockers, tmp_path):
+    store = tmp_path / "tokens.db"
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+    token = issuer.issue_token("task_1", no_blockers)
+
+    store.write_text("this is not a sqlite database")
+
+    with pytest.raises(TokenStoreError):
+        issuer.consume_token(token)
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +373,18 @@ def test_different_secrets_produce_different_tokens(no_blockers):
     token_a = a.issue_token("t1", no_blockers)
     token_b = b.issue_token("t1", no_blockers)
     assert token_a.jwt != token_b.jwt
+
+
+def test_empty_secret_env_errors(monkeypatch):
+    monkeypatch.setenv("SNODO_TOKEN_SECRET", "")
+    with pytest.raises(TokenError, match="empty"):
+        TokenIssuer()
+
+
+def test_unset_secret_warns(monkeypatch):
+    monkeypatch.delenv("SNODO_TOKEN_SECRET", raising=False)
+    with pytest.warns(UserWarning, match="random per-process secret"):
+        TokenIssuer()
 
 
 # ---------------------------------------------------------------------------
