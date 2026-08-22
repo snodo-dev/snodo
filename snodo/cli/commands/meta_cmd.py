@@ -107,7 +107,7 @@ def _highlight(halt: dict, tokens: int, cost_str: str) -> str:
     if fd == "completed":
         artifacts = halt.get("artifacts_count", 0)
         return f"completed — {artifacts} artifacts, {_fmt_tokens(tokens)} tok, {cost_str}"
-    if fd == "blocked":
+    if fd == "blocker":
         phase = halt.get("phase", "unknown")
         pre = halt.get("pre_validation") or {}
         results = pre.get("validator_results", [])
@@ -117,6 +117,9 @@ def _highlight(halt: dict, tokens: int, cost_str: str) -> str:
             return f"blocked at {phase}: {blocker['validator_id']} — {reason}"
         reason = halt.get("blocker_reason", "") or ""
         return f"blocked at {phase}: {reason}" if reason else f"blocked at {phase}"
+    if fd == "escalate":
+        phase = halt.get("phase", "unknown")
+        return f"escalated at {phase}: needs human review"
     return f"failed: {fd}"
 
 

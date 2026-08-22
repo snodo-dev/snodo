@@ -50,7 +50,7 @@ def temp_project_dir():
 @pytest.fixture
 def initialized_project(temp_project_dir):
     """Create a temp directory with initialized Snodo project."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         result = main()
 
     assert result == 0
@@ -64,7 +64,7 @@ def initialized_project(temp_project_dir):
 
 def test_init_creates_directory(temp_project_dir):
     """Test snodo init creates .snodo directory."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         result = main()
 
     assert result == 0
@@ -73,7 +73,7 @@ def test_init_creates_directory(temp_project_dir):
 
 def test_init_creates_protocol_file(temp_project_dir):
     """Test snodo init creates protocol.yml."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         main()
 
     protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
@@ -90,7 +90,7 @@ def test_init_creates_protocol_file(temp_project_dir):
 
 def test_init_protocol_is_valid(temp_project_dir):
     """Test generated team protocol can be loaded as Protocol object."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         main()
 
     protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
@@ -104,7 +104,7 @@ def test_init_protocol_is_valid(temp_project_dir):
 
 def test_init_writes_state_json(temp_project_dir):
     """Test snodo init creates .snodo/state.json with initial_mode."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         result = main()
     assert result == 0
 
@@ -116,7 +116,7 @@ def test_init_writes_state_json(temp_project_dir):
 
 def test_init_mode_flag_skips_picker(temp_project_dir):
     """Test snodo init --mode reviewer sets state.json to reviewer."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--mode', 'reviewer']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--mode', 'reviewer', '--yes']):
         result = main()
     assert result == 0
 
@@ -127,7 +127,7 @@ def test_init_mode_flag_skips_picker(temp_project_dir):
 
 def test_init_piped_keeps_default(temp_project_dir):
     """Test snodo init with piped stdin keeps default initial_mode."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         with patch('sys.stdin.isatty', return_value=False):
             result = main()
     
@@ -139,25 +139,25 @@ def test_init_piped_keeps_default(temp_project_dir):
 
 def test_init_fails_if_already_exists(temp_project_dir):
     """Test snodo init fails if .snodo already exists."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         result = main()
     assert result == 0
 
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         result = main()
     assert result == 1
 
 
 def test_init_force_overwrites(temp_project_dir):
     """Test snodo init --force overwrites existing directory."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         result = main()
     assert result == 0
 
     protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
     protocol_file.write_text("# modified\n")
 
-    with patch('sys.argv', ['snodo', 'init', '--force', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--force', '--template', 'team', '--yes']):
         result = main()
     assert result == 0
 
@@ -176,7 +176,7 @@ def test_init_refuses_nested_snodo(temp_project_dir):
     import os
     os.chdir(str(nested_dir))
     try:
-        with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+        with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
             result = main()
         assert result == 1
         assert not (nested_dir / ".snodo").exists()
@@ -193,7 +193,7 @@ def test_init_force_allows_nested_snodo(temp_project_dir):
     import os
     os.chdir(str(nested_dir))
     try:
-        with patch('sys.argv', ['snodo', 'init', '--force', '--template', 'team']):
+        with patch('sys.argv', ['snodo', 'init', '--force', '--template', 'team', '--yes']):
             result = main()
         assert result == 0
         assert (nested_dir / ".snodo").exists()
@@ -283,7 +283,7 @@ def test_run_custom_protocol_path(temp_project_dir):
 def test_end_to_end_init_and_run(temp_project_dir):
     """Test complete workflow: init -> run."""
     # Step 1: Initialize
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         result = main()
     assert result == 0
     
@@ -420,7 +420,7 @@ initial_mode: "producer"
 
 def test_init_template_solo(temp_project_dir):
     """Test snodo init --template solo creates protocol with 1 mode + merge tools."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'solo']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'solo', '--yes']):
         result = main()
 
     assert result == 0
@@ -437,7 +437,7 @@ def test_init_template_solo(temp_project_dir):
 
 def test_init_template_team(temp_project_dir):
     """Test snodo init --template team creates protocol with 3 modes."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'team']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         result = main()
 
     assert result == 0
@@ -453,7 +453,7 @@ def test_init_template_team(temp_project_dir):
 
 def test_init_interactive_prompt_solo(temp_project_dir):
     """Test snodo init without template prompts interactively - select solo."""
-    with patch('sys.argv', ['snodo', 'init']):
+    with patch('sys.argv', ['snodo', 'init', '--yes']):
         with patch('builtins.input', return_value='1'):
             result = main()
 
@@ -468,7 +468,7 @@ def test_init_interactive_prompt_solo(temp_project_dir):
 
 def test_init_interactive_prompt_team(temp_project_dir):
     """Test snodo init without template prompts interactively - select team."""
-    with patch('sys.argv', ['snodo', 'init']):
+    with patch('sys.argv', ['snodo', 'init', '--yes']):
         with patch('builtins.input', return_value='2'):
             result = main()
 
@@ -483,7 +483,7 @@ def test_init_interactive_prompt_team(temp_project_dir):
 
 def test_init_interactive_invalid_choice_defaults_team(temp_project_dir):
     """Test invalid interactive choice defaults to team template."""
-    with patch('sys.argv', ['snodo', 'init']):
+    with patch('sys.argv', ['snodo', 'init', '--yes']):
         with patch('builtins.input', return_value='invalid'):
             result = main()
 
@@ -497,7 +497,7 @@ def test_init_interactive_invalid_choice_defaults_team(temp_project_dir):
 
 def test_init_template_2plus_n(temp_project_dir):
     """Test snodo init --template 2+n creates protocol with 2 modes."""
-    with patch('sys.argv', ['snodo', 'init', '--template', '2+n']):
+    with patch('sys.argv', ['snodo', 'init', '--template', '2+n', '--yes']):
         result = main()
 
     assert result == 0
@@ -513,7 +513,7 @@ def test_init_template_2plus_n(temp_project_dir):
 
 def test_init_template_2plus_n_validators(temp_project_dir):
     """Test 2+n template has 5 validators with correct phases."""
-    with patch('sys.argv', ['snodo', 'init', '--template', '2+n']):
+    with patch('sys.argv', ['snodo', 'init', '--template', '2+n', '--yes']):
         result = main()
 
     assert result == 0
@@ -533,7 +533,7 @@ def test_init_template_2plus_n_validators(temp_project_dir):
 
 def test_init_template_2plus_n_wf1_tool_disjoint(temp_project_dir):
     """Test 2+n template has disjoint tool sets between producer and reviewer."""
-    with patch('sys.argv', ['snodo', 'init', '--template', '2+n']):
+    with patch('sys.argv', ['snodo', 'init', '--template', '2+n', '--yes']):
         result = main()
 
     assert result == 0
@@ -549,7 +549,7 @@ def test_init_template_2plus_n_wf1_tool_disjoint(temp_project_dir):
 
 def test_init_interactive_prompt_2plus_n(temp_project_dir):
     """Test interactive prompt selects 2+n template (option 3)."""
-    with patch('sys.argv', ['snodo', 'init']):
+    with patch('sys.argv', ['snodo', 'init', '--yes']):
         with patch('builtins.input', return_value='3'):
             result = main()
 
@@ -691,7 +691,7 @@ def test_shipped_default_protocol_passes_verification():
 
 def test_init_template_intent(temp_project_dir):
     """Test snodo init --template intent exits 0 and writes protocol.yml."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'intent']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'intent', '--yes']):
         result = main()
 
     assert result == 0
@@ -701,7 +701,7 @@ def test_init_template_intent(temp_project_dir):
 
 def test_init_template_intent_loads_as_protocol(temp_project_dir):
     """Test the generated intent protocol loads as a Protocol object."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'intent']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'intent', '--yes']):
         main()
 
     protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
@@ -715,7 +715,7 @@ def test_init_template_intent_loads_as_protocol(temp_project_dir):
 
 def test_intent_protocol_validators(temp_project_dir):
     """Test intent template has spec-manners (pre, warn-cap) + review (post)."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'intent']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'intent', '--yes']):
         main()
 
     protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
@@ -739,7 +739,7 @@ def test_intent_protocol_validators(temp_project_dir):
 
 def test_intent_protocol_global_constraints(temp_project_dir):
     """Test intent template has the two expected global constraints."""
-    with patch('sys.argv', ['snodo', 'init', '--template', 'intent']):
+    with patch('sys.argv', ['snodo', 'init', '--template', 'intent', '--yes']):
         main()
 
     protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
@@ -752,7 +752,7 @@ def test_intent_protocol_global_constraints(temp_project_dir):
 
 def test_intent_interactive_prompt(temp_project_dir):
     """Test interactive picker selecting option 4 produces intent template."""
-    with patch('sys.argv', ['snodo', 'init']):
+    with patch('sys.argv', ['snodo', 'init', '--yes']):
         with patch('builtins.input', return_value='4'):
             result = main()
 

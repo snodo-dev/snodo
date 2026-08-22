@@ -84,8 +84,15 @@ def server_with_mode(protocol, project_dir):
 
 
 def _issue_token(server, task_id="t1"):
-    """Issue a token so mutating tools pass WF1."""
-    server._handle_validate_task({"task_id": task_id})
+    """Issue a token so mutating tools pass WF1 (bypasses validate_task)."""
+    from snodo.core.interfaces import ValidatorResult
+
+    token = server.token_issuer.issue_token(
+        task_id=task_id,
+        validator_results=[ValidatorResult(validator_id="sec", severity="pass", justification="ok")],
+    )
+    with server._token_lock:
+        server._validation_token = token
 
 
 # ---------------------------------------------------------------------------
@@ -211,27 +218,22 @@ class TestDispatchToolErrors:
 # ---------------------------------------------------------------------------
 
 class TestValidateTaskExceptionPath:
-    def test_shell_run_tests_exception_becomes_warn(self, server):
-        """Lines 328-329: when shell.run_tests raises, result is a 'warn' ValidatorResult."""
-        with patch.object(
+    def test_shell_run_tests_exception_becomes_blocker(self, server):
+        """A test-runner crash is a blocker error, never a silent warn/pass."""
+        with patch(
+            "snodo.validators.runner.resolve_validator_completion",
+            return_value=(MagicMock(), "mock-model", MagicMock(max_tokens=1500, max_tool_turns=6)),
+        ), patch(
+            "snodo.validators.llm_validator.supports_response_schema", return_value=False
+        ), patch.object(
             server.shell, "run_tests", side_effect=RuntimeError("subprocess crash")
         ):
             result = server._handle_validate_task({"task_id": "t-crash"})
-        warn_results = [
-            r for r in result["results"] if r["severity"] == "warn"
+        blocker_results = [
+            r for r in result["results"] if r["severity"] == "blocker"
         ]
-        assert any("Test execution skipped" in r["justification"] for r in warn_results)
-
-    def test_shell_run_tests_pass_appended_directly(self, server):
-        """Line 327: non-blocker run_tests result appended directly (not wrapped)."""
-        from snodo.core.interfaces import ValidatorResult
-        pass_result = ValidatorResult(
-            validator_id="test_runner", severity="pass", justification="all pass"
-        )
-        with patch.object(server.shell, "run_tests", return_value=pass_result):
-            result = server._handle_validate_task({"task_id": "t-pass"})
-        direct = [r for r in result["results"] if r["validator_id"] == "test_runner"]
-        assert direct and direct[0]["severity"] == "pass"
+        assert any("Test execution failed" in r["justification"] for r in blocker_results)
+        assert result["token_issued"] is False
 
 
 # ---------------------------------------------------------------------------

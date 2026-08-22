@@ -11,7 +11,7 @@ import pytest
 @pytest.mark.e2e
 def test_team_init_and_plan_create(snodo_cli):
     # Init team template
-    r1 = snodo_cli(["init", "--template", "team"])
+    r1 = snodo_cli(["init", "--template", "team", "--yes"])
     assert r1.returncode == 0
 
     # Plan create (requires .snodo/ directory to exist)
@@ -24,7 +24,7 @@ def test_team_init_and_plan_create(snodo_cli):
 
 @pytest.mark.e2e
 def test_team_plan_list(snodo_cli):
-    snodo_cli(["init", "--template", "team"])
+    snodo_cli(["init", "--template", "team", "--yes"])
     snodo_cli(["plan", "create", "build feature X", "--mock"])
 
     r = snodo_cli(["plan", "list"])
@@ -34,6 +34,6 @@ def test_team_plan_list(snodo_cli):
 
 @pytest.mark.e2e
 def test_team_init_then_run_simple_task(snodo_cli):
-    snodo_cli(["init", "--template", "team"])
+    snodo_cli(["init", "--template", "team", "--yes"])
     r = snodo_cli(["run", "a simple task", "--mock"])
     assert r.returncode == 1

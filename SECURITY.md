@@ -29,3 +29,23 @@ snodo is a local protocol engine. The primary security surface is:
 
 If you find a bypass of the WF1 token gate or a way to extract stored API
 keys, please report it.
+
+## Threat model
+
+snodo operates under a **trusted-repository model** (see
+[ADR 014](docs/decisions/014-trusted-repository-threat-model.md)):
+
+- snodo runs AI agents that execute code — including your test and build
+  commands — inside the repository it is initialised in.
+- The user explicitly runs `snodo init` in that repository; that act is the
+  consent boundary. `snodo init` now warns about this and requires explicit
+  confirmation (default **No**).
+- Repository contents (`package.json` scripts, `conftest.py`, Makefiles, test
+  code) are treated as trusted — equivalent to you running them yourself.
+- Running snodo against untrusted or third-party code is out of scope and
+  unsupported; isolation is not claimed. A hosted/multi-tenant deployment would
+  invalidate this model and require real isolation.
+
+The *agent* is treated as semi-untrusted: prompt injection can steer its tool
+calls, so tool-input validation (argument injection, path traversal) remains
+in scope even though the repository is trusted.
