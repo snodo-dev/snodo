@@ -8,12 +8,12 @@ import json
 import time
 from datetime import datetime, UTC, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from snodo.infrastructure.session import (
-    SessionManager, Checkpoint,
+    SessionManager, Checkpoint, SessionError,
     _mode_prefix,
 )
 from snodo.project import get_project_id
@@ -476,3 +476,101 @@ class TestINV5:
         data = json.loads(path.read_text())
         assert "tokens" not in data
         assert "tokens" not in data.get("checkpoint", {})
+
+
+# ========== ATOMIC WRITE (issue #11) ==========
+
+class TestAtomicWrite:
+    def test_crash_mid_write_preserves_previous_file(self, mgr, project_root):
+        """A crash mid-write leaves the previous session file intact."""
+        session = mgr.create_session("producer", project_root)
+        mgr.update_decision(session.session_id, "key", "original")
+        path = mgr.sessions_dir / f"{session.session_id}.json"
+        original = path.read_text()
+
+        # Simulate a crash partway through json.dump.
+        with patch("snodo.infrastructure.session.json.dump",
+                   side_effect=OSError("disk full")):
+            with pytest.raises(OSError):
+                mgr.update_decision(session.session_id, "key", "torn")
+
+        # Previous file intact and valid; no truncated file remains.
+        assert path.read_text() == original
+        loaded = mgr.load_session(session.session_id)
+        assert loaded.checkpoint.decisions["key"] == "original"
+
+    def test_no_tmp_left_on_success(self, mgr, project_root):
+        session = mgr.create_session("producer", project_root)
+        mgr.update_decision(session.session_id, "key", "val")
+        tmp_files = list(mgr.sessions_dir.glob("*.tmp"))
+        assert tmp_files == []
+
+    def test_no_tmp_left_on_failure(self, mgr, project_root):
+        session = mgr.create_session("producer", project_root)
+        with patch("snodo.infrastructure.session.json.dump",
+                   side_effect=OSError("disk full")):
+            with pytest.raises(OSError):
+                mgr.update_decision(session.session_id, "key", "torn")
+        tmp_files = list(mgr.sessions_dir.glob("*.tmp"))
+        assert tmp_files == []
+
+
+# ========== CORRUPT SESSION HANDLING (issue #11) ==========
+
+class TestCorruptSession:
+    def _corrupt(self, sessions_dir, session_id):
+        path = sessions_dir / f"{session_id}.json"
+        path.write_text("{not valid json")
+
+    def _clear_active_pointer(self, project_root, mode):
+        from snodo.infrastructure.state import read_state, write_state
+        state = read_state(project_root)
+        state.active_session.pop(mode, None)
+        write_state(project_root, state)
+
+    def test_corrupt_active_session_errors(self, mgr, project_root):
+        """A corrupt ACTIVE session raises SessionError, not silent fallback."""
+        session = mgr.create_session("producer", project_root)
+        self._corrupt(mgr.sessions_dir, session.session_id)
+
+        with pytest.raises(SessionError, match="corrupt"):
+            mgr.get_active_session("producer", project_root)
+
+    def test_corrupt_historical_session_warns(self, mgr, project_root, caplog):
+        """A corrupt non-active session is skipped WITH a warning naming the file."""
+        active = mgr.create_session("producer", project_root)
+        # Force the auto-adopt scan (no valid pointer) and add a corrupt file.
+        self._clear_active_pointer(project_root, "producer")
+        self._corrupt(mgr.sessions_dir, "sess_corrupt")
+
+        with caplog.at_level("WARNING"):
+            found = mgr.get_active_session("producer", project_root)
+
+        assert found is not None
+        assert found.session_id == active.session_id
+        assert any("sess_corrupt" in r.message for r in caplog.records)
+
+    def test_corrupt_historical_audits(self, mgr_with_audit, audit_log, project_root):
+        """A corrupt non-active session emits a session_corrupt audit event."""
+        mgr_with_audit.create_session("producer", project_root)
+        self._clear_active_pointer(project_root, "producer")
+        self._corrupt(mgr_with_audit.sessions_dir, "sess_corrupt")
+
+        audit_log.reset_mock()
+        mgr_with_audit.get_active_session("producer", project_root)
+
+        assert any(
+            c[0][0] == "session_corrupt"
+            for c in audit_log.append_event.call_args_list
+        )
+
+    def test_list_sessions_skips_corrupt_with_warning(self, mgr, project_root, caplog):
+        """list_sessions skips corrupt files but warns naming the file."""
+        good = mgr.create_session("producer", project_root)
+        self._corrupt(mgr.sessions_dir, "sess_corrupt")
+
+        with caplog.at_level("WARNING"):
+            result = mgr.list_sessions()
+
+        assert [s.session_id for s in result] == [good.session_id]
+        assert any("sess_corrupt" in r.message for r in caplog.records)
