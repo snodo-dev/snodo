@@ -44,6 +44,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
   adopting a different session. State-file writes across `memory.py`, `recon`,
   and `jobs` now use `os.replace` (atomic overwrite on all platforms) instead of
   `os.rename`.
+- The token store no longer fails with `database is locked` under concurrent
+  dispatch. `busy_timeout` is now the first PRAGMA on every connection; the
+  one-time DDL (WAL + `user_version` + `CREATE TABLE`) is serialized in-process
+  and made idempotent (WAL and `user_version` are only written when they differ),
+  and a failed `consume` (already-consumed token) now rolls back its implicit
+  write transaction instead of holding the write lock. Concurrent consumers of
+  the same token now resolve to exactly one winner without exceptions.
 
 ---
 

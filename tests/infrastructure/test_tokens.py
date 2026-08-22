@@ -265,6 +265,41 @@ def test_concurrent_consume_exactly_one_wins(no_blockers, tmp_path):
     assert sorted(results) == [False, True]
 
 
+def test_concurrent_consume_stress_eight_consumers(no_blockers, tmp_path):
+    """N=8 concurrent consumers of the same token → exactly one True, no exception."""
+    import threading
+
+    store = tmp_path / "tokens.db"
+    issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+    token = issuer.issue_token("task_1", no_blockers)
+
+    n = 8
+    consumers = [
+        TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+        for _ in range(n)
+    ]
+
+    results = []
+    errors = []
+    barrier = threading.Barrier(n)
+
+    def _consume(iss):
+        try:
+            barrier.wait()
+            results.append(iss.consume_token(token))
+        except Exception as exc:  # noqa: BLE001 — capture any failure
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_consume, args=(c,)) for c in consumers]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert sorted(results) == [False] * (n - 1) + [True]
+
+
 # ---------------------------------------------------------------------------
 # Fail-closed store behaviour
 # ---------------------------------------------------------------------------
