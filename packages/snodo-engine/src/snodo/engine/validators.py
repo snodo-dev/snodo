@@ -1,15 +1,21 @@
-"""Validator dispatch and execution for protocol validation."""
+"""Validator dispatch and execution for protocol validation.
 
-import copy
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
+FILE: snodo/engine/validators.py
+
+Thin adapter over the shared runner in ``snodo.validators.runner``.  The
+multi-validator loop, context construction, and severity-cap handling all
+live in ``run_validators`` (single implementation).  ``_dispatch_one`` is
+kept as a method so tests can monkey-patch it (see
+tests/engine/test_validator_model_override.py).
+"""
+
 from typing import Any, Callable, List, Optional
 
 from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
-from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.tools.shell import ShellMCP
 from snodo.validators.context import ValidatorContext
+from snodo.validators.runner import dispatch_validator, resolve_validators as _resolve, run_validators as _run
 
 
 class ValidatorRunner:
@@ -35,21 +41,12 @@ class ValidatorRunner:
         self._session_manager = session_manager
         self._validator_config = validator_config
         self._session_id: str = ""
+        self.last_cap_originals: dict = {}
 
     def resolve_validators(
         self, mode_id: str, phase: str = "pre_execute"
     ) -> tuple:
-        mode = self.protocol.get_mode(mode_id)
-        if not mode:
-            return None, []
-        validators: List[Validator] = [
-            v for v in (
-                self.protocol.get_validator(vid)
-                for vid in mode.validators
-            )
-            if v is not None and v.evaluation_phase == phase
-        ]
-        return mode, validators
+        return _resolve(self.protocol, mode_id, phase)
 
     def run(
         self,
@@ -61,153 +58,27 @@ class ValidatorRunner:
         authorized_decisions: Optional[List[str]] = None,
         decision_issuer: Any = None,
     ) -> List[ValidatorResult]:
-        from snodo.validators.registry import _default_registry as reg
-
-        self.last_cap_originals: dict = {}
-        mode_obj = self.protocol.get_mode(current_mode)
-        _vcfg = self._validator_config
-        if _vcfg is None:
-            from snodo.infrastructure.config import load_llm_config, ConfigLoadError
-            try:
-                _vcfg = load_llm_config().validator
-            except ConfigLoadError as e:
-                return [
-                    ValidatorResult(
-                        validator_id="config",
-                        severity="blocker",
-                        justification=f"Config error: {e}",
-                    )
-                ]
-
-        context = ValidatorContext(
-            task=task,
-            current_mode=mode_obj,
+        results, cap_originals = _run(
             protocol=self.protocol,
-            artifacts=[],
-            audit_log=self._audit_log,
-            mode_name=mode_obj.name if mode_obj else "",
-            mode_tools=list(mode_obj.tools) if mode_obj else [],
-            mode_transitions=dict(mode_obj.transitions) if mode_obj else {},
-            mode_validator_refs=list(mode_obj.validators) if mode_obj else [],
+            validators=validators,
+            task=task,
+            phase=phase,
             completion_fn=self._completion_fn,
-            model=self._default_model,
-            working_directory=str(Path.cwd()) if not self.workspace_mcp
-            else str(getattr(self.workspace_mcp, "project_root", Path.cwd())),
+            default_model=self._default_model,
+            validator_config=self._validator_config,
             workspace_mcp=self.workspace_mcp,
             git_mcp=self.git_mcp,
-            phase=phase,
-            max_tokens=_vcfg.max_tokens,
-            max_tool_turns=_vcfg.max_tool_turns,
-            job_id=getattr(self, "_session_id", ""),
-            task_id=task.id,
+            current_mode=current_mode,
+            authorized_decisions=authorized_decisions,
+            decision_issuer=decision_issuer,
+            session_id=getattr(self, "_session_id", ""),
+            audit_log=self._audit_log,
+            dispatch_fn=self._dispatch_one,
         )
-
-        # Resolve set_model overrides once per pass
-        overrides: dict = {}
-        if authorized_decisions and decision_issuer:
-            verified = decision_issuer.find_set_model_overrides(
-                authorized_decisions,
-            )
-            for payload in verified:
-                scope = payload.get("scope", "")
-                if scope.startswith("validator:"):
-                    vid = scope.split(":", 1)[1]
-                    overrides[vid] = payload.get("proposed_model", "")
-
-        results_by_id: dict[str, ValidatorResult] = {}
-        with ThreadPoolExecutor(max_workers=min(len(validators), 4)) as executor:
-            futures = {}
-            for v in validators:
-                override_model = overrides.get(v.validator_id)
-                if override_model:
-                    effective_model = override_model
-                else:
-                    effective_model = v.model or self._default_model or DEFAULT_MODEL
-                ctx = copy.copy(context)
-                ctx.model = effective_model
-                future = executor.submit(self._dispatch_one, v, ctx, reg)
-                futures[future] = v.validator_id
-
-            for future in as_completed(futures):
-                vid = futures[future]
-                try:
-                    result = future.result()
-                except Exception as e:
-                    result = ValidatorResult(
-                        validator_id=vid,
-                        severity="blocker",
-                        justification=f"Validator error: {e}",
-                        error=True,
-                    )
-                if result is not None:
-                    v_obj = next((v for v in validators if v.validator_id == vid), None)
-                    if v_obj is not None and v_obj.severity_cap is not None:
-                        from snodo.compiler.models import Severity
-                        if Severity(result.severity) > v_obj.severity_cap:
-                            original_severity = result.severity
-                            result = ValidatorResult(
-                                validator_id=result.validator_id,
-                                severity=v_obj.severity_cap.value,
-                                justification=result.justification,
-                            )
-                            self.last_cap_originals[result.validator_id] = original_severity
-                            if self._audit_log is not None:
-                                _cap_data = {
-                                    "validator_id": result.validator_id,
-                                    "original": original_severity,
-                                    "capped": result.severity,
-                                }
-                                if getattr(self, "_session_id", ""):
-                                    _cap_data["session_id"] = self._session_id
-                                self._audit_log.append_event(
-                                    "severity_cap_applied", _cap_data
-                                )
-                    results_by_id[vid] = result
-
-        # Return in original order
-        results = [results_by_id[v.validator_id] for v in validators]
+        self.last_cap_originals = cap_originals
         return results
 
     def _dispatch_one(
-        self, v: Validator, context: ValidatorContext, reg
+        self, v: Validator, context: ValidatorContext, reg: Any
     ) -> ValidatorResult:
-        always_register = {"quality", "protocol"}
-        cls = reg.lookup(v.validator_type) if (v.criteria or v.validator_type in always_register) else None
-        if cls is not None:
-            try:
-                instance = cls(validator_spec=v)
-                return instance.evaluate(context)
-            except Exception as e:
-                return ValidatorResult(
-                    validator_id=v.validator_id,
-                    severity="blocker",
-                    justification=f"Validator error: {e}",
-                    error=True,
-                )
-
-        if context.completion_fn and v.criteria:
-            from snodo.validators.llm_validator import LLMValidator
-            try:
-                instance = LLMValidator(validator_spec=v)
-                return instance.evaluate(context)
-            except Exception as e:
-                return ValidatorResult(
-                    validator_id=v.validator_id,
-                    severity="blocker",
-                    justification=f"LLM validation failed: {e}",
-                    error=True,
-                )
-
-        if v.criteria:
-            return ValidatorResult(
-                validator_id=v.validator_id,
-                severity="blocker",
-                justification=f"LLM unavailable for {v.validator_type} validation",
-                error=True,
-            )
-
-        return ValidatorResult(
-            validator_id=v.validator_id,
-            severity="warn",
-            justification=f"No criteria configured for {v.validator_type} — nothing to evaluate",
-        )
+        return dispatch_validator(v, context, reg)

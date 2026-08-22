@@ -19,7 +19,7 @@ def test_init_with_git_remote(snodo_cli):
         check=True,
     )
 
-    r = snodo_cli(["init", "--template", "solo"])
+    r = snodo_cli(["init", "--template", "solo", "--yes"])
     assert r.returncode == 0
     assert "Project ID:  github.com/myorg/myrepo (remote)" in r.stdout
 
@@ -37,7 +37,7 @@ def test_init_without_git_remote(snodo_cli):
     tmp_dir = snodo_cli.home
     # git remote is not added by default in snodo_cli fixture
 
-    r = snodo_cli(["init", "--template", "solo"])
+    r = snodo_cli(["init", "--template", "solo", "--yes"])
     assert r.returncode == 0
     assert "Project ID:  local:" in r.stdout
     assert "(local)" in r.stdout
@@ -55,7 +55,7 @@ def test_init_with_project_id_override_flag(snodo_cli):
     """Verify that --project-id flag caches the specified override."""
     tmp_dir = snodo_cli.home
 
-    r = snodo_cli(["init", "--template", "solo", "--project-id", "custom-override-flag"])
+    r = snodo_cli(["init", "--template", "solo", "--project-id", "custom-override-flag", "--yes"])
     assert r.returncode == 0
     assert "Project ID:  custom-override-flag (override)" in r.stdout
 
@@ -85,7 +85,7 @@ def test_init_with_project_id_config_override(snodo_cli):
     with open(config_file, "w") as f:
         yaml.safe_dump(config_data, f)
         
-    r = snodo_cli(["init", "--template", "solo"])
+    r = snodo_cli(["init", "--template", "solo", "--yes"])
     assert r.returncode == 0
     assert "Project ID:  custom-override-config (override)" in r.stdout
     
@@ -96,7 +96,7 @@ def test_init_with_project_id_config_override(snodo_cli):
     assert data["scope"] == "override"
 
     # 2. Both config override and CLI flag (CLI flag should win)
-    r2 = snodo_cli(["init", "--template", "solo", "--force", "--project-id", "cli-wins"])
+    r2 = snodo_cli(["init", "--template", "solo", "--force", "--project-id", "cli-wins", "--yes"])
     assert r2.returncode == 0
     assert "Project ID:  cli-wins (override)" in r2.stdout
     

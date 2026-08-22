@@ -8,7 +8,7 @@ import pytest
 
 @pytest.mark.e2e
 def test_2plus_n_init_and_run(snodo_cli):
-    r1 = snodo_cli(["init", "--template", "2+n"])
+    r1 = snodo_cli(["init", "--template", "2+n", "--yes"])
     assert r1.returncode == 0
 
     # 2+n has strict constraints (files_in_scope, tests_exist).
@@ -20,7 +20,7 @@ def test_2plus_n_init_and_run(snodo_cli):
 
 @pytest.mark.e2e
 def test_2plus_n_protocol_structure(snodo_cli):
-    snodo_cli(["init", "--template", "2+n"])
+    snodo_cli(["init", "--template", "2+n", "--yes"])
 
     # Verify protocol file contains expected content
     protocol = snodo_cli.home / ".snodo" / "protocol.yml"
@@ -32,6 +32,6 @@ def test_2plus_n_protocol_structure(snodo_cli):
 
 @pytest.mark.e2e
 def test_2plus_n_plan_create(snodo_cli):
-    snodo_cli(["init", "--template", "2+n"])
+    snodo_cli(["init", "--template", "2+n", "--yes"])
     r = snodo_cli(["plan", "create", "build user profile page", "--mock"])
     assert r.returncode == 0

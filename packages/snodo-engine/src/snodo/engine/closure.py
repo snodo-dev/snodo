@@ -11,16 +11,61 @@ is exhausted:
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+try:
+    from langgraph.errors import GraphBubbleUp
+except ImportError:  # pragma: no cover — very old langgraph without it
+    GraphBubbleUp = Exception  # type: ignore[assignment]
+
+
+_ERROR_MAX_CHARS = 500
+
+
+def _truncate(text: str) -> str:
+    """Truncate an error message for audit/report payloads."""
+    text = text or ""
+    if len(text) <= _ERROR_MAX_CHARS:
+        return text
+    return text[: _ERROR_MAX_CHARS] + "...<truncated>"
+
+
+def _make_failure_state(halt_type: str, error: str) -> dict:
+    """Build an explicit-failure state (never confused with a success)."""
+    err = _truncate(error)
+    return {
+        "is_blocked": True,
+        "halt_type": halt_type,
+        "error": err,
+        "metadata": {
+            "halt_payload": {
+                "status": "blocked",
+                "halt_type": "internal_error",
+                "final_decision": "internal_error",
+                "raw_halt_type": halt_type,
+                "reason": err,
+                "task_id": "",
+                "task_spec": "",
+                "phase": "unknown",
+                "validator_results": [],
+                "policy_decision": None,
+                "hint": (
+                    "The engine failed internally (not an authorisation "
+                    "problem). Retry the task or inspect the logs."
+                ),
+            },
+        },
+    }
+
 
 @dataclass
 class ClosureNode:
     """One node in the closure result tree."""
     task_id: str
     depth: int
-    outcome: str  # "resolved" | "blocked" | "escalated" | "recovery_exhausted"
+    outcome: str  # "resolved" | "blocked" | "escalated" | "recovery_exhausted" | "internal_error"
     spawned_subtasks: int = 0
     attempts_used: int = 0
     subtasks: List["ClosureNode"] = field(default_factory=list)
+    halt_payload: Optional[dict] = None
 
 
 def _make_initial_state(task_dict: dict, mode: str) -> dict:
@@ -99,9 +144,21 @@ def run_to_closure(
             kwargs["config"] = thread_config
         try:
             result = compiled_graph.invoke(initial, **kwargs)
-            return result if isinstance(result, dict) else {}
-        except Exception:
-            return {}
+        except GraphBubbleUp:
+            # Legitimate LangGraph control flow (GraphInterrupt / NodeInterrupt /
+            # GraphDrained). The closure driver cannot resume a paused graph, so
+            # propagate to the caller rather than misreport as resolution or a
+            # generic internal error.
+            raise
+        except Exception as exc:  # noqa: BLE001 — fail closed, never resolve
+            return _make_failure_state("internal_error", repr(exc))
+
+        if not isinstance(result, dict):
+            return _make_failure_state(
+                "internal_error",
+                f"graph returned non-dict result of type {type(result).__name__}",
+            )
+        return result
 
     def _recurse(task_dict: dict, depth: int) -> tuple[dict, ClosureNode]:
         nonlocal remaining
@@ -111,18 +168,19 @@ def run_to_closure(
         task_id = task_dict.get("id", "?")
         is_blocked = final.get("is_blocked", False)
         halt_type = final.get("halt_type")
-        spawned = final.get("spawned_subtasks", [])
+        spawned = final.get("spawned_subtasks", []) or []
+        is_complete = final.get("is_complete", False)
 
         child_nodes: List[ClosureNode] = []
         total_attempts = 1
 
-        if not spawned and not is_blocked:
-            outcome = "resolved"
-            _audit("recovery_resolved", {
-                "op": "recovery_resolved",
+        if is_blocked and halt_type == "internal_error":
+            outcome = "internal_error"
+            _audit("recovery_internal_error", {
+                "op": "recovery_internal_error",
                 "task_ref": task_id,
                 "depth": depth,
-                "attempts_used": 1,
+                "error": final.get("error", "unknown internal error"),
             })
 
         elif spawned and remaining > 0:
@@ -182,8 +240,30 @@ def run_to_closure(
                 "reason": "max_total_fix_attempts",
             })
 
+        elif is_complete:
+            # Positive completion evidence required — absence of failure is not
+            # enough to claim success.
+            outcome = "resolved"
+            _audit("recovery_resolved", {
+                "op": "recovery_resolved",
+                "task_ref": task_id,
+                "depth": depth,
+                "attempts_used": 1,
+            })
+
         else:
-            outcome = halt_type or "blocked"
+            # is_blocked with a non-internal halt, OR no completion signal and no
+            # failure. The latter must never be reported as resolved.
+            if is_blocked:
+                outcome = halt_type or "blocked"
+            else:
+                outcome = "internal_error"
+                _audit("recovery_internal_error", {
+                    "op": "recovery_internal_error",
+                    "task_ref": task_id,
+                    "depth": depth,
+                    "error": "no completion signal (is_complete falsy) and no failure",
+                })
 
         node = ClosureNode(
             task_id=task_id,
@@ -192,6 +272,7 @@ def run_to_closure(
             spawned_subtasks=len(spawned),
             attempts_used=total_attempts,
             subtasks=child_nodes,
+            halt_payload=final.get("metadata", {}).get("halt_payload"),
         )
         return final, node
 

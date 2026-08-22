@@ -5,7 +5,7 @@ FILE: tests/cli/test_run_cmd.py (Task 6.5)
 Covers the uncovered paths in snodo/cli/commands/run_cmd.py:
 - _run_plan flow
 - _execute_waves, _execute_wave_task
-- _stream_execution
+- _report_closure (structured halt payload emission)
 - _build_graph (success + failure)
 - _close_checkpointer
 - _setup_memory
@@ -292,102 +292,6 @@ class TestPrintPlanProgress:
         assert "2/3 completed" in out
 
 
-# === _stream_execution tests ===
-
-class TestStreamExecution:
-    """Tests for _stream_execution."""
-
-    def test_successful_completion(self, capsys):
-        from snodo.cli.commands.run_cmd import _stream_execution
-
-        mock_graph = MagicMock()
-        mock_graph.stream.return_value = [
-            {"governance": {"stage": "governance", "iteration": 0}},
-            {"execute": {"stage": "execute", "iteration": 1, "artifacts": ["file.py"]}},
-            {"complete": {"stage": "complete", "iteration": 2, "is_complete": True}},
-        ]
-        args = SimpleNamespace(verbose=False)
-        result = _stream_execution(mock_graph, {}, args)
-        assert result == 0
-        out = capsys.readouterr().out
-        assert "Task completed successfully" in out
-
-    def test_blocked_execution(self, capsys):
-        from snodo.cli.commands.run_cmd import _stream_execution
-
-        mock_graph = MagicMock()
-        mock_graph.stream.return_value = [
-            {"blocked": {"stage": "blocked", "iteration": 1,
-                         "is_blocked": True, "constraint_violations": ["bad stuff"]}},
-        ]
-        args = SimpleNamespace(verbose=False)
-        result = _stream_execution(mock_graph, {}, args)
-        assert result == 1
-        out = capsys.readouterr().out
-        assert "BLOCKED" in out
-
-    def test_exception_during_execution(self, capsys):
-        from snodo.cli.commands.run_cmd import _stream_execution
-
-        mock_graph = MagicMock()
-        mock_graph.stream.side_effect = Exception("connection lost")
-        args = SimpleNamespace(verbose=False)
-        result = _stream_execution(mock_graph, {}, args)
-        assert result == 1
-        err = capsys.readouterr().err
-        assert "connection lost" in err
-
-    def test_exception_verbose(self, capsys):
-        from snodo.cli.commands.run_cmd import _stream_execution
-
-        mock_graph = MagicMock()
-        mock_graph.stream.side_effect = Exception("oops")
-        args = SimpleNamespace(verbose=True)
-        result = _stream_execution(mock_graph, {}, args)
-        assert result == 1
-
-    def test_non_dict_state_skipped(self, capsys):
-        from snodo.cli.commands.run_cmd import _stream_execution
-
-        mock_graph = MagicMock()
-        mock_graph.stream.return_value = [
-            "not_a_dict",
-            {"node": "also_not_dict_value"},
-            {"complete": {"stage": "complete", "iteration": 0}},
-        ]
-        args = SimpleNamespace(verbose=False)
-        result = _stream_execution(mock_graph, {}, args)
-        # "also_not_dict_value" doesn't have "stage" so it's skipped
-        assert result == 0
-
-    def test_thread_config_passed(self):
-        from snodo.cli.commands.run_cmd import _stream_execution
-
-        mock_graph = MagicMock()
-        mock_graph.stream.return_value = [
-            {"complete": {"stage": "complete", "iteration": 0}},
-        ]
-        args = SimpleNamespace(verbose=False)
-        config = {"configurable": {"thread_id": "abc"}}
-        _stream_execution(mock_graph, {}, args, thread_config=config)
-        call_kwargs = mock_graph.stream.call_args[1]
-        assert call_kwargs["config"] == config
-
-    def test_validate_stage_output(self, capsys):
-        from snodo.cli.commands.run_cmd import _stream_execution
-
-        mock_graph = MagicMock()
-        mock_graph.stream.return_value = [
-            {"validate": {"stage": "validate", "iteration": 1,
-                          "validation_results": [{"severity": "pass"}]}},
-            {"complete": {"stage": "complete", "iteration": 2}},
-        ]
-        args = SimpleNamespace(verbose=False)
-        _stream_execution(mock_graph, {}, args)
-        out = capsys.readouterr().out
-        assert "1 validator(s)" in out
-
-
 # === _build_graph tests ===
 
 class TestBuildGraph:
@@ -586,35 +490,6 @@ class TestRunCommandPlan:
         result = run_command(args)
         assert result == 0
         mock_plan.assert_called_once_with(args)
-
-
-# === _report_result tests ===
-
-class TestReportResult:
-    """Tests for _report_result."""
-
-    def test_success_with_artifacts(self, capsys):
-        from snodo.cli.commands.run_cmd import _report_result
-
-        state = {"stage": "complete", "iteration": 3,
-                 "artifacts": ["a.py", "b.py"]}
-        result = _report_result(state)
-        assert result == 0
-        out = capsys.readouterr().out
-        assert "successfully" in out
-        assert "a.py" in out
-
-    def test_failure_none_state(self, capsys):
-        from snodo.cli.commands.run_cmd import _report_result
-
-        result = _report_result(None)
-        assert result == 1
-
-    def test_failure_wrong_stage(self, capsys):
-        from snodo.cli.commands.run_cmd import _report_result
-
-        result = _report_result({"stage": "blocked"})
-        assert result == 1
 
 
 # === _resolve_session tests (Task 7.3) ===
@@ -818,271 +693,93 @@ class TestRunPlanAuditLogFix:
 
 # === Halt output tests (Task 7.21) ===
 
-class TestRenderHaltPayload:
-    """Tests for _render_halt_payload shared helper."""
+class TestClosureHaltPayload:
+    """Tests for closure-path structured halt payload emission (ADR 1.1b)."""
 
-    def test_structured_payload_marker_on_block(self, capsys):
-        from snodo.cli.commands.run_cmd import _render_halt_payload
-
-        node_state = {
-            "halt_type": "blocked",
-            "constraint_violations": ["security check failed"],
-            "task": {"id": "t1", "spec": "do stuff"},
-            "iteration": 3,
-            "current_mode": "producer",
-            "validation_results": [],
-            "policy_decision": {"action": "halt"},
+    @staticmethod
+    def _payload(final_decision: str, **extra) -> dict:
+        p = {
+            "halt_type": final_decision,
+            "final_decision": final_decision,
+            "status": "blocked",
+            "reason": "test",
+            "task_id": "t1",
+            "task_spec": "do stuff",
+            "validator_results": [
+                {"validator_id": "sec", "severity": "warn", "justification": "x"},
+            ],
         }
-        payload = _render_halt_payload(node_state)
-        out = capsys.readouterr().out
-        assert "STRUCTURED HALT PAYLOAD" in out
-        assert payload["halt_type"] == "blocked"
-        assert payload["status"] == "blocked"
-        assert "hint" in payload
+        p.update(extra)
+        return p
 
-    def test_policy_decision_serialized_to_dict(self, capsys):
-        """Regression: PolicyDecision dataclass must not crash json.dumps."""
-        from snodo.cli.commands.run_cmd import _render_halt_payload
-        from snodo.engine.policy import PolicyDecision, PolicyAction
+    @pytest.mark.parametrize("decision", ["escalate", "blocker", "validator_error", "internal_error"])
+    def test_payload_emitted_for_each_halt_case(self, capsys, decision):
+        from snodo.cli.commands.run_cmd import _report_closure
+        from snodo.engine.closure import ClosureNode
         import json as _json
 
-        pd = PolicyDecision(
-            action=PolicyAction.HALT,
-            consensus_achieved=False,
-            pass_count=0,
-            warn_count=1,
-            blocker_count=2,
-            total_count=3,
-            justification="tests failed + security issue",
+        tree = ClosureNode(
+            task_id="t1", depth=0, outcome=decision,
+            halt_payload=self._payload(decision),
         )
-        node_state = {
-            "halt_type": "blocked",
-            "constraint_violations": ["validation failed"],
-            "task": {"id": "t1", "spec": "do stuff"},
-            "iteration": 2,
-            "current_mode": "producer",
-            "validation_results": [],
-            "policy_decision": pd,  # live dataclass — should be serialized
-        }
-        _render_halt_payload(node_state)
+        result = _report_closure(tree, {})
         out = capsys.readouterr().out
-
-        # Must have produced valid JSON (no crash)
-        payload_section = out.split("--- STRUCTURED HALT PAYLOAD ---")[1].split("--- END STRUCTURED HALT PAYLOAD ---")[0]
-        parsed = _json.loads(payload_section)
-        assert parsed["halt_type"] == "blocked"
-        assert parsed["policy_decision"]["action"] == "halt"
-        assert parsed["policy_decision"]["blocker_count"] == 2
-        assert parsed["policy_decision"]["justification"] == "tests failed + security issue"
-
-    def test_policy_decision_already_dict(self, capsys):
-        """Already-dict policy_decision passes through untouched."""
-        from snodo.cli.commands.run_cmd import _render_halt_payload
-        import json as _json
-
-        node_state = {
-            "halt_type": "blocked",
-            "constraint_violations": ["bad"],
-            "task": {"id": "t1", "spec": "x"},
-            "validation_results": [],
-            "policy_decision": {"action": "halt", "blocker_count": 1},
-        }
-        _render_halt_payload(node_state)
-        out = capsys.readouterr().out
-        payload_section = out.split("--- STRUCTURED HALT PAYLOAD ---")[1].split("--- END STRUCTURED HALT PAYLOAD ---")[0]
-        parsed = _json.loads(payload_section)
-        assert parsed["policy_decision"] == {"action": "halt", "blocker_count": 1}
-
-
-    def test_escalation_gets_halt_type(self, capsys):
-        from snodo.cli.commands.run_cmd import _render_halt_payload
-
-        node_state = {
-            "halt_type": "escalated",
-            "is_blocked": True,
-            "constraint_violations": ["disagreement"],
-            "task": {"id": "t1", "spec": "do stuff"},
-            "pending_disagreement": {
-                "phase": "pre_execute",
-                "policy": "unanimous",
-                "validator_results": [
-                    {"validator_id": "sec", "severity": "blocker", "justification": "bad"}
-                ],
-                "policy_decision": {"action": "escalate"},
-            },
-            "validation_results": [],
-        }
-        payload = _render_halt_payload(node_state)
-        out = capsys.readouterr().out
+        assert result == 1
         assert "STRUCTURED HALT PAYLOAD" in out
-        assert payload["halt_type"] == "escalated"
-        assert payload["phase"] == "pre_execute"
-        assert "escalation_validator_results" in payload
-        assert "snodo authorize" in out
+        section = out.split("--- STRUCTURED HALT PAYLOAD ---")[1].split("--- END STRUCTURED HALT PAYLOAD ---")[0]
+        parsed = _json.loads(section)
+        assert parsed["halt_type"] == decision
+        assert parsed["final_decision"] == decision
+        assert parsed["validator_results"], "validator_results must be non-empty"
 
-    def test_halt_type_inferred_as_constraint(self, capsys):
-        from snodo.cli.commands.run_cmd import _render_halt_payload
+    def test_no_payload_on_success(self, capsys):
+        from snodo.cli.commands.run_cmd import _report_closure
+        from snodo.engine.closure import ClosureNode
 
-        node_state = {
-            # No halt_type set — backward compat
-            "constraint_violations": ["invalid mode"],
-            "task": {"id": "t1", "spec": "x"},
-            "validation_results": [],
-        }
-        payload = _render_halt_payload(node_state)
-        assert payload["halt_type"] == "constraint"
-
-    def test_halt_type_inferred_as_blocked(self, capsys):
-        from snodo.cli.commands.run_cmd import _render_halt_payload
-
-        node_state = {
-            # No halt_type, no violations, no pending_disagreement
-            "task": {"id": "t1", "spec": "x"},
-            "validation_results": [
-                {"validator_id": "qual", "severity": "blocker", "justification": "tests failed"}
-            ],
-        }
-        payload = _render_halt_payload(node_state)
-        assert payload["halt_type"] == "blocked"
-
-    def test_hint_present_on_resolution(self, capsys):
-        from snodo.cli.commands.run_cmd import _render_halt_payload
-
-        node_state = {
-            "halt_type": "resolution",
-            "constraint_violations": ["user halted via resolve"],
-            "task": {"id": "t1", "spec": "x"},
-            "validation_results": [],
-        }
-        payload = _render_halt_payload(node_state)
-        assert payload["halt_type"] == "resolution"
-        assert "hint" in payload
-
-    def test_hint_present_on_max_iterations(self, capsys):
-        from snodo.cli.commands.run_cmd import _render_halt_payload
-        node_state = {
-            "halt_type": "max_iterations",
-            "constraint_violations": ["max iterations exceeded"],
-            "task": {"id": "t1", "spec": "x"},
-            "validation_results": [],
-        }
-        payload = _render_halt_payload(node_state)
-        assert payload["halt_type"] == "max_iterations"
-        assert "hint" in payload
-
-    def test_hint_present_on_wf3(self, capsys):
-        from snodo.cli.commands.run_cmd import _render_halt_payload
-        node_state = {
-            "halt_type": "wf3",
-            "constraint_violations": ["WF3 violation"],
-            "task": {"id": "t1", "spec": "x"},
-            "validation_results": [],
-        }
-        payload = _render_halt_payload(node_state)
-        assert payload["halt_type"] == "wf3"
-        assert "hint" in payload
-
-
-class TestHaltValidatorJustifications:
-    """Tests for validator justification printing on block."""
-
-    def test_blockers_printed(self, capsys):
-        from snodo.cli.commands.run_cmd import _stream_execution
-
-        mock_graph = MagicMock()
-        node_state = {
-            "stage": "validate",
-            "iteration": 1,
-            "is_blocked": True,
-            "halt_type": "blocked",
-            "constraint_violations": ["test violation"],
-            "task": {"id": "t1", "spec": "do stuff"},
-            "validation_results": [
-                {"validator_id": "security", "severity": "blocker",
-                 "justification": "found SQL injection"},
-                {"validator_id": "quality", "severity": "warn",
-                 "justification": "low test coverage"},
-                {"validator_id": "protocol", "severity": "pass",
-                 "justification": "ok"},
-            ],
-        }
-        mock_graph.stream.return_value = [{"validate": node_state}]
-        args = SimpleNamespace(verbose=False)
-        _stream_execution(mock_graph, {}, args)
+        tree = ClosureNode(task_id="t1", depth=0, outcome="resolved")
+        result = _report_closure(tree, {"is_blocked": False, "is_complete": True, "artifacts": []})
         out = capsys.readouterr().out
-        assert "security — blocker — found SQL injection" in out
-        assert "quality — warn — low test coverage" in out
-        # pass-level results should not appear as blockers/warns
-        assert "protocol —" not in out  # pass is filtered out
-        assert "STRUCTURED HALT PAYLOAD" in out
-        # Verify JSON payload contains all results (including passes)
-        assert "found SQL injection" in out
-        assert "low test coverage" in out
+        assert result == 0
+        assert "STRUCTURED HALT PAYLOAD" not in out
 
-    def test_no_validators_skips_justifications(self, capsys):
-        from snodo.cli.commands.run_cmd import _stream_execution
+    def test_validator_error_does_not_advise_authorize(self, capsys):
+        from snodo.cli.commands.run_cmd import _report_closure
+        from snodo.engine.closure import ClosureNode
 
-        mock_graph = MagicMock()
-        node_state = {
-            "stage": "validate",
-            "iteration": 1,
-            "is_blocked": True,
-            "halt_type": "blocked",
-            "constraint_violations": ["just a constraint"],
-            "task": {"id": "t1", "spec": "do stuff"},
-            "validation_results": [],
-        }
-        mock_graph.stream.return_value = [{"validate": node_state}]
-        args = SimpleNamespace(verbose=False)
-        _stream_execution(mock_graph, {}, args)
+        tree = ClosureNode(
+            task_id="t1", depth=0, outcome="validator_error",
+            halt_payload=self._payload("validator_error"),
+        )
+        _report_closure(tree, {})
         out = capsys.readouterr().out
-        assert "Validator blockers" not in out
-        assert "Validator warnings" not in out
-        assert "STRUCTURED HALT PAYLOAD" in out
+        assert "snodo authorize" not in out
 
-    def test_only_warns_printed(self, capsys):
-        from snodo.cli.commands.run_cmd import _stream_execution
+    def test_terminal_halt_prefers_deepest_subtask(self):
+        from snodo.cli.commands.run_cmd import _find_terminal_halt_payload
+        from snodo.engine.closure import ClosureNode
 
-        mock_graph = MagicMock()
-        node_state = {
-            "stage": "validate",
-            "iteration": 1,
-            "is_blocked": True,
-            "halt_type": "constraint",
-            "constraint_violations": ["bad"],
-            "task": {"id": "t1", "spec": "x"},
-            "validation_results": [
-                {"validator_id": "qa", "severity": "warn",
-                 "justification": "missing docstrings"},
-            ],
-        }
-        mock_graph.stream.return_value = [{"validate": node_state}]
-        args = SimpleNamespace(verbose=False)
-        _stream_execution(mock_graph, {}, args)
-        out = capsys.readouterr().out
-        assert "qa — warn — missing docstrings" in out
-        assert "Validator blockers" not in out
+        root = ClosureNode(
+            task_id="root", depth=0, outcome="blocker",
+            halt_payload=self._payload("completed"),
+        )
+        child = ClosureNode(
+            task_id="fix1", depth=1, outcome="blocker",
+            halt_payload=self._payload("blocker", reason="fix failed"),
+        )
+        root.subtasks = [child]
+        found = _find_terminal_halt_payload(root, {})
+        assert found["final_decision"] == "blocker"
 
-    def test_structured_payload_present_on_all_halt_types(self, capsys):
-        from snodo.cli.commands.run_cmd import _stream_execution
+    def test_root_halt_used_when_no_subtask_halted(self):
+        from snodo.cli.commands.run_cmd import _find_terminal_halt_payload
+        from snodo.engine.closure import ClosureNode
 
-        for ht in ["blocked", "escalated", "resolution", "constraint", "max_iterations", "wf3"]:
-            mock_graph = MagicMock()
-            node_state = {
-                "stage": "validate",
-                "iteration": 1,
-                "is_blocked": True,
-                "halt_type": ht,
-                "constraint_violations": ["test"],
-                "task": {"id": "t1", "spec": "x"},
-                "validation_results": [],
-            }
-            mock_graph.stream.return_value = [{"validate": node_state}]
-            args = SimpleNamespace(verbose=False)
-            capsys.readouterr()  # flush
-            _stream_execution(mock_graph, {}, args)
-            out = capsys.readouterr().out
-            assert "STRUCTURED HALT PAYLOAD" in out, f"missing payload for halt_type={ht}"
+        root = ClosureNode(
+            task_id="root", depth=0, outcome="escalate",
+            halt_payload=self._payload("escalate"),
+        )
+        found = _find_terminal_halt_payload(root, {})
+        assert found["final_decision"] == "escalate"
 
 
 class TestLoopSerialization:
