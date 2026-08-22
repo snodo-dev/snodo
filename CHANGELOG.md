@@ -9,6 +9,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.6.0] — 2026-08-21
+
+Hardening pass over the enforcement core: five fail-open or silent-failure
+defects, plus concurrency and durability fixes. Tracked as issues #5–#15;
+decisions recorded in ADRs 014–016.
+
 ### Fixed
 
 - The Kleene-closure driver (`run_to_closure`) no longer reports graph
@@ -51,6 +59,29 @@ snodo uses [Semantic Versioning](https://semver.org/).
   and a failed `consume` (already-consumed token) now rolls back its implicit
   write transaction instead of holding the write lock. Concurrent consumers of
   the same token now resolve to exactly one winner without exceptions.
+- The Kleene-closure driver no longer lets one over-deep sibling cancel the
+  rest. A per-branch `max_recovery_depth` violation now records the exhausted
+  child and `continue`s to the next sibling instead of `break`ing and zeroing
+  the global `max_total_fix_attempts` budget. The parent is marked
+  `recovery_exhausted` when any sibling is depth-exhausted (the closure is
+  incomplete), but unrelated legal siblings still execute and consume exactly
+  one budget unit each; genuine global exhaustion still stops processing.
+
+---
+
+## [0.2.0] – [0.5.4]
+
+Released without individual changelog entries. See the git history
+(`git log v0.1.0..v0.5.3`) for detail. Highlights across this range: the MCP
+server (`snodo serve`), the TUI dashboard, the opencode coder adapter, the
+Kleene-closure recovery loop (ADR 013), git-worktree task isolation, cloud audit
+sync, background jobs, and the AGPL-3.0 → Apache-2.0 relicence.
+
+> **Note on versioning.** The `v0.9.0-tosem` tag and the `version` field in
+> `CITATION.cff` describe the archived research snapshot deposited to Zenodo
+> (DOI [10.5281/zenodo.21967946](https://doi.org/10.5281/zenodo.21967946)) —
+> not a package release. Package versions and the citable artifact version are
+> tracked on separate axes and are expected to differ.
 
 ---
 

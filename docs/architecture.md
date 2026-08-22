@@ -191,6 +191,13 @@ to report `resolved`. A graph exception, an empty result, or a state carrying no
 completion signal yields `internal_error` — absence of a failure signal is never
 treated as success.
 
+Two bounds terminate recursion: `max_total_fix_attempts` (global budget across the
+whole tree) and `max_recovery_depth` (per-branch depth cap). A per-branch depth
+violation records the exhausted child and moves on to the next sibling — it does not
+cancel unrelated sibling work nor consume the global budget; only genuine global
+exhaustion stops processing. A parent whose closure is incomplete (any sibling
+depth-exhausted or otherwise non-resolved) is itself reported non-resolved.
+
 ## Invariant → mechanism table
 
 | Invariant | Mechanism | Source |
