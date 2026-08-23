@@ -43,11 +43,25 @@ bump:
 	$(MAKE) sync-versions
 
 release:
-	@echo "Running test suite..."
+	@# Refuse to release from a dirty tree: `git add -A` below would otherwise
+	@# sweep unrelated work into the "release:" commit, losing its own message
+	@# and any `Fixes #N` attribution.
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Working tree is dirty. Commit or stash before releasing:"; \
+		git status --short; \
+		exit 1; \
+	fi
+	@echo "Running test suite (incl. e2e)..."
 	uv run pytest tests/ -q || { \
 		echo "Tests failed. Aborting release."; \
 		exit 1; \
 	}
+	uv run pytest tests/e2e/ -m e2e -q || { \
+		echo "E2E tests failed. Aborting release."; \
+		exit 1; \
+	}
+	uv run ruff check . || { echo "Lint failed. Aborting release."; exit 1; }
+	uv run lint-imports || { echo "Import contracts broken. Aborting release."; exit 1; }
 	$(MAKE) bump PART=$(PART)
 	$(eval V := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml))
 	git add -A
