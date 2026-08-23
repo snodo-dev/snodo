@@ -9,6 +9,26 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A validator that crashes is no longer silently downgraded. `severity_cap` was
+  rebuilding the `ValidatorResult` without carrying the `error` flag, so
+  `PolicyEvaluator`'s fail-closed `error_count > 0 → HALT` path was bypassed: under
+  `severity_cap: pass` a crashed validator became a `pass` and a token was issued,
+  and under `severity_cap: warn` (used by the shipped `bugfix-surgeon` and
+  `feature-warden` protocols) it was reported as a human-adjudicable `escalate`
+  rather than `validator_error`. Error results are now never capped — a crash is an
+  operational fault, not a severity judgement. The duplicate capping implementation
+  in `engine/loop.py:_default_validator` now delegates to the shared runner, so
+  capping exists in exactly one place.
+- Task identifiers are stable across processes. `task_id` was derived from Python's
+  `hash()` of the description, which is salted per interpreter, so the same
+  description produced a different id on every run; `& 0xffffff` also truncated it
+  to 24 bits, making collisions likely in the low thousands of tasks. Ids are now a
+  48-bit SHA-256 digest via a single `derive_task_id()` helper in `snodo-core`,
+  called from both `run_cmd` and `job_cmd`. Ids stored in existing sessions still
+  resolve — `--retry` reads them rather than recomputing — so no migration is needed.
+
 ---
 
 ## [0.6.0] — 2026-08-21
