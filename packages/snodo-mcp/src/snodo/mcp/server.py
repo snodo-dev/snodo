@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from snodo.compiler.models import Protocol
 from snodo.infrastructure.tokens import TokenIssuer, TokenStoreError, ValidationToken
-from snodo.core.interfaces import Task, ValidatorResult
+from snodo.core.interfaces import Task
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.tools.git import GitMCP
 from snodo.tools.shell import ShellMCP
@@ -382,18 +382,7 @@ class CoreToolHandler:
 
         results: list = []
 
-        # 1. pytest run — one validator result. Blockers are NOT downgraded.
-        try:
-            results.append(server.shell.run_tests("tests/", command_type="pytest"))
-        except Exception as e:  # noqa: BLE001 — test runner crash is an error
-            results.append(ValidatorResult(
-                validator_id="test_runner",
-                severity="blocker",
-                justification=f"Test execution failed: {e}",
-                error=True,
-            ))
-
-        # 2. Resolve the validator LLM. Failure → validator_error (not a pass).
+        # 1. Resolve the validator LLM. Failure → validator_error (not a pass).
         try:
             completion_fn, validator_model, validator_config = resolve_validator_completion()
         except Exception as e:  # noqa: BLE001
@@ -405,7 +394,7 @@ class CoreToolHandler:
                 "Could not resolve validator LLM — retry or inspect logs.",
             )
 
-        # 3. Run the protocol's real validators via the shared engine runner.
+        # 2. Run the protocol's real validators via the shared engine runner.
         task = Task(id=task_id, spec=task_spec)
         decision_records = self._load_decision_records(mode_id)
         protocol_results, _ = run_validators(
@@ -424,7 +413,7 @@ class CoreToolHandler:
         )
         results.extend(protocol_results)
 
-        # 4. Evaluate policy (shared with the engine) — no hand-rolled logic.
+        # 3. Evaluate policy (shared with the engine) — no hand-rolled logic.
         decision = server._policy_evaluator.evaluate(
             results,
             protocol.disagreement_policy,

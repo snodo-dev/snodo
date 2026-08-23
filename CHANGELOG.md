@@ -11,6 +11,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The MCP `validate_task` handler no longer injects an unconditional pytest
+  `test_runner` result into the validator quorum. Because `PolicyEvaluator` derives
+  `total_count` from the number of results, the injected entry inflated the
+  denominator on the MCP path only — a protocol declaring three validators was
+  evaluated as four, so `unanimous` additionally required the test runner to pass
+  and `quorum` moved from 2/3 to 3/4. The engine path never injected it, so the two
+  paths could reach different decisions for the same protocol. The hardcoded
+  `tests/` path also meant a project without that directory could never pass
+  validation. Tests now participate only when the protocol declares a
+  `quality`/test validator, resolved through the shared runner like every other
+  validator. The engine/MCP parity test now asserts equal policy decision and
+  `total_count`, not just per-validator severities.
+
 - A validator that crashes is no longer silently downgraded. `severity_cap` was
   rebuilding the `ValidatorResult` without carrying the `error` flag, so
   `PolicyEvaluator`'s fail-closed `error_count > 0 → HALT` path was bypassed: under

@@ -214,26 +214,23 @@ class TestDispatchToolErrors:
 
 
 # ---------------------------------------------------------------------------
-# _handle_validate_task: test-runner exception path (lines 327-329)
+# _handle_validate_task: no test-runner injection (quorum parity with engine)
 # ---------------------------------------------------------------------------
 
-class TestValidateTaskExceptionPath:
-    def test_shell_run_tests_exception_becomes_blocker(self, server):
-        """A test-runner crash is a blocker error, never a silent warn/pass."""
+class TestValidateTaskNoTestInjection:
+    def test_no_test_runner_result_injected(self, server):
+        """validate_task must not inject a test_runner result — the quorum is
+        exactly the protocol's declared validators (engine/MCP parity)."""
         with patch(
             "snodo.validators.runner.resolve_validator_completion",
             return_value=(MagicMock(), "mock-model", MagicMock(max_tokens=1500, max_tool_turns=6)),
         ), patch(
             "snodo.validators.llm_validator.supports_response_schema", return_value=False
-        ), patch.object(
-            server.shell, "run_tests", side_effect=RuntimeError("subprocess crash")
         ):
             result = server._handle_validate_task({"task_id": "t-crash"})
-        blocker_results = [
-            r for r in result["results"] if r["severity"] == "blocker"
-        ]
-        assert any("Test execution failed" in r["justification"] for r in blocker_results)
-        assert result["token_issued"] is False
+        ids = {r["validator_id"] for r in result["results"]}
+        assert "test_runner" not in ids
+        assert ids == {"security"}
 
 
 # ---------------------------------------------------------------------------

@@ -25,8 +25,8 @@ from snodo.mcp.server import ProtocolMCPServer
 
 from tests.mcp._validate_helpers import (
     validation_passing,
-    pass_completion_fn,
     warn_completion_fn,
+    blocker_completion_fn,
     mock_validator_config,
 )
 
@@ -90,15 +90,6 @@ def _patch_completion(fn):
     ), patch("snodo.validators.llm_validator.supports_response_schema", return_value=False)
 
 
-def _patch_tests(server, result=None, side_effect=None):
-    if side_effect is not None:
-        return patch.object(server.shell, "run_tests", side_effect=side_effect)
-    result = result or ValidatorResult(
-        validator_id="test_runner", severity="pass", justification="ok",
-    )
-    return patch.object(server.shell, "run_tests", return_value=result)
-
-
 # ---------------------------------------------------------------------------
 # Four outcomes
 # ---------------------------------------------------------------------------
@@ -116,7 +107,7 @@ class TestFourOutcomes:
     def test_escalate_no_token_returns_decision(self, server):
         """Warn under unanimous → escalate, no token, decision_id + evidence."""
         c, s = _patch_completion(warn_completion_fn())
-        with c, s, _patch_tests(server):
+        with c, s:
             result = server.call_tool("validate_task", {"task_id": "t1", "task_spec": "x"})
         assert result["status"] == "escalate"
         assert result["token_issued"] is False
@@ -129,19 +120,14 @@ class TestFourOutcomes:
         )
 
     def test_blocker_no_token(self, server):
-        """A failing test suite yields blocker, not warn; never a token."""
-        blocker = ValidatorResult(
-            validator_id="test_runner",
-            severity="blocker",
-            justification="1 test failed",
-        )
-        c, s = _patch_completion(pass_completion_fn())
-        with c, s, _patch_tests(server, result=blocker):
+        """A blocker from a declared validator yields blocker, not warn; never a token."""
+        c, s = _patch_completion(blocker_completion_fn())
+        with c, s:
             result = server.call_tool("validate_task", {"task_id": "t1", "task_spec": "x"})
         assert result["status"] == "blocker"
         assert result["token_issued"] is False
-        tr = [r for r in result["results"] if r["validator_id"] == "test_runner"]
-        assert tr and tr[0]["severity"] == "blocker"
+        sec = [r for r in result["results"] if r["validator_id"] == "security"]
+        assert sec and sec[0]["severity"] == "blocker"
         assert "authorize" not in result["instruction"]
 
     def test_validator_error_no_token_no_authorize(self, server):
@@ -149,7 +135,7 @@ class TestFourOutcomes:
         with patch(
             "snodo.validators.runner.resolve_validator_completion",
             side_effect=RuntimeError("config broken"),
-        ), _patch_tests(server):
+        ):
             result = server.call_tool("validate_task", {"task_id": "t1", "task_spec": "x"})
         assert result["status"] == "validator_error"
         assert result["token_issued"] is False
@@ -186,8 +172,7 @@ class TestFourOutcomes:
         (Path(d) / ".snodo").mkdir(exist_ok=True)
         srv = ProtocolMCPServer(protocol, d)
         try:
-            with _patch_tests(srv):
-                result = srv._handle_validate_task({"task_id": "t1", "task_spec": "x"})
+            result = srv._handle_validate_task({"task_id": "t1", "task_spec": "x"})
             assert result["status"] == "validator_error"
             assert result["token_issued"] is False
             assert "authorize" not in result["instruction"]
@@ -201,11 +186,8 @@ class TestFourOutcomes:
 
 class TestFailingTestsAreBlocker:
     def test_failing_test_suite_is_blocker(self, server):
-        blocker = ValidatorResult(
-            validator_id="test_runner", severity="blocker", justification="3 failed",
-        )
-        c, s = _patch_completion(pass_completion_fn())
-        with c, s, _patch_tests(server, result=blocker):
+        c, s = _patch_completion(blocker_completion_fn())
+        with c, s:
             result = server._handle_validate_task({"task_id": "t1", "task_spec": "x"})
         assert result["status"] == "blocker"
         # No result is a warn "Tests (continuing)" downgrade
@@ -267,8 +249,7 @@ class TestEngineMCPParity:
         (Path(d) / ".snodo").mkdir(exist_ok=True)
         srv = ProtocolMCPServer(proto, d)
         try:
-            with _patch_tests(srv):
-                mcp = srv._handle_validate_task({"task_id": "t1", "task_spec": "x"})
+            mcp = srv._handle_validate_task({"task_id": "t1", "task_spec": "x"})
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
@@ -277,6 +258,22 @@ class TestEngineMCPParity:
         assert engine_sev["security"] == "warn"
         assert mcp_sev["security"] == "warn"
         assert engine_sev["security"] == mcp_sev["security"]
+
+        # Parity: same validator set → same total_count and same policy decision.
+        from snodo.engine.policy import PolicyEvaluator
+
+        engine_decision = PolicyEvaluator().evaluate(
+            engine_results, proto.disagreement_policy, task_ref="t1",
+        )
+        mcp_decision = PolicyEvaluator().evaluate(
+            [ValidatorResult(**r) for r in mcp["results"]],
+            proto.disagreement_policy, task_ref="t1",
+        )
+        assert engine_decision.total_count == mcp_decision.total_count == 1
+        assert engine_decision.action == mcp_decision.action
+        assert engine_decision.pass_count == mcp_decision.pass_count
+        assert engine_decision.warn_count == mcp_decision.warn_count
+        assert engine_decision.blocker_count == mcp_decision.blocker_count
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +302,7 @@ class TestEscalateAuthorizeRevalidate:
 
         # 1. validate → escalate (security warns under unanimous)
         c, s = _patch_completion(warn_completion_fn())
-        with c, s, _patch_tests(server):
+        with c, s:
             result = server.call_tool("validate_task", {"task_id": "t1", "task_spec": "x"})
         assert result["status"] == "escalate"
         assert result["token_issued"] is False
@@ -335,7 +332,7 @@ class TestEscalateAuthorizeRevalidate:
         mgr.update_decision(session.session_id, "pending_decisions", pending)
 
         # 3. re-validate → pass + token
-        with c, s, _patch_tests(server):
+        with c, s:
             result2 = server.call_tool("validate_task", {"task_id": "t1", "task_spec": "x"})
         assert result2["status"] == "pass"
         assert result2["token_issued"] is True
