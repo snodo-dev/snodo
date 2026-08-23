@@ -14,6 +14,7 @@ from snodo.infrastructure.paths import (
     resolve_project_root,
     require_project_root,
 )
+from snodo.paths import derive_task_id
 
 
 class TestResolveHome:
@@ -89,6 +90,45 @@ class TestResolveProjectRoot:
             id_from_root = hashlib.sha256(root_from_root.encode()).hexdigest()[:16]
             id_from_sub = hashlib.sha256(root_from_sub.encode()).hexdigest()[:16]
             assert id_from_root == id_from_sub
+
+
+class TestDeriveTaskId:
+    def test_stable_digest_format(self):
+        tid = derive_task_id("implement hello world")
+        assert tid.startswith("task_")
+        assert len(tid) == len("task_") + 12  # 48-bit hex digest
+        assert all(c in "0123456789abcdef" for c in tid[len("task_"):])
+
+    def test_deterministic_within_process(self):
+        assert derive_task_id("same spec") == derive_task_id("same spec")
+
+    def test_salt_independent_across_processes(self):
+        """Same description must yield the same id under different PYTHONHASHSEED.
+
+        Regresses the P1 where ``hash()`` (salted per interpreter) produced a
+        different id on every run.
+        """
+        import os
+        import subprocess
+        import sys
+
+        snippet = (
+            "from snodo.paths import derive_task_id; "
+            "print(derive_task_id('deterministic spec'))"
+        )
+        ids = set()
+        for seed in ("0", "1", "42", "random"):
+            env = os.environ.copy()
+            env["PYTHONHASHSEED"] = seed
+            out = subprocess.run(
+                [sys.executable, "-c", snippet],
+                capture_output=True, text=True, env=env, check=True,
+            ).stdout.strip()
+            ids.add(out)
+        assert len(ids) == 1, f"non-deterministic task ids: {ids}"
+
+    def test_different_descriptions_differ(self):
+        assert derive_task_id("a") != derive_task_id("b")
 
 
 class TestRequireProjectRoot:

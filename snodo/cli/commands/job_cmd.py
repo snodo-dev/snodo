@@ -479,7 +479,9 @@ def _dispatch_as_new_task(args, task_data: dict, job_id: str) -> int:
     mgr = ConfigManager()
     model = getattr(args, "model", None) or mgr.get_model()
 
-    task_id = f"task_{hash(description) & 0xffffff:06x}"
+    from snodo.paths import derive_task_id
+
+    task_id = derive_task_id(description)
     task = Task(id=task_id, spec=description)
 
     from snodo.cli.commands.run_cmd import _execute_task
