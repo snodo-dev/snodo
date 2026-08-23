@@ -902,75 +902,30 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         current_mode: str = "",
         phase: str = "",
     ) -> List[ValidatorResult]:
-        """Validator dispatch via registry (Task 7.20).
+        """Validator dispatch via the shared runner (single implementation).
 
-        Builds a single ValidatorContext for the pass, then looks up
-        each validator_spec.validator_type in the registry.  Falls back
-        to the LLMValidator catch-all for registered types + criteria,
-        or stub results for unrecognised / no-LLM cases.
-
-        Kept as full implementation (not delegation) so tests can
-        monkey-patch ``self._dispatch_one`` and have it take effect.
+        Delegates to ``run_validators`` so severity-capping (and its
+        error-flag guard) lives in exactly one place.  ``dispatch_fn`` is
+        bound to ``self._dispatch_one`` so tests can monkey-patch it and have
+        it take effect.
         """
-        from snodo.validators.registry import _default_registry as reg
+        from snodo.validators.runner import run_validators
 
-        mode_obj = self.protocol.get_mode(current_mode)
-        _vcfg = self._validator_runner._validator_config
-        if _vcfg is None:
-            from snodo.infrastructure.config import ConfigLoadError, load_llm_config
-            try:
-                _vcfg = load_llm_config().validator
-            except ConfigLoadError as e:
-                return [
-                    ValidatorResult(
-                        validator_id="config",
-                        severity="blocker",
-                        justification=f"Config error: {e}",
-                    )
-                ]
-        context = ValidatorContext(
-            task=task,
-            current_mode=mode_obj,
+        results, cap_originals = run_validators(
             protocol=self.protocol,
-            artifacts=[],
-            audit_log=self._audit_log,
-            mode_name=mode_obj.name if mode_obj else "",
-            mode_tools=list(mode_obj.tools) if mode_obj else [],
-            mode_transitions=dict(mode_obj.transitions) if mode_obj else {},
-            mode_validator_refs=list(mode_obj.validators) if mode_obj else [],
+            validators=validators,
+            task=task,
+            phase=phase,
             completion_fn=self._get_completion_fn(),
-            model=getattr(self.coder, "model", DEFAULT_MODEL),
-            working_directory=str(Path.cwd()) if not self.workspace_mcp
-            else str(getattr(self.workspace_mcp, "project_root", Path.cwd())),
+            default_model=getattr(self.coder, "model", DEFAULT_MODEL),
+            validator_config=self._validator_runner._validator_config,
             workspace_mcp=self.workspace_mcp,
             git_mcp=self.git_mcp,
-            phase=phase,
-            max_tokens=_vcfg.max_tokens,
-            max_tool_turns=_vcfg.max_tool_turns,
-            job_id=self._session_id or "",
-            task_id=task.id,
+            current_mode=current_mode,
+            session_id=self._session_id or "",
+            audit_log=self._audit_log,
+            dispatch_fn=self._dispatch_one,
         )
-
-        results = []
-        cap_originals: Dict[str, str] = {}
-        for v in validators:
-            result = self._dispatch_one(v, context, reg)
-            if v.severity_cap is not None:
-                from snodo.compiler.models import Severity
-                if Severity(result.severity) > v.severity_cap:
-                    original_severity = result.severity
-                    result = ValidatorResult(
-                        validator_id=result.validator_id,
-                        severity=v.severity_cap.value,
-                        justification=result.justification,
-                    )
-                    cap_originals[result.validator_id] = original_severity
-                    self._audit("severity_cap_applied", {
-                        "validator_id": result.validator_id,
-                        "original": original_severity,
-                        "capped": result.severity,
-                    })
-            results.append(result)
         self._validator_runner.last_cap_originals = cap_originals
         return results
 

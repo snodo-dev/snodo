@@ -121,6 +121,11 @@ def run_validators(
 
     Returns (results, cap_originals) where ``cap_originals`` maps a validator
     id to its original (pre-cap) severity when a severity_cap was applied.
+
+    Results carrying ``error=True`` are never capped: a validator crash is an
+    operational fault, not a severity judgement, and capping it would drop the
+    error flag and bypass the fail-closed ``error_count > 0 → HALT`` path in
+    ``PolicyEvaluator.evaluate``.
     """
     from snodo.validators.registry import _default_registry as reg
 
@@ -202,7 +207,11 @@ def run_validators(
                 )
             if result is not None:
                 v_obj = next((v for v in validators if v.validator_id == vid), None)
-                if v_obj is not None and v_obj.severity_cap is not None:
+                if (
+                    v_obj is not None
+                    and v_obj.severity_cap is not None
+                    and not getattr(result, "error", False)
+                ):
                     from snodo.compiler.models import Severity
 
                     if Severity(result.severity) > v_obj.severity_cap:
