@@ -5,12 +5,13 @@ FILE: tests/properties/test_invariants.py (Task 7.16)
 
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from hypothesis import given, settings, strategies as st, HealthCheck
 import pytest
 
 from snodo.infrastructure.audit import AuditLog
-from snodo.core.interfaces import ValidatorResult
+from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.policy import PolicyEvaluator, PolicyAction
 from snodo.compiler.models import (
     Protocol, Severity, DisagreementPolicy,
@@ -299,6 +300,74 @@ def test_policy_error_severity_always_halts(results):
         assert decision.action == PolicyAction.HALT, (
             f"Error present but action={decision.action} under {policy}"
         )
+
+
+# ============================================================================
+# Bonus Property 9b — error=True is never capped, so it always halts
+# ============================================================================
+
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@pytest.mark.property
+@given(
+    cap=st.sampled_from([None, Severity.PASS, Severity.WARN, Severity.BLOCKER]),
+    policy=st.sampled_from([
+        DisagreementPolicy.UNANIMOUS, DisagreementPolicy.MAJORITY,
+        DisagreementPolicy.QUORUM, DisagreementPolicy.ANY,
+    ]),
+)
+def test_error_result_never_capped_and_always_halts(cap, policy):
+    """A crashed validator (error=True) is never severity-capped, so the
+    fail-closed error path in PolicyEvaluator always fires.
+
+    Regression guard for the P0 where capping rebuilt the ValidatorResult
+    without the error flag, letting a crash become a pass/warn and a token
+    be issued.
+    """
+    from snodo.compiler.models import Validator
+    from snodo.validators.runner import run_validators
+
+    v = Validator(
+        validator_id="v1", validator_type="security",
+        evaluation_phase="pre_execute", severity_cap=cap,
+        criteria=["check"],
+    )
+
+    def crashing_dispatch(v_spec, ctx, reg):
+        return ValidatorResult(
+            validator_id=v_spec.validator_id,
+            severity="blocker",
+            justification="validator crashed",
+            error=True,
+        )
+
+    results, cap_originals = run_validators(
+        protocol=MagicMock(),
+        validators=[v],
+        task=Task(id="t1", spec="test"),
+        phase="pre_execute",
+        completion_fn=None,
+        validator_config=MagicMock(max_tokens=1500, max_tool_turns=6),
+        current_mode="producer",
+        dispatch_fn=crashing_dispatch,
+    )
+
+    assert len(results) == 1
+    # The error flag must survive capping (or capping must be skipped).
+    assert results[0].error is True, (
+        f"error flag dropped under cap={cap}"
+    )
+    # A crash is not a severity judgement — it must remain a blocker.
+    assert results[0].severity == "blocker", (
+        f"crashed validator capped to {results[0].severity} under cap={cap}"
+    )
+    assert cap_originals == {}, (
+        f"error result must not be recorded as capped under cap={cap}"
+    )
+
+    decision = PolicyEvaluator().evaluate(results, policy)
+    assert decision.action == PolicyAction.HALT, (
+        f"error result did not halt under cap={cap}, policy={policy}"
+    )
 
 
 # ============================================================================
