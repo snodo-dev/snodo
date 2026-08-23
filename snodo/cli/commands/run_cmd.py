@@ -200,8 +200,10 @@ def run_command(args) -> int:
 
     description = _build_description(args)
 
+    from snodo.paths import derive_task_id
+
     task = Task(
-        id=f"task_{hash(description) & 0xffffff:06x}",
+        id=derive_task_id(description),
         spec=description
     )
 

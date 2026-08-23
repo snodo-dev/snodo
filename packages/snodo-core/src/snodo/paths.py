@@ -7,6 +7,7 @@ SNODO_HOME environment variable when set, falling back to the
 platform home directory.
 """
 
+import hashlib
 import os
 from pathlib import Path
 from typing import Optional
@@ -71,3 +72,19 @@ def require_project_root(start: Optional[str] = None) -> str:
             "(no .snodo found in this or any parent directory)"
         )
     return root
+
+
+def derive_task_id(description: str) -> str:
+    """Derive a stable, collision-resistant task id from a task description.
+
+    Uses SHA-256 (not the built-in ``hash()``, which is salted per process via
+    ``PYTHONHASHSEED``) so the same description yields the same id across
+    interpreter invocations.  The truncated digest is 48 bits, which removes the
+    practical collision risk of the previous 24-bit ``hash() & 0xffffff`` scheme.
+
+    The id is load-bearing: it keys the session checkpoint, names the git
+    branch/worktree, and is bound into the validation token.  Determinism is
+    intentional — re-running the same spec produces the same id, which is what
+    retry/resume flows expect.
+    """
+    return f"task_{hashlib.sha256(description.encode()).hexdigest()[:12]}"
