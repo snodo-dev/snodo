@@ -69,6 +69,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The `quality` validator now reports operational faults as `validator_error`
+  (a `blocker` result with `error=True`), not as judgements about the work. A
+  missing test command, a command not found (exit 127), a non-executable
+  command (exit 126), or a timeout previously landed on the judgement path —
+  reaching a human as adjudicable and entering the recovery loop, which spent a
+  coder call and a full validator quorum per depth level trying to code around
+  a missing binary. These are distinguished by evidence (the shell's reserved
+  exit codes corroborated against stderr, plus `FileNotFoundError` /
+  `PermissionError` / `TimeoutExpired`), not by exit code alone; a genuine
+  non-zero test result remains a blocker. The failure message now names what is
+  missing and how to set it (`tooling.test_command`), and carries a bounded
+  tail of the command's stdout/stderr. The closure driver never spawns a
+  recovery subtask for `validator_error` or `internal_error`.
+
 - A failed execution step is no longer validated and no longer reported as a
   blocker. Previously `execute` had an unconditional edge to `post_validate`,
   so a run where the coder produced nothing went on to pass post-validation

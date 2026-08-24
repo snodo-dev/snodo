@@ -30,6 +30,18 @@ _DETECT_RULES = [
     ("go.mod", "go test ./..."),
 ]
 
+# Bound on the stdout/stderr tail surfaced in a failure message.
+_OUTPUT_TAIL_CHARS = 400
+
+
+def _decode(data) -> str:
+    """Decode subprocess output that may be bytes (TimeoutExpired stdout/stderr)."""
+    if data is None:
+        return ""
+    if isinstance(data, bytes):
+        return data.decode("utf-8", errors="replace")
+    return str(data)
+
 
 class QualityValidator(ValidatorBase):
     """Post-execute validator that runs the repo's test suite."""
@@ -50,25 +62,34 @@ class QualityValidator(ValidatorBase):
         return "quality"
 
     def evaluate(self, context=None) -> ValidatorResult:
-        # Backward-compat: old code calls evaluate() with no args
-        if context is not None and context.working_directory:
-            self.working_directory = Path(context.working_directory).resolve()
         """Run the test suite and return a ValidatorResult.
 
         Returns:
             ValidatorResult:
                 - "pass" if tests pass (exit code 0)
-                - "blocker" if tests fail (exit code != 0)
-                - "warn" if command not found or cannot determine test command
+                - "blocker" (error=False) if tests genuinely fail (non-zero exit)
+                - "blocker" with error=True if the fault is operational (no test
+                  command resolvable, command not found, not executable, timeout)
+                  — surfaced as validator_error, not a judgement
         """
+        # Backward-compat: old code calls evaluate() with no args
+        if context is not None and context.working_directory:
+            self.working_directory = Path(context.working_directory).resolve()
+
         test_command = self._resolve_test_command()
 
         if test_command is None:
             return ValidatorResult(
                 validator_id=self.validator_id,
-                severity="warn",
-                justification="Cannot determine test command. "
-                "Set tooling.test_command in protocol validator config.",
+                severity="blocker",
+                error=True,
+                justification=(
+                    "No test command resolvable: no tooling.test_command is "
+                    "configured and no language marker file (package.json, "
+                    "pyproject.toml, setup.py, setup.cfg, Cargo.toml, Makefile, "
+                    "go.mod) was detected. Set tooling.test_command in the "
+                    "protocol's quality validator config."
+                ),
             )
 
         timeout = self._get_timeout()
@@ -115,7 +136,12 @@ class QualityValidator(ValidatorBase):
             timeout: Maximum execution time in seconds
 
         Returns:
-            ValidatorResult based on exit code
+            ValidatorResult based on exit code and evidence:
+            - exit 0 → pass
+            - exit 126 / 127 (or FileNotFoundError / PermissionError) → an
+              operational fault (error=True), not a judgement about the work
+            - any other non-zero exit → blocker (a genuine test result)
+            - timeout → an operational fault (error=True)
         """
         if timeout is None or timeout <= 0:
             timeout = self.DEFAULT_TIMEOUT
@@ -137,26 +163,107 @@ class QualityValidator(ValidatorBase):
                     severity="pass",
                     justification=f"Tests passed: {summary}",
                 )
-            else:
-                summary = self._extract_summary(result.stdout or result.stderr)
-                return ValidatorResult(
-                    validator_id=self.validator_id,
-                    severity="blocker",
-                    justification=f"Tests failed (exit {result.returncode}): {summary}",
-                )
+
+            return self._classify_failure(command, result.returncode,
+                                          result.stdout, result.stderr)
 
         except FileNotFoundError:
             return ValidatorResult(
                 validator_id=self.validator_id,
-                severity="warn",
-                justification=f"Command not found: {command}",
+                severity="blocker",
+                error=True,
+                justification=(
+                    f"Test command not found: '{command}'. Install the test "
+                    "runner or set tooling.test_command in the protocol's "
+                    "quality validator config."
+                ),
             )
-        except subprocess.TimeoutExpired:
+        except PermissionError:
             return ValidatorResult(
                 validator_id=self.validator_id,
                 severity="blocker",
-                justification=f"Tests timed out after {timeout}s",
+                error=True,
+                justification=(
+                    f"Test command is not executable: '{command}'. Check file "
+                    "permissions or set tooling.test_command in the protocol's "
+                    "quality validator config."
+                ),
             )
+        except subprocess.TimeoutExpired as e:
+            tail = self._output_tail(_decode(e.stdout), _decode(e.stderr))
+            return ValidatorResult(
+                validator_id=self.validator_id,
+                severity="blocker",
+                error=True,
+                justification=(
+                    f"Test command timed out after {timeout}s: '{command}'. "
+                    "Increase tooling.timeout or investigate why the suite "
+                    f"hangs. Output: {tail}"
+                ),
+            )
+
+    def _classify_failure(self, command: str, returncode: int,
+                          stdout: str, stderr: str) -> ValidatorResult:
+        """Classify a non-zero exit as operational vs judgement, by evidence.
+
+        Exit 126 and 127 are reserved by the shell for "command found but not
+        executable" and "command not found" respectively, and are corroborated
+        against the command's stderr before being treated as operational faults.
+        Any other non-zero exit is a genuine test result (a judgement).
+        """
+        output = f"{stdout or ''}\n{stderr or ''}"
+
+        if returncode == 127 and self._evidence_command_not_found(output):
+            tail = self._output_tail(stdout, stderr)
+            return ValidatorResult(
+                validator_id=self.validator_id,
+                severity="blocker",
+                error=True,
+                justification=(
+                    f"Test command not found: '{command}'. Install the test "
+                    "runner or set tooling.test_command in the protocol's "
+                    f"quality validator config. Output: {tail}"
+                ),
+            )
+
+        if returncode == 126 and self._evidence_not_executable(output):
+            tail = self._output_tail(stdout, stderr)
+            return ValidatorResult(
+                validator_id=self.validator_id,
+                severity="blocker",
+                error=True,
+                justification=(
+                    f"Test command is not executable: '{command}'. Check file "
+                    "permissions or set tooling.test_command in the protocol's "
+                    f"quality validator config. Output: {tail}"
+                ),
+            )
+
+        summary = self._extract_summary(stdout or stderr)
+        return ValidatorResult(
+            validator_id=self.validator_id,
+            severity="blocker",
+            justification=f"Tests failed (exit {returncode}): {summary}",
+        )
+
+    @staticmethod
+    def _evidence_command_not_found(output: str) -> bool:
+        lowered = output.lower()
+        return "not found" in lowered or "command not found" in lowered
+
+    @staticmethod
+    def _evidence_not_executable(output: str) -> bool:
+        lowered = output.lower()
+        return "permission denied" in lowered or "is a directory" in lowered
+
+    def _output_tail(self, stdout: str, stderr: str) -> str:
+        """Return a bounded tail of the command's combined output."""
+        combined = f"{stdout or ''}\n{stderr or ''}".strip()
+        if not combined:
+            return "(no output)"
+        if len(combined) <= _OUTPUT_TAIL_CHARS:
+            return combined
+        return "...\n" + combined[-_OUTPUT_TAIL_CHARS:]
 
     def _extract_summary(self, output: str) -> str:
         """Extract the last meaningful line from command output.
