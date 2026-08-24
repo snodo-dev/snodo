@@ -170,3 +170,53 @@ def test_init_appends_without_duplicate_when_no_trailing_newline(temp_project_di
     content = (temp_project_dir / ".gitignore").read_text()
     assert content.splitlines().count(".snodo/") == 1
     assert "dist/" in content
+
+
+# === .gitignore durability (git clean protection) ===
+
+def test_init_commits_gitignore(temp_project_dir, no_keygen):
+    """A successful init commits .gitignore so it is tracked."""
+    with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
+        result = main()
+
+    assert result == 0
+    tracked = subprocess.run(
+        ["git", "ls-files", ".gitignore"],
+        cwd=temp_project_dir, capture_output=True, text=True, check=True,
+    ).stdout
+    assert ".gitignore" in tracked
+
+
+def test_git_clean_does_not_remove_snodo(temp_project_dir, no_keygen):
+    """After init, `git clean -fd` (twice) must not remove .snodo/."""
+    with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
+        result = main()
+    assert result == 0
+
+    # Two cleans reproduce the failure mode: the first removes an untracked
+    # .gitignore, the second removes the now-unignored .snodo/.
+    subprocess.run(["git", "clean", "-fd"], cwd=temp_project_dir, check=True)
+    subprocess.run(["git", "clean", "-fd"], cwd=temp_project_dir, check=True)
+
+    assert (temp_project_dir / ".snodo").exists()
+    assert (temp_project_dir / ".snodo" / "protocol.yml").exists()
+
+
+def test_init_commits_only_gitignore(temp_project_dir, no_keygen):
+    """Committing .gitignore must not sweep unrelated staged changes."""
+    # Stage an unrelated file before init.
+    (temp_project_dir / "unrelated.txt").write_text("x")
+    subprocess.run(["git", "add", "unrelated.txt"], cwd=temp_project_dir, check=True)
+
+    with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
+        result = main()
+    assert result == 0
+
+    # The unrelated file must still be staged (not committed by init).
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=temp_project_dir, capture_output=True, text=True, check=True,
+    ).stdout
+    assert "unrelated.txt" in status
+    # .gitignore must be committed (tracked, not in the working-tree status).
+    assert ".gitignore" not in status
