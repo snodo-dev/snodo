@@ -19,6 +19,17 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `snodo` is now a PEP 420 namespace package: the six top-level `snodo/__init__.py`
+  files (one per workspace package) are removed, and the version is exposed via
+  `snodo/version.py` (`from snodo.version import __version__`). This makes the
+  `.importlinter` package-layering contracts actually runnable — grimp's
+  `find_spec` previously resolved only the first `__init__.py` and reported every
+  other package's modules as missing, so `uv run lint-imports` had never passed.
+  With the namespace package in place the gate runs against the working tree and
+  found one real violation, now fixed: `snodo.jobs.wrapper` imported
+  `snodo.cli.main` in-process (mcp layer depending on the app layer); it now
+  invokes the CLI as a subprocess.
+
 - The protocol-template registry (`PROTOCOL_TEMPLATES`) is now derived from the
   YAML files in `snodo/protocols/templates/`, so adding a template file (e.g.
   `greenfield.yml`) makes it selectable with no second edit. Templates are parsed
