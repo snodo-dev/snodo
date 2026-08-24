@@ -120,6 +120,47 @@ def _build_completion_fn(model: str, base_fn: Callable) -> Callable:
     return functools.partial(base_fn, **kwargs)
 
 
+def _build_recovery_spec(original_spec: str, results: list) -> str:
+    """Synthesise a recovery spec from the original task and blocking results.
+
+    A validator justification is written for a human reading a report, not as a
+    work instruction: it describes state ("the tree contains X") rather than
+    the change required, and it is often truncated mid-sentence.  Feeding it
+    verbatim into a fix task produces a spec the coder cannot act on and that
+    the spec validators then reject, burning a full recovery cycle.
+
+    Instead, restate the original intent and turn each blocking result into an
+    explicit instruction with intent, constraints and acceptance criteria.  The
+    justification is preserved verbatim as context, never truncated.
+    """
+    blocking = [
+        r for r in results
+        if r.severity in ("warn", "blocker")
+    ]
+
+    lines = [
+        "Fix the following post-validation failures in the previous attempt.",
+        "",
+        "INTENT (unchanged from the original task):",
+        original_spec,
+        "",
+        "CONSTRAINTS:",
+        "- Preserve the original intent and scope; do not add unrelated changes.",
+        "- Address every failure listed below.",
+    ]
+
+    if blocking:
+        lines.append("")
+        lines.append("ACCEPTANCE CRITERIA (each must be satisfied):")
+        for i, r in enumerate(blocking, start=1):
+            lines.append(
+                f"{i}. Resolve the '{r.validator_id}' failure. "
+                f"Validator report: {r.justification}"
+            )
+
+    return "\n".join(lines)
+
+
 class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, SerdeMixin, WritebackMixin, ContextMixin):
     """Builds LangGraph StateGraph from Protocol specification.
     
@@ -744,17 +785,11 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             r.validator_id for r in results
             if r.severity in ("warn", "blocker")
         ]
-        justifications = [
-            r.justification for r in results
-            if r.severity in ("warn", "blocker")
-        ]
-        spec = "Fix post-validation issues: " + "; ".join(justifications[:3])
-        if len(justifications) > 3:
-            spec += " (and " + str(len(justifications) - 3) + " more)"
+        spec = _build_recovery_spec(loop_state.task.spec, results)
 
         fix_task = Task(
             id=f"{loop_state.task.id}_fix_{len(loop_state.spawned_subtasks) + 1}",
-            spec=spec[:500],
+            spec=spec,
             parent_task_ref=loop_state.task.id,
             depth=current_depth + 1,
         )
