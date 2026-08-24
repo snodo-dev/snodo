@@ -75,7 +75,7 @@ modes:
 
 ### Tool set restrictions (WF1)
 
-Tool sets across modes **must be disjoint**. If any two modes share a tool, the protocol fails to load with `WF1Violation`. This prevents capability leakage — a producer mode with `edit` and a reviewer mode with `approve` cannot overlap.
+Approval-conferring tools (`approve`, `merge` by default) must appear in at most one mode. If any two modes share an exclusive tool, the protocol fails to load with `WF1Violation`. Non-exclusive tools (e.g. `edit`, `test`) may be shared across modes. This preserves the no-self-approval guarantee — the producer (which holds `edit`) and the reviewer (which holds `approve`/`merge`) can never both hold an approval tool — without requiring total disjointness. The exclusive set is declared via `exclusive_tools` at the protocol root and defaults to `{approve, merge}`; it may be extended but not shrunk.
 
 ### Concrete tool mapping
 
@@ -256,7 +256,7 @@ Every protocol is verified at load time. A violation raises a `ProtocolWellForme
 
 | Check | Enforces |
 |-------|----------|
-| **WF1** — Mode Separation | Mode tool sets must be disjoint (zero overlap). Prevents capability leakage between operational stages. |
+| **WF1** — Mode Separation | Approval-conferring tools (`approve`, `merge` by default) must be exclusive to one mode. Non-exclusive tools may be shared. |
 | **WF2** — Role Uniqueness | Role IDs must be unique across the protocol. |
 | **WF3** — Validator Coverage | Every validator referenced by a mode must exist in the `validators` list. The `initial_mode` must exist. Any mode with `dispatch` must have at least one `pre_execute` validator. |
 | **WF4** — Policy Completeness | Disagreement policy must match the validator count: unanimous needs ≥1, majority needs ≥2, quorum warns at <3. |
@@ -266,12 +266,16 @@ Every protocol is verified at load time. A violation raises a `ProtocolWellForme
 
 ## Templates
 
-Three shipped templates:
+The template registry is derived from the YAML files in `snodo/protocols/templates/` — adding a template file is sufficient to make it selectable. Shipped templates:
 
 | Template | Modes | Signature |
 |----------|-------|-----------|
 | `solo` | producer only | Single-coder, no reviewer handoff |
-| `team` | producer → reviewer → planner | Two-stage with separate tool sets |
+| `team` | producer → reviewer → planner | Two-stage with separate approval authority |
 | `2+n` | producer → reviewer | Paper's reference config with predicate constraints (`files_in_scope`, `tests_exist_for_modified`, `no_secrets_in_diff`) |
+| `intent` | producer | Intent-driven; warn-only spec validators |
+| `bugfix-surgeon` | producer | Bug-fix flow with post-execute review gate |
+| `feature-warden` | producer | Feature flow with scope guard |
+| `greenfield` | decide → scaffold → build | Phased greenfield build with per-phase exit gates |
 
-Use `snodo init --template <name>` to start from a template.
+Use `snodo init --template <name>` to start from a template, or run `snodo init` to choose from the interactive menu.

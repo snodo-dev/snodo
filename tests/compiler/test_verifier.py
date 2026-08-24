@@ -112,39 +112,116 @@ def test_verifier_class_interface():
 
 # ========== WF1: MODE SEPARATION TESTS ==========
 
-def test_wf1_disjoint_tool_sets_pass():
-    """Test that modes with disjoint tool sets pass WF1."""
+def test_wf1_non_exclusive_tools_may_be_shared():
+    """Two modes sharing a non-exclusive tool (edit) pass WF1."""
     protocol = Protocol(
         protocol_id="test",
         name="Test",
         modes=[
-            Mode(mode_id="m1", name="Mode 1", tools=["a", "b"]),
-            Mode(mode_id="m2", name="Mode 2", tools=["c", "d"]),
-            Mode(mode_id="m3", name="Mode 3", tools=["e"])
+            Mode(mode_id="m1", name="Mode 1", tools=["edit", "dispatch"]),
+            Mode(mode_id="m2", name="Mode 2", tools=["edit", "review"]),
         ],
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="m1"
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     verifier.check_wf1()  # Should not raise
 
 
-def test_wf1_overlapping_tools_fail():
-    """Test that modes with overlapping tools fail WF1."""
+def test_wf1_disjoint_exclusive_tools_pass():
+    """Modes with distinct exclusive tools pass WF1."""
     protocol = Protocol(
         protocol_id="test",
         name="Test",
         modes=[
-            Mode(mode_id="m1", name="Mode 1", tools=["a", "b", "c"]),
-            Mode(mode_id="m2", name="Mode 2", tools=["c", "d"])  # 'c' overlaps
+            Mode(mode_id="m1", name="Mode 1", tools=["a", "b", "approve"]),
+            Mode(mode_id="m2", name="Mode 2", tools=["c", "d", "merge"]),
         ],
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="m1"
     )
-    
+
     verifier = ProtocolVerifier(protocol)
-    with pytest.raises(WF1Violation, match="share tools"):
+    verifier.check_wf1()  # Should not raise
+
+
+def test_wf1_shared_exclusive_tool_fails():
+    """Two modes holding the same exclusive tool fail WF1, naming both modes."""
+    protocol = Protocol(
+        protocol_id="test",
+        name="Test",
+        modes=[
+            Mode(mode_id="m1", name="Mode 1", tools=["edit", "approve"]),
+            Mode(mode_id="m2", name="Mode 2", tools=["approve", "merge"]),
+        ],
+        validators=[Validator(validator_id="v1", validator_type="security")],
+        initial_mode="m1"
+    )
+
+    verifier = ProtocolVerifier(protocol)
+    with pytest.raises(WF1Violation, match="approve"):
+        verifier.check_wf1()
+
+
+def test_wf1_shared_exclusive_tool_names_both_modes():
+    """The WF1 error names the exclusive tool and both holding modes."""
+    protocol = Protocol(
+        protocol_id="test",
+        name="Test",
+        modes=[
+            Mode(mode_id="alpha", name="Alpha", tools=["merge"]),
+            Mode(mode_id="beta", name="Beta", tools=["merge"]),
+        ],
+        validators=[Validator(validator_id="v1", validator_type="security")],
+        initial_mode="alpha"
+    )
+
+    verifier = ProtocolVerifier(protocol)
+    with pytest.raises(WF1Violation) as exc:
+        verifier.check_wf1()
+    msg = str(exc.value)
+    assert "merge" in msg
+    assert "alpha" in msg
+    assert "beta" in msg
+
+
+def test_wf1_exclusive_tools_cannot_be_shrunk():
+    """A protocol cannot shrink the exclusive set: approve/merge stay exclusive."""
+    protocol = Protocol(
+        protocol_id="test",
+        name="Test",
+        modes=[
+            Mode(mode_id="m1", name="Mode 1", tools=["approve"]),
+            Mode(mode_id="m2", name="Mode 2", tools=["approve"]),
+        ],
+        validators=[Validator(validator_id="v1", validator_type="security")],
+        initial_mode="m1",
+        exclusive_tools={"merge"},  # attempts to drop 'approve' from the set
+    )
+
+    # 'approve' is still exclusive via the enforced default.
+    verifier = ProtocolVerifier(protocol)
+    with pytest.raises(WF1Violation, match="approve"):
+        verifier.check_wf1()
+
+
+def test_wf1_exclusive_tools_can_be_extended():
+    """A protocol may extend the exclusive set; shared extra tool fails WF1."""
+    protocol = Protocol(
+        protocol_id="test",
+        name="Test",
+        modes=[
+            Mode(mode_id="m1", name="Mode 1", tools=["deploy"]),
+            Mode(mode_id="m2", name="Mode 2", tools=["deploy"]),
+        ],
+        validators=[Validator(validator_id="v1", validator_type="security")],
+        initial_mode="m1",
+        exclusive_tools={"approve", "merge", "deploy"},
+    )
+
+    verifier = ProtocolVerifier(protocol)
+    with pytest.raises(WF1Violation, match="deploy"):
         verifier.check_wf1()
 
 
@@ -160,7 +237,7 @@ def test_wf1_empty_tool_sets_pass():
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="m1"
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     verifier.check_wf1()  # Should not raise
 
@@ -463,8 +540,8 @@ def test_verify_catches_multiple_violations():
         protocol_id="test",
         name="Test",
         modes=[
-            Mode(mode_id="m1", name="Mode 1", tools=["a"]),
-            Mode(mode_id="m2", name="Mode 2", tools=["a"])  # WF1 violation
+            Mode(mode_id="m1", name="Mode 1", tools=["approve"]),
+            Mode(mode_id="m2", name="Mode 2", tools=["approve"])  # WF1 violation
         ],
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="m1"

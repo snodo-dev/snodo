@@ -135,6 +135,29 @@ class ProtocolMCPServer:
         raw = str(sorted(arguments.items())).encode()
         return hashlib.sha256(raw).hexdigest()[:16]
 
+    def _active_mode(self) -> str:
+        """Resolve the active mode for audit attribution.
+
+        When this server is pinned to a single mode (``mode_id`` set), that mode
+        is authoritative.  Otherwise the active mode is read from the persisted
+        project state (``.snodo/state.json``), falling back to the protocol's
+        initial mode.  This is what makes it possible to attribute an operation
+        to a mode from the audit log alone — disjointness no longer provides
+        mode inference under the relaxed WF1 (see ADR 017).
+        """
+        if self.mode_id:
+            return self.mode_id
+
+        try:
+            from snodo.infrastructure.state import read_state
+            state = read_state(self.project_root)
+            if state.current_mode and self.protocol.get_mode(state.current_mode):
+                return state.current_mode
+        except Exception:  # noqa: BLE001 — best-effort attribution
+            pass
+
+        return self.protocol.initial_mode
+
     def _resolve_provider(self) -> Optional[Any]:
         """Resolve code host provider from protocol metadata.
 
@@ -216,7 +239,7 @@ class ProtocolMCPServer:
         self._audit("tool_call", {
             "op": "tool_call",
             "tool_name": name,
-            "mode": self.mode_id or "all",
+            "mode": self._active_mode(),
             "args_hash": self._args_hash(arguments),
         })
 
@@ -270,7 +293,7 @@ class ProtocolMCPServer:
                 self._audit("wf1_violation", {
                     "op": "wf1_violation",
                     "tool": name,
-                    "mode": self.mode_id or "all",
+                    "mode": self._active_mode(),
                     "reason": "no_token",
                 })
                 raise MCPError(
@@ -284,7 +307,7 @@ class ProtocolMCPServer:
                 self._audit("wf1_violation", {
                     "op": "wf1_violation",
                     "tool": name,
-                    "mode": self.mode_id or "all",
+                    "mode": self._active_mode(),
                     "reason": "token_store_unavailable",
                 })
                 raise MCPError(
@@ -295,7 +318,7 @@ class ProtocolMCPServer:
                 self._audit("wf1_violation", {
                     "op": "wf1_violation",
                     "tool": name,
-                    "mode": self.mode_id or "all",
+                    "mode": self._active_mode(),
                     "reason": "invalid_token",
                 })
                 raise MCPError(
@@ -595,7 +618,7 @@ class CoreToolHandler:
             "op": "dispatch_request",
             "task_spec_hash": task_spec_hash,
             "job_id": job_id,
-            "mode": self.server.mode_id or "all",
+            "mode": self.server._active_mode(),
         })
 
         # Single-use: consume the token at the dispatch boundary (the point

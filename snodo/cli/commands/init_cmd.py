@@ -10,8 +10,10 @@ from typing import Optional
 
 import typer
 import yaml
+from rich.console import Console
+from rich.panel import Panel
 
-from snodo.cli.commands import PROTOCOL_TEMPLATES
+from snodo.cli.commands import PROTOCOL_TEMPLATES, list_templates, template_display_name
 from snodo.infrastructure.state import ProjectState, write_state
 
 
@@ -21,7 +23,7 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def init(
         template: Optional[str] = typer.Option(
-            None, "--template", "-t", help="Protocol template: solo, team, 2+n, or intent",
+            None, "--template", "-t", help="Protocol template (e.g. solo, team, 2+n, intent, greenfield)",
         ),
         force: bool = typer.Option(
             False, "--force", "-f", help="Overwrite existing .snodo/ directory",
@@ -58,27 +60,37 @@ def _select_template(args) -> str:
     template_name = getattr(args, "template", None)
 
     if template_name:
+        if template_name not in PROTOCOL_TEMPLATES:
+            available = ", ".join(list_templates())
+            print(
+                f"Error: Unknown template '{template_name}'. "
+                f"Available templates: {available}",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
         return PROTOCOL_TEMPLATES[template_name]
 
-    # Interactive prompt
+    # Interactive prompt — generated from the registry so it can never omit a
+    # shipped template.  Invalid selections re-prompt rather than substituting.
+    names = list_templates()
     print("Choose protocol template:")
-    print("  1. solo   - Single developer (producer merges directly)")
-    print("  2. team   - Team workflow (producer + reviewer + planner)")
-    print("  3. 2+n    - Paper reference config (producer + reviewer)")
-    print("  4. intent - Intent-driven (no hard pre-execute gates)")
-    choice = input("Select [1/2/3/4]: ").strip()
+    for i, name in enumerate(names, start=1):
+        print(f"  {i}. {name:<16} - {template_display_name(name)}")
 
-    if choice == "1":
-        return PROTOCOL_TEMPLATES["solo"]
-    elif choice == "2":
-        return PROTOCOL_TEMPLATES["team"]
-    elif choice == "3":
-        return PROTOCOL_TEMPLATES["2+n"]
-    elif choice == "4":
-        return PROTOCOL_TEMPLATES["intent"]
-    else:
-        print(f"Invalid choice: {choice!r}. Using team template.", file=sys.stderr)
-        return PROTOCOL_TEMPLATES["team"]
+    while True:
+        try:
+            choice = input(f"Select [1-{len(names)}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("Invalid choice. Using default template 'team'.", file=sys.stderr)
+            return PROTOCOL_TEMPLATES["team"]
+
+        try:
+            idx = int(choice) - 1
+        except ValueError:
+            idx = -1
+        if 0 <= idx < len(names):
+            return PROTOCOL_TEMPLATES[names[idx]]
+        print(f"Invalid choice: {choice!r}. Choose 1-{len(names)}.", file=sys.stderr)
 
 
 def _pick_mode(args, modes: list, default_mode: str) -> str:
@@ -149,7 +161,19 @@ CONSENT_WARNING = (
     "repository is yours or you trust its contents."
 )
 
+_CONSENT_TITLE = "Trusted repository"
+_CONSENT_FOOTER = "ADR 014 · SECURITY.md"
+
 GITIGNORE_ENTRY = ".snodo/"
+
+
+def _consent_console() -> Console:
+    """Return a Rich console that degrades to plain output appropriately.
+
+    ``force_terminal=False`` (the default) lets Rich auto-detect a TTY and
+    honour NO_COLOR / non-TTY, so piped or CI output is plain.
+    """
+    return Console()
 
 
 def _confirm_consent(args) -> bool:
@@ -164,7 +188,18 @@ def _confirm_consent(args) -> bool:
     if getattr(args, "yes", False) or getattr(args, "no_input", False):
         return True
 
-    print(CONSENT_WARNING, flush=True)
+    console = _consent_console()
+
+    # Render the warning as a deliberate gate, not log output.
+    panel = Panel(
+        CONSENT_WARNING,
+        title=_CONSENT_TITLE,
+        border_style="yellow",
+        expand=False,
+        padding=(1, 2),
+    )
+    console.print(panel, highlight=False)
+    console.print(_CONSENT_FOOTER, style="dim", justify="right")
 
     if not sys.stdin.isatty():
         print(
@@ -175,7 +210,7 @@ def _confirm_consent(args) -> bool:
         return False
 
     try:
-        answer = input("Continue? [y/N] ").strip().lower()
+        answer = console.input("Continue? [y/N] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         answer = ""
 
@@ -250,6 +285,22 @@ def init_command(args) -> int:
             return 1
         print("Warning: Overwriting existing .snodo/ directory")
 
+    # Resolve and verify the template BEFORE any write — a failed init must
+    # leave the directory as it found it.  This also surfaces an unknown
+    # --template (or a broken shipped template) before touching disk.
+    template = _select_template(args)
+    try:
+        from snodo.compiler.models import Protocol
+        from snodo.compiler.verifier import verify_protocol, ProtocolWellFormednessError
+        template_data = yaml.safe_load(template)
+        protocol = Protocol(**template_data)
+        result = verify_protocol(protocol)
+        if not result.passed:
+            raise ProtocolWellFormednessError(result.errors)
+    except Exception as e:
+        print(f"Error: Template is not a valid protocol: {e}", file=sys.stderr)
+        return 1
+
     # Trusted-repository consent gate — must run before any file write.
     if not _confirm_consent(args):
         return 1
@@ -291,8 +342,6 @@ def init_command(args) -> int:
         print(f"Project ID:  {pid} ({scope})")
     except Exception as e:
         print(f"Warning: Could not initialize project identity: {e}", file=sys.stderr)
-    # Select template
-    template = _select_template(args)
 
     protocol_file = snodo_dir / "protocol.yml"
     try:

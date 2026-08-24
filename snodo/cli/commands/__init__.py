@@ -11,6 +11,8 @@ from snodo.protocols import (  # noqa: F401
     TWO_PLUS_N_PROTOCOL,
     INTENT_PROTOCOL,
     PROTOCOL_TEMPLATES,
+    list_templates,
+    template_display_name,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     "TEAM_PROTOCOL",
     "TWO_PLUS_N_PROTOCOL",
     "PROTOCOL_TEMPLATES",
+    "list_templates",
+    "template_display_name",
 ]

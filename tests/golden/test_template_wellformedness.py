@@ -6,6 +6,8 @@ FILE: tests/golden/test_template_wellformedness.py (Task 7.13)
 import yaml
 from pathlib import Path
 
+import pytest
+
 from snodo.compiler.models import Protocol
 from snodo.compiler.verifier import verify_protocol
 
@@ -17,6 +19,58 @@ TEMPLATES_DIR = Path(snodo.protocols.__file__).parent / "templates"
 def _load(name: str) -> Protocol:
     data = yaml.safe_load((TEMPLATES_DIR / f"{name}.yml").read_text())
     return Protocol(**data)
+
+
+def test_registry_contains_every_yml_in_templates_dir():
+    """Every .yml in the templates directory is registered and selectable.
+
+    Globbing the directory means a future template cannot be silently
+    unregistered — adding the file is sufficient.
+    """
+    from snodo.protocols import PROTOCOL_TEMPLATES, list_templates, template_protocol
+
+    on_disk = {p.stem for p in TEMPLATES_DIR.glob("*.yml")}
+    assert on_disk, "no templates found in templates directory"
+
+    registered = set(PROTOCOL_TEMPLATES.keys())
+    assert on_disk == registered, (
+        f"templates on disk not registered: {on_disk - registered}"
+    )
+
+    # Every registered template parses and passes WF1-WF5.
+    for name in list_templates():
+        proto = template_protocol(name)
+        result = verify_protocol(proto)
+        assert result.passed, f"{name}.yml WF violations: {result.errors}"
+
+
+def test_broken_template_reported_with_file_and_condition(tmp_path, monkeypatch):
+    """A template that fails WF1-WF5 is reported as broken (file + condition),
+    not as missing."""
+    import snodo.protocols as protocols
+
+    broken = tmp_path / "broken.yml"
+    # Two modes sharing the exclusive tool `merge` violates WF1.
+    broken.write_text(
+        "protocol_id: broken\n"
+        "name: Broken\n"
+        "modes:\n"
+        "  - mode_id: a\n"
+        "    tools: [merge]\n"
+        "  - mode_id: b\n"
+        "    tools: [merge]\n"
+        "validators:\n"
+        "  - validator_id: v1\n"
+        "    validator_type: security\n"
+        "initial_mode: a\n"
+    )
+
+    monkeypatch.setattr(protocols, "_TEMPLATES_DIR", tmp_path)
+    with pytest.raises(RuntimeError) as exc:
+        protocols._discover_templates()
+    msg = str(exc.value)
+    assert "broken.yml" in msg
+    assert "WF1" in msg or "merge" in msg
 
 
 def test_solo_wf():
@@ -107,17 +161,21 @@ def test_2plus_n_producer_has_protocol_adherence():
     assert "protocol_adherence" in producer.validators
 
 
-def test_team_wf1_disjoint_tools():
+def test_team_wf1_exclusive_tools():
     p = _load("team")
     producer = p.get_mode("producer")
     reviewer = p.get_mode("reviewer")
     assert producer is not None and reviewer is not None
-    assert set(producer.tools).isdisjoint(set(reviewer.tools))
+    for tool in p.exclusive_tools:
+        holders = [m.mode_id for m in p.modes if tool in m.tools]
+        assert len(holders) <= 1, f"exclusive tool '{tool}' held by {holders}"
 
 
-def test_2plus_n_wf1_disjoint_tools():
+def test_2plus_n_wf1_exclusive_tools():
     p = _load("2+n")
     producer = p.get_mode("producer")
     reviewer = p.get_mode("reviewer")
     assert producer is not None and reviewer is not None
-    assert set(producer.tools).isdisjoint(set(reviewer.tools))
+    for tool in p.exclusive_tools:
+        holders = [m.mode_id for m in p.modes if tool in m.tools]
+        assert len(holders) <= 1, f"exclusive tool '{tool}' held by {holders}"

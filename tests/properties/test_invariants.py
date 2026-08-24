@@ -149,22 +149,19 @@ def test_jwt_tampered_rejected(token_data):
 
 
 # ============================================================================
-# Core Property 4 — WF1 disjointness
+# Core Property 4 — WF1 exclusivity
 # ============================================================================
 
 @given(protocol=protocols())
 @_HYP_SETTINGS
 @pytest.mark.property
-def test_wf1_modes_have_disjoint_tools(protocol):
-    """Every pair of modes in a protocol has disjoint tool sets."""
-    for i in range(len(protocol.modes)):
-        for j in range(i + 1, len(protocol.modes)):
-            tools_i = set(protocol.modes[i].tools)
-            tools_j = set(protocol.modes[j].tools)
-            assert tools_i.isdisjoint(tools_j), (
-                f"Modes {protocol.modes[i].mode_id} and {protocol.modes[j].mode_id} "
-                f"share tools: {tools_i & tools_j}"
-            )
+def test_wf1_exclusive_tools_in_at_most_one_mode(protocol):
+    """Every exclusive (approval-conferring) tool appears in at most one mode."""
+    for tool in protocol.exclusive_tools:
+        holders = [m.mode_id for m in protocol.modes if tool in m.tools]
+        assert len(holders) <= 1, (
+            f"Exclusive tool '{tool}' held by modes {holders}"
+        )
 
 
 # ============================================================================

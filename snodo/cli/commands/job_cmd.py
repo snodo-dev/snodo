@@ -171,6 +171,7 @@ def _job_list(manager) -> int:
             desc = desc[:37] + "..."
         created = _format_time(job["created_at"])
         print(f"{job['id']:<12} {job['status']:<12} {created:<20} {desc}")
+        print(f"  inspect: snodo job status {job['id']}")
     return 0
 
 

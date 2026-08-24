@@ -48,11 +48,6 @@ validator_types = st.sampled_from([
 
 evaluation_phases = st.sampled_from(["pre_execute", "post_execute"])
 
-tool_names = st.sampled_from([
-    "edit", "dispatch", "test", "validate", "review", "approve", "merge",
-    "pr", "plan", "resolve", "commit",
-])
-
 identifiers = st.text(
     alphabet=st.characters(
         whitelist_categories=("Lu", "Ll", "Nd"),
@@ -82,16 +77,29 @@ def validator_results(draw, min_count=1, max_count=5):
 
 
 # ---------------------------------------------------------------------------
-# Mode generator — WF1-coherent (disjoint tools)
+# Mode generator — WF1-coherent (exclusive tools not shared)
 # ---------------------------------------------------------------------------
 
 @st.composite
-def mode_pair_disjoint(draw):
-    """Generate two modes with disjoint tool sets (WF1-coherent)."""
-    all_tools = draw(st.lists(tool_names, min_size=4, max_size=8, unique=True))
-    split = draw(st.integers(1, len(all_tools) - 1))
-    t1 = all_tools[:split]
-    t2 = all_tools[split:]
+def mode_pair_exclusive(draw):
+    """Generate two modes that don't share any exclusive tool.
+
+    Non-exclusive tools (edit, dispatch, test, ...) may be shared freely;
+    the approval-conferring tools (approve, merge) must stay in one mode each.
+    """
+    nonexclusive = st.sampled_from([
+        "edit", "dispatch", "test", "validate", "review", "pr", "plan",
+        "resolve", "commit",
+    ])
+
+    t1 = draw(st.lists(nonexclusive, min_size=2, max_size=4, unique=True))
+    t2 = draw(st.lists(nonexclusive, min_size=2, max_size=4, unique=True))
+
+    # Assign the exclusive tools (approve, merge) to distinct modes.
+    excl = ["approve", "merge"]
+    split = draw(st.integers(1, len(excl) - 1))
+    t1 = t1 + excl[:split]
+    t2 = t2 + excl[split:]
 
     # Validator IDs — shared pool
     v_pool = draw(st.lists(identifiers, min_size=2, max_size=4, unique=True))
@@ -116,7 +124,7 @@ def mode_pair_disjoint(draw):
 @st.composite
 def protocols(draw) -> Protocol:
     """Generate a minimal WF1-coherent protocol with 2 modes."""
-    m1, m2, v_ids = draw(mode_pair_disjoint())
+    m1, m2, v_ids = draw(mode_pair_exclusive())
 
     validators = []
     for vid in set(v_ids):

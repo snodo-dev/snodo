@@ -153,4 +153,5 @@ def _submit_background_job(args) -> int:
         print(f"  snodo job status {job_id}")
         print(f"  snodo job logs {job_id}")
         print(f"  snodo job wait {job_id}")
+        print(f"  snodo meta {job_id}")
         return 0

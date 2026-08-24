@@ -1266,6 +1266,28 @@ class TestServerAuditLog:
         assert "args_hash" in events[0].data
         assert len(events[0].data["args_hash"]) == 16  # truncated
 
+    def test_tool_call_logs_active_mode(self, audited_server, audit_log, project_dir):
+        """A tool invocation records the active mode (mode attribution)."""
+        from snodo.infrastructure.state import ProjectState, write_state
+        write_state(project_dir, ProjectState(current_mode="reviewer"))
+
+        audited_server.call_tool("read_file", {"path": "README.md"})
+        events = audit_log.get_history(event_type="tool_call")
+        assert len(events) == 1
+        assert events[0].data["mode"] == "reviewer"
+
+    def test_tool_call_logs_pinned_mode(self, project_dir, audit_log):
+        """A single-mode server records its pinned mode, not state.json."""
+        from snodo.infrastructure.state import ProjectState, write_state
+        write_state(project_dir, ProjectState(current_mode="reviewer"))
+
+        protocol = Protocol(**MINIMAL_PROTOCOL_DATA)
+        server = ProtocolMCPServer(protocol, project_dir, mode_id="producer", audit_log=audit_log)
+        server.call_tool("read_file", {"path": "README.md"})
+        events = audit_log.get_history(event_type="tool_call")
+        assert len(events) == 1
+        assert events[0].data["mode"] == "producer"
+
     def test_wf1_violation_logs_event(self, audited_server, audit_log):
         """WF1 violation logs wf1_violation event."""
         with pytest.raises(MCPError, match="WF1"):

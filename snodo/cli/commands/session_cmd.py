@@ -97,10 +97,12 @@ def _session_list(mgr: SessionManager, args) -> int:
         print("No sessions found.")
         return 0
 
+    sessions.sort(key=lambda s: s.updated_at, reverse=True)
     print("Sessions:")
     for s in sessions:
         task = s.checkpoint.current_task or "-"
         print(f"  {s.session_id}  {s.mode:<10}  updated={s.updated_at[:19]}  task={task}")
+        print(f"    inspect: snodo session show {s.session_id}")
     return 0
 
 

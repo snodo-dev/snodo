@@ -1,0 +1,169 @@
+protocol_id: "greenfield"
+name: "Greenfield Project Protocol"
+version: "1.0.0"
+
+# A new project passes through phases with different definitions of "done".
+# `solo` assumes a project already exists: it applies feature-development
+# validators to every task, so on an empty repository they judge a proposal
+# against a codebase that has not been written yet.
+#
+# Here each phase is a MODE. Boundaries are hard — you must run
+# `snodo mode change <mode>` to cross one — but tool sets deliberately overlap,
+# because the same actor is editing code in all three. Mode transitions below
+# are declarative documentation; the engine does not execute them.
+#
+# REQUIRES the relaxed WF1 (exclusivity on approval-conferring tools rather than
+# total tool disjointness). Under the original WF1 this protocol will not load,
+# because `decide`, `scaffold` and `build` all hold `edit`.
+#
+# Note that no mode here holds `approve` or `merge`. Exclusivity is therefore
+# trivially satisfied, and adding a reviewer mode later cannot violate it.
+
+modes:
+  # Phase 1 — decide. No code. The output is recorded decisions.
+  # Exit gate: docs/decisions/ answers the questions the build depends on.
+  - mode_id: "decide"
+    name: "Decide"
+    tools:
+      - "edit"
+      - "commit"
+      - "resolve"
+    validators:
+      - "meta-spec"
+      - "decision-record"
+    transitions:
+      decided: "scaffold"
+
+  # Phase 2 — scaffold. Toolchain, layout, CI. No domain logic.
+  # Exit gate: the verification command runs green on a clean checkout.
+  - mode_id: "scaffold"
+    name: "Scaffold"
+    tools:
+      - "edit"
+      - "commit"
+      - "test"
+      - "validate"
+      - "dispatch"
+      - "resolve"
+    validators:
+      - "meta-spec"
+      - "architecture"
+      - "scaffold-gate"
+      - "quality"
+    transitions:
+      scaffolded: "build"
+
+  # Phase 3 — build. Features, one per task. The full validator set applies.
+  - mode_id: "build"
+    name: "Build"
+    tools:
+      - "edit"
+      - "commit"
+      - "test"
+      - "validate"
+      - "dispatch"
+      - "resolve"
+    validators:
+      - "meta-spec"
+      - "security"
+      - "architecture"
+      - "quality"
+    transitions: {}
+
+validators:
+  # ── Unchanged from `solo`. Judges the spec, so it gets no tools: the spec is
+  #    all it should ever see.
+  - validator_id: "meta-spec"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    criteria:
+      - "The task spec must define INTENT and CONSTRAINTS — what to build and the boundaries it must respect — and leave implementation decisions to the coder. A spec describes behavior and contracts; it does not transcribe the implementation."
+      - "ALLOWED in a spec (these are constraints, not implementation): function and method signatures, exported names, type and interface shapes, behavioral requirements, hard constraints (algorithm choice, framework limits, dependency restrictions), specific required values that are genuine requirements, acceptance criteria, and occasional short code hints that clarify a constraint."
+      - "PROHIBITED in a spec (this is the coder's job): literal function bodies, transcribed implementation logic, exact statement-by-statement code, regex literals and exact API-call sequences presented as the implementation, and any spec that leaves the coder no implementation decisions to make."
+      - "Guideline for judgment: if more than roughly 40% of the spec is literal implementation code rather than intent, contracts, and constraints, the spec is code-prescriptive and must be rejected as a blocker."
+      - "A correctly-scoped spec leaves the coder room to author the implementation while still being unambiguous about what 'done' means. Reject specs that read as code wearing a spec's clothes."
+
+  # ── Exit gate for `decide`. Post-execute, because it judges the artifact
+  #    (the ADRs) rather than the plan to write them.
+  - validator_id: "decision-record"
+    validator_type: "architecture"
+    evaluation_phase: "post_execute"
+    tools:
+      - "read_file"
+      - "list_files"
+    criteria:
+      - "Read docs/decisions/. Every decision the build will depend on must be recorded there before this phase ends: language and runtime, hosting and deployment target, repository layout, verification command, and the boundary of the first release. A decision that exists only in the task description is not recorded."
+      - "Each record must state the alternatives that were considered and why they were rejected. A record that presents one option as inevitable has documented an outcome, not a decision, and is a blocker."
+      - "Each record must state its consequences, including what it makes harder. A record with only benefits has not been thought through."
+      - "No record may contradict another. Where two interact, the later one must say so explicitly."
+      - "Deferred scope must be recorded as deferred, with what it would take to pick up. Silence about a capability is indistinguishable from having forgotten it."
+
+  # ── Exit gate for `scaffold`. The one thing that matters is that later phases
+  #    have a working gate to build against.
+  - validator_id: "scaffold-gate"
+    validator_type: "architecture"
+    evaluation_phase: "post_execute"
+    tools:
+      - "read_file"
+      - "list_files"
+    criteria:
+      - "A single documented command must verify the project from a clean checkout, with no credentials present. If dependency installation is required, it must be part of that command or of a documented step, because each task executes in a fresh worktree with no installed dependencies."
+      - "The repository layout must match what docs/decisions/ specifies. Cite the record when it does not."
+      - "Dependency boundaries asserted in the decisions must be enforced by something that runs — a build configuration or a check in the verification command — not by convention alone. An unenforced boundary is a comment."
+      - "This phase must contain no domain logic. Code present solely to prove the toolchain works is expected; anything implementing a product feature belongs to the build phase and is a blocker here."
+      - "A lockfile must be committed if the ecosystem has one, so a fresh worktree can install a reproducible dependency set."
+
+  # ── Applies from `scaffold` onward. Tool-enabled so criterion 2 can actually
+  #    read the records rather than guessing at them.
+  - validator_id: "architecture"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    tools:
+      - "read_file"
+      - "list_files"
+    criteria:
+      - "REVIEW FRAME — read this first. You are reviewing a PROPOSAL before any of it has been built. The repository will NOT contain the described work; that is expected and is never a finding. Absence of implementation, tooling, tests, or a passing build is out of scope for this review and must never be cited. Judge only this: if the proposal were carried out as described, would it violate a criterion below? Use the tools to read docs/decisions/ so your judgement is grounded in the recorded decisions rather than assumption. If nothing below is violated, return pass."
+      - "Must not contradict a decision recorded in docs/decisions/. Cite the record when raising this. Do not require capabilities a record has explicitly deferred."
+      - "Output claiming conformance to a published specification must satisfy that specification's mandatory requirements. Cite the section. A documented rationale for omitting a mandatory element is not compliance — it is a deviation, and it belongs in docs/decisions/, not in a source comment."
+      - "Respect the dependency direction the decisions establish. A change that inverts or bypasses it is a blocker even when it compiles."
+      - "Keep the domain model independent of delivery channel. Renderers, transports and storage are layered over the model; none of them may leak assumptions back into it."
+
+  # ── Build phase only. Criteria here are deliberately generic — tailor them to
+  #    the project's actual risk surface, which the decisions should describe.
+  - validator_id: "security"
+    validator_type: "security"
+    evaluation_phase: "pre_execute"
+    tools:
+      - "read_file"
+      - "list_files"
+    criteria:
+      - "REVIEW FRAME — read this first. You are reviewing a PROPOSAL before any of it has been built. Absence of implementation is expected and is never a finding. Judge only whether carrying out the proposal as described would violate a criterion below. If nothing below is violated, return pass."
+      - "Identify where user-supplied data crosses an encoding boundary — into HTML, SQL, a URL, a shell command, a serialisation format. Each boundary has its own escaping rules, and input must not be able to break out of any of them."
+      - "Personal data must not be logged, forwarded, or persisted beyond what the feature requires. Name the field and the sink when raising this."
+      - "No credentials, tokens, private keys, or account identifiers in the repository. They are supplied at runtime."
+      - "Reject dependencies added for trivial reasons. Every package is supply-chain surface."
+
+  # ── Set test_command explicitly. Auto-detection reads repository marker files,
+  #    which do not exist during the scaffold phase that creates them.
+  #    Each task runs in a fresh worktree, so installation belongs in the command.
+  - validator_id: "quality"
+    validator_type: "quality"
+    evaluation_phase: "post_execute"
+    tooling:
+      test_command: "REPLACE_ME"
+      # Examples — the install step is not optional, see scaffold-gate criterion 1:
+      #   Node    "npm ci --no-audit --no-fund && npm test"
+      #   Python  "uv sync --all-extras && uv run pytest"
+      #   Rust    "cargo test"
+      #   Go      "go test ./..."
+
+disagreement_policy: "unanimous"
+initial_mode: "decide"
+
+# Depth 1 while the project is young. A fault that recovery cannot address costs
+# one cycle instead of four, and early failures are usually configuration rather
+# than code. Raise this once tasks routinely reach post-execute unaided.
+execution:
+  max_recovery_depth: 1
+
+global_constraints: []

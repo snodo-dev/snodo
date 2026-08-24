@@ -8,7 +8,7 @@ Declare what a valid development process looks like (`protocol.yml` — modes, v
 
 ## 2+N model
 
-Two human-in-control roles — **producer** (code generation) and **reviewer** (integration) — with structurally separated tool sets. Plus **N** specialised AI agents that operate within those roles. The model is validated at load time: overlapping tools cause a WF1 violation and the protocol won't load.
+Two human-in-control roles — **producer** (code generation) and **reviewer** (integration) — with structurally separated approval authority. Plus **N** specialised AI agents that operate within those roles. The model is validated at load time: an approval-conferring tool (`approve`, `merge`) held by two modes causes a WF1 violation and the protocol won't load.
 
 [Architecture →](architecture.md)
 

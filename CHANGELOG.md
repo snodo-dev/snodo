@@ -9,7 +9,48 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The `snodo init` trusted-repository consent gate is now rendered as a styled,
+  amber-bordered panel ("Trusted repository") with a footer pointing at
+  `ADR 014 · SECURITY.md`, and the bare `input()` is replaced with a Rich-styled
+  confirmation defaulting to **No**. Output degrades to plain text when not a TTY,
+  when `NO_COLOR` is set, or when piped. `rich` is now an explicit root dependency.
+
+### Changed
+
+- The protocol-template registry (`PROTOCOL_TEMPLATES`) is now derived from the
+  YAML files in `snodo/protocols/templates/`, so adding a template file (e.g.
+  `greenfield.yml`) makes it selectable with no second edit. Templates are parsed
+  and verified (WF1–WF5) at import time, so a broken shipped template fails
+  loudly in CI rather than at a user's first `init`. `snodo init` now resolves and
+  verifies the template before creating `.snodo/`, touching `.gitignore`, or
+  writing project identity, so a failed init leaves the directory as it found it.
+  An unknown `--template` exits with a clear error listing the available
+  templates, and the interactive menu is generated from the registry (re-prompting
+  on invalid input instead of substituting a different protocol).
+
+- WF1 no longer requires total tool disjointness. It now enforces that
+  approval-conferring tools (`approve`, `merge` by default, extendable via a
+  protocol-level `exclusive_tools` set) appear in at most one mode, which is the
+  property that actually prevents self-approval. Non-exclusive tools (e.g. `edit`)
+  may be shared across modes, so staged protocols that both need `edit` now load.
+  INV2 (capability bounded by the active mode) is unchanged. Because mode can no
+  longer be inferred from the tool alone, every `tool_call` (and `wf1_violation` /
+  `dispatch_request`) audit entry now records the active mode via
+  `mcp/server.py:_active_mode()`. See ADR 017.
+
 ### Fixed
+
+- `snodo run` now honours the active mode. It previously passed
+  `protocol.initial_mode` to the closure driver (and to agent-memory
+  `record_task`) while `_resolve_session` correctly used `state.current_mode`,
+  so on a multi-mode protocol `snodo mode change <m>` had no effect: every run
+  executed the initial mode's validators and reported success against the wrong
+  gate. The active mode is now resolved once (from `state.current_mode`, falling
+  back to `initial_mode`) and threaded through the whole run path, and a session
+  whose mode disagrees with the active mode is now a hard error rather than a
+  silent mismatch. Single-mode protocols are unaffected.
 
 - The MCP `validate_task` handler no longer injects an unconditional pytest
   `test_runner` result into the validator quorum. Because `PolicyEvaluator` derives

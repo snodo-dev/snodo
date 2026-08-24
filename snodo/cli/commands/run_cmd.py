@@ -326,6 +326,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     """
     print(f"Task: {task.spec}")
     print(f"Task ID: {task.id}")
+    print(f"  Inspect: snodo task show {task.id}")
     print()
 
     from snodo.infrastructure.paths import require_project_root
@@ -333,15 +334,21 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     audit_log = getattr(args, "audit_log", None)
     session_manager = getattr(args, "session_manager", None)
 
-    # Session lifecycle: start or resume
-    session = _resolve_session(args, session_manager, protocol, project_root)
+    # Session lifecycle: start or resume. Resolve the active mode once here so
+    # the session and the execution can never disagree about which mode is active.
+    session, mode = _resolve_session(args, session_manager, protocol, project_root)
     session_id = session.session_id if session else None
+
+    if session is not None and session.mode != mode:
+        print(f"Error: Session mode '{session.mode}' does not match active mode '{mode}'",
+              file=sys.stderr)
+        raise SystemExit(1)
 
     if session_id and session_manager:
         session_manager.set_current_task(session_id, task.id)
 
     # Set up agent memory
-    memory_mgr, checkpointer, thread_config = _setup_memory(project_root, protocol)
+    memory_mgr, checkpointer, thread_config = _setup_memory(project_root, protocol, mode)
 
     job_id = os.environ.get("SNODO_JOB_ID") or None
 
@@ -412,7 +419,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         final_state, closure_tree = run_to_closure(
             compiled_graph,
             root_task_dict,
-            mode=protocol.initial_mode,
+            mode=mode,
             audit_log=audit_log,
             max_total_fix_attempts=max_attempts,
             max_recovery_depth=max_depth,
@@ -421,9 +428,9 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         )
         if memory_mgr:
             project_name = Path(project_root).name
-            memory_mgr.record_task(project_name, protocol.initial_mode)
+            memory_mgr.record_task(project_name, mode)
 
-        result = _report_closure(closure_tree, final_state)
+        result = _report_closure(closure_tree, final_state, session_id=session_id)
         return result
     finally:
         # Save session checkpoint on exit
@@ -462,14 +469,15 @@ def _resolve_session(args, session_manager, protocol, project_root):
         project_root: Absolute path to project root
 
     Returns:
-        SessionState or None if session management unavailable
+        (SessionState, mode) tuple. The mode is the single resolved active
+        mode; the session is None when session management is unavailable.
     """
-    if session_manager is None:
-        return None
-
     from snodo.infrastructure.state import read_state
     state = read_state(project_root)
     mode = state.current_mode or protocol.initial_mode
+
+    if session_manager is None:
+        return None, mode
 
     resume_id = getattr(args, "resume", None)
     if resume_id:
@@ -491,21 +499,24 @@ def _resolve_session(args, session_manager, protocol, project_root):
                 "parent_checkpoint_ts": session.checkpoint.timestamp,
             })
         print(f"  Session: {resume_id} (resumed)")
-        return session
+        print(f"  Inspect: snodo session show {resume_id}")
+        return session, mode
 
     # Auto: check for existing session (matching mode + project)
     existing = session_manager.get_active_session(mode, project_root)
     if existing:
         print(f"  Session: {existing.session_id}")
-        return existing
+        print(f"  Inspect: snodo session show {existing.session_id}")
+        return existing, mode
 
     # Auto-create new session
     session = session_manager.create_session(mode, project_root)
     print(f"  Session: {session.session_id} (new)")
-    return session
+    print(f"  Inspect: snodo session show {session.session_id}")
+    return session, mode
 
 
-def _setup_memory(project_root: str, protocol: Protocol):
+def _setup_memory(project_root: str, protocol: Protocol, mode: str):
     """Set up agent memory manager, checkpointer, and thread config.
 
     Returns:
@@ -516,7 +527,7 @@ def _setup_memory(project_root: str, protocol: Protocol):
         from snodo.infrastructure.memory import AgentMemoryManager
         memory_mgr = AgentMemoryManager()
         project_name = Path(project_root).name
-        agent = memory_mgr.get_or_create_agent(project_name, protocol.initial_mode)
+        agent = memory_mgr.get_or_create_agent(project_name, mode)
         checkpointer = memory_mgr.get_checkpointer()
         thread_config = {"configurable": {"thread_id": agent["thread_id"]}}
         return memory_mgr, checkpointer, thread_config
@@ -581,7 +592,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
         return None
 
 
-def _report_closure(tree, final_state: dict) -> int:
+def _report_closure(tree, final_state: dict, session_id: Optional[str] = None) -> int:
     """Print the aggregate closure result, emit the structured halt payload,
     and return the exit code.
 
@@ -627,6 +638,7 @@ def _report_closure(tree, final_state: dict) -> int:
         print(json.dumps(halt_payload, indent=2, default=str))
         print("--- END STRUCTURED HALT PAYLOAD ---")
         print()
+        _print_halt_followup(halt_payload, session_id)
 
     if tree.outcome == "internal_error" or final_state.get("halt_type") == "internal_error":
         err = final_state.get("error", "unknown internal error")
@@ -645,6 +657,27 @@ def _report_closure(tree, final_state: dict) -> int:
             return 0
     print("✗ Task did not complete successfully", file=sys.stderr)
     return 1
+
+
+def _print_halt_followup(halt_payload: dict, session_id: Optional[str]) -> None:
+    """Print inspect/retry commands for the ids in a halt payload."""
+    task_id = (halt_payload or {}).get("task_id", "")
+    final_decision = (halt_payload or {}).get("final_decision")
+
+    commands = []
+    if session_id:
+        commands.append(f"snodo session show {session_id}")
+    if task_id:
+        commands.append(f"snodo task show {task_id}")
+        if final_decision not in ("completed", None):
+            commands.append(f'snodo run --retry {task_id} "revised spec"')
+
+    if not commands:
+        return
+    print("Follow-up:")
+    for cmd in commands:
+        print(f"  {cmd}")
+    print()
 
 
 def _find_terminal_halt_payload(tree, final_state: dict) -> Optional[dict]:
