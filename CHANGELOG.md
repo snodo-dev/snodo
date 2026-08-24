@@ -42,6 +42,25 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The post-validation recovery loop no longer feeds raw validator
+  justifications into the fix task. It previously built the recovery spec as
+  `"Fix post-validation issues: " + "; ".join(justifications[:3])`, truncated to
+  500 chars — a state description written for a human reading a report, cut
+  mid-sentence, that the spec validators then rejected for lacking intent,
+  constraints and acceptance criteria. The recovery spec is now synthesised with
+  an explicit INTENT (the original task), CONSTRAINTS, and per-failure
+  ACCEPTANCE CRITERIA, with each justification preserved verbatim as context
+  rather than truncated.
+
+- `snodo init` now commits `.gitignore` after adding the `.snodo/` entry. An
+  untracked `.gitignore` is itself a `git clean -fd` target, so two consecutive
+  cleans would remove `.gitignore` and then the now-unignored `.snodo/` —
+  destroying the project id, session store and audit chain (INV4) with no
+  warning. Only `.gitignore` is staged and committed; unrelated staged or
+  unstaged changes are left untouched. When the commit cannot be made (no git
+  identity, unborn branch, hook failure), init still succeeds but warns that the
+  ignore is not yet durable.
+
 - `snodo run` now honours the active mode. It previously passed
   `protocol.initial_mode` to the closure driver (and to agent-memory
   `record_task`) while `_resolve_session` correctly used `state.current_mode`,
