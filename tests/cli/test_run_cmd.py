@@ -387,7 +387,7 @@ class TestSetupMemory:
 
             protocol = MagicMock()
             protocol.initial_mode = "producer"
-            mgr, ckpt, config = _setup_memory("/tmp/proj", protocol)
+            mgr, ckpt, config = _setup_memory("/tmp/proj", protocol, "producer")
 
         assert mgr is not None
         assert ckpt is not None
@@ -400,7 +400,7 @@ class TestSetupMemory:
                    side_effect=Exception("no db")):
             protocol = MagicMock()
             protocol.initial_mode = "producer"
-            mgr, ckpt, config = _setup_memory("/tmp/proj", protocol)
+            mgr, ckpt, config = _setup_memory("/tmp/proj", protocol, "producer")
 
         assert mgr is None
         assert ckpt is None
@@ -503,8 +503,9 @@ class TestResolveSession:
         args = SimpleNamespace(resume=None)
         protocol = MagicMock()
         protocol.initial_mode = "producer"
-        result = _resolve_session(args, None, protocol, "/tmp/proj")
-        assert result is None
+        session, mode = _resolve_session(args, None, protocol, "/tmp/proj")
+        assert session is None
+        assert mode == "producer"
 
     def test_auto_create_new_session(self, capsys):
         from snodo.cli.commands.run_cmd import _resolve_session
@@ -515,9 +516,10 @@ class TestResolveSession:
             args = SimpleNamespace(resume=None)
             protocol = MagicMock()
             protocol.initial_mode = "producer"
-            result = _resolve_session(args, mgr, protocol, "/tmp/proj")
-            assert result is not None
-            assert result.mode == "producer"
+            session, mode = _resolve_session(args, mgr, protocol, "/tmp/proj")
+            assert session is not None
+            assert session.mode == "producer"
+            assert mode == "producer"
             assert "new" in capsys.readouterr().out
 
     def test_auto_resume_existing(self, capsys):
@@ -530,8 +532,9 @@ class TestResolveSession:
             args = SimpleNamespace(resume=None)
             protocol = MagicMock()
             protocol.initial_mode = "producer"
-            result = _resolve_session(args, mgr, protocol, "/tmp/proj")
-            assert result.session_id == existing.session_id
+            session, mode = _resolve_session(args, mgr, protocol, "/tmp/proj")
+            assert session.session_id == existing.session_id
+            assert mode == "producer"
 
     def test_explicit_resume(self, capsys):
         from snodo.cli.commands.run_cmd import _resolve_session
@@ -543,8 +546,9 @@ class TestResolveSession:
             args = SimpleNamespace(resume=session.session_id)
             protocol = MagicMock()
             protocol.initial_mode = "producer"
-            result = _resolve_session(args, mgr, protocol, "/tmp/proj")
-            assert result.session_id == session.session_id
+            resolved, mode = _resolve_session(args, mgr, protocol, "/tmp/proj")
+            assert resolved.session_id == session.session_id
+            assert mode == "producer"
             assert "resumed" in capsys.readouterr().out
 
     def test_resume_mode_mismatch_rejects(self):

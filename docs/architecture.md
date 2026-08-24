@@ -13,7 +13,7 @@ How enforcement works from top to bottom. For individual design decisions, see [
 
 Snodo is a **policy-vs-mechanism** engine: you declare what a valid software development process looks like (`protocol.yml`), and the engine enforces it structurally — no after-the-fact review, no trust in agent compliance. AI agents participate as first-class team members, gated by the same rules as human contributors.
 
-The 2+N model underlies everything: **2** human-in-control roles (producer and reviewer) with disjoint tool sets, plus **N** specialized AI agents that operate within those roles. Mode separation is structural — the engine refuses to load a protocol where two modes share a tool (WF1), and every mutating operation requires a cryptographically valid token that can only be issued by a satisfied validator quorum (INV1/INV3).
+The 2+N model underlies everything: **2** human-in-control roles (producer and reviewer) plus **N** specialized AI agents that operate within those roles. Mode separation is structural — the engine refuses to load a protocol where two modes share an approval-conferring tool (WF1), and every mutating operation requires a cryptographically valid token that can only be issued by a satisfied validator quorum (INV1/INV3).
 
 ## Package map
 
@@ -37,7 +37,7 @@ execution may run inside a git worktree, so project-relative state would fragmen
 
 | Concept | Mechanism | Invariant |
 |---------|-----------|-----------|
-| Mode separation | Disjoint tool sets, verified at load time | WF1 |
+| Mode separation | Exclusive approval-conferring tools, verified at load time | WF1 |
 | Validator quorum | N validators vote; policy decides proceed/block | Decision flow below |
 | Non-overridable block | Any `blocker` halts before policy logic | INV3 |
 | Token-gated mutations | Mutating MCP tools require JWT validation token | WF1, INV1 |
@@ -99,7 +99,7 @@ operational faults, not authorisation problems.
 
 ## Mode model + infrastructure boundary
 
-Each mode declares a set of **logical tools** (edit, approve, pr, etc.) that map to **concrete MCP operations**. Two modes never share a tool — WF1 verifies this at load time (`compiler/verifier.py:check_wf1()`).
+Each mode declares a set of **logical tools** (edit, approve, pr, etc.) that map to **concrete MCP operations**. Approval-conferring tools (`approve`, `merge` by default, extendable via `Protocol.exclusive_tools`) must appear in at most one mode — WF1 verifies this at load time (`compiler/verifier.py:check_wf1()`), which is what makes self-approval impossible. Non-exclusive tools may be shared across modes; the active mode of every operation is recorded in the audit log (`mcp/server.py:_active_mode()`) so attribution no longer depends on tool uniqueness.
 
 Two MCP servers can be served from one protocol:
 ```bash
@@ -202,7 +202,7 @@ depth-exhausted or otherwise non-resolved) is itself reported non-resolved.
 
 | Invariant | Mechanism | Source |
 |-----------|-----------|--------|
-| WF1 — Mode separation | Disjoint tool sets, load-time verification | `foundation/compiler/verifier.py:check_wf1()` |
+| WF1 — Mode separation | Exclusive approval-conferring tools in at most one mode, load-time verification | `foundation/compiler/verifier.py:check_wf1()` |
 | WF2 — Role uniqueness | Duplicate detection, load-time verification | `verifier.py:check_wf2()` |
 | WF3 — Validator coverage | Missing validator detection; initial mode existence; dispatch requires pre_execute | `verifier.py:check_wf3()` |
 | WF4 — Policy completeness | Policy-to-validator-count matching | `verifier.py:check_wf4()` |

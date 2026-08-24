@@ -1,8 +1,126 @@
 [importlinter]
 root_package = snodo
 
+# ─────────────────────────────────────────────────────────────────────────
+# Workspace package layering
+#
+#   core  <-  tools  <-  foundation  <-  engine  <-  mcp  <-  app
+#
+# All five distributions share the `snodo.*` namespace, so the package
+# boundary is not otherwise enforced by anything: nothing stops
+# snodo-core importing snodo.engine except discipline. These contracts make
+# docs/architecture.md's layer diagram executable.
+#
+# Expressed as `forbidden` contracts rather than a single `layers` contract
+# because each layer spans several top-level modules.
+#
+# Module -> package map:
+#   core        snodo.core, snodo.config, snodo.paths, snodo.project,
+#               snodo.predicates, snodo.sandbox
+#   tools       snodo.tools, snodo.providers
+#   foundation  snodo.infrastructure, snodo.compiler, snodo.protocols
+#   engine      snodo.engine, snodo.validators, snodo.coders
+#   mcp         snodo.mcp, snodo.jobs, snodo.recon
+#   app (root)  snodo.cli, snodo.dashboard, snodo.agents
+# ─────────────────────────────────────────────────────────────────────────
+
+[importlinter:contract:core-layer]
+name = snodo-core depends on nothing above it
+type = forbidden
+source_modules =
+    snodo.core
+    snodo.config
+    snodo.paths
+    snodo.project
+    snodo.predicates
+    snodo.sandbox
+forbidden_modules =
+    snodo.tools
+    snodo.providers
+    snodo.infrastructure
+    snodo.compiler
+    snodo.protocols
+    snodo.engine
+    snodo.validators
+    snodo.coders
+    snodo.mcp
+    snodo.jobs
+    snodo.recon
+    snodo.cli
+    snodo.dashboard
+    snodo.agents
+
+[importlinter:contract:tools-layer]
+name = snodo-tools depends only on snodo-core
+type = forbidden
+source_modules =
+    snodo.tools
+    snodo.providers
+forbidden_modules =
+    snodo.infrastructure
+    snodo.compiler
+    snodo.protocols
+    snodo.engine
+    snodo.validators
+    snodo.coders
+    snodo.mcp
+    snodo.jobs
+    snodo.recon
+    snodo.cli
+    snodo.dashboard
+    snodo.agents
+
+[importlinter:contract:foundation-layer]
+name = snodo-foundation does not depend on engine, mcp, or app
+type = forbidden
+source_modules =
+    snodo.infrastructure
+    snodo.compiler
+    snodo.protocols
+forbidden_modules =
+    snodo.engine
+    snodo.validators
+    snodo.coders
+    snodo.mcp
+    snodo.jobs
+    snodo.recon
+    snodo.cli
+    snodo.dashboard
+    snodo.agents
+
+[importlinter:contract:engine-layer]
+name = snodo-engine does not depend on mcp or app
+type = forbidden
+source_modules =
+    snodo.engine
+    snodo.validators
+    snodo.coders
+forbidden_modules =
+    snodo.mcp
+    snodo.jobs
+    snodo.recon
+    snodo.cli
+    snodo.dashboard
+    snodo.agents
+
+[importlinter:contract:mcp-layer]
+name = snodo-mcp does not depend on the app layer
+type = forbidden
+source_modules =
+    snodo.mcp
+    snodo.jobs
+    snodo.recon
+forbidden_modules =
+    snodo.cli
+    snodo.dashboard
+    snodo.agents
+
+# ─────────────────────────────────────────────────────────────────────────
+# App-internal layering (root package)
+# ─────────────────────────────────────────────────────────────────────────
+
 [importlinter:contract:layers]
-name = Snodo architectural layers
+name = Snodo architectural layers (app)
 type = layers
 layers =
     snodo.dashboard

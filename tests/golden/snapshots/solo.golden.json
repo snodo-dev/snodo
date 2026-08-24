@@ -1,5 +1,9 @@
 {
   "disagreement_policy": "unanimous",
+  "exclusive_tools": [
+    "approve",
+    "merge"
+  ],
   "execution": {
     "branch_prefix": "task",
     "branch_ttl_days": 7,

@@ -453,8 +453,10 @@ def test_init_template_team(temp_project_dir):
 
 def test_init_interactive_prompt_solo(temp_project_dir):
     """Test snodo init without template prompts interactively - select solo."""
+    from snodo.protocols import list_templates
+    idx = list_templates().index("solo") + 1
     with patch('sys.argv', ['snodo', 'init', '--yes']):
-        with patch('builtins.input', return_value='1'):
+        with patch('builtins.input', return_value=str(idx)):
             result = main()
 
     assert result == 0
@@ -468,8 +470,10 @@ def test_init_interactive_prompt_solo(temp_project_dir):
 
 def test_init_interactive_prompt_team(temp_project_dir):
     """Test snodo init without template prompts interactively - select team."""
+    from snodo.protocols import list_templates
+    idx = list_templates().index("team") + 1
     with patch('sys.argv', ['snodo', 'init', '--yes']):
-        with patch('builtins.input', return_value='2'):
+        with patch('builtins.input', return_value=str(idx)):
             result = main()
 
     assert result == 0
@@ -481,10 +485,12 @@ def test_init_interactive_prompt_team(temp_project_dir):
     assert len(protocol.modes) == 3
 
 
-def test_init_interactive_invalid_choice_defaults_team(temp_project_dir):
-    """Test invalid interactive choice defaults to team template."""
+def test_init_interactive_invalid_choice_reprompts(temp_project_dir):
+    """An invalid interactive choice re-prompts; it never silently substitutes."""
+    from snodo.protocols import list_templates
+    team_idx = list_templates().index("team") + 1
     with patch('sys.argv', ['snodo', 'init', '--yes']):
-        with patch('builtins.input', return_value='invalid'):
+        with patch('builtins.input', side_effect=['invalid', str(team_idx)]):
             result = main()
 
     assert result == 0
@@ -531,8 +537,8 @@ def test_init_template_2plus_n_validators(temp_project_dir):
     assert post[0].validator_id == "quality"
 
 
-def test_init_template_2plus_n_wf1_tool_disjoint(temp_project_dir):
-    """Test 2+n template has disjoint tool sets between producer and reviewer."""
+def test_init_template_2plus_n_wf1_exclusive_tools(temp_project_dir):
+    """Test 2+n template keeps exclusive (approval-conferring) tools in one mode."""
     with patch('sys.argv', ['snodo', 'init', '--template', '2+n', '--yes']):
         result = main()
 
@@ -541,16 +547,17 @@ def test_init_template_2plus_n_wf1_tool_disjoint(temp_project_dir):
     protocol = load_protocol(protocol_file)
 
     assert protocol is not None
-    producer = protocol.get_mode("producer")
-    reviewer = protocol.get_mode("reviewer")
-    assert producer is not None and reviewer is not None
-    assert set(producer.tools).isdisjoint(set(reviewer.tools))
+    for tool in protocol.exclusive_tools:
+        holders = [m.mode_id for m in protocol.modes if tool in m.tools]
+        assert len(holders) <= 1, f"exclusive tool '{tool}' held by {holders}"
 
 
 def test_init_interactive_prompt_2plus_n(temp_project_dir):
-    """Test interactive prompt selects 2+n template (option 3)."""
+    """Test interactive prompt selects 2+n template."""
+    from snodo.protocols import list_templates
+    idx = list_templates().index("2+n") + 1
     with patch('sys.argv', ['snodo', 'init', '--yes']):
-        with patch('builtins.input', return_value='3'):
+        with patch('builtins.input', return_value=str(idx)):
             result = main()
 
     assert result == 0
@@ -751,9 +758,11 @@ def test_intent_protocol_global_constraints(temp_project_dir):
 
 
 def test_intent_interactive_prompt(temp_project_dir):
-    """Test interactive picker selecting option 4 produces intent template."""
+    """Test interactive picker selecting the intent option produces intent template."""
+    from snodo.protocols import list_templates
+    idx = list_templates().index("intent") + 1
     with patch('sys.argv', ['snodo', 'init', '--yes']):
-        with patch('builtins.input', return_value='4'):
+        with patch('builtins.input', return_value=str(idx)):
             result = main()
 
     assert result == 0
@@ -783,3 +792,55 @@ def test_shipped_intent_protocol_passes_verification():
     protocol = Protocol(**data)
     result = verify_protocol(protocol)
     assert result.passed, f"INTENT_PROTOCOL failed verification: {result.errors}"
+
+
+def test_init_template_greenfield(temp_project_dir):
+    """`--template greenfield` initialises successfully (added via directory)."""
+    with patch('sys.argv', ['snodo', 'init', '--template', 'greenfield', '--yes']):
+        result = main()
+
+    assert result == 0
+    protocol_file = temp_project_dir / ".snodo" / "protocol.yml"
+    protocol = load_protocol(protocol_file)
+
+    assert protocol is not None
+    assert protocol.protocol_id == "greenfield"
+
+
+def test_init_unknown_template_fails_cleanly(temp_project_dir, capsys):
+    """`--template nonexistent` exits non-zero with a helpful message, no traceback."""
+    with patch('sys.argv', ['snodo', 'init', '--template', 'nonexistent', '--yes']):
+        with pytest.raises(SystemExit) as exc:
+            main()
+
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "nonexistent" in err
+    assert "Available templates" in err
+    assert "Traceback" not in err
+    # Nothing written.
+    assert not (temp_project_dir / ".snodo").exists()
+
+
+def test_init_failed_init_is_atomic(temp_project_dir):
+    """A failed init leaves no .snodo/, no .gitignore, and no project identity."""
+    with patch('sys.argv', ['snodo', 'init', '--template', 'nonexistent', '--yes']):
+        with pytest.raises(SystemExit):
+            main()
+
+    assert not (temp_project_dir / ".snodo").exists()
+    assert not (temp_project_dir / ".gitignore").exists()
+    assert not (temp_project_dir / ".snodo" / "project.json").exists()
+
+
+def test_init_menu_lists_every_template(temp_project_dir, capsys):
+    """The interactive menu enumerates every shipped template."""
+    from snodo.protocols import list_templates, template_display_name
+    with patch('sys.argv', ['snodo', 'init', '--yes']):
+        with patch('builtins.input', return_value='1'):
+            main()
+
+    out = capsys.readouterr().out
+    for name in list_templates():
+        assert name in out
+        assert template_display_name(name) in out

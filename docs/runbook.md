@@ -84,11 +84,19 @@ The `--mock` flag uses a stub coder — no API call, no files created. Useful fo
 
 ### Templates
 
+The template list is derived from `snodo/protocols/templates/` — drop in a YAML file and it becomes selectable. Shipped templates:
+
 | Template | Modes | When to use |
 |----------|-------|-------------|
 | `solo` | producer | Single developer, no review handoff |
-| `team` | producer, reviewer, planner | Two-stage with separate tool sets |
+| `team` | producer, reviewer, planner | Two-stage with separate approval authority |
 | `2+n` | producer, reviewer | Paper reference config with scope/test/secrets predicates |
+| `intent` | producer | Intent-driven, warn-only spec validators |
+| `bugfix-surgeon` | producer | Bug-fix flow with a post-execute review gate |
+| `feature-warden` | producer | Feature flow with a scope guard |
+| `greenfield` | decide, scaffold, build | Phased build of a new project with per-phase exit gates |
+
+Run `snodo init --template <name>` to pick one directly, or `snodo init` to choose from the menu.
 
 ## CLI Reference
 
@@ -96,7 +104,7 @@ The `--mock` flag uses a stub coder — no API call, no files created. Useful fo
 
 | Command | Description | Key flags |
 |---------|-------------|-----------|
-| `snodo init` | Create `.snodo/` with a protocol | `--template solo\|team\|2+n`, `--force` |
+| `snodo init` | Create `.snodo/` with a protocol | `--template <name>` (list with `--template nonexistent` or the interactive menu), `--force` |
 | `snodo run <desc>` | Execute a task through the protocol | `--mock`, `--model`, `--from-pr <N>`, `--background`, `--sandbox docker` |
 | `snodo serve` | Start MCP server(s) | `--mode <id>` (single mode), `--port <N>` |
 
@@ -192,7 +200,7 @@ Or `snodo dashboard` — launches the Textual TUI for live session monitoring.
 # All modes — one server exposing all tools
 snodo serve
 
-# Single mode — only that mode's disjoint tool set
+# Single mode — only that mode's tool set
 snodo serve --mode producer
 snodo serve --mode reviewer
 ```

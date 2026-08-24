@@ -5,8 +5,8 @@ All models are immutable and include validation logic.
 """
 
 from enum import Enum
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from typing import List, Optional, Dict, Any, Set
+from pydantic import BaseModel, Field, field_validator, field_serializer, ConfigDict
 
 
 class ExecutionConfig(BaseModel):
@@ -25,6 +25,13 @@ class DisagreementPolicy(str, Enum):
     MAJORITY = "majority"    # >50% must pass
     QUORUM = "quorum"        # Configurable threshold
     ANY = "any"              # At least one must pass
+
+
+# Tools that confer approval/integration authority.  These are the only tools
+# that WF1 requires be exclusive to a single mode (see ADR 017); a protocol may
+# extend this set but may not shrink it — dropping an approval-conferring tool
+# from the set would silently weaken the no-self-approval guarantee.
+DEFAULT_EXCLUSIVE_TOOLS = frozenset({"approve", "merge"})
 
 
 class Severity(str, Enum):
@@ -246,6 +253,14 @@ class Protocol(BaseModel):
         description="Branch isolation and retry configuration"
     )
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    exclusive_tools: Set[str] = Field(
+        default_factory=lambda: set(DEFAULT_EXCLUSIVE_TOOLS),
+        description=(
+            "Tools that must be exclusive to a single mode (approval-conferring). "
+            "Default: approve + merge. A protocol may extend, but not shrink, this "
+            "set — the defaults are always enforced."
+        ),
+    )
     
     @field_validator('protocol_id')
     @classmethod
@@ -253,6 +268,19 @@ class Protocol(BaseModel):
         if not v or not v.strip():
             raise ValueError("protocol_id cannot be empty")
         return v
+
+    @field_validator('exclusive_tools')
+    @classmethod
+    def validate_exclusive_tools(cls, v: Set[str]) -> Set[str]:
+        """The defaults are always enforced: a protocol may extend the
+        exclusive set but never shrink it."""
+        return set(v) | set(DEFAULT_EXCLUSIVE_TOOLS)
+
+    @field_serializer('exclusive_tools')
+    @classmethod
+    def serialize_exclusive_tools(cls, v: Set[str]):
+        """Deterministic serialization (sets have no stable order)."""
+        return sorted(v)
     
     @field_validator('initial_mode')
     @classmethod

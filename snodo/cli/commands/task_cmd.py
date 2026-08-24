@@ -32,6 +32,14 @@ def task_list():
     return task_list_command(SimpleNamespace())
 
 
+@app.command(name="show")
+def task_show(
+    task_id: str = typer.Argument(..., help="Task ID to inspect (e.g. task_a1b2c3)"),
+):
+    """Inspect a task's halt and failure record from the active session."""
+    return task_show_command(SimpleNamespace(task_id=task_id))
+
+
 @app.command(name="abandon")
 def task_abandon(
     task_id: str = typer.Argument(..., help="Task ID to abandon (e.g. task_a1b2c3)"),
@@ -84,9 +92,88 @@ def task_list_command(args) -> int:
         attempt = ctx.get("attempt", 0)
         status = "failed"
         print(f" {tid:<14} {branch:<50} {attempt:<8} {status}")
+        print(f"   inspect: snodo task show {tid}")
 
     print()
     print("Use snodo task abandon <task_id> to delete a task branch.")
+    return 0
+
+
+def task_show_command(args) -> int:
+    """Inspect a task's halt and failure record from the active session."""
+    task_id = getattr(args, "task_id", "")
+    if not task_id:
+        print("Usage: snodo task show <task_id>", file=sys.stderr)
+        return 1
+
+    project_root = resolve_project_root()
+    if project_root is None:
+        print("Not inside a snodo project.", file=sys.stderr)
+        return 1
+
+    from snodo.infrastructure.state import read_state
+    from snodo.infrastructure.session import SessionManager
+
+    state = read_state(project_root)
+    mode = state.current_mode
+    if not mode:
+        print("No active mode. Run 'snodo mode change <m>' first.", file=sys.stderr)
+        return 1
+
+    mgr = SessionManager()
+    session = mgr.get_active_session(mode, project_root)
+    if session is None:
+        print(f"No active session for mode={mode}.", file=sys.stderr)
+        return 1
+
+    decisions = session.checkpoint.decisions or {}
+    halt = decisions.get("halt", {})
+    failure = decisions.get("task_failure", {})
+
+    halt_entry = halt.get(task_id) if isinstance(halt, dict) else None
+    failure_entry = failure.get(task_id) if isinstance(failure, dict) else None
+
+    if not halt_entry and not failure_entry:
+        print(f"No record for task {task_id} in session {session.session_id}.")
+        return 1
+
+    print(f"Task:    {task_id}")
+    print(f"Session: {session.session_id}  mode={session.mode}")
+
+    if isinstance(halt_entry, dict):
+        print()
+        print("Halt:")
+        print(f"  final_decision: {halt_entry.get('final_decision', 'unknown')}")
+        print(f"  halt_type:      {halt_entry.get('halt_type', 'unknown')}")
+        print(f"  phase:          {halt_entry.get('phase', 'unknown')}")
+        reason = halt_entry.get("reason") or halt_entry.get("blocker_reason")
+        if reason:
+            print(f"  reason:         {reason}")
+        hint = halt_entry.get("hint")
+        if hint:
+            print(f"  hint:           {hint}")
+        validator_results = halt_entry.get("validator_results", [])
+        if validator_results:
+            print("  validators:")
+            for r in validator_results:
+                print(f"    {r.get('validator_id', '?')} [{r.get('severity', '?')}]: {r.get('justification', '')}")
+
+    if isinstance(failure_entry, dict):
+        print()
+        print("Failure context:")
+        print(f"  attempt: {failure_entry.get('attempt', 0)}")
+        branch = failure_entry.get("branch")
+        if branch:
+            print(f"  branch:  {branch}")
+        files = failure_entry.get("files_changed", [])
+        if files:
+            print(f"  files:   {', '.join(files)}")
+
+    print()
+    print("Inspect:")
+    print(f"  snodo session show {session.session_id}")
+    if isinstance(failure_entry, dict):
+        print(f'  snodo run --retry {task_id} "revised spec"')
     return 0
 
 

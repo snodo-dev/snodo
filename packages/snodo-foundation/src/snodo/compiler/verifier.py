@@ -18,7 +18,7 @@ class WellFormednessViolation(Exception):
 
 
 class WF1Violation(WellFormednessViolation):
-    """WF1: Mode separation violation - tool sets not disjoint."""
+    """WF1: Mode separation violation - exclusive tool held by multiple modes."""
 
 
 class WF2Violation(WellFormednessViolation):
@@ -99,34 +99,38 @@ class ProtocolVerifier:
         )
     
     def check_wf1(self) -> None:
-        """WF1: Mode separation - tool sets must be disjoint across modes.
-        
-        Each mode should have its own distinct set of tools with no overlap.
-        This ensures clear separation of concerns between operational stages.
-        
+        """WF1: Mode separation — exclusive tools must appear in at most one mode.
+
+        The invariant WF1 exists to guarantee is **no self-approval**: an
+        approval-conferring tool must not be reachable from two different modes,
+        or a single actor could approve its own work.  INV2 already bounds
+        capability to the active mode, so total tool disjointness is not required
+        for the boundary to hold; what disjointness uniquely provided was the
+        ability to infer the mode from the tool alone, which the audit log now
+        records explicitly (see ADR 017).
+
+        Consequently only the *exclusive* tool set (``Protocol.exclusive_tools``,
+        defaulting to ``approve`` + ``merge``) must be disjoint across modes.
+        Non-exclusive tools may be held by any number of modes.
+
         Raises:
-            WF1Violation: If tool sets overlap between modes
+            WF1Violation: If an exclusive tool appears in more than one mode
         """
-        mode_tools: Dict[str, Set[str]] = {}
-        
+        # Map each tool to the set of modes that hold it.
+        tool_modes: Dict[str, List[str]] = {}
         for mode in self.protocol.modes:
-            mode_tools[mode.mode_id] = set(mode.tools)
-        
-        # Check all pairs of modes for tool overlap
-        mode_ids = list(mode_tools.keys())
-        for i in range(len(mode_ids)):
-            for j in range(i + 1, len(mode_ids)):
-                mode1_id = mode_ids[i]
-                mode2_id = mode_ids[j]
-                
-                overlap = mode_tools[mode1_id] & mode_tools[mode2_id]
-                if overlap:
-                    error_msg = (
-                        f"WF1 Violation: Modes '{mode1_id}' and '{mode2_id}' "
-                        f"share tools: {sorted(overlap)}"
-                    )
-                    self.errors.append(error_msg)
-                    raise WF1Violation(error_msg)
+            for tool in mode.tools:
+                tool_modes.setdefault(tool, []).append(mode.mode_id)
+
+        for tool in sorted(self.protocol.exclusive_tools):
+            holders = tool_modes.get(tool, [])
+            if len(holders) > 1:
+                error_msg = (
+                    f"WF1 Violation: Exclusive tool '{tool}' is held by "
+                    f"multiple modes: {sorted(holders)}"
+                )
+                self.errors.append(error_msg)
+                raise WF1Violation(error_msg)
     
     def check_wf2(self) -> None:
         """WF2: Role uniqueness within mode - no duplicate roles per mode.
