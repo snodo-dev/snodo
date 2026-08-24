@@ -11,6 +11,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `snodo run` now prints node transitions on the normal path — entering
+  pre-execute validation (with the validator list), coder dispatched/returned,
+  and post-validation — instead of going silent between "Graph compiled" and the
+  halt payload. `--verbose` additionally prints each validator's verdict as it
+  lands, rather than only at the end. The information was already in the graph
+  state; it is now surfaced while it matters.
+
 - The `snodo init` trusted-repository consent gate is now rendered as a styled,
   amber-bordered panel ("Trusted repository") with a footer pointing at
   `ADR 014 · SECURITY.md`, and the bare `input()` is replaced with a Rich-styled

@@ -112,6 +112,7 @@ def run_validators(
     session_id: str = "",
     audit_log: Any = None,
     dispatch_fn: Any = None,
+    progress_cb: Any = None,
 ) -> Tuple[List[ValidatorResult], Dict[str, str]]:
     """Run a list of validators against a task and return ordered results.
 
@@ -206,6 +207,11 @@ def run_validators(
                     error=True,
                 )
             if result is not None:
+                if progress_cb is not None:
+                    try:
+                        progress_cb(vid, result)
+                    except Exception:
+                        pass
                 v_obj = next((v for v in validators if v.validator_id == vid), None)
                 if (
                     v_obj is not None
