@@ -101,6 +101,7 @@ class TestRecoverableClassification:
         assert result["is_blocked"] is True
         assert result["halt_type"] == "validator_error"
         assert len(result["spawned_subtasks"]) == 0
+        assert result["needs_recovery"] is False
 
     def test_escalate_spawns_subtask(self):
         """ESCALATE → needs_recovery, subtask spawned."""

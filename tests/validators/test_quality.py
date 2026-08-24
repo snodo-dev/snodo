@@ -297,29 +297,55 @@ class TestQualityValidatorEvaluate:
             assert result.severity == "blocker"
             assert "failed" in result.justification.lower()
 
-    def test_command_not_found_warns(self, quality_spec, project_dir):
+    def test_command_not_found_is_operational_error(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)
         with patch("snodo.validators.quality.subprocess.run", side_effect=FileNotFoundError):
             result = qv.evaluate()
-            assert result.severity == "warn"
+            assert result.error is True
+            assert result.severity == "blocker"
             assert "not found" in result.justification.lower()
 
-    def test_timeout_is_blocker(self, quality_spec, project_dir):
+    def test_timeout_is_operational_error(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)
         with patch(
             "snodo.validators.quality.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="pytest", timeout=300),
         ):
             result = qv.evaluate()
+            assert result.error is True
             assert result.severity == "blocker"
             assert "timed out" in result.justification
 
-    def test_no_test_command_warns(self, quality_spec_no_tooling, project_dir):
-        """When no test command can be determined, return warn."""
+    def test_no_test_command_is_operational_error(self, quality_spec_no_tooling, project_dir):
+        """When no test command can be determined, return an operational error."""
         qv = QualityValidator(quality_spec_no_tooling, project_dir)
         result = qv.evaluate()
-        assert result.severity == "warn"
-        assert "Cannot determine" in result.justification
+        assert result.error is True
+        assert result.severity == "blocker"
+        assert "tooling.test_command" in result.justification
+
+    def test_exit_127_command_not_found_is_operational_error(self, quality_spec, project_dir):
+        qv = QualityValidator(quality_spec, project_dir)
+        mock_result = MagicMock(
+            returncode=127, stdout="", stderr="/bin/sh: pytest: command not found\n",
+        )
+        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result):
+            result = qv.evaluate()
+            assert result.error is True
+            assert result.severity == "blocker"
+            assert "not found" in result.justification.lower()
+            assert "command not found" in result.justification.lower()
+
+    def test_exit_126_not_executable_is_operational_error(self, quality_spec, project_dir):
+        qv = QualityValidator(quality_spec, project_dir)
+        mock_result = MagicMock(
+            returncode=126, stdout="", stderr="/bin/sh: pytest: Permission denied\n",
+        )
+        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result):
+            result = qv.evaluate()
+            assert result.error is True
+            assert result.severity == "blocker"
+            assert "not executable" in result.justification.lower()
 
     def test_custom_timeout_from_tooling(self, project_dir):
         spec = Validator(
