@@ -59,6 +59,9 @@ def register(app: typer.Typer) -> None:
         retry: Optional[str] = typer.Option(
             None, "--retry", help="Retry a failed task by ID (requires P0 branch isolation)",
         ),
+        retain_worktree: bool = typer.Option(
+            False, "--retain-worktree", help="Keep the task worktree regardless of outcome",
+        ),
     ):
         """Execute a task through the protocol."""
         args = SimpleNamespace(
@@ -66,6 +69,7 @@ def register(app: typer.Typer) -> None:
             verbose=verbose, mock=mock, plan=plan, wave=wave,
             interactive=interactive, from_pr=from_pr, background=background,
             sandbox=sandbox, resume=resume, retry=retry,
+            retain_worktree=retain_worktree,
         )
         return run_command(args)
 
@@ -398,8 +402,10 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         worktree_degraded=worktree_degraded,
     )
     if compiled_graph is None:
-        if worktree_path_val:
+        if worktree_path_val and not getattr(args, "retain_worktree", False):
             remove_worktree(project_root, task.id)
+        elif worktree_path_val:
+            _print_worktree_retained(project_root, task, worktree_path_val)
         if checkpointer:
             _close_checkpointer(checkpointer)
         return 1
@@ -413,6 +419,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
     preserve_worktree = False
     merged_branch = None
+    retain_worktree = bool(getattr(args, "retain_worktree", False))
     try:
         from snodo.engine.closure import run_to_closure
 
@@ -434,11 +441,19 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
         result = _report_closure(closure_tree, final_state, session_id=session_id)
 
+        resolved = closure_tree is not None and closure_tree.outcome == "resolved"
+
         # Auto-merge on genuine completion (closure outcome "resolved").
         if _should_auto_merge(protocol, mode, closure_tree, worktree_path_val, worktree_degraded):
             result, preserve_worktree, merged_branch = _merge_on_success(
                 project_root, task, result, session_id, audit_log,
             )
+
+        # Preserve the worktree on non-completion (so the evidence survives) or
+        # when the retain flag is set. A cleanly completed task is torn down.
+        if worktree_path_val and (retain_worktree or not resolved):
+            preserve_worktree = True
+
         return result
     finally:
         # Save session checkpoint on exit
@@ -447,12 +462,15 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                 session_manager.save_checkpoint(session_id)
             except Exception:
                 pass
-        # Clean up worktree (unless a failed/conflicting merge must survive).
-        if worktree_path_val and not preserve_worktree:
-            try:
-                remove_worktree(project_root, task.id)
-            except Exception:
-                pass
+        # Clean up worktree, or leave it for inspection.
+        if worktree_path_val:
+            if preserve_worktree:
+                _print_worktree_retained(project_root, task, worktree_path_val)
+            else:
+                try:
+                    remove_worktree(project_root, task.id)
+                except Exception:
+                    pass
         # Delete the task branch after the worktree is gone (a branch checked
         # out in a worktree cannot be deleted until that worktree is removed).
         if merged_branch:
@@ -466,6 +484,17 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                 sync_if_enabled(session_id, project_root, audit_log)
             except Exception as e:
                 _logger.warning("Cloud sync hook failed: %s", e)
+
+
+def _print_worktree_retained(project_root, task, worktree_path_val) -> None:
+    """Tell the user where the retained worktree is and how to inspect/remove it."""
+    from snodo.infrastructure.worktree import task_branch_name
+    branch = task_branch_name(task.id, task.spec)
+    print()
+    print(f"Worktree preserved for inspection: {worktree_path_val}")
+    print(f"  Branch: {branch}")
+    print(f"  Inspect: snodo task show {task.id}")
+    print(f"  List/remove: snodo worktree list / snodo worktree remove {task.id}")
 
 
 def _should_auto_merge(protocol, mode, closure_tree, worktree_path_val, worktree_degraded) -> bool:

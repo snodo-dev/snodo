@@ -75,16 +75,19 @@ def main():
         print(f"Job wrapper error: {e}", file=sys.stderr)
         exit_code = 1
     finally:
-        # Clean up worktree on completion (belt-and-suspenders)
-        wt = os.environ.get("SNODO_WORKTREE_PATH")
-        if wt:
-            try:
-                from snodo.infrastructure.worktree import remove_worktree
-                project_root = str(Path(job_dir).parent.parent.parent)
-                job_id = Path(job_dir).name
-                remove_worktree(project_root, job_id)
-            except Exception:
-                pass
+        # Belt-and-suspenders cleanup on success only. A failed task keeps its
+        # worktree for inspection (the CLI already tears down a cleanly
+        # completed task), so the wrapper must not delete the evidence.
+        if exit_code == 0:
+            wt = os.environ.get("SNODO_WORKTREE_PATH")
+            if wt:
+                try:
+                    from snodo.infrastructure.worktree import remove_worktree
+                    project_root = str(Path(job_dir).parent.parent.parent)
+                    job_id = Path(job_dir).name
+                    remove_worktree(project_root, job_id)
+                except Exception:
+                    pass
 
     # Write final state
     state = _load_state(job_dir)
