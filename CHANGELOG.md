@@ -11,6 +11,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `snodo run` can now merge a successfully completed task's branch into the
+  base branch (opt-in). Set `execution.auto_merge: true` on a protocol, or
+  `auto_merge: true/false` on a mode to override the protocol default. The base
+  branch is resolved from the repository (remote default, falling back to
+  `main`) instead of being hardcoded, in both worktree creation and
+  `merge_branch`. A merge conflict escalates (leaving the branch and worktree
+  intact for a human) rather than crashing or blocking, and the worktree +
+  branch are cleaned up only after a successful merge. See ADR 018.
+
 - `snodo run` now prints node transitions on the normal path — entering
   pre-execute validation (with the validator list), coder dispatched/returned,
   and post-validation — instead of going silent between "Graph compiled" and the
@@ -59,6 +68,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
   `mcp/server.py:_active_mode()`. See ADR 017.
 
 ### Fixed
+
+- A failed execution step is no longer validated and no longer reported as a
+  blocker. Previously `execute` had an unconditional edge to `post_validate`,
+  so a run where the coder produced nothing went on to pass post-validation
+  against an unchanged worktree — a green verdict on zero artifacts. The
+  execution step now routes a failure straight to the terminal halt, the
+  payload marks `post_validation.outcome` as `skipped` (not `passed`), and the
+  failure reason reaches the payload's top-level `reason`. `execution_error`
+  was also mapped to `halt_type: "blocker"`; per ADR 015 an operational fault
+  is `internal_error`, so it now reports `halt_type == final_decision ==
+  raw_halt_type == "internal_error"`, and the halt payload's `raw_halt_type`
+  always equals `halt_type` so no member of the four-outcome vocabulary can be
+  silently remapped to another.
 
 - The post-validation recovery loop no longer feeds raw validator
   justifications into the fix task. It previously built the recovery spec as

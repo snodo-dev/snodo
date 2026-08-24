@@ -839,3 +839,110 @@ class TestLoopSerialization:
         # Round-trip through JSON (as LangGraph does internally)
         rebuilt = _json.loads(_json.dumps(state_dict))
         assert rebuilt["halt_type"] == "wf3"
+
+
+# === Auto-merge decision + execution (Task: merge task branch on success) ===
+
+class TestAutoMerge:
+    def _protocol(self, auto_merge=True):
+        from snodo.compiler.models import Protocol, Mode, Validator, ExecutionConfig
+        return Protocol(
+            protocol_id="am", name="Auto Merge", version="1.0.0",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"], validators=["v1"])],
+            validators=[Validator(validator_id="v1", validator_type="security")],
+            initial_mode="producer",
+            execution=ExecutionConfig(auto_merge=auto_merge),
+        )
+
+    def _tree(self, outcome):
+        return SimpleNamespace(outcome=outcome)
+
+    def test_disabled_never_merges(self):
+        from snodo.cli.commands.run_cmd import _should_auto_merge
+        proto = self._protocol(auto_merge=False)
+        assert _should_auto_merge(proto, "producer", self._tree("resolved"),
+                                  "/tmp/wt", False) is False
+
+    def test_non_resolved_never_merges(self):
+        from snodo.cli.commands.run_cmd import _should_auto_merge
+        proto = self._protocol(auto_merge=True)
+        for outcome in ("blocked", "recovery_exhausted", "escalated", "internal_error"):
+            assert _should_auto_merge(proto, "producer", self._tree(outcome),
+                                      "/tmp/wt", False) is False, outcome
+
+    def test_degraded_never_merges(self):
+        from snodo.cli.commands.run_cmd import _should_auto_merge
+        proto = self._protocol(auto_merge=True)
+        assert _should_auto_merge(proto, "producer", self._tree("resolved"),
+                                  None, True) is False
+        assert _should_auto_merge(proto, "producer", self._tree("resolved"),
+                                  None, False) is False
+
+    def test_resolved_merges(self):
+        from snodo.cli.commands.run_cmd import _should_auto_merge
+        proto = self._protocol(auto_merge=True)
+        assert _should_auto_merge(proto, "producer", self._tree("resolved"),
+                                  "/tmp/wt", False) is True
+
+    def test_merge_on_success_clean_merge(self, tmp_path):
+        from snodo.cli.commands.run_cmd import _merge_on_success
+        from snodo.infrastructure.worktree import task_branch_name
+        from snodo.core.interfaces import Task
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        task = Task(id="task_1", spec="add feature")
+        branch = task_branch_name(task.id, task.spec)
+        subprocess_run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "feature.txt").write_text("feature\n")
+        subprocess_run(["git", "add", "feature.txt"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+        result, preserve, merged_branch = _merge_on_success(str(repo), task, 0, None, None)
+        assert result == 0
+        assert preserve is False
+        assert merged_branch == branch
+        assert (repo / "feature.txt").exists()
+
+    def test_merge_on_success_conflict_escalates(self, tmp_path):
+        from snodo.cli.commands.run_cmd import _merge_on_success
+        from snodo.infrastructure.worktree import task_branch_name
+        from snodo.core.interfaces import Task
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        task = Task(id="task_1", spec="conflicting change")
+        branch = task_branch_name(task.id, task.spec)
+        subprocess_run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "README.md").write_text("branch\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "branch change"], cwd=repo, check=True)
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+        (repo / "README.md").write_text("main\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "main change"], cwd=repo, check=True)
+
+        result, preserve, merged_branch = _merge_on_success(str(repo), task, 0, None, None)
+        assert result == 1
+        assert preserve is True
+        assert merged_branch is None
+        # The source branch survives.
+        branches = subprocess_run(
+            ["git", "branch"], cwd=repo, capture_output=True, text=True, check=True,
+        ).stdout
+        assert branch in branches

@@ -187,6 +187,11 @@ def test_build_halt_payload_final_decision_equals_halt_type(sample_protocol, sam
         ("blocked", "blocker"),
         ("validator_error", "validator_error"),
         ("internal_error", "internal_error"),
+        ("constraint", "blocker"),
+        ("wf3", "blocker"),
+        ("max_iterations", "blocker"),
+        ("execution_error", "internal_error"),
+        ("recovery_exhausted", "blocker"),
     ]
     for raw, canonical in cases:
         ls = LoopState(task=sample_task, current_mode="producer")
@@ -197,6 +202,30 @@ def test_build_halt_payload_final_decision_equals_halt_type(sample_protocol, sam
         ls.metadata = {}
         payload = builder._build_halt_payload(ls)
         assert payload["final_decision"] == payload["halt_type"] == canonical, raw
+
+
+def test_halt_type_equals_raw_halt_type_for_every_outcome(sample_protocol, sample_task):
+    """halt_type == raw_halt_type for every outcome the engine can emit.
+
+    Guards against future silent remapping (e.g. execution_error -> blocker).
+    """
+    from snodo.engine.loop import LoopState
+
+    builder = GraphBuilder(sample_protocol)
+
+    for raw in (
+        "escalated", "blocked", "validator_error", "internal_error",
+        "constraint", "wf3", "max_iterations", "execution_error", "recovery_exhausted",
+    ):
+        ls = LoopState(task=sample_task, current_mode="producer")
+        ls.is_blocked = True
+        ls.is_complete = False
+        ls.halt_type = raw
+        ls.constraint_violations = ["some reason"]
+        ls.metadata = {}
+        payload = builder._build_halt_payload(ls)
+        assert payload["halt_type"] == payload["raw_halt_type"], raw
+        assert payload["final_decision"] == payload["raw_halt_type"], raw
 
 
 def test_maybe_respawn_coder_scenarios(sample_protocol):

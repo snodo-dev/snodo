@@ -25,7 +25,7 @@ _CANONICAL_HALT = {
     "constraint": "blocker",
     "wf3": "blocker",
     "max_iterations": "blocker",
-    "execution_error": "blocker",
+    "execution_error": "internal_error",
     "recovery_exhausted": "blocker",
 }
 
@@ -176,14 +176,24 @@ class WritebackMixin:
 
         This is the SINGLE authoritative halt payload, emitted by the CLI and
         persisted to job state / session.  ``final_decision`` always equals
-        ``halt_type`` (canonical four-status vocabulary).
+        ``halt_type``, which always equals ``raw_halt_type`` (canonical
+        four-status vocabulary). The engine's specific reason (e.g. which
+        constraint, or which validator) is preserved in ``reason`` /
+        ``constraint_violations``, never silently remapped to another member of
+        the vocabulary.
         """
         meta = loop_state.metadata
         phase = "unknown"
         if loop_state.is_complete:
             phase = "complete"
         elif loop_state.is_blocked:
-            phase = "pre_execute" if meta.get("post_validation") is None else "post_execute"
+            pv = meta.get("post_validation")
+            if pv is None:
+                phase = "pre_execute"
+            elif isinstance(pv, dict) and pv.get("outcome") == "skipped":
+                phase = "execute"
+            else:
+                phase = "post_execute"
         if loop_state.halt_type == "escalated":
             phase = loop_state.pending_disagreement.get("phase", "unknown") if loop_state.pending_disagreement else "unknown"
 
@@ -195,7 +205,7 @@ class WritebackMixin:
             "status": "blocked" if loop_state.is_blocked else "completed",
             "halt_type": halt,
             "final_decision": halt,
-            "raw_halt_type": loop_state.halt_type,
+            "raw_halt_type": halt,
             "reason": blocker_reason,
             "task_id": loop_state.task.id,
             "task_spec": loop_state.task.spec,

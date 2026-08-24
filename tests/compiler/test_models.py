@@ -436,3 +436,50 @@ def test_default_evaluation_phase():
     """Default evaluation_phase is pre_execute."""
     v = Validator(validator_id="v1", validator_type="security")
     assert v.evaluation_phase == "pre_execute"
+
+
+# ========== auto_merge configuration ==========
+
+def _auto_merge_protocol(execution_auto_merge=False, mode_auto_merge=None):
+    from snodo.compiler.models import ExecutionConfig
+    return Protocol(
+        protocol_id="auto",
+        name="Auto Merge Protocol",
+        modes=[
+            Mode(
+                mode_id="producer",
+                name="Producer",
+                tools=["edit"],
+                validators=["v1"],
+                auto_merge=mode_auto_merge,
+            )
+        ],
+        validators=[Validator(validator_id="v1", validator_type="security")],
+        initial_mode="producer",
+        execution=ExecutionConfig(auto_merge=execution_auto_merge),
+    )
+
+
+def test_auto_merge_defaults_off():
+    """auto_merge defaults to False: a completed task does not auto-merge."""
+    p = _auto_merge_protocol()
+    assert p.execution.auto_merge is False
+    assert p.auto_merge_enabled("producer") is False
+
+
+def test_auto_merge_protocol_on():
+    """Protocol-level auto_merge=True enables merging for a mode without override."""
+    p = _auto_merge_protocol(execution_auto_merge=True)
+    assert p.auto_merge_enabled("producer") is True
+
+
+def test_auto_merge_mode_override_on():
+    """A mode can opt in even when the protocol default is off."""
+    p = _auto_merge_protocol(execution_auto_merge=False, mode_auto_merge=True)
+    assert p.auto_merge_enabled("producer") is True
+
+
+def test_auto_merge_mode_override_off():
+    """A mode can opt out even when the protocol default is on."""
+    p = _auto_merge_protocol(execution_auto_merge=True, mode_auto_merge=False)
+    assert p.auto_merge_enabled("producer") is False

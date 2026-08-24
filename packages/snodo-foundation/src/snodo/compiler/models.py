@@ -17,6 +17,13 @@ class ExecutionConfig(BaseModel):
     branch_prefix: str = Field(default="task")
     max_recovery_depth: int = Field(default=3, ge=0, le=20)
     max_total_fix_attempts: int = Field(default=10, ge=1, le=100)
+    auto_merge: bool = Field(
+        default=False,
+        description=(
+            "Whether a successfully completed task's branch is merged into the "
+            "base branch automatically. Default off; a mode may override it."
+        ),
+    )
 
 
 class DisagreementPolicy(str, Enum):
@@ -211,6 +218,13 @@ class Mode(BaseModel):
     constraints: List[Constraint] = Field(default_factory=list, description="Mode-specific constraints")
     coder: Optional[str] = Field(default=None, description="Coder backend name (e.g., 'litellm', 'mock')")
     coder_config: Dict[str, Any] = Field(default_factory=dict, description="Coder backend configuration")
+    auto_merge: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Override the protocol-level auto_merge for this mode. None = inherit "
+            "the protocol's execution.auto_merge setting."
+        ),
+    )
     
     @field_validator('mode_id')
     @classmethod
@@ -315,6 +329,17 @@ class Protocol(BaseModel):
             if mode.mode_id == mode_id:
                 return mode
         return None
+
+    def auto_merge_enabled(self, mode_id: str) -> bool:
+        """Whether a successfully completed task in *mode_id* auto-merges.
+
+        The mode's ``auto_merge`` (if set) overrides the protocol-level
+        ``execution.auto_merge``; otherwise the protocol setting applies.
+        """
+        mode = self.get_mode(mode_id)
+        if mode is not None and mode.auto_merge is not None:
+            return mode.auto_merge
+        return self.execution.auto_merge
     
     def get_validator(self, validator_id: str) -> Optional[Validator]:
         """Retrieve a validator by ID."""
