@@ -487,3 +487,81 @@ def test_post_validate_node_halt(sample_task):
     assert "Post-execute validation failed" in result["constraint_violations"][0]
 
 
+class TestProgressOutput:
+    """Node transitions are printed on the normal path; verdicts are verbose-only."""
+
+    def _protocol(self):
+        return Protocol(
+            protocol_id="test_protocol",
+            name="Test Protocol",
+            version="1.0.0",
+            modes=[
+                Mode(
+                    mode_id="producer",
+                    name="Producer Mode",
+                    tools=["edit", "test"],
+                    validators=["security"],
+                )
+            ],
+            validators=[
+                Validator(
+                    validator_id="security",
+                    validator_type="security",
+                    criteria=["Check OWASP Top 10"],
+                )
+            ],
+            disagreement_policy=DisagreementPolicy.UNANIMOUS,
+            initial_mode="producer",
+        )
+
+    def _state(self, task_id="task_001"):
+        return {
+            "task": {"id": task_id, "spec": "Implement feature X"},
+            "current_mode": "producer",
+            "iteration": 0,
+            "stage": "validate",
+            "validation_results": [],
+            "validation_token": None,
+            "artifacts": [],
+            "constraints_passed": True,
+            "constraint_violations": [],
+            "policy_decision": None,
+            "is_complete": False,
+            "is_blocked": False,
+            "metadata": {},
+        }
+
+    def test_validate_node_prints_transition(self, capsys):
+        """Entering validation prints the validator list on the normal path."""
+        def mock_validator_fn(task, validators, shell_mcp, **kwargs):
+            return [ValidatorResult(validator_id="security", severity="warn",
+                                    justification="warn")]
+
+        builder = GraphBuilder(self._protocol(), validator_fn=mock_validator_fn)
+        builder._validate_node(self._state())
+
+        out = capsys.readouterr().out
+        assert "Validating (pre-execute): security" in out
+
+    def test_validate_node_verdicts_verbose_only(self, capsys):
+        """Per-validator verdicts are printed only when verbose is set."""
+        def mock_validator_fn(task, validators, shell_mcp, **kwargs):
+            result = ValidatorResult(validator_id="security", severity="warn",
+                                     justification="warn")
+            cb = kwargs.get("progress_cb")
+            if cb is not None:
+                cb("security", result)
+            return [result]
+
+        builder = GraphBuilder(self._protocol(), validator_fn=mock_validator_fn)
+        builder._validate_node(self._state())
+        out = capsys.readouterr().out
+        assert "security: warn" not in out
+
+        builder_verbose = GraphBuilder(self._protocol(), validator_fn=mock_validator_fn,
+                                       verbose=True)
+        builder_verbose._validate_node(self._state())
+        out = capsys.readouterr().out
+        assert "security: warn" in out
+
+

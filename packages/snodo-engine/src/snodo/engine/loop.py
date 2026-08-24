@@ -192,6 +192,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         job_id: Optional[str] = None,
         worktree_path: Optional[str] = None,
         worktree_degraded: bool = False,
+        verbose: bool = False,
     ):
         """Initialize graph builder with real MCP services.
 
@@ -297,6 +298,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._job_id = job_id or ""
         self._worktree_path = worktree_path or ""
         self._worktree_degraded = worktree_degraded
+        self._verbose = verbose
         self._project_context_cache: Optional[Dict[str, Any]] = None
     
     def build_graph(self) -> StateGraph:
@@ -490,11 +492,16 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             })
             return self._state_to_dict(loop_state)
 
+        self._progress(
+            f"  Validating (pre-execute): {', '.join(v.validator_id for v in validators)}"
+        )
+
         results = self.validator_fn(loop_state.task, validators, self.shell_mcp,
                                     current_mode=loop_state.current_mode,
                                     phase="pre_execute",
                                     authorized_decisions=getattr(self, '_authorized_decisions', []),
-                                    decision_issuer=self._decision_issuer)
+                                    decision_issuer=self._decision_issuer,
+                                    progress_cb=self._validator_verdict_cb)
         loop_state.validation_results = results
 
         decision = self.policy_evaluator.evaluate(
@@ -611,6 +618,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                 })
                 return self._state_to_dict(loop_state)
             try:
+                self._progress("  Coder dispatched")
                 artifacts = self.executor_fn(
                     loop_state.task,
                     loop_state.validation_token,
@@ -620,6 +628,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                     memory_summary=loop_state.summary,
                     project_context=self._project_context_cache,
                 )
+                self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")
             except ExecutionError as e:
                 loop_state.is_blocked = True
                 loop_state.halt_type = "execution_error"
@@ -679,11 +688,15 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             return self._state_to_dict(loop_state)
 
         # Run post_execute validators
+        self._progress(
+            f"  Post-validating: {', '.join(v.validator_id for v in post_validators)}"
+        )
         results = self.validator_fn(loop_state.task, post_validators, self.shell_mcp,
                                     current_mode=loop_state.current_mode,
                                     phase="post_execute",
                                     authorized_decisions=getattr(self, '_authorized_decisions', []),
-                                    decision_issuer=self._decision_issuer)
+                                    decision_issuer=self._decision_issuer,
+                                    progress_cb=self._validator_verdict_cb)
 
         # Merge post-validate results with existing results
         loop_state.validation_results = loop_state.validation_results + results
@@ -987,6 +1000,21 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                 data["session_id"] = self._session_id
             self._audit_log.append_event(event_type, data)
 
+    def _progress(self, message: str, verbose: bool = False) -> None:
+        """Print a progress line to stdout.
+
+        Normal-path transitions are always printed; per-validator verdicts and
+        other fine-grained detail are gated behind ``verbose``.
+        """
+        if verbose and not self._verbose:
+            return
+        print(message, flush=True)
+
+    def _validator_verdict_cb(self, validator_id: str, result: Any) -> None:
+        """Print a per-validator verdict as it lands (verbose only)."""
+        severity = getattr(result, "severity", "?")
+        self._progress(f"    ✓ {validator_id}: {severity}", verbose=True)
+
 
 def _build_audit_results(
     validators: list, results: list, cap_originals: Optional[dict] = None
@@ -1054,6 +1082,7 @@ def build_protocol_graph(
     job_id: Optional[str] = None,
     worktree_path: Optional[str] = None,
     worktree_degraded: bool = False,
+    verbose: bool = False,
     **custom_functions
 ) -> StateGraph:
     """Convenience function to build graph with MCP integration.
@@ -1070,6 +1099,7 @@ def build_protocol_graph(
         job_id: Job identifier for direct job state.json writes
         worktree_path: When set, MCPs root at the worktree instead of project_root
         worktree_degraded: Worktree creation failed — skip branch ops
+        verbose: Print per-validator verdicts and fine-grained progress
         **custom_functions: Optional overrides
 
     Returns:
@@ -1119,6 +1149,7 @@ def build_protocol_graph(
         job_id=job_id,
         worktree_path=worktree_path,
         worktree_degraded=worktree_degraded,
+        verbose=verbose,
         **custom_functions
     )
     return builder.build_graph()

@@ -579,6 +579,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             job_id=job_id,
             worktree_path=worktree_path,
             worktree_degraded=worktree_degraded,
+            verbose=getattr(args, "verbose", False),
         )
         compiled_graph = graph.compile(checkpointer=checkpointer)
         print("✓ Graph compiled with MCP integration")
