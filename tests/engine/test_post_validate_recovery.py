@@ -255,3 +255,53 @@ class TestRouteAfterPostValidation:
         builder = GraphBuilder(base_protocol)
         state = _make_state()
         assert builder._route_after_post_validation(state) == "move_next"
+
+
+class TestRecoverySpec:
+    """The recovery spec must be an instruction, not a truncated report."""
+
+    def test_spec_is_instruction_not_state_description(self, base_protocol):
+        from snodo.engine.loop import _build_recovery_spec
+
+        results = [
+            ValidatorResult(validator_id="quality", severity="blocker",
+                            justification="The tree contains src/scripts/vcard.js"),
+        ]
+        spec = _build_recovery_spec("implement vcard export", results)
+
+        assert "INTENT" in spec
+        assert "CONSTRAINTS" in spec
+        assert "ACCEPTANCE CRITERIA" in spec
+        assert "implement vcard export" in spec
+        # The justification is preserved verbatim as context, not truncated.
+        assert "The tree contains src/scripts/vcard.js" in spec
+        # It reads as an instruction, not a bare state description.
+        assert "Resolve the 'quality' failure" in spec
+
+    def test_spec_never_truncates_justification(self, base_protocol):
+        from snodo.engine.loop import _build_recovery_spec
+
+        long_justification = "A" * 600
+        results = [
+            ValidatorResult(validator_id="quality", severity="warn",
+                            justification=long_justification),
+        ]
+        spec = _build_recovery_spec("do the thing", results)
+
+        # The full justification survives — no mid-sentence cut.
+        assert long_justification in spec
+
+    def test_spawned_subtask_uses_synthesised_spec(self, base_protocol):
+        def _blocker(task, validators, shell_mcp, **kwargs):
+            return [ValidatorResult(validator_id="quality", severity="blocker",
+                                    justification="Code quality too low")]
+        builder = GraphBuilder(base_protocol, validator_fn=_blocker)
+        state = _make_state()
+        state["task"]["spec"] = "original spec"
+        result = builder._post_validate_node(state)
+        sub = result["spawned_subtasks"][0]
+        assert "Fix the following post-validation failures" in sub["spec"]
+        assert "original spec" in sub["spec"]
+        assert "Code quality too low" in sub["spec"]
+        # No bare "Fix post-validation issues: ..." prefix.
+        assert not sub["spec"].startswith("Fix post-validation issues:")
