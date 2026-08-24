@@ -23,3 +23,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [018](018-auto-merge-task-branches.md) | Auto-merge task branches on successful completion | 2026-08-24 | `_merge_on_success` (`run_cmd.py`) |
 | [019](019-phase-aware-validator-prompts.md) | Phase-aware validator prompts + read tools for repository-content validators | 2026-08-24 | `_phase_frame` (`llm_validator.py`) |
 | [020](020-wave-classifier-config.md) | Wave classification reads `ClassifierConfig`; classifier model resolved once | 2026-08-24 | `_migrate_wave_classifier_keys` (`config.py`) |
+| [021](021-recovery-builds-from-original-task.md) | Recovery builds from the original task, not the previous attempt | 2026-08-24 | `_spawn_recovery_subtask` (`loop.py`) |

@@ -38,6 +38,13 @@ class Task(BaseModel):
     id: str
     spec: str
     parent_task_ref: Optional[str] = None
+    # The original task at the root of a recovery chain.  Recovery subtasks
+    # derive their id (``<root>_fix_N``) and their spec (original intent +
+    # accumulated failures) from the root, never from the immediately previous
+    # attempt — see ADR 021.
+    root_task_ref: Optional[str] = None
+    root_spec: Optional[str] = None
+    prior_failures: List[Dict[str, Any]] = Field(default_factory=list)
     depth: int = 0
     flow_type: Optional[str] = None
     wave_id: Optional[str] = None

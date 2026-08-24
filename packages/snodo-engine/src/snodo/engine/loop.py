@@ -120,26 +120,32 @@ def _build_completion_fn(model: str, base_fn: Callable) -> Callable:
     return functools.partial(base_fn, **kwargs)
 
 
-def _build_recovery_spec(original_spec: str, results: list) -> str:
-    """Synthesise a recovery spec from the original task and blocking results.
+def _verdict_signature(failures: list) -> tuple:
+    """A canonical, order-independent signature of a failure list.
 
-    A validator justification is written for a human reading a report, not as a
-    work instruction: it describes state ("the tree contains X") rather than
-    the change required, and it is often truncated mid-sentence.  Feeding it
-    verbatim into a fix task produces a spec the coder cannot act on and that
-    the spec validators then reject, burning a full recovery cycle.
-
-    Instead, restate the original intent and turn each blocking result into an
-    explicit instruction with intent, constraints and acceptance criteria.  The
-    justification is preserved verbatim as context, never truncated.
+    Two lists with the same (validator_id, severity, justification) tuples in
+    the same multiset produce the same signature.  Used to detect a repeated
+    verdict across two recovery attempts (ADR 021).
     """
-    blocking = [
-        r for r in results
-        if r.severity in ("warn", "blocker")
-    ]
+    return tuple(sorted(
+        (f.get("validator_id"), f.get("severity"), f.get("justification"))
+        for f in failures
+    ))
 
+
+def _build_recovery_spec(original_spec: str, failures: list) -> str:
+    """Synthesise a recovery spec from the original intent + accumulated failures.
+
+    The original intent is carried forward exactly once, unchanged.  Each
+    failure is an entry dict of the form ``{"attempt", "validator_id",
+    "severity", "justification"}`` carrying the attempt number that produced
+    it, so the spec never wraps a previous recovery spec and the failure list
+    accumulates instead of nesting (ADR 021).  The justification is preserved
+    verbatim — including the bounded stdout/stderr tail the validator captured.
+    """
     lines = [
-        "Fix the following post-validation failures in the previous attempt.",
+        "Fix the following failures. Each is a real, observed failure from a "
+        "recovery attempt; resolve all of them.",
         "",
         "INTENT (unchanged from the original task):",
         original_spec,
@@ -149,13 +155,14 @@ def _build_recovery_spec(original_spec: str, results: list) -> str:
         "- Address every failure listed below.",
     ]
 
-    if blocking:
+    if failures:
         lines.append("")
-        lines.append("ACCEPTANCE CRITERIA (each must be satisfied):")
-        for i, r in enumerate(blocking, start=1):
+        lines.append("FAILURES (accumulated across recovery attempts):")
+        for f in failures:
+            attempt = f.get("attempt", "?")
             lines.append(
-                f"{i}. Resolve the '{r.validator_id}' failure. "
-                f"Validator report: {r.justification}"
+                f"- [attempt {attempt}] {f['validator_id']} ({f['severity']}): "
+                f"{f['justification']}"
             )
 
     return "\n".join(lines)
@@ -770,7 +777,13 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         return True
 
     def _spawn_recovery_subtask(self, loop_state: LoopState, results: list, decision: Any) -> None:
-        """Spawn a recovery subtask or mark recovery_exhausted if at depth cap."""
+        """Spawn a recovery subtask or mark recovery_exhausted if at depth cap.
+
+        The subtask derives from the ROOT task, not the previous attempt: its id
+        is ``<root>_fix_N`` (linearly numbered by depth) and its spec carries the
+        original intent once plus the accumulated failure list.  A repeated
+        verdict halts the loop before depth is exhausted (ADR 021).
+        """
         current_depth = loop_state.task.depth or 0
         max_depth = self.protocol.execution.max_recovery_depth
 
@@ -788,17 +801,61 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             })
             return
 
-        # Identify triggering validators (warn / blocker)
-        trigger_ids = [
-            r.validator_id for r in results
+        # The root of this recovery chain: the original task id and intent.
+        root_id = loop_state.task.root_task_ref or loop_state.task.id
+        root_spec = loop_state.task.root_spec or loop_state.task.spec
+
+        # Failures produced by THIS attempt, tagged with the 1-based attempt
+        # number (root = 1, fix_1 = 2, ...).
+        attempt_no = current_depth + 1
+        new_failures = [
+            {
+                "attempt": attempt_no,
+                "validator_id": r.validator_id,
+                "severity": r.severity,
+                "justification": r.justification,
+            }
+            for r in results
             if r.severity in ("warn", "blocker")
         ]
-        spec = _build_recovery_spec(loop_state.task.spec, results)
 
+        # Identical repeated verdict: this attempt's failures match the previous
+        # attempt's, so the loop cannot converge.  Stop before spending another
+        # coder call plus a full quorum (ADR 021).
+        previous = [
+            f for f in (loop_state.task.prior_failures or [])
+            if f.get("attempt") == current_depth
+        ]
+        if new_failures and _verdict_signature(previous) == _verdict_signature(new_failures):
+            loop_state.is_blocked = True
+            loop_state.halt_type = "recovery_stalled"
+            loop_state.constraint_violations.append(
+                "Recovery stalled: this attempt produced the same validator "
+                "verdict as the previous attempt; the loop cannot converge."
+            )
+            self._audit("recovery_stalled", {
+                "op": "recovery_stalled",
+                "task_ref": loop_state.task.id,
+                "depth": current_depth,
+                "validator_ids": [f["validator_id"] for f in new_failures],
+            })
+            return
+
+        # Accumulate failures across attempts rather than replacing them.
+        accumulated = list(loop_state.task.prior_failures or []) + new_failures
+        spec = _build_recovery_spec(root_spec, accumulated)
+
+        # Identify triggering validators (warn / blocker)
+        trigger_ids = [f["validator_id"] for f in new_failures]
+
+        fix_number = current_depth + 1
         fix_task = Task(
-            id=f"{loop_state.task.id}_fix_{len(loop_state.spawned_subtasks) + 1}",
+            id=f"{root_id}_fix_{fix_number}",
             spec=spec,
             parent_task_ref=loop_state.task.id,
+            root_task_ref=root_id,
+            root_spec=root_spec,
+            prior_failures=accumulated,
             depth=current_depth + 1,
         )
         loop_state.spawned_subtasks.append(fix_task)

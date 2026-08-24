@@ -5,7 +5,7 @@ depth cap recovery_exhausted, routing, and audit events.
 """
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from snodo.compiler.models import Protocol, Mode, Validator, DisagreementPolicy, ExecutionConfig
 from snodo.engine.loop import GraphBuilder
@@ -261,36 +261,71 @@ class TestRouteAfterPostValidation:
 class TestRecoverySpec:
     """The recovery spec must be an instruction, not a truncated report."""
 
+    def _failures(self, *entries):
+        """Build failure-entry dicts (as _build_recovery_spec consumes them)."""
+        return [dict(e) for e in entries]
+
     def test_spec_is_instruction_not_state_description(self, base_protocol):
         from snodo.engine.loop import _build_recovery_spec
 
-        results = [
-            ValidatorResult(validator_id="quality", severity="blocker",
-                            justification="The tree contains src/scripts/vcard.js"),
-        ]
-        spec = _build_recovery_spec("implement vcard export", results)
+        failures = self._failures(
+            {"attempt": 1, "validator_id": "quality", "severity": "blocker",
+             "justification": "The tree contains src/scripts/vcard.js"},
+        )
+        spec = _build_recovery_spec("implement vcard export", failures)
 
         assert "INTENT" in spec
         assert "CONSTRAINTS" in spec
-        assert "ACCEPTANCE CRITERIA" in spec
+        assert "FAILURES" in spec
         assert "implement vcard export" in spec
         # The justification is preserved verbatim as context, not truncated.
         assert "The tree contains src/scripts/vcard.js" in spec
         # It reads as an instruction, not a bare state description.
-        assert "Resolve the 'quality' failure" in spec
+        assert "quality" in spec
 
     def test_spec_never_truncates_justification(self, base_protocol):
         from snodo.engine.loop import _build_recovery_spec
 
         long_justification = "A" * 600
-        results = [
-            ValidatorResult(validator_id="quality", severity="warn",
-                            justification=long_justification),
-        ]
-        spec = _build_recovery_spec("do the thing", results)
+        failures = self._failures(
+            {"attempt": 1, "validator_id": "quality", "severity": "warn",
+             "justification": long_justification},
+        )
+        spec = _build_recovery_spec("do the thing", failures)
 
         # The full justification survives — no mid-sentence cut.
         assert long_justification in spec
+
+    def test_original_intent_appears_exactly_once(self, base_protocol):
+        """The original intent is carried once, unchanged, never wrapped."""
+        from snodo.engine.loop import _build_recovery_spec
+
+        intent = "implement vcard export"
+        # A prior recovery spec already carries the wrapper text; feeding it in
+        # as a failure must not duplicate the intent.
+        failures = self._failures(
+            {"attempt": 2, "validator_id": "quality", "severity": "blocker",
+             "justification": "still failing"},
+        )
+        spec = _build_recovery_spec(intent, failures)
+        assert spec.count(intent) == 1
+
+    def test_failures_accumulate_across_attempts(self, base_protocol):
+        """Two failures from two attempts both appear, attributed by attempt."""
+        from snodo.engine.loop import _build_recovery_spec
+
+        failures = self._failures(
+            {"attempt": 1, "validator_id": "quality", "severity": "blocker",
+             "justification": "Tests failed (exit 2). Output:\nAssertionError: x"},
+            {"attempt": 2, "validator_id": "quality", "severity": "blocker",
+             "justification": "Tests failed (exit 2). Output:\nTypeError: y"},
+        )
+        spec = _build_recovery_spec("do the thing", failures)
+
+        assert "[attempt 1]" in spec
+        assert "[attempt 2]" in spec
+        assert "AssertionError: x" in spec
+        assert "TypeError: y" in spec
 
     def test_spawned_subtask_uses_synthesised_spec(self, base_protocol):
         def _blocker(task, validators, shell_mcp, **kwargs):
@@ -301,8 +336,175 @@ class TestRecoverySpec:
         state["task"]["spec"] = "original spec"
         result = builder._post_validate_node(state)
         sub = result["spawned_subtasks"][0]
-        assert "Fix the following post-validation failures" in sub["spec"]
+        assert "Fix the following failures" in sub["spec"]
         assert "original spec" in sub["spec"]
         assert "Code quality too low" in sub["spec"]
         # No bare "Fix post-validation issues: ..." prefix.
         assert not sub["spec"].startswith("Fix post-validation issues:")
+
+
+class TestRecoveryLinearIds:
+    """Recovery ids are numbered linearly off the root, never nested."""
+
+    def _spawn(self, depth, task_id="task_X", max_depth=3):
+        protocol = Protocol(
+            protocol_id="test", name="Test", version="1.0.0",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"],
+                         validators=["v1"])],
+            validators=[Validator(validator_id="v1", validator_type="test",
+                                  evaluation_phase="post_execute", criteria=["x"],
+                                  severity_cap="warn")],
+            disagreement_policy=DisagreementPolicy.UNANIMOUS,
+            initial_mode="producer",
+            execution=ExecutionConfig(max_recovery_depth=max_depth),
+        )
+
+        def _blocker(task, validators, shell_mcp, **kwargs):
+            return [ValidatorResult(validator_id="v1", severity="blocker",
+                                    justification="fix me")]
+
+        builder = GraphBuilder(protocol, validator_fn=_blocker)
+        state = _make_state(task_id=task_id, depth=depth)
+        state["task"]["spec"] = "original task"
+        state["task"]["root_task_ref"] = task_id
+        state["task"]["root_spec"] = "implement the vcard export"
+        state["task"]["prior_failures"] = [
+            {"attempt": d, "validator_id": "v1", "severity": "blocker",
+             "justification": f"failure at attempt {d}"}
+            for d in range(1, depth + 1)
+        ]
+        return builder._post_validate_node(state)
+
+    def test_depth_2_spawns_fix_3(self):
+        """At depth 2, the spawned subtask is task_X_fix_3, not nested."""
+        result = self._spawn(depth=2)
+        sub = result["spawned_subtasks"][0]
+        assert sub["id"] == "task_X_fix_3"
+        assert sub["depth"] == 3
+
+    def test_depth_3_spec_has_original_intent_once(self):
+        """A depth-3 recovery spec contains the original intent exactly once."""
+        result = self._spawn(depth=2)
+        sub = result["spawned_subtasks"][0]
+        assert sub["spec"].count("implement the vcard export") == 1
+
+
+class TestRecoveryStalled:
+    """An identical repeated verdict halts recovery before depth is exhausted."""
+
+    def test_repeated_verdict_stalls(self):
+        protocol = Protocol(
+            protocol_id="test", name="Test", version="1.0.0",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"],
+                         validators=["v1"])],
+            validators=[Validator(validator_id="v1", validator_type="test",
+                                  evaluation_phase="post_execute", criteria=["x"],
+                                  severity_cap="warn")],
+            disagreement_policy=DisagreementPolicy.UNANIMOUS,
+            initial_mode="producer",
+            execution=ExecutionConfig(max_recovery_depth=3),
+        )
+
+        def _blocker(task, validators, shell_mcp, **kwargs):
+            return [ValidatorResult(validator_id="v1", severity="blocker",
+                                    justification="same failure")]
+
+        builder = GraphBuilder(protocol, validator_fn=_blocker)
+        # depth=1 with a prior failure at attempt 1 identical to what _blocker
+        # will produce now (attempt 2), so the loop must stall before spawning.
+        state = _make_state(task_id="task_X", depth=1)
+        state["task"]["spec"] = "original task"
+        state["task"]["root_task_ref"] = "task_X"
+        state["task"]["root_spec"] = "original task"
+        state["task"]["prior_failures"] = [
+            {"attempt": 1, "validator_id": "v1", "severity": "blocker",
+             "justification": "same failure"},
+        ]
+        result = builder._post_validate_node(state)
+
+        assert result["is_blocked"] is True
+        assert result["halt_type"] == "recovery_stalled"
+        assert len(result["spawned_subtasks"]) == 0
+
+    def test_distinct_verdict_does_not_stall(self):
+        protocol = Protocol(
+            protocol_id="test", name="Test", version="1.0.0",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"],
+                         validators=["v1"])],
+            validators=[Validator(validator_id="v1", validator_type="test",
+                                  evaluation_phase="post_execute", criteria=["x"],
+                                  severity_cap="warn")],
+            disagreement_policy=DisagreementPolicy.UNANIMOUS,
+            initial_mode="producer",
+            execution=ExecutionConfig(max_recovery_depth=3),
+        )
+
+        def _blocker(task, validators, shell_mcp, **kwargs):
+            return [ValidatorResult(validator_id="v1", severity="blocker",
+                                    justification="a NEW failure")]
+
+        builder = GraphBuilder(protocol, validator_fn=_blocker)
+        state = _make_state(task_id="task_X", depth=1)
+        state["task"]["spec"] = "original task"
+        state["task"]["root_task_ref"] = "task_X"
+        state["task"]["root_spec"] = "original task"
+        state["task"]["prior_failures"] = [
+            {"attempt": 1, "validator_id": "v1", "severity": "blocker",
+             "justification": "old different failure"},
+        ]
+        result = builder._post_validate_node(state)
+
+        assert result["is_blocked"] is False
+        assert result["needs_recovery"] is True
+        assert len(result["spawned_subtasks"]) == 1
+
+
+class TestEvidenceReachesFixTask:
+    """The evidence a validator captured (the command output tail) must reach
+    the fix task verbatim, not as a one-line summary."""
+
+    def test_captured_output_reaches_fix_task_spec(self, base_protocol):
+        # The quality validator now emits the full output tail.  Simulate the
+        # exact shape it produces: a genuine non-zero exit with a captured tail.
+        captured = (
+            "E   AssertionError: assert 3 == 4\n"
+            "E     +  where 3 = len(card.photo)"
+        )
+        justification = f"Tests failed (exit 2). Output:\n{captured}"
+
+        def _blocker(task, validators, shell_mcp, **kwargs):
+            return [ValidatorResult(validator_id="quality", severity="blocker",
+                                    justification=justification)]
+
+        builder = GraphBuilder(base_protocol, validator_fn=_blocker)
+        state = _make_state()
+        state["task"]["spec"] = "implement vcard export"
+        result = builder._post_validate_node(state)
+        sub = result["spawned_subtasks"][0]
+
+        # The captured assertion text is present, not just a summary.
+        assert "assert 3 == 4" in sub["spec"]
+        assert "len(card.photo)" in sub["spec"]
+
+    def test_quality_validator_emits_output_tail(self):
+        """The quality validator's blocker justification carries the full tail,
+        not a one-line summary."""
+        from snodo.validators.quality import QualityValidator
+        from snodo.compiler.models import Validator as V
+
+        spec = V(validator_id="quality", validator_type="quality",
+                 evaluation_phase="post_execute",
+                 tooling={"test_command": "pytest"})
+        qv = QualityValidator(spec, working_directory="/tmp")
+
+        mock_result = MagicMock(
+            returncode=1,
+            stdout="tests/test_card.py::test_photo FAILED\nE   AssertionError: assert 3 == 4\n",
+            stderr="",
+        )
+        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result):
+            result = qv.evaluate()
+
+        assert result.severity == "blocker"
+        assert "AssertionError: assert 3 == 4" in result.justification
+        assert "test_photo FAILED" in result.justification
