@@ -244,6 +244,35 @@ def _ensure_gitignore_entry(gitignore_path: Path) -> bool:
     return True
 
 
+def _commit_gitignore(repo, gitignore_path: Path) -> bool:
+    """Commit .gitignore so `git clean` cannot remove it (and then .snodo/).
+
+    An untracked .gitignore is itself a `git clean -fd` target: the first
+    clean removes it, the second removes the now-unignored .snodo/ — destroying
+    the project id, session store and audit chain. Committing it makes the
+    ignore durable.
+
+    Only .gitignore is staged and committed; any other staged or unstaged
+    changes are left untouched. Returns True on success, False when the commit
+    cannot be made (no identity, unborn branch, hook failure, ...), in which
+    case the caller warns rather than failing init.
+    """
+    try:
+        if gitignore_path.name in repo.git.ls_files().splitlines():
+            return True  # already tracked — nothing to do
+
+        repo.git.add(str(gitignore_path))
+        repo.git.commit("-m", "chore: ignore .snodo/", "--", str(gitignore_path))
+        return True
+    except Exception:
+        # Best-effort: leave the working tree as it was (unstage our add).
+        try:
+            repo.git.reset("--", str(gitignore_path))
+        except Exception:
+            pass
+        return False
+
+
 def init_command(args) -> int:
     """Initialize Snodo project structure."""
     from snodo.infrastructure.paths import resolve_project_root
@@ -318,6 +347,24 @@ def init_command(args) -> int:
             print("Added .snodo/ to .gitignore")
     except Exception as e:
         print(f"Warning: Could not update .gitignore: {e}", file=sys.stderr)
+
+    # Commit .gitignore so `git clean -fd` cannot remove it and then .snodo/.
+    # An untracked .gitignore is itself a clean target: the first clean removes
+    # it, the second removes the now-unignored .snodo/ (project id, sessions,
+    # audit chain). Committing makes the ignore durable.
+    try:
+        from git import Repo
+        repo = Repo(str(Path.cwd()), search_parent_directories=True)
+        if not _commit_gitignore(repo, Path(".gitignore")):
+            print(
+                "Warning: Could not commit .gitignore — .snodo/ is ignored but "
+                "the ignore is not yet durable. Commit .gitignore (or run "
+                "'git add .gitignore && git commit') so 'git clean -fd' cannot "
+                "remove .snodo/.",
+                file=sys.stderr,
+            )
+    except Exception as e:
+        print(f"Warning: Could not commit .gitignore: {e}", file=sys.stderr)
     # Resolve and cache project identity
     try:
         from snodo.config import ConfigManager
