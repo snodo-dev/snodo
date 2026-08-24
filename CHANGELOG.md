@@ -69,6 +69,25 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A task that does not complete now keeps its worktree instead of destroying
+  the only copy of its evidence. `run_cmd.py` removed the worktree in an
+  unconditional `finally`, so a truncated or unparseable coder response — which
+  commits nothing — was deleted with no branch content left to rebuild from.
+  The worktree is now torn down only on a cleanly resolved task (auto-merge is
+  unaffected), and otherwise preserved with output naming the path, the branch,
+  and how to inspect/remove it. `snodo run --retain-worktree` keeps it even on
+  success. Retained worktrees are prunable via the new `snodo worktree`
+  command (`list` / `remove <task_id>` / `prune`), where `prune` defaults to the
+  protocol's `execution.branch_ttl_days`, so nothing accumulates silently. The
+  background job wrapper no longer removes a failed task's worktree either.
+
+  Uncommitted work is deliberately **not** committed to the task branch on
+  teardown: the preserved worktree keeps it on disk for inspection, and
+  auto-committing would mark possibly-garbage coder output as a commit on the
+  branch. An operator who wants the work commits it by hand (or discards it with
+  `snodo worktree remove`); a worktree is never deleted and never silently
+  accumulated.
+
 - The `quality` validator now reports operational faults as `validator_error`
   (a `blocker` result with `error=True`), not as judgements about the work. A
   missing test command, a command not found (exit 127), a non-executable

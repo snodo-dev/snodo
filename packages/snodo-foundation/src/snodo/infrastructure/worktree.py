@@ -152,3 +152,19 @@ def delete_task_branch(project_root: str, branch: str) -> None:
             pass
     except Exception:
         pass
+
+
+def list_worktrees(project_root: str) -> list:
+    """Return the retained worktree directory names, newest last.
+
+    A retained worktree is a sibling directory under ``.snodo-worktrees/`` that
+    was left behind for inspection (a task that did not complete, or one run
+    with ``--retain-worktree``). Names are the task ids the worktrees were
+    created for.
+    """
+    d = worktree_dir(project_root)
+    if not d.is_dir():
+        return []
+    entries = [p for p in d.iterdir() if p.is_dir()]
+    entries.sort(key=lambda p: p.stat().st_mtime)
+    return [p.name for p in entries]
