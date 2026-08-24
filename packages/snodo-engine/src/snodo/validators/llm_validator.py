@@ -14,7 +14,11 @@ Tool-loop (capability-grant):
 - Runs iff validator_spec.tools is non-empty AND MCPs + completion_fn present.
 - Empty/absent tools => single-completion path (no loop, no tools).
 - Explicit grant only — never defaults to the full set.
-- Phase only filters read_diff_between_refs (meaningful post-execute only).
+- Phase filters read_diff_between_refs (meaningful post-execute only) AND
+  reaches the prompt: the judge is told whether it is reviewing a proposal
+  (pre-execute) or inspecting a finished result (post-execute), so a
+  tool-enabled pre-execute judge cannot read "evaluate the task" as "check
+  whether this was done" (see ADR 019).
 """
 
 import json
@@ -49,6 +53,41 @@ _READ_ONLY_TOOL_NAMES: Set[str] = {
 
 # Tools only meaningful when a change is committed (post-execute).
 _POST_EXECUTE_ONLY_TOOLS: Set[str] = {"read_diff_between_refs"}
+
+
+def _phase_frame(phase: str) -> str:
+    """Return the phase statement that tells the judge what it is looking at.
+
+    The same criteria list reads differently depending on phase: at
+    pre-execute the judge is reviewing a proposal (the described work does not
+    exist yet, and its absence is never a finding); at post-execute it is
+    inspecting a finished result (absence of the described work *is* a
+    finding).  Without this frame, a tool-enabled pre-execute judge reads
+    "evaluate the task against the criteria" as "check whether this was done"
+    and blocks on work that cannot exist yet (see ADR 019).
+    """
+    if phase == "post_execute":
+        return (
+            "You are inspecting COMPLETED work. The described change has been "
+            "implemented; judge the finished result against the criteria below. "
+            "Absence of the described work, or of the tests and tooling it "
+            "requires, IS a finding."
+        )
+    if phase == "mode_transition":
+        return (
+            "You are reviewing a mode transition. Judge whether the transition "
+            "as described satisfies the criteria below."
+        )
+    # pre_execute (and any unknown phase) — the safe default is the proposal
+    # frame: absence of implementation is expected and never a finding.
+    return (
+        "You are reviewing a PROPOSAL, before any of it has been built. The "
+        "repository will NOT contain the described work; that is expected and "
+        "is never a finding. Absence of implementation, tooling, tests, or a "
+        "passing build is out of scope for this review and must never be "
+        "cited. Judge only this: if the proposal were carried out as "
+        "described, would it violate a criterion below?"
+    )
 
 
 def _is_gemini3_plus(model: str) -> bool:
@@ -159,7 +198,9 @@ class LLMValidator(ValidatorBase):
         """Run a bounded read-only tool-use loop.
 
         Activated by declared tools on the validator spec (not phase).
-        Phase only filters read_diff_between_refs (meaningful post-execute).
+        Phase filters read_diff_between_refs (meaningful post-execute only)
+        and reaches the prompt via ``_phase_frame``, so the judge knows
+        whether it is reviewing a proposal or inspecting a result.
         """
         workspace = context.workspace_mcp
         git = context.git_mcp
@@ -193,6 +234,9 @@ class LLMValidator(ValidatorBase):
         prompt_parts = [
             f"You are a {self.validator_spec.validator_type} validator for a software development protocol.\n",
             "Evaluate the task against the criteria below.\n",
+            "\n",
+            "## Phase\n",
+            f"{_phase_frame(phase)}\n",
             "\n",
             "## Task\n",
             f"{context.task.spec}\n",
@@ -527,11 +571,21 @@ class LLMValidator(ValidatorBase):
         # Backward compat: accept Task directly for old test code
         if isinstance(context_or_task, Task):
             task = context_or_task
+            phase = ""
         else:
             task = context_or_task.task
+            phase = getattr(context_or_task, "phase", "") or ""
         criteria_text = "\n".join(
             f"  {i+1}. {c}" for i, c in enumerate(self.validator_spec.criteria)
         )
+
+        phase_section = ""
+        if phase:
+            phase_section = (
+                f"\n"
+                f"## Phase\n"
+                f"{_phase_frame(phase)}\n"
+            )
 
         return (
             f"You are a {self.validator_spec.validator_type} validator for a software development protocol.\n"
@@ -539,6 +593,7 @@ class LLMValidator(ValidatorBase):
             f"\n"
             f"## Task\n"
             f"{task.spec}\n"
+            f"{phase_section}"
             f"\n"
             f"## Criteria\n"
             f"{criteria_text}\n"

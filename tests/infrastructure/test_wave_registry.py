@@ -447,3 +447,36 @@ class TestPrompts:
         model = (cfg.classifier.model if cfg.classifier and cfg.classifier.model else None) or DEFAULT_MODEL
         assert model == DEFAULT_MODEL
         assert model != "gemini/gemini-2.0-flash"
+
+
+class TestClassifierConfigReachesCall:
+    """The classification call reads budget/temperature from ClassifierConfig.
+
+    Regression: llm.classifier.max_tokens/temperature were inert — the call
+    read WaveConfig's accidental copies instead (ADR 020).
+    """
+
+    def test_classifier_max_tokens_reaches_call(self, tmp_path):
+        from snodo.infrastructure.config import ClassifierConfig
+
+        reg = _make_registry(tmp_path)
+        reg._classifier = ClassifierConfig(max_tokens=1234, temperature=0.7)
+
+        mock_completion = MagicMock()
+        mock_completion.return_value.choices[0].message.content = json.dumps({
+            "flow_type": "feature",
+            "wave_id": "new",
+            "task_summary": "Add login",
+            "feature_description": "Auth system",
+        })
+        reg.classify_task("build login", "task_001", mock_completion, "gemma-model")
+
+        kwargs = mock_completion.call_args[1]
+        assert kwargs["max_tokens"] == 1234
+        assert kwargs["temperature"] == 0.7
+
+    def test_wave_config_has_no_classifier_knobs(self):
+        """WaveConfig no longer exposes max_tokens/temperature."""
+        cfg = WaveConfig()
+        assert not hasattr(cfg, "max_tokens")
+        assert not hasattr(cfg, "temperature")

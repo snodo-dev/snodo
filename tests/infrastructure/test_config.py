@@ -106,3 +106,54 @@ def test_partial_config_uses_defaults_for_missing_keys():
         assert cfg.coder.max_tokens == 4000
         assert cfg.coder.max_tool_turns == 6  # default
         assert cfg.validator.max_tokens == 1500  # default
+
+
+def test_wave_classifier_keys_migrate_with_deprecation_warning():
+    """Old llm.wave.max_tokens/temperature migrate to llm.classifier, with a warning.
+
+    These were the only working classifier knobs before ADR 020; silently
+    reverting them to defaults is not acceptable, so they are migrated.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text(
+            "llm:\n"
+            "  wave:\n"
+            "    max_tokens: 2000\n"
+            "    temperature: 0.5\n"
+        )
+        with pytest.warns(DeprecationWarning):
+            cfg = load_llm_config(config_dir=tmpdir)
+        assert cfg.classifier.max_tokens == 2000
+        assert cfg.classifier.temperature == 0.5
+        # WaveConfig no longer carries the classifier knobs.
+        assert not hasattr(cfg.wave, "max_tokens")
+        assert not hasattr(cfg.wave, "temperature")
+
+
+def test_classifier_wins_over_deprecated_wave_keys():
+    """When both llm.wave and llm.classifier set a knob, classifier wins."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text(
+            "llm:\n"
+            "  wave:\n"
+            "    max_tokens: 2000\n"
+            "  classifier:\n"
+            "    max_tokens: 3000\n"
+        )
+        with pytest.warns(DeprecationWarning):
+            cfg = load_llm_config(config_dir=tmpdir)
+        assert cfg.classifier.max_tokens == 3000
+
+
+def test_wave_lifetime_keys_do_not_warn():
+    """llm.wave.max_age_days/max_idle_days remain valid and do not warn."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text(
+            "llm:\n"
+            "  wave:\n"
+            "    max_age_days: 30\n"
+            "    max_idle_days: 10\n"
+        )
+        cfg = load_llm_config(config_dir=tmpdir)
+        assert cfg.wave.max_age_days == 30
+        assert cfg.wave.max_idle_days == 10

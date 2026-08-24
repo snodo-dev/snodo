@@ -50,6 +50,9 @@ validators:
   - validator_id: "security"
     validator_type: "security"
     evaluation_phase: "pre_execute"
+    tools:
+      - "read_file"
+      - "list_files"
     criteria:
       - "Check for security vulnerabilities"
       - "Validate input sanitization"
@@ -58,6 +61,9 @@ validators:
   - validator_id: "architecture"
     validator_type: "architecture"
     evaluation_phase: "pre_execute"
+    tools:
+      - "read_file"
+      - "list_files"
     criteria:
       - "Check design patterns"
       - "Validate separation of concerns"

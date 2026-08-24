@@ -571,6 +571,41 @@ class TestCLISetGet:
         captured = capsys.readouterr()
         assert "model" in captured.out
 
+    def test_cli_set_classifier_max_tokens(self, cli_config_dir, capsys):
+        with patch.object(ConfigManager, '__init__', lambda self, **kw: setattr(self, 'config_dir', cli_config_dir) or setattr(self, 'config_path', cli_config_dir / 'config.yml')):
+            with patch('sys.argv', ['snodo', 'config', 'set', 'llm.classifier.max_tokens', '2000']):
+                result = main()
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "llm.classifier.max_tokens" in captured.out
+
+    def test_cli_set_classifier_temperature(self, cli_config_dir, capsys):
+        with patch.object(ConfigManager, '__init__', lambda self, **kw: setattr(self, 'config_dir', cli_config_dir) or setattr(self, 'config_path', cli_config_dir / 'config.yml')):
+            with patch('sys.argv', ['snodo', 'config', 'set', 'llm.classifier.temperature', '0.5']):
+                result = main()
+        assert result == 0
+
+    def test_cli_set_classifier_model(self, cli_config_dir, capsys):
+        with patch.object(ConfigManager, '__init__', lambda self, **kw: setattr(self, 'config_dir', cli_config_dir) or setattr(self, 'config_path', cli_config_dir / 'config.yml')):
+            with patch('sys.argv', ['snodo', 'config', 'set', 'llm.classifier.model', 'deepseek/deepseek-v4-flash']):
+                result = main()
+        assert result == 0
+
+    def test_cli_set_wave_max_age_days(self, cli_config_dir, capsys):
+        with patch.object(ConfigManager, '__init__', lambda self, **kw: setattr(self, 'config_dir', cli_config_dir) or setattr(self, 'config_path', cli_config_dir / 'config.yml')):
+            with patch('sys.argv', ['snodo', 'config', 'set', 'llm.wave.max_age_days', '30']):
+                result = main()
+        assert result == 0
+
+    def test_cli_set_wave_max_tokens_redirects(self, cli_config_dir, capsys):
+        """Deprecated llm.wave.max_tokens points at the new key name."""
+        with patch.object(ConfigManager, '__init__', lambda self, **kw: setattr(self, 'config_dir', cli_config_dir) or setattr(self, 'config_path', cli_config_dir / 'config.yml')):
+            with patch('sys.argv', ['snodo', 'config', 'set', 'llm.wave.max_tokens', '2000']):
+                result = main()
+        assert result == 1
+        err = capsys.readouterr().err
+        assert "classifier.max_tokens" in err
+
 
 # ========== TASK 7.3: SESSION CONFIG TESTS ==========
 

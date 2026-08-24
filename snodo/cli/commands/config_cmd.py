@@ -219,29 +219,54 @@ def _config_get(mgr: ConfigManager, key: str) -> int:
         return 1
 
 
+# Settable llm.* keys and their value type.  classifier.* and the remaining
+# wave.* (lifetime) keys are included so they can be set without hand-editing
+# YAML.  The deprecated wave.max_tokens / wave.temperature are deliberately
+# absent — they moved to classifier.* (ADR 020).
+_LLM_SETTABLE_KEYS = {
+    "coder.max_tokens": int,
+    "coder.max_tool_turns": int,
+    "validator.max_tokens": int,
+    "validator.max_tool_turns": int,
+    "classifier.model": str,
+    "classifier.max_tokens": int,
+    "classifier.temperature": float,
+    "wave.max_age_days": int,
+    "wave.max_idle_days": int,
+}
+
+# Keys that moved section; used to point the user at the new name.
+_LLM_MOVED_KEYS = {
+    "wave.max_tokens": "classifier.max_tokens",
+    "wave.temperature": "classifier.temperature",
+}
+
+
 def _set_llm_value(mgr: ConfigManager, subkey: str, value: str) -> int:
     """Set an llm.* config value."""
-    try:
-        int_value = int(value)
-    except ValueError:
-        print("Error: llm values must be integers", file=sys.stderr)
+    if subkey in _LLM_MOVED_KEYS:
+        print(
+            f"Error: llm.{subkey} moved to llm.{_LLM_MOVED_KEYS[subkey]}.",
+            file=sys.stderr,
+        )
         return 1
 
-    valid_keys = {
-        "coder.max_tokens", "coder.max_tool_turns",
-        "validator.max_tokens", "validator.max_tool_turns",
-    }
-    if subkey not in valid_keys:
+    if subkey not in _LLM_SETTABLE_KEYS:
         print(f"Error: Unknown llm key: llm.{subkey}", file=sys.stderr)
-        print(f"Valid: {', '.join(sorted(valid_keys))}", file=sys.stderr)
+        print(f"Valid: {', '.join(sorted(_LLM_SETTABLE_KEYS))}", file=sys.stderr)
+        return 1
+
+    value_type = _LLM_SETTABLE_KEYS[subkey]
+    try:
+        parsed = value_type(value)
+    except ValueError:
+        print(f"Error: llm.{subkey} must be a {value_type.__name__}", file=sys.stderr)
         return 1
 
     config = mgr.load()
     llm = config.setdefault("llm", {})
-    key_parts = subkey.split(".")
-    if len(key_parts) == 2:
-        section = llm.setdefault(key_parts[0], {})
-        section[key_parts[1]] = int_value
+    section, field = subkey.split(".")
+    llm.setdefault(section, {})[field] = parsed
     mgr.save(config)
     print(f"Set llm.{subkey} = {value}")
     return 0
@@ -258,17 +283,25 @@ def _get_llm_value(subkey: str) -> int:
         return 1
 
     section, field = key_parts[0], key_parts[1]
-    try:
-        if section == "coder":
-            value = getattr(llm_cfg.coder, field)
-        elif section == "validator":
-            value = getattr(llm_cfg.validator, field)
+    sections = {
+        "coder": llm_cfg.coder,
+        "validator": llm_cfg.validator,
+        "classifier": llm_cfg.classifier,
+        "wave": llm_cfg.wave,
+    }
+    obj = sections.get(section)
+    if obj is None:
+        print(f"Error: Unknown llm section: {section}", file=sys.stderr)
+        return 1
+    if not hasattr(obj, field):
+        if subkey in _LLM_MOVED_KEYS:
+            print(
+                f"Error: llm.{subkey} moved to llm.{_LLM_MOVED_KEYS[subkey]}.",
+                file=sys.stderr,
+            )
         else:
-            print(f"Error: Unknown llm section: {section}", file=sys.stderr)
-            return 1
-    except AttributeError:
-        print(f"Error: Unknown llm key: llm.{subkey}", file=sys.stderr)
+            print(f"Error: Unknown llm key: llm.{subkey}", file=sys.stderr)
         return 1
 
-    print(value)
+    print(getattr(obj, field))
     return 0

@@ -21,3 +21,5 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [016](016-token-single-use-sqlite-store.md) | Shared SQLite store for validation-token single-use | 2026-08-22 | `TokenStore` (`tokens.py`) |
 | [017](017-wf1-exclusive-tools.md) | WF1 relaxed to exclusivity on approval-conferring tools | 2026-08-23 | `check_wf1` (`verifier.py`) |
 | [018](018-auto-merge-task-branches.md) | Auto-merge task branches on successful completion | 2026-08-24 | `_merge_on_success` (`run_cmd.py`) |
+| [019](019-phase-aware-validator-prompts.md) | Phase-aware validator prompts + read tools for repository-content validators | 2026-08-24 | `_phase_frame` (`llm_validator.py`) |
+| [020](020-wave-classifier-config.md) | Wave classification reads `ClassifierConfig`; classifier model resolved once | 2026-08-24 | `_migrate_wave_classifier_keys` (`config.py`) |
