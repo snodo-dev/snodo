@@ -343,7 +343,14 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                 "blocked": "blocked"
             }
         )
-        workflow.add_edge("execute", "post_validate")
+        workflow.add_conditional_edges(
+            "execute",
+            self._route_after_execute,
+            {
+                "post_validate": "post_validate",
+                "blocked": "blocked",
+            }
+        )
         workflow.add_conditional_edges(
             "post_validate",
             self._route_after_post_validation,
@@ -611,6 +618,10 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                 loop_state.constraint_violations.append(
                     f"Token store unavailable: {e}"
                 )
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "skipped",
+                    "reason": f"Token store unavailable: {e}",
+                }
                 self._audit("token_store_unavailable", {
                     "op": "token_store_unavailable",
                     "task_ref": loop_state.task.id,
@@ -631,8 +642,15 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                 self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")
             except ExecutionError as e:
                 loop_state.is_blocked = True
-                loop_state.halt_type = "execution_error"
+                loop_state.halt_type = "internal_error"
                 loop_state.constraint_violations.append(str(e))
+                # Mark post-validation as skipped, not passed: the execute step
+                # failed, so there is nothing to validate and a green
+                # post-validation on zero artifacts must never be emitted.
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "skipped",
+                    "reason": str(e),
+                }
                 self._audit("execution_failed", {
                     "op": "execution_failed",
                     "task_ref": loop_state.task.id,
@@ -921,7 +939,18 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             return "execute"
         else:
             return "governance"
-    
+
+    def _route_after_execute(self, state: Dict[str, Any]) -> str:
+        """Route after execution: post-validate on success, block on failure.
+
+        A failed execution must never reach post-validation — validating the
+        unchanged worktree would produce a green verdict on zero artifacts.
+        """
+        loop_state = self._dict_to_state(state)
+        if loop_state.is_blocked:
+            return "blocked"
+        return "post_validate"
+
     def _route_after_move(self, state: Dict[str, Any]) -> str:
         """Route after move_next based on completion."""
         loop_state = self._dict_to_state(state)

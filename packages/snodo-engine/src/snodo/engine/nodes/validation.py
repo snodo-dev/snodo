@@ -168,8 +168,12 @@ class ValidationNodeMixin:
                 )
             except ExecutionError as e:
                 loop_state.is_blocked = True
-                loop_state.halt_type = "execution_error"
+                loop_state.halt_type = "internal_error"
                 loop_state.constraint_violations.append(str(e))
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "skipped",
+                    "reason": str(e),
+                }
                 self._audit("execution_failed", {
                     "op": "execution_failed",
                     "task_ref": loop_state.task.id,

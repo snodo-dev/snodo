@@ -42,19 +42,22 @@ def create_worktree(
     task_id: str,
     spec: str,
     branch: Optional[str] = None,
+    base: Optional[str] = None,
 ) -> Path:
     """Create a git worktree for *task_id*.
 
-    Creates a branch off ``main`` at the worktree path.
+    Creates a branch off the resolved base branch at the worktree path.
     If the worktree already exists (retry), it is force-removed first.
 
     Returns:
         Absolute path to the new worktree.
     """
     from git import Repo, GitCommandError
+    from snodo.tools.git import resolve_base_branch
 
     wt_path = worktree_path(project_root, task_id)
     branch_name = branch or task_branch_name(task_id, spec)
+    base_branch = base or resolve_base_branch(project_root)
 
     repo = Repo(str(Path(project_root)), search_parent_directories=True)
 
@@ -71,8 +74,8 @@ def create_worktree(
     except GitCommandError:
         pass
 
-    repo.git.worktree("add", str(wt_path), "-b", branch_name, "main")
-    _logger.info("Created worktree %s on branch %s", wt_path, branch_name)
+    repo.git.worktree("add", str(wt_path), "-b", branch_name, base_branch)
+    _logger.info("Created worktree %s on branch %s (off %s)", wt_path, branch_name, base_branch)
     return wt_path
 
 
@@ -116,3 +119,36 @@ def remove_worktree(project_root: str, task_id: str) -> None:
     except Exception:
         shutil.rmtree(str(wt_path), ignore_errors=True)
     _logger.info("Removed worktree %s", wt_path)
+
+
+def merge_task_branch(project_root: str, branch: str) -> str:
+    """Merge *branch* into the resolved base branch.
+
+    Returns:
+        ``"merged"`` on success, ``"conflict"`` when the merge conflicts (the
+        merge is aborted and the source branch/worktree are left intact).
+
+    Raises:
+        GitError: on any other git failure.
+    """
+    from snodo.tools.git import GitMCP, MergeConflictError
+
+    git = GitMCP(project_root)
+    try:
+        git.merge_branch(branch)
+        return "merged"
+    except MergeConflictError:
+        return "conflict"
+
+
+def delete_task_branch(project_root: str, branch: str) -> None:
+    """Delete the task branch (best-effort, after a successful merge)."""
+    try:
+        from git import Repo, GitCommandError
+        repo = Repo(str(Path(project_root)), search_parent_directories=True)
+        try:
+            repo.git.branch("-D", branch)
+        except GitCommandError:
+            pass
+    except Exception:
+        pass

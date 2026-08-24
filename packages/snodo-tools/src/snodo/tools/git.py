@@ -20,6 +20,14 @@ class GitError(Exception):
     """Raised when a git operation fails."""
 
 
+class MergeConflictError(GitError):
+    """Raised when a merge conflicts and is left unresolved.
+
+    The merge is aborted so the base branch stays clean; the source branch and
+    its worktree are left intact for a human to resolve.
+    """
+
+
 class PathValidationError(Exception):
     """Raised when path validation fails."""
 
@@ -149,22 +157,42 @@ class GitMCP:
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
 
-    def merge_branch(self, branch: str) -> str:
-        """Merge a branch into main.
+    def merge_branch(self, branch: str, base: Optional[str] = None) -> str:
+        """Merge a branch into the base branch.
 
-        Checks out main and merges the specified branch.
+        Resolves the base branch from the repository (remote default, falling
+        back to ``main``) unless *base* is given explicitly.
+
+        A merge conflict aborts the merge (leaving the base branch clean) and
+        raises :class:`MergeConflictError` so the caller can escalate while the
+        source branch and worktree survive.
 
         Args:
             branch: Name of the branch to merge
+            base: Optional base branch to merge into (default: resolved from repo)
 
         Returns:
             Command output
         """
+        base = base or resolve_base_branch(self.project_root)
         try:
-            self.repo.git.checkout("main")
-            return self.repo.git.merge(branch)
+            self.repo.git.checkout(base)
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+
+        try:
+            return self.repo.git.merge(branch)
+        except GitCommandError as e:
+            stderr = e.stderr.strip() if e.stderr else str(e)
+            if _has_merge_conflict(self.repo):
+                try:
+                    self.repo.git.merge("--abort")
+                except GitCommandError:
+                    pass
+                raise MergeConflictError(
+                    f"Merge conflict merging '{branch}' into '{base}': {stderr}"
+                ) from e
+            raise GitError(f"Git command failed: {stderr}") from e
 
     def delete_branch(self, branch: str) -> str:
         """Delete a git branch.
@@ -273,3 +301,36 @@ def get_git(project_root: Optional[str] = None) -> GitMCP:
         raise ValueError("Git MCP not initialized. Call with project_root first.")
 
     return _git_instance
+
+
+def resolve_base_branch(project_root: str) -> str:
+    """Resolve the repository's base (default) branch.
+
+    Order of resolution:
+    1. The remote's default branch (``refs/remotes/origin/HEAD``).
+    2. ``main``.
+
+    This is the single source of truth for "which branch do task branches
+    diverge from and merge back into" — never assume ``main`` unconditionally.
+    """
+    try:
+        repo = Repo(str(Path(project_root)), search_parent_directories=True)
+    except InvalidGitRepositoryError:
+        return "main"
+
+    # Remote default branch (e.g. origin/HEAD -> refs/remotes/origin/main).
+    try:
+        remote_head = repo.git.symbolic_ref("refs/remotes/origin/HEAD")
+        return remote_head.split("/")[-1]
+    except GitCommandError:
+        pass
+
+    return "main"
+
+
+def _has_merge_conflict(repo) -> bool:
+    """Return True if the repository has unmerged (conflicted) paths."""
+    try:
+        return bool(repo.index.unmerged_blobs())
+    except Exception:
+        return False

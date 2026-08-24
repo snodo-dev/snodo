@@ -325,8 +325,10 @@ def test_execute_node_execution_error(sample_protocol, sample_task):
     
     result = builder._execute_node(initial_state)
     assert result["is_blocked"] is True
-    assert result["halt_type"] == "execution_error"
+    assert result["halt_type"] == "internal_error"
     assert "Execution failed completely" in result["constraint_violations"]
+    # Post-validation is skipped, not passed.
+    assert result["metadata"]["post_validation"]["outcome"] == "skipped"
     mock_audit.append_event.assert_any_call("execution_failed", {
         "op": "execution_failed",
         "task_ref": sample_task.id,
@@ -563,5 +565,92 @@ class TestProgressOutput:
         builder_verbose._validate_node(self._state())
         out = capsys.readouterr().out
         assert "security: warn" in out
+
+
+class TestExecutionFailureReporting:
+    """A failed execution is internal_error, never validated, never called a blocker."""
+
+    def _protocol(self):
+        return Protocol(
+            protocol_id="exec_fail",
+            name="Exec Fail",
+            version="1.0.0",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"],
+                        validators=["pre", "post"])],
+            validators=[
+                Validator(validator_id="pre", validator_type="security",
+                          evaluation_phase="pre_execute"),
+                Validator(validator_id="post", validator_type="quality",
+                          evaluation_phase="post_execute"),
+            ],
+            disagreement_policy=DisagreementPolicy.UNANIMOUS,
+            initial_mode="producer",
+        )
+
+    def _builder(self, executor_fn):
+        from snodo.infrastructure.tokens import TokenIssuer
+        from tests.conftest import TEST_SECRET
+
+        def passing_validator(task, validators, shell_mcp, **kwargs):
+            return [ValidatorResult(validator_id=v.validator_id, severity="pass",
+                                    justification="ok") for v in validators]
+
+        return GraphBuilder(
+            self._protocol(),
+            validator_fn=passing_validator,
+            executor_fn=executor_fn,
+            token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
+        )
+
+    @staticmethod
+    def _state():
+        return {
+            "task": {"id": "t1", "spec": "do thing"},
+            "current_mode": "producer",
+            "iteration": 0,
+            "stage": "governance",
+            "validation_results": [],
+            "validation_token": None,
+            "artifacts": [],
+            "constraints_passed": True,
+            "constraint_violations": [],
+            "policy_decision": None,
+            "is_complete": False,
+            "is_blocked": False,
+            "metadata": {},
+        }
+
+    def test_execute_failure_is_internal_error_and_skips_post_validation(self):
+        from snodo.core.interfaces import ExecutionError
+
+        def failing_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
+            raise ExecutionError("coder produced nothing")
+
+        builder = self._builder(failing_executor)
+        result = builder.build_graph().compile().invoke(self._state())
+
+        assert result["is_blocked"] is True
+        assert result["halt_type"] == "internal_error"
+
+        payload = result["metadata"]["halt_payload"]
+        assert payload["raw_halt_type"] == "internal_error"
+        assert payload["halt_type"] == "internal_error"
+        assert payload["final_decision"] == "internal_error"
+        # The failure reason reaches the top-level reason.
+        assert payload["reason"] is not None
+        assert "coder produced nothing" in payload["reason"]
+        # Post-validation was skipped, not passed.
+        assert payload["post_validation"]["outcome"] == "skipped"
+
+    def test_completed_execution_unaffected(self):
+        def succeeding_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
+            return ["src/thing.py"]
+
+        builder = self._builder(succeeding_executor)
+        result = builder.build_graph().compile().invoke(self._state())
+
+        assert result["is_blocked"] is False
+        assert "src/thing.py" in result["artifacts"]
+        assert result["halt_type"] is None
 
 

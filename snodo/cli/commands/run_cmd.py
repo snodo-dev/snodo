@@ -376,7 +376,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                     pass
 
     # Set up git worktree — shared helper used by BOTH CLI inline and background
-    from snodo.infrastructure.worktree import setup_for_task, remove_worktree
+    from snodo.infrastructure.worktree import setup_for_task, remove_worktree, delete_task_branch
     existing_wt = os.environ.get("SNODO_WORKTREE_PATH")
     worktree_path_val = setup_for_task(project_root, task.id, task.spec, existing_worktree_path=existing_wt)
     worktree_degraded = False
@@ -411,6 +411,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         "depth": task.depth,
     }
 
+    preserve_worktree = False
+    merged_branch = None
     try:
         from snodo.engine.closure import run_to_closure
 
@@ -431,6 +433,12 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             memory_mgr.record_task(project_name, mode)
 
         result = _report_closure(closure_tree, final_state, session_id=session_id)
+
+        # Auto-merge on genuine completion (closure outcome "resolved").
+        if _should_auto_merge(protocol, mode, closure_tree, worktree_path_val, worktree_degraded):
+            result, preserve_worktree, merged_branch = _merge_on_success(
+                project_root, task, result, session_id, audit_log,
+            )
         return result
     finally:
         # Save session checkpoint on exit
@@ -439,12 +447,16 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                 session_manager.save_checkpoint(session_id)
             except Exception:
                 pass
-        # Clean up worktree
-        if worktree_path_val:
+        # Clean up worktree (unless a failed/conflicting merge must survive).
+        if worktree_path_val and not preserve_worktree:
             try:
                 remove_worktree(project_root, task.id)
             except Exception:
                 pass
+        # Delete the task branch after the worktree is gone (a branch checked
+        # out in a worktree cannot be deleted until that worktree is removed).
+        if merged_branch:
+            delete_task_branch(project_root, merged_branch)
         _close_checkpointer(checkpointer)
 
         # Fire-and-forget cloud sync (background thread, never blocks)
@@ -454,6 +466,74 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                 sync_if_enabled(session_id, project_root, audit_log)
             except Exception as e:
                 _logger.warning("Cloud sync hook failed: %s", e)
+
+
+def _should_auto_merge(protocol, mode, closure_tree, worktree_path_val, worktree_degraded) -> bool:
+    """Decide whether a completed task's branch should be merged.
+
+    Requires: auto-merge enabled for the mode (protocol + mode override), the
+    closure genuinely resolved, and real isolation (a worktree was created —
+    if it was not, the work is already in the working tree and there is nothing
+    to merge).
+    """
+    if not getattr(protocol, "auto_merge_enabled", lambda _m: False)(mode):
+        return False
+    if closure_tree is None or closure_tree.outcome != "resolved":
+        return False
+    if worktree_degraded or not worktree_path_val:
+        return False
+    return True
+
+
+def _merge_on_success(project_root, task, result, session_id, audit_log) -> tuple:
+    """Merge the completed task's branch into the base branch.
+
+    Returns (result, preserve_worktree, merged_branch). On a clean merge the
+    branch is queued for deletion (after the worktree is removed) and the
+    worktree is left for the caller's normal teardown. On a conflict the task
+    is escalated: the branch and worktree survive for a human to resolve.
+    """
+    from snodo.infrastructure.worktree import task_branch_name, merge_task_branch
+    from snodo.tools.git import GitError
+
+    branch = task_branch_name(task.id, task.spec)
+    try:
+        outcome = merge_task_branch(project_root, branch)
+    except GitError as e:
+        print(f"✗ Merge failed for {branch}: {e}", file=sys.stderr)
+        print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
+        if audit_log:
+            audit_log.append_event("merge_failed_escalated", {
+                "op": "merge_failed_escalated",
+                "task_ref": task.id,
+                "branch": branch,
+                "error": str(e),
+                "session_id": session_id,
+            })
+        return 1, True, None
+
+    if outcome == "merged":
+        if audit_log:
+            audit_log.append_event("task_merged", {
+                "op": "task_merged",
+                "task_ref": task.id,
+                "branch": branch,
+                "session_id": session_id,
+            })
+        print(f"✓ Merged {branch} into the base branch")
+        return result, False, branch
+
+    # Conflict — escalate, leave branch + worktree intact for a human.
+    print(f"✗ Merge conflict merging {branch} into the base branch.", file=sys.stderr)
+    print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
+    if audit_log:
+        audit_log.append_event("merge_conflict_escalated", {
+            "op": "merge_conflict_escalated",
+            "task_ref": task.id,
+            "branch": branch,
+            "session_id": session_id,
+        })
+    return 1, True, None
 
 
 def _resolve_session(args, session_manager, protocol, project_root):

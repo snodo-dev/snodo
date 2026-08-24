@@ -5,6 +5,7 @@
     "merge"
   ],
   "execution": {
+    "auto_merge": false,
     "branch_prefix": "task",
     "branch_ttl_days": 7,
     "max_recovery_depth": 3,
@@ -16,6 +17,7 @@
   "metadata": {},
   "modes": [
     {
+      "auto_merge": null,
       "coder": null,
       "coder_config": {},
       "constraints": [],
