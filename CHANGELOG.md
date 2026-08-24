@@ -99,6 +99,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Recovery now builds from the original task, not the previous attempt. The
+  fix-task id is numbered linearly off the root (`task_X_fix_1`, `_fix_2`,
+  `_fix_3`) instead of nesting (`task_X_fix_1_fix_1_fix_1`), and the recovery
+  spec carries the original intent once plus the accumulated failure list —
+  each failure attributed to the attempt that produced it — instead of wrapping
+  the previous spec (which `meta-spec` rejected at depth 3 as "repeated
+  recursive text"). The quality validator now emits the bounded stdout/stderr
+  tail on a genuine test failure rather than a one-line summary, so the fix
+  task receives the same evidence the validator captured (test name, assertion,
+  file) instead of an invisible "Tests failed (exit 2): }". A recovery attempt
+  that produces a validator verdict identical to the previous attempt's now
+  halts as `recovery_stalled` (a blocker) instead of exhausting depth. See
+  ADR 021.
+
 - A task that does not complete now keeps its worktree instead of destroying
   the only copy of its evidence. `run_cmd.py` removed the worktree in an
   unconditional `finally`, so a truncated or unparseable coder response — which

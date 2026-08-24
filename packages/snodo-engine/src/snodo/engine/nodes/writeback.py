@@ -27,6 +27,7 @@ _CANONICAL_HALT = {
     "max_iterations": "blocker",
     "execution_error": "internal_error",
     "recovery_exhausted": "blocker",
+    "recovery_stalled": "blocker",
 }
 
 

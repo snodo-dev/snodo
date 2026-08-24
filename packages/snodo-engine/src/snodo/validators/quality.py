@@ -239,11 +239,16 @@ class QualityValidator(ValidatorBase):
                 ),
             )
 
-        summary = self._extract_summary(stdout or stderr)
+        # A genuine test failure must carry the evidence the coder needs to fix
+        # it: the bounded stdout/stderr tail, not a one-line summary.  The
+        # summary collapses the failing test name, assertion and file into
+        # "2 failed", which a recovery spec then relays as an invisible failure
+        # the coder can only guess at (see ADR 021).
+        tail = self._output_tail(stdout, stderr)
         return ValidatorResult(
             validator_id=self.validator_id,
             severity="blocker",
-            justification=f"Tests failed (exit {returncode}): {summary}",
+            justification=f"Tests failed (exit {returncode}). Output:\n{tail}",
         )
 
     @staticmethod
