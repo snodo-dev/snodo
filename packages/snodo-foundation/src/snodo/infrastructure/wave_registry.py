@@ -23,7 +23,7 @@ from typing import Optional
 
 from filelock import FileLock
 
-from snodo.infrastructure.config import WaveConfig
+from snodo.infrastructure.config import ClassifierConfig, WaveConfig
 
 _logger = logging.getLogger(__name__)
 
@@ -63,12 +63,16 @@ class WaveRegistry:
         self,
         project_root: str,
         config: Optional[WaveConfig] = None,
+        classifier: Optional[ClassifierConfig] = None,
     ):
         self._project_root = Path(project_root)
         self._snodo_dir = self._project_root / ".snodo"
         self._wave_path = self._snodo_dir / "wave.json"
         self._lock_path = self._snodo_dir / "wave.json.lock"
+        # Wave lifetime knobs (expiry) come from WaveConfig; the classification
+        # call's budget/temperature come from ClassifierConfig (ADR 020).
         self._config = config or WaveConfig()
+        self._classifier = classifier or ClassifierConfig()
 
     # ------------------------------------------------------------------
     # Public API
@@ -268,8 +272,8 @@ class WaveRegistry:
                 kwargs: dict = {
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": self._config.max_tokens,
-                    "temperature": self._config.temperature,
+                    "max_tokens": self._classifier.max_tokens,
+                    "temperature": self._classifier.temperature,
                 }
 
                 # Request structured JSON when the provider supports it (R4)

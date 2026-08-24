@@ -9,6 +9,8 @@ The ``llm`` section is optional — absent file or missing keys default to the
 current code defaults.
 """
 
+import sys
+import warnings
 from typing import Optional
 
 from pydantic import BaseModel, Field, ValidationError
@@ -24,6 +26,8 @@ __all__ = [
     "ConfigLoadError",
     "CoderConfig",
     "ValidatorConfig",
+    "ClassifierConfig",
+    "WaveConfig",
     "LlmConfig",
 ]
 
@@ -66,8 +70,6 @@ class ReconConfig(BaseModel):
 class WaveConfig(BaseModel):
     max_age_days: int = Field(default=14, ge=1, description="Hard expiry age for a wave")
     max_idle_days: int = Field(default=5, ge=1, description="Idle timeout before wave closes")
-    max_tokens: int = Field(default=500, ge=1, description="Max tokens for classifier completion")
-    temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Temperature for classifier completion")
 
 
 class LlmConfig(BaseModel):
@@ -78,6 +80,63 @@ class LlmConfig(BaseModel):
     classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
     recon: ReconConfig = Field(default_factory=ReconConfig)
     wave: WaveConfig = Field(default_factory=WaveConfig)
+
+
+# The classifier budget/temperature knobs were shipped by accident under
+# ``llm.wave`` (commit 9529e4b wired WaveConfig instead of ClassifierConfig,
+# contradicting its own spec C3).  They were the only working classifier knobs,
+# so they are migrated to ``llm.classifier`` with a deprecation warning rather
+# than dropped — silently reverting a user's raised budget to the default is
+# not acceptable.  See ADR 020.
+_WAVE_CLASSIFIER_KEYS = ("max_tokens", "temperature")
+_wave_migration_warned = False
+
+
+def _migrate_wave_classifier_keys(llm_data: dict) -> dict:
+    """Move deprecated ``llm.wave.max_tokens``/``temperature`` to ``llm.classifier``.
+
+    Mutates and returns *llm_data*.  Values already present under
+    ``llm.classifier`` win; the deprecated wave values are then discarded (but
+    still reported).  Emits a ``DeprecationWarning`` (and a one-time stderr
+    notice, since DeprecationWarning is filtered out of normal runtime output)
+    so the move is never silent.
+    """
+    global _wave_migration_warned
+
+    wave = llm_data.get("wave")
+    if not isinstance(wave, dict):
+        return llm_data
+
+    deprecated = {}
+    for key in _WAVE_CLASSIFIER_KEYS:
+        if key in wave:
+            deprecated[key] = wave.pop(key)
+    if not deprecated:
+        return llm_data
+
+    classifier = llm_data.setdefault("classifier", {})
+    applied = {}
+    for key, value in deprecated.items():
+        if key not in classifier:
+            classifier[key] = value
+            applied[key] = value
+
+    msg = (
+        "llm.wave.max_tokens and llm.wave.temperature have moved to "
+        "llm.classifier.max_tokens and llm.classifier.temperature. "
+        f"Deprecated wave keys found: {sorted(deprecated)}. "
+    )
+    if applied:
+        msg += f"Migrated to llm.classifier: {sorted(applied)}. "
+    else:
+        msg += "llm.classifier already sets these, so the wave values were ignored. "
+    msg += "Update your config.yml to the llm.classifier keys."
+
+    warnings.warn(msg, DeprecationWarning, stacklevel=2)
+    if not _wave_migration_warned:
+        _wave_migration_warned = True
+        print(f"[config] {msg}", file=sys.stderr)
+    return llm_data
 
 
 def load_llm_config(config_dir: Optional[str] = None) -> LlmConfig:
@@ -114,6 +173,8 @@ def load_llm_config(config_dir: Optional[str] = None) -> LlmConfig:
     llm_data = data.get("llm") if isinstance(data, dict) else None
     if not isinstance(llm_data, dict):
         return LlmConfig()
+
+    llm_data = _migrate_wave_classifier_keys(llm_data)
 
     try:
         return LlmConfig(**llm_data)

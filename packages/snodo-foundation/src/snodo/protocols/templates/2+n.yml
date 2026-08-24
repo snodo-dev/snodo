@@ -48,6 +48,9 @@ validators:
   - validator_id: "security"
     validator_type: "security"
     evaluation_phase: "pre_execute"
+    tools:
+      - "read_file"
+      - "list_files"
     criteria:
       - "Check the task spec against OWASP Top 10 categories: injection, broken authentication, sensitive data exposure, XXE, broken access control, security misconfiguration, XSS, insecure deserialization, vulnerable components, insufficient logging"
       - "Verify no hardcoded credentials, secrets, tokens, or API keys in the implementation plan"
@@ -56,6 +59,9 @@ validators:
   - validator_id: "architecture"
     validator_type: "architecture"
     evaluation_phase: "pre_execute"
+    tools:
+      - "read_file"
+      - "list_files"
     criteria:
       - "Check the spec aligns with SOLID principles: single responsibility, open/closed, Liskov substitution, interface segregation, dependency inversion"
       - "Flag tight coupling between modules or unclear separation of concerns that violates established architectural patterns"
@@ -64,6 +70,9 @@ validators:
   - validator_id: "conventions"
     validator_type: "conventions"
     evaluation_phase: "pre_execute"
+    tools:
+      - "read_file"
+      - "list_files"
     criteria:
       - "Check the spec follows project naming conventions, file organization, and module boundaries"
       - "Verify documentation requirements: docstrings for public APIs, type hints, inline comments for non-obvious logic"

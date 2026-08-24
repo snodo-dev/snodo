@@ -35,6 +35,36 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- LLM validator prompts are now phase-aware. The judge is told whether it is
+  reviewing a proposal (pre-execute) or inspecting a finished result
+  (post-execute), so a tool-enabled pre-execute validator can no longer read
+  "evaluate the task against the criteria" as "check whether this was done" and
+  block on work that cannot exist yet. The phase frame is written into the
+  engine, not into each protocol author's criteria. See ADR 019.
+
+- The `solo`, `team`, and `2+n` templates now grant `read_file` and `list_files`
+  to their `security` and `architecture` validators (and `conventions` in
+  `2+n`), whose criteria are phrased as facts about the repository. `meta-spec`
+  still gets no tools — it judges the spec, and the spec is all it should see.
+  The read-only allowlist is unchanged. See ADR 019.
+
+- Wave classification now reads its budget and temperature from
+  `llm.classifier` instead of `llm.wave`. `llm.classifier.max_tokens` and
+  `llm.classifier.temperature` were inert — the classifier call read `WaveConfig`'s
+  accidental copies, so raising the budget under `llm.classifier` had no effect.
+  `WaveConfig` now keeps only `max_age_days` / `max_idle_days`. The classifier
+  model is resolved exactly once, so the completion function's bound model and
+  api_base can no longer disagree with the model passed to the call. The
+  duplicated classification path in `loop.py` and `governance.py` is collapsed
+  into one. See ADR 020.
+
+- `llm.wave.max_tokens` / `llm.wave.temperature` are migrated to
+  `llm.classifier` on load, with a deprecation warning naming the new keys —
+  they were the only working classifier knobs, so they are moved rather than
+  silently dropped. `snodo config set` now accepts `classifier.*` and the
+  remaining `wave.*` keys, and rejects the deprecated wave keys with a pointer
+  to the new name. See ADR 020.
+
 - `snodo` is now a PEP 420 namespace package: the six top-level `snodo/__init__.py`
   files (one per workspace package) are removed, and the version is exposed via
   `snodo/version.py` (`from snodo.version import __version__`). This makes the

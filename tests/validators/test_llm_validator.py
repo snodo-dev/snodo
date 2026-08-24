@@ -1041,6 +1041,139 @@ class TestPreExecuteRegression:
         assert "Backward compat" in result.justification
 
 
+# === Phase-Aware Prompt Tests ===
+
+class TestPhaseAwarePrompt:
+    """The judge prompt must state the phase, so a tool-enabled pre-execute
+    validator cannot read "evaluate the task" as "check whether this was done".
+
+    Regression: on a real project, two tool-enabled pre-execute judges returned
+    blocker on an empty repository because the code did not exist yet — which is
+    the definition of pre-execute.  The prompt now carries a phase frame.
+    """
+
+    def _make_tool_validator(self, security_validator, phase):
+        return Validator(
+            validator_id=security_validator.validator_id,
+            validator_type=security_validator.validator_type,
+            evaluation_phase=phase,
+            criteria=list(security_validator.criteria),
+            tools=["read_file", "list_files"],
+        )
+
+    def _make_context(self, completion_fn, phase, workspace_mcp, git_mcp):
+        from snodo.validators.context import ValidatorContext
+        task = Task(id="t1", spec="Implement user login with OAuth2")
+        return ValidatorContext(
+            task=task,
+            completion_fn=completion_fn,
+            model="gpt-4",
+            workspace_mcp=workspace_mcp,
+            git_mcp=git_mcp,
+            phase=phase,
+        )
+
+    def _first_prompt(self, completion_fn):
+        """Return the first user message content sent to the completion fn."""
+        return completion_fn.call_args_list[0][1]["messages"][0]["content"]
+
+    def test_pre_execute_tool_loop_states_proposal_frame(self, security_validator):
+        """A pre-execute validator with tools is told it is reviewing a proposal.
+
+        This is the case that previously produced a blocker: an empty repository
+        (list_files returns []) plus a tool-enabled pre-execute judge.  The
+        prompt must now state that absence of implementation is never a finding.
+        """
+        mock_workspace = MagicMock()
+        mock_workspace.list_files.return_value = []
+        mock_git = MagicMock()
+
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = None
+        tc = MagicMock()
+        tc.id = "tc_verdict"
+        tc.function.name = "submit_verdict"
+        tc.function.arguments = json.dumps({
+            "severity": "pass",
+            "justification": "Proposal does not violate any criterion",
+        })
+        resp.choices[0].message.tool_calls = [tc]
+        completion_fn = MagicMock(return_value=resp)
+
+        validator = LLMValidator(
+            self._make_tool_validator(security_validator, "pre_execute"),
+            completion_fn,
+        )
+        ctx = self._make_context(completion_fn, "pre_execute", mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        prompt = self._first_prompt(completion_fn)
+        assert "PROPOSAL" in prompt
+        assert "never a finding" in prompt
+        assert "COMPLETED work" not in prompt
+
+    def test_post_execute_tool_loop_states_result_frame(self, security_validator):
+        """A post-execute validator is told it is inspecting completed work."""
+        mock_workspace = MagicMock()
+        mock_workspace.list_files.return_value = ["src/auth.py"]
+        mock_git = MagicMock()
+
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = None
+        tc = MagicMock()
+        tc.id = "tc_verdict"
+        tc.function.name = "submit_verdict"
+        tc.function.arguments = json.dumps({
+            "severity": "pass",
+            "justification": "Result satisfies the criteria",
+        })
+        resp.choices[0].message.tool_calls = [tc]
+        completion_fn = MagicMock(return_value=resp)
+
+        validator = LLMValidator(
+            self._make_tool_validator(security_validator, "post_execute"),
+            completion_fn,
+        )
+        ctx = self._make_context(completion_fn, "post_execute", mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        prompt = self._first_prompt(completion_fn)
+        assert "COMPLETED work" in prompt
+        assert "IS a finding" in prompt
+        assert "PROPOSAL" not in prompt
+
+    def test_single_completion_prompt_includes_phase(self, security_validator, task):
+        """The single-completion path also states the phase when one is known."""
+        from snodo.validators.context import ValidatorContext
+
+        completion_fn = _make_completion_fn("pass", "OK")
+        validator = LLMValidator(security_validator, completion_fn)
+
+        ctx = ValidatorContext(
+            task=task,
+            completion_fn=completion_fn,
+            model="gpt-4",
+            phase="pre_execute",
+        )
+        validator.evaluate(ctx)
+
+        prompt = completion_fn.call_args[1]["messages"][0]["content"]
+        assert "PROPOSAL" in prompt
+        assert "never a finding" in prompt
+
+    def test_backward_compat_task_direct_has_no_phase_section(self, security_validator, task):
+        """Passing a bare Task (no phase) omits the phase section entirely."""
+        validator = LLMValidator(security_validator, _make_completion_fn())
+        prompt = validator._build_prompt(task)
+        assert "## Phase" not in prompt
+
+
 # === Structured Output Tests ===
 
 class TestStructuredOutput:

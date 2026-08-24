@@ -56,7 +56,10 @@
       "model": null,
       "severity_cap": null,
       "tooling": {},
-      "tools": [],
+      "tools": [
+        "read_file",
+        "list_files"
+      ],
       "validator_id": "security",
       "validator_type": "security"
     },
@@ -71,7 +74,10 @@
       "model": null,
       "severity_cap": null,
       "tooling": {},
-      "tools": [],
+      "tools": [
+        "read_file",
+        "list_files"
+      ],
       "validator_id": "architecture",
       "validator_type": "architecture"
     },

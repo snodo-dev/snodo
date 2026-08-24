@@ -171,6 +171,34 @@ def test_team_wf1_exclusive_tools():
         assert len(holders) <= 1, f"exclusive tool '{tool}' held by {holders}"
 
 
+def test_repository_content_validators_grant_read_tools():
+    """security/architecture (and conventions in 2+n) grant read_file+list_files.
+
+    These validators carry criteria phrased as facts about the repository, so
+    they must be able to open it.  meta-spec deliberately gets none — it judges
+    the spec, and the spec is all it should see.
+    """
+    read_tools = {"read_file", "list_files"}
+
+    for name in ("solo", "team", "2+n"):
+        p = _load(name)
+        for vid in ("security", "architecture"):
+            v = p.get_validator(vid)
+            assert v is not None, f"{name}: missing {vid}"
+            assert set(v.tools) == read_tools, f"{name}.{vid} tools={v.tools}"
+
+    # 2+n also grants conventions (naming/file-organization criteria).
+    p = _load("2+n")
+    assert set(p.get_validator("conventions").tools) == read_tools
+
+    # meta-spec judges the spec only — no tools, in every template that ships it.
+    for name in ("solo", "team", "2+n"):
+        p = _load(name)
+        meta = p.get_validator("meta-spec")
+        assert meta is not None
+        assert meta.tools == [], f"{name}.meta-spec should have no tools"
+
+
 def test_2plus_n_wf1_exclusive_tools():
     p = _load("2+n")
     producer = p.get_mode("producer")

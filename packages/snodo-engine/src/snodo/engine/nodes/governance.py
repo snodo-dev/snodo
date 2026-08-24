@@ -97,18 +97,28 @@ class GovernanceNodeMixin:
                     self._authorized_decisions = [a for a in auth if isinstance(a, str)]
 
     def _classify_wave(self, loop_state: LoopState) -> None:
-        """On first iteration, classify flow_type and assign/ mint wave."""
+        """On first iteration, classify flow_type and assign/ mint wave.
+
+        Single classification path for the engine (ADR 020).  The classifier
+        model is resolved once in ``GraphBuilder.__init__`` and stored on
+        ``self._classifier_model``; the same value binds the completion
+        function and is passed to the call, so model and api_base can never
+        diverge.  Wave lifetime comes from ``llm.wave``; the classification
+        budget/temperature come from ``llm.classifier``.
+        """
         if loop_state.iteration == 1 and self._project_root:
             try:
                 from snodo.infrastructure.config import load_llm_config
                 from snodo.infrastructure.wave_registry import WaveRegistry
                 llm_cfg = load_llm_config()
-                registry = WaveRegistry(self._project_root, config=llm_cfg.wave)
-                classifier_model = (
-                    llm_cfg.classifier.model
-                    if llm_cfg.classifier and llm_cfg.classifier.model
-                    else self._default_model
+                registry = WaveRegistry(
+                    self._project_root,
+                    config=llm_cfg.wave,
+                    classifier=llm_cfg.classifier,
                 )
+                classifier_model = getattr(
+                    self, "_classifier_model", None
+                ) or self._default_model
                 result = registry.classify_task(
                     loop_state.task.spec,
                     loop_state.task.id,

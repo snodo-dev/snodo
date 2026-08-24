@@ -266,6 +266,10 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             classifier_completion_fn = validator_completion_fn
 
         self._classifier_completion_fn = classifier_completion_fn
+        # The classifier model is resolved exactly once, here.  The same value
+        # binds the completion function (model + api_base) and is passed to the
+        # classification call, so the two can never disagree (ADR 020).
+        self._classifier_model = classifier_model
         self._validator_runner = ValidatorRunner(
             protocol=self.protocol,
             completion_fn=validator_completion_fn,
@@ -422,34 +426,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         loop_state = self._maybe_summarize(loop_state)
 
         # On first iteration, classify flow_type and assign/ mint wave
-        if loop_state.iteration == 1 and self._project_root:
-            try:
-                from snodo.infrastructure.config import load_llm_config
-                from snodo.infrastructure.wave_registry import WaveRegistry
-                llm_cfg = load_llm_config()
-                registry = WaveRegistry(self._project_root, config=llm_cfg.wave)
-                classifier_model = (
-                    llm_cfg.classifier.model
-                    if llm_cfg.classifier and llm_cfg.classifier.model
-                    else self._default_model
-                )
-                result = registry.classify_task(
-                    loop_state.task.spec,
-                    loop_state.task.id,
-                    getattr(self, "_classifier_completion_fn", self._completion_fn),
-                    classifier_model,
-                )
-                loop_state.task.flow_type = result.get("flow_type") or "feature"
-                loop_state.task.wave_id = result.get("wave_id") or ""
-                if result.get("task_summary"):
-                    loop_state.metadata["task_summary"] = result["task_summary"]
-                self._auto_write_classification(loop_state)
-            except Exception as exc:
-                import sys as _sys
-                print(
-                    f"[WAVE] classification failed for {loop_state.task.id}: {exc}",
-                    file=_sys.stderr,
-                )
+        self._classify_wave(loop_state)
 
         loop_state = self.governance_fn(loop_state, self.protocol)
 
