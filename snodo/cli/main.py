@@ -76,7 +76,7 @@ def _app_callback(
         )
 
     if version:
-        from snodo import __version__
+        from snodo.version import __version__
         print(f"snodo {__version__}")
         raise typer.Exit()
     if ctx.invoked_subcommand is None:

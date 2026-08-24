@@ -105,12 +105,15 @@ class TestMain:
         job_dir = self._prepare_job_dir(tmp_path)
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
-            with patch("snodo.cli.main.main", return_value=0) as mock_cli:
+            with patch("snodo.jobs.wrapper.subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 0
                 with pytest.raises(SystemExit) as exc_info:
                     main()
 
         assert exc_info.value.code == 0
-        mock_cli.assert_called_once_with(argv=["run", "task"])
+        mock_run.assert_called_once_with(
+            [sys.executable, "-m", "snodo", "run", "task"], check=False
+        )
 
         state = _load_state(job_dir)
         assert state["status"] == "completed"
@@ -124,7 +127,8 @@ class TestMain:
         job_dir = self._prepare_job_dir(tmp_path)
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
-            with patch("snodo.cli.main.main", return_value=1):
+            with patch("snodo.jobs.wrapper.subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 1
                 with pytest.raises(SystemExit) as exc_info:
                     main()
 
@@ -141,7 +145,8 @@ class TestMain:
         job_dir = self._prepare_job_dir(tmp_path)
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
-            with patch("snodo.cli.main.main", return_value=None):
+            with patch("snodo.jobs.wrapper.subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 0
                 with pytest.raises(SystemExit) as exc_info:
                     main()
 
@@ -153,12 +158,13 @@ class TestMain:
 
     @patch("snodo.jobs.wrapper.time")
     def test_system_exit_with_int_code(self, mock_time, tmp_path):
-        """main() captures SystemExit and uses its int code."""
+        """main() captures non-zero subprocess returncode as failure."""
         mock_time.time.return_value = 1700000000.0
         job_dir = self._prepare_job_dir(tmp_path)
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
-            with patch("snodo.cli.main.main", side_effect=SystemExit(3)):
+            with patch("snodo.jobs.wrapper.subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 3
                 with pytest.raises(SystemExit) as exc_info:
                     main()
 
@@ -170,12 +176,13 @@ class TestMain:
 
     @patch("snodo.jobs.wrapper.time")
     def test_system_exit_with_zero_code(self, mock_time, tmp_path):
-        """main() treats SystemExit(0) as success."""
+        """main() treats subprocess returncode 0 as success."""
         mock_time.time.return_value = 1700000000.0
         job_dir = self._prepare_job_dir(tmp_path)
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
-            with patch("snodo.cli.main.main", side_effect=SystemExit(0)):
+            with patch("snodo.jobs.wrapper.subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 0
                 with pytest.raises(SystemExit) as exc_info:
                     main()
 
@@ -187,12 +194,13 @@ class TestMain:
 
     @patch("snodo.jobs.wrapper.time")
     def test_system_exit_with_non_int_code(self, mock_time, tmp_path):
-        """main() treats SystemExit with non-int code as exit_code=1."""
+        """main() treats a non-zero subprocess returncode as failure."""
         mock_time.time.return_value = 1700000000.0
         job_dir = self._prepare_job_dir(tmp_path)
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
-            with patch("snodo.cli.main.main", side_effect=SystemExit("error message")):
+            with patch("snodo.jobs.wrapper.subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 1
                 with pytest.raises(SystemExit) as exc_info:
                     main()
 
@@ -209,7 +217,7 @@ class TestMain:
         job_dir = self._prepare_job_dir(tmp_path)
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
-            with patch("snodo.cli.main.main", side_effect=RuntimeError("boom")):
+            with patch("snodo.jobs.wrapper.subprocess.run", side_effect=RuntimeError("boom")):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
 
@@ -243,7 +251,8 @@ class TestMain:
             return state
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
-            with patch("snodo.cli.main.main", return_value=0):
+            with patch("snodo.jobs.wrapper.subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 0
                 with patch("snodo.jobs.wrapper._load_state", side_effect=patched_load):
                     with pytest.raises(SystemExit) as exc_info:
                         main()
@@ -263,13 +272,13 @@ class TestMain:
 
         states_during_run = []
 
-        def capture_state(argv):
+        def capture_state(cmd, check=False):
             """Capture state as seen during CLI execution."""
             states_during_run.append(_load_state(job_dir))
-            return 0
+            return type("Proc", (), {"returncode": 0})()
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "task"]):
-            with patch("snodo.cli.main.main", side_effect=capture_state):
+            with patch("snodo.jobs.wrapper.subprocess.run", side_effect=capture_state):
                 with pytest.raises(SystemExit):
                     main()
 
@@ -281,13 +290,17 @@ class TestMain:
 
     @patch("snodo.jobs.wrapper.time")
     def test_argv_passed_to_cli(self, mock_time, tmp_path):
-        """main() passes everything after job_dir as argv to cli_main."""
+        """main() passes everything after job_dir as argv to the CLI subprocess."""
         mock_time.time.return_value = 1700000000.0
         job_dir = self._prepare_job_dir(tmp_path)
 
         with patch.object(sys, "argv", ["wrapper", job_dir, "run", "my task", "--mock", "--verbose"]):
-            with patch("snodo.cli.main.main", return_value=0) as mock_cli:
+            with patch("snodo.jobs.wrapper.subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 0
                 with pytest.raises(SystemExit):
                     main()
 
-        mock_cli.assert_called_once_with(argv=["run", "my task", "--mock", "--verbose"])
+        mock_run.assert_called_once_with(
+            [sys.executable, "-m", "snodo", "run", "my task", "--mock", "--verbose"],
+            check=False,
+        )

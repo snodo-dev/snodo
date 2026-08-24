@@ -458,7 +458,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
     # First run: provision
     if not tunnel_config.get("tunnel_token"):
-        from snodo import __version__
+        from snodo.version import __version__
         short_id = _generate_short_id()
 
         try:

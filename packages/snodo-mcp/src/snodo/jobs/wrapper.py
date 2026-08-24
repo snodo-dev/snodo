@@ -4,12 +4,15 @@ FILE: snodo/jobs/wrapper.py
 
 Invoked as: python -m snodo.jobs.wrapper <job_dir> run "task" [--flags...]
 
-Calls snodo.cli.main.main(argv) with the provided arguments,
-then writes final status + exit_code to state.json.
+Runs the snodo CLI as a subprocess with the provided arguments, then writes
+final status + exit_code to state.json. The CLI is invoked as a subprocess
+rather than imported in-process so the mcp layer (snodo.jobs) does not depend
+on the app layer (snodo.cli).
 """
 
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -65,11 +68,9 @@ def main():
 
     exit_code = 1
     try:
-        from snodo.cli.main import main as cli_main
-        result = cli_main(argv=argv)
-        exit_code = result if isinstance(result, int) else 0
-    except SystemExit as e:
-        exit_code = e.code if isinstance(e.code, int) else 1
+        cmd = [sys.executable, "-m", "snodo", *argv]
+        proc = subprocess.run(cmd, check=False)
+        exit_code = proc.returncode
     except Exception as e:
         print(f"Job wrapper error: {e}", file=sys.stderr)
         exit_code = 1

@@ -43,7 +43,7 @@ Cloudflare. Everything up to deploy works without either.
 ## 2. Create the project
 
 ```bash
-mkdir ~/Dev/nfc-card-v2 && cd ~/Dev/nfc-card-v2
+mkdir ~/Dev/mycard && cd ~/Dev/mycard
 git init
 git commit --allow-empty -m "init"
 snodo init --template greenfield

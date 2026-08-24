@@ -77,6 +77,7 @@ snodo-prompt = "snodo.prompt_cmd:main"
 
 [tool.setuptools.packages.find]
 include = ["snodo*"]
+namespaces = true
 
 [tool.setuptools.package-data]
 snodo = ["py.typed"]

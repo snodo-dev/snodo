@@ -19,7 +19,7 @@ from snodo.dashboard.panels import get_panel
 
 def _snodo_version() -> str:
     try:
-        from snodo import __version__
+        from snodo.version import __version__
         return __version__
     except Exception:
         return "unknown"
