@@ -63,10 +63,10 @@ execution:
 
 ### `max_recovery_depth` tradeoff
 
-The recovery depth cap controls how deep the engine recurses when spawning subtasks to fix validator rejections:
+The recovery depth cap controls how deep the engine recurses when spawning subtasks to fix validator rejections. It is configured at the protocol level (`execution.max_recovery_depth`, default `3`) and can be overridden per mode (`mode.max_recovery_depth`). When a mode is silent (`null`), it inherits the protocol's setting.
 
-- **Established Repositories (`max_recovery_depth: 3`, default)**: When a codebase has a stable, verified build and test harness, validator rejections stem from implementation bugs or criterion mismatches. Legitimate fixes often require 2–3 incremental subtask turns (e.g., fixing the primary implementation, then addressing edge-case test failures). Recovery stall detection (which halts after 2 identical validator verdicts) and `max_total_fix_attempts` prevent runaway loops if non-convergence occurs.
-- **Greenfield & Bootstrap Projects (`max_recovery_depth: 1`)**: In a new repository with placeholder test commands or unverified tooling, early validator failures are usually setup/environment errors (missing lockfiles, broken test runners) that automated subtasks cannot fix. Capping recovery at depth 1 bounds expenditure to a single recovery attempt until the project environment is verified by the operator.
+- **Established Repositories / Feature Build Modes (`max_recovery_depth: 3`, default)**: When a codebase has a stable, verified build and test harness, validator rejections stem from implementation bugs or criterion mismatches. Legitimate fixes often require 2–3 incremental subtask turns (e.g., fixing the primary implementation, then addressing edge-case test failures). Recovery stall detection (which halts after 2 identical validator verdicts) and `max_total_fix_attempts` prevent runaway loops if non-convergence occurs.
+- **Greenfield Setup Modes (`max_recovery_depth: 1`)**: In bootstrap phases like `decide` or `scaffold`, early validator failures are setup or environment faults (unrecorded ADRs, missing lockfiles, placeholder test commands like `REPLACE_ME`) that subtasks cannot fix without human intervention. Setting `max_recovery_depth: 1` on setup modes bounds expenditure to a single recovery attempt, while allowing the downstream `build` mode to use `max_recovery_depth: 3` once the harness is verified.
 
 ---
 
@@ -98,6 +98,8 @@ modes:
 | `constraints` | list[Constraint] | no | Mode-specific constraints |
 | `coder` | string | no | Coder backend (`"litellm"`, `"mock"`) |
 | `coder_config` | dict | no | Coder backend configuration |
+| `auto_merge` | bool | no | Override protocol-level `execution.auto_merge` for this mode (default `null`) |
+| `max_recovery_depth` | int | no | Override protocol-level `execution.max_recovery_depth` for this mode (default `null`) |
 
 ### Tool set restrictions (WF1)
 

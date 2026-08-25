@@ -483,3 +483,37 @@ def test_auto_merge_mode_override_off():
     """A mode can opt out even when the protocol default is on."""
     p = _auto_merge_protocol(execution_auto_merge=True, mode_auto_merge=False)
     assert p.auto_merge_enabled("producer") is False
+
+
+# ========== per-mode max_recovery_depth configuration ==========
+
+def _recovery_depth_protocol(execution_depth=3, mode_depth=None):
+    from snodo.compiler.models import ExecutionConfig
+    return Protocol(
+        protocol_id="rec_depth",
+        name="Recovery Depth Protocol",
+        modes=[
+            Mode(
+                mode_id="producer",
+                name="Producer",
+                tools=["edit"],
+                validators=["v1"],
+                max_recovery_depth=mode_depth,
+            )
+        ],
+        validators=[Validator(validator_id="v1", validator_type="security")],
+        initial_mode="producer",
+        execution=ExecutionConfig(max_recovery_depth=execution_depth),
+    )
+
+
+def test_max_recovery_depth_defaults_to_protocol():
+    """Silent mode inherits protocol execution.max_recovery_depth."""
+    p = _recovery_depth_protocol(execution_depth=3, mode_depth=None)
+    assert p.max_recovery_depth_for("producer") == 3
+
+
+def test_max_recovery_depth_mode_override():
+    """Mode-level max_recovery_depth overrides protocol-level setting."""
+    p = _recovery_depth_protocol(execution_depth=3, mode_depth=1)
+    assert p.max_recovery_depth_for("producer") == 1

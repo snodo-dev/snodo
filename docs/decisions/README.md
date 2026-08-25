@@ -31,4 +31,5 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [026](026-protocol-protected-from-agent-mutation.md) | Protocol and governance state protected from agent tool-surface mutation | 2026-08-24 | `workspace.py` + `git.py` + `coders/` |
 | [027](027-in-place-coder-snodo-mutation-halt.md) | In-place coder .snodo/ mutations are detected and halt as a blocker | 2026-08-25 | `coders/base.py` + `engine/loop.py` |
 | [028](028-acceptance-validator.md) | Post-execute acceptance validator judges artifacts against the task's acceptance criteria | 2026-08-25 | `validators/acceptance.py` + `validators/runner.py` |
+| [029](029-per-mode-recovery-depth.md) | Per-mode max_recovery_depth override | 2026-08-25 | `resolve_mode_setting` (`models.py`) |
 
