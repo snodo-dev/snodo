@@ -16,15 +16,21 @@ from pathlib import Path
 from typing import Any, Optional
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
-from snodo.coders.base import CoderAdapter, LLMCallError
+from snodo.coders.base import InPlaceCoderAdapter, LLMCallError
 
 _logger = logging.getLogger(__name__)
 
 _OPENCODE_TIMEOUT = 1800  # 30 minutes (big repos e.g. django/matplotlib need >10m)
 
 
-class OpenCodeCLIAdapter(CoderAdapter):
-    """Coder adapter backed by the host ``opencode run`` CLI."""
+class OpenCodeCLIAdapter(InPlaceCoderAdapter):
+    """Coder adapter backed by the host ``opencode run`` CLI.
+
+    Writes to the working tree in place (never through WorkspaceMCP), so the
+    .snodo/ boundary is enforced by the base class: a post-run .snodo/
+    mutation raises ``SnodoMutationError`` instead of being filtered out of
+    the artifact report (Fixes #52, ADR 027).
+    """
 
     skip_engine_commit: bool = True
     skip_workspace_write: bool = True
@@ -58,7 +64,7 @@ class OpenCodeCLIAdapter(CoderAdapter):
             return model[len("opencode-cli/"):]
         return model
 
-    def implement(self, spec: TaskSpec) -> CodeArtifact:
+    def _implement_in_place(self, spec: TaskSpec) -> CodeArtifact:
         """Run ``opencode run`` on the host and read back changes via git.
 
         1. Build prompt from the TaskSpec
@@ -198,10 +204,6 @@ class OpenCodeCLIAdapter(CoderAdapter):
         for entry in diff_entries:
             path = entry.get("file", "")
             if not path:
-                continue
-            rel_parts = Path(path).parts
-            if rel_parts and rel_parts[0] == ".snodo":
-                _logger.warning("Excluded protected path under .snodo/ from coder artifacts: %s", path)
                 continue
             status = entry.get("status", "modified")
 
