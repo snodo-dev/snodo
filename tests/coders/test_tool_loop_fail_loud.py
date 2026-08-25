@@ -8,6 +8,27 @@ from snodo.coders.litellm import LiteLLMAdapter
 from snodo.coders.base import ParseError
 
 
+def _assert_tool_call_ids_answered(messages):
+    """Assert every tool_call_id in an assistant message is answered by a
+    tool message before the next request.
+
+    This is the invariant providers enforce: an assistant message with
+    tool_calls must be followed by a tool message for each tool_call_id
+    before the next request. It must hold for terminal tools, failing
+    tools, tools returning nothing, and turns mixing several calls.
+    """
+    pending = set()
+    for m in messages:
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            for tc in m["tool_calls"]:
+                pending.add(tc["id"])
+        elif m.get("role") == "tool":
+            pending.discard(m.get("tool_call_id"))
+    assert not pending, (
+        f"tool_call_ids without a tool response before the next request: {sorted(pending)}"
+    )
+
+
 def _make_mock_response(content=None, tool_calls=None, finish_reason="stop"):
     """Create a mock litellm response object."""
     response = MagicMock()
@@ -243,3 +264,131 @@ class TestToolLoopTurnCapNoContent:
         err = str(exc_info.value)
         assert "submit_files" in err
         assert "(empty)" in err
+
+
+class TestToolLoopResponseInvariant:
+    """Every tool_call_id in an assistant message gets a tool response before
+    the next request — terminal tools, failing tools, tools returning nothing,
+    and turns mixing several calls (Fixes #53)."""
+
+    def _run(self, responses, workspace=None):
+        adapter = LiteLLMAdapter(workspace_mcp=workspace or MagicMock())
+        adapter._completion_fn = MagicMock(side_effect=responses)
+        return adapter, adapter._call_llm_with_tools("prompt")
+
+    def _last_messages(self, adapter):
+        return adapter._completion_fn.call_args_list[-1].kwargs["messages"]
+
+    def test_zero_file_submit_files_gets_tool_response(self):
+        """submit_files(0 file(s)) is refused with a tool response, not a
+        broken history — the loop continues and the next request is valid."""
+        workspace = MagicMock()
+        workspace.read_file.return_value = "old content"
+        adapter, _ = self._run([
+            _make_mock_response(
+                content=None,
+                tool_calls=[_make_submit_files_call([])],
+                finish_reason="tool_calls",
+            ),
+            _make_mock_response(
+                tool_calls=[_make_submit_files_call([
+                    {"path": "src/main.py", "content": "new content"},
+                ])],
+            ),
+        ], workspace=workspace)
+        _assert_tool_call_ids_answered(self._last_messages(adapter))
+
+    def test_unparseable_submit_files_gets_tool_response(self):
+        """submit_files with invalid arguments is answered, not skipped."""
+        tc = _make_submit_files_call([{"path": "a.py", "content": "x"}])
+        tc.function.arguments = "not json"
+        adapter, _ = self._run([
+            _make_mock_response(
+                content=None,
+                tool_calls=[tc],
+                finish_reason="tool_calls",
+            ),
+            _make_mock_response(
+                tool_calls=[_make_submit_files_call([
+                    {"path": "src/main.py", "content": "new content"},
+                ])],
+            ),
+        ])
+        _assert_tool_call_ids_answered(self._last_messages(adapter))
+
+    def test_mixed_turn_submit_files_and_read_tool(self):
+        """A turn mixing submit_files with a read tool answers both ids."""
+        submit_tc = _make_submit_files_call([])
+        submit_tc.id = "call_submit"
+        read_tc = _make_read_file_call()
+        read_tc.id = "call_read"
+        adapter, _ = self._run([
+            _make_mock_response(
+                content=None,
+                tool_calls=[submit_tc, read_tc],
+                finish_reason="tool_calls",
+            ),
+            _make_mock_response(
+                tool_calls=[_make_submit_files_call([
+                    {"path": "src/main.py", "content": "new content"},
+                ])],
+            ),
+        ])
+        _assert_tool_call_ids_answered(self._last_messages(adapter))
+
+    def test_failing_tool_gets_tool_response(self):
+        """A tool that raises still gets a tool response for its id."""
+        workspace = MagicMock()
+        workspace.read_file.side_effect = FileNotFoundError("missing")
+        adapter, _ = self._run([
+            _make_mock_response(
+                content=None,
+                tool_calls=[_make_read_file_call("missing.py")],
+                finish_reason="tool_calls",
+            ),
+            _make_mock_response(
+                tool_calls=[_make_submit_files_call([
+                    {"path": "src/main.py", "content": "new content"},
+                ])],
+            ),
+        ], workspace=workspace)
+        _assert_tool_call_ids_answered(self._last_messages(adapter))
+
+    def test_unknown_tool_gets_tool_response(self):
+        """An unknown tool name still gets a tool response for its id."""
+        tc = _make_read_file_call()
+        tc.function.name = "some_future_tool"
+        adapter, _ = self._run([
+            _make_mock_response(
+                content=None,
+                tool_calls=[tc],
+                finish_reason="tool_calls",
+            ),
+            _make_mock_response(
+                tool_calls=[_make_submit_files_call([
+                    {"path": "src/main.py", "content": "new content"},
+                ])],
+            ),
+        ])
+        _assert_tool_call_ids_answered(self._last_messages(adapter))
+
+    def test_zero_file_submit_files_is_not_a_completion(self):
+        """submit_files(0 file(s)) must not terminate the loop as a valid
+        completion — it is refused and the coder is told to produce files."""
+        workspace = MagicMock()
+        adapter, _ = self._run([
+            _make_mock_response(
+                content=None,
+                tool_calls=[_make_submit_files_call([])],
+                finish_reason="tool_calls",
+            ),
+            _make_mock_response(
+                tool_calls=[_make_submit_files_call([
+                    {"path": "src/main.py", "content": "new content"},
+                ])],
+            ),
+        ], workspace=workspace)
+        messages = self._last_messages(adapter)
+        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        assert any("empty files list" in m["content"] for m in tool_msgs)
+        assert any("at least one file" in m["content"] for m in tool_msgs)
