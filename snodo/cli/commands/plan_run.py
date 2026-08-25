@@ -28,14 +28,15 @@ def _get_completed_waves(waves: list, tasks_status: dict) -> set:
         tasks_status: Task status mapping
 
     Returns:
-        Set of completed wave IDs
+        Set of completed wave IDs (stored as both str and raw values)
     """
     completed = set()
     for wave in waves:
         wid = wave.get("id")
         wave_tasks = wave.get("tasks", [])
-        if wave_tasks and all(_task_completed(tasks_status, t) for t in wave_tasks):
+        if wave_tasks and all(_task_completed(tasks_status, str(t)) or _task_completed(tasks_status, t) for t in wave_tasks):
             completed.add(wid)
+            completed.add(str(wid))
     return completed
 
 
@@ -50,6 +51,7 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
     wave_dir = planner.plans_dir / args.plan / f"wave_{wave_id}"
     spec_file = wave_dir / f"{task_id}_task.md"
     if not spec_file.exists():
+        planner.update_status(args.plan, task_id, "blocked")
         print(f"  [{task_id}] ERROR: spec file not found", file=sys.stderr)
         return False
 
@@ -73,7 +75,7 @@ def _filter_waves(waves: list, wave_filter) -> Optional[list]:
     """Filter waves by ID. Returns None on error."""
     if wave_filter is None:
         return waves
-    filtered = [w for w in waves if w.get("id") == wave_filter]
+    filtered = [w for w in waves if str(w.get("id")) == str(wave_filter)]
     if not filtered:
         print(f"Error: Wave {wave_filter} not found in plan", file=sys.stderr)
         return None
@@ -98,19 +100,25 @@ def _should_skip_task(task_id, tasks_status, interactive) -> bool:
 
 
 def _execute_waves(waves, planner, args, protocol, model,
-                   tasks_status, completed_waves, interactive) -> bool:
+                   all_waves, interactive) -> bool:
     """Execute waves in order, respecting dependencies.
 
     Returns:
-        True if any task failed, False if all succeeded.
+        True if any task failed or wave was blocked, False if all succeeded.
     """
+    has_failed_or_blocked = False
     for wave in waves:
+        status_data = planner.get_status(args.plan)
+        tasks_status = status_data.get("tasks", {})
+        completed_waves = _get_completed_waves(all_waves, tasks_status)
+
         wave_id = wave.get("id")
         deps = wave.get("depends_on", [])
 
-        unmet = [d for d in deps if d not in completed_waves]
+        unmet = [d for d in deps if d not in completed_waves and str(d) not in completed_waves]
         if unmet:
             print(f"Wave {wave_id}: blocked (depends on: {', '.join(str(d) for d in unmet)})")
+            has_failed_or_blocked = True
             continue
 
         print(f"Wave {wave_id}:")
@@ -120,7 +128,7 @@ def _execute_waves(waves, planner, args, protocol, model,
             if not _execute_wave_task(planner, args, protocol, model, wave_id, task_id):
                 return True  # failed
 
-    return False
+    return has_failed_or_blocked
 
 
 def _print_plan_progress(planner, plan_name: str) -> None:
@@ -151,7 +159,6 @@ def _run_plan(args) -> int:
             audit_log = getattr(args, "audit_log", None)
             planner = PlannerMCP(project_root, audit_log=audit_log)
             plan_data = planner.get_plan(args.plan)
-            status_data = planner.get_status(args.plan)
         except (ValueError, PlannerError) as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
@@ -160,16 +167,15 @@ def _run_plan(args) -> int:
         print(f"Intent: {plan_data.get('intent', 'N/A')}")
         print()
 
-        waves = _filter_waves(plan_data.get("waves", []), getattr(args, "wave", None))
+        all_waves = plan_data.get("waves", [])
+        waves = _filter_waves(all_waves, getattr(args, "wave", None))
         if waves is None:
             return 1
 
-        tasks_status = status_data.get("tasks", {})
-        completed_waves = _get_completed_waves(plan_data.get("waves", []), tasks_status)
         interactive = getattr(args, "interactive", False)
 
         failed = _execute_waves(waves, planner, args, protocol, model,
-                                tasks_status, completed_waves, interactive)
+                                all_waves, interactive)
 
         _print_plan_progress(planner, args.plan)
         return 1 if failed else 0
