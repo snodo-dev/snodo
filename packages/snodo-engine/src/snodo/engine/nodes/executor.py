@@ -5,6 +5,7 @@ FILE: snodo/engine/nodes/executor.py
 
 from typing import Dict, Any, List, Optional, Union
 from snodo.core.interfaces import Task, TaskSpec, ExecutionError
+from snodo.coders.base import SnodoMutationError
 from snodo.infrastructure.tokens import ValidationToken
 from snodo.coders import LiteLLMAdapter, MockAdapter
 from snodo.tools.workspace import WorkspaceMCP
@@ -116,6 +117,12 @@ class ExecutorMixin:
                 # No workspace, just return stub
                 artifacts.append(f"code_generated_for_{task.id}")
 
+        except SnodoMutationError:
+            # A coder that writes in place mutated protected .snodo/ state.
+            # Propagate unchanged so the engine can surface a blocker halt and
+            # audit the attempt (Fixes #52) — this is a governance violation,
+            # not an execution fault.
+            raise
         except ExecutionError:
             raise
         except Exception as e:

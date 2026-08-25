@@ -29,4 +29,5 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [024](024-environment-preparation-and-task-isolation.md) | Environment preparation before task execution | 2026-08-24 | `environment.py` + `governance.py` |
 | [025](025-unborn-head-worktree-fails-loud.md) | Unborn-HEAD worktree creation fails loud, never degrades to no isolation | 2026-08-24 | `create_worktree` + `setup_for_task` (`worktree.py`) |
 | [026](026-protocol-protected-from-agent-mutation.md) | Protocol and governance state protected from agent tool-surface mutation | 2026-08-24 | `workspace.py` + `git.py` + `coders/` |
+| [027](027-in-place-coder-snodo-mutation-halt.md) | In-place coder .snodo/ mutations are detected and halt as a blocker | 2026-08-25 | `coders/base.py` + `engine/loop.py` |
 
