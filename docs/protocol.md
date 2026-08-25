@@ -40,7 +40,33 @@ This declares one mode (producer) with one tool (edit) and one validator (securi
 | `disagreement_policy` | string | no | How to resolve validator conflicts: `"unanimous"`, `"majority"`, `"quorum"`, `"any"` (default `"unanimous"`) |
 | `initial_mode` | string | yes | Mode ID to start in |
 | `global_constraints` | list[Constraint] | no | Protocol-wide constraints (see Constraints) |
+| `execution` | ExecutionConfig | no | Execution and recovery configuration (see Execution configuration) |
 | `metadata` | dict | no | Arbitrary key/value metadata |
+
+---
+
+## Execution configuration
+
+```yaml
+execution:
+  max_recovery_depth: 3
+  max_total_fix_attempts: 10
+  auto_merge: false
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `max_recovery_depth` | int | no | Maximum recursive subtask recovery depth along a single branch (default `3`, range 0–20) |
+| `max_total_fix_attempts` | int | no | Maximum total fix subtasks spawned across the task tree (default `10`, range 1–100) |
+| `auto_merge` | bool | no | Whether a completed task's branch merges into the base branch automatically (default `false`) |
+| `prepare_command` | string | no | Command executed after worktree setup to prepare environment (e.g. `npm ci`, `uv sync`) |
+
+### `max_recovery_depth` tradeoff
+
+The recovery depth cap controls how deep the engine recurses when spawning subtasks to fix validator rejections:
+
+- **Established Repositories (`max_recovery_depth: 3`, default)**: When a codebase has a stable, verified build and test harness, validator rejections stem from implementation bugs or criterion mismatches. Legitimate fixes often require 2–3 incremental subtask turns (e.g., fixing the primary implementation, then addressing edge-case test failures). Recovery stall detection (which halts after 2 identical validator verdicts) and `max_total_fix_attempts` prevent runaway loops if non-convergence occurs.
+- **Greenfield & Bootstrap Projects (`max_recovery_depth: 1`)**: In a new repository with placeholder test commands or unverified tooling, early validator failures are usually setup/environment errors (missing lockfiles, broken test runners) that automated subtasks cannot fix. Capping recovery at depth 1 bounds expenditure to a single recovery attempt until the project environment is verified by the operator.
 
 ---
 
