@@ -147,6 +147,11 @@ class TestRecoverableClassification:
 class TestRecoveryDepthCap:
     """Verify depth cap behavior."""
 
+    def test_default_max_recovery_depth_is_three(self):
+        """Default max_recovery_depth is 3 (Fixes #40)."""
+        cfg = ExecutionConfig()
+        assert cfg.max_recovery_depth == 3
+
     def test_recovery_exhausted_at_depth_cap(self):
         """Task at max_recovery_depth → is_blocked, halt_type recovery_exhausted."""
         protocol = Protocol(
