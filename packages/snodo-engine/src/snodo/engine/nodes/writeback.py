@@ -7,7 +7,7 @@ import json
 import os as _os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional
 from snodo.engine.policy import policy_decision_to_dict
 from snodo.engine.state import _task_branch_name
 
@@ -35,7 +35,89 @@ def _canonical_halt(halt_type: Optional[str]) -> str:
     return _CANONICAL_HALT.get(halt_type or "", halt_type or "unknown")
 
 
-def _build_hint(halt: str) -> str:
+# The three fix targets a blocker can have.  The hint names only the ones that
+# apply to the halt in hand (Fixes #38); a hint that lists all three every time
+# is no better than one that names one.
+_BLOCKER_FIX_TARGETS = {
+    "code": (
+        "Fix the produced code and re-run"
+    ),
+    "spec": (
+        "Revise the task spec so it states what you actually want, then re-run"
+    ),
+    "policy": (
+        "Edit the protocol — .snodo/protocol.yml is a legitimate place to "
+        "change a criterion or a tool grant"
+    ),
+}
+
+
+def _blocker_fix_targets(
+    halt_type: Optional[str],
+    phase: str,
+    results: Optional[List[Any]],
+) -> List[str]:
+    """Return the fix targets that apply to this halt, derived from the halt.
+
+    A blocker has three fix targets — the code, the spec, or the policy. Which
+    apply depends on the halt in hand:
+    - a protocol violation (``constraint``, ``wf3``) is a policy problem;
+    - a loop that never converged (``max_iterations``, ``recovery_*``) is a
+      spec or policy problem;
+    - a post-execute rejection of produced artifacts is a code problem;
+    - a pre-execute rejection of the proposal is a spec problem — unless the
+      block cites a criterion, in which case the criterion lives in the
+      protocol and is a legitimate place to fix it.
+    """
+    halt_type = halt_type or ""
+    if halt_type in ("constraint", "wf3"):
+        return ["policy"]
+    if halt_type in ("max_iterations", "recovery_exhausted", "recovery_stalled"):
+        return ["spec", "policy"]
+    if phase == "post_execute":
+        return ["code"]
+    if any(getattr(r, "cited_criteria", None) for r in (results or [])):
+        return ["policy"]
+    return ["spec"]
+
+
+def _cited_criterion(results: Optional[List[Any]]) -> Optional[str]:
+    """Return the first cited criterion from the blocking results, if any."""
+    for r in (results or []):
+        criteria = getattr(r, "cited_criteria", None) or []
+        if criteria:
+            return criteria[0]
+    return None
+
+
+def _build_blocker_hint(
+    halt_type: Optional[str],
+    phase: str,
+    results: Optional[List[Any]],
+) -> str:
+    """Build a hint naming only the fix targets that apply to this blocker."""
+    criterion = _cited_criterion(results)
+    if criterion:
+        return (
+            "This block is based on a criterion. The criterion reads: "
+            f"{criterion}. .snodo/protocol.yml is a legitimate place to fix "
+            "it — the criterion may be stale or a tool grant may be missing; "
+            "edit it and re-run."
+        )
+
+    targets = _blocker_fix_targets(halt_type, phase, results)
+    phrases = [_BLOCKER_FIX_TARGETS[t] for t in targets]
+    if not phrases:
+        return "Address the blocking concerns and re-run a revised task."
+    return "This halt can be fixed: " + " or ".join(phrases) + "."
+
+
+def _build_hint(
+    halt: str,
+    halt_type: Optional[str] = "",
+    phase: str = "",
+    results: Optional[List[Any]] = None,
+) -> str:
     if halt == "escalate":
         return (
             "Address the blocking concerns and re-run a revised task. "
@@ -49,7 +131,7 @@ def _build_hint(halt: str) -> str:
             "problem). Retry the task or inspect the logs."
         )
     if halt == "blocker":
-        return "Address the blocking concerns and re-run a revised task."
+        return _build_blocker_hint(halt_type, phase, results)
     return ""
 
 
@@ -219,7 +301,7 @@ class WritebackMixin:
                 for r in loop_state.validation_results
             ],
             "policy_decision": policy_decision_to_dict(loop_state.policy_decision),
-            "hint": _build_hint(halt),
+            "hint": _build_hint(halt, loop_state.halt_type, phase, loop_state.validation_results),
             "pre_validation": meta.get("pre_validation"),
             "post_validation": meta.get("post_validation"),
             "spec_authoring": meta.get("spec_authoring"),
