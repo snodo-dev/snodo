@@ -132,6 +132,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The verification toolchain is now pinned to exact versions. `ruff` was
+  declared `>=0.1.0` with no upper bound, so two worktrees of the same commit
+  resolved different ruff versions and the lint gate reported 0 vs 1909 errors
+  for identical code — the gate disagreed with itself. The tools every
+  verification command invokes (`ruff`, `pytest`, `pytest-cov`,
+  `pytest-timeout`, `pytest-xdist`, `hypothesis`, `import-linter`, `grimp`,
+  `genbadge`) are now declared with exact `==` pins in both dev sections, and
+  `uv.lock` carries the same specifiers. A golden test
+  (`tests/golden/test_toolchain_pin.py`) fails if any of these tools is
+  declared with a range, or if the lockfile resolves one at a different
+  version, so an unbounded declaration cannot reappear unnoticed. Dependabot
+  (pip, weekly) is unchanged: upgrades now arrive as dependabot PRs that move
+  the exact pins together rather than floating on `>=`. (Fixes #50).
+
 - `snodo init` now auto-detects test commands from project marker files
   (`pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, etc.) or prompts
   for one interactively if none is inferred, writing `tooling.test_command`
