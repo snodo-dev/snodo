@@ -249,6 +249,15 @@ class Mode(BaseModel):
             "the protocol's execution.auto_merge setting."
         ),
     )
+    max_recovery_depth: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=20,
+        description=(
+            "Override the protocol-level max_recovery_depth for this mode. None = inherit "
+            "the protocol's execution.max_recovery_depth setting."
+        ),
+    )
     
     @field_validator('mode_id')
     @classmethod
@@ -354,16 +363,34 @@ class Protocol(BaseModel):
                 return mode
         return None
 
+    def resolve_mode_setting(self, mode_id: str, field_name: str) -> Any:
+        """Resolve a setting for *mode_id*, falling back to protocol execution default.
+
+        Checks mode.*field_name* (if mode exists and setting is not None), otherwise
+        falls back to protocol.execution.*field_name*.
+        """
+        mode = self.get_mode(mode_id)
+        if mode is not None:
+            val = getattr(mode, field_name, None)
+            if val is not None:
+                return val
+        return getattr(self.execution, field_name)
+
     def auto_merge_enabled(self, mode_id: str) -> bool:
         """Whether a successfully completed task in *mode_id* auto-merges.
 
         The mode's ``auto_merge`` (if set) overrides the protocol-level
         ``execution.auto_merge``; otherwise the protocol setting applies.
         """
-        mode = self.get_mode(mode_id)
-        if mode is not None and mode.auto_merge is not None:
-            return mode.auto_merge
-        return self.execution.auto_merge
+        return bool(self.resolve_mode_setting(mode_id, "auto_merge"))
+
+    def max_recovery_depth_for(self, mode_id: str) -> int:
+        """Resolve max recovery depth for *mode_id*.
+
+        The mode's ``max_recovery_depth`` (if set) overrides the protocol-level
+        ``execution.max_recovery_depth``; otherwise the protocol setting applies.
+        """
+        return int(self.resolve_mode_setting(mode_id, "max_recovery_depth"))
     
     def get_validator(self, validator_id: str) -> Optional[Validator]:
         """Retrieve a validator by ID."""

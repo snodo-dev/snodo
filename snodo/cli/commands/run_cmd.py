@@ -477,7 +477,11 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         from snodo.engine.closure import run_to_closure
 
         max_attempts = getattr(protocol.execution, "max_total_fix_attempts", 10)
-        max_depth = getattr(protocol.execution, "max_recovery_depth", 3)
+        max_depth = (
+            protocol.max_recovery_depth_for(mode)
+            if hasattr(protocol, "max_recovery_depth_for")
+            else getattr(protocol.execution, "max_recovery_depth", 3)
+        )
         final_state, closure_tree = run_to_closure(
             compiled_graph,
             root_task_dict,

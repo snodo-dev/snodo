@@ -24,6 +24,7 @@ modes:
   # Exit gate: docs/decisions/ answers the questions the build depends on.
   - mode_id: "decide"
     name: "Decide"
+    max_recovery_depth: 1  # Phase 1 setup: early failures are missing context/ADRs that subtasks cannot guess.
     tools:
       - "edit"
       - "commit"
@@ -38,6 +39,7 @@ modes:
   # Exit gate: the verification command runs green on a clean checkout.
   - mode_id: "scaffold"
     name: "Scaffold"
+    max_recovery_depth: 1  # Phase 2 setup: toolchain bootstrap; early failures are config/harness faults subtasks cannot fix.
     tools:
       - "edit"
       - "commit"
@@ -56,6 +58,7 @@ modes:
   # Phase 3 — build. Features, one per task. The full validator set applies.
   - mode_id: "build"
     name: "Build"
+    max_recovery_depth: 3  # Phase 3 feature build: test harness is verified; depth 3 enables multi-step incremental code recovery.
     tools:
       - "edit"
       - "commit"
@@ -161,9 +164,8 @@ validators:
 disagreement_policy: "unanimous"
 initial_mode: "decide"
 
-# Greenfield projects start with unverified tooling or placeholder test commands.
-# Early validator failures are predominantly setup/environment faults that subtasks
-# cannot fix. Depth 1 bounds recovery to 1 cycle until the project harness is verified.
+# Protocol default fallback for silent modes. Per-mode overrides above customize depth
+# per phase: decide (1), scaffold (1), build (3).
 execution:
   max_recovery_depth: 1
 
