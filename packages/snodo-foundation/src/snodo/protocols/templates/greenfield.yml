@@ -161,9 +161,9 @@ validators:
 disagreement_policy: "unanimous"
 initial_mode: "decide"
 
-# Depth 1 while the project is young. A fault that recovery cannot address costs
-# one cycle instead of four, and early failures are usually configuration rather
-# than code. Raise this once tasks routinely reach post-execute unaided.
+# Greenfield projects start with unverified tooling or placeholder test commands.
+# Early validator failures are predominantly setup/environment faults that subtasks
+# cannot fix. Depth 1 bounds recovery to 1 cycle until the project harness is verified.
 execution:
   max_recovery_depth: 1
 

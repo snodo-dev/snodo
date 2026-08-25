@@ -144,3 +144,9 @@ global_constraints:
     severity: "blocker"
     predicate: "no_secrets_in_diff"
     params: {}
+
+# Established repositories have verified build and test harnesses. Depth 3 enables
+# multi-step incremental recovery (e.g. implementation fix followed by criterion refinement)
+# while recovery stall detection bounds non-converging loops.
+execution:
+  max_recovery_depth: 3
