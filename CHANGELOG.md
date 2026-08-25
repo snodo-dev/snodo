@@ -69,6 +69,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Evaluated and confirmed `max_recovery_depth: 3` default balance. Bounding
+  non-converging recovery loops relies on early stall detection (detecting
+  repeated identical validator verdicts after 2 turns) and total fix attempt caps
+  (`max_total_fix_attempts: 10`) rather than prematurely lowering the branch depth cap.
+  Empirical usage confirms depth 3 enables legitimate multi-step fixes (e.g. test
+  fix followed by edge-case criterion fix) to reach completion while stall guards prevent
+  unnecessary iterations on un-fixable faults. (Fixes #40).
+
 - The halt hint now names only the fix targets that apply to the halt in hand.
   A blocker has three fix targets — the code, the spec, or the policy — and
   every blocker previously emitted the same "re-run a revised task" line,
