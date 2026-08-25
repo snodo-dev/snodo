@@ -159,7 +159,7 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "") -> int:
     from snodo.config import ConfigManager
     from snodo.infrastructure.paths import require_project_root
     from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
-    from snodo.infrastructure.audit import AuditLog
+    from snodo.infrastructure.audit import AuditLog, AuditError
 
     mgr = ConfigManager()
     config = mgr.load()
@@ -221,7 +221,12 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "") -> int:
         proot = session.project_root
 
         audit_path = str(Path(proot) / ".snodo" / "audit.log")
-        audit_log = AuditLog(audit_path)
+        try:
+            audit_log = AuditLog(audit_path)
+        except AuditError as err:
+            print(f"  {sid}  ✗ corrupt audit log: {err}")
+            total_failed += 1
+            continue
 
         result = dispatcher.sync(sid, proot, audit_log, api_key, api_url)
 

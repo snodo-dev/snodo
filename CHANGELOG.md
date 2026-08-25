@@ -132,6 +132,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Audit log loading errors (`AuditError`) during dashboard data provider
+  instantiation and `snodo cloud sync` are now caught gracefully. Corrupt
+  audit logs no longer crash the TUI dashboard (which degrades by omitting
+  audit event details) or `snodo cloud sync` (which reports the corrupt log
+  per session and returns failure status). (Fixes #14).
+
 - A truncated coder response is now handled as an execution failure with outcome
   `internal_error` naming the token ceiling that was hit and stating the task is
   too large, rather than falling through to zero artifacts and passing

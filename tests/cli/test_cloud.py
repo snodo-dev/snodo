@@ -539,3 +539,24 @@ class TestCloudSyncCommand:
                     result = cloud_sync_command(session_id="sess_missing")
 
         assert result == 1
+
+    def test_sync_corrupt_audit_log_reports_failure(self):
+        from snodo.cli.commands.cloud_cmd import cloud_sync_command
+        from snodo.core.interfaces import AuditError
+
+        with patch("snodo.infrastructure.audit.AuditLog", side_effect=AuditError("corrupt chain")):
+            with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher"):
+                with patch("snodo.infrastructure.session.SessionManager") as MockSM:
+                    with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
+                        with patch("snodo.config.ConfigManager") as MockCM:
+                            MockCM.return_value.load.return_value = {
+                                "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
+                            }
+                            sess = MagicMock()
+                            sess.session_id = "sess_corrupt"
+                            sess.project_root = "/fake/proj"
+                            MockSM.return_value.load_session.return_value = sess
+
+                            result = cloud_sync_command(session_id="sess_corrupt")
+
+        assert result == 1
