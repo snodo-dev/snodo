@@ -15,6 +15,8 @@ from typing import List, Optional
 
 from git import Repo, GitCommandError, InvalidGitRepositoryError
 
+from snodo.tools.workspace import PathValidationError
+
 
 class GitError(Exception):
     """Raised when a git operation fails."""
@@ -26,9 +28,6 @@ class MergeConflictError(GitError):
     The merge is aborted so the base branch stays clean; the source branch and
     its worktree are left intact for a human to resolve.
     """
-
-
-from snodo.tools.workspace import PathValidationError
 
 
 class GitMCP:
