@@ -349,9 +349,13 @@ class LLMValidator(ValidatorBase):
                         args = {}
 
                     if tool_name == "submit_verdict":
-                        continue  # already handled above
-
-                    result = self._execute_tool(tool_name, args, workspace, git)
+                        # submit_verdict present but not a valid verdict
+                        # (invalid severity or unparseable args) — feed back a
+                        # tool response so every tool_call_id is answered
+                        # before the next request.
+                        result = self._submit_verdict_feedback(tc)
+                    else:
+                        result = self._execute_tool(tool_name, args, workspace, git)
 
                     messages.append({
                         "role": "tool",
@@ -549,6 +553,31 @@ class LLMValidator(ValidatorBase):
                     justification=justification,
                 )
         return None
+
+    def _submit_verdict_feedback(self, tc: Any) -> str:
+        """Build a tool response for a submit_verdict call that is not a valid
+        verdict (invalid severity or unparseable arguments).
+
+        The response is appended as a tool message so the tool_call_id is
+        always answered before the next request.
+        """
+        try:
+            args = json.loads(tc.function.arguments)
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+        severity = str(args.get("severity", "")).lower().strip()
+        if severity not in self.VALID_SEVERITIES:
+            return (
+                f"submit_verdict severity must be one of "
+                f"{sorted(self.VALID_SEVERITIES)}, got {severity!r}. "
+                "Call submit_verdict(severity, justification) with a valid "
+                "severity."
+            )
+        return (
+            "submit_verdict arguments were invalid or unparseable. "
+            "Call submit_verdict(severity, justification) with a valid "
+            "severity."
+        )
 
     @staticmethod
     def _execute_tool(

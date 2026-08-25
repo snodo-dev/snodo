@@ -293,7 +293,7 @@ Return ONLY the JSON array, no other text.
 
             # Check for submit_files before anything else
             files_list = self._extract_submit_files(tool_calls)
-            if files_list is not None:
+            if files_list is not None and files_list:
                 return json.dumps(files_list)
 
             # Execute read tools
@@ -317,12 +317,17 @@ Return ONLY the JSON array, no other text.
                 for tc in tool_calls:
                     tool_name = tc.function.name
                     if tool_name == "submit_files":
-                        continue  # already handled above
-                    try:
-                        args = json.loads(tc.function.arguments)
-                    except (json.JSONDecodeError, TypeError):
-                        args = {}
-                    result = self._execute_tool(tool_name, args, workspace)
+                        # submit_files present but not a valid completion
+                        # (zero files or unparseable args) — feed back a tool
+                        # response so every tool_call_id is answered before
+                        # the next request.
+                        result = self._submit_files_feedback(tc)
+                    else:
+                        try:
+                            args = json.loads(tc.function.arguments)
+                        except (json.JSONDecodeError, TypeError):
+                            args = {}
+                        result = self._execute_tool(tool_name, args, workspace)
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -448,6 +453,33 @@ Return ONLY the JSON array, no other text.
             if isinstance(files, list):
                 return files
         return None
+
+    @staticmethod
+    def _submit_files_feedback(tc: Any) -> str:
+        """Build a tool response for a submit_files call that is not a valid
+        completion (zero files or unparseable arguments).
+
+        The response tells the model to actually produce files; it is appended
+        as a tool message so the tool_call_id is always answered before the
+        next request.
+        """
+        try:
+            args = json.loads(tc.function.arguments)
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+        files = args.get("files", [])
+        if isinstance(files, list) and not files:
+            return (
+                "submit_files was called with an empty files list. "
+                "You must deliver at least one file operation. "
+                "Produce the required files and call submit_files(files=[...]) "
+                "with the actual file operations."
+            )
+        return (
+            "submit_files arguments were invalid or unparseable. "
+            "Call submit_files(files=[...]) with a valid JSON array of "
+            "file operations."
+        )
 
     def _check_truncation(self, response: Any) -> None:
         """Raise ParseError if the completion was truncated at max_tokens."""
