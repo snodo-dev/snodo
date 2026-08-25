@@ -3818,7 +3818,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "radon", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "rich", specifier = ">=13.0.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.15.16" },
     { name = "snodo-core", editable = "packages/snodo-core" },
     { name = "snodo-engine", editable = "packages/snodo-engine" },
     { name = "snodo-foundation", editable = "packages/snodo-foundation" },

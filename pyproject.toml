@@ -59,7 +59,7 @@ dev = [
     "pytest-cov>=4.0.0",
     "pytest-timeout>=2.3.0",
     "hypothesis>=6.100.0",
-    "ruff>=0.1.0",
+    "ruff==0.15.16",
     "radon>=6.0.0",
     "import-linter",
 ]
