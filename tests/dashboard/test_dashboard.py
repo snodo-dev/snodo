@@ -439,3 +439,13 @@ class TestPanelRegistry:
         # Verify retrieving settings panel
         sett_panel = get_panel("settings", provider)
         assert sett_panel.__class__.__name__ == "SettingsScreen"
+
+    def test_corrupt_audit_log_returns_none(self, temp_project):
+        """Verify _get_audit_log returns None when audit log is corrupt."""
+        from snodo.dashboard.providers import DashboardDataProvider
+        audit_file = temp_project / ".snodo" / "audit.log"
+        audit_file.write_text("invalid json content\n")
+
+        provider = DashboardDataProvider(str(temp_project))
+        assert provider._get_audit_log() is None
+
