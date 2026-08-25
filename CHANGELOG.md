@@ -132,11 +132,27 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+<<<<<<< HEAD
 - Audit log loading errors (`AuditError`) during dashboard data provider
   instantiation and `snodo cloud sync` are now caught gracefully. Corrupt
   audit logs no longer crash the TUI dashboard (which degrades by omitting
   audit event details) or `snodo cloud sync` (which reports the corrupt log
   per session and returns failure status). (Fixes #14).
+=======
+- Worktree isolation is no longer lost silently on a repository with no
+  commits. On an unborn HEAD the base branch does not resolve and
+  `git worktree add` fails; snodo previously degraded to running the agent
+  directly in the operator's working tree with only a warning — on the state
+  every greenfield repository starts in. `create_worktree` now detects the
+  unborn HEAD and raises `WorktreeIsolationError` with actionable guidance
+  (make an initial commit, or pass `--no-isolation`), `setup_for_task` no
+  longer swallows worktree-creation failures into a degraded run, and
+  `snodo run` aborts unless `--no-isolation` is passed explicitly, recording
+  a `worktree_isolation_failed` audit event. Background jobs are refused up
+  front (marked failed, `submit()` raises) rather than spawned un-isolated.
+  The new `snodo run --no-isolation` flag is the only way to accept a
+  degraded run. Fixes #29, ADR 025.
+>>>>>>> task/task_trunc/huge-task
 
 - A truncated coder response is now handled as an execution failure with outcome
   `internal_error` naming the token ceiling that was hit and stating the task is

@@ -17,6 +17,16 @@ from typing import Optional
 _logger = logging.getLogger(__name__)
 
 
+class WorktreeIsolationError(Exception):
+    """Raised when a task worktree cannot be created for a structural reason.
+
+    Currently raised when the repository has no commits (unborn HEAD), so the
+    base branch does not exist and isolation cannot be provided. This is a
+    safety loss, not a transient fault — it must not degrade silently into
+    running in the operator's working tree (Fixes #29).
+    """
+
+
 def _slugify(spec: str, max_words: int = 5) -> str:
     import re
     words = spec.strip().split()[:max_words]
@@ -61,6 +71,24 @@ def create_worktree(
 
     repo = Repo(str(Path(project_root)), search_parent_directories=True)
 
+    # A repository with no commits has an unborn HEAD: the base branch does
+    # not resolve, so `git worktree add` fails with "invalid reference".
+    # This is the state every greenfield repository starts in — the agent
+    # would otherwise run in the operator's real working tree. Refuse
+    # loudly with actionable guidance rather than degrading isolation
+    # (Fixes #29). Callers that accept a degraded run must say so explicitly.
+    try:
+        head_commit = repo.head.commit
+    except Exception:  # noqa: BLE001 — unborn HEAD raises repo-specific error types
+        raise WorktreeIsolationError(
+            "Cannot create a task worktree: this repository has no commits "
+            "(unborn HEAD), so there is no base branch to branch from. "
+            "Make an initial commit first (e.g. 'git add -A && git commit -m "
+            "\"initial\"'), then re-run the task. To run without isolation, "
+            "pass --no-isolation explicitly."
+        )
+    del head_commit  # only used to prove a resolvable HEAD
+
     # Remove existing worktree if present (retry / partial cleanup)
     if wt_path.exists():
         try:
@@ -97,11 +125,7 @@ def setup_for_task(
     """
     if existing_worktree_path:
         return existing_worktree_path
-    try:
-        return str(create_worktree(project_root, task_id, spec))
-    except Exception as exc:
-        _logger.warning("Worktree creation failed for task %s: %s", task_id, exc)
-        return None
+    return str(create_worktree(project_root, task_id, spec))
 
 
 def remove_worktree(project_root: str, task_id: str) -> None:
