@@ -11,6 +11,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Automatic environment preparation before task execution. Snodo detects the
+  repository ecosystem (npm, pnpm, yarn, bun, uv/pip, cargo, go) from lockfiles
+  and markers in fresh worktrees and runs the appropriate lockfile-frozen install
+  command prior to task execution. Protocols can explicitly declare or disable
+  this via `execution.prepare_command`. Installation failures halt as an
+  operational fault (`validator_error`) without entering recovery. Process-safe
+  global caches (e.g. `~/.npm`, `~/.cache/uv`) are leveraged while avoiding unsafe
+  uncached worktree sharing. (Fixes #26, ADR 023).
+
 - A versioned machine interface for integrations. `status`, `mode show`,
   `session show`, `task show`, and `worktree list` gain a `--json` flag that
   emits a single JSON object to stdout (human output is unchanged), and a new
@@ -46,6 +55,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
   when `NO_COLOR` is set, or when piped. `rich` is now an explicit root dependency.
 
 ### Changed
+
+- The spec-authoring rewriter now receives only spec-quality critique. A
+  `Validator` gains a `judges_spec` flag (set on the shipped `meta-spec` and
+  `spec-manners` validators); only those validators' critique reaches the
+  author. A non-spec validator's objection (architecture, security, ...) is
+  about the work, not the wording, and no longer gets laundered into the spec —
+  previously a validator could block on a stale criterion, have its objection
+  written into the rewrite, then block on that same sentence again. If the only
+  escalation is from non-spec validators, the task escalates normally instead
+  of running a pointless rewrite. The halt payload now carries a `spec_authoring`
+  provenance block (attempt, triggering validators, original spec, authored
+  spec) so a blocker's origin is visible. See ADR 023.
 
 - LLM validator prompts are now phase-aware. The judge is told whether it is
   reviewing a proposal (pre-execute) or inspecting a finished result

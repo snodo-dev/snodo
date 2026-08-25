@@ -10,7 +10,8 @@
     "branch_ttl_days": 7,
     "max_recovery_depth": 3,
     "max_retries": 3,
-    "max_total_fix_attempts": 10
+    "max_total_fix_attempts": 10,
+    "prepare_command": null
   },
   "global_constraints": [
     {
@@ -70,6 +71,7 @@
         "Do not block: these are good-manners nudges meant to improve the spec on the next iteration, not stop the work."
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": true,
       "model": null,
       "severity_cap": "warn",
       "tooling": {},

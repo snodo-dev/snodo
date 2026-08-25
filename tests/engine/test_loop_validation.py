@@ -121,8 +121,9 @@ def test_validate_node_wf3_empty_validators(sample_task):
 
 
 def test_validate_node_escalate_spec_authoring(sample_task):
-    """Warn-only ESCALATE routes to spec authoring, not blocked."""
-    # Unanimous policy with a 'warn' result triggers ESCALATE
+    """Warn-only ESCALATE from a spec-quality validator routes to spec authoring."""
+    # Unanimous policy with a 'warn' result triggers ESCALATE; a judges_spec
+    # validator's critique is spec-quality, so it routes to spec authoring.
     protocol = Protocol(
         protocol_id="test_protocol",
         name="Test Protocol",
@@ -139,7 +140,8 @@ def test_validate_node_escalate_spec_authoring(sample_task):
             Validator(
                 validator_id="security",
                 validator_type="security",
-                criteria=["Check OWASP Top 10"]
+                criteria=["Check OWASP Top 10"],
+                judges_spec=True,
             )
         ],
         disagreement_policy=DisagreementPolicy.UNANIMOUS,

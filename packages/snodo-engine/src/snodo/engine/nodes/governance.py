@@ -3,30 +3,41 @@
 FILE: snodo/engine/nodes/governance.py
 """
 
+import logging
 from typing import Any, Dict
 
 from snodo.engine.state import LoopStage, LoopState
+
+_logger = logging.getLogger(__name__)
 
 
 class GovernanceNodeMixin:
     """Mixin providing governance node capabilities to GraphBuilder."""
 
     def _spec_authoring_reentry(self, loop_state: LoopState) -> LoopState:
-        """Author an improved spec from the INTENT + validator critique.
+        """Author an improved spec from the INTENT + spec-quality critique.
 
         Called when pre-execute validation escalated on warn-only spec
         validators.  One LLM call translates the raw intent into a proper
         spec (restated outcome, acceptance criteria, scope, intent +
         constraints).  Bounded to 2 attempts.
+
+        Only spec-quality critique reaches the author.  A non-spec objection
+        (architecture, security, ...) is about the work, not the wording;
+        laundering it into the spec changes what the task wants, which is a
+        redefinition, not a rewrite (Fixes #35).  The filter is applied here as
+        well as at the escalation site, so a stale non-spec entry can never
+        reach the author.
         """
         loop_state.spec_authoring_attempts += 1
         critique = loop_state.metadata.get("spec_critique", [])
 
         # Build spec-authoring prompt
         intent = loop_state.task.spec
+        spec_critique = [c for c in critique if self._judges_spec(c.get("validator_id", ""))]
         critique_text = "\n".join(
             f"- [{c.get('validator_id', '?')}] {c.get('justification', '')}"
-            for c in critique
+            for c in spec_critique
         )
         authoring_prompt = (
             "You are a spec author.  The following is a raw INTENT (e.g. a bug report).  "
@@ -69,13 +80,24 @@ class GovernanceNodeMixin:
             "content": f"Authored spec (attempt {loop_state.spec_authoring_attempts}): {authored_spec[:300]}",
         })
 
+        # Provenance: what triggered this, which attempt it was, and what the
+        # original said.  Carried in metadata so the halt payload shows the
+        # spec's origin rather than an invisible rewrite.
+        loop_state.metadata["spec_authoring"] = {
+            "attempt": loop_state.spec_authoring_attempts,
+            "triggered_by": [c.get("validator_id") for c in spec_critique],
+            "original": before,
+            "authored": authored_spec,
+        }
+
         self._audit("spec_authored", {
             "op": "spec_authored",
             "task_ref": loop_state.task.id,
             "attempt": loop_state.spec_authoring_attempts,
+            "triggered_by": [c.get("validator_id") for c in spec_critique],
             "intent_preview": before[:400],
             "authored_spec_preview": authored_spec[:400],
-            "critique": critique,
+            "critique": spec_critique,
         })
 
         return loop_state
@@ -163,6 +185,40 @@ class GovernanceNodeMixin:
 
         # On first iteration, classify flow_type and assign/ mint wave
         self._classify_wave(loop_state)
+
+        # On first iteration, run environment preparation
+        if loop_state.iteration == 1:
+            try:
+                from pathlib import Path
+                from snodo.infrastructure.environment import prepare_environment, EnvironmentPrepError
+                target_path = getattr(self, '_worktree_path', '') or getattr(self, '_project_root', '') or str(Path.cwd())
+                prep_res = prepare_environment(
+                    target_dir=target_path,
+                    protocol=self.protocol,
+                    shell_mcp=self.shell_mcp,
+                )
+                if prep_res.status == "executed":
+                    self._progress(f"  Prepared environment: {prep_res.command}")
+            except Exception as exc:
+                if exc.__class__.__name__ == "EnvironmentPrepError" or isinstance(exc, EnvironmentPrepError):
+                    loop_state.is_blocked = True
+                    loop_state.halt_type = "validator_error"
+                    loop_state.constraint_violations.append(str(exc))
+                    cmd_val = getattr(exc, "command", "")
+                    code_val = getattr(exc, "exit_code", 1)
+                    out_val = getattr(exc, "output", str(exc))
+                    self._audit("environment_prep_failed", {
+                        "op": "environment_prep_failed",
+                        "task_ref": loop_state.task.id,
+                        "command": cmd_val,
+                        "exit_code": code_val,
+                        "output": out_val,
+                    })
+                    return self._state_to_dict(loop_state)
+                raise
+
+        if loop_state.is_blocked:
+            return self._state_to_dict(loop_state)
 
         # Spec authoring re-entry: translate intent into a proper spec
         # when pre-execute validation escalated on warn-only validators.

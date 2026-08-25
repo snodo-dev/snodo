@@ -222,6 +222,7 @@ class WritebackMixin:
             "hint": _build_hint(halt),
             "pre_validation": meta.get("pre_validation"),
             "post_validation": meta.get("post_validation"),
+            "spec_authoring": meta.get("spec_authoring"),
             "blocker_reason": blocker_reason,
             "artifacts_count": len(loop_state.artifacts),
         }

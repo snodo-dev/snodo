@@ -84,6 +84,7 @@ validators:
   - validator_id: "meta-spec"
     validator_type: "architecture"
     evaluation_phase: "pre_execute"
+    judges_spec: true
     criteria:
       - "The task spec must define INTENT and CONSTRAINTS — what to build and the boundaries it must respect — and leave implementation decisions to the coder. A spec describes behavior and contracts; it does not transcribe the implementation."
       - "ALLOWED in a spec (these are constraints, not implementation): function and method signatures, exported names, type and interface shapes, behavioral requirements (what it must do, what inputs it must reject), hard constraints (algorithm choice such as HS256, framework limits, dependency restrictions), specific required values that are genuine requirements (e.g. a 7-day expiry, a max-age), acceptance criteria, and occasional short code hints that clarify a constraint."
