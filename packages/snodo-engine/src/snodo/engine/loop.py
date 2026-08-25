@@ -1138,6 +1138,7 @@ def build_protocol_graph(
     project_root: Optional[str] = None,
     use_mock_coder: bool = False,
     model: Optional[str] = None,
+    coder: Optional[Any] = None,
     checkpointer=None,
     audit_log: Any = None,
     session_manager: Any = None,
@@ -1148,26 +1149,7 @@ def build_protocol_graph(
     verbose: bool = False,
     **custom_functions
 ) -> StateGraph:
-    """Convenience function to build graph with MCP integration.
-
-    Args:
-        protocol: Protocol specification
-        project_root: Project root for MCP services (defaults to current directory)
-        use_mock_coder: If True, use MockCoderAdapter instead of real LLM
-        model: Model identifier for the coder (default: claude-sonnet-4-20250514)
-        checkpointer: LangGraph checkpointer for persistent agent memory
-        audit_log: Optional AuditLog for INV4 event logging
-        session_manager: Optional SessionManager for INV5 session state
-        session_id: Optional active session ID to tag on every audit event
-        job_id: Job identifier for direct job state.json writes
-        worktree_path: When set, MCPs root at the worktree instead of project_root
-        worktree_degraded: Worktree creation failed — skip branch ops
-        verbose: Print per-validator verdicts and fine-grained progress
-        **custom_functions: Optional overrides
-
-    Returns:
-        Executable StateGraph with real MCP integration
-    """
+    """Convenience function to build graph with MCP integration."""
     if project_root is None:
         from snodo.infrastructure.paths import resolve_project_root
         project_root = str(resolve_project_root() or Path.cwd())
@@ -1180,22 +1162,23 @@ def build_protocol_graph(
     git_mcp = GitMCP(mcp_root)
     shell_mcp = ShellMCP(mcp_root)
 
-    # Initialize coder with LLM config knobs
     from snodo.coders import resolve_adapter_class
     from snodo.infrastructure.config import load_llm_config
     llm_cfg = load_llm_config()
-    resolved_model = model or DEFAULT_MODEL
-    adapter_cls = resolve_adapter_class(resolved_model)
-    coder: Union[LiteLLMAdapter, MockAdapter]
-    if use_mock_coder:
-        coder = MockAdapter()
-    else:
-        coder = adapter_cls(
-            model=resolved_model,
-            max_tokens=llm_cfg.coder.max_tokens,
-            max_tool_turns=llm_cfg.coder.max_tool_turns,
-            workspace_mcp=workspace_mcp,
-        )
+
+    # Initialize coder with LLM config knobs if not passed directly
+    if coder is None:
+        resolved_model = model or DEFAULT_MODEL
+        adapter_cls = resolve_adapter_class(resolved_model)
+        if use_mock_coder:
+            coder = MockAdapter()
+        else:
+            coder = adapter_cls(
+                model=resolved_model,
+                max_tokens=llm_cfg.coder.max_tokens,
+                max_tool_turns=llm_cfg.coder.max_tool_turns,
+                workspace_mcp=workspace_mcp,
+            )
 
     builder = GraphBuilder(
         protocol,

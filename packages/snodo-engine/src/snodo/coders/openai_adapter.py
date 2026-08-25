@@ -13,4 +13,4 @@ class OpenAIAdapter(LiteLLMAdapter):
     message shape is the native format.
     """
 
-    TRUNCATION_REASONS: set[str] = {"length"}
+    TRUNCATION_REASONS: set[str] = {"length", "max_tokens", "MAX_TOKENS"}
