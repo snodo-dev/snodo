@@ -43,9 +43,9 @@ export GITHUB_TOKEN=ghp_...
 ### Engine settings
 
 ```bash
-snodo config set engine max_subtask_depth 5     # default: 3, range 1-10
-snodo config set engine max_session_age_days 60  # default: 30, range 1-365
-snodo config set engine token_ttl_seconds 1200   # default: 600, range 60-86400
+snodo config set engine.max_subtask_depth 5     # default: 3, range 1-10
+snodo config set engine.max_session_age_days 60  # default: 30, range 1-365
+snodo config set engine.token_ttl_seconds 1200   # default: 600, range 60-86400
 ```
 
 ### Snodo home directory
@@ -152,11 +152,11 @@ Run `snodo init --template <name>` to pick one directly, or `snodo init` to choo
 | `snodo agent reset <name>:<mode>` | Clear memory, assign new thread |
 | `snodo agent rotate <name>:<mode>` | Rotate thread ID (keeps checkpoints) |
 
-### Resolution
+### Authorization
 
-| Command | Description |
-|---------|-------------|
-| `snodo resolve <session_id> <task_id>` | Resolve escalated disagreement | `--decision proceed\|halt`, `--justification "..."` |
+| Command | Description | Key flags |
+|---------|-------------|-----------|
+| `snodo authorize [TASK_ID]` | Review and sign pending decisions | `--yes`, `--reject-all` |
 
 ### Jobs
 
@@ -232,7 +232,7 @@ Each protocol mode declares a set of logical tools (e.g., `edit`, `approve`, `pr
 2. If all pass (policy threshold met, no blockers), a JWT validation token is issued
 3. The orchestrator calls mutating tools (write_file, commit, etc.) with the token
 4. If any validator emits blocker, the task halts (INV3) — no token is issued, no mutations allowed
-5. If the task escalates (threshold not met, no blockers), use `snodo resolve` to proceed or halt
+5. If the task escalates (threshold not met, no blockers), use `snodo authorize` to review and sign
 
 ## Troubleshooting
 
@@ -255,7 +255,7 @@ The validators found issues. Check the structured halt payload for per-validator
 
 Two refusal modes appear in the payload:
 
-- **`halt_type: escalated`** — no single validator blocked, but the policy threshold wasn't met (e.g., unanimous needs all to pass, but some emitted warn). Use `snodo resolve` to proceed or halt.
+- **`halt_type: escalated`** — no single validator blocked, but the policy threshold wasn't met (e.g., unanimous needs all to pass, but some emitted warn). Use `snodo authorize <task_id>` to review and sign.
 - **`halt_type: blocked`** — at least one validator emitted blocker (INV3). Address the blocking concern and re-run; blocking concerns cannot be voted down.
 
 ### Token expired or invalid
