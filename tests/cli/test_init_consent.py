@@ -220,3 +220,46 @@ def test_init_commits_only_gitignore(temp_project_dir, no_keygen):
     assert "unrelated.txt" in status
     # .gitignore must be committed (tracked, not in the working-tree status).
     assert ".gitignore" not in status
+
+
+# === Test Command Inference & Configuration ===
+
+def test_init_infers_test_command_from_marker_files(temp_project_dir, no_keygen):
+    """Marker files in the repository cause snodo init to configure test_command in protocol.yml."""
+    (temp_project_dir / "pyproject.toml").write_text("[tool.pytest]\n")
+
+    with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
+        result = main()
+
+    assert result == 0
+    import yaml
+    proto = yaml.safe_load((temp_project_dir / ".snodo" / "protocol.yml").read_text())
+    quality = next(v for v in proto["validators"] if v["validator_id"] == "quality")
+    assert quality["tooling"]["test_command"] == "pytest"
+
+
+def test_init_explicit_test_command_flag(temp_project_dir, no_keygen):
+    """--test-command flag sets the test_command in protocol.yml explicitly."""
+    with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes", "--test-command", "npm test"]):
+        result = main()
+
+    assert result == 0
+    import yaml
+    proto = yaml.safe_load((temp_project_dir / ".snodo" / "protocol.yml").read_text())
+    quality = next(v for v in proto["validators"] if v["validator_id"] == "quality")
+    assert quality["tooling"]["test_command"] == "npm test"
+
+
+def test_init_interactive_test_command_prompt(temp_project_dir, no_keygen):
+    """Interactive init prompts for test command if none inferred."""
+    with patch("sys.stdin.isatty", return_value=True), \
+         patch("builtins.input", side_effect=["y", "cargo test"]):
+        with patch("sys.argv", ["snodo", "init", "--template", "solo"]):
+            result = main()
+
+    assert result == 0
+    import yaml
+    proto = yaml.safe_load((temp_project_dir / ".snodo" / "protocol.yml").read_text())
+    quality = next(v for v in proto["validators"] if v["validator_id"] == "quality")
+    assert quality["tooling"]["test_command"] == "cargo test"
+

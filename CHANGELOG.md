@@ -132,6 +132,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `snodo init` now auto-detects test commands from project marker files
+  (`pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, etc.) or prompts
+  for one interactively if none is inferred, writing `tooling.test_command`
+  explicitly into `protocol.yml`. A new `--test-command` (`-c`) flag enables
+  explicit non-interactive configuration. (Fixes #33).
+
 - Audit log loading errors (`AuditError`) during dashboard data provider
   instantiation and `snodo cloud sync` are now caught gracefully. Corrupt
   audit logs no longer crash the TUI dashboard (which degrades by omitting
