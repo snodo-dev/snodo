@@ -226,10 +226,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         """
         from snodo.coders.mock import (
             MockAdapter,
-            is_mock_completion_fn,
             is_mock_mode_active,
-            mock_completion_fn,
-            set_mock_mode,
         )
 
         self.protocol = protocol
@@ -253,12 +250,6 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             predicate_registry=self._predicate_registry,
             workspace_mcp=workspace_mcp,
             git_mcp=git_mcp,
-        )
-
-        is_mock = (
-            isinstance(self.coder, MockAdapter)
-            or is_mock_completion_fn(getattr(self.coder, "_completion_fn", None))
-            or is_mock_mode_active()
         )
 
         _base_fn = getattr(self.coder, "_completion_fn", None) or \
