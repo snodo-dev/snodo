@@ -43,9 +43,21 @@ def register(app: typer.Typer) -> None:
         no_input: bool = typer.Option(
             False, "--no-input", help="Skip the trusted-repository consent prompt (alias for --yes)",
         ),
+        test_command: Optional[str] = typer.Option(
+            None, "--test-command", "-c", help="Test command for quality validation (e.g. 'pytest', 'npm test')",
+        ),
     ):
         """Initialize Snodo project structure."""
-        args = SimpleNamespace(template=template, force=force, mode=mode, project_id=project_id, force_keygen=force_keygen, yes=yes, no_input=no_input)
+        args = SimpleNamespace(
+            template=template,
+            force=force,
+            mode=mode,
+            project_id=project_id,
+            force_keygen=force_keygen,
+            yes=yes,
+            no_input=no_input,
+            test_command=test_command,
+        )
         return init_command(args)
 
 
@@ -91,6 +103,65 @@ def _select_template(args) -> str:
         if 0 <= idx < len(names):
             return PROTOCOL_TEMPLATES[names[idx]]
         print(f"Invalid choice: {choice!r}. Choose 1-{len(names)}.", file=sys.stderr)
+
+
+_DETECT_RULES = [
+    ("package.json", "npm test"),
+    ("pyproject.toml", "pytest"),
+    ("setup.py", "pytest"),
+    ("setup.cfg", "pytest"),
+    ("Cargo.toml", "cargo test"),
+    ("Makefile", "make test"),
+    ("go.mod", "go test ./..."),
+]
+
+
+def _detect_test_command(project_dir: Path) -> Optional[str]:
+    """Auto-detect test command from project marker files in project_dir."""
+    for marker_file, command in _DETECT_RULES:
+        if (project_dir / marker_file).exists():
+            return command
+    return None
+
+
+def _configure_test_command(args, template_raw: str, project_dir: Path) -> str:
+    """Infer, prompt for, or apply --test-command to protocol template YAML."""
+    cli_cmd = getattr(args, "test_command", None)
+    test_cmd = cli_cmd or _detect_test_command(project_dir)
+
+    if (
+        not test_cmd
+        and sys.stdin.isatty()
+        and not getattr(args, "yes", False)
+        and not getattr(args, "no_input", False)
+    ):
+        try:
+            user_input = input("Test command (e.g. 'pytest', 'npm test', or press Enter to skip): ").strip()
+            if user_input:
+                test_cmd = user_input
+        except (EOFError, KeyboardInterrupt):
+            pass
+
+    if not test_cmd:
+        return template_raw
+
+    try:
+        data = yaml.safe_load(template_raw)
+        if isinstance(data, dict) and "validators" in data:
+            updated = False
+            for v in data["validators"]:
+                if v.get("validator_type") == "quality" or v.get("validator_id") == "quality":
+                    tooling = v.setdefault("tooling", {})
+                    current_tc = tooling.get("test_command")
+                    if not current_tc or current_tc == "REPLACE_ME":
+                        tooling["test_command"] = test_cmd
+                        updated = True
+            if updated:
+                return yaml.dump(data, sort_keys=False)
+    except Exception:
+        pass
+
+    return template_raw
 
 
 def _pick_mode(args, modes: list, default_mode: str) -> str:
@@ -333,6 +404,8 @@ def init_command(args) -> int:
     # Trusted-repository consent gate — must run before any file write.
     if not _confirm_consent(args):
         return 1
+
+    template = _configure_test_command(args, template, Path.cwd())
 
     try:
         snodo_dir.mkdir(exist_ok=True)
