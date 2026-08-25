@@ -132,6 +132,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Protected `.snodo/` from tool-surface mutation across `WorkspaceMCP`
+  (`write_file`, `delete_file`, `create_directory`) and `GitMCP`
+  (`stage_files`). Mutation attempts targeting `.snodo/` raise
+  `PathValidationError` naming the path, while read operations remain permitted
+  and internal snodo state writes continue operating unimpeded. Coder adapters
+  filter out `.snodo/` paths from returned `CodeArtifact`s. See ADR 026.
+  (Fixes #34).
+
 - `snodo init` now auto-detects test commands from project marker files
   (`pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, etc.) or prompts
   for one interactively if none is inferred, writing `tooling.test_command`
