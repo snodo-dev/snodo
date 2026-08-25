@@ -56,6 +56,7 @@ class ValidatorResult(BaseModel):
     severity: Literal["pass", "warn", "blocker"]
     justification: str
     error: bool = False
+    cited_criteria: Optional[List[str]] = None
 
 
 class TaskSpec(BaseModel):
