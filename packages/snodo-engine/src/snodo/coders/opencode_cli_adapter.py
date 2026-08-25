@@ -199,13 +199,17 @@ class OpenCodeCLIAdapter(CoderAdapter):
             path = entry.get("file", "")
             if not path:
                 continue
+            rel_parts = Path(path).parts
+            if rel_parts and rel_parts[0] == ".snodo":
+                _logger.warning("Excluded protected path under .snodo/ from coder artifacts: %s", path)
+                continue
             status = entry.get("status", "modified")
 
             if status == "deleted":
                 files.append(FileArtifact(path=path, content="", action="delete"))
                 continue
 
-            file_path = self._workspace / path
+            file_path = Path(self._workspace) / path
             try:
                 content = file_path.read_text()
             except Exception:
