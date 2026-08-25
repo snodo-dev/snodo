@@ -43,6 +43,7 @@
       "coder": null,
       "coder_config": {},
       "constraints": [],
+      "max_recovery_depth": null,
       "mode_id": "producer",
       "name": "Producer Mode",
       "tools": [

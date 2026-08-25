@@ -22,6 +22,7 @@
       "coder": null,
       "coder_config": {},
       "constraints": [],
+      "max_recovery_depth": null,
       "mode_id": "producer",
       "name": "Producer Mode",
       "tools": [
@@ -48,6 +49,7 @@
       "coder": null,
       "coder_config": {},
       "constraints": [],
+      "max_recovery_depth": null,
       "mode_id": "reviewer",
       "name": "Reviewer Mode",
       "tools": [
@@ -68,6 +70,7 @@
       "coder": null,
       "coder_config": {},
       "constraints": [],
+      "max_recovery_depth": null,
       "mode_id": "planner",
       "name": "Planner Mode",
       "tools": [

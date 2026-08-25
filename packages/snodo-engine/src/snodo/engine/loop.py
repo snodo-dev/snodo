@@ -857,7 +857,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         verdict halts the loop before depth is exhausted (ADR 021).
         """
         current_depth = loop_state.task.depth or 0
-        max_depth = self.protocol.execution.max_recovery_depth
+        max_depth = self.protocol.max_recovery_depth_for(loop_state.current_mode)
 
         if current_depth >= max_depth:
             loop_state.is_blocked = True

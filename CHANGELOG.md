@@ -27,6 +27,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
   commands. The produced artifacts are threaded to the validator context via
   `run_validators(artifacts=...)`. See ADR 028. (Fixes #54).
 
+- Per-mode `max_recovery_depth` overrides on `Mode` (`mode.max_recovery_depth`),
+  following the resolution pattern `auto_merge` already uses (ADR 018): a mode
+  value overrides the protocol default, and a silent mode inherits it. The
+  lookup is shared rather than duplicated, via `Protocol.resolve_mode_setting`.
+  The reason greenfield wanted a low budget was always a per-phase reason, so
+  `greenfield.yml` now sets `max_recovery_depth: 1` on `decide` and `scaffold`,
+  where failures are setup and context faults recovery cannot fix, and `3` on
+  `build`, where the harness is verified and failures are the shape recovery is
+  good at. Protocol authoring documentation updated. See ADR 029. (Fixes #40).
+
 - Test coverage and end-to-end integration tests for the plan execution path
   (`_run_plan` and `snodo run --plan <name>`). Covers happy path multi-wave
   plan execution, resume after partial completion, wave filtering (`--wave`),
