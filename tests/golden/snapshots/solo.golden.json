@@ -10,7 +10,8 @@
     "branch_ttl_days": 7,
     "max_recovery_depth": 3,
     "max_retries": 3,
-    "max_total_fix_attempts": 10
+    "max_total_fix_attempts": 10,
+    "prepare_command": null
   },
   "global_constraints": [],
   "initial_mode": "producer",
@@ -53,6 +54,7 @@
         "Check authentication/authorization"
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -71,6 +73,7 @@
         "Check for tight coupling"
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -85,6 +88,7 @@
       "constraints": [],
       "criteria": [],
       "evaluation_phase": "post_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -102,6 +106,7 @@
         "A correctly-scoped spec leaves the coder room to author the implementation while still being unambiguous about what 'done' means. Reject specs that read as code wearing a spec's clothes."
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": true,
       "model": null,
       "severity_cap": null,
       "tooling": {},
