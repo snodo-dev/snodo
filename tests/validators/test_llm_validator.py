@@ -359,7 +359,8 @@ class TestEngineLoopIntegration:
         from snodo.coders.mock import MockAdapter
 
         protocol = self._build_protocol()
-        coder = MockAdapter()  # No _completion_fn
+        coder = MockAdapter()
+        coder._completion_fn = None  # Explicitly remove completion_fn to test no-fn fallback
 
         builder = GraphBuilder(protocol, coder=coder)
         task = Task(id="t1", spec="Build login page")
