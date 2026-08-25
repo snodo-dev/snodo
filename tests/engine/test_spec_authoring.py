@@ -244,3 +244,70 @@ class TestAuthoringPromptAndProvenance:
         payload = builder._build_halt_payload(loop_state)
         assert payload["spec_authoring"] == loop_state.metadata["spec_authoring"]
         assert payload["spec_authoring"]["attempt"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Live surfacing: the rewrite is printed when it is produced (Fixes #36)
+# ---------------------------------------------------------------------------
+
+def _builder_with_authoring(protocol, spec_critique):
+    builder = GraphBuilder(protocol)
+    authored = "A clean, well-formed spec."
+    builder._classifier_completion_fn = MagicMock(
+        return_value=_make_response(authored)
+    )
+    loop_state = LoopState(
+        task=_task(),
+        current_mode="producer",
+        needs_spec_authoring=True,
+        metadata={"spec_critique": spec_critique},
+    )
+    return builder, loop_state, authored
+
+
+class TestSpecAuthoringLiveSurface:
+    """The authored spec is surfaced where it happens, not only in the payload."""
+
+    def test_authored_spec_printed_with_critique(self, capsys):
+        """When authoring fires, the original, authored spec, and critique print."""
+        meta_spec = Validator(
+            validator_id="meta-spec", validator_type="architecture",
+            criteria=["Check spec shape"], judges_spec=True,
+        )
+        protocol = _protocol([meta_spec])
+        critique = [
+            {"validator_id": "meta-spec", "justification": "Spec is code-prescriptive"},
+        ]
+        builder, loop_state, authored = _builder_with_authoring(protocol, critique)
+        original = loop_state.task.spec
+
+        builder._spec_authoring_reentry(loop_state)
+
+        out = capsys.readouterr().out
+        assert "Spec authored (attempt 1)" in out
+        assert "triggered by meta-spec" in out
+        assert f"Original: {original}" in out
+        assert f"Authored: {authored}" in out
+        assert "Spec is code-prescriptive" in out
+
+    def test_task_spec_replaced_and_provenance_recorded(self):
+        """The running task.spec is replaced with the authored text, and the
+        provenance block records the original."""
+        meta_spec = Validator(
+            validator_id="meta-spec", validator_type="architecture",
+            criteria=["Check spec shape"], judges_spec=True,
+        )
+        protocol = _protocol([meta_spec])
+        critique = [
+            {"validator_id": "meta-spec", "justification": "Spec is code-prescriptive"},
+        ]
+        builder, loop_state, authored = _builder_with_authoring(protocol, critique)
+        original = loop_state.task.spec
+
+        builder._spec_authoring_reentry(loop_state)
+
+        assert loop_state.task.spec == authored
+        prov = loop_state.metadata["spec_authoring"]
+        assert prov["attempt"] == 1
+        assert prov["original"] == original
+        assert prov["authored"] == authored
