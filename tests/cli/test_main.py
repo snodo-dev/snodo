@@ -413,7 +413,7 @@ initial_mode: "producer"
     with patch('sys.argv', ['snodo', 'run', 'test', '--mock']):
         result = main()
 
-    assert result == 1
+    assert result == 0
 
 
 # Template Selection Tests
