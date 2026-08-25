@@ -1149,7 +1149,28 @@ def build_protocol_graph(
     verbose: bool = False,
     **custom_functions
 ) -> StateGraph:
-    """Convenience function to build graph with MCP integration."""
+    """Convenience function to build graph with MCP integration.
+
+    Args:
+        protocol: Protocol specification
+        project_root: Project root for MCP services (defaults to current directory)
+        use_mock_coder: If True, use MockCoderAdapter instead of real LLM
+        model: Model identifier for the coder (default: claude-sonnet-4-20250514)
+        coder: Pre-built coder adapter. When supplied it is used as-is and
+            ``model``/``use_mock_coder`` are ignored — injection point for tests.
+        checkpointer: LangGraph checkpointer for persistent agent memory
+        audit_log: Optional AuditLog for INV4 event logging
+        session_manager: Optional SessionManager for INV5 session state
+        session_id: Optional active session ID to tag on every audit event
+        job_id: Job identifier for direct job state.json writes
+        worktree_path: When set, MCPs root at the worktree instead of project_root
+        worktree_degraded: Worktree creation failed — skip branch ops
+        verbose: Print per-validator verdicts and fine-grained progress
+        **custom_functions: Optional overrides
+
+    Returns:
+        Executable StateGraph with real MCP integration
+    """
     if project_root is None:
         from snodo.infrastructure.paths import resolve_project_root
         project_root = str(resolve_project_root() or Path.cwd())
