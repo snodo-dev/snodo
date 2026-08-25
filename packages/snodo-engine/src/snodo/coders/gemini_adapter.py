@@ -25,4 +25,4 @@ class GeminiAdapter(LiteLLMAdapter):
     No override of _call_llm_with_tools needed.
     """
 
-    TRUNCATION_REASONS: set[str] = {"MAX_TOKENS"}
+    TRUNCATION_REASONS: set[str] = {"length", "max_tokens", "MAX_TOKENS"}

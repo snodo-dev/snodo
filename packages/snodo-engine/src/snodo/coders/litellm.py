@@ -88,7 +88,7 @@ class LiteLLMAdapter(CoderAdapter):
     provider-specific message shaping.
     """
 
-    TRUNCATION_REASONS: set[str] = {"length"}
+    TRUNCATION_REASONS: set[str] = {"length", "max_tokens", "MAX_TOKENS"}
 
     def __init__(
         self,
@@ -444,16 +444,29 @@ Return ONLY the JSON array, no other text.
             choice = response.choices[0]
             finish = getattr(choice, "finish_reason", None)
             if finish in self.TRUNCATION_REASONS:
-                raw = str(getattr(choice.message, "content", ""))
+                raw = str(getattr(choice.message, "content", "") or "")
+                usage = getattr(response, "usage", None)
+                tokens = None
+                if usage:
+                    c_tok = getattr(usage, "completion_tokens", None)
+                    o_tok = getattr(usage, "output_tokens", None)
+                    if isinstance(c_tok, int):
+                        tokens = c_tok
+                    elif isinstance(o_tok, int):
+                        tokens = o_tok
+
+                gen_info = f"{tokens} tokens ({len(raw)} chars)" if tokens is not None else f"{len(raw)} chars"
+
                 _logger.warning(
                     "Coder output truncated at max_tokens=%s — "
-                    "raw response (first 2KB): %s",
+                    "generated %s before truncation — raw response (first 2KB): %s",
                     self.max_tokens,
+                    gen_info,
                     _truncated_log(raw),
                 )
                 raise ParseError(
-                    f"Coder output truncated at max_tokens={self.max_tokens}. "
-                    "Raise the limit or split the task into smaller subtasks."
+                    f"Coder output truncated at max_tokens={self.max_tokens}: task is too large. "
+                    f"Generated {gen_info} before truncation."
                 )
         except (AttributeError, IndexError):
             pass

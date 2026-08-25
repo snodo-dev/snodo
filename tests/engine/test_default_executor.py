@@ -235,13 +235,13 @@ def test_no_workspace_mcp(sample_protocol, sample_task, mock_token):
 
 
 def test_coder_implement_generic_exception(sample_protocol, sample_task, mock_token):
-    """coder.implement raises generic Exception -> "error: ..." appended -> raises ExecutionError"""
+    """coder.implement raises generic Exception -> raises ExecutionError with exact message"""
     class BadCoder:
         def implement(self, spec):
             raise ValueError("Something went wrong in generation")
-            
+
     builder = GraphBuilder(sample_protocol)
-    with pytest.raises(ExecutionError, match="Coder execution failed:"):
+    with pytest.raises(ExecutionError, match="Something went wrong in generation"):
         builder._default_executor(sample_task, mock_token, BadCoder(), MagicMock(), None)
 
 
