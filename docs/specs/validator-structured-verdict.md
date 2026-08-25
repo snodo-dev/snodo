@@ -36,7 +36,7 @@ This spec only makes the verdict robust and the labels honest. It does NOT weake
   VALID_SEVERITIES at llm_validator.py:50).
 - OVERRIDE the recon: error must NOT be excluded-from-escalation / proceed. A malfunctioning
   validator must never silently bypass the gate. `error` HALTS fail-closed with
-  halt_type="validator_error", surfaced for human resolution (snodo resolve).
+  halt_type="validator_error", surfaced for human resolution (snodo authorize).
 - policy.py: count `error` separately; it does not satisfy unanimous (not a pass) -> halt,
   but it is tagged validator_error, not escalated-warn and not blocker.
 
