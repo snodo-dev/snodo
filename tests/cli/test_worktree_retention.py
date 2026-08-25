@@ -10,11 +10,10 @@ closure outcome mocked.
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-from snodo.compiler.models import Protocol, Mode, Validator, DisagreementPolicy
+from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 from snodo.core.interfaces import Task
 from snodo.engine.closure import ClosureNode
 
@@ -94,3 +93,79 @@ class TestWorktreeRetention:
     def test_retain_flag_keeps_worktree_on_success(self, git_project):
         _run(git_project, "resolved", retain=True)
         assert _wt_dir(git_project).exists()
+
+
+# === unborn HEAD — fail loud, require --no-isolation to run degraded ===
+
+def _run_with_worktree_side_effect(project_root, side_effect):
+    """Run _execute_task with the worktree setup forced to *side_effect*.
+
+    ``side_effect`` is passed straight to the patched ``setup_for_task`` —
+    a path string (success) or an exception (raised).
+    """
+    from snodo.cli.commands.run_cmd import _execute_task
+
+    protocol = _protocol()
+    task = _task()
+    args = SimpleNamespace(
+        mock=True, verbose=False, audit_log=None, session_manager=None,
+        resume=None, retain_worktree=False,
+    )
+    tree = ClosureNode(task_id=task.id, depth=0, outcome="resolved")
+    final_state = {"is_blocked": False, "artifacts": []}
+
+    with (
+        patch("snodo.infrastructure.paths.require_project_root", return_value=str(project_root)),
+        patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")),
+        patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)),
+        patch("snodo.cli.commands.run_cmd._build_graph", return_value=MagicMock()),
+        patch("snodo.engine.closure.run_to_closure", return_value=(final_state, tree)),
+        patch("snodo.infrastructure.worktree.setup_for_task", side_effect=side_effect),
+    ):
+        return _execute_task(args, protocol, task, "gpt-4")
+
+
+class TestUnbornHeadFailLoud:
+    def test_worktree_failure_is_an_error_not_a_warning(self, git_project, capsys):
+        """Isolation loss aborts the run instead of degrading silently."""
+        from snodo.infrastructure.worktree import WorktreeIsolationError
+
+        result = _run_with_worktree_side_effect(
+            git_project, WorktreeIsolationError("no commits")
+        )
+
+        assert result == 1
+        err = capsys.readouterr().err
+        assert "no commits" in err
+        assert "--no-isolation" in err
+        assert "WITHOUT isolation" not in err
+
+    def test_no_isolation_flag_accepts_degraded_run(self, git_project, capsys):
+        """With --no-isolation, the run proceeds in the working tree."""
+        from snodo.infrastructure.worktree import WorktreeIsolationError
+
+        from snodo.cli.commands.run_cmd import _execute_task
+
+        protocol = _protocol()
+        task = _task()
+        args = SimpleNamespace(
+            mock=True, verbose=False, audit_log=None, session_manager=None,
+            resume=None, retain_worktree=False, no_isolation=True,
+        )
+        tree = ClosureNode(task_id=task.id, depth=0, outcome="resolved")
+        final_state = {"is_blocked": False, "artifacts": []}
+
+        with (
+            patch("snodo.infrastructure.paths.require_project_root", return_value=str(git_project)),
+            patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")),
+            patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)),
+            patch("snodo.cli.commands.run_cmd._build_graph", return_value=MagicMock()),
+            patch("snodo.engine.closure.run_to_closure", return_value=(final_state, tree)),
+            patch("snodo.infrastructure.worktree.setup_for_task",
+                   side_effect=WorktreeIsolationError("no commits")),
+        ):
+            result = _execute_task(args, protocol, task, "gpt-4")
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "WITHOUT isolation" in out
