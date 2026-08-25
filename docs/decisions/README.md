@@ -25,3 +25,6 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [020](020-wave-classifier-config.md) | Wave classification reads `ClassifierConfig`; classifier model resolved once | 2026-08-24 | `_migrate_wave_classifier_keys` (`config.py`) |
 | [021](021-recovery-builds-from-original-task.md) | Recovery builds from the original task, not the previous attempt | 2026-08-24 | `_spawn_recovery_subtask` (`loop.py`) |
 | [022](022-machine-interface.md) | A versioned machine interface (`--json`) for integrations | 2026-08-24 | `json_output.py` + `validate_cmd.py` |
+| [023](023-spec-authoring-spec-quality-critique.md) | Spec-authoring receives only spec-quality critique | 2026-08-24 | `judges_spec` (`models.py`) + `_spec_authoring_reentry` |
+| [023](023-environment-preparation-and-task-isolation.md) | Environment preparation before task execution | 2026-08-24 | `environment.py` + `governance.py` |
+

@@ -24,6 +24,14 @@ class ExecutionConfig(BaseModel):
             "base branch automatically. Default off; a mode may override it."
         ),
     )
+    prepare_command: Optional[str] = Field(
+        default=None,
+        description=(
+            "Explicit environment preparation command executed after worktree "
+            "setup and before task execution/validation. None = auto-detect "
+            "from lockfiles."
+        ),
+    )
 
 
 class DisagreementPolicy(str, Enum):
@@ -135,6 +143,14 @@ class Validator(BaseModel):
         description="Read-only tool allowlist for this validator. "
                     "Empty means no tool access (single-completion path). "
                     f"Allowed: {sorted(_READ_ONLY_TOOL_NAMES)}"
+    )
+    judges_spec: bool = Field(
+        default=False,
+        description="Whether this validator's critique is about the spec's "
+                    "wording (intent, constraints, scope) rather than about the "
+                    "work. Only judges_spec validators' critique feeds the "
+                    "spec-authoring rewriter; a non-spec objection must not "
+                    "silently reshape the spec (Fixes #35)."
     )
     model: Optional[str] = Field(
         default=None,

@@ -435,6 +435,37 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         # On first iteration, classify flow_type and assign/ mint wave
         self._classify_wave(loop_state)
 
+        # On first iteration, run environment preparation
+        if loop_state.iteration == 1:
+            try:
+                from pathlib import Path
+                from snodo.infrastructure.environment import prepare_environment, EnvironmentPrepError
+                target_path = getattr(self, '_worktree_path', '') or getattr(self, '_project_root', '') or str(Path.cwd())
+                prep_res = prepare_environment(
+                    target_dir=target_path,
+                    protocol=self.protocol,
+                    shell_mcp=self.shell_mcp,
+                )
+                if prep_res.status == "executed":
+                    self._progress(f"  Prepared environment: {prep_res.command}")
+            except Exception as exc:
+                if exc.__class__.__name__ == "EnvironmentPrepError" or isinstance(exc, EnvironmentPrepError):
+                    loop_state.is_blocked = True
+                    loop_state.halt_type = "validator_error"
+                    loop_state.constraint_violations.append(str(exc))
+                    cmd_val = getattr(exc, "command", "")
+                    code_val = getattr(exc, "exit_code", 1)
+                    out_val = getattr(exc, "output", str(exc))
+                    self._audit("environment_prep_failed", {
+                        "op": "environment_prep_failed",
+                        "task_ref": loop_state.task.id,
+                        "command": cmd_val,
+                        "exit_code": code_val,
+                        "output": out_val,
+                    })
+                    return self._state_to_dict(loop_state)
+                raise
+
         loop_state = self.governance_fn(loop_state, self.protocol)
 
         self._audit("governance_check", {
@@ -517,12 +548,23 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         elif decision.action == PolicyAction.ESCALATE:
             has_blocker = any(r.severity == "blocker" and not getattr(r, 'error', False) for r in results)
             has_error = any(getattr(r, 'error', False) for r in results)
-            if not has_blocker and not has_error and loop_state.spec_authoring_attempts < 2:
+            # Only spec-quality critique may trigger authoring.  A non-spec
+            # objection is about the work, not the wording; laundering it into
+            # the spec changes what the task wants (Fixes #35).  If the only
+            # escalation is from non-spec validators there is nothing to author
+            # from, so escalate normally.
+            spec_critique = [
+                {"validator_id": r.validator_id, "justification": r.justification}
+                for r in results
+                if r.severity != "pass" and self._judges_spec(r.validator_id)
+            ]
+            if (
+                not has_blocker and not has_error
+                and loop_state.spec_authoring_attempts < 2
+                and spec_critique
+            ):
                 loop_state.needs_spec_authoring = True
-                loop_state.metadata["spec_critique"] = [
-                    {"validator_id": r.validator_id, "justification": r.justification}
-                    for r in results if r.severity != "pass"
-                ]
+                loop_state.metadata["spec_critique"] = spec_critique
                 outcome = "escalated"
             else:
                 loop_state.is_blocked = True
@@ -873,6 +915,18 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         """Look up a validator spec by ID from the protocol."""
         return self.protocol.get_validator(validator_id)
 
+    def _judges_spec(self, validator_id: str) -> bool:
+        """Return True if a validator's critique is about the spec, not the work.
+
+        A validator whose critique is spec-quality (wording, intent, constraints,
+        scope) may feed the spec-authoring rewriter.  A non-spec objection is
+        about the work and must not silently reshape the spec (Fixes #35).
+        Unknown validators default to False so an unmarked protocol cannot
+        accidentally launder work critique into the spec.
+        """
+        v = self._find_validator(validator_id)
+        return bool(v is not None and getattr(v, "judges_spec", False))
+
     def _route_after_post_validation(self, state: Dict[str, Any]) -> str:
         """Route after post-validation: recovery, proceed, or block."""
         loop_state = self._dict_to_state(state)
@@ -1139,6 +1193,9 @@ def build_protocol_graph(
     use_mock_coder: bool = False,
     model: Optional[str] = None,
     coder: Optional[Any] = None,
+    workspace_mcp: Optional[Any] = None,
+    git_mcp: Optional[Any] = None,
+    shell_mcp: Optional[Any] = None,
     checkpointer=None,
     audit_log: Any = None,
     session_manager: Any = None,
@@ -1178,10 +1235,16 @@ def build_protocol_graph(
     # Use worktree as the working root when isolating tasks
     mcp_root = worktree_path or project_root
 
-    # Initialize MCP services
-    workspace_mcp = WorkspaceMCP(mcp_root)
-    git_mcp = GitMCP(mcp_root)
-    shell_mcp = ShellMCP(mcp_root)
+    # Initialize MCP services if not supplied
+    if workspace_mcp is None:
+        workspace_mcp = WorkspaceMCP(mcp_root)
+    if git_mcp is None:
+        try:
+            git_mcp = GitMCP(mcp_root)
+        except Exception:
+            git_mcp = None
+    if shell_mcp is None:
+        shell_mcp = ShellMCP(mcp_root)
 
     from snodo.coders import resolve_adapter_class
     from snodo.infrastructure.config import load_llm_config
@@ -1200,6 +1263,11 @@ def build_protocol_graph(
                 max_tool_turns=llm_cfg.coder.max_tool_turns,
                 workspace_mcp=workspace_mcp,
             )
+
+    custom_functions.pop("workspace_mcp", None)
+    custom_functions.pop("git_mcp", None)
+    custom_functions.pop("shell_mcp", None)
+    custom_functions.pop("coder", None)
 
     builder = GraphBuilder(
         protocol,

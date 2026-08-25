@@ -54,7 +54,7 @@ Governance → Validate → [Execute] → Post-validate → [Move-next] → Comp
    Resolution              Blocked (ESCALATE)        Blocked (HALT/ESCALATE)
 ```
 
-1. **Governance**: Checks iteration bounds (50 max), consumes any pending resolution. If the session has a `proceed` decision for this task, `resolution_override` is set and validation is skipped. If `halt`, the task is blocked immediately.
+1. **Governance**: Checks iteration bounds (50 max), runs environment preparation on first iteration (detecting lockfile markers or `execution.prepare_command`; operational failures halt immediately with `validator_error`), consumes any pending resolution. If the session has a `proceed` decision for this task, `resolution_override` is set and validation is skipped. If `halt`, the task is blocked immediately.
 
 2. **Validate** (`pre_execute`): Runs validators configured for the current mode and phase. Results feed into the `PolicyEvaluator`:
    - `blocker_count > 0` → **HALT** (INV3 — unconditional, all policies)
@@ -81,7 +81,7 @@ cli/commands/run_cmd.py
   → git worktree setup for the task (MCPs root at the worktree, not project_root)
   → engine/loop.py:build_protocol_graph(...)        → LangGraph StateGraph
   → engine/closure.py:run_to_closure(graph, task)   → recursive over spawned subtasks
-        per invocation: context → governance → pre_validate → execute
+        per invocation: context → governance (environment preparation) → pre_validate → execute
                         → post_validate → (loop | complete | escalate | blocked)
   → _report_closure(...)  → closure tree + structured halt payload (single emission site)
   → teardown: remove worktree, close checkpointer, cloud sync (fire-and-forget)
