@@ -252,7 +252,7 @@ class TestExecuteWaves:
 
         waves = [{"id": "w1", "tasks": ["t1"], "depends_on": []}]
         result = _execute_waves(waves, MagicMock(), MagicMock(), MagicMock(),
-                                "gpt-4", {}, set(), False)
+                                "gpt-4", waves, False)
         assert result is False
 
     @patch("snodo.cli.commands.plan_run._execute_wave_task", return_value=False)
@@ -262,7 +262,7 @@ class TestExecuteWaves:
 
         waves = [{"id": "w1", "tasks": ["t1", "t2"], "depends_on": []}]
         result = _execute_waves(waves, MagicMock(), MagicMock(), MagicMock(),
-                                "gpt-4", {}, set(), False)
+                                "gpt-4", waves, False)
         assert result is True
 
     def test_blocked_wave_skipped(self, capsys):
@@ -270,8 +270,8 @@ class TestExecuteWaves:
 
         waves = [{"id": "w2", "tasks": ["t1"], "depends_on": ["w1"]}]
         result = _execute_waves(waves, MagicMock(), MagicMock(), MagicMock(),
-                                "gpt-4", {}, set(), False)
-        assert result is False
+                                "gpt-4", waves, False)
+        assert result is True
         assert "blocked" in capsys.readouterr().out
 
 

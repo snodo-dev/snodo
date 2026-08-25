@@ -11,6 +11,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Test coverage and end-to-end integration tests for the plan execution path
+  (`_run_plan` and `snodo run --plan <name>`). Covers happy path multi-wave
+  plan execution, resume after partial completion, wave filtering (`--wave`),
+  interactive task skipping, and failure modes including missing task spec files,
+  dependency blocking, task execution failure, invalid wave filters, and
+  planner errors. (Fixes #44).
+
 - Real-time progress observability for LLM tool loops during coder and
   validator execution. Elapsed time (`[m:ss]`) and turn tool call summaries
   (e.g. `Turn 1: read_file(...)`, `Turn 2: submit_files(2 file(s))`) are printed
