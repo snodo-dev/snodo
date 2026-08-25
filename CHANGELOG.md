@@ -11,6 +11,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Added per-mode `max_recovery_depth` overrides on `Mode` (`mode.max_recovery_depth`), following
+  the resolution pattern of `auto_merge` (ADR 028). Shared setting resolution on `Protocol` via
+  `resolve_mode_setting`. Revisited `greenfield.yml` template to set `max_recovery_depth: 1` on `decide`
+  and `scaffold` (unverified setup/bootstrap phases) and `max_recovery_depth: 3` on `build` (verified
+  feature build phase). Updated protocol authoring documentation in `docs/protocol.md`. (Fixes #40).
+
 - Test coverage and end-to-end integration tests for the plan execution path
   (`_run_plan` and `snodo run --plan <name>`). Covers happy path multi-wave
   plan execution, resume after partial completion, wave filtering (`--wave`),
