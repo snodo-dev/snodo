@@ -10,7 +10,8 @@
     "branch_ttl_days": 7,
     "max_recovery_depth": 3,
     "max_retries": 3,
-    "max_total_fix_attempts": 10
+    "max_total_fix_attempts": 10,
+    "prepare_command": null
   },
   "global_constraints": [],
   "initial_mode": "producer",
@@ -96,6 +97,7 @@
         "Check authentication/authorization"
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -114,6 +116,7 @@
         "Check for tight coupling"
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -128,6 +131,7 @@
       "constraints": [],
       "criteria": [],
       "evaluation_phase": "post_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -145,6 +149,7 @@
         "A correctly-scoped spec leaves the coder room to author the implementation while still being unambiguous about what 'done' means. Reject specs that read as code wearing a spec's clothes."
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": true,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -158,6 +163,7 @@
         "Does this intent have clear acceptance criteria?"
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -171,6 +177,7 @@
         "Is this intent bounded and specific?"
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -184,6 +191,7 @@
         "Are tasks agile-conformant (small, testable, valuable)?"
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -197,6 +205,7 @@
         "Does each wave deliver testable value?"
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -210,6 +219,7 @@
         "Does this plan cover all aspects of the intent?"
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": null,
       "tooling": {},
@@ -223,6 +233,7 @@
         "Examine the submitted task spec in light of the current mode's operational profile (tools, validators, transitions, name). Determine whether the work described falls within the operational scope implied by the mode's profile. Consider whether the work would more naturally belong to a sibling mode in this protocol. Flag mismatches with specific justification explaining which mode the work belongs in."
       ],
       "evaluation_phase": "pre_execute",
+      "judges_spec": false,
       "model": null,
       "severity_cap": "warn",
       "tooling": {},

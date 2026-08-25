@@ -25,6 +25,7 @@ validators:
     validator_type: "conventions"
     evaluation_phase: "pre_execute"
     severity_cap: "warn"          # nudges, never hard-blocks
+    judges_spec: true
     criteria:
       - "Treat the input as INTENT. A good spec, authored from it, restates the desired outcome in one or two sentences \u2014 not a copy of the raw issue."
       - "WARN if no explicit acceptance criterion is present (how we'll know it's resolved)."
