@@ -133,7 +133,9 @@ class JobManager:
             Job ID string
         """
         from snodo.jobs.runner import build_command, spawn_background
-        from snodo.infrastructure.worktree import create_worktree, remove_worktree
+        from snodo.infrastructure.worktree import (
+            create_worktree, remove_worktree,
+        )
 
         job_id = self._generate_id()
         job_dir = self.jobs_dir / job_id
@@ -155,14 +157,22 @@ class JobManager:
         }
         self._save_state(job_dir, state)
 
-        # Create git worktree for isolation BEFORE spawn
-        wt_path: Optional[str] = None
+        # Create git worktree for isolation BEFORE spawn. A background job has
+        # no operator at a console to read a warning: if isolation cannot be
+        # established (e.g. unborn HEAD on a greenfield repo), the job is
+        # refused up front rather than silently running un-isolated in the
+        # project working tree (Fixes #29).
         try:
             task_desc = task_args.get("description", "")
             wt_path = str(create_worktree(self.project_root, job_id, task_desc))
             task_args["worktree_path"] = wt_path
         except Exception as e:
-            print(f"Worktree: skipped ({e})")
+            state["status"] = "failed"
+            state["exit_code"] = 1
+            state["completed_at"] = time.time()
+            state["error"] = str(e)
+            self._save_state(job_dir, state)
+            raise JobError(f"Cannot submit job: {e}") from e
 
         # Build command and spawn
         stdout_path = job_dir / "stdout.log"

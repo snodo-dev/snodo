@@ -27,4 +27,5 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [022](022-machine-interface.md) | A versioned machine interface (`--json`) for integrations | 2026-08-24 | `json_output.py` + `validate_cmd.py` |
 | [023](023-spec-authoring-spec-quality-critique.md) | Spec-authoring receives only spec-quality critique | 2026-08-24 | `judges_spec` (`models.py`) + `_spec_authoring_reentry` |
 | [023](023-environment-preparation-and-task-isolation.md) | Environment preparation before task execution | 2026-08-24 | `environment.py` + `governance.py` |
+| [025](025-unborn-head-worktree-fails-loud.md) | Unborn-HEAD worktree creation fails loud, never degrades to no isolation | 2026-08-24 | `create_worktree` + `setup_for_task` (`worktree.py`) |
 
