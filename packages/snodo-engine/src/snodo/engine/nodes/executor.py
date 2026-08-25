@@ -24,6 +24,8 @@ class ExecutorMixin:
             coder._job_id = self._job_id or self._session_id or ""
         if hasattr(coder, "_task_id"):
             coder._task_id = task.id
+        if hasattr(coder, "progress_callback"):
+            coder.progress_callback = getattr(self, "_progress", None)
 
     def _ensure_task_branch(self, git_mcp: Optional[Any], task: Task) -> None:
         """Ensure task branch is created and checked out for isolation."""
