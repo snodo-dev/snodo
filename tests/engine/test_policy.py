@@ -39,6 +39,18 @@ def test_evaluator_init_custom_threshold():
     assert evaluator.quorum_threshold == 0.75
 
 
+def test_policy_action_msgpack_registered(recwarn):
+    """PolicyAction deserializes from langgraph JsonPlusSerializer without warnings (Fixes #43)."""
+    from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+    serde = JsonPlusSerializer()
+    _, data = serde.dumps_typed(PolicyAction.PROCEED)
+    loaded = serde.loads_typed(("msgpack", data))
+    assert loaded == PolicyAction.PROCEED
+
+    for w in recwarn.list:
+        assert "PolicyAction" not in str(w.message)
+
+
 def test_evaluator_init_invalid_threshold_low():
     """Test PolicyEvaluator rejects threshold < 0."""
     with pytest.raises(ValueError, match="must be between 0.0 and 1.0"):

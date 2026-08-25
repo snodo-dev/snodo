@@ -416,10 +416,10 @@ def test_empty_secret_env_errors(monkeypatch):
         TokenIssuer()
 
 
-def test_unset_secret_warns(monkeypatch):
+def test_unset_secret_uses_random_secret(monkeypatch):
     monkeypatch.delenv("SNODO_TOKEN_SECRET", raising=False)
-    with pytest.warns(UserWarning, match="random per-process secret"):
-        TokenIssuer()
+    issuer = TokenIssuer()
+    assert len(issuer.secret) == 64
 
 
 # ---------------------------------------------------------------------------
