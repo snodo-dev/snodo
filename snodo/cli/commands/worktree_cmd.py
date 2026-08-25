@@ -32,9 +32,11 @@ def _worktree_callback(ctx: typer.Context):
 
 
 @app.command("list")
-def worktree_list():
+def worktree_list(
+    json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+):
     """List retained task worktrees."""
-    return worktree_list_command(SimpleNamespace())
+    return worktree_list_command(SimpleNamespace(json=json))
 
 
 @app.command("remove")
@@ -72,6 +74,32 @@ def _default_ttl_days(project_root: str) -> int:
 def worktree_list_command(args) -> int:
     project_root = require_project_root()
     names = list_worktrees(project_root)
+
+    if getattr(args, "json", False):
+        from snodo.cli.json_output import emit_json, schema_name
+
+        entries = []
+        for name in names:
+            path = worktree_path(project_root, name)
+            try:
+                age = datetime.now(timezone.utc) - datetime.fromtimestamp(
+                    path.stat().st_mtime, tz=timezone.utc
+                )
+                age_days = int(age.total_seconds() // 86400)
+            except OSError:
+                age_days = None
+            entries.append({
+                "task_id": name,
+                "path": str(path),
+                "age_days": age_days,
+            })
+        return emit_json({
+            "schema": schema_name("worktree"),
+            "ok": True,
+            "project_root": project_root,
+            "worktrees": entries,
+        })
+
     if not names:
         print("No retained worktrees.")
         return 0

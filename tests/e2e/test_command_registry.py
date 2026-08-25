@@ -54,7 +54,7 @@ TOP_LEVEL_NAMES = [
     "init", "run", "serve", "dashboard", "authorize",
     "recon", "models", "install", "uninstall", "meta", "logs",
     "plan", "job", "agent", "config", "session", "mode", "sandbox",
-    "cloud", "task",
+    "cloud", "task", "validate",
 ]
 
 #: Subcommands per group
@@ -75,6 +75,7 @@ GROUP_SUBCOMMANDS: dict[str, list[str]] = {
 STANDALONE_COMMANDS = [
     "init", "run", "serve", "dashboard", "authorize",
     "recon", "models", "install", "uninstall", "meta", "logs",
+    "validate",
 ]
 
 

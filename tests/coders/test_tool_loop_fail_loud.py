@@ -198,11 +198,24 @@ class TestToolLoopDiagnosticFields:
         adapter = LiteLLMAdapter(workspace_mcp=MagicMock())
         adapter._completion_fn = MagicMock(side_effect=[
             _make_mock_response(content="No tools"),
-            _make_mock_response(content="", finish_reason="MAX_TOKENS"),
+            _make_mock_response(content="", finish_reason="content_filter"),
         ])
         with pytest.raises(ParseError) as exc_info:
             adapter._call_llm_with_tools("prompt")
-        assert "finish_reason: MAX_TOKENS" in str(exc_info.value)
+        assert "finish_reason: content_filter" in str(exc_info.value)
+
+    def test_truncation_raises_parse_error_with_task_size(self):
+        adapter = LiteLLMAdapter(workspace_mcp=MagicMock(), max_tokens=8000)
+        adapter._completion_fn = MagicMock(return_value=_make_mock_response(
+            content="Some long preamble...",
+            finish_reason="max_tokens",
+        ))
+        with pytest.raises(ParseError) as exc_info:
+            adapter._call_llm_with_tools("prompt")
+        err = str(exc_info.value)
+        assert "max_tokens=8000" in err
+        assert "task is too large" in err
+        assert "21 chars" in err
 
     def test_includes_content_preview(self):
         adapter = LiteLLMAdapter(workspace_mcp=MagicMock())

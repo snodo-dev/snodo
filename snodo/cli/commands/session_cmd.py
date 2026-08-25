@@ -41,9 +41,12 @@ def session_list(
 
 
 @app.command("show")
-def session_show(session_id: str = typer.Argument(..., help="Session ID")):
+def session_show(
+    session_id: str = typer.Argument(..., help="Session ID"),
+    json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+):
     """Show session details."""
-    args = SimpleNamespace(session_action="show", session_id=session_id)
+    args = SimpleNamespace(session_action="show", session_id=session_id, json=json)
     return session_command(args)
 
 
@@ -72,7 +75,7 @@ def session_command(args) -> int:
     if action == "list":
         return _session_list(mgr, args)
     elif action == "show":
-        return _session_show(mgr, args.session_id)
+        return _session_show(mgr, args)
     elif action == "delete":
         return _session_delete(mgr, args)
     elif action == "prune":
@@ -106,13 +109,36 @@ def _session_list(mgr: SessionManager, args) -> int:
     return 0
 
 
-def _session_show(mgr: SessionManager, session_id: str) -> int:
+def _session_show(mgr: SessionManager, args) -> int:
     """Show session details."""
+    session_id = args.session_id
+    json_out = getattr(args, "json", False)
     try:
         session = mgr.load_session(session_id)
     except FileNotFoundError:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("session", f"Session not found: {session_id}", 1)
         print(f"Error: Session not found: {session_id}", file=sys.stderr)
         return 1
+
+    if json_out:
+        from snodo.cli.json_output import emit_json, schema_name
+        return emit_json({
+            "schema": schema_name("session"),
+            "ok": True,
+            "session_id": session.session_id,
+            "mode": session.mode,
+            "project_root": session.project_root,
+            "project_id": session.project_id,
+            "created_at": session.created_at,
+            "updated_at": session.updated_at,
+            "checkpoint": {
+                "current_task": session.checkpoint.current_task,
+                "decisions": session.checkpoint.decisions,
+                "memory_summary": session.checkpoint.memory_summary,
+            },
+        })
 
     print(f"Session:  {session.session_id}")
     print(f"Mode:     {session.mode}")

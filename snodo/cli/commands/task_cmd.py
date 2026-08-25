@@ -35,9 +35,10 @@ def task_list():
 @app.command(name="show")
 def task_show(
     task_id: str = typer.Argument(..., help="Task ID to inspect (e.g. task_a1b2c3)"),
+    json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
 ):
     """Inspect a task's halt and failure record from the active session."""
-    return task_show_command(SimpleNamespace(task_id=task_id))
+    return task_show_command(SimpleNamespace(task_id=task_id, json=json))
 
 
 @app.command(name="abandon")
@@ -102,12 +103,19 @@ def task_list_command(args) -> int:
 def task_show_command(args) -> int:
     """Inspect a task's halt and failure record from the active session."""
     task_id = getattr(args, "task_id", "")
+    json_out = getattr(args, "json", False)
     if not task_id:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task", "task_id required", 1)
         print("Usage: snodo task show <task_id>", file=sys.stderr)
         return 1
 
     project_root = resolve_project_root()
     if project_root is None:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task", "Not inside a snodo project.", 1)
         print("Not inside a snodo project.", file=sys.stderr)
         return 1
 
@@ -117,12 +125,18 @@ def task_show_command(args) -> int:
     state = read_state(project_root)
     mode = state.current_mode
     if not mode:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task", "No active mode. Run 'snodo mode change <m>' first.", 1)
         print("No active mode. Run 'snodo mode change <m>' first.", file=sys.stderr)
         return 1
 
     mgr = SessionManager()
     session = mgr.get_active_session(mode, project_root)
     if session is None:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task", f"No active session for mode={mode}.", 1)
         print(f"No active session for mode={mode}.", file=sys.stderr)
         return 1
 
@@ -134,8 +148,23 @@ def task_show_command(args) -> int:
     failure_entry = failure.get(task_id) if isinstance(failure, dict) else None
 
     if not halt_entry and not failure_entry:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task", f"No record for task {task_id} in session {session.session_id}.", 1)
         print(f"No record for task {task_id} in session {session.session_id}.")
         return 1
+
+    if json_out:
+        from snodo.cli.json_output import emit_json, schema_name
+        return emit_json({
+            "schema": schema_name("task"),
+            "ok": True,
+            "task_id": task_id,
+            "session_id": session.session_id,
+            "mode": session.mode,
+            "halt": halt_entry if isinstance(halt_entry, dict) else None,
+            "failure": failure_entry if isinstance(failure_entry, dict) else None,
+        })
 
     print(f"Task:    {task_id}")
     print(f"Session: {session.session_id}  mode={session.mode}")

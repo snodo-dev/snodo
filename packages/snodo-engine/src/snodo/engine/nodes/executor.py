@@ -117,10 +117,6 @@ class ExecutorMixin:
         except ExecutionError:
             raise
         except Exception as e:
-            # Code generation failed
-            artifacts.append(f"error: {str(e)}")
-
-        if any(a.startswith("error:") for a in artifacts):
-            raise ExecutionError(f"Coder execution failed: {artifacts}")
+            raise ExecutionError(f"Coder execution failed: {str(e)}") from e
 
         return artifacts

@@ -47,23 +47,23 @@ class TestResolveAdapterClass:
 
 
 class TestTruncationReasons:
-    """Each adapter has correct TRUNCATION_REASONS."""
+    """Each adapter has unified TRUNCATION_REASONS covering length, max_tokens, MAX_TOKENS."""
 
     def test_openai_truncation(self):
-        assert OpenAIAdapter.TRUNCATION_REASONS == {"length"}
+        assert OpenAIAdapter.TRUNCATION_REASONS == {"length", "max_tokens", "MAX_TOKENS"}
 
     def test_anthropic_truncation(self):
-        assert AnthropicAdapter.TRUNCATION_REASONS == {"max_tokens"}
+        assert AnthropicAdapter.TRUNCATION_REASONS == {"length", "max_tokens", "MAX_TOKENS"}
 
     def test_gemini_truncation(self):
-        assert GeminiAdapter.TRUNCATION_REASONS == {"MAX_TOKENS"}
+        assert GeminiAdapter.TRUNCATION_REASONS == {"length", "max_tokens", "MAX_TOKENS"}
 
     def test_base_truncation(self):
-        assert LiteLLMAdapter.TRUNCATION_REASONS == {"length"}
+        assert LiteLLMAdapter.TRUNCATION_REASONS == {"length", "max_tokens", "MAX_TOKENS"}
 
 
 class TestCheckTruncation:
-    """_check_truncation detects provider-specific truncation reasons."""
+    """_check_truncation detects all truncation finish reasons across adapters."""
 
     def _make_response(self, finish_reason: str, content: str = "truncated"):
         """Create a mock response object."""
@@ -74,43 +74,31 @@ class TestCheckTruncation:
         response.choices[0].message.content = content
         return response
 
-    def test_openai_detects_length(self):
+    def test_openai_detects_length_and_max_tokens(self):
         adapter = OpenAIAdapter(model="gpt-4o")
-        response = self._make_response("length")
-        with pytest.raises(Exception):  # ParseError
-            adapter._check_truncation(response)
+        for reason in ("length", "max_tokens", "MAX_TOKENS"):
+            response = self._make_response(reason)
+            with pytest.raises(Exception):  # ParseError
+                adapter._check_truncation(response)
 
-    def test_openai_ignores_max_tokens(self):
-        adapter = OpenAIAdapter(model="gpt-4o")
-        response = self._make_response("max_tokens")
-        adapter._check_truncation(response)  # Should not raise
-
-    def test_anthropic_detects_max_tokens(self):
+    def test_anthropic_detects_max_tokens_and_length(self):
         adapter = AnthropicAdapter(model="claude-sonnet-4-20250514")
-        response = self._make_response("max_tokens")
-        with pytest.raises(Exception):  # ParseError
-            adapter._check_truncation(response)
+        for reason in ("length", "max_tokens", "MAX_TOKENS"):
+            response = self._make_response(reason)
+            with pytest.raises(Exception):  # ParseError
+                adapter._check_truncation(response)
 
-    def test_anthropic_ignores_length(self):
-        adapter = AnthropicAdapter(model="claude-sonnet-4-20250514")
-        response = self._make_response("length")
+    def test_gemini_detects_MAX_TOKENS_and_variants(self):
+        adapter = GeminiAdapter(model="gemini-2.5-pro")
+        for reason in ("length", "max_tokens", "MAX_TOKENS"):
+            response = self._make_response(reason)
+            with pytest.raises(Exception):  # ParseError
+                adapter._check_truncation(response)
+
+    def test_stop_finish_reason_does_not_raise(self):
+        adapter = LiteLLMAdapter(model="gpt-4o")
+        response = self._make_response("stop")
         adapter._check_truncation(response)  # Should not raise
-
-    def test_gemini_detects_MAX_TOKENS(self):
-        adapter = GeminiAdapter(model="gemini-2.5-pro")
-        response = self._make_response("MAX_TOKENS")
-        with pytest.raises(Exception):  # ParseError
-            adapter._check_truncation(response)
-
-    def test_gemini_ignores_length(self):
-        adapter = GeminiAdapter(model="gemini-2.5-pro")
-        response = self._make_response("length")
-        adapter._check_truncation(response)  # Should not raise
-
-    def test_gemini_ignores_lowercase_max_tokens(self):
-        adapter = GeminiAdapter(model="gemini-2.5-pro")
-        response = self._make_response("max_tokens")
-        adapter._check_truncation(response)  # Should not raise (case-sensitive)
 
 
 class TestAdapterInheritance:
