@@ -15,7 +15,7 @@ import sqlite3
 import time
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
@@ -26,6 +26,19 @@ _logger = logging.getLogger(__name__)
 
 class MemoryError(Exception):
     """Agent memory error."""
+
+
+def _get_snodo_serde() -> Any:
+    """Return a JsonPlusSerializer with Snodo engine types registered for msgpack."""
+    try:
+        from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+        return JsonPlusSerializer(
+            allowed_msgpack_modules=[
+                ("snodo.engine.policy", "PolicyAction"),
+            ]
+        )
+    except Exception:
+        return None
 
 
 class AgentMemoryManager:
@@ -55,7 +68,8 @@ class AgentMemoryManager:
             the underlying connection when done.
         """
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-        saver = SqliteSaver(conn)
+        serde = _get_snodo_serde()
+        saver = SqliteSaver(conn, serde=serde) if serde is not None else SqliteSaver(conn)
         saver.setup()
         return saver
 

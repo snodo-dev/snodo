@@ -36,6 +36,17 @@ class PolicyAction(str, Enum):
     HALT = "halt"                    # Hard stop, blockers present
 
 
+# Register PolicyAction with LangGraph msgpack safe types to avoid
+# deprecation warnings on checkpoint deserialization (Fixes #43).
+try:
+    import langgraph.checkpoint.serde._msgpack as _lg_msgpack
+    _lg_msgpack.SAFE_MSGPACK_TYPES = _lg_msgpack.SAFE_MSGPACK_TYPES | {
+        ("snodo.engine.policy", "PolicyAction")
+    }
+except ImportError:
+    pass
+
+
 @dataclass
 class PolicyDecision:
     """Result of policy evaluation."""

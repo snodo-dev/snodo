@@ -18,7 +18,6 @@ import secrets
 import sqlite3
 import threading
 import time
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -250,14 +249,9 @@ class TokenIssuer:
                     "empty signing secret."
                 )
             return env
-        # Fall back to a random per-process secret, but warn loudly: tokens
-        # will NOT verify across processes (engine <-> MCP) without a shared
-        # secret.
-        warnings.warn(
-            "SNODO_TOKEN_SECRET is not set — using a random per-process secret. "
-            "Tokens will not verify across processes (engine <-> MCP). Set "
-            "SNODO_TOKEN_SECRET to a shared secret for cross-process validation.",
-            stacklevel=2,
+        # Fall back to a random per-process secret for single-process operation.
+        _logger.debug(
+            "SNODO_TOKEN_SECRET is not set — using a random per-process secret."
         )
         return secrets.token_hex(32)
 

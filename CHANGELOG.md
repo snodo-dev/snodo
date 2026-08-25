@@ -209,6 +209,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Replaced the intrusive `UserWarning` on unset `SNODO_TOKEN_SECRET` with debug
+  logging. Generating a random per-process secret is expected and secure for
+  single-process CLI execution, so raw warnings with stack traces no longer
+  surface at startup. (Fixes #42).
+
+- Registered `PolicyAction` with LangGraph's msgpack serializer (`SAFE_MSGPACK_TYPES`
+  and checkpointer `JsonPlusSerializer` allowlist). Deserializing policy actions
+  from checkpoints no longer prints deprecation warnings and is safe against
+  future strict deserialization enforcement. (Fixes #43).
+
 - Corrected documentation references from `snodo resolve` to `snodo authorize`.
   The CLI registers `snodo authorize` (review and RS256-sign pending decisions),
   whereas `snodo resolve` was an outdated pre-RS256 draft syntax. Also fixed
