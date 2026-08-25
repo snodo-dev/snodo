@@ -283,5 +283,10 @@ def run_to_closure(
         )
         return final, node
 
-    root_task_dict = root_task if isinstance(root_task, dict) else {"id": str(root_task)}
+    if hasattr(root_task, "model_dump"):
+        root_task_dict = root_task.model_dump()
+    elif isinstance(root_task, dict):
+        root_task_dict = root_task
+    else:
+        root_task_dict = {"id": str(root_task)}
     return _recurse(root_task_dict, depth=root_task_dict.get("depth", 0))

@@ -19,4 +19,4 @@ class AnthropicAdapter(LiteLLMAdapter):
     No override of _call_llm_with_tools needed.
     """
 
-    TRUNCATION_REASONS: set[str] = {"max_tokens"}
+    TRUNCATION_REASONS: set[str] = {"length", "max_tokens", "MAX_TOKENS"}

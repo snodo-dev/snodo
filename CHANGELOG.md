@@ -11,6 +11,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A versioned machine interface for integrations. `status`, `mode show`,
+  `session show`, `task show`, and `worktree list` gain a `--json` flag that
+  emits a single JSON object to stdout (human output is unchanged), and a new
+  `snodo validate <task_spec> [--phase pre_execute|post_execute]` command runs
+  a phase's validators through the shared engine runner and returns the
+  four-outcome result — the halt-payload shape, reachable directly, with no
+  coder. Every payload carries a `schema` field (`snodo.<command>.v1`) so a
+  consumer can detect a breaking change, and `snodo validate` uses exit codes
+  that distinguish the four outcomes (`pass`=0, `blocker`=1, `escalate`=2,
+  `validator_error`=3, `internal_error`=4). The contract is documented in
+  `docs/machine-interface.md`. See ADR 022.
+
 - `snodo run` can now merge a successfully completed task's branch into the
   base branch (opt-in). Set `execution.auto_merge: true` on a protocol, or
   `auto_merge: true/false` on a mode to override the protocol default. The base
@@ -98,6 +110,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
   `mcp/server.py:_active_mode()`. See ADR 017.
 
 ### Fixed
+
+- A truncated coder response is now handled as an execution failure with outcome
+  `internal_error` naming the token ceiling that was hit and stating the task is
+  too large, rather than falling through to zero artifacts and passing
+  post-validation against an unchanged worktree. The failure reason reports how
+  much content/tokens were generated before truncation so an operator can judge the
+  task size. Truncation finish_reasons (`length`, `max_tokens`, `MAX_TOKENS`) are
+  now unified across all adapter classes so no provider's truncation response is
+  silently ignored. Post-validation is skipped on truncation. Fixes #39.
 
 - Recovery now builds from the original task, not the previous attempt. The
   fix-task id is numbered linearly off the root (`task_X_fix_1`, `_fix_2`,
