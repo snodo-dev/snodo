@@ -68,6 +68,7 @@ modes:
       - "security"
       - "architecture"
       - "quality"
+      - "acceptance"
     transitions: {}
 
 validators:
@@ -157,6 +158,23 @@ validators:
       #   Python  "uv sync --all-extras && uv run pytest"
       #   Rust    "cargo test"
       #   Go      "go test ./..."
+
+  # ── Build phase only. Judges the produced artifacts against the task's
+  #    acceptance criteria. severity_cap=warn so a miss routes to recovery
+  #    (the coder can fix it) rather than a hard halt.
+  - validator_id: "acceptance"
+    validator_type: "acceptance"
+    evaluation_phase: "post_execute"
+    severity_cap: "warn"
+    tools:
+      - "read_file"
+      - "read_file_lines"
+      - "list_files"
+      - "git_show"
+      - "git_log"
+      - "read_diff_between_refs"
+    criteria:
+      - "Judge the produced artifacts against the acceptance criteria in the task spec. A criterion that is verifiable from the tree and unmet is a warn; a criterion that cannot be verified from the tree (device behaviour, human judgement) is uncheckable and never a finding."
 
 disagreement_policy: "unanimous"
 initial_mode: "decide"
