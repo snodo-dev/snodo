@@ -153,6 +153,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Corrected documentation references from `snodo resolve` to `snodo authorize`.
+  The CLI registers `snodo authorize` (review and RS256-sign pending decisions),
+  whereas `snodo resolve` was an outdated pre-RS256 draft syntax. Also fixed
+  `snodo config set` / `snodo config get` documentation signatures in
+  `docs/runbook.md` to use dot-separated keys (`snodo config set <key> <value>`),
+  fixing an extra-argument crash when following the runbook examples. (Fixes #22).
+
 - The coder and validator tool loops no longer send a malformed message
   history after a terminal tool call. Previously, when `submit_files` was
   called with zero files or unparseable arguments, the loop appended the
