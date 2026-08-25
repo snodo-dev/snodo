@@ -7,17 +7,40 @@ Verifies:
 - The halt payload reason names the max_tokens ceiling and states task is too large.
 - Generated token/char counts are reported in the failure reason.
 - A complete (non-truncated) response is unaffected.
+
+The graph-execution test runs against a throwaway git fixture repository, never
+the repository the test suite runs in: the executor creates and checks out a
+task branch, which must not move the suite's own HEAD.
 """
 
+import subprocess
 from unittest.mock import MagicMock
-import pytest
 
-from snodo.compiler.models import Mode, Protocol, Validator
-from snodo.coders.litellm import LiteLLMAdapter
+import pytest
 from snodo.coders.base import ParseError
+from snodo.coders.litellm import LiteLLMAdapter
+from snodo.compiler.models import Mode, Protocol, Validator
 from snodo.core.interfaces import Task
 from snodo.engine.closure import run_to_closure
 from snodo.engine.loop import build_protocol_graph
+
+
+@pytest.fixture
+def git_fixture_repo(tmp_path):
+    """A throwaway git repo with an initial commit, for graph execution.
+
+    The executor creates and checks out a task branch; that must happen in a
+    fixture repo, never in the repository the test suite runs in.
+    """
+    root = tmp_path / "fixture"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+    (root / "README.md").write_text("init\n")
+    subprocess.run(["git", "add", "README.md"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=root, check=True)
+    return root
 
 
 @pytest.fixture
@@ -65,7 +88,7 @@ def _make_mock_response(content="Preamble text...", finish_reason="max_tokens", 
 class TestTruncationExecutionFailure:
     """Issue #39: Truncation is an execution failure with outcome internal_error."""
 
-    def test_truncated_response_produces_internal_error(self, solo_protocol):
+    def test_truncated_response_produces_internal_error(self, solo_protocol, git_fixture_repo):
         """Truncated response -> internal_error, zero artifacts, skipped post-validation."""
         adapter = LiteLLMAdapter(model="gpt-4o", max_tokens=16000)
         adapter._completion_fn = MagicMock(return_value=_make_mock_response(
@@ -76,6 +99,7 @@ class TestTruncationExecutionFailure:
 
         graph = build_protocol_graph(
             protocol=solo_protocol,
+            project_root=str(git_fixture_repo),
             use_mock_coder=False,
             coder=adapter,
             validator_fn=lambda task, validators, shell, **kwargs: [
@@ -85,7 +109,7 @@ class TestTruncationExecutionFailure:
         ).compile()
 
         task = Task(id="task_trunc", spec="Huge task")
-        final_state, tree = run_to_closure(graph, task, mode="producer")
+        _final_state, tree = run_to_closure(graph, task, mode="producer")
 
         assert tree.outcome == "internal_error"
         payload = tree.halt_payload
