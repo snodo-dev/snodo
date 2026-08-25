@@ -19,11 +19,13 @@ Bounded tool-use loop (added):
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError
+from snodo.engine.progress import format_elapsed, format_tool_call_summary
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.infrastructure.usage_tracker import UsageTracker
 
@@ -99,6 +101,7 @@ class LiteLLMAdapter(CoderAdapter):
         max_tokens: int = 16000,
         max_tool_turns: Optional[int] = None,
         workspace_mcp: Optional[Any] = None,
+        progress_callback: Optional[Any] = None,
     ):
         self.model = model
         self.mcp_servers = mcp_servers or []
@@ -106,6 +109,7 @@ class LiteLLMAdapter(CoderAdapter):
         self.max_tokens = max_tokens
         self.max_tool_turns = max_tool_turns if max_tool_turns is not None else _DEFAULT_MAX_TOOL_TURNS
         self.workspace_mcp = workspace_mcp
+        self.progress_callback = progress_callback
 
         self._job_id: str = ""
         self._task_id: str = ""
@@ -252,6 +256,7 @@ Return ONLY the JSON array, no other text.
 
         retried_free_text = False
         finish_reason = None
+        start_time = time.monotonic()
 
         for turn in range(self.max_tool_turns):
             try:
@@ -280,6 +285,11 @@ Return ONLY the JSON array, no other text.
             msg = response.choices[0].message
             tool_calls = getattr(msg, "tool_calls", [])
             finish_reason = getattr(response.choices[0], "finish_reason", None)
+
+            if self.progress_callback:
+                elapsed_str = format_elapsed(time.monotonic() - start_time)
+                tools_str = format_tool_call_summary(tool_calls)
+                self.progress_callback(f"    [{elapsed_str}] Turn {turn + 1}: {tools_str}")
 
             # Check for submit_files before anything else
             files_list = self._extract_submit_files(tool_calls)

@@ -170,6 +170,7 @@ def run_validators(
         max_tool_turns=_vcfg.max_tool_turns,
         job_id=session_id,
         task_id=task.id,
+        progress_callback=progress_cb,
     )
 
     # Resolve set_model overrides once per pass
