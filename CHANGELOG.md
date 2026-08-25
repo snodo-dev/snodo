@@ -132,13 +132,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-<<<<<<< HEAD
+- `snodo init` now auto-detects test commands from project marker files
+  (`pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, etc.) or prompts
+  for one interactively if none is inferred, writing `tooling.test_command`
+  explicitly into `protocol.yml`. A new `--test-command` (`-c`) flag enables
+  explicit non-interactive configuration. (Fixes #33).
+
 - Audit log loading errors (`AuditError`) during dashboard data provider
   instantiation and `snodo cloud sync` are now caught gracefully. Corrupt
   audit logs no longer crash the TUI dashboard (which degrades by omitting
   audit event details) or `snodo cloud sync` (which reports the corrupt log
   per session and returns failure status). (Fixes #14).
-=======
+
 - Worktree isolation is no longer lost silently on a repository with no
   commits. On an unborn HEAD the base branch does not resolve and
   `git worktree add` fails; snodo previously degraded to running the agent
@@ -152,7 +157,6 @@ snodo uses [Semantic Versioning](https://semver.org/).
   front (marked failed, `submit()` raises) rather than spawned un-isolated.
   The new `snodo run --no-isolation` flag is the only way to accept a
   degraded run. Fixes #29, ADR 025.
->>>>>>> task/task_trunc/huge-task
 
 - A truncated coder response is now handled as an execution failure with outcome
   `internal_error` naming the token ceiling that was hit and stating the task is

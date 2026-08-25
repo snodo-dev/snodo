@@ -51,6 +51,7 @@ def _make_failure_state(halt_type: str, error: str) -> dict:
                     "The engine failed internally (not an authorisation "
                     "problem). Retry the task or inspect the logs."
                 ),
+                "artifacts_count": 0,
             },
         },
     }
