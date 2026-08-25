@@ -69,6 +69,21 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The halt hint now names only the fix targets that apply to the halt in hand.
+  A blocker has three fix targets — the code, the spec, or the policy — and
+  every blocker previously emitted the same "re-run a revised task" line,
+  which pointed only at the task even when the block was a stale criterion or a
+  missing tool grant. The hint is now derived from the halt: a protocol
+  violation (`constraint`, `wf3`) is a policy problem; a loop that never
+  converged (`max_iterations`, `recovery_exhausted`, `recovery_stalled`) is a
+  spec or policy problem; a post-execute rejection of produced artifacts is a
+  code problem; a pre-execute rejection of the proposal is a spec problem. When
+  a blocker cites a criterion, the hint names that criterion and points at
+  `.snodo/protocol.yml` as a legitimate place to fix it (the criterion may be
+  stale or a tool grant may be missing). A hint that lists all three every time
+  is no better than one that names one, so only the targets that apply are
+  named. (Fixes #38).
+
 - The spec authored by the spec-authoring rewriter is now surfaced live when
   it is produced. When pre-execute validation escalates on warn-only
   spec-quality critique and the engine rewrites `loop_state.task.spec`, the
