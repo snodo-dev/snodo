@@ -769,7 +769,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                                     phase="post_execute",
                                     authorized_decisions=getattr(self, '_authorized_decisions', []),
                                     decision_issuer=self._decision_issuer,
-                                    progress_cb=self._validator_verdict_cb)
+                                    progress_cb=self._validator_verdict_cb,
+                                    artifacts=list(loop_state.artifacts))
 
         # Merge post-validate results with existing results
         loop_state.validation_results = loop_state.validation_results + results
@@ -1095,6 +1096,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         shell_mcp: Optional[ShellMCP],
         current_mode: str = "",
         phase: str = "",
+        artifacts: Optional[List[str]] = None,
     ) -> List[ValidatorResult]:
         """Validator dispatch via the shared runner (single implementation).
 
@@ -1120,6 +1122,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             audit_log=self._audit_log,
             dispatch_fn=self._dispatch_one,
             progress_cb=self._progress_cb_handler,
+            artifacts=artifacts,
         )
         self._validator_runner.last_cap_originals = cap_originals
         return results

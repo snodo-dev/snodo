@@ -11,6 +11,22 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A post-execute `acceptance` validator that judges the produced artifacts
+  against the acceptance criteria in the task spec. Previously the pipeline
+  verified that the repository still works (`quality` runs the test suite) but
+  nothing verified that the task was carried out — a coder that did part of the
+  job (no test for the new feature, no ADR recording a decision the code now
+  contradicts) passed every validator and auto-merged. The acceptance
+  validator reuses the LLMValidator tool loop and is shipped in the `solo`,
+  `team`, `2+n`, and `greenfield` templates with `severity_cap: warn`, so a
+  miss routes to recovery (the coder can fix it) rather than a hard halt. It
+  distinguishes "unmet" (verifiable from the tree and demonstrably absent)
+  from "uncheckable" (device behaviour, human judgement — never a finding), so
+  it cannot block good work on criteria it cannot verify. It judges
+  completeness against the spec, not correctness of the code — it never runs
+  commands. The produced artifacts are threaded to the validator context via
+  `run_validators(artifacts=...)`. See ADR 028. (Fixes #54).
+
 - Test coverage and end-to-end integration tests for the plan execution path
   (`_run_plan` and `snodo run --plan <name>`). Covers happy path multi-wave
   plan execution, resume after partial completion, wave filtering (`--wave`),

@@ -187,12 +187,18 @@ def run_validators(
     audit_log: Any = None,
     dispatch_fn: Any = None,
     progress_cb: Any = None,
+    artifacts: Optional[List[str]] = None,
 ) -> Tuple[List[ValidatorResult], Dict[str, str]]:
     """Run a list of validators against a task and return ordered results.
 
     This is the shared multi-validator runner.  *dispatch_fn* defaults to
     :func:`dispatch_validator`; the engine passes its own ``_dispatch_one``
     method so tests can monkey-patch it (see tests/engine/test_validator_model_override.py).
+
+    *artifacts* is the list of produced file paths (post-execute only; empty
+    for pre-execute).  It is carried on the ValidatorContext so a validator
+    that judges the produced work (e.g. the acceptance validator) can see what
+    was produced.
 
     Returns (results, cap_originals) where ``cap_originals`` maps a validator
     id to its original (pre-cap) severity when a severity_cap was applied.
@@ -227,7 +233,7 @@ def run_validators(
         task=task,
         current_mode=mode_obj,
         protocol=protocol,
-        artifacts=[],
+        artifacts=list(artifacts or []),
         audit_log=audit_log,
         mode_name=mode_obj.name if mode_obj else "",
         mode_tools=list(mode_obj.tools) if mode_obj else [],

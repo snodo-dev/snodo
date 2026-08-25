@@ -233,7 +233,8 @@ class ValidationNodeMixin:
                                     current_mode=loop_state.current_mode,
                                     phase="post_execute",
                                     authorized_decisions=getattr(self, '_authorized_decisions', []),
-                                    decision_issuer=self._decision_issuer)
+                                    decision_issuer=self._decision_issuer,
+                                    artifacts=list(loop_state.artifacts))
 
         # Merge post-validate results with existing results
         loop_state.validation_results = loop_state.validation_results + results
