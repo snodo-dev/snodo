@@ -202,7 +202,7 @@ disagreement_policy: "majority"
 | `ESCALATE` | Policy threshold not met, no blockers — requires human resolution |
 | `HALT` | One or more blockers present (INV3 override) |
 
-When ESCALATE fires, the task is blocked and a structured payload is emitted. Use `snodo resolve <session_id> <task_id> --decision proceed|halt` to resolve. The engine tracks the resolution in the session checkpoint and takes the declared action on resume.
+When ESCALATE fires, the task is blocked and a structured payload is emitted. Use `snodo authorize <task_id>` to review and sign the pending decision. The engine tracks the decision in the session checkpoint and takes the declared action on resume.
 
 ---
 

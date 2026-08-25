@@ -3,7 +3,7 @@
 FILE: snodo/mcp/resolution.py (Task 7.12)
 
 Extracted from ProtocolMCPServer._handle_resolve_disagreement so that
-the snodo resolve CLI command produces identical session state.
+the snodo authorize CLI command produces identical session state.
 """
 
 from datetime import datetime, timezone
