@@ -24,7 +24,10 @@ Tool-loop (capability-grant):
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional, Set
+
+from snodo.engine.progress import format_elapsed, format_tool_call_summary
 
 from litellm import supports_response_schema
 
@@ -275,6 +278,8 @@ class LLMValidator(ValidatorBase):
         ]
 
         retried_free_text = False
+        cb = getattr(context, "progress_callback", None) or getattr(self, "progress_callback", None)
+        start_time = time.monotonic()
 
         for turn in range(tool_turns):
             try:
@@ -304,6 +309,14 @@ class LLMValidator(ValidatorBase):
 
             msg = response.choices[0].message
             tool_calls = getattr(msg, "tool_calls", [])
+
+            if cb:
+                elapsed_str = format_elapsed(time.monotonic() - start_time)
+                tools_str = format_tool_call_summary(tool_calls)
+                try:
+                    cb(f"    [{elapsed_str}] Turn {turn + 1}: {tools_str}")
+                except Exception:
+                    pass
 
             # Check for submit_verdict before anything else
             verdict = self._extract_submit_verdict(tool_calls)
