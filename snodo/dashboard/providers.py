@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from snodo.compiler.models import Protocol, Mode
-from snodo.infrastructure.audit import AuditLog, AuditEvent
+from snodo.infrastructure.audit import AuditLog, AuditEvent, AuditError
 from snodo.infrastructure.state import read_state
 
 
@@ -353,8 +353,11 @@ class DashboardDataProvider:
         _audit_mod._global_audit_log = None  # type: ignore[attr-defined]
         from snodo.project import get_project_id
         project_id, _ = get_project_id(self.project_root)
-        self._audit_log = AuditLog(str(log_path), project_id=project_id)
-        return self._audit_log
+        try:
+            self._audit_log = AuditLog(str(log_path), project_id=project_id)
+            return self._audit_log
+        except AuditError:
+            return None
 
     def _get_mode(self, mode_id: str) -> Optional[Mode]:
         protocol = self.get_protocol()
