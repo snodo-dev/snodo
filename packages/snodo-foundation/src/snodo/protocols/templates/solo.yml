@@ -18,6 +18,7 @@ modes:
       - "architecture"
       - "quality"
       - "meta-spec"
+      - "acceptance"
     transitions: {}
 
 validators:
@@ -65,6 +66,20 @@ validators:
       - "PROHIBITED in a spec (this is the coder's job): literal function bodies, transcribed implementation logic, exact statement-by-statement code the coder should author, regex literals and exact API-call sequences presented as the implementation, and any spec that leaves the coder no implementation decisions to make."
       - "Guideline for judgment: if more than roughly 40% of the spec is literal implementation code rather than intent, contracts, and constraints, the spec is code-prescriptive and must be rejected as a blocker. The orchestrator must re-issue the task as intent plus constraints, not as transcribed code."
       - "A correctly-scoped spec leaves the coder room to author the implementation while still being unambiguous about what 'done' means. Reject specs that read as code wearing a spec's clothes."
+
+  - validator_id: "acceptance"
+    validator_type: "acceptance"
+    evaluation_phase: "post_execute"
+    severity_cap: "warn"
+    tools:
+      - "read_file"
+      - "read_file_lines"
+      - "list_files"
+      - "git_show"
+      - "git_log"
+      - "read_diff_between_refs"
+    criteria:
+      - "Judge the produced artifacts against the acceptance criteria in the task spec. A criterion that is verifiable from the tree and unmet is a warn; a criterion that cannot be verified from the tree (device behaviour, human judgement) is uncheckable and never a finding."
 
 disagreement_policy: "unanimous"
 initial_mode: "producer"

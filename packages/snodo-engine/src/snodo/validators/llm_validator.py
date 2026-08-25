@@ -236,48 +236,9 @@ class LLMValidator(ValidatorBase):
             except Exception:
                 change_diff = "(unable to read diff HEAD~1..HEAD)"
 
-        criteria_text = "\n".join(
-            f"  {i+1}. {c}" for i, c in enumerate(self.validator_spec.criteria)
+        system_prompt = self._build_tool_loop_prompt(
+            context, active_names, has_diff, change_diff,
         )
-
-        prompt_parts = [
-            f"You are a {self.validator_spec.validator_type} validator for a software development protocol.\n",
-            "Evaluate the task against the criteria below.\n",
-            "\n",
-            "## Phase\n",
-            f"{_phase_frame(phase)}\n",
-            "\n",
-            "## Task\n",
-            f"{context.task.spec}\n",
-            "\n",
-            "## Criteria\n",
-            f"{criteria_text}\n",
-        ]
-
-        if has_diff and change_diff:
-            prompt_parts.extend([
-                "\n",
-                "## Code Change (HEAD~1..HEAD)\n",
-                f"```\n{change_diff}\n```\n",
-            ])
-
-        prompt_parts.extend([
-            "\n",
-            "## Available Tools\n",
-            "You may call read-only tools to inspect files and git history.\n",
-            "When you are ready to deliver your verdict, call the\n",
-            "`submit_verdict(severity, justification)` tool — this is the\n",
-            "ONLY way to return your verdict.  Do NOT narrate your verdict\n",
-            "as prose; use the tool.\n",
-            "\n",
-            "## Instructions\n",
-            "Evaluate against EACH criterion.\n",
-            "Use tools to read files if needed.\n",
-            "Then call submit_verdict with severity in [\"pass\", \"warn\", \"blocker\"]\n",
-            "and a concise justification.\n",
-        ])
-
-        system_prompt = "".join(prompt_parts)
 
         messages: List[Dict[str, Any]] = [
             {"role": "user", "content": system_prompt},
@@ -413,6 +374,64 @@ class LLMValidator(ValidatorBase):
             ),
             error=True,
         )
+
+    def _build_tool_loop_prompt(
+        self,
+        context: ValidatorContext,
+        active_names: Set[str],
+        has_diff: bool,
+        change_diff: str,
+    ) -> str:
+        """Build the tool-loop judge prompt for this validator.
+
+        Subclasses override this to change what the judge is asked to
+        evaluate (e.g. the acceptance validator judges the produced
+        artifacts against the task's acceptance criteria instead of
+        protocol criteria).
+        """
+        phase = getattr(context, "phase", "")
+        criteria_text = "\n".join(
+            f"  {i+1}. {c}" for i, c in enumerate(self.validator_spec.criteria)
+        )
+
+        prompt_parts = [
+            f"You are a {self.validator_spec.validator_type} validator for a software development protocol.\n",
+            "Evaluate the task against the criteria below.\n",
+            "\n",
+            "## Phase\n",
+            f"{_phase_frame(phase)}\n",
+            "\n",
+            "## Task\n",
+            f"{context.task.spec}\n",
+            "\n",
+            "## Criteria\n",
+            f"{criteria_text}\n",
+        ]
+
+        if has_diff and change_diff:
+            prompt_parts.extend([
+                "\n",
+                "## Code Change (HEAD~1..HEAD)\n",
+                f"```\n{change_diff}\n```\n",
+            ])
+
+        prompt_parts.extend([
+            "\n",
+            "## Available Tools\n",
+            "You may call read-only tools to inspect files and git history.\n",
+            "When you are ready to deliver your verdict, call the\n",
+            "`submit_verdict(severity, justification)` tool — this is the\n",
+            "ONLY way to return your verdict.  Do NOT narrate your verdict\n",
+            "as prose; use the tool.\n",
+            "\n",
+            "## Instructions\n",
+            "Evaluate against EACH criterion.\n",
+            "Use tools to read files if needed.\n",
+            "Then call submit_verdict with severity in [\"pass\", \"warn\", \"blocker\"]\n",
+            "and a concise justification.\n",
+        ])
+
+        return "".join(prompt_parts)
 
     @staticmethod
     def _build_tool_definitions(tool_names: Set[str]) -> List[Dict[str, Any]]:

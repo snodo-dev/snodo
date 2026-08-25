@@ -17,6 +17,7 @@ modes:
       - "quality"
       - "protocol_adherence"
       - "meta-spec"
+      - "acceptance"
     transitions:
       complete: "reviewer"
 
@@ -128,6 +129,20 @@ validators:
     severity_cap: "warn"
     criteria:
       - "Examine the submitted task spec in light of the current mode's operational profile (tools, validators, transitions, name). Determine whether the work described falls within the operational scope implied by the mode's profile. Consider whether the work would more naturally belong to a sibling mode in this protocol. Flag mismatches with specific justification explaining which mode the work belongs in."
+
+  - validator_id: "acceptance"
+    validator_type: "acceptance"
+    evaluation_phase: "post_execute"
+    severity_cap: "warn"
+    tools:
+      - "read_file"
+      - "read_file_lines"
+      - "list_files"
+      - "git_show"
+      - "git_log"
+      - "read_diff_between_refs"
+    criteria:
+      - "Judge the produced artifacts against the acceptance criteria in the task spec. A criterion that is verifiable from the tree and unmet is a warn; a criterion that cannot be verified from the tree (device behaviour, human judgement) is uncheckable and never a finding."
 
 disagreement_policy: "unanimous"
 initial_mode: "producer"
