@@ -69,6 +69,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The spec authored by the spec-authoring rewriter is now surfaced live when
+  it is produced. When pre-execute validation escalates on warn-only
+  spec-quality critique and the engine rewrites `loop_state.task.spec`, the
+  run prints the attempt number, the triggering validators, the original
+  spec, the authored spec, and the critique at that moment — so someone
+  watching a run sees that their words were replaced where it happens,
+  instead of only discovering it by reading the halt payload afterwards. The
+  provenance was already carried in `metadata["spec_authoring"]` and the halt
+  payload; this surfaces that existing state synchronously. (Fixes #36).
+
 - Legible criterion text in halt payloads for index citations. When a validator
   justification cites criteria by index (e.g. `criterion 3`), the cited
   criterion text is excerpted directly into the justification string and
