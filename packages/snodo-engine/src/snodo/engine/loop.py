@@ -225,6 +225,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self.git_mcp = git_mcp
         self.shell_mcp = shell_mcp
         self.coder = coder or MockAdapter()
+        if hasattr(self.coder, "progress_callback"):
+            self.coder.progress_callback = self._progress
         self.checkpointer = checkpointer
         self._audit_log = audit_log
         self._session_manager = session_manager
@@ -1090,6 +1092,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             session_id=self._session_id or "",
             audit_log=self._audit_log,
             dispatch_fn=self._dispatch_one,
+            progress_cb=self._progress_cb_handler,
         )
         self._validator_runner.last_cap_originals = cap_originals
         return results
@@ -1126,6 +1129,13 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         if verbose and not self._verbose:
             return
         print(message, flush=True)
+
+    def _progress_cb_handler(self, arg1: Any, arg2: Any = None) -> None:
+        """Dual-purpose progress handler for messages (1 arg) and validator verdicts (2 args)."""
+        if arg2 is not None:
+            self._validator_verdict_cb(arg1, arg2)
+        elif isinstance(arg1, str):
+            self._progress(arg1)
 
     def _validator_verdict_cb(self, validator_id: str, result: Any) -> None:
         """Print a per-validator verdict as it lands (verbose only)."""

@@ -36,6 +36,7 @@ class ValidatorContext:
     max_tool_turns: Optional[int] = None
     job_id: str = ""
     task_id: str = ""
+    progress_callback: Optional[Any] = None
 
 
 class ValidatorBase(ABC):

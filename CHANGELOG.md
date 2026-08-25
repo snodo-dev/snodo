@@ -11,6 +11,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Real-time progress observability for LLM tool loops during coder and
+  validator execution. Elapsed time (`[m:ss]`) and turn tool call summaries
+  (e.g. `Turn 1: read_file(...)`, `Turn 2: submit_files(2 file(s))`) are printed
+  synchronously on real tool-loop turn events without control characters,
+  spinners, or fake heartbeats. (Fixes #51).
+
 - Automatic environment preparation before task execution. Snodo detects the
   repository ecosystem (npm, pnpm, yarn, bun, uv/pip, cargo, go) from lockfiles
   and markers in fresh worktrees and runs the appropriate lockfile-frozen install
