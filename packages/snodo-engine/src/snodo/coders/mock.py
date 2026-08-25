@@ -7,7 +7,7 @@ Returns deterministic outputs without making LLM calls.
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 from unittest.mock import MagicMock
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
