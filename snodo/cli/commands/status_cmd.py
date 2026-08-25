@@ -17,9 +17,11 @@ def register(app: typer.Typer) -> None:
     """Register top-level CLI commands onto app (called by discovery loop)."""
 
     @app.command()
-    def status():
+    def status(
+        json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+    ):
         """Show protocol, active mode, active session, and most recent run."""
-        return status_command(SimpleNamespace())
+        return status_command(SimpleNamespace(json=json))
 
 
 def status_command(args) -> int:
@@ -32,12 +34,29 @@ def status_command(args) -> int:
     state = read_state(project_root)
 
     protocol_id, protocol_name = _read_protocol(project_root)
+    mode = state.current_mode or ""
+    active_session = state.active_session.get(mode) if mode else None
+
+    if getattr(args, "json", False):
+        from snodo.cli.json_output import emit_json, schema_name
+
+        return emit_json({
+            "schema": schema_name("status"),
+            "ok": True,
+            "project_root": project_root,
+            "protocol": {
+                "id": protocol_id,
+                "name": protocol_name,
+            },
+            "mode": mode or None,
+            "active_session": active_session or None,
+            "last_run": _most_recent(project_root, SessionManager()),
+        })
+
     print(f"Protocol: {protocol_name} ({protocol_id})" if protocol_name else f"Protocol: {protocol_id}")
 
-    mode = state.current_mode or "(none)"
-    print(f"Mode:     {mode}")
+    print(f"Mode:     {mode or '(none)'}")
 
-    active_session = state.active_session.get(mode) if mode != "(none)" else None
     if active_session:
         print(f"Session:  {active_session}")
     else:
@@ -71,15 +90,30 @@ def _read_protocol(project_root: str) -> tuple:
 
 def _print_most_recent(project_root: str, mgr) -> None:
     """Print the most recent run (session) and its outcome for this project."""
-    sessions = mgr.list_sessions(project_root=project_root)
-    if not sessions:
+    recent = _most_recent(project_root, mgr)
+    if recent is None:
         print("Last run: (none)")
         return
+    print(
+        f"Last run: {recent['session_id']}  mode={recent['mode']}  "
+        f"updated={recent['updated_at'][:19]}  outcome={recent['outcome']}"
+    )
+
+
+def _most_recent(project_root: str, mgr) -> dict:
+    """Return the most recent run for this project as a dict, or None."""
+    sessions = mgr.list_sessions(project_root=project_root)
+    if not sessions:
+        return None
 
     sessions.sort(key=lambda s: s.updated_at, reverse=True)
     recent = sessions[0]
-    outcome = _session_outcome(recent)
-    print(f"Last run: {recent.session_id}  mode={recent.mode}  updated={recent.updated_at[:19]}  outcome={outcome}")
+    return {
+        "session_id": recent.session_id,
+        "mode": recent.mode,
+        "updated_at": recent.updated_at,
+        "outcome": _session_outcome(recent),
+    }
 
 
 def _session_outcome(session) -> str:
