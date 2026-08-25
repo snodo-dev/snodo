@@ -7,12 +7,90 @@ TEST_SECRET: 32+ byte HMAC key to avoid JWT InsecureKeyLengthWarning
 """
 
 import os
-import tempfile
 import shutil
+import subprocess
+import tempfile
+from pathlib import Path
 
 import pytest
 
 TEST_SECRET = "test-secret-key-that-is-at-least-32-bytes!!"
+
+
+def _suite_repo_root() -> Path | None:
+    """Return the git root of the repository the test suite runs in, or None.
+
+    Tests must operate on isolated fixture repositories. This locates the repo
+    that contains the suite so the HEAD guard can watch it.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    root = out.stdout.strip()
+    return Path(root) if root else None
+
+
+def _head_state(repo_root: Path) -> tuple:
+    """Return (branch, commit) of *repo_root*'s HEAD."""
+    branch = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=repo_root, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    return branch, commit
+
+
+def _branch_set(repo_root: Path) -> set:
+    """Return the set of branch names in *repo_root*."""
+    out = subprocess.run(
+        ["git", "for-each-ref", "--format=%(refname:short)", "refs/heads"],
+        cwd=repo_root, capture_output=True, text=True, check=True,
+    ).stdout
+    return {line for line in out.splitlines() if line}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _guard_suite_repo_unchanged():
+    """Fail the suite if any test mutates the repository it runs in.
+
+    Tests must operate on isolated fixture repositories. A test that lets the
+    engine's executor create a task branch in the suite's own working tree
+    (e.g. by building a graph without a fixture ``project_root``) creates a
+    branch and moves HEAD, silently redirecting every subsequent commit. Record
+    the suite repo's HEAD and branch set at session start and assert both are
+    unchanged at session end.
+    """
+    repo_root = _suite_repo_root()
+    if repo_root is None:
+        yield
+        return
+    before_head = _head_state(repo_root)
+    before_branches = _branch_set(repo_root)
+    yield
+    after_head = _head_state(repo_root)
+    after_branches = _branch_set(repo_root)
+    assert after_head == before_head, (
+        "A test mutated the repository the test suite runs in: HEAD moved from "
+        f"{before_head} to {after_head}. Tests must operate on isolated fixture "
+        "repositories and never create branches in or change the checkout of "
+        "the suite repository."
+    )
+    assert after_branches == before_branches, (
+        "A test created or deleted a branch in the repository the test suite "
+        f"runs in: branches changed from {sorted(before_branches)} to "
+        f"{sorted(after_branches)}. Tests must operate on isolated fixture "
+        "repositories."
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)
