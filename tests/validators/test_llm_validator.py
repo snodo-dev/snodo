@@ -818,6 +818,61 @@ class TestPostExecuteToolLoop:
         assert "maximum" in result.justification.lower()
         assert completion_fn.call_count == _DEFAULT_MAX_TOOL_TURNS
 
+    def test_tool_loop_invalid_submit_verdict_gets_tool_response(self, security_validator):
+        """A submit_verdict with an invalid severity is answered with a tool
+        response, so every tool_call_id is answered before the next request
+        (Fixes #53)."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = None
+            if call_count[0] == 1:
+                tc = MagicMock()
+                tc.id = "tc_bad_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
+                    "severity": "not-a-severity",
+                    "justification": "bad",
+                })
+                resp.choices[0].message.tool_calls = [tc]
+            else:
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
+                    "severity": "pass",
+                    "justification": "OK",
+                })
+                resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        # The invalid submit_verdict got a tool response before the next request.
+        messages = completion_fn.call_args_list[-1].kwargs["messages"]
+        tool_msgs = [m for m in messages if m.get("role") == "tool"]
+        assert any("severity must be one of" in m["content"] for m in tool_msgs)
+        pending = set()
+        for m in messages:
+            if m.get("role") == "assistant" and m.get("tool_calls"):
+                for tc in m["tool_calls"]:
+                    pending.add(tc["id"])
+            elif m.get("role") == "tool":
+                pending.discard(m.get("tool_call_id"))
+        assert not pending
+
     def test_tool_loop_returns_verdict_on_first_response(self, security_validator):
         """If model calls submit_verdict immediately, no read tools needed."""
         mock_git = MagicMock()
