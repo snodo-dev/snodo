@@ -145,6 +145,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The coder and validator tool loops no longer send a malformed message
+  history after a terminal tool call. Previously, when `submit_files` was
+  called with zero files or unparseable arguments, the loop appended the
+  assistant message with its `tool_calls` but skipped the tool response for
+  that `tool_call_id`, then continued to another turn — so the next request
+  carried an unanswered `tool_call_id` and providers rejected the run
+  (`An assistant message with 'tool_calls' must be followed by tool messages
+  responding to each 'tool_call_id'`). The same structural defect existed in
+  the validator loop for `submit_verdict` with an invalid severity. Every
+  `tool_call_id` in an assistant message now gets a tool response before the
+  next request, without exception: terminal tools, failing tools, tools
+  returning nothing, and turns mixing several calls. A hypothesis property
+  test drives the loop with arbitrary tool-call turns and asserts the
+  invariant on every request, so any future tool that can skip its response
+  fails the test. (Fixes #53).
+
+- `submit_files(0 file(s))` is no longer accepted as a valid completion.
+  Submitting zero files is not a valid delivery of changes; the loop now
+  refuses it with a tool response telling the coder to produce at least one
+  file operation and call `submit_files(files=[...])` again, instead of
+  terminating the run with an empty artifact and a broken history.
+
 - In-place-writing coders (opencode and similar, which write to the working
   tree directly and never go through `WorkspaceMCP`) can no longer mutate
   `.snodo/` and have it silently absent from the artifact report and audit
