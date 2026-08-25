@@ -105,12 +105,15 @@ def _resolve_model_for_role(config: dict, role: str, fallback: str) -> str:
     )
 
 
-def _build_completion_fn(model: str, base_fn: Callable) -> Callable:
+def _build_completion_fn(model: str, base_fn: Optional[Callable]) -> Optional[Callable]:
     """Build a ``functools.partial`` of *base_fn* bound to *model*.
 
     If the model's provider has a ``base_url`` configured, ``api_base``
     is also bound so the call routes to the correct endpoint.
     """
+    if base_fn is None:
+        return None
+
     import functools
 
     from snodo.config import ConfigManager
@@ -221,6 +224,14 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             session_id: Optional active session ID to tag on every audit event
             validator_config: Pre-loaded ValidatorConfig (cached at build time)
         """
+        from snodo.coders.mock import (
+            MockAdapter,
+            is_mock_completion_fn,
+            is_mock_mode_active,
+            mock_completion_fn,
+            set_mock_mode,
+        )
+
         self.protocol = protocol
         self.workspace_mcp = workspace_mcp
         self.git_mcp = git_mcp
@@ -243,36 +254,39 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             workspace_mcp=workspace_mcp,
             git_mcp=git_mcp,
         )
-        self._completion_fn = getattr(self.coder, "_completion_fn", None) or \
-                              getattr(self.coder, "completion_fn", None)
+
+        is_mock = (
+            isinstance(self.coder, MockAdapter)
+            or is_mock_completion_fn(getattr(self.coder, "_completion_fn", None))
+            or is_mock_mode_active()
+        )
+
+        _base_fn = getattr(self.coder, "_completion_fn", None) or \
+                   getattr(self.coder, "completion_fn", None)
+
+        self._completion_fn = _base_fn
         self._default_model = getattr(self.coder, "model", DEFAULT_MODEL)
 
-        # Coder, validator, and classifier each need their own
-        # completion_fn — the coder may not use LiteLLM (e.g.
-        # OpenCodeAdapter uses HTTP).  Fall back to a partial
-        # litellm.completion bound to each model with its provider's
-        # api_base.  We use ConfigManager directly — self._default_model
-        # may be a non-LiteLLM string like "opencode/google/gemini-3.5-flash".
-        # Always bind the model explicitly — the coder's _completion_fn
-        # (if present) provides the authenticated call mechanism but has
-        # no model bound.
         from litellm import completion as litellm_completion
-
         from snodo.config import ConfigManager, provider_env
 
         config = ConfigManager().load()
-        _base_fn = getattr(self.coder, "_completion_fn", None) or litellm_completion
 
         validator_model = _resolve_model_for_role(config, "validator", DEFAULT_MODEL)
         classifier_model = _resolve_model_for_role(config, "classifier", DEFAULT_MODEL)
 
-        # Inject provider API keys for both models
-        with provider_env(validator_model), provider_env(classifier_model):
+        if is_mock_mode_active() or (isinstance(self.coder, MockAdapter) and _base_fn is not None):
             validator_completion_fn = _build_completion_fn(validator_model, _base_fn)
             classifier_completion_fn = _build_completion_fn(classifier_model, _base_fn)
+        elif _base_fn is None and not is_mock_mode_active():
+            validator_completion_fn = None
+            classifier_completion_fn = None
+        else:
+            with provider_env(validator_model), provider_env(classifier_model):
+                validator_completion_fn = _build_completion_fn(validator_model, _base_fn or litellm_completion)
+                classifier_completion_fn = _build_completion_fn(classifier_model, _base_fn or litellm_completion)
 
-        # Reuse validator fn when classifier model matches (avoids extra partial)
-        if classifier_model == validator_model:
+        if classifier_model == validator_model and not (is_mock_mode_active() or isinstance(self.coder, MockAdapter)):
             classifier_completion_fn = validator_completion_fn
 
         self._classifier_completion_fn = classifier_completion_fn
@@ -1287,6 +1301,8 @@ def build_protocol_graph(
         resolved_model = model or DEFAULT_MODEL
         adapter_cls = resolve_adapter_class(resolved_model)
         if use_mock_coder:
+            from snodo.coders.mock import set_mock_mode
+            set_mock_mode(True)
             coder = MockAdapter()
         else:
             coder = adapter_cls(

@@ -155,6 +155,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
   they can only write through `WorkspaceMCP`, which refuses `.snodo/` writes.
   See ADR 027. (Fixes #52).
 
+- Guaranteed hermetic execution under `--mock`. `MockAdapter` now provides a
+  hermetic `_completion_fn` (`mock_completion_fn`), `_build_completion_fn`
+  preserves mock binding without attempting live provider API key loading, and
+  global mock mode (`set_mock_mode`) ensures that wave classification, LLM
+  validators, spec authoring rewriters, and any future call sites cannot make
+  live provider calls or touch network credentials under `--mock`. (Fixes #12).
+
 - The verification toolchain is now pinned to exact versions. `ruff` was
   declared `>=0.1.0` with no upper bound, so two worktrees of the same commit
   resolved different ruff versions and the lint gate reported 0 vs 1909 errors

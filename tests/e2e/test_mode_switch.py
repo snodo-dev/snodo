@@ -37,10 +37,11 @@ def test_run_honours_switched_mode(snodo_cli):
     payload = _halt_payload(r.stdout)
     assert payload["current_mode"] == "scaffold"
 
-    # Exactly scaffold's pre_execute validators ran (meta-spec, architecture).
-    # decide's decision-record and build's security must not appear.
-    validator_ids = {v["validator_id"] for v in payload["validator_results"]}
-    assert validator_ids == {"meta-spec", "architecture"}
+    validator_ids = {v["validator_id"] for v in payload.get("validator_results", [])}
+    pre_validator_ids = {v["validator_id"] for v in payload.get("pre_validation", {}).get("validator_results", [])}
+    assert pre_validator_ids == {"meta-spec", "architecture"}
+    assert "decision-record" not in validator_ids
+    assert "security" not in validator_ids
 
 
 @pytest.mark.e2e
