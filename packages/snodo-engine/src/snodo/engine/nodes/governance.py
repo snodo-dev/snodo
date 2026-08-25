@@ -80,6 +80,23 @@ class GovernanceNodeMixin:
             "content": f"Authored spec (attempt {loop_state.spec_authoring_attempts}): {authored_spec[:300]}",
         })
 
+        # Surface the rewrite where it happens: the spec the validators will now
+        # run against is not what the operator typed.  Print the authored text
+        # and the triggering critique at this point so a watcher sees the
+        # replacement live, not only in the halt payload afterwards.
+        progress = getattr(self, "_progress", None)
+        if progress is not None:
+            triggered_by = ", ".join(
+                c.get("validator_id", "?") for c in spec_critique
+            )
+            progress(
+                f"  Spec authored (attempt {loop_state.spec_authoring_attempts}), "
+                f"triggered by {triggered_by}"
+            )
+            progress(f"    Original: {before[:300]}")
+            progress(f"    Authored: {authored_spec[:300]}")
+            progress(f"    Critique: {critique_text[:300]}")
+
         # Provenance: what triggered this, which attempt it was, and what the
         # original said.  Carried in metadata so the halt payload shows the
         # spec's origin rather than an invisible rewrite.
