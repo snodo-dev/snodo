@@ -38,7 +38,8 @@
         "security",
         "architecture",
         "quality",
-        "meta-spec"
+        "meta-spec",
+        "acceptance"
       ]
     }
   ],
@@ -113,6 +114,27 @@
       "tools": [],
       "validator_id": "meta-spec",
       "validator_type": "architecture"
+    },
+    {
+      "constraints": [],
+      "criteria": [
+        "Judge the produced artifacts against the acceptance criteria in the task spec. A criterion that is verifiable from the tree and unmet is a warn; a criterion that cannot be verified from the tree (device behaviour, human judgement) is uncheckable and never a finding."
+      ],
+      "evaluation_phase": "post_execute",
+      "judges_spec": false,
+      "model": null,
+      "severity_cap": "warn",
+      "tooling": {},
+      "tools": [
+        "read_file",
+        "read_file_lines",
+        "list_files",
+        "git_show",
+        "git_log",
+        "read_diff_between_refs"
+      ],
+      "validator_id": "acceptance",
+      "validator_type": "acceptance"
     }
   ],
   "version": "1.0.0"

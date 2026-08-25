@@ -96,10 +96,10 @@ def test_solo_structure():
     assert p.protocol_id == "solo"
     assert len(p.modes) == 1
     assert p.modes[0].mode_id == "producer"
-    assert len(p.validators) == 4
+    assert len(p.validators) == 5
     assert p.initial_mode == "producer"
     ids = {v.validator_id for v in p.validators}
-    assert ids == {"security", "architecture", "quality", "meta-spec"}
+    assert ids == {"security", "architecture", "quality", "meta-spec", "acceptance"}
 
 
 def test_team_structure():
@@ -108,9 +108,10 @@ def test_team_structure():
     assert len(p.modes) == 3
     mode_ids = {m.mode_id for m in p.modes}
     assert mode_ids == {"producer", "reviewer", "planner"}
-    assert len(p.validators) == 10
+    assert len(p.validators) == 11
     ids = {v.validator_id for v in p.validators}
     assert "protocol_adherence" in ids
+    assert "acceptance" in ids
 
 
 def test_2plus_n_structure():
@@ -119,9 +120,10 @@ def test_2plus_n_structure():
     assert len(p.modes) == 2
     mode_ids = {m.mode_id for m in p.modes}
     assert mode_ids == {"producer", "reviewer"}
-    assert len(p.validators) == 6
+    assert len(p.validators) == 7
     ids = {v.validator_id for v in p.validators}
     assert "protocol_adherence" in ids
+    assert "acceptance" in ids
 
 
 def test_2plus_n_has_severity_cap():
