@@ -137,8 +137,14 @@ def test_mock_adapter_excludes_snodo_artifacts():
     assert ".snodo/protocol.yml" not in paths
 
 
-def test_opencode_adapter_diff_to_artifact_excludes_snodo():
-    """OpenCodeAdapter._diff_to_artifact excludes files under .snodo/."""
+def test_opencode_adapter_diff_to_artifact_keeps_snodo_evidence():
+    """OpenCodeAdapter._diff_to_artifact keeps .snodo/ entries.
+
+    Filtering is the wrong verb for adapters that write in place: dropping a
+    .snodo/ entry removes the only evidence the write happened (Fixes #52,
+    ADR 027). Detection and refusal happen in the base class around the
+    coder call; _diff_to_artifact must preserve the evidence.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         snodo_dir = root / ".snodo"
@@ -154,11 +160,15 @@ def test_opencode_adapter_diff_to_artifact_excludes_snodo():
         artifact = adapter._diff_to_artifact(diff_entries)
         paths = [f.path for f in artifact.files]
         assert "app.py" in paths
-        assert ".snodo/protocol.yml" not in paths
+        assert ".snodo/protocol.yml" in paths
 
 
-def test_opencode_cli_adapter_diff_to_artifact_excludes_snodo():
-    """OpenCodeCLIAdapter._diff_to_artifact excludes files under .snodo/."""
+def test_opencode_cli_adapter_diff_to_artifact_keeps_snodo_evidence():
+    """OpenCodeCLIAdapter._diff_to_artifact keeps .snodo/ entries.
+
+    Same reasoning as above — the base class detects and refuses; the
+    artifact builder keeps the evidence rather than silently dropping it.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
         snodo_dir = root / ".snodo"
@@ -174,7 +184,65 @@ def test_opencode_cli_adapter_diff_to_artifact_excludes_snodo():
         artifact = adapter._diff_to_artifact(diff_entries)
         paths = [f.path for f in artifact.files]
         assert "main.py" in paths
-        assert ".snodo/protocol.yml" not in paths
+        assert ".snodo/protocol.yml" in paths
+
+
+# === In-place coder .snodo/ detection (base class, Fixes #52) ===
+
+def test_in_place_adapter_raises_on_snodo_mutation(tmp_path):
+    """An in-place coder that mutates .snodo/ raises SnodoMutationError.
+
+    The mutation stays on disk for operator inspection — it is refused in
+    the audit/report surface, not undone (Fixes #52).
+    """
+    from snodo.coders.base import InPlaceCoderAdapter, SnodoMutationError
+    from snodo.core.interfaces import CodeArtifact
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    snodo_dir = root / ".snodo"
+    snodo_dir.mkdir()
+    (snodo_dir / "protocol.yml").write_text("name: Test\n")
+
+    class _EvilCoder(InPlaceCoderAdapter):
+        _workspace = root
+
+        def _implement_in_place(self, spec):
+            (root / ".snodo" / "protocol.yml").write_text("mutated: true")
+            (root / "app.py").write_text("print('ok')")
+            return CodeArtifact(files=[])
+
+    adapter = _EvilCoder()
+    with pytest.raises(SnodoMutationError) as excinfo:
+        adapter.implement(TaskSpec(description="t", constraints=[]))
+
+    assert ".snodo/protocol.yml" in str(excinfo.value)
+    assert "app.py" not in str(excinfo.value)
+    # The mutation is NOT undone — it is visible for operator inspection.
+    assert (root / ".snodo" / "protocol.yml").read_text() == "mutated: true"
+
+
+def test_in_place_adapter_clean_run_passes(tmp_path):
+    """An in-place coder that does not touch .snodo/ is unaffected."""
+    from snodo.coders.base import InPlaceCoderAdapter
+    from snodo.core.interfaces import CodeArtifact
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    snodo_dir = root / ".snodo"
+    snodo_dir.mkdir()
+    (snodo_dir / "protocol.yml").write_text("name: Test\n")
+
+    class _CleanCoder(InPlaceCoderAdapter):
+        _workspace = root
+
+        def _implement_in_place(self, spec):
+            (root / "app.py").write_text("print('ok')")
+            return CodeArtifact(files=[])
+
+    adapter = _CleanCoder()
+    adapter.implement(TaskSpec(description="t", constraints=[]))
+    assert (root / ".snodo" / "protocol.yml").read_text() == "name: Test\n"
 
 
 # === Internal Snodo state write tests ===

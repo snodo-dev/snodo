@@ -25,15 +25,21 @@ from typing import Any, Optional
 import httpx
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
-from snodo.coders.base import CoderAdapter, LLMCallError
+from snodo.coders.base import InPlaceCoderAdapter, LLMCallError
 
 _logger = logging.getLogger(__name__)
 
 _SESSION_TIMEOUT = 300.0  # 5 minutes
 
 
-class OpenCodeAdapter(CoderAdapter):
-    """Coder adapter backed by opencode CLI running in Docker."""
+class OpenCodeAdapter(InPlaceCoderAdapter):
+    """Coder adapter backed by opencode CLI running in Docker.
+
+    Writes to the volume-mounted workspace in place (never through
+    WorkspaceMCP), so the .snodo/ boundary is enforced by the base class:
+    a post-run .snodo/ mutation raises ``SnodoMutationError`` instead of
+    being filtered out of the artifact report (Fixes #52, ADR 027).
+    """
 
     skip_engine_commit: bool = True
     skip_workspace_write: bool = True
@@ -71,7 +77,7 @@ class OpenCodeAdapter(CoderAdapter):
     def base_url(self) -> str:
         return self._container.base_url
 
-    def implement(self, spec: TaskSpec) -> CodeArtifact:
+    def _implement_in_place(self, spec: TaskSpec) -> CodeArtifact:
         """Generate code via the opencode HTTP API.
 
         1. Ensure container is running (start if needed)
@@ -300,10 +306,6 @@ class OpenCodeAdapter(CoderAdapter):
         for entry in diff_entries:
             path = entry.get("file", "")
             if not path:
-                continue
-            rel_parts = Path(path).parts
-            if rel_parts and rel_parts[0] == ".snodo":
-                _logger.warning("Excluded protected path under .snodo/ from coder artifacts: %s", path)
                 continue
             status = entry.get("status", "modified")
 

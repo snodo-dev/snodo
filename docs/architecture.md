@@ -184,6 +184,16 @@ Shipped adapters (`engine/coders/`):
 - **OpenCodeAdapter** (`opencode_cli_adapter.py`): drives the host `opencode` CLI as the coder
 - **MockAdapter** (`mock.py`): deterministic stub for testing
 
+Adapters that write to the working tree **in place** (opencode and similar;
+`skip_workspace_write = True`) inherit `InPlaceCoderAdapter`
+(`coders/base.py`). They bypass `WorkspaceMCP`, so the `.snodo/` boundary
+cannot be enforced at the tool surface: the base class snapshots `.snodo/`
+around the coder call and raises `SnodoMutationError` if the coder mutated it,
+which the engine surfaces as a terminal `blocker` halt with a
+`snodo_mutation_blocked` audit event (ADR 027). In-process adapters (litellm,
+mock) can only write through `WorkspaceMCP`, which refuses `.snodo/` writes
+(ADR 026).
+
 Code-host providers follow the same pattern (`providers/registry.py:detect_provider()` → GitHub or local).
 
 ## Kleene closure

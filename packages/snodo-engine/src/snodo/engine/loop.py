@@ -33,6 +33,7 @@ import snodo.validators  # noqa: F401 — registers validators on import
 
 # Import real implementations
 from snodo.coders import LiteLLMAdapter, MockAdapter
+from snodo.coders.base import SnodoMutationError
 from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import ExecutionError, Task, ValidatorResult
 from snodo.engine.constraints import ConstraintEngine
@@ -666,6 +667,27 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                     project_context=self._project_context_cache,
                 )
                 self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")
+            except SnodoMutationError as e:
+                # An in-place-writing coder mutated protected .snodo/ state.
+                # This is a governance violation (INV3-class), not an
+                # execution fault: block with a terminal halt, record the
+                # attempt in the audit trail, and leave the tree for operator
+                # inspection (Fixes #52, ADR 027).
+                loop_state.is_blocked = True
+                loop_state.halt_type = "blocked"
+                loop_state.constraint_violations.append(str(e))
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "skipped",
+                    "reason": str(e),
+                }
+                self._audit("snodo_mutation_blocked", {
+                    "op": "snodo_mutation_blocked",
+                    "task_ref": loop_state.task.id,
+                    "mode": loop_state.current_mode,
+                    "paths": list(getattr(e, "paths", [])),
+                    "error": str(e),
+                })
+                return self._state_to_dict(loop_state)
             except ExecutionError as e:
                 loop_state.is_blocked = True
                 loop_state.halt_type = "internal_error"

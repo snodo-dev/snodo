@@ -132,6 +132,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- In-place-writing coders (opencode and similar, which write to the working
+  tree directly and never go through `WorkspaceMCP`) can no longer mutate
+  `.snodo/` and have it silently absent from the artifact report and audit
+  trail. Previously `.snodo/` entries were *filtered* out of the returned
+  `CodeArtifact`, which removes the only evidence of a write that already
+  happened — and since `.snodo/` is normally gitignored, the git readback
+  could not see the mutation at all. The in-place adapters now inherit
+  `InPlaceCoderAdapter`, which snapshots `.snodo/` around the coder call and
+  raises `SnodoMutationError` if the coder changed anything under it; the
+  engine surfaces this as a terminal `blocker` halt, records a
+  `snodo_mutation_blocked` audit event naming the paths, and leaves the tree
+  for operator inspection — a `.snodo/` mutation is a governance violation,
+  not an execution fault. The `.snodo/` artifact filter is removed from the
+  in-place adapters; in-process adapters (litellm, mock) are unchanged, as
+  they can only write through `WorkspaceMCP`, which refuses `.snodo/` writes.
+  See ADR 027. (Fixes #52).
+
 - The verification toolchain is now pinned to exact versions. `ruff` was
   declared `>=0.1.0` with no upper bound, so two worktrees of the same commit
   resolved different ruff versions and the lint gate reported 0 vs 1909 errors
