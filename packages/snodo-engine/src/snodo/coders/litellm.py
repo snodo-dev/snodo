@@ -19,6 +19,7 @@ Bounded tool-use loop (added):
 import json
 import logging
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
@@ -559,6 +560,10 @@ Return ONLY the JSON array, no other text.
                 raise ParseError(
                     f"Each file operation must have 'path' and 'content'. Got keys: {list(item.keys())}"
                 )
+            rel_parts = Path(item["path"]).parts
+            if rel_parts and rel_parts[0] == ".snodo":
+                _logger.warning("Excluded protected path under .snodo/ from coder artifacts: %s", item["path"])
+                continue
             files.append(FileArtifact(
                 path=item["path"],
                 content=item["content"],

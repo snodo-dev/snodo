@@ -212,7 +212,7 @@ depth-exhausted or otherwise non-resolved) is itself reported non-resolved.
 | WF4 — Policy completeness | Policy-to-validator-count matching | `verifier.py:check_wf4()` |
 | WF5 — Constraint consistency | Unique IDs; registered predicate verification | `verifier.py:check_wf5()` |
 | INV1 — Token integrity | JWT HS256, expiry, task binding | `foundation/infrastructure/tokens.py` |
-| INV2 — Capability boundary | Mode-filtered tool exposure at the MCP boundary; path validation confines writes to the project root | `mcp/server.py`, `tools/workspace.py:validate_path()`, `tools/git.py` |
+| INV2 — Capability boundary | Mode-filtered tool exposure at the MCP boundary; path validation confines writes to the project root and excludes `.snodo/` from tool mutation (ADR 026) | `mcp/server.py`, `tools/workspace.py:validate_path()`, `tools/git.py` |
 | INV3 — Non-overridable block | `blocker_count > 0 → HALT` before policy logic | `engine/policy.py` |
 | INV4 — Audit immutability | Hash-chained append-only log | `foundation/infrastructure/audit.py` |
 | INV5 — Session resumability | File-backed checkpoint per (mode, project) | `foundation/infrastructure/session.py` |
