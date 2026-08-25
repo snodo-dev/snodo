@@ -69,6 +69,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Legible criterion text in halt payloads for index citations. When a validator
+  justification cites criteria by index (e.g. `criterion 3`), the cited
+  criterion text is excerpted directly into the justification string and
+  populated in a structured `cited_criteria` field on `ValidatorResult`.
+  Uncited results carry no extra overhead, keeping payload sizes minimal while
+  making halt payloads self-contained without needing to open `.snodo/protocol.yml`.
+  (Fixes #37).
+
 - The spec-authoring rewriter now receives only spec-quality critique. A
   `Validator` gains a `judges_spec` flag (set on the shipped `meta-spec` and
   `spec-manners` validators); only those validators' critique reaches the
