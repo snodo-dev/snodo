@@ -28,8 +28,7 @@ class MergeConflictError(GitError):
     """
 
 
-class PathValidationError(Exception):
-    """Raised when path validation fails."""
+from snodo.tools.workspace import PathValidationError
 
 
 class GitMCP:
@@ -61,17 +60,18 @@ class GitMCP:
         except InvalidGitRepositoryError:
             raise ValueError(f"Not a git repository: {self.project_root}")
 
-    def validate_path(self, path: str) -> Path:
+    def validate_path(self, path: str, for_mutation: bool = False) -> Path:
         """Validate that path is within project root.
 
         Args:
             path: Path to validate (relative or absolute)
+            for_mutation: If True, also validate that path is not protected under .snodo/
 
         Returns:
             Resolved absolute Path object
 
         Raises:
-            PathValidationError: If path escapes project root
+            PathValidationError: If path escapes project root or attempts to mutate .snodo/
         """
         if os.path.isabs(path):
             resolved = Path(path).resolve()
@@ -79,10 +79,15 @@ class GitMCP:
             resolved = (self.project_root / path).resolve()
 
         try:
-            resolved.relative_to(self.project_root)
+            rel = resolved.relative_to(self.project_root)
         except ValueError:
             raise PathValidationError(
                 f"Path escapes project root: {path} -> {resolved}"
+            )
+
+        if for_mutation and rel.parts and rel.parts[0] == ".snodo":
+            raise PathValidationError(
+                f"Path is protected under .snodo/ and cannot be mutated: {path} -> {resolved}"
             )
 
         return resolved
@@ -128,11 +133,11 @@ class GitMCP:
             Command output
 
         Raises:
-            PathValidationError: If any path escapes project root
+            PathValidationError: If any path escapes project root or mutates .snodo/
         """
         validated_paths = []
         for path in paths:
-            validated = self.validate_path(path)
+            validated = self.validate_path(path, for_mutation=True)
             validated_paths.append(str(validated))
 
         if not validated_paths:

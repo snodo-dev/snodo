@@ -5,6 +5,7 @@ FILE: snodo/coders/mock.py
 Returns deterministic outputs without making LLM calls.
 """
 
+from pathlib import Path
 from typing import Optional
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
@@ -33,4 +34,8 @@ class MockAdapter(CoderAdapter):
         self.call_count += 1
         self.last_spec = spec
 
-        return CodeArtifact(files=list(self.mock_files))
+        valid_files = [
+            f for f in self.mock_files
+            if not (Path(f.path).parts and Path(f.path).parts[0] == ".snodo")
+        ]
+        return CodeArtifact(files=valid_files)

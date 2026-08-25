@@ -39,17 +39,18 @@ class WorkspaceMCP:
         if not self.project_root.is_dir():
             raise ValueError(f"Project root is not a directory: {self.project_root}")
     
-    def validate_path(self, path: str) -> Path:
+    def validate_path(self, path: str, for_mutation: bool = False) -> Path:
         """Validate that path is within project root.
         
         Args:
             path: Path to validate (relative or absolute)
+            for_mutation: If True, also validate that path is not protected under .snodo/
             
         Returns:
             Resolved absolute Path object
             
         Raises:
-            PathValidationError: If path escapes project root
+            PathValidationError: If path escapes project root or attempts to mutate .snodo/
         """
         # Convert to Path and resolve (handles .., symlinks, etc.)
         if os.path.isabs(path):
@@ -61,12 +62,17 @@ class WorkspaceMCP:
         
         # Check if resolved path is within project root
         try:
-            resolved.relative_to(self.project_root)
+            rel = resolved.relative_to(self.project_root)
         except ValueError:
             raise PathValidationError(
                 f"Path escapes project root: {path} -> {resolved}"
             )
         
+        if for_mutation and rel.parts and rel.parts[0] == ".snodo":
+            raise PathValidationError(
+                f"Path is protected under .snodo/ and cannot be mutated: {path} -> {resolved}"
+            )
+
         return resolved
     
     def read_file(self, path: str) -> str:
@@ -137,10 +143,10 @@ class WorkspaceMCP:
             True if successful
             
         Raises:
-            PathValidationError: If path escapes project root
+            PathValidationError: If path escapes project root or mutates .snodo/
             PermissionError: If file cannot be written
         """
-        validated_path = self.validate_path(path)
+        validated_path = self.validate_path(path, for_mutation=True)
         
         # Create parent directories if needed
         validated_path.parent.mkdir(parents=True, exist_ok=True)
@@ -202,10 +208,10 @@ class WorkspaceMCP:
             True if successful
             
         Raises:
-            PathValidationError: If path escapes project root
+            PathValidationError: If path escapes project root or mutates .snodo/
             FileNotFoundError: If file doesn't exist
         """
-        validated_path = self.validate_path(path)
+        validated_path = self.validate_path(path, for_mutation=True)
         
         if not validated_path.exists():
             raise FileNotFoundError(f"File not found: {path}")
@@ -226,9 +232,9 @@ class WorkspaceMCP:
             True if successful
             
         Raises:
-            PathValidationError: If path escapes project root
+            PathValidationError: If path escapes project root or mutates .snodo/
         """
-        validated_path = self.validate_path(path)
+        validated_path = self.validate_path(path, for_mutation=True)
         validated_path.mkdir(parents=True, exist_ok=True)
         return True
     
