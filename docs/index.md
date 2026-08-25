@@ -12,6 +12,14 @@ Two human-in-control roles — **producer** (code generation) and **reviewer** (
 
 [Architecture →](architecture.md)
 
+## Machine interface
+
+`--json` on `status`, `mode show`, `session show`, `task show`, and `worktree
+list`, plus `snodo validate` for running a phase's validators without a coder.
+Versioned with a `schema` field and four-outcome exit codes.
+
+[Machine interface →](machine-interface.md)
+
 ## Get started
 
 ```bash

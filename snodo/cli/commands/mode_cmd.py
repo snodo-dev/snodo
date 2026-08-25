@@ -28,9 +28,11 @@ def _mode_callback(ctx: typer.Context):
 
 
 @app.command("show")
-def mode_show():
+def mode_show(
+    json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+):
     """Show the current active mode."""
-    args = SimpleNamespace(mode_action="show")
+    args = SimpleNamespace(mode_action="show", json=json)
     return mode_command(args)
 
 
@@ -52,7 +54,7 @@ def mode_command(args) -> int:
     action = getattr(args, "mode_action", "show")
 
     if action == "show":
-        return _mode_show(state, project_root)
+        return _mode_show(args, state, project_root)
     elif action == "change":
         return _mode_change(args, state, project_root)
     else:
@@ -60,9 +62,19 @@ def mode_command(args) -> int:
         return 1
 
 
-def _mode_show(state, project_root) -> int:
+def _mode_show(args, state, project_root) -> int:
     """Display the current active mode."""
+    json_out = getattr(args, "json", False)
     if not state.current_mode:
+        if json_out:
+            from snodo.cli.json_output import emit_json, schema_name
+            return emit_json({
+                "schema": schema_name("mode"),
+                "ok": True,
+                "mode": None,
+                "name": None,
+                "active_session": None,
+            })
         print("No mode set. Run 'snodo mode change <m>' to select one.")
         return 0
 
@@ -80,6 +92,16 @@ def _mode_show(state, project_root) -> int:
                 mode_name = f"{mode.name} ({state.current_mode})"
         except Exception:
             pass
+
+    if json_out:
+        from snodo.cli.json_output import emit_json, schema_name
+        return emit_json({
+            "schema": schema_name("mode"),
+            "ok": True,
+            "mode": state.current_mode,
+            "name": mode_name,
+            "active_session": state.active_session.get(state.current_mode),
+        })
 
     print(f"Current mode: {mode_name}")
     if state.active_session:
