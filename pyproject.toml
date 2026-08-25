@@ -55,13 +55,13 @@ Issues = "https://github.com/snodo-dev/snodo/issues"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-timeout>=2.3.0",
-    "hypothesis>=6.100.0",
+    "pytest==9.0.3",
+    "pytest-cov==7.1.0",
+    "pytest-timeout==2.4.0",
+    "hypothesis==6.155.2",
     "ruff==0.15.16",
     "radon>=6.0.0",
-    "import-linter",
+    "import-linter==2.12",
 ]
 studies = [
     "marimo>=0.9.0",
@@ -101,12 +101,16 @@ filterwarnings = [
 
 [dependency-groups]
 dev = [
-    "datasets>=5.0.0",
-    "genbadge[coverage]>=1.1.3",
+    "datasets==5.0.0",
+    "genbadge[coverage]==1.1.3",
+    "grimp==3.14",
     "httpx2>=2.4.0",
-    "hypothesis>=6.155.2",
-    "import-linter>=2.12",
-    "pytest-xdist>=3.8.0",
+    "hypothesis==6.155.2",
+    "import-linter==2.12",
+    "pytest==9.0.3",
+    "pytest-cov==7.1.0",
+    "pytest-timeout==2.4.0",
+    "pytest-xdist==3.8.0",
     "radon>=6.0.1",
     "swebench>=4.0.0",
     "paramiko>=3.0.0",
