@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from snodo.infrastructure.worktree import (
+    WorktreeIsolationError,
     create_worktree,
     delete_task_branch,
     merge_task_branch,
@@ -62,6 +63,40 @@ def test_resolve_base_branch_uses_remote_head(repo):
         cwd=repo, check=True,
     )
     assert resolve_base_branch(str(repo)) == "master"
+
+
+# === unborn HEAD (no commits) — fail loud, never degrade to no isolation ===
+
+def _init_unborn_repo(root: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+
+
+def test_create_worktree_on_unborn_head_raises(tmp_path):
+    root = tmp_path / "proj"
+    root.mkdir()
+    _init_unborn_repo(root)
+
+    with pytest.raises(WorktreeIsolationError, match="no commits"):
+        create_worktree(str(root), "task_1", "do the thing")
+
+
+def test_setup_for_task_on_unborn_head_propagates(tmp_path):
+    """setup_for_task must not swallow the isolation failure and return None.
+
+    Returning None is the silent-degradation path: the caller would run the
+    agent in the operator's working tree. The structural error must surface
+    so a human can decide (Fixes #29).
+    """
+    from snodo.infrastructure.worktree import setup_for_task
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    _init_unborn_repo(root)
+
+    with pytest.raises(WorktreeIsolationError, match="no commits"):
+        setup_for_task(str(root), "task_1", "do the thing")
 
 
 # === create_worktree branches off the resolved base ===

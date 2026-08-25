@@ -78,7 +78,11 @@ cli/commands/run_cmd.py
   → load protocol (YAML → Protocol model; compiler/verifier runs WF1–WF5)
   → ConfigManager (config.yml → provider/model resolution)
   → SessionManager (create or resume; INV5)
-  → git worktree setup for the task (MCPs root at the worktree, not project_root)
+  → git worktree setup for the task (`infrastructure/worktree.py:create_worktree` /
+    `setup_for_task`; MCPs root at the worktree, not project_root). If the worktree
+    cannot be created (e.g. unborn HEAD on a repo with no commits), the run aborts
+    unless `--no-isolation` was passed explicitly — isolation is never degraded
+    silently (ADR 025).
   → engine/loop.py:build_protocol_graph(...)        → LangGraph StateGraph
   → engine/closure.py:run_to_closure(graph, task)   → recursive over spawned subtasks
         per invocation: context → governance (environment preparation) → pre_validate → execute

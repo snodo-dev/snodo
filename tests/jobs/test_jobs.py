@@ -7,8 +7,8 @@ Unit tests (mock subprocess), CLI integration tests, and end-to-end tests.
 
 import json
 import os
-import signal
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -16,9 +16,21 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-from snodo.jobs import JobManager, JobError, TERMINAL_STATUSES
+from snodo.jobs import TERMINAL_STATUSES, JobError, JobManager
 from snodo.jobs.runner import build_command
+
+
+@pytest.fixture
+def mock_worktree_creation(tmp_path):
+    """Some tests have no git repo and exercise job state, not worktree
+    creation. submit() now fails loud when a worktree cannot be created
+    (Fixes #29), so the worktree must be mocked there.
+    """
+    with patch(
+        "snodo.infrastructure.worktree.create_worktree",
+        return_value=str(tmp_path / "wt"),
+    ):
+        yield
 
 
 # === Fixtures ===
@@ -158,6 +170,10 @@ class TestStateManagement:
 # === Submit Tests (mock subprocess) ===
 
 class TestSubmit:
+    @pytest.fixture(autouse=True)
+    def _mock_wt(self, mock_worktree_creation):
+        yield
+
     @patch("snodo.jobs.runner.spawn_background")
     def test_submit_creates_directory_structure(self, mock_spawn, manager, sample_task_args):
         """submit() creates job dir with state.json and task.json."""
@@ -216,10 +232,39 @@ class TestSubmit:
         assert stdout_path.endswith("stdout.log")
         assert stderr_path.endswith("stderr.log")
 
+    @patch("snodo.jobs.runner.spawn_background")
+    def test_submit_refused_when_worktree_cannot_be_created(self, mock_spawn, manager, sample_task_args):
+        """A background job whose worktree cannot be created is refused up front.
+
+        The job state records the failure and submit() raises — never a
+        silently un-isolated background run in the project tree (Fixes #29).
+        """
+        from snodo.infrastructure.worktree import WorktreeIsolationError
+
+        with (
+            patch(
+                "snodo.infrastructure.worktree.create_worktree",
+                side_effect=WorktreeIsolationError("no commits"),
+            ),
+            pytest.raises(JobError, match="no commits"),
+        ):
+            manager.submit(sample_task_args)
+
+        mock_spawn.assert_not_called()
+        job_dirs = list((manager.jobs_dir).iterdir())
+        assert len(job_dirs) == 1
+        state = manager._load_state(job_dirs[0])
+        assert state["status"] == "failed"
+        assert state["exit_code"] == 1
+
 
 # === List Jobs Tests ===
 
 class TestListJobs:
+    @pytest.fixture(autouse=True)
+    def _mock_wt(self, mock_worktree_creation):
+        yield
+
     @patch("snodo.jobs.runner.spawn_background")
     def test_list_returns_all_jobs(self, mock_spawn, manager, sample_task_args):
         """list_jobs() returns all submitted jobs."""
@@ -265,6 +310,10 @@ class TestListJobs:
 # === Get Status Tests ===
 
 class TestGetStatus:
+    @pytest.fixture(autouse=True)
+    def _mock_wt(self, mock_worktree_creation):
+        yield
+
     @patch("os.kill")
     @patch("snodo.jobs.runner.spawn_background")
     def test_get_status_basic(self, mock_spawn, mock_kill, manager, sample_task_args):

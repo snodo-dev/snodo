@@ -62,6 +62,11 @@ def register(app: typer.Typer) -> None:
         retain_worktree: bool = typer.Option(
             False, "--retain-worktree", help="Keep the task worktree regardless of outcome",
         ),
+        no_isolation: bool = typer.Option(
+            False, "--no-isolation",
+            help="Run without worktree isolation even when one cannot be created. "
+                 "Never set automatically: losing isolation is a warning, not an error.",
+        ),
     ):
         """Execute a task through the protocol."""
         args = SimpleNamespace(
@@ -69,7 +74,7 @@ def register(app: typer.Typer) -> None:
             verbose=verbose, mock=mock, plan=plan, wave=wave,
             interactive=interactive, from_pr=from_pr, background=background,
             sandbox=sandbox, resume=resume, retry=retry,
-            retain_worktree=retain_worktree,
+            retain_worktree=retain_worktree, no_isolation=no_isolation,
         )
         return run_command(args)
 
@@ -380,9 +385,57 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                     pass
 
     # Set up git worktree — shared helper used by BOTH CLI inline and background
-    from snodo.infrastructure.worktree import setup_for_task, remove_worktree, delete_task_branch
+    from snodo.infrastructure.worktree import (
+        WorktreeIsolationError, setup_for_task, remove_worktree, delete_task_branch,
+    )
     existing_wt = os.environ.get("SNODO_WORKTREE_PATH")
-    worktree_path_val = setup_for_task(project_root, task.id, task.spec, existing_worktree_path=existing_wt)
+    no_isolation = bool(getattr(args, "no_isolation", False))
+
+    try:
+        worktree_path_val = setup_for_task(
+            project_root, task.id, task.spec, existing_worktree_path=existing_wt
+        )
+        worktree_failure = None
+    except Exception as exc:  # noqa: BLE001 — isolation loss must fail loud, never degrade silently
+        worktree_path_val = None
+        worktree_failure = exc
+
+    if not worktree_path_val and not no_isolation:
+        # Failing loud (Fixes #29): an agent must not run in the operator's
+        # real working tree because isolation was unavailable. This is the
+        # state every greenfield repo starts in (no commits → unborn HEAD),
+        # and it requires a human decision, not a warning.
+        if isinstance(worktree_failure, WorktreeIsolationError):
+            print(f"Error: {worktree_failure}", file=sys.stderr)
+        elif worktree_failure is not None:
+            print(f"Error: Worktree creation failed: {worktree_failure}", file=sys.stderr)
+        else:
+            print("Error: Task worktree could not be established.", file=sys.stderr)
+        if existing_wt:
+            print(
+                "  A pre-created worktree (SNODO_WORKTREE_PATH) could not be used.",
+                file=sys.stderr,
+            )
+        print(
+            "  Task isolation is required by default. Re-run with --no-isolation "
+            "only if you explicitly accept that the agent writes to your current "
+            "working tree.",
+            file=sys.stderr,
+        )
+        audit_log = getattr(args, "audit_log", None)
+        if audit_log:
+            try:
+                audit_log.append_event("worktree_isolation_failed", {
+                    "op": "worktree_isolation_failed",
+                    "task_ref": task.id,
+                    "reason": str(worktree_failure),
+                })
+            except Exception:
+                pass
+        if checkpointer:
+            _close_checkpointer(checkpointer)
+        return 1
+
     worktree_degraded = False
     if worktree_path_val:
         print(f"  Worktree: {worktree_path_val}")
