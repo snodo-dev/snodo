@@ -157,6 +157,8 @@ class LLMValidator(ValidatorBase):
         # Capability gate: tool-loop runs iff validator declares tools
         # AND MCPs + completion_fn are present. Empty/absent tools =>
         # single-completion path (no loop, no tools). Explicit grant only.
+        from snodo.validators.runner import enrich_result_with_criteria
+
         declared_tools = getattr(self.validator_spec, "tools", None) or []
         if (
             declared_tools
@@ -164,7 +166,8 @@ class LLMValidator(ValidatorBase):
             and context.git_mcp is not None
             and self._completion_fn is not None
         ):
-            return self._evaluate_with_tools(context)
+            res = self._evaluate_with_tools(context)
+            return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
 
         # Pre-execute or fallback: single-completion path
         prompt = self._build_prompt(context)
@@ -172,26 +175,29 @@ class LLMValidator(ValidatorBase):
         # Try structured output when the model supports it
         if self._completion_fn is not None and supports_response_schema(self.model):
             try:
-                return self._call_llm_structured(prompt)
+                res = self._call_llm_structured(prompt)
+                return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
             except Exception:
                 pass  # fall through to legacy parse
 
         # Legacy: free-text completion + hand-rolled parse
         if self._completion_fn is None:
-            return ValidatorResult(
+            res = ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
                 severity="warn",
                 justification="No completion_fn available",
             )
+            return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
         try:
             response_text = self._call_llm(prompt)
-            return self._parse_response(response_text)
+            res = self._parse_response(response_text)
         except Exception as e:
-            return ValidatorResult(
+            res = ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
                 severity="warn",
                 justification=f"LLM validation failed, defaulting to warn: {e}",
             )
+        return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
 
     # ------------------------------------------------------------------
     # Post-execute bounded tool-use loop

@@ -14,6 +14,7 @@ Do not fork this logic into a second implementation.
 from __future__ import annotations
 
 import copy
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -43,6 +44,75 @@ def resolve_validators(
     return mode, validators
 
 
+
+
+def extract_cited_indices(justification: str, total_criteria: int) -> List[int]:
+    """Find 1-based criteria indices cited in justification text.
+
+    Supports patterns like 'criterion 3', 'criteria 1 and 2', 'criterion #3',
+    'rule 2', 'item 1'.
+    """
+    if not justification or total_criteria <= 0:
+        return []
+
+    cited = set()
+    pattern = r'\b(?:criterion|criteria|rule|item)s?\s*(?:#?\s*\d+\s*(?:,?\s*(?:and|or)?\s*#?\s*\d+)*)'
+    matches = re.findall(pattern, justification, re.IGNORECASE)
+    for m in matches:
+        nums = [int(n) for n in re.findall(r'\d+', m)]
+        for n in nums:
+            if 1 <= n <= total_criteria:
+                cited.add(n)
+
+    if not cited:
+        nums = [int(n) for n in re.findall(r'\b(?:criterion|criteria|rule|item)?\s*#?\s*(\d+)\b', justification, re.IGNORECASE)]
+        for n in nums:
+            if 1 <= n <= total_criteria:
+                cited.add(n)
+
+    return sorted(list(cited))
+
+
+def enrich_result_with_criteria(
+    result: ValidatorResult, criteria: Optional[List[str]]
+) -> ValidatorResult:
+    """Enrich ValidatorResult with legible cited criteria text."""
+    if not result or not criteria:
+        return result
+
+    total_criteria = len(criteria)
+    cited_indices = extract_cited_indices(result.justification, total_criteria)
+    if not cited_indices:
+        return result
+
+    cited_list: List[str] = []
+    justification = result.justification
+
+    for idx in cited_indices:
+        criterion_text = criteria[idx - 1].strip()
+        cited_list.append(f"[Criterion {idx}] {criterion_text}")
+
+        excerpt = criterion_text[:100] + "..." if len(criterion_text) > 100 else criterion_text
+        if excerpt[:30] not in justification:
+            # Match 'criterion 3', 'criteria 3', or standalone '3' in list
+            pattern = rf'(\b(?:criterion|criteria|rule|item)\s*#?\s*{idx}\b|\b{idx}\b)'
+            justification = re.sub(
+                pattern,
+                rf"\1 ('{excerpt}')",
+                justification,
+                flags=re.IGNORECASE,
+                count=1,
+            )
+
+    return ValidatorResult(
+        validator_id=result.validator_id,
+        severity=result.severity,
+        justification=justification,
+        error=result.error,
+        cited_criteria=cited_list,
+    )
+
+
 def dispatch_validator(
     v: Validator, context: ValidatorContext, reg: Any
 ) -> ValidatorResult:
@@ -58,42 +128,46 @@ def dispatch_validator(
     if cls is not None:
         try:
             instance = cls(validator_spec=v)
-            return instance.evaluate(context)
+            result = instance.evaluate(context)
         except Exception as e:  # noqa: BLE001 — validator isolation boundary
-            return ValidatorResult(
+            result = ValidatorResult(
                 validator_id=v.validator_id,
                 severity="blocker",
                 justification=f"Validator error: {e}",
                 error=True,
             )
+        return enrich_result_with_criteria(result, v.criteria)
 
     if context.completion_fn and v.criteria:
         from snodo.validators.llm_validator import LLMValidator
 
         try:
             instance = LLMValidator(validator_spec=v)
-            return instance.evaluate(context)
+            result = instance.evaluate(context)
         except Exception as e:  # noqa: BLE001
-            return ValidatorResult(
+            result = ValidatorResult(
                 validator_id=v.validator_id,
                 severity="blocker",
                 justification=f"LLM validation failed: {e}",
                 error=True,
             )
+        return enrich_result_with_criteria(result, v.criteria)
 
     if v.criteria:
-        return ValidatorResult(
+        result = ValidatorResult(
             validator_id=v.validator_id,
             severity="blocker",
             justification=f"LLM unavailable for {v.validator_type} validation",
             error=True,
         )
+        return enrich_result_with_criteria(result, v.criteria)
 
-    return ValidatorResult(
+    result = ValidatorResult(
         validator_id=v.validator_id,
         severity="warn",
         justification=f"No criteria configured for {v.validator_type} — nothing to evaluate",
     )
+    return enrich_result_with_criteria(result, v.criteria)
 
 
 def run_validators(
