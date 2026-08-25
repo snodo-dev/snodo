@@ -138,6 +138,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
   explicitly into `protocol.yml`. A new `--test-command` (`-c`) flag enables
   explicit non-interactive configuration. (Fixes #33).
 
+- The test suite no longer mutates the repository it runs in. The truncation
+  execution test built a protocol graph without a fixture `project_root`, so
+  the engine's executor created and checked out a `task/{id}/{slug}` branch in
+  the suite's own working tree — leaving HEAD on a stale task branch after
+  `pytest`, so the next commit landed there instead of the branch the agent
+  was on. The test now runs against a throwaway git fixture repository, and a
+  session-scoped guard in `tests/conftest.py` records the suite repo's HEAD and
+  branch set at session start and fails the suite if any test changes either.
+  (Fixes #48.)
+
 - Audit log loading errors (`AuditError`) during dashboard data provider
   instantiation and `snodo cloud sync` are now caught gracefully. Corrupt
   audit logs no longer crash the TUI dashboard (which degrades by omitting
