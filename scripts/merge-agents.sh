@@ -95,11 +95,22 @@ for branch in $BRANCHES; do
   MERGED="$MERGED $branch"
 done
 
-if [ -z "$(echo "$MERGED" | tr -d ' ')" ]; then
+# Resume-safe: what matters is whether main has anything unpushed, not whether
+# THIS invocation did the merging. After resolving a conflict by hand you re-run
+# the script, and by then every branch is already an ancestor of main.
+UNPUSHED="$(git rev-list --count origin/main..main 2>/dev/null || echo 0)"
+
+if [ -z "$(echo "$MERGED" | tr -d ' ')" ] && [ "$UNPUSHED" = "0" ]; then
   echo
-  echo "Nothing merged. Nothing reset."
-  exit 0
+  echo "Nothing to merge and nothing unpushed."
+  echo "Checking whether any worktree can be reset anyway..."
+  MERGED="$ALL_BRANCHES"
+  SKIP_GATES=1
 fi
+
+if [ "${SKIP_GATES:-0}" = "1" ]; then
+  echo
+else
 
 # ── gates, before the push ───────────────────────────────────────────────
 echo
@@ -122,9 +133,11 @@ run_gate "uv run pytest tests/ -q -n auto"
 run_gate "uv run pytest tests/ -m e2e -q -n auto"
 
 echo
-echo "▸ pushing"
+echo "▸ pushing  ($UNPUSHED commit(s) ahead of origin/main)"
 git push || fail "push failed"
 echo "✓ pushed"
+
+fi   # end of gates+push block
 
 # ── reset only what is provably landed ───────────────────────────────────
 echo
