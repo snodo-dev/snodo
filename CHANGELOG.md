@@ -11,6 +11,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A deterministic canary for the `acceptance` validator (Fixes #59): a judge
+  driven by the validator's real tool loop against a real tree rejects a real
+  omission — a task whose acceptance criterion demands a test (or a decision
+  record) that the produced artifacts demonstrably lack returns `warn` and
+  names the unmet criterion. The mirror case is proven too: an uncheckable
+  criterion (device behaviour, human judgement) returns `pass`, so the safe
+  direction is established rather than assumed. Previously the validator had
+  never been observed rejecting anything — the standing finding was that every
+  read-only judge passes everything it is shown.
+
+- `snodo run` now tells the operator when their project's validator set is
+  out of date. Adding a validator to a shipped template does NOT add it to a
+  project whose `.snodo/protocol.yml` predates the change, so a pre-ADR-028
+  project silently keeps running without `acceptance`. The notice is printed
+  at load time (same failure pattern as a validator that does nothing —
+  absence indistinguishable from success). (Fixes #59).
+
 - First-class `verification_executed` audit trail events. Verification command executions
   (what command ran, against which commit hash, return code, outcome, and output evidence)
   are now recorded as immutable events in `.snodo/audit.log`. Automatic merges refuse to land
