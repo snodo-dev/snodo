@@ -190,9 +190,14 @@ Adapters that write to the working tree **in place** (opencode and similar;
 cannot be enforced at the tool surface: the base class snapshots `.snodo/`
 around the coder call and raises `SnodoMutationError` if the coder mutated it,
 which the engine surfaces as a terminal `blocker` halt with a
-`snodo_mutation_blocked` audit event (ADR 027). In-process adapters (litellm,
-mock) can only write through `WorkspaceMCP`, which refuses `.snodo/` writes
-(ADR 026).
+`snodo_mutation_blocked` audit event (ADR 027). The base class also owns the
+**commit**: after the coder runs it stages and commits the working tree with
+an explicit identity, so `HEAD` moves and post-execute validators that review
+`git diff HEAD~1..HEAD` ("## Code Change") see exactly the change the adapter
+returned as a `CodeArtifact` — the two channels cannot diverge (ADR 030).
+In-process adapters (litellm, mock) can only write through `WorkspaceMCP`,
+which refuses `.snodo/` writes (ADR 026); the executor commits their changes
+(`_commit_artifacts`), moving `HEAD` the same way.
 
 Code-host providers follow the same pattern (`providers/registry.py:detect_provider()` → GitHub or local).
 

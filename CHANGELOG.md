@@ -209,6 +209,24 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Post-execute validators can no longer review the previous commit instead of
+  the change. The container `opencode` adapter (the Docker/HTTP path) wrote to
+  the volume-mounted workspace in place but never committed, so `HEAD` did not
+  move and validators that read `git diff HEAD~1..HEAD` (the "## Code Change"
+  block in `llm_validator` / `acceptance`) reviewed the PREVIOUS commit —
+  a confident review of the wrong change that then passed. Committing is now
+  owned by `InPlaceCoderAdapter` (the same base class that owns the `.snodo/`
+  guard, ADR 027): after the coder runs, the base class stages and commits the
+  working tree with an explicit identity, so the git review channel and the
+  returned `CodeArtifact` always describe the same change.
+  `OpenCodeCLIAdapter`'s per-adapter commit is folded into the base class and
+  the duplicated git readback is removed. A conformance test parameterised
+  over every registered coder adapter asserts that an adapter's change is
+  observable (a non-empty `CodeArtifact`), attributable (the reported paths
+  exist on disk), and reviewable through `HEAD~1..HEAD` — the seam that let
+  this drift (an ABC, two `skip_*` booleans, `hasattr` duck typing) now fails
+  a test at the branch instead of surfacing months later. See ADR 030.
+
 - Replaced the intrusive `UserWarning` on unset `SNODO_TOKEN_SECRET` with debug
   logging. Generating a random per-process secret is expected and secure for
   single-process CLI execution, so raw warnings with stack traces no longer

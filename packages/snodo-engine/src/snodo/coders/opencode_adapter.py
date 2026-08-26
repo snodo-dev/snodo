@@ -164,58 +164,6 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
         )
         return data
 
-    def _read_changes_from_disk(self) -> list:
-        """Read changed files from the volume-mounted workspace via git diff.
-
-        opencode edits files in-place through the Docker volume mount, so the
-        on-disk state at ``self._workspace`` is the source of truth.  This
-        method runs ``git diff`` to find what changed and returns entries in
-        the same ``{file, status}`` format as ``_fetch_diff``.
-
-        Returns:
-            List of ``{file, status}`` dicts, or empty list on failure.
-        """
-        from git import Repo, GitCommandError
-
-        try:
-            repo = Repo(str(self._workspace), search_parent_directories=True)
-        except (GitCommandError, Exception) as exc:
-            _logger.warning("git readback: cannot open repo at %s: %s", self._workspace, exc)
-            return []
-
-        changed: dict[str, str] = {}
-
-        try:
-            # Unstaged changes (modified / deleted / added in working tree)
-            for d in repo.index.diff(None):
-                path = d.b_path or d.a_path
-                if path:
-                    if d.change_type == "D":
-                        changed[path] = "deleted"
-                    else:
-                        changed[path] = d.change_type
-
-            # Staged changes
-            for d in repo.index.diff("HEAD"):
-                path = d.b_path or d.a_path
-                if path and path not in changed:
-                    changed[path] = d.change_type
-
-            # Untracked files (new files opencode created)
-            for path in repo.untracked_files:
-                changed[path] = "added"
-
-        except Exception as exc:
-            _logger.warning("git readback: diff failed: %s", exc)
-            return []
-
-        entries = []
-        for path, status in changed.items():
-            entries.append({"file": path, "status": status})
-
-        _logger.debug("git readback: %d changed files", len(entries))
-        return entries
-
     def _start_container(self) -> None:
         """Start the opencode container if not running."""
         from snodo.coders.opencode_container import OpenCodeContainerError
