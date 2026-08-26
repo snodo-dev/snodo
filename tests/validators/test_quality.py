@@ -801,3 +801,38 @@ class TestQualityDispatch:
         assert len(results) == 1
         assert results[0].severity == "pass"
         assert "Stub" not in results[0].justification
+
+    def test_quality_validator_records_verification_executed_audit_event(self, project_dir):
+        """QualityValidator appends a verification_executed audit event."""
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.validators.context import ValidatorContext
+        from snodo.core.interfaces import Task
+
+        log_path = Path(project_dir) / "audit.log"
+        audit_log = AuditLog(str(log_path))
+
+        spec = Validator(
+            validator_id="quality",
+            validator_type="quality",
+            evaluation_phase="post_execute",
+            tooling={"test_command": "echo 'all tests pass'"},
+        )
+        qv = QualityValidator(spec, project_dir)
+        ctx = ValidatorContext(
+            task=Task(id="t1", spec="test"),
+            working_directory=str(project_dir),
+            audit_log=audit_log,
+        )
+
+        res = qv.evaluate(ctx)
+        assert res.severity == "pass"
+
+        events = audit_log.get_history("verification_executed")
+        assert len(events) == 1
+        ev = events[0]
+        assert ev.event_type == "verification_executed"
+        assert ev.data["command"] == "echo 'all tests pass'"
+        assert ev.data["outcome"] == "pass"
+        assert ev.data["returncode"] == 0
+        assert ev.data["validator_id"] == "quality"
+        assert "commit" in ev.data
