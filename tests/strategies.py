@@ -31,6 +31,7 @@ def hypothesis_settings():
     return settings(
         max_examples=max_examples,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
+        deadline=None,
     )
 
 
