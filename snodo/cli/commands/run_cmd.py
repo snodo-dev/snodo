@@ -583,6 +583,24 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
     from snodo.tools.git import GitError
 
     branch = task_branch_name(task.id, task.spec)
+    if audit_log:
+        history = audit_log.get_history("verification_executed")
+        has_pass = any(
+            e.data.get("outcome") == "pass"
+            for e in history
+        )
+        if not has_pass:
+            print(f"✗ Refused merge for {branch}: no passing verification_executed event in audit trail.", file=sys.stderr)
+            print("  An unverified merge is forbidden. Worktree and branch left intact.", file=sys.stderr)
+            audit_log.append_event("unverified_merge_blocked", {
+                "op": "unverified_merge_blocked",
+                "task_ref": task.id,
+                "branch": branch,
+                "reason": "No passing verification_executed event recorded in audit trail.",
+                "session_id": session_id,
+            })
+            return 1, True, None
+
     try:
         outcome = merge_task_branch(project_root, branch)
     except GitError as e:

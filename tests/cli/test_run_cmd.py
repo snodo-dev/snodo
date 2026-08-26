@@ -946,3 +946,74 @@ class TestAutoMerge:
             ["git", "branch"], cwd=repo, capture_output=True, text=True, check=True,
         ).stdout
         assert branch in branches
+
+
+class TestUnverifiedMergeBlocked:
+    """Verify _merge_on_success refuses to merge unverified commits."""
+
+    def test_unverified_merge_blocked(self, tmp_path):
+        from snodo.cli.commands.run_cmd import _merge_on_success
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        audit_log = AuditLog(str(repo / "audit.log"))
+        task = Task(id="task_unverified", spec="unverified task")
+
+        # No verification_executed event in audit_log -> _merge_on_success must block merge
+        res, preserve, merged = _merge_on_success(str(repo), task, 0, "sess_1", audit_log)
+        assert res == 1
+        assert preserve is True
+        assert merged is None
+
+        events = audit_log.get_history("unverified_merge_blocked")
+        assert len(events) == 1
+        assert events[0].data["op"] == "unverified_merge_blocked"
+
+    def test_verified_merge_allowed(self, tmp_path):
+        from snodo.cli.commands.run_cmd import _merge_on_success
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        task = Task(id="task_verified", spec="verified task")
+        branch = task_branch_name(task.id, task.spec)
+        subprocess_run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "file.txt").write_text("new file\n")
+        subprocess_run(["git", "add", "file.txt"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+        audit_log = AuditLog(str(repo / "audit.log"))
+        # Record passing verification event
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "command": "pytest",
+            "commit": "abc1234",
+            "returncode": 0,
+            "outcome": "pass",
+            "validator_id": "quality",
+        })
+
+        res, preserve, merged = _merge_on_success(str(repo), task, 0, "sess_1", audit_log)
+        assert res == 0
+        assert preserve is False
+        assert merged == branch
+        assert (repo / "file.txt").exists()
