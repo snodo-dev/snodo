@@ -140,3 +140,33 @@ def load_protocol(protocol_path: Path) -> Optional[Protocol]:
     except Exception as e:
         print(f"Error: Failed to parse protocol: {e}", file=sys.stderr)
         return None
+
+
+def missing_template_validators(protocol: Protocol) -> List[str]:
+    """Return validators present in the protocol's matching shipped template
+    but absent from *protocol*.
+
+    Adding a validator to a shipped template does NOT add it to a project
+    whose ``.snodo/protocol.yml`` was generated before that change.  This is
+    the same failure pattern as a validator that silently does nothing: the
+    project keeps running an out-of-date validator set with nothing telling
+    the operator.  The notice surfaces that gap at run time (Fixes #59).
+
+    The matching template is found by ``protocol_id`` (e.g. a ``solo``
+    project matches the ``solo`` template; a ``team`` project matches the
+    ``team`` template, whose ``protocol_id`` is ``default``).  A protocol
+    that matches no shipped template returns an empty list — it is a bespoke
+    protocol and no shipped template is authoritative for it.
+    """
+    loaded_ids = {v.validator_id for v in protocol.validators}
+    for name in list_templates():
+        candidate = template_protocol(name)
+        if candidate.protocol_id != protocol.protocol_id:
+            continue
+        missing = [
+            v.validator_id
+            for v in candidate.validators
+            if v.validator_id not in loaded_ids
+        ]
+        return missing
+    return []
