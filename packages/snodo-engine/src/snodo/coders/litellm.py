@@ -507,9 +507,21 @@ Return ONLY the JSON array, no other text.
                     gen_info,
                     _truncated_log(raw),
                 )
+                # Report what was observed; label inference as inference
+                # (Fixes #67).  The observed facts are the finish_reason and
+                # the generated token/char counts.  "The task is too large" is
+                # an inference, not an observation: the same finish_reason
+                # occurs when a tool call's arguments exceed the output budget
+                # and are cut off mid-argument — a different fault with a
+                # different remedy.
                 raise ParseError(
-                    f"Coder output truncated at max_tokens={self.max_tokens}: task is too large. "
-                    f"Generated {gen_info} before truncation."
+                    f"Coder output stopped at max_tokens={self.max_tokens} "
+                    f"(finish_reason={finish}); generated {gen_info}. "
+                    f"Observed: the response was cut off at the token ceiling. "
+                    f"Inference (not confirmed): the task is too large, or a "
+                    f"tool call's arguments exceeded the output budget and "
+                    f"were cut off mid-argument. Raise max_tokens or split "
+                    f"the task."
                 )
         except (AttributeError, IndexError):
             pass
