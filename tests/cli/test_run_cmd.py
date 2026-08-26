@@ -482,7 +482,7 @@ class TestRunCommandPlan:
         )
 
     @patch("snodo.cli.commands.plan_run._run_plan", return_value=0)
-    def test_routes_to_run_plan(self, mock_plan):
+    def test_routes_to_run_plan(self, mock_plan, temp_project):
         from snodo.cli.commands.run_cmd import run_command
 
         args = SimpleNamespace(plan="myplan", description=None,
@@ -644,7 +644,7 @@ class TestRunCommandSessionWiring:
         )
 
     @patch("snodo.cli.commands.plan_run._run_plan", return_value=0)
-    def test_plan_route_gets_audit_and_session(self, mock_plan):
+    def test_plan_route_gets_audit_and_session(self, mock_plan, temp_project):
         from snodo.cli.commands.run_cmd import run_command
 
         args = SimpleNamespace(plan="myplan", description=None,
