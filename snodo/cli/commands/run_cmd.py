@@ -155,6 +155,30 @@ def _fetch_pr_context(pr_number: int, project_root: str) -> str:
     return "\n".join(parts)
 
 
+def _print_missing_template_validators(protocol) -> None:
+    """Tell the operator when their project's validator set is out of date.
+
+    Adding a validator to a shipped template does NOT add it to a project
+    whose .snodo/protocol.yml predates the change.  A project running an
+    out-of-date validator set should be able to find out — otherwise a
+    validator that was added to close a pipeline hole silently does nothing
+    for that project (Fixes #59).
+    """
+    try:
+        from snodo.protocols import missing_template_validators
+        missing = missing_template_validators(protocol)
+    except Exception:
+        return
+    if not missing:
+        return
+    print(
+        f"  ⚠ Validator set is out of date: this project's protocol predates "
+        f"{', '.join(missing)}. "
+        f"Regenerate .snodo/protocol.yml (snodo init --force) or add them "
+        f"manually to run the current validator set."
+    )
+
+
 def run_command(args) -> int:
     """Execute task through protocol loop - REAL EXECUTION."""
     from snodo.infrastructure.audit import get_audit_log
@@ -205,6 +229,7 @@ def run_command(args) -> int:
     print(f"  Validators: {', '.join(v.validator_id for v in protocol.validators)}")
     print(f"  Policy: {protocol.disagreement_policy.value}")
     print(f"  Model: {model}")
+    _print_missing_template_validators(protocol)
     print()
 
     description = _build_description(args)

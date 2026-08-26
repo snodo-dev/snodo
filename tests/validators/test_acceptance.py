@@ -277,3 +277,314 @@ class TestArtifactsThreadedToPostValidate:
         builder._post_validate_node(state)
 
         assert seen["artifacts"] == ["src/main.py", "tests/test_main.py"]
+
+
+# ---------------------------------------------------------------------------
+# Deterministic canary (Fixes #59): a real judge notices a real omission.
+#
+# The standing finding is that every read-only judge passes everything it is
+# shown.  The tests above assert the prompt produces a verdict; they do NOT
+# establish that a judge driven by the actual tree rejects a real omission.
+# These canaries run the validator's real tool loop against a real repository
+# (a temp directory) with a deterministic judge whose verdict is *caused by*
+# what the tree actually contains: it lists the tree, reads the file a
+# verifiable criterion demands, and emits warn only when that evidence is
+# absent.  If a future change severs the loop (criteria unreachable, tools
+# unhelpful, verdict decoupled from evidence) the canary fails.
+# ---------------------------------------------------------------------------
+
+class _JudgeWorkspace:
+    """Minimal workspace stub over a real dict of path → content."""
+
+    def __init__(self, tree):
+        self.tree = dict(tree)
+        self.reads = []
+
+    def list_files(self, directory="."):
+        prefix = directory.rstrip("/") + "/" if directory not in ("", ".") else ""
+        return sorted(
+            p for p in self.tree if p.startswith(prefix)
+        ) or []
+
+    def read_file(self, path):
+        self.reads.append(path)
+        if path not in self.tree:
+            raise FileNotFoundError(f"File not found: {path}")
+        return self.tree[path]
+
+    def read_file_lines(self, path, start, end):
+        return self.read_file(path)
+
+
+class _CriteriaAwareJudge:
+    """Deterministic judge that inspects the tree via the tool loop, then
+    reasons from the criteria.
+
+    Plan of probes: list the tree, then ``read_file`` each distinct evidence
+    path that the criteria demand (one probe per turn).  The verdict is
+    computed from the tool loop's actual results: a probe whose tool message
+    reports "File not found" means the tree lacks that evidence path, and a
+    criterion whose evidence path is missing → warn naming the criterion.  A
+    criterion with no tree-verifiable evidence path (device behaviour, human
+    judgement) is uncheckable and never a finding.  If the tool loop ever
+    fails to deliver the probes, the verdict falls back to pass-with-no-evidence,
+    which the canaries would not assert as a warn — so a severed loop fails
+    the tests.
+    """
+
+    def __init__(self):
+        self.turns = 0
+        # path -> tool-loop result ("File not found: X" or the file content)
+        self.probes = {}
+        self._pending_path = None
+
+    def __call__(self, **kwargs):
+        self.turns += 1
+        messages = kwargs.get("messages", [])
+        tools = kwargs.get("tools", [])
+        tool_names = {
+            t.get("function", {}).get("name")
+            for t in tools if isinstance(t, dict)
+        }
+        prompt = messages[0]["content"]
+        last_tool = None
+        for m in reversed(messages):
+            if m.get("role") == "tool":
+                last_tool = m.get("content", "")
+                break
+
+        if self.turns == 1 and "list_files" in tool_names:
+            return _make_response(tool_calls=[
+                _pick_tool_call("list_files", "probe_list", {"directory": "."})])
+
+        if "read_file" in tool_names:
+            # The previous read probe's result arrives in this turn's messages.
+            if self._pending_path is not None and last_tool is not None:
+                self.probes[self._pending_path] = last_tool
+            path = self._next_probe_path(prompt)
+            if path is not None:
+                self._pending_path = path
+                return _make_response(tool_calls=[
+                    _pick_tool_call("read_file", "probe_read", {"path": path})])
+
+        severity, justification = self._verdict(prompt)
+        return _make_response(tool_calls=[_verdict_call(severity, justification)])
+
+    def _next_probe_path(self, prompt):
+        """Return the next evidence path to probe, or None when all done."""
+        for c in _make_criteria_from_prompt(prompt):
+            for p in _evidence_paths(c):
+                if p not in self.probes:
+                    return p
+        return None
+
+    def _verdict(self, prompt):
+        criteria = _make_criteria_from_prompt(prompt)
+        unmet = []
+        for c in criteria:
+            paths = _evidence_paths(c)
+            if not paths:
+                # No tree-verifiable evidence path — uncheckable (device
+                # behaviour, human judgement). Never a finding.
+                continue
+            if not any(self._probe_found(p) for p in paths):
+                unmet.append(c)
+        if unmet:
+            return "warn", (
+                f"Acceptance criterion unmet: {unmet[0]} — the tree lacks "
+                f"the evidence it requires ({_evidence_paths(unmet[0])[0]})."
+            )
+        return "pass", "all verifiable acceptance criteria are met"
+
+    def _probe_found(self, path):
+        """True when the tool loop's probe for *path* succeeded.
+
+        The probe result is the loop's own report: a "File not found" tool
+        error is how the loop tells the judge the file is absent.  The verdict
+        is therefore caused by the actual tool loop output, not by the judge's
+        private copy of the tree.
+
+        A path that was never probed is treated as *not a finding*: the judge
+        cannot fault a criterion it gathered no evidence on.  This is what
+        makes the canary fail when the loop is severed — a judge that never
+        received the probes cannot produce the warn the canary asserts.
+        """
+        result = self.probes.get(path)
+        if result is None:
+            return True  # unknown, not a finding
+        return "File not found" not in result
+
+
+def _make_criteria_from_prompt(prompt):
+    """Extract the acceptance criteria lines from the judge prompt.
+
+    The criteria live inside the ``## Task`` section; the word "acceptance
+    criteria" also appears in the judge instructions, so extraction is scoped
+    to the task section to avoid mis-parsing the instructions.
+    """
+    task_section = ""
+    sections = prompt.split("\n## ")
+    for section in sections:
+        if section.startswith("Task\n"):
+            task_section = section[len("Task\n"):]
+            break
+    if task_section is None:
+        # Fall back to the whole prompt if no Task header is found.
+        task_section = prompt
+
+    lines = []
+    capturing = False
+    for line in task_section.splitlines():
+        stripped = line.strip()
+        if "acceptance criteria" in stripped.lower() or "done when" in stripped.lower():
+            capturing = True
+            continue
+        if capturing:
+            if not stripped:
+                break
+            lines.append(stripped)
+    return lines
+
+
+def _evidence_paths(criterion):
+    """Return the tree paths that would evidence *criterion*, if verifiable.
+
+    A criterion that names no file-like evidence (device behaviour, human
+    judgement) is uncheckable: returns an empty list.  This is the same
+    distinction the judge prompt draws (MET / UNMET / UNCHECKABLE).
+
+    Evidence is per-criterion, not cumulative: a criterion about a *test*
+    requires the test file (the source existing does not satisfy "a test
+    exists"); a criterion about the *endpoint* requires the source; a
+    criterion about *documentation/decisions* requires the record file.
+    """
+    lowered = criterion.lower()
+    uncheckable_markers = (
+        "feel", "judgement", "human", "device", "performance under real load",
+        "user experience", "looks", "feels",
+    )
+    if any(m in lowered for m in uncheckable_markers):
+        return []
+    if "test" in lowered:
+        return ["tests/test_main.py"]
+    if "doc" in lowered or "adr" in lowered or "decision" in lowered:
+        return ["docs/decisions/0001-record.md"]
+    if "endpoint" in lowered or "api" in lowered or "login" in lowered:
+        return ["src/main.py"]
+    return []
+
+
+
+def _make_tool_call(name, call_id, arguments):
+    tc = MagicMock()
+    tc.id = call_id
+    tc.function.name = name
+    tc.function.arguments = json.dumps(arguments)
+    return tc
+
+
+def _pick_tool_call(name, call_id, arguments):
+    return _make_tool_call(name, call_id, arguments)
+
+
+# ---------------------------------------------------------------------------
+# The two deterministic canaries (Fixes #59)
+# ---------------------------------------------------------------------------
+
+_SPEC_WITH_CRITERIA = (
+    "Add a login endpoint.\n"
+    "Acceptance criteria:\n"
+    "1. A test covers the new endpoint.\n"
+    "2. The feature is documented in docs/decisions/.\n"
+    "3. The login flow feels natural to a human user.\n"
+)
+
+_SPEC_SOURCE_ONLY = (
+    "Add a login endpoint.\n"
+    "Acceptance criteria:\n"
+    "1. A test covers the new endpoint.\n"
+    "2. The feature is documented in docs/decisions/.\n"
+)
+
+_SPEC_FULL_TREE = (
+    "Add a login endpoint.\n"
+    "Acceptance criteria:\n"
+    "1. A test covers the new endpoint.\n"
+    "2. The feature is documented in docs/decisions/.\n"
+)
+
+
+class TestAcceptanceCanary:
+    """A deterministic judge driven by the real tree rejects a real omission,
+    and passes an uncheckable criterion — the safe direction proven, not
+    assumed."""
+
+    def _run(self, spec, tree):
+        workspace = _JudgeWorkspace(tree)
+        judge = _CriteriaAwareJudge()
+        validator = AcceptanceValidator(_validator())
+        ctx = _context(judge, artifacts=sorted(tree), workspace=workspace)
+        ctx.task = Task(id="t1", spec=spec)
+        result = validator.evaluate(ctx)
+        return result, judge, workspace
+
+    def test_warns_and_names_criterion_when_test_missing(self):
+        """Source exists but the demanded test file does not: warn, naming the
+        unmet criterion."""
+        tree = {"src/main.py": "def login(): pass"}
+        result, judge, workspace = self._run(_SPEC_SOURCE_ONLY, tree)
+
+        assert result.severity == "warn"
+        assert "criterion" in result.justification.lower()
+        assert "test" in result.justification.lower()
+        # The judge probed the tree (the demanded test file) before judging.
+        assert "tests/test_main.py" in workspace.reads
+
+    def test_warns_and_names_criterion_when_adr_missing(self):
+        # Test exists but the demanded decision record does not: warn on the
+        # documented-in-decisions criterion.
+        tree = {
+            "src/main.py": "def login(): pass",
+            "tests/test_main.py": "def test_login(): pass",
+        }
+        result, judge, workspace = self._run(_SPEC_FULL_TREE, tree)
+
+        assert result.severity == "warn"
+        assert "decision" in result.justification.lower()
+        assert "docs/decisions/0001-record.md" in result.justification
+
+    def test_passes_when_all_verifiable_criteria_met(self):
+        tree = {
+            "src/main.py": "def login(): pass",
+            "tests/test_main.py": "def test_login(): pass",
+            "docs/decisions/0001-record.md": "# Record\nDecision: X\n",
+        }
+        result, judge, workspace = self._run(_SPEC_FULL_TREE, tree)
+
+        assert result.severity == "pass"
+
+    def test_uncheckable_criterion_passes(self):
+        """A criterion that cannot be verified from the tree (device
+        behaviour, human judgement) is never a finding — even when the
+        verifiable ones are unmet, the uncheckable one must not add a warn."""
+        tree = {"src/main.py": "def login(): pass"}
+        result, judge, workspace = self._run(_SPEC_WITH_CRITERIA, tree)
+
+        # The uncheckable criterion (3) is not named as unmet; it must never
+        # be reported as a miss.
+        assert "feel" not in result.justification.lower()
+        assert "human" not in result.justification.lower()
+
+    def test_uncheckable_criterion_alone_passes(self):
+        """A spec whose only acceptance criterion is uncheckable passes —
+        the safe direction proven, not assumed."""
+        spec = (
+            "Add a login endpoint.\n"
+            "Acceptance criteria:\n"
+            "1. The login flow feels natural to a human user.\n"
+        )
+        tree = {"src/main.py": "def login(): pass"}
+        result, judge, workspace = self._run(spec, tree)
+
+        assert result.severity == "pass"
+        assert "feel" not in result.justification.lower()
