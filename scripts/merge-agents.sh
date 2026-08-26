@@ -140,9 +140,15 @@ echo "✓ pushed"
 fi   # end of gates+push block
 
 # ── reset only what is provably landed ───────────────────────────────────
+#
+# Sweep every branch in scope, not just the ones this invocation merged: a
+# branch merged in an earlier run is still sitting behind origin/main and an
+# agent starting there would stop on a stale base. The ancestry guard below is
+# what makes the wider sweep safe.
 echo
 git fetch origin --quiet
-for branch in $MERGED; do
+for branch in $BRANCHES; do
+  git show-ref --verify --quiet "refs/heads/$branch" || continue
   wt="$(worktree_for "$branch")"
   if [ -z "$wt" ] || [ ! -d "$wt" ]; then
     echo "— $branch: worktree not found at '$wt', not resetting"
