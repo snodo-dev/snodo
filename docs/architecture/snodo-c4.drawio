@@ -1,0 +1,683 @@
+<mxfile host="app.diagrams.net" agent="snodo-architecture" version="24.0.0">
+  <diagram id="c4-l1" name="L1 · System Context">
+    <mxGraphModel dx="1600" dy="1000" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="l1title" value="snodo — C4 Level 1 · System Context" style="text;html=1;fontSize=20;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="700" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="l1sub" value="snodo is a protocol engine. It does not aim to be a coder — it constrains and audits whoever writes the code." style="text;html=1;fontSize=12;fontColor=#555555;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="48" width="900" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1op" value="&lt;b&gt;Operator / Engineer&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Person]&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Writes task specs, chooses protocol and mode, reviews halt payloads, authorises decisions.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#08427B;strokeColor=#073B6F;fontColor=#ffffff;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="600" y="100" width="220" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1snodo" value="&lt;b&gt;snodo&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Software System]&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Policy/mechanism protocol engine. Compiles a protocol, binds capability to the active mode, runs a bounded execute/validate loop, and writes a hash-chained audit trail.&lt;br&gt;&lt;br&gt;Invariants INV1–INV5 · well-formedness WF1′–WF5&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1168BD;strokeColor=#0B4884;fontColor=#ffffff;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="560" y="320" width="300" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1agent" value="&lt;b&gt;External agent / IDE&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[External System]&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Drives snodo over MCP (stdio / SSE) instead of the CLI.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#ffffff;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="140" y="350" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1cloud" value="&lt;b&gt;snodo Cloud&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[External System] optional&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Audit batch sync with a per-session cursor.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B3B3B3;strokeColor=#6B6B6B;fontColor=#ffffff;verticalAlign=top;spacing=8;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="350" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1repo" value="&lt;b&gt;Target project repository&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[External System]&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;The repo being worked on. Isolated per task via a git worktree.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#ffffff;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="120" y="690" width="250" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="l1git" value="&lt;b&gt;Git remote / GitHub&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[External System]&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Branches, merges, PRs and issues (PyGithub).&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#ffffff;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="400" y="690" width="250" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="l1llm" value="&lt;b&gt;LLM providers&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[External System] via litellm&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Used by the built-in coder AND by every LLM validator and the classifier.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#ffffff;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="680" y="690" width="250" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="l1oc" value="&lt;b&gt;opencode&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[External System]&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;An expert coding CLI. Host subprocess, or a Docker container serving HTTP/SSE. Brings its own agent loop, context management and credentials.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#ffffff;verticalAlign=top;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="960" y="690" width="280" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1busn" value="routing channel" style="text;html=1;fontSize=9;fontColor=#BBBBBB;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="590" width="120" height="14" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1e1" value="runs tasks · reads halts · authorises" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="l1op" target="l1snodo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1e7" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="l1agent" target="l1snodo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1e6" value="audit sync" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;fontSize=10;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="l1snodo" target="l1cloud">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l1e2" value="reads · writes · branches · merges" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;fontSize=10;exitX=0.4;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="l1snodo" target="l1repo">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="680" y="610" />
+              <mxPoint x="245" y="610" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l1e3" value="push · PR · issues" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;fontSize=10;exitX=0.47;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="l1snodo" target="l1git">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="701" y="630" />
+              <mxPoint x="525" y="630" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l1e4" value="completions" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;fontSize=10;exitX=0.54;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="l1snodo" target="l1llm">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="722" y="630" />
+              <mxPoint x="805" y="630" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l1e5" value="delegates code generation" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;fontSize=10;exitX=0.6;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="l1snodo" target="l1oc">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="740" y="610" />
+              <mxPoint x="1100" y="610" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l1note" value="&lt;b&gt;Design intent.&lt;/b&gt; The coder is pluggable and deliberately not snodo's differentiator. An expert CLI (opencode) is the preferred generator; the built-in litellm coder exists so snodo works with no CLI installed. snodo's job is that the protocol's checks and balances hold &lt;i&gt;regardless of who generated the change&lt;/i&gt;." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;verticalAlign=top;spacing=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="120" y="840" width="1120" height="50" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="c4-l2" name="L2 · Containers">
+    <mxGraphModel dx="1600" dy="1000" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="l2title" value="snodo — C4 Level 2 · Containers" style="text;html=1;fontSize=20;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="700" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="l2sub" value="Layering is enforced executably by import-linter (.importlinter):  core ← tools ← foundation ← engine ← mcp ← app.  Six contracts, currently 0 broken.  Arrows are routed through the gutters between layers." style="text;html=1;fontSize=12;fontColor=#555555;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="48" width="1300" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2b" value="snodo" style="rounded=1;dashed=1;fillColor=none;strokeColor=#666666;verticalAlign=top;align=left;spacing=8;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="1210" height="750" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2app" value="app · snodo.cli / snodo.dashboard / snodo.agents" style="rounded=0;fillColor=none;strokeColor=#D0D0D0;dashed=1;verticalAlign=top;align=left;spacing=6;fontSize=10;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="60" y="120" width="1170" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="l2cli" value="&lt;b&gt;CLI&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container: Typer]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;run · validate · mode · session · task · plan · worktree · authorize · init · recon · job · agent · models · config · status · serve&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="150" width="330" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l2tui" value="&lt;b&gt;Dashboard TUI&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container: Textual]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Panels · screens · providers&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="440" y="150" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l2mcpsrv" value="&lt;b&gt;MCP Server&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container: MCP SDK · stdio/SSE]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Exposes snodo to external agents. Job, decision, model, recon, planner and PR handlers.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="690" y="150" width="290" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l2agents" value="&lt;b&gt;Agent runners&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;snodo.agents&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="150" width="200" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2eng" value="engine · snodo.engine / snodo.validators / snodo.coders" style="rounded=0;fillColor=none;strokeColor=#D0D0D0;dashed=1;verticalAlign=top;align=left;spacing=6;fontSize=10;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="60" y="310" width="1170" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="l2loop" value="&lt;b&gt;Execution Engine&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container: LangGraph]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;governance → pre-validate → execute → post-validate → writeback. Kleene-closure recovery; four halt outcomes.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="340" width="330" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="l2val" value="&lt;b&gt;Validator Subsystem&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;LLM judges (architecture · security · meta-spec · acceptance) + quality, the only validator that executes a command.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="440" y="340" width="330" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="l2coder" value="&lt;b&gt;Coder Adapters&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;LiteLLM tool loop · opencode CLI · opencode container · mock. Selected by model-string prefix.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="800" y="340" width="410" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2fnd" value="foundation · snodo.compiler / snodo.protocols / snodo.infrastructure" style="rounded=0;fillColor=none;strokeColor=#D0D0D0;dashed=1;verticalAlign=top;align=left;spacing=6;fontSize=10;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="60" y="510" width="1170" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="l2comp" value="&lt;b&gt;Protocol Compiler&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container: Pydantic]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Protocol / Mode / ExecutionConfig models · WF1′–WF5 verifier · shipped templates (solo, team, 2+n, greenfield…)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="540" width="330" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="l2gov" value="&lt;b&gt;Governance Infrastructure&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Audit hash-chain (INV4) · Sessions (INV5) · Token issuer JWT (INV1) · Decisions · Signing keys · JWKS&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="440" y="540" width="330" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="l2runtime" value="&lt;b&gt;Run-time Services&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Worktree manager · Environment prep · Wave registry · Model resolver / catalog · Usage tracker · Checkpoint memory · Cloud sync&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="800" y="540" width="410" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2low" value="tools · snodo.tools / snodo.providers          core · snodo.core / config / paths / project / predicates / sandbox" style="rounded=0;fillColor=none;strokeColor=#D0D0D0;dashed=1;verticalAlign=top;align=left;spacing=6;fontSize=10;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="60" y="700" width="1170" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="l2mcp" value="&lt;b&gt;Tool MCPs&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;WorkspaceMCP (path validation, .snodo/ refusal) · GitMCP · ShellMCP&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="730" width="330" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="l2core" value="&lt;b&gt;Core Interfaces&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[Container]&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Coder ABC · TaskSpec · CodeArtifact · ValidatorResult · predicates · sandbox&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="440" y="730" width="330" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="l2stores" value="&lt;b&gt;.snodo/ state&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[JSON + JSONL]&lt;br&gt;protocol.yml · state.json · audit chain · sessions&lt;/font&gt;" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=10;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="800" y="725" width="190" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="l2sqlite" value="&lt;b&gt;Checkpoint DB&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;[SQLite]&lt;br&gt;LangGraph SqliteSaver&lt;/font&gt;" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=10;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="725" width="190" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2ext1" value="&lt;b&gt;LLM providers&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;via litellm&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="320" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l2ext2" value="&lt;b&gt;opencode&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;CLI / container&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="410" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l2ext3" value="&lt;b&gt;Git worktrees&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;GitHub&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;strokeColor=#6B6B6B;fontColor=#ffffff;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="740" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2chan1" value="channel A" style="text;html=1;fontSize=9;fontColor=#C8C8C8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1252" y="268" width="80" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="l2chan2" value="channel B" style="text;html=1;fontSize=9;fontColor=#C8C8C8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1252" y="468" width="80" height="14" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2eA" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2cli" target="l2loop">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2eB" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2mcpsrv" target="l2loop">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="762" y="278" />
+              <mxPoint x="327" y="278" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l2eC" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2loop" target="l2val">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2eD" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.3;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2loop" target="l2coder">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="130" y="472" />
+              <mxPoint x="923" y="472" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l2eE" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=0.55;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2loop" target="l2gov">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="262" y="492" />
+              <mxPoint x="522" y="492" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l2eF" value="compiled protocol" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;fontSize=10;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2comp" target="l2loop">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2eI" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2val" target="l2ext1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="605" y="292" />
+              <mxPoint x="1300" y="292" />
+              <mxPoint x="1300" y="350" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l2eH" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2coder" target="l2ext1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1285" y="370" />
+              <mxPoint x="1285" y="350" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l2eG" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2coder" target="l2ext2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1285" y="410" />
+              <mxPoint x="1285" y="440" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l2eK" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2gov" target="l2stores">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="785" y="590" />
+              <mxPoint x="785" y="770" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l2eL" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2runtime" target="l2sqlite">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="l2eM" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2val" target="l2mcp">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="425" y="390" />
+              <mxPoint x="425" y="490" />
+              <mxPoint x="66" y="490" />
+              <mxPoint x="66" y="770" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l2eJ" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2mcp" target="l2ext3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="425" y="770" />
+              <mxPoint x="425" y="860" />
+              <mxPoint x="1300" y="860" />
+              <mxPoint x="1300" y="770" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="l2note" value="&lt;b&gt;Read this way:&lt;/b&gt; everything below the engine is snodo's actual product — protocol compilation, capability binding, audit, sessions, isolation. &lt;b&gt;Coder Adapters&lt;/b&gt; is an integration seam, not a core competence, and it is the only container with several implementations that must independently satisfy the engine's expectations. That is where the drift is." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;verticalAlign=top;spacing=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="890" width="1500" height="55" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="c4-l3-coder" name="L3 · Coder Subsystem">
+    <mxGraphModel dx="1600" dy="1000" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="c3t" value="L3 · Coder Subsystem  (snodo.coders)" style="text;html=1;fontSize=20;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="800" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="c3s" value="Selection is by model-string prefix only — there is no --coder flag.   coders/__init__.py:46-56" style="text;html=1;fontSize=12;fontColor=#555555;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="48" width="1000" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c3sel" value="&lt;b&gt;resolve_adapter_class(model)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;gpt|o1|o3 → OpenAI · claude → Anthropic&lt;br&gt;gemini|google/ → Gemini&lt;br&gt;opencode-cli/ → CLI · opencode/ → container&lt;br&gt;else → LiteLLM&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="290" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c3abc" value="&lt;b&gt;Coder (ABC)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;snodo.core.interfaces — aliased CoderAdapter&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;implement(spec: TaskSpec) → CodeArtifact&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=center;" vertex="1" parent="1">
+          <mxGeometry x="480" y="100" width="360" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c3flags" value="&lt;b&gt;Engine ↔ adapter coupling&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;opt-out flags: skip_workspace_write · skip_engine_commit&lt;br&gt;duck-typed: progress_callback · _job_id · _task_id&lt;br&gt;&lt;b&gt;all hasattr-guarded → absence is silent&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="990" y="100" width="350" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c3litellm" value="&lt;b&gt;LiteLLMAdapter&lt;/b&gt;   &lt;font style=&quot;font-size:10px&quot;&gt;litellm.py — 655 lines · the built-in fallback coder&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=middle;spacing=6;align=center;" vertex="1" parent="1">
+          <mxGeometry x="40" y="270" width="620" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="c3lgrp" value="" style="rounded=0;fillColor=none;strokeColor=#D0D0D0;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="330" width="620" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="c3loop" value="&lt;b&gt;_call_llm_with_tools&lt;/b&gt; — bounded tool loop&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;max_tool_turns: config default 6 (adapter default 20)&lt;br&gt;tools: read_file · read_file_lines · list_files&lt;br&gt;terminal: submit_files(files=[{path, content, action}])&lt;br&gt;&lt;b&gt;no write tool, no shell&lt;/b&gt; — the executor owns writes&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="345" width="290" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="c3ceiling" value="&lt;b&gt;max_tokens ceiling&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Every file's full content is generated as &lt;b&gt;output tokens&lt;/b&gt; inside one submit_files call, bounded by max_tokens (default 16000).&lt;br&gt;&lt;br&gt;finish_reason ∈ {length, max_tokens} → ParseError &quot;task is too large&quot;.&lt;br&gt;&lt;b&gt;A hard ceiling on task size.&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="370" y="345" width="270" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="c3feat" value="&lt;b&gt;Current on:&lt;/b&gt; progress_callback (#51) · tool-response invariant, every tool_call_id answered, zero-file submit refused (#53) · truncation detection (#39) · UsageTracker cost + tokens per call · api_base and CF affinity headers · Gemini-3 temperature drop" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;verticalAlign=top;spacing=6;align=left;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="475" width="580" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c3subs" value="&lt;b&gt;OpenAIAdapter · AnthropicAdapter · GeminiAdapter&lt;/b&gt; — thin subclasses of LiteLLMAdapter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;spacing=6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="548" width="580" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="c3mock" value="&lt;b&gt;MockAdapter&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;— hermetic _completion_fn · set_mock_mode · is_mock_mode_active (#12)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;spacing=6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="590" width="580" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c3inplace" value="&lt;b&gt;InPlaceCoderAdapter (ABC)&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;base.py:56-131&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;implement() = snapshot .snodo/ by CONTENT (it is gitignored, so git cannot see it) → _implement_in_place(spec) → diff; any change raises SnodoMutationError → blocker halt + audit entry.&lt;br&gt;&lt;b&gt;Lives in the base class so it cannot be forgotten by a future adapter (ADR 026/027).&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="720" y="270" width="620" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c3occli" value="&lt;b&gt;OpenCodeCLIAdapter&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;opencode_cli_adapter.py&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;host subprocess:&lt;br&gt;opencode run --dir … -m ‹model›&lt;br&gt;permissions skipped · timeout 1800s&lt;br&gt;&lt;br&gt;readback: git working-tree diff + untracked&lt;br&gt;&lt;b&gt;commits itself&lt;/b&gt; with an exclude pathspec&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="720" y="450" width="290" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="c3occont" value="&lt;b&gt;OpenCodeAdapter&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;opencode_adapter.py + opencode_container.py&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;Docker container running `opencode serve`, workspace bind-mounted&lt;br&gt;POST /session · SSE /event · POST /message&lt;br&gt;wait session.idle · timeout 300s&lt;br&gt;&lt;br&gt;readback: git working-tree diff, fallback GET /session/{id}/diff&lt;br&gt;&lt;b&gt;does NOT commit&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="450" width="290" height="170" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c3e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3sel" target="c3abc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c3e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=none;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3abc" target="c3flags">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c3e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=block;endFill=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.25;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3litellm" target="c3abc">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="350" y="240" />
+              <mxPoint x="570" y="240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c3e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=block;endFill=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3inplace" target="c3abc">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1030" y="240" />
+              <mxPoint x="750" y="240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c3e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=block;endFill=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.25;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3occli" target="c3inplace">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="865" y="420" />
+              <mxPoint x="875" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c3e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=block;endFill=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3occont" target="c3inplace">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1195" y="420" />
+              <mxPoint x="1185" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="c3gapT" value="TWO CHANNELS FOR &quot;WHAT CHANGED&quot; — WHERE THE DIVERGENCE BITES" style="text;html=1;fontSize=14;fontStyle=1;fontColor=#B85450;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="670" width="800" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="c3ch1" value="&lt;b&gt;Channel A — CodeArtifact&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Returned by the adapter.&lt;br&gt;· LiteLLM → submit_files arguments&lt;br&gt;· opencode CLI → working-tree git diff&lt;br&gt;· opencode container → working-tree git diff, /diff fallback&lt;br&gt;&lt;br&gt;&lt;b&gt;All adapters populate this. Works uncommitted.&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="700" width="420" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="c3ch2" value="&lt;b&gt;Channel B — git diff HEAD~1..HEAD&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Read by post-execute validators and pasted into the judge prompt as &quot;## Code Change&quot;.&lt;br&gt;llm_validator.py:235,414 · acceptance.py:94&lt;br&gt;&lt;br&gt;· LiteLLM → executor commits ✔&lt;br&gt;· opencode CLI → adapter commits ✔&lt;br&gt;· opencode container → &lt;b&gt;nobody commits ✘&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="480" y="700" width="420" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="c3ch3" value="&lt;b&gt;Consequence&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;HEAD never moves, so HEAD~1..HEAD resolves to the &lt;b&gt;previous&lt;/b&gt; commit — a valid diff of the wrong change.&lt;br&gt;&lt;br&gt;Validators do not fail. They confidently review someone else's work labelled as this task's, and pass.&lt;br&gt;&lt;br&gt;Already neutered arm-c review in EXP1.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="920" y="700" width="420" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c3drift" value="&lt;b&gt;Drift ledger — which gaps are snodo's problem and which are not&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;&lt;br&gt;&lt;b&gt;The CLI's business — correctly absent from the opencode adapters:&lt;/b&gt; turn-level progress · truncation detection · context management · turn budgets. opencode owns its own agent loop; snodo re-implementing these would undo the delegation that is the entire point of the seam.&lt;br&gt;&lt;br&gt;&lt;b&gt;snodo's business — genuinely missing:&lt;/b&gt;&lt;br&gt;① the container path never commits, so Channel B starves and validators review the wrong change&lt;br&gt;② &quot;coder produced nothing&quot; is downgraded from ExecutionError to an audit note whenever skip_engine_commit is set (executor.py:52-59) — it fails loudly on litellm and continues quietly on opencode&lt;br&gt;③ no usage or cost record, so an opencode run's spend is absent from the audit trail&lt;br&gt;④ neither adapter's tests were updated by #51, #52 or #53 (last touched 2026-06-30)&lt;br&gt;⑤ opencode_container.py untouched on its own merits since 2026-06-26&lt;br&gt;&lt;br&gt;&lt;b&gt;Root cause:&lt;/b&gt; the seam is implicit — an ABC, two opt-out booleans and hasattr duck typing. Opting out of a mechanism carries no obligation to discharge what that mechanism did, and a capability an adapter lacks is indistinguishable from one that does not exist. Divergence is undetectable by construction.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;verticalAlign=top;spacing=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="860" width="1300" height="215" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="c4-l3-engine" name="L3 · Execution Engine">
+    <mxGraphModel dx="1600" dy="1000" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="e3t" value="L3 · Execution Engine  (snodo.engine)" style="text;html=1;fontSize=20;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="800" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e3s" value="A LangGraph state machine over LoopState, checkpointed to SQLite so a session is resumable (INV5)." style="text;html=1;fontSize=12;fontColor=#555555;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="48" width="1000" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3gov" value="&lt;b&gt;1 · Governance&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;nodes/governance.py&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;iteration++ (cap 50) · decision records · coder respawn on verified set_model · message summarisation · wave classification (turn 1) · environment preparation (turn 1) · spec-authoring re-entry&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="110" width="280" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="e3pre" value="&lt;b&gt;2 · Pre-execute validation&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;nodes/validation.py&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;Judges the PROPOSAL: meta-spec · security · architecture.&lt;br&gt;&lt;br&gt;Issues a validation token (INV1). Disagreement policy → proceed / escalate / blocker.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="345" y="110" width="280" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="e3exec" value="&lt;b&gt;3 · Execute&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;nodes/executor.py&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;Injects progress_callback and job/task ids (hasattr-guarded) · calls coder.implement() · writes artifacts via WorkspaceMCP unless skip_workspace_write · stages and commits via GitMCP unless skip_engine_commit&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="650" y="110" width="280" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="e3post" value="&lt;b&gt;4 · Post-execute validation&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;nodes/validation.py&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;Judges the ARTIFACTS: quality (runs the test command) and acceptance (completeness vs the spec).&lt;br&gt;&lt;br&gt;Reads the change via HEAD~1..HEAD.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="955" y="110" width="280" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="e3wb" value="&lt;b&gt;5 · Writeback&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;nodes/writeback.py&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;Halt payload · _build_hint naming only the applicable fix targets — code / spec / policy (#38) · auto_merge when enabled · worktree cleanup only after a successful merge&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="110" width="280" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3f1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="e3gov" target="e3pre"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3f2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="e3pre" target="e3exec"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3f3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="e3exec" target="e3post"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3f4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="e3post" target="e3wb"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e3f5" value="recovery subtask — a fix task re-enters at governance, bounded by max_recovery_depth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;dashed=1;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;verticalAlign=top;" edge="1" parent="1" source="e3post" target="e3gov">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1095" y="300" />
+              <mxPoint x="180" y="300" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e3state" value="&lt;b&gt;LoopState&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;engine/state.py — task · mode · iteration · messages · artifacts · validation_results · validation_token · halt_type · metadata · recovery bookkeeping&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="335" width="700" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="e3ckpt" value="&lt;b&gt;SqliteSaver checkpoint&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;persists LoopState per thread (INV5)&lt;/font&gt;" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=8;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="770" y="330" width="360" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="e3audit" value="&lt;b&gt;AuditLog&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;hash-chained JSONL (INV4); entries record the active mode&lt;/font&gt;" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=8;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#2E6295;fontColor=#ffffff;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="330" width="380" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3pol" value="&lt;b&gt;PolicyEngine&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;engine/policy.py — aggregates verdicts under the disagreement policy into proceed · escalate · blocker&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="420" width="360" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="e3con" value="&lt;b&gt;ConstraintEngine&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;engine/constraints.py + snodo.predicates — global constraints against workspace and git state. Non-overridable blockers (INV3).&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="420" y="420" width="360" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="e3clo" value="&lt;b&gt;Closure / recovery&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;engine/closure.py — per-branch max_recovery_depth (per-mode override, ADR 029) · max_total_fix_attempts · stall detection on repeated identical verdicts&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="800" y="420" width="360" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="e3prog" value="&lt;b&gt;progress.py&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;format_elapsed · format_tool_call_summary. Node transitions and per-turn coder/validator progress (#28, #51).&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="420" width="360" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3halt" value="&lt;b&gt;Halt classification — four outcomes, invariant across the return path:&lt;/b&gt;  halt_type == final_decision == raw_halt_type" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;verticalAlign=middle;spacing=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="530" width="1500" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="e3h1" value="&lt;b&gt;escalate&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;A judgement the operator must make.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="585" width="360" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="e3h2" value="&lt;b&gt;blocker&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;A non-overridable refusal (INV3). Includes .snodo/ mutation by an in-place coder.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="420" y="585" width="360" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="e3h3" value="&lt;b&gt;validator_error&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;An operational fault (e.g. environment prep failed). Does NOT spawn recovery — #27.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="800" y="585" width="360" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="e3h4" value="&lt;b&gt;internal_error&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;The engine itself failed. &lt;b&gt;Open defect:&lt;/b&gt; observed leaking a second, unclassified &quot;unknown internal error&quot; after a complete payload.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;verticalAlign=top;spacing=6;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="585" width="360" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3note" value="&lt;b&gt;Where the enforcement actually lives.&lt;/b&gt; Capability is bound at the tool surface — WorkspaceMCP and GitMCP refuse out-of-bounds paths — not in the coder. That is precisely why an untrusted third-party generator is architecturally acceptable, and why the container adapter's silent starving of the post-execute change channel is the serious defect rather than any of its missing conveniences." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;verticalAlign=top;spacing=8;align=left;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="695" width="1500" height="55" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="c4-l3-validators" name="L3 · Validator Subsystem">
+    <mxGraphModel dx="1600" dy="1000" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="v3t" value="L3 · Validator Subsystem  (snodo.validators)" style="text;html=1;fontSize=20;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="800" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="v3s" value="Policy is data: which validators run, in which phase, with what severity cap and tool grant, is declared in the protocol — not in code." style="text;html=1;fontSize=12;fontColor=#555555;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="48" width="1100" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v3run" value="&lt;b&gt;ValidatorRunner&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;runner.py&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;Resolves the mode's validator list for the phase · builds ValidatorContext · runs each · applies severity_cap · enriches justifications with cited criterion text (#37) · returns results to the PolicyEngine&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="330" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="v3ctx" value="&lt;b&gt;ValidatorContext&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;context.py&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;task spec · artifacts · mode · progress_callback · tool handles&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="420" y="100" width="290" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="v3reg" value="&lt;b&gt;registry.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;validator_type → class&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;architecture · security · quality · acceptance · protocol_adherence&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="760" y="100" width="290" height="150" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v3judge" value="JUDGES — read-only, no execution" style="text;html=1;fontSize=13;fontStyle=1;align=left;fontColor=#5D82A8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="290" width="500" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="v3llm" value="&lt;b&gt;LLMValidator&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;llm_validator.py — bounded tool loop, ≤20 turns&lt;br&gt;&lt;br&gt;tools: read_file · read_file_lines · list_files · diff_between_refs&lt;br&gt;terminal: submit_verdict(severity, justification)&lt;br&gt;&lt;br&gt;Prompt is handed &quot;## Code Change (HEAD~1..HEAD)&quot; — lines 235 / 414.&lt;br&gt;Fails closed. Every tool_call_id answered (#53).&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="320" width="330" height="170" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v3arch" value="&lt;b&gt;architecture&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;pre-execute. REVIEW FRAME criterion stops it citing absent implementation. Reads docs/decisions/.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="500" y="320" width="330" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v3sec" value="&lt;b&gt;security&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;pre-execute. Encoding boundaries · personal-data sinks · credentials · dependency additions.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="500" y="395" width="330" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v3meta" value="&lt;b&gt;meta-spec&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;pre-execute, judges_spec: true — sees the spec only. Rejects code-prescriptive specs; gates the spec-authoring rewriter (ADR 023).&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="500" y="470" width="330" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="v3acc" value="&lt;b&gt;acceptance&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;post-execute, NEW (ADR 028). Judges completeness against the spec's acceptance criteria. MET / UNMET / UNCHECKABLE — uncheckable is a pass by construction. severity_cap: warn.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="500" y="550" width="330" height="75" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v3exe" value="EXECUTOR — the only validator that runs something" style="text;html=1;fontSize=13;fontStyle=1;align=left;fontColor=#82B366;" vertex="1" parent="1">
+          <mxGeometry x="40" y="520" width="600" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="v3q" value="&lt;b&gt;quality&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;quality.py — post-execute&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;&lt;br&gt;Runs the protocol's tooling.test_command via ShellMCP and reports exit code and output. Auto-detects the command from marker files when unset (#33). Typically severity_cap: warn so a failure routes to recovery.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="550" width="330" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v3pa" value="&lt;b&gt;protocol_adherence&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;checks the run against the protocol's own rules&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B1D8F5;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="880" y="320" width="290" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v3pol" value="&lt;b&gt;Disagreement policy&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;unanimous (shipped default) — every validator must pass.&lt;br&gt;&lt;br&gt;With a single post-execute validator this is an &lt;b&gt;unopposed veto&lt;/b&gt;: there is nothing to disagree with it (#41).&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="880" y="395" width="290" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v3e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="v3run" target="v3ctx"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="v3e1b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="v3ctx" target="v3reg"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="v3e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="v3run" target="v3llm"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="v3e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=blockThin;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="v3run" target="v3q">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="22" y="175" />
+              <mxPoint x="22" y="615" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v3e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=block;endFill=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.2;entryDx=0;entryDy=0;" edge="1" parent="1" source="v3arch" target="v3llm">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="440" y="350" />
+              <mxPoint x="440" y="354" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v3e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=block;endFill=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.4;entryDx=0;entryDy=0;" edge="1" parent="1" source="v3sec" target="v3llm">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="440" y="425" />
+              <mxPoint x="440" y="388" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v3e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=block;endFill=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.6;entryDx=0;entryDy=0;" edge="1" parent="1" source="v3meta" target="v3llm">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="440" y="502" />
+              <mxPoint x="440" y="422" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="v3e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;orthogonalLoop=1;endArrow=block;endFill=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.8;entryDx=0;entryDy=0;" edge="1" parent="1" source="v3acc" target="v3llm">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="440" y="587" />
+              <mxPoint x="440" y="456" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="v3find" value="&lt;b&gt;The empirical finding this subsystem has to answer for&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;&lt;br&gt;Across two projects and a full week, &lt;b&gt;every defect that was caught was caught by `quality`&lt;/b&gt; — the only validator that executes anything. The read-only judges passed all of them, each with a detailed, confident, well-cited justification.&lt;br&gt;&lt;br&gt;That is not an argument for deleting judges. It is an argument that a judge earns its place only where nothing executable can answer the question: does this contradict a recorded decision? does this leak personal data? was the task actually completed? Everywhere else, spend the budget on a command.&lt;br&gt;&lt;br&gt;`acceptance` is the deliberate test of that line — it asks a question no command can answer. &lt;b&gt;It has not yet been observed rejecting anything.&lt;/b&gt; Until it has, it is an unproven fourth judge, not a closed gap.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;verticalAlign=top;spacing=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="710" width="1130" height="160" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="c4-l3-foundation" name="L3 · Foundation / Protocol">
+    <mxGraphModel dx="1600" dy="1000" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="f3t" value="L3 · Foundation / Protocol Layer  (snodo.compiler · snodo.protocols · snodo.infrastructure)" style="text;html=1;fontSize=20;fontStyle=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="f3s" value="This is snodo's actual product surface: policy as data, capability bound to mode, and an audit trail that cannot be quietly rewritten." style="text;html=1;fontSize=12;fontColor=#555555;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="48" width="1200" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f3cA" value="Protocol compilation" style="rounded=0;fillColor=none;strokeColor=#D0D0D0;dashed=1;verticalAlign=top;align=left;spacing=6;fontSize=11;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="480" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="f3mod" value="&lt;b&gt;models.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Protocol · Mode (tools, validators, transitions, per-mode overrides) · Validator (type, phase, criteria, severity_cap, tools, judges_spec) · ExecutionConfig (max_recovery_depth, max_total_fix_attempts, auto_merge, prepare_command) · exclusive_tools&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="120" width="440" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="f3ver" value="&lt;b&gt;verifier.py — well-formedness at load&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;WF1′ exclusivity on approval-conferring tools (approve, merge) — relaxed from total tool disjointness, ADR 017 · WF2–WF5 · a malformed protocol never runs&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="262" width="440" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="f3tpl" value="&lt;b&gt;protocols/templates/&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;solo · team · 2+n · greenfield (decide→scaffold→build) · bugfix-surgeon · feature-warden · intent&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="368" width="440" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f3cB" value="Governance — the invariants" style="rounded=0;fillColor=none;strokeColor=#D0D0D0;dashed=1;verticalAlign=top;align=left;spacing=6;fontSize=11;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="550" y="90" width="480" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="f3tok" value="&lt;b&gt;tokens.py — INV1 token integrity&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;TokenIssuer, JWT. A validation token binds a validated proposal to the execution that follows, and is consumed at the dispatch boundary. SNODO_TOKEN_SECRET must be shared across engine ↔ MCP processes.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="570" y="120" width="440" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="f3aud" value="&lt;b&gt;audit.py — INV4 hash-chained audit&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Append-only JSONL, each entry chained to the last. Records the active mode so attribution survives shared tool sets (ADR 017).&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="570" y="242" width="440" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f3ses" value="&lt;b&gt;session.py — INV5 resumability&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;· decisions.py · signing_keys.py (RS256) · jwks.py · oauth_verifier.py — the human accountability anchor behind `snodo authorize`&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="570" y="338" width="440" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f3cC" value="Run-time services" style="rounded=0;fillColor=none;strokeColor=#D0D0D0;dashed=1;verticalAlign=top;align=left;spacing=6;fontSize=11;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="90" width="480" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="f3wt" value="&lt;b&gt;worktree.py&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;per-task git worktree isolation; base branch resolved from origin/HEAD; preserved on failure for inspection (ADR 025)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="120" width="440" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="f3env" value="&lt;b&gt;environment.py&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;detects the ecosystem and runs a lockfile-frozen install in a fresh worktree; failure is an operational fault, not a judgement (ADR 024)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="202" width="440" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="f3mr" value="&lt;b&gt;model_resolver / catalog / discovery&lt;/b&gt; &lt;font style=&quot;font-size:10px&quot;&gt;per-role model resolution (coder · validator · classifier), resolved once so model and api_base cannot diverge (ADR 020)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="284" width="440" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="f3misc" value="&lt;b&gt;wave_registry&lt;/b&gt; (task classification) · &lt;b&gt;usage_tracker&lt;/b&gt; (tokens + cost per call) · &lt;b&gt;memory&lt;/b&gt; (SqliteSaver) · &lt;b&gt;state&lt;/b&gt; · &lt;b&gt;cloud_sync&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#5D82A8;verticalAlign=top;spacing=6;align=left;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="366" width="440" height="52" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f3inv" value="&lt;b&gt;Invariant → mechanism&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;&lt;br&gt;&lt;b&gt;INV1&lt;/b&gt; token integrity → TokenIssuer; JWT signed, and consumed at the dispatch boundary&lt;br&gt;&lt;b&gt;INV2&lt;/b&gt; capability bounded by active mode → WorkspaceMCP / GitMCP path and operation validation, plus .snodo/ refusal (ADR 026) and the InPlaceCoderAdapter snapshot for coders that bypass the tool surface entirely (ADR 027)&lt;br&gt;&lt;b&gt;INV3&lt;/b&gt; non-overridable blockers → ConstraintEngine and policy aggregation&lt;br&gt;&lt;b&gt;INV4&lt;/b&gt; audit hash-chain → append-only chained JSONL&lt;br&gt;&lt;b&gt;INV5&lt;/b&gt; session resumability → SessionManager and the SqliteSaver checkpoint&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;verticalAlign=top;spacing=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="40" y="470" width="740" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f3rec" value="&lt;b&gt;What this layer got right — and it is the thing worth protecting&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;&lt;br&gt;Every defect found in a week of hard use was in the harness around this layer, never in the layer itself. Protocol compilation, capability binding, the audit chain and session resumability produced no incidents.&lt;br&gt;&lt;br&gt;The recurring defect shape is elsewhere and consistent:&lt;br&gt;&lt;b&gt;a safety property degrading to a warning, or an operational fault reported as a judgement.&lt;/b&gt;&lt;br&gt;&lt;br&gt;Corollary: the gates are the weak point, not the model of governance. Five were found reporting green while not gating — .importlinter, the e2e suite, ruff, check-bindings, and quality-versus-acceptance.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;verticalAlign=top;spacing=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="800" y="470" width="740" height="180" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

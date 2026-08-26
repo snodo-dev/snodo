@@ -7,11 +7,14 @@ InPlaceCoderAdapter base for adapters that write to the working tree
 directly (opencode and similar) instead of through WorkspaceMCP.
 """
 
+import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List
 
 from snodo.core.interfaces import Coder, CodeArtifact, TaskSpec
+
+_logger = logging.getLogger(__name__)
 
 
 # CoderAdapter is the canonical name for the coder interface.
@@ -92,11 +95,133 @@ class InPlaceCoderAdapter(Coder, ABC):
         changed = self._changed_snodo_paths(before)
         if changed:
             raise SnodoMutationError(sorted(changed))
+        # Commit what the coder wrote so post-execute validators that review
+        # ``git diff HEAD~1..HEAD`` (llm_validator / acceptance "## Code
+        # Change") see THIS change, not the previous commit. Owned here, in
+        # the base class, so no in-place adapter can drift (the same property
+        # that made the .snodo/ guard hold automatically).
+        self._commit_changes()
         return artifact
 
     @abstractmethod
     def _implement_in_place(self, spec: TaskSpec) -> CodeArtifact:
         """Run the coder against the workspace and return its CodeArtifact."""
+
+    def _read_changes_from_disk(self) -> list:
+        """Detect changed files via git in the workspace.
+
+        In-place coders edit files directly in the working tree, so the
+        on-disk state at ``self._workspace`` is the source of truth for both
+        the returned CodeArtifact and the committed review channel. Returns
+        entries in the same ``{file, status}`` format ``_diff_to_artifact``
+        expects.
+        """
+        from git import Repo, GitCommandError
+
+        try:
+            repo = Repo(str(self._workspace), search_parent_directories=True)
+        except (GitCommandError, Exception) as exc:
+            _logger.warning("git readback: cannot open repo at %s: %s", self._workspace, exc)
+            return []
+
+        changed: dict[str, str] = {}
+
+        try:
+            # Unstaged changes (modified / deleted / added in working tree)
+            for d in repo.index.diff(None):
+                path = d.b_path or d.a_path
+                if path:
+                    if d.change_type == "D":
+                        changed[path] = "deleted"
+                    else:
+                        changed[path] = d.change_type
+
+            # Staged changes
+            for d in repo.index.diff("HEAD"):
+                path = d.b_path or d.a_path
+                if path and path not in changed:
+                    changed[path] = d.change_type
+
+            # Untracked files (new files the coder created)
+            for path in repo.untracked_files:
+                changed[path] = "added"
+
+        except Exception as exc:
+            _logger.warning("git readback: diff failed: %s", exc)
+            return []
+
+        entries = [{"file": path, "status": status} for path, status in changed.items()]
+
+        _logger.debug("git readback: %d changed files", len(entries))
+        return entries
+
+    def _commit_changes(self) -> None:
+        """Stage + commit the working-tree changes with an explicit identity.
+
+        In-place coders write files directly and never commit, so without
+        this HEAD would not move and post-execute validators that read
+        ``read_diff_between_refs -> HEAD~1..HEAD`` would review the previous
+        commit — or an empty diff — instead of the produced change. Owning
+        the commit here, in the base class, makes it a structural property of
+        every in-place adapter: the git review channel and the returned
+        CodeArtifact cannot diverge (the same reasoning that made the
+        .snodo/ guard hold automatically, ADR 027).
+
+        Non-fatal on failure — the working tree still holds the change — but
+        the post-execute diff would then be empty.
+        """
+        from git import Repo, GitCommandError
+
+        try:
+            repo = Repo(str(self._workspace), search_parent_directories=True)
+        except Exception as exc:
+            _logger.warning(
+                "git readback: cannot open repo at %s: %s", self._workspace, exc
+            )
+            return
+
+        try:
+            repo.git.add(
+                "-A", "--",
+                ".",
+                ":(exclude).snodo", ":(exclude).snodo/**",
+                # keep coder-created virtualenvs / caches / build junk out of
+                # the committed diff (else review + extract_patch see MBs of it)
+                ":(exclude,glob)**/venv/**", ":(exclude,glob)**/.venv/**",
+                ":(exclude,glob)**/.venv_test/**", ":(exclude,glob)**/env/**",
+                ":(exclude,glob)**/__pycache__/**", ":(exclude,glob)**/*.egg-info/**",
+                ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.tox/**",
+                ":(exclude,glob)**/.pytest_cache/**", ":(exclude,glob)**/.mypy_cache/**",
+            )
+        except GitCommandError as exc:
+            _logger.warning("git add failed (post-validation diff may be empty): %s", exc)
+            return
+
+        # Nothing staged → nothing to commit (the coder made no changes).
+        try:
+            repo.git.diff("--cached", "--quiet")
+        except GitCommandError:
+            pass  # rc != 0 → staged changes exist
+        else:
+            return
+
+        try:
+            # Identity via env (not repo config): the SWE-bench workspace is a
+            # detached checkout with no configured git user, and per-commit
+            # identity must not persist in a shared repo.
+            repo.git.commit(
+                "-q", "-m", "coder: apply changes",
+                env={
+                    "GIT_AUTHOR_NAME": "snodo-coder",
+                    "GIT_AUTHOR_EMAIL": "coder@snodo.exp",
+                    "GIT_COMMITTER_NAME": "snodo-coder",
+                    "GIT_COMMITTER_EMAIL": "coder@snodo.exp",
+                },
+            )
+        except GitCommandError as exc:
+            _logger.warning(
+                "coder commit failed (post-validation diff may be empty): %s", exc
+            )
 
     def _snapshot_snodo(self) -> Dict[str, object]:
         """Snapshot the .snodo/ directory contents under the workspace.
