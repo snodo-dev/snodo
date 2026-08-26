@@ -64,6 +64,9 @@ Notes:
 
 - `tests/golden/` snapshots protocol templates and the tool registry; if a change
   is intentional, regenerate the goldens and say so in the PR.
+- **A new verification gate ships with a canary proving it can fail.** A gate that
+  has never been observed failing cannot be trusted to gate. For every gate, add
+  a test that injects the violation the gate exists to catch and asserts that the gate fails (Fixes #58).
 - `tests/properties/test_invariants.py` covers INV1–INV5. Changes touching tokens,
   capability boundaries, blockers, the audit chain, or session resumability should
   extend it rather than only adding unit tests.

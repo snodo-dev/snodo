@@ -330,3 +330,21 @@ class TestAgent:
         snodo_cli(["init", "--template", "solo", "--force", "--yes"])
         r = snodo_cli(["agent", "reset", "unknown:nonexistent"])
         assert "Traceback" not in r.stderr
+
+
+class TestE2ECanary:
+    """Canary test proving that e2e detects a mutated/corrupted repository state."""
+
+    @pytest.mark.e2e
+    def test_e2e_canary_detects_mutated_repository_state(self, snodo_cli):
+        """Canary: mutating project protocol state causes snodo run to fail loud (returncode != 0)."""
+        r1 = snodo_cli(["init", "--template", "solo", "--yes"])
+        assert r1.returncode == 0
+
+        # Corrupt .snodo/protocol.yml into invalid state
+        protocol_file = snodo_cli.home / ".snodo" / "protocol.yml"
+        protocol_file.write_text("invalid_yaml: [unclosed_bracket: {")
+
+        # Run task against mutated/corrupted state
+        r2 = snodo_cli(["run", "test task", "--mock"])
+        assert r2.returncode != 0, "e2e suite failed to detect a mutated/corrupted repository state"
