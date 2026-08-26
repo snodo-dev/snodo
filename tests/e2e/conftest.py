@@ -15,6 +15,29 @@ from typing import List
 import pytest
 
 
+def pytest_collection_modifyitems(config, items):
+    """Fail collection if a test under tests/e2e/ lacks the ``e2e`` marker.
+
+    The default addopts (``-m 'not e2e'``) excludes marked tests from the
+    fast pass, so an unmarked test that lives in tests/e2e/ runs in every
+    ``pytest tests/`` invocation. That happened once (test_init_project_id.py,
+    ~10-40s of suite time); this makes it a collection error instead of a
+    silent recurrence.
+    """
+    e2e_dir = Path(config.rootdir) / "tests" / "e2e"
+    for item in items:
+        if e2e_dir not in item.path.parents:
+            continue
+        if item.get_closest_marker("e2e") is not None:
+            continue
+        raise pytest.UsageError(
+            f"{item.nodeid} lives in tests/e2e/ but does not carry the e2e "
+            "marker, so the default addopts (-m 'not e2e') does not exclude it "
+            "from the fast pass. Add `pytestmark = pytest.mark.e2e` to the "
+            "module (or the marker on the individual test)."
+        )
+
+
 def _snodo_cmd() -> List[str]:
     return [sys.executable, "-m", "snodo"]
 

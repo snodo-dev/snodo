@@ -1166,9 +1166,13 @@ class TestTunnelRunErrors:
                             with patch("httpx.get", return_value=MagicMock(status_code=200)):
                                 with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
                                     with patch("snodo.cli.commands.serve_cmd.signal.signal"):
-                                        # Return immediately so the function doesn't block
-                                        mock_sub.wait.return_value = 0
-                                        result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+                                        # Injected clock: the 2s uvicorn bind
+                                        # wait and the 0.1s poll both advance
+                                        # instantly instead of sleeping.
+                                        with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
+                                            # Return immediately so the function doesn't block
+                                            mock_sub.wait.return_value = 0
+                                            result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
         assert result == 0
 
@@ -1203,8 +1207,11 @@ class TestTunnelRunErrors:
                         with patch("httpx.get", return_value=MagicMock(status_code=200)):
                             with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
                                 with patch("snodo.cli.commands.serve_cmd.signal.signal"):
-                                    mock_sub.wait.return_value = 0
-                                    result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+                                    # Injected clock: the 2s uvicorn bind wait
+                                    # advances instantly instead of sleeping.
+                                    with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
+                                        mock_sub.wait.return_value = 0
+                                        result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
         assert result == 0
         mock_provision.assert_not_called()  # No provisioning on subsequent run

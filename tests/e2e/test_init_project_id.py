@@ -7,7 +7,10 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
+
+pytestmark = pytest.mark.e2e
 
 
 def test_init_with_git_remote(snodo_cli):
