@@ -34,4 +34,5 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [029](029-per-mode-recovery-depth.md) | Per-mode max_recovery_depth override | 2026-08-25 | `resolve_mode_setting` (`models.py`) |
 | [030](030-in-place-coder-owns-commit.md) | In-place coder adapters own the commit, so the review channel is the artifact channel | 2026-08-26 | `coders/base.py` + `coders/opencode_adapter.py` |
 | [031](031-first-class-verification-audit-events.md) | First-class verification events in audit trail and blocking unverified merges | 2026-08-26 | `quality.py` + `run_cmd.py` |
+| [032](032-patch-coverage-enforcement.md) | Patch coverage measurement over modified lines | 2026-08-26 | `patch_coverage.py` + `ci.yml` |
 
