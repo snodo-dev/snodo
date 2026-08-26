@@ -28,6 +28,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   at load time (same failure pattern as a validator that does nothing —
   absence indistinguishable from success). (Fixes #59).
 
+- Patch / diff coverage enforcement (`snodo.infrastructure.patch_coverage`). Test coverage is
+  now measured over added/modified lines in git diff (`<base_ref>..HEAD`) rather than relying
+  solely on a repository-wide global percentage (`--cov-fail-under=63`), preventing 0%-coverage
+  modules from merging undetected. Both global repository threshold and patch coverage threshold
+  (>=80%) are enforced in CI. See ADR 032. (Fixes #61).
+
 - First-class `verification_executed` audit trail events. Verification command executions
   (what command ran, against which commit hash, return code, outcome, and output evidence)
   are now recorded as immutable events in `.snodo/audit.log`. Automatic merges refuse to land
