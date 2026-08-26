@@ -114,89 +114,15 @@ class OpenCodeCLIAdapter(InPlaceCoderAdapter):
                 "(rc=0). output tail: %s", tail,
             )
 
-        # Commit the coder's changes so post-execute validators that read the
-        # committed diff (read_diff_between_refs -> HEAD~1..HEAD) can actually
-        # SEE the fix. opencode writes files in place and never commits; without
-        # this the committed diff is empty and any post-execute reviewer is
-        # blind (this is what silently neutered arm-c review in EXP1).
-        self._commit_changes(diff_entries)
+        # The base class commits the working-tree changes after this returns
+        # (InPlaceCoderAdapter._commit_changes), so post-execute validators
+        # that read the committed diff (read_diff_between_refs ->
+        # HEAD~1..HEAD) see THIS change. opencode writes files in place and
+        # never commits; without the base-class commit the reviewed diff is
+        # the previous commit and any post-execute reviewer is blind (this is
+        # what silently neutered arm-c review in EXP1).
 
         return self._diff_to_artifact(diff_entries)
-
-    def _commit_changes(self, diff_entries: list) -> None:
-        """Stage + commit the working-tree changes with an explicit identity.
-
-        The SWE-bench workspace is a detached checkout with no configured git
-        user, so we pass identity via ``-c``. Non-fatal on failure — extraction
-        still reads the working tree — but the post-execute diff would be empty.
-        """
-        if not diff_entries:
-            return
-        root = str(self._workspace)
-        try:
-            subprocess.run(
-                ["git", "add", "-A", "--",
-                 ".", ":(exclude).snodo", ":(exclude).snodo/**",
-                 # keep coder-created virtualenvs / caches / build junk out of
-                 # the committed diff (else review + extract_patch see MBs of it)
-                 ":(exclude,glob)**/venv/**", ":(exclude,glob)**/.venv/**",
-                 ":(exclude,glob)**/.venv_test/**", ":(exclude,glob)**/env/**",
-                 ":(exclude,glob)**/__pycache__/**", ":(exclude,glob)**/*.egg-info/**",
-                 ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/.tox/**",
-                 ":(exclude,glob)**/.pytest_cache/**", ":(exclude,glob)**/.mypy_cache/**"],
-                cwd=root, capture_output=True, text=True, timeout=60, check=True,
-            )
-            subprocess.run(
-                ["git",
-                 "-c", "user.email=coder@snodo.exp",
-                 "-c", "user.name=snodo-coder",
-                 "commit", "-q", "-m", "coder: apply changes"],
-                cwd=root, capture_output=True, text=True, timeout=60, check=True,
-            )
-        except Exception as exc:
-            _logger.warning(
-                "coder commit failed (post-validation diff may be empty): %s", exc
-            )
-
-    def _read_changes_from_disk(self) -> list:
-        """Detect changed files via git in the workspace.
-
-        Returns entries in the same ``{file, status}`` format as
-        ``_diff_to_artifact`` expects.
-        """
-        from git import Repo, GitCommandError
-
-        try:
-            repo = Repo(str(self._workspace), search_parent_directories=True)
-        except (GitCommandError, Exception) as exc:
-            _logger.warning("git readback: cannot open repo at %s: %s", self._workspace, exc)
-            return []
-
-        changed: dict[str, str] = {}
-
-        try:
-            for d in repo.index.diff(None):
-                path = d.b_path or d.a_path
-                if path:
-                    if d.change_type == "D":
-                        changed[path] = "deleted"
-                    else:
-                        changed[path] = d.change_type
-
-            for d in repo.index.diff("HEAD"):
-                path = d.b_path or d.a_path
-                if path and path not in changed:
-                    changed[path] = d.change_type
-
-            for path in repo.untracked_files:
-                changed[path] = "added"
-        except Exception as exc:
-            _logger.warning("git readback: diff failed: %s", exc)
-            return []
-
-        entries = [{"file": path, "status": status} for path, status in changed.items()]
-        _logger.debug("git readback: %d changed files", len(entries))
-        return entries
 
     def _diff_to_artifact(self, diff_entries: list) -> CodeArtifact:
         """Build a CodeArtifact from diff entries, re-reading content from disk."""
