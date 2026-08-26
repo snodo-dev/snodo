@@ -410,6 +410,21 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
     path.write_text(json.dumps(to_save, indent=2) + "\n")
 
 
+def _wait_for_server_bind(mcp_process, sleep_fn=None) -> bool:
+    """Give the MCP server 2s to bind, then report if it is alive.
+
+    The real wait is needed in production (uvicorn needs a moment to bind the
+    port before cloudflared fronts it), but it is real wall-clock time that a
+    test cannot parallelise away. *sleep_fn* is resolved at call time so tests
+    can inject a clock that advances instantly (e.g. by patching
+    ``time.sleep``); it defaults to the real ``time.sleep``.
+    """
+    if sleep_fn is None:
+        sleep_fn = time.sleep
+    sleep_fn(2.0)
+    return mcp_process.poll() is None
+
+
 def _run_tunnel(args, protocol, protocol_path) -> int:
     """Start an MCP server behind a managed Cloudflare tunnel.
 
@@ -503,8 +518,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     )
 
     # Verify MCP server started — give uvicorn 2s to bind, then check process alive
-    time.sleep(2)
-    if mcp_process.poll() is not None:
+    if not _wait_for_server_bind(mcp_process):
         stderr_output = mcp_process.stderr.read() if mcp_process.stderr else ""
         print(f"Error: MCP server exited with code {mcp_process.returncode}.",
               file=sys.stderr)

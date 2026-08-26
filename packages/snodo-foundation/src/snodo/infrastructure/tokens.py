@@ -231,11 +231,17 @@ class TokenIssuer:
         ttl_seconds: int = 600,
         audit_log: Any = None,
         store_path: Optional[Path] = None,
+        now_fn: Optional[Any] = None,
     ):
         self.secret = self._resolve_secret(secret)
         self.ttl_seconds = ttl_seconds
         self._audit_log = audit_log
         self._store = TokenStore(store_path)
+        # Injectable clock: ``now_fn()`` returns the current time as a
+        # timezone-aware datetime. Defaults to ``datetime.now(timezone.utc)``.
+        # Resolved at call time so tests can inject a fake clock without the
+        # 1-second iat granularity forcing a real-time sleep.
+        self._now_fn = now_fn
 
     @staticmethod
     def _resolve_secret(secret: Optional[str]) -> str:
@@ -292,7 +298,7 @@ class TokenIssuer:
             for result in validator_results
         ]
 
-        now = datetime.now(timezone.utc)
+        now = self._now_fn() if self._now_fn is not None else datetime.now(timezone.utc)
         expires = now + timedelta(seconds=self.ttl_seconds)
 
         payload = {
