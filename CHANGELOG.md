@@ -95,6 +95,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- CI now runs on every branch push (`push: branches: ['**']`) instead of only
+  on `main`, and a new `snodo merge <branch>` command gates the merge on the
+  branch's latest CI conclusion. Previously CI triggered on `push: [main]` and
+  `pull_request: [main]`; agents merge locally and push the merge to main, so
+  CI ran *after* the merge was already on main and the pull_request trigger
+  never fired — CI was a post-mortem, not a gate. The branch-triggered shape
+  was chosen over PRs to keep local merges. `snodo merge` queries
+  `gh run list --branch <branch> --workflow ci.yml` and refuses to merge when
+  CI has not run, is in progress, or has failed; "CI has not run" is a distinct,
+  visible state, never confused with "CI passed". `--force` bypasses the gate
+  for a human who has verified the branch by other means. (Fixes #56).
+
 - Evaluated and confirmed `max_recovery_depth: 3` default balance and explicitly
   declared recovery budgets (`max_recovery_depth: 3` for established templates, `1` for greenfield)
   across all shipped protocol templates with explanatory comments. Documented the execution
