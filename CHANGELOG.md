@@ -11,6 +11,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- First-class `verification_executed` audit trail events. Verification command executions
+  (what command ran, against which commit hash, return code, outcome, and output evidence)
+  are now recorded as immutable events in `.snodo/audit.log`. Automatic merges refuse to land
+  unverified work (`unverified_merge_blocked`) if no passing verification event is present
+  in the audit trail for the commit. See ADR 031. (Fixes #60).
+
 - Verification gate canaries for `import-linter`, `ruff`, `e2e`, and `toolchain pin`,
   establishing the standing rule that a new verification gate ships with a canary
   test proving it can fail when violations are injected. (Fixes #58).

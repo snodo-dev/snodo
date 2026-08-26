@@ -12,7 +12,7 @@ NOT artifact_paths or generated code snippets.
 
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import ValidatorResult
@@ -94,7 +94,7 @@ class QualityValidator(ValidatorBase):
 
         timeout = self._get_timeout()
 
-        return self._run_command(test_command, timeout)
+        return self._run_command(test_command, timeout, context=context)
 
     def _resolve_test_command(self) -> Optional[str]:
         """Resolve the test command from tooling config or auto-detection.
@@ -128,12 +128,70 @@ class QualityValidator(ValidatorBase):
             return float(tooling["timeout"])
         return self.DEFAULT_TIMEOUT
 
-    def _run_command(self, command: str, timeout: float) -> ValidatorResult:
+    def _resolve_commit_hash(self) -> str:
+        """Resolve current git commit hash for working_directory."""
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(self.working_directory),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout.strip()
+        except Exception:
+            pass
+        return "uncommitted"
+
+    def _audit_verification(
+        self,
+        context: Optional[Any],
+        command: str,
+        commit_hash: str,
+        returncode: int,
+        outcome: str,
+        output_tail: str = "",
+    ) -> None:
+        """Appends a first-class verification_executed event to audit_log."""
+        audit_log = getattr(context, "audit_log", None) if context else None
+        if audit_log is None:
+            try:
+                from snodo.infrastructure.audit import get_audit_log
+                audit_log = get_audit_log()
+            except Exception:
+                pass
+
+        if audit_log and hasattr(audit_log, "append_event"):
+            task_ref = ""
+            session_id = ""
+            if context:
+                task_ref = getattr(getattr(context, "task", None), "id", "") or getattr(context, "task_id", "") or ""
+                session_id = getattr(context, "job_id", "") or ""
+
+            try:
+                audit_log.append_event("verification_executed", {
+                    "op": "verification_executed",
+                    "command": command,
+                    "commit": commit_hash,
+                    "returncode": returncode,
+                    "outcome": outcome,
+                    "validator_id": self.validator_id,
+                    "task_ref": task_ref,
+                    "session_id": session_id,
+                    "working_directory": str(self.working_directory),
+                    "output_tail": output_tail[:400] if output_tail else "",
+                })
+            except Exception:
+                pass
+
+    def _run_command(self, command: str, timeout: float, context: Optional[Any] = None) -> ValidatorResult:
         """Run a test command and return the result.
 
         Args:
             command: Shell command string to execute
             timeout: Maximum execution time in seconds
+            context: Optional ValidatorContext for audit logging
 
         Returns:
             ValidatorResult based on exit code and evidence:
@@ -145,6 +203,8 @@ class QualityValidator(ValidatorBase):
         """
         if timeout is None or timeout <= 0:
             timeout = self.DEFAULT_TIMEOUT
+
+        commit_hash = self._resolve_commit_hash()
 
         try:
             result = subprocess.run(
@@ -158,16 +218,28 @@ class QualityValidator(ValidatorBase):
 
             if result.returncode == 0:
                 summary = self._extract_summary(result.stdout)
+                self._audit_verification(
+                    context, command, commit_hash, 0, "pass", summary
+                )
                 return ValidatorResult(
                     validator_id=self.validator_id,
                     severity="pass",
                     justification=f"Tests passed: {summary}",
                 )
 
-            return self._classify_failure(command, result.returncode,
+            res = self._classify_failure(command, result.returncode,
                                           result.stdout, result.stderr)
+            outcome = "error" if getattr(res, "error", False) else "fail"
+            tail = self._output_tail(result.stdout, result.stderr)
+            self._audit_verification(
+                context, command, commit_hash, result.returncode, outcome, tail
+            )
+            return res
 
         except FileNotFoundError:
+            self._audit_verification(
+                context, command, commit_hash, 127, "error", "Test command not found"
+            )
             return ValidatorResult(
                 validator_id=self.validator_id,
                 severity="blocker",
@@ -179,6 +251,9 @@ class QualityValidator(ValidatorBase):
                 ),
             )
         except PermissionError:
+            self._audit_verification(
+                context, command, commit_hash, 126, "error", "Test command not executable"
+            )
             return ValidatorResult(
                 validator_id=self.validator_id,
                 severity="blocker",
@@ -191,6 +266,9 @@ class QualityValidator(ValidatorBase):
             )
         except subprocess.TimeoutExpired as e:
             tail = self._output_tail(_decode(e.stdout), _decode(e.stderr))
+            self._audit_verification(
+                context, command, commit_hash, -1, "error", f"Timeout after {timeout}s"
+            )
             return ValidatorResult(
                 validator_id=self.validator_id,
                 severity="blocker",
@@ -198,7 +276,7 @@ class QualityValidator(ValidatorBase):
                 justification=(
                     f"Test command timed out after {timeout}s: '{command}'. "
                     "Increase tooling.timeout or investigate why the suite "
-                    f"hangs. Output: {tail}"
+                    "is stalling."
                 ),
             )
 
