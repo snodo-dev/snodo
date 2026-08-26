@@ -15,8 +15,7 @@ Tests cover:
 - Config-driven TTL
 """
 
-import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
 import jwt
@@ -448,11 +447,23 @@ def test_empty_validator_results_block_issuance(issuer):
     assert isinstance(token, ValidationToken)
 
 
-def test_reissue_for_same_task_produces_different_jwts(issuer, no_blockers):
-    a = issuer.issue_token("task_1", no_blockers)
-    time.sleep(1.1)  # Ensure different iat (JWT iat has 1-second granularity)
-    b = issuer.issue_token("task_1", no_blockers)
-    assert a.jwt != b.jwt
+def test_reissue_for_same_task_produces_different_jwts(no_blockers):
+    # Injected clock: iat has 1-second granularity, so a real reissue would
+    # need to sleep >1s to force a different iat. The fake clock advances the
+    # time seen by issue_token() instead.
+    class FakeClock:
+        def __init__(self):
+            self.t = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+        def __call__(self):
+            now = self.t
+            self.t = self.t + timedelta(seconds=2)
+            return now
+
+    a = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, now_fn=FakeClock())
+    token_a = a.issue_token("task_1", no_blockers)
+    token_b = a.issue_token("task_1", no_blockers)
+    assert token_a.jwt != token_b.jwt
 
 
 def test_consensus_field_round_trips(issuer, no_blockers):

@@ -509,8 +509,20 @@ class TestWaitFor:
         state = {"status": "running", "pid": None, "created_at": time.time()}
         manager._save_state(job_dir, state)
 
+        # Injected clock: each 1s poll advances the fake clock instead of
+        # sleeping, so the timeout fires without waiting real time.
+        class FakeClock:
+            def __init__(self):
+                self.t = 0.0
+
+            def monotonic(self):
+                return self.t
+
+            def sleep(self, seconds):
+                self.t += seconds
+
         with pytest.raises(JobError, match="Timeout"):
-            manager.wait_for("j_wait2", timeout=0.1)
+            manager.wait_for("j_wait2", timeout=0.1, clock=FakeClock())
 
     def test_wait_returns_all_terminal(self, manager):
         """wait_for() returns for any terminal status."""

@@ -320,12 +320,16 @@ class JobManager:
         except UnicodeDecodeError:
             return content.decode("utf-8", errors="replace")
 
-    def wait_for(self, job_id: str, timeout: Optional[float] = None) -> dict:
+    def wait_for(self, job_id: str, timeout: Optional[float] = None,
+                 clock=None) -> dict:
         """Poll until job reaches terminal state.
 
         Args:
             job_id: Job identifier
             timeout: Max seconds to wait (None = forever)
+            clock: Optional object with ``monotonic()`` and ``sleep(seconds)``
+                methods; the real ``time`` module by default. Tests inject a
+                fake clock so the 1s poll does not sleep in real time.
 
         Returns:
             Final job status dict
@@ -333,8 +337,10 @@ class JobManager:
         Raises:
             JobError: If timeout exceeded
         """
+        if clock is None:
+            clock = time
         job_dir = self._job_dir(job_id)
-        start = time.time()
+        start = clock.monotonic()
 
         while True:
             state = self._load_state(job_dir)
@@ -343,10 +349,10 @@ class JobManager:
                 task = self._load_task(job_dir)
                 return {**state, "id": job_id, "task": task}
 
-            if timeout is not None and (time.time() - start) >= timeout:
+            if timeout is not None and (clock.monotonic() - start) >= timeout:
                 raise JobError(f"Timeout waiting for job {job_id}")
 
-            time.sleep(1)
+            clock.sleep(1)
 
     def cancel(self, job_id: str) -> dict:
         """Cancel a running job by sending SIGTERM.

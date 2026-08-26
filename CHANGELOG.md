@@ -254,6 +254,24 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The test suite no longer sleeps in real time where a fake clock works.
+  `snodo serve --tunnel` waited a hardcoded 2s for uvicorn to bind
+  (`_run_tunnel`), `JobManager.wait_for` polled with a real-time 1s sleep, and
+  the token reissue test slept 1.1s to force a different JWT `iat` (which has
+  1-second granularity). Sleeping does not parallelise away — the worker sits
+  idle — so the ~6s of serial sleep survived `-n auto`. All three sites now
+  take an injected clock: `serve_cmd._wait_for_server_bind(sleep_fn=...)`
+  (resolved at call time), `JobManager.wait_for(clock=...)`, and
+  `TokenIssuer(now_fn=...)`. Tests inject fake clocks and run in milliseconds.
+  (Fixes #63).
+
+- `tests/e2e/test_init_project_id.py` ran in every fast pass (~10-40s of
+  suite time) because it lives in `tests/e2e/` but carried no `e2e` marker, so
+  the default addopts (`-m 'not e2e'`) did not exclude it. It is now marked,
+  and a collection hook in `tests/e2e/conftest.py` fails the run if any test
+  under `tests/e2e/` lacks the marker, so an unmarked e2e test cannot silently
+  re-enter the fast pass again. (Fixes #62).
+
 - Post-execute validators can no longer review the previous commit instead of
   the change. The container `opencode` adapter (the Docker/HTTP path) wrote to
   the volume-mounted workspace in place but never committed, so `HEAD` did not
