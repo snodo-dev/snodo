@@ -11,6 +11,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Verification gate canaries for `import-linter`, `ruff`, `e2e`, and `toolchain pin`,
+  establishing the standing rule that a new verification gate ships with a canary
+  test proving it can fail when violations are injected. (Fixes #58).
+
 - A post-execute `acceptance` validator that judges the produced artifacts
   against the acceptance criteria in the task spec. Previously the pipeline
   verified that the repository still works (`quality` runs the test suite) but
