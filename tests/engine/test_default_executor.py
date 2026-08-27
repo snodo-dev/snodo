@@ -248,3 +248,31 @@ def test_coder_implement_execution_error(sample_protocol, sample_task, mock_toke
     builder = GraphBuilder(sample_protocol)
     with pytest.raises(ExecutionError, match="Execution failed cleanly"):
         builder._default_executor(sample_task, mock_token, BadCoder(), MagicMock(), None)
+
+
+def test_delete_without_content_removes_file(sample_protocol, sample_task, mock_token):
+    """A delete operation with no content removes the target file."""
+    workspace_mcp = MagicMock()
+    coder = DummyCoder([
+        DummyFileOp("delete", "orphan_module.py")
+    ])
+    builder = GraphBuilder(sample_protocol)
+    artifacts = builder._default_executor(sample_task, mock_token, coder, workspace_mcp, None)
+
+    workspace_mcp.delete_file.assert_called_once_with("orphan_module.py")
+    assert "orphan_module.py" in artifacts
+
+
+def test_delete_nonexistent_path_not_a_crash(sample_protocol, sample_task, mock_token):
+    """Deleting a path that does not exist on disk is not a crash."""
+    workspace_mcp = MagicMock()
+    workspace_mcp.delete_file.side_effect = FileNotFoundError("File not found: nonexistent.py")
+
+    coder = DummyCoder([
+        DummyFileOp("delete", "nonexistent.py")
+    ])
+    builder = GraphBuilder(sample_protocol)
+    artifacts = builder._default_executor(sample_task, mock_token, coder, workspace_mcp, None)
+
+    workspace_mcp.delete_file.assert_called_once_with("nonexistent.py")
+    assert "nonexistent.py" in artifacts
