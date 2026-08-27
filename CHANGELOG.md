@@ -156,6 +156,22 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Merges are now authorised by each branch's CI conclusion, not by an agent's
+  self-reported gate results. The real merge path (`scripts/merge-agents.sh`)
+  now delegates the merge to `snodo merge`, the CI-authorized merge engine: it
+  first pushes each agent branch to origin so the CI workflow (`push:
+  branches: ['**']`) runs on it, then calls `snodo merge` which queries
+  `gh run list --branch` and refuses any branch whose CI has not run, is in
+  progress, or has failed. `snodo merge` now operates on the git root (not a
+  `.snodo/` project), accepts multiple branches per invocation plus the agent
+  short names (`a`, `snodo-a`), skips branches with no new commits
+  (resume-safe after a hand-resolved conflict), and stops on the first
+  refusal or conflict. The wrapper keeps the environment-specific guards the
+  tool cannot know about: it must run on `main`, the merged result is pushed
+  before any worktree is reset, and a worktree is reset only when its branch
+  is provably on `origin/main` AND the worktree is clean. A merge still never
+  depends on a PR existing. (Fixes #57).
+
 - Updated runbooks (`docs/runbooks/01-minimal-webapp.md` and `docs/runbooks/02-greenfield-protocol.md`).
   Drafted missing Section 9 Result in runbook 01, and brought runbook 02 up to date to reflect fifty closed
   issues and ADRs 015–034. Synthesized empirical findings across runbook executions: execution (`quality`)
