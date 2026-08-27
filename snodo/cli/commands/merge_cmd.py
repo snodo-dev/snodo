@@ -5,9 +5,10 @@ FILE: snodo/cli/commands/merge_cmd.py (Fixes #56, #57)
 CI runs on every branch push (``push: branches: ['**']``). A merge must not
 happen on an unverified branch, and an unverified branch must be visibly
 different from a green one. This command is the merge engine: for each branch
-in scope it checks the branch's latest CI conclusion via ``gh run list``, and
-merges only branches whose CI is green. Merges are authorised by CI, not by an
-agent's self-reported gate results (Fixes #57).
+in scope it polls the branch's CI conclusion via ``gh run list`` — waiting,
+with visible progress, for a run to appear and conclude — and merges only
+branches whose CI is green. Merges are authorised by CI, not by an agent's
+self-reported gate results (Fixes #57).
 
 The command operates on the git repository's top level (a git root, not a
 ``.snodo/`` project), so it can gate and merge in any clone — the repository's
@@ -19,8 +20,10 @@ Per branch, in order:
 2. skip a branch already an ancestor of the base branch (no new commits —
    resume-safe after a hand-resolved conflict, which leaves merged branches
    sitting behind the base);
-3. check the branch's CI conclusion: green → merge; not green / not run /
-   in progress → refuse and STOP, leaving later branches untouched;
+3. poll the branch's CI conclusion (waiting — with visible progress — for a
+   run to appear and conclude, since right after a push GitHub has not
+   registered it yet): green → merge; not green / stale / not run →
+   refuse and STOP, leaving later branches untouched;
 4. on a merge conflict, escalate (the branch and any worktree are left intact)
    and STOP.
 
@@ -30,6 +33,7 @@ other means; it is never the default.
 
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import List, Optional
@@ -38,7 +42,7 @@ import typer
 
 from snodo.infrastructure.ci_gate import (
     CIGateError,
-    branch_ci_conclusion,
+    wait_for_ci_conclusion,
 )
 from snodo.infrastructure.worktree import merge_task_branch
 from snodo.tools.git import GitError, resolve_base_branch
@@ -121,6 +125,28 @@ def _branch_exists(repo: Path, branch: str) -> bool:
         return proc.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+
+
+def _branch_head_sha(repo: Path, branch: str) -> Optional[str]:
+    """Return the branch tip's commit SHA, or None if it cannot be read.
+
+    The tip is what the merge would land, so the gate compares it against the
+    CI run's head commit to detect a stale conclusion (Fixes #76).
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", f"refs/heads/{branch}"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if proc.returncode == 0:
+            return proc.stdout.strip() or None
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def _count_new_commits(repo: Path, base: str, branch: str) -> int:
@@ -214,8 +240,29 @@ def merge_command(args) -> int:
         # The CI gate is the whole point: the merge is authorised by the
         # branch's CI conclusion, not by a self-reported gate result (#57).
         if not getattr(args, "force", False):
+            # Poll: right after a push GitHub has not registered the run yet,
+            # so an immediate "not run" is a race, not a verdict (#72). The
+            # gate waits for a run to appear and conclude, with visible
+            # progress so the operator can see it is waiting, not hung.
             try:
-                conclusion = branch_ci_conclusion(str(repo), branch)
+                head_sha = _branch_head_sha(repo, branch)
+                start = time.monotonic()
+
+                def _progress(waiting, remaining):
+                    elapsed = int(time.monotonic() - start)
+                    print(
+                        f"  ⏳ CI on {branch} is {waiting.state} "
+                        f"({waiting.detail.split('.')[0]}); "
+                        f"waited {elapsed}s, up to {int(remaining)}s left",
+                        file=sys.stderr,
+                    )
+
+                conclusion = wait_for_ci_conclusion(
+                    str(repo),
+                    branch,
+                    head_sha=head_sha,
+                    progress=_progress,
+                )
             except CIGateError as e:
                 print(f"✗ {e}", file=sys.stderr)
                 return 1
@@ -223,12 +270,24 @@ def merge_command(args) -> int:
             if conclusion.state == "pass":
                 print(f"  ✓ CI green on {branch}: {conclusion.detail}")
             else:
-                if conclusion.state == "in_progress":
-                    print(f"✗ CI in progress on {branch}: {conclusion.detail}", file=sys.stderr)
-                    print("  Wait for it to finish, then merge again.", file=sys.stderr)
+                if conclusion.state == "stale":
+                    print(f"✗ CI on {branch} is stale: {conclusion.detail}", file=sys.stderr)
+                    print("  Wait for a run on the current commit, then merge again.", file=sys.stderr)
+                elif conclusion.state == "startup_failure":
+                    print(f"✗ CI never started on {branch}: {conclusion.detail}", file=sys.stderr)
+                    print("  Fix the CI workflow (.github/workflows/ci.yml), not the branch.", file=sys.stderr)
+                elif conclusion.state == "cancelled":
+                    print(f"✗ CI was cancelled on {branch}: {conclusion.detail}", file=sys.stderr)
+                    print("  Re-run CI, then merge again.", file=sys.stderr)
+                elif conclusion.state == "timed_out":
+                    print(f"✗ CI timed out on {branch}: {conclusion.detail}", file=sys.stderr)
+                    print("  Re-run CI or lengthen the workflow timeout, then merge again.", file=sys.stderr)
                 elif conclusion.state == "fail":
                     print(f"✗ CI failed on {branch}: {conclusion.detail}", file=sys.stderr)
                     print("  Fix the failure before merging.", file=sys.stderr)
+                elif conclusion.state == "in_progress":
+                    print(f"✗ CI in progress on {branch}: {conclusion.detail}", file=sys.stderr)
+                    print("  Wait for it to finish, then merge again.", file=sys.stderr)
                 else:  # not_run
                     print(f"✗ CI has not run on {branch}: {conclusion.detail}", file=sys.stderr)
                     print(
