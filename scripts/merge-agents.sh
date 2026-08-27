@@ -154,6 +154,15 @@ for branch in $BRANCHES; do
     echo "— $branch: worktree not found at '$wt', not resetting"
     continue
   fi
+  # An agent may be working in this worktree right now. Its branch will look
+  # "merged and behind" until it commits, so ancestry alone does not make a
+  # reset safe — resetting a dirty tree destroys work in progress. This has
+  # happened once; do not let it happen again.
+  if [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
+    echo "— $branch: worktree has uncommitted changes (agent may be running) — NOT resetting"
+    continue
+  fi
+
   if git merge-base --is-ancestor "$branch" origin/main; then
     if git -C "$wt" reset --hard origin/main --quiet; then
       echo "✓ $branch: reset $wt to origin/main"
