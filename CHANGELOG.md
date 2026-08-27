@@ -11,7 +11,38 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Ranged read coverage tracking and repeated directory listing deduplication in `ReadMemoryTracker`. Ranged file reads (`read_file_lines`) that fall within previously fetched line ranges or full file reads (`read_file`) in Turn N are served from memory with turn pointers. Repeated directory listings (`list_files`) on identical canonical directories are also served from memory with turn pointers, eliminating redundant transcript growth across coder and validator tool loops. (Fixes #77).
+- The tool-loop read memory now covers ranged reads and repeated directory
+  listings, which is where transcript growth actually came from. The previous
+  dedup keyed on exact tool arguments, so `read_file_lines(f:1-400)` and
+  `read_file_lines(f:400-520)` were distinct calls and neither was served from
+  memory — in one observed run the coder read a file in four ranged chunks and
+  most test files in two, with the dedup never firing once, and re-listed
+  directories it had listed forty turns earlier. `ReadMemoryTracker` now records
+  the line ranges already fetched per file and serves any read contained within
+  them from memory with a turn pointer, and does the same for repeated listings
+  of the same canonical directory. Applies to both the coder and validator tool
+  loops. (Fixes #77).
+
+- Runbooks brought up to date and their central finding corrected. Runbook 02
+  §9.1 previously claimed every defect was caught by `quality`, the only
+  validator that executes something, and that read-only judges passed
+  everything. That was true when written and is now too broad: pre-execute
+  `architecture` has repeatedly rejected real defects before any code existed
+  (an unsatisfiable acceptance criterion under the recorded Node floor citing
+  ADR-0001; a spec asserting the dependency guard was unaffected when the
+  accumulated failure showed it rejecting the new import; a stored card
+  requiring a template id the schema lacked — the last corroborated in
+  `docs/architecture/maturity-assessment-2026-08.md`), while post-execute
+  judgement of artifacts has been weak (the `acceptance` canary rejects a real
+  omission per Fixes #59, but a live run returned MET for a command it could
+  not run while `quality` held that command's failing output — Fixes #75). The
+  sharper claim is now stated with citations: pre-execute judgement of a
+  proposal has repeatedly caught real defects; post-execute judgement of
+  artifacts has been weak; execution is what catches those. What remains
+  uncertain is stated explicitly. Both runbooks are refreshed against ADRs
+  030–036 and the verification work (CI-workflow canary, merge-gate polling,
+  stale-conclusion detection, declared coder interface, operator review
+  tracking).
 
 - A local-suite canary that validates every file under `.github/workflows/`.
   The gate every other gate depends on is the CI workflow file itself, and it
