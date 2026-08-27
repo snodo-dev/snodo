@@ -12,6 +12,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Transient LLM provider and network errors during validator execution are now retried before emitting an operational fault, and unrecoverable provider/tool-loop exceptions are reported as `error=True` (`validator_error`) rather than `warn`. Previously, a transient DNS resolution error (`[Errno 8] nodename nor servname provided, or not known`) or API timeout in `LLMValidator` returned `severity="warn"` (`error=False`), causing unanimous disagreement policies to mistake an infrastructure fault for a code judgment warning and trigger unnecessary recovery cycles on healthy runs. Retrying transient errors (up to 3 attempts) transparently resolves momentary network blips, while unhandled operational faults halt cleanly as `validator_error` without entering recovery loops. (Fixes #82).
+- Parallel merges no longer conflict on `CHANGELOG.md`. Every agent appends its
+  entry at the top of `### Added`, so any two branches collide on the same
+  lines by construction — six agent merges produced six CHANGELOG-only
+  conflicts, all resolved identically by keeping both entries. `CHANGELOG.md`
+  is now marked `merge=union` in `.gitattributes`: git's built-in union driver
+  merges a parallel append as "keep both", dedupes identical entries, and needs
+  no per-machine configuration. Chosen over fragment files (`changelog.d/` +
+  an assembly step), which would cost an assembly step and the single readable
+  CHANGELOG in the working tree to fix a conflict a merge driver resolves
+  correctly for free. A canary test
+  (`tests/golden/test_changelog_union_merge.py`) fails at the branch if the
+  `.gitattributes` declaration is dropped. See ADR 037. (Fixes #81).
 
 - The tool-loop read memory now covers ranged reads and repeated directory
   listings, which is where transcript growth actually came from. The previous
