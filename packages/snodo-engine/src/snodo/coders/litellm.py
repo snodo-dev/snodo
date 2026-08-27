@@ -257,7 +257,7 @@ Return ONLY the JSON array, no other text.
         retried_free_text = False
         finish_reason = None
         start_time = time.monotonic()
-        read_memory: Dict[Tuple[str, str], int] = {}
+        read_tracker = ReadMemoryTracker()
 
         for turn in range(self.max_tool_turns):
             try:
@@ -328,14 +328,12 @@ Return ONLY the JSON array, no other text.
                             args = json.loads(tc.function.arguments)
                         except (json.JSONDecodeError, TypeError):
                             args = {}
-                        read_key = _canonical_read_key(tool_name, args)
-                        if read_key is not None and read_key in read_memory:
-                            prev_turn = read_memory[read_key]
+                        prev_turn = read_tracker.check_read(tool_name, args)
+                        if prev_turn is not None:
                             result = format_repeat_read_response(tool_name, args, prev_turn)
                         else:
                             result = self._execute_tool(tool_name, args, workspace)
-                            if read_key is not None:
-                                read_memory[read_key] = turn + 1
+                            read_tracker.record_read(tool_name, args, turn + 1)
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -675,12 +673,124 @@ def _truncated_log(raw: str, max_chars: int = 2048) -> str:
     return raw[:max_chars] + "...<truncated>"
 
 
+def _normalize_path_arg(args: Dict[str, Any]) -> str:
+    """Extract and normalize a path argument string."""
+    for path_key in ("path", "directory", "file_path", "target_file", "file"):
+        val = args.get(path_key)
+        if val and isinstance(val, str):
+            p = val.strip()
+            if p:
+                try:
+                    return Path(p).as_posix()
+                except Exception:
+                    return p
+    return ""
+
+
+def _extract_line_range(tool_name: str, args: Dict[str, Any]) -> Tuple[int, float]:
+    """Extract (start_line, end_line) range from tool args."""
+    if tool_name == "read_file":
+        return (1, float("inf"))
+
+    if tool_name in ("read_file_lines", "read_lines"):
+        start = args.get("start") or args.get("start_line") or 1
+        end = args.get("end") or args.get("end_line") or float("inf")
+        try:
+            start_int = int(start)
+        except (ValueError, TypeError):
+            start_int = 1
+        try:
+            end_num = float(end)
+        except (ValueError, TypeError):
+            end_num = float("inf")
+        return (start_int, end_num)
+
+    return (1, float("inf"))
+
+
+class ReadMemoryTracker:
+    """Tracks read file contents, line ranges, directory listings, and tool arguments across turns."""
+
+    def __init__(self) -> None:
+        # Exact canonical (tool_name, norm_args_json) -> turn_idx (1-based)
+        self.exact_reads: Dict[Tuple[str, str], int] = {}
+        # file_path -> [(start_line, end_line, turn_idx), ...]
+        self.file_ranges: Dict[str, List[Tuple[int, float, int]]] = {}
+        # canonical dir_path -> turn_idx
+        self.dir_listings: Dict[str, int] = {}
+
+    def check_read(self, tool_name: str, args: Dict[str, Any]) -> Optional[int]:
+        """Check if a read tool call is already covered by memory.
+
+        Returns the 1-based turn_idx if covered, else None.
+        """
+        read_tools = {
+            "read_file",
+            "read_file_lines",
+            "read_lines",
+            "list_files",
+            "list_directory",
+            "ls",
+            "git_show",
+            "read_diff_between_refs",
+            "git_log",
+            "search_symbol",
+            "search_string",
+        }
+        if tool_name not in read_tools:
+            return None
+
+        # 1. Exact argument match
+        exact_key = _canonical_read_key(tool_name, args)
+        if exact_key and exact_key in self.exact_reads:
+            return self.exact_reads[exact_key]
+
+        # 2. File line range / whole file coverage check
+        if tool_name in ("read_file", "read_file_lines", "read_lines"):
+            path = _normalize_path_arg(args)
+            if path and path in self.file_ranges:
+                req_start, req_end = _extract_line_range(tool_name, args)
+                for cov_start, cov_end, turn_idx in self.file_ranges[path]:
+                    if cov_start <= req_start and cov_end >= req_end:
+                        return turn_idx
+
+        # 3. Directory listing check
+        if tool_name in ("list_files", "list_directory", "ls"):
+            dir_path = _normalize_path_arg(args) or "."
+            if dir_path in self.dir_listings:
+                return self.dir_listings[dir_path]
+
+        return None
+
+    def record_read(self, tool_name: str, args: Dict[str, Any], turn_idx: int) -> None:
+        """Record a successful read tool execution in memory."""
+        exact_key = _canonical_read_key(tool_name, args)
+        if exact_key:
+            self.exact_reads[exact_key] = turn_idx
+
+        if tool_name in ("read_file", "read_file_lines", "read_lines"):
+            path = _normalize_path_arg(args)
+            if path:
+                req_start, req_end = _extract_line_range(tool_name, args)
+                if path not in self.file_ranges:
+                    self.file_ranges[path] = []
+                self.file_ranges[path].append((req_start, req_end, turn_idx))
+
+        if tool_name in ("list_files", "list_directory", "ls"):
+            dir_path = _normalize_path_arg(args) or "."
+            if dir_path not in self.dir_listings:
+                self.dir_listings[dir_path] = turn_idx
+
+
 def _canonical_read_key(name: str, args: Dict[str, Any]) -> Optional[Tuple[str, str]]:
     """Return (tool_name, canonical_args_str) for read tools, or None if not a read tool."""
     read_tools = {
         "read_file",
         "read_file_lines",
+        "read_lines",
         "list_files",
+        "list_directory",
+        "ls",
         "git_show",
         "read_diff_between_refs",
         "git_log",
@@ -694,7 +804,7 @@ def _canonical_read_key(name: str, args: Dict[str, Any]) -> Optional[Tuple[str, 
     for path_key in ("path", "directory", "file_path", "target_file"):
         if path_key in norm_args and isinstance(norm_args[path_key], str):
             p = norm_args[path_key].strip()
-            norm_args[path_key] = str(Path(p))
+            norm_args[path_key] = str(Path(p).as_posix())
 
     try:
         args_str = json.dumps(norm_args, sort_keys=True)
@@ -706,7 +816,21 @@ def _canonical_read_key(name: str, args: Dict[str, Any]) -> Optional[Tuple[str, 
 
 def format_repeat_read_response(tool_name: str, args: Dict[str, Any], prev_turn: int) -> str:
     """Format a concise tool response pointing to the previous turn containing the result."""
-    target = args.get("path") or args.get("directory") or args.get("file_path") or ""
+    target = _normalize_path_arg(args)
+    if tool_name in ("read_file", "read_file_lines", "read_lines"):
+        req_start, req_end = _extract_line_range(tool_name, args)
+        range_str = f"lines {req_start}-{int(req_end)}" if req_end != float("inf") else "full file"
+        if target:
+            return (
+                f"File '{target}' ({range_str}) was already fetched using {tool_name} in Turn {prev_turn}. "
+                f"Refer to the tool response from Turn {prev_turn} for its content."
+            )
+    if tool_name in ("list_files", "list_directory", "ls"):
+        dir_name = target or "."
+        return (
+            f"Directory '{dir_name}' was already listed using {tool_name} in Turn {prev_turn}. "
+            f"Refer to the tool response from Turn {prev_turn} for its contents."
+        )
     if target:
         return (
             f"'{target}' was already fetched using {tool_name} in Turn {prev_turn}. "
