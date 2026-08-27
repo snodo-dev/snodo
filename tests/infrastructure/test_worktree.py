@@ -11,9 +11,11 @@ import pytest
 
 from snodo.infrastructure.worktree import (
     WorktreeIsolationError,
+    check_spec_paths_exist,
     create_worktree,
     delete_task_branch,
     merge_task_branch,
+    surface_untracked_files,
     task_branch_name,
 )
 from snodo.tools.git import GitError, resolve_base_branch
@@ -170,3 +172,67 @@ def test_delete_task_branch(repo):
 
     delete_task_branch(str(repo), branch)
     assert branch not in _branches(repo)
+
+
+# === spec-referenced paths must exist in the worktree (issue #93) ===
+
+def test_check_spec_paths_exist_flags_missing_cited_file(repo):
+    """A spec citing a path absent from the worktree is flagged before dispatch."""
+    missing = check_spec_paths_exist(
+        str(repo),
+        "Implement the card footer per docs/design/card-footer-qr.html",
+    )
+    assert "docs/design/card-footer-qr.html" in missing
+
+
+def test_check_spec_paths_exist_flags_paths_meant_to_be_created(repo):
+    """A spec naming a path the task is meant to create IS flagged — that is
+    the false positive the warning tolerates. The check warns rather than
+    halts precisely because only the operator can tell 'to be created' from
+    'cited as authority'."""
+    missing = check_spec_paths_exist(
+        str(repo),
+        "Create src/parser.py and tests/test_parser.py",
+    )
+    assert "src/parser.py" in missing
+    # tests/ is governance/authority-adjacent and ignored.
+    assert "tests/test_parser.py" not in missing
+
+
+def test_check_spec_paths_exist_ignores_governance_paths(repo):
+    """Specs citing docs/decisions or .snodo are not flagged — the coder must
+    not read those as authority anyway."""
+    missing = check_spec_paths_exist(
+        str(repo),
+        "Follow docs/decisions/0001 and the .snodo protocol",
+    )
+    assert missing == []
+
+
+def test_check_spec_paths_exist_against_worktree(repo, tmp_path):
+    """A file present in the project root but absent from the worktree is
+    flagged when the worktree is checked — the untracked-file gap."""
+    (repo / "docs").mkdir(exist_ok=True)
+    (repo / "docs" / "design").mkdir(exist_ok=True)
+    (repo / "docs" / "design" / "card-footer-qr.html").write_text("<html>ref</html>")
+    # Untracked: exists in the operator's tree, absent from any worktree.
+    # Simulate the worktree as a separate directory that does not have it.
+    fake_worktree = tmp_path / "wt"
+    fake_worktree.mkdir()
+    missing = check_spec_paths_exist(
+        str(repo),
+        "Implement per docs/design/card-footer-qr.html",
+        worktree=str(fake_worktree),
+    )
+    assert "docs/design/card-footer-qr.html" in missing
+
+
+def test_surface_untracked_files_lists_untracked(repo):
+    (repo / "untracked.txt").write_text("new")
+    (repo / "tracked.txt").write_text("tracked")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "tracked"], cwd=repo, check=True)
+
+    untracked = surface_untracked_files(str(repo))
+    assert "untracked.txt" in untracked
+    assert "tracked.txt" not in untracked
