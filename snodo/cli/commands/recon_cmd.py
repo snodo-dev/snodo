@@ -62,5 +62,27 @@ def recon_command(args) -> int:
     print(f"  Agents: {', '.join(agents)}")
     print(f"  Query:  {query}")
     print()
-    print(f"Check results: snodo logs {recon_id}")
+
+    mgr.shutdown(timeout=300.0)
+
+    status_data = mgr.get_status(recon_id)
+    results = status_data.get("results", [])
+
+    if not results:
+        print(f"Recon {recon_id} completed with no results", file=sys.stderr)
+        return 1
+
+    print("Recon complete:")
+    for res in results:
+        agent_name = res.get("agent", "agent") if isinstance(res, dict) else getattr(res, "agent", "agent")
+        model_name = res.get("model", "") if isinstance(res, dict) else getattr(res, "model", "")
+        err = res.get("error", "") if isinstance(res, dict) else getattr(res, "error", "")
+        content = res.get("result", "") if isinstance(res, dict) else getattr(res, "result", "")
+        print(f"--- Agent: {agent_name} ({model_name}) ---")
+        if err:
+            print(f"Error: {err}", file=sys.stderr)
+        else:
+            print(content)
+        print()
+
     return 0

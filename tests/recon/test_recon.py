@@ -290,3 +290,55 @@ class TestReadOnlyTools:
         }
         assert "write_file" not in tool_names
         assert "delete_file" not in tool_names
+
+
+# ------------------------------------------------------------------#
+# CLI completion and API base resolution tests
+# ------------------------------------------------------------------#
+
+class TestReconDefectFixes:
+    def test_recon_completes_through_cli_entry_point(self, project_with_snodo, capsys, monkeypatch):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        from snodo.cli.commands.recon_cmd import recon_command
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Codebase looks good"
+        mock_response.choices[0].message.tool_calls = None
+
+        monkeypatch.setattr(recon_module, "_threads", [])
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=project_with_snodo), \
+             patch("litellm.completion", return_value=mock_response):
+            args = SimpleNamespace(query="Explore the app architecture", paths=["./"], num_agents=1)
+            rc = recon_command(args)
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Recon complete:" in out
+        assert "Codebase looks good" in out
+
+    def test_api_base_reaches_completion_call_when_configured(self, project_with_snodo):
+        from unittest.mock import MagicMock
+        from snodo.recon import _call_agent
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Analysis complete"
+        mock_response.choices[0].message.tool_calls = None
+
+        with patch("snodo.config.ConfigManager.resolve_api_base", return_value="https://custom.endpoint.ai/v1"), \
+             patch("snodo.config.ConfigManager._provider_for_model", return_value="custom"), \
+             patch("litellm.completion", return_value=mock_response) as mock_comp:
+            res = _call_agent(
+                project_root=project_with_snodo,
+                model="custom/my-model",
+                query="test query",
+                paths=["./"],
+                agent_label="agent1",
+            )
+            assert not res.error
+            assert res.result == "Analysis complete"
+            mock_comp.assert_called()
+            call_kwargs = mock_comp.call_args.kwargs
+            assert call_kwargs.get("api_base") == "https://custom.endpoint.ai/v1"
