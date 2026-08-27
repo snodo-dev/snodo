@@ -104,7 +104,7 @@ class TaskSpec(BaseModel):
 class FileArtifact(BaseModel):
     """A file operation emitted by the coder."""
     path: str
-    content: str
+    content: str = ""
     action: str = "write"  # "write" | "delete"
 
 

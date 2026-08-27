@@ -47,7 +47,10 @@ class ExecutorMixin:
         for file_op in code_artifact.files:
             if file_op.action == "delete":
                 if not coder.skip_workspace_write:
-                    workspace_mcp.delete_file(file_op.path)
+                    try:
+                        workspace_mcp.delete_file(file_op.path)
+                    except FileNotFoundError:
+                        pass
             else:
                 if not coder.skip_workspace_write:
                     workspace_mcp.write_file(file_op.path, file_op.content)
