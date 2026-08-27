@@ -16,6 +16,19 @@ cd snodo
 uv sync --all-extras
 ```
 
+`snodo` is **not on PATH** outside its own checkout when developing from
+source, and `uv tool install snodo` pulls the five sub-packages from PyPI, so
+they are **not editable** — which defeats the purpose when patching the engine.
+Develop against the editable checkout by aliasing it:
+
+```bash
+alias snodo='uv run --project ~/path/to/snodo snodo'
+```
+
+`uv run --project` resolves the `snodo` entry point from the workspace's own
+dependencies (all five sub-packages are editable, so edits apply immediately).
+Verify the alias before first use: `snodo --version`.
+
 Useful entry points:
 
 ```bash

@@ -124,6 +124,8 @@ def load_protocol(protocol_path: Path) -> Optional[Protocol]:
         result = verify_protocol(protocol)
         if not result.passed:
             raise ProtocolWellFormednessError(result.errors)
+        for warning in result.warnings:
+            print(f"Warning: {warning}", file=sys.stderr)
 
         return protocol
 

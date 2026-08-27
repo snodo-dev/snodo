@@ -13,6 +13,34 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Operator human review tracking (`snodo task review <task_id> <verdict>`) and acceptance rate reporting (`snodo task report` / `snodo task review --report`). Reviews append `human_review_recorded` events to `.snodo/audit.log`, maintaining hash-chain integrity. Reports calculate the fraction of completed tasks accepted unchanged over a rolling window (3-category taxonomy: `accepted`, `amended`, `discarded`). Machine-readable JSON output (`snodo.task_review_report.v1`) included. See ADR 036. (Fixes #70).
 
+- ADR numbering conformance gate. Two agents working in parallel have claimed
+  the same ADR number three times (023, 028, a 030/031 near miss), each time
+  surfacing as a merge conflict in `docs/decisions/README.md` plus a renamed
+  file whose heading still carried the old number. A new test
+  (`tests/golden/test_adr_index.py`) fails at the branch if an ADR file's
+  number does not match its heading, if any number appears more than once in
+  the index, or if the index and the files on disk disagree. It caught a real
+  stale link (ADR 001). Sequential numbering is kept — collision-resistant
+  allocation needs a shared serial allocator across agents, which is heavier
+  than the mechanical renumber the gate makes trivial. (Fixes #55).
+
+- A load-time warning for a unanimous policy with exactly one `post_execute`
+  validator. `PolicyEvaluator` derives `total_count` per phase, so under
+  `"unanimous"` a single post-execute validator is an unopposed veto over
+  completed work — and with `quality` and `acceptance` both post-execute, an
+  operator choosing the policy should meet this before it lands in a halt
+  payload. The verifier (WF4) now warns when a protocol has exactly one
+  post-execute validator under unanimous; the warning is surfaced by
+  `load_protocol` and `snodo init`, and the policy section of
+  `docs/protocol.md` plus the `solo` template explain the tradeoff. (Fixes #41).
+
+- Documented running snodo from an editable checkout in `CONTRIBUTING.md`.
+  `snodo` is not on PATH outside its own checkout, and `uv tool install snodo`
+  pulls the five sub-packages from PyPI (non-editable), which defeats the
+  point when patching the engine. The alias
+  `snodo='uv run --project ~/path/to/snodo snodo'` is now the documented way to
+  develop against the source tree. (Fixes #45).
+
 - The opencode coder path is now explicitly **experimental**, not supported.
   The containerised `opencode` and host `opencode-cli` backends are exercised
   by the adapter conformance suite and the `.snodo/` guard and commit hold for

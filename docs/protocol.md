@@ -233,6 +233,17 @@ disagreement_policy: "majority"
 | `"quorum"` | `pass_count >= total_count * 0.67` | Configurable 2/3 threshold |
 | `"any"` | `pass_count >= 1` | At least one approval — permissive front-end |
 
+The threshold is evaluated **per phase**, and `total_count` is the number of
+validators that ran in that phase. Under `"unanimous"` a phase with exactly one
+validator is therefore an **unopposed veto**: that validator alone decides
+whether the phase passes. This is worth noticing for `post_execute` — the phase
+that reviews completed work — because `quality` and `acceptance` both run there
+in the shipped templates, and a single post-execute validator under unanimous
+can block every task on operational noise (a flaky test, a tool outage) with no
+second opinion. The verifier warns at load time when a protocol has exactly one
+`post_execute` validator under `"unanimous"`; either add a second post-execute
+judge or choose a different policy.
+
 **INV3**: `blocker_count > 0` halts execution **before** any policy logic runs. A single blocker overrides every policy — by design. This is the structural guarantee that no critical defect can be voted down.
 
 ### Actions

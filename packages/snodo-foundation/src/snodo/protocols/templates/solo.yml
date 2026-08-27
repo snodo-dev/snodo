@@ -81,6 +81,13 @@ validators:
     criteria:
       - "Judge the produced artifacts against the acceptance criteria in the task spec. A criterion that is verifiable from the tree and unmet is a warn; a criterion that cannot be verified from the tree (device behaviour, human judgement) is uncheckable and never a finding."
 
+# NOTE: `quality` and `acceptance` are the two POST_EXECUTE validators. Under
+# `unanimous`, a phase with exactly one validator is an unopposed veto over
+# completed work — a single flaky test or tool outage would block every task
+# with no second opinion (Fixes #41). Keeping TWO post-execute judges here
+# avoids that; if you remove one, either keep two post-execute validators or
+# switch `disagreement_policy` below.
+
 disagreement_policy: "unanimous"
 initial_mode: "producer"
 
