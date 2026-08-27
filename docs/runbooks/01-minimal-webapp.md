@@ -527,16 +527,20 @@ Sample card state (stored in URL hash or vCard export):
 - **Protocol used**: `solo` (with `acceptance` validator enabled via ADR 028)
 - **Total tasks executed**: 6 tasks across 2 phases
 
-> **Update (ADR 030–036).** Since this runbook was written, the verification
-> work has changed what an operator should expect from the gates: the coder
-> seam is declared rather than duck-typed (ADR 035), in-place coders leave
-> their change reviewable (ADR 030), the opencode path is explicitly
-> experimental (ADR 034), verification executions are first-class audit events
-> (ADR 031), patch coverage is enforced over modified lines (ADR 032), and
-> operator review outcomes are measurable via `snodo task review` / `snodo task
-> report` (ADR 036). The empirical finding that "execution catches what
-> read-only judgement misses" still holds — see runbook 02 §9.1 for the
-> corrected, sharper version.
+> **Update (ADR 030–037 & Fixes #81–#98).** Since this runbook was written, the verification
+> work and recent defect fixes have sharpened what an operator should expect from the gates:
+> the coder seam is declared rather than duck-typed (ADR 035), in-place coders leave
+> their change reviewable (ADR 030), the opencode path is explicitly experimental (ADR 034),
+> verification executions are first-class audit events (ADR 031), patch coverage is enforced
+> over modified lines (ADR 032), operator review outcomes are measurable via `snodo task review`
+> / `snodo task report` (ADR 036), parallel `CHANGELOG.md` merges auto-merge cleanly via
+> `merge=union` (ADR 037 / Fixes #81), pre-execute tree-state findings are passed forward as
+> non-blocking evidence to prevent recovery deadlocks (Fixes #90), specs naming untracked paths
+> warn before dispatching (Fixes #93), test suite under-collection is prevented via rootdir and
+> minimum collection threshold assertions (Fixes #98), and audit hash chain corruption reports
+> distinct, actionable `✖ AUDIT LOG CHAIN CORRUPTED` diagnostic alerts (Fixes #96).
+> The empirical finding that "execution catches what read-only judgement misses" still holds —
+> see runbook 02 §9.1–§9.3 for the detailed findings.
 
 ## Appendix A — What we deferred, and what it would take
 
