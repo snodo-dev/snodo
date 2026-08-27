@@ -124,6 +124,41 @@ def _build_completion_fn(model: str, base_fn: Optional[Callable]) -> Optional[Ca
     return functools.partial(base_fn, **kwargs)
 
 
+def _attempt_written_files(loop_state: "LoopState") -> List[str]:
+    """Return file paths written by the current attempt.
+
+    Prefer metadata recorded by the executor when available. Fall back to
+    artifact paths, filtering known engine bookkeeping markers.
+    """
+    recorded = loop_state.metadata.get("attempt_written_files")
+    if isinstance(recorded, list) and recorded:
+        return sorted({str(path) for path in recorded if str(path).strip()})
+
+    files = []
+    for artifact in loop_state.artifacts:
+        if not isinstance(artifact, str):
+            continue
+        if artifact == "git_commit" or artifact.startswith("git_error:"):
+            continue
+        if artifact.startswith("code_generated_for_"):
+            continue
+        if artifact.strip():
+            files.append(artifact)
+    return sorted(set(files))
+
+
+def _combine_attempt_provenance(
+    prior_provenance: Optional[list],
+    current_attempt: int,
+    current_files: List[str],
+) -> list:
+    provenance = _normalize_attempt_provenance(prior_provenance)
+    files = sorted({str(path) for path in current_files if str(path).strip()})
+    if files:
+        provenance.append({"attempt": current_attempt, "files": files})
+    return _normalize_attempt_provenance(provenance)
+
+
 def _verdict_signature(failures: list) -> tuple:
     """A canonical, order-independent signature of a failure list.
 
@@ -137,7 +172,22 @@ def _verdict_signature(failures: list) -> tuple:
     ))
 
 
-def _build_recovery_spec(original_spec: str, failures: list) -> str:
+def _normalize_attempt_provenance(provenance: Optional[list]) -> list:
+    normalized = []
+    for entry in provenance or []:
+        attempt = entry.get("attempt", "?")
+        files = entry.get("files") or []
+        unique_files = sorted({str(path) for path in files if str(path).strip()})
+        if unique_files:
+            normalized.append({"attempt": attempt, "files": unique_files})
+    return normalized
+
+
+def _build_recovery_spec(
+    original_spec: str,
+    failures: list,
+    attempt_provenance: Optional[list] = None,
+) -> str:
     """Synthesise a recovery spec from the original intent + accumulated failures.
 
     The original intent is carried forward exactly once, unchanged, and is the
@@ -155,7 +205,14 @@ def _build_recovery_spec(original_spec: str, failures: list) -> str:
     first attempt reached submit_files at turn 16 while its recovery read
     essentially the whole repository across 48 turns. The intent is the scope
     anchor; the failures tell the coder what went wrong, not what to build.
+
+    ``attempt_provenance`` identifies files earlier attempts wrote in the same
+    cumulative worktree. It is framed as ownership context, not a rewrite
+    request: the coder may remove a superseded file from its own earlier
+    attempt, but must not churn a listed file merely because it appears there
+    (Fixes #97).
     """
+    provenance = _normalize_attempt_provenance(attempt_provenance)
     lines = [
         "The task is the INTENT below. Implement it.",
         "",
@@ -168,6 +225,24 @@ def _build_recovery_spec(original_spec: str, failures: list) -> str:
         "earlier attempts. Use them to diagnose, but they do not change the "
         "task and do not widen its scope.",
     ]
+
+    if provenance:
+        lines.extend(
+            [
+                "- The provenance below is ownership context for the same "
+                "recovery worktree, not a rewrite request. If an earlier "
+                "attempt wrote a file that your current architecture supersedes, "
+                "remove that orphan as part of completing the intent. If a listed "
+                "file is still needed or already correct, leave it alone.",
+            ]
+        )
+
+    if provenance:
+        lines.append("")
+        lines.append("PROVENANCE (files written by earlier attempts in this chain):")
+        for entry in provenance:
+            files = ", ".join(entry["files"])
+            lines.append(f"- attempt {entry['attempt']}: {files}")
 
     if failures:
         lines.append("")
@@ -333,6 +408,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._worktree_degraded = worktree_degraded
         self._verbose = verbose
         self._project_context_cache: Optional[Dict[str, Any]] = None
+        self._last_execution_writes: List[str] = []
     
     def build_graph(self) -> StateGraph:
         """Build executable StateGraph from protocol.
@@ -676,6 +752,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                     "error": str(e),
                 })
                 return self._state_to_dict(loop_state)
+            self._last_execution_writes = []
             try:
                 self._progress("  Coder dispatched")
                 artifacts = self.executor_fn(
@@ -688,6 +765,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                     project_context=self._project_context_cache,
                 )
                 self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")
+                loop_state.metadata["attempt_written_files"] = list(self._last_execution_writes)
             except SnodoMutationError as e:
                 # An in-place-writing coder mutated protected .snodo/ state.
                 # This is a governance violation (INV3-class), not an
@@ -962,7 +1040,12 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
 
         # Accumulate failures across attempts rather than replacing them.
         accumulated = list(loop_state.task.prior_failures or []) + new_failures
-        spec = _build_recovery_spec(root_spec, accumulated)
+        provenance = _combine_attempt_provenance(
+            loop_state.task.attempt_provenance,
+            attempt_no,
+            _attempt_written_files(loop_state),
+        )
+        spec = _build_recovery_spec(root_spec, accumulated, provenance)
 
         # Identify triggering validators (warn / blocker)
         trigger_ids = [f["validator_id"] for f in new_failures]
@@ -975,6 +1058,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             root_task_ref=root_id,
             root_spec=root_spec,
             prior_failures=accumulated,
+            attempt_provenance=provenance,
             depth=current_depth + 1,
         )
         loop_state.spawned_subtasks.append(fix_task)

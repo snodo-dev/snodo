@@ -115,6 +115,10 @@ class ExecutorMixin:
             code_artifact = coder.implement(spec)
 
             # If workspace available, process file operations
+            self._last_execution_writes = [
+                file_op.path for file_op in code_artifact.files
+                if getattr(file_op, "action", "write") != "delete"
+            ]
             if workspace_mcp:
                 artifact_paths = self._apply_file_operations(workspace_mcp, coder, code_artifact, task)
                 artifacts.extend(artifact_paths)
