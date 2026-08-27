@@ -108,8 +108,9 @@ modes:
 and `opencode-cli` (host `opencode run`) — are **experimental**: they are
 exercised by the conformance suite and the `.snodo/` guard and commit are
 enforced by the adapter base class (ADR 027/030), but they do not yet report
-per-turn progress or contribute usage/cost records to the audit trail, and
-they are not used by any shipped template. Treat them as a research path, not
+per-turn progress or record usage/cost telemetry (the `litellm` path records
+it per job via `snodo meta`), and they are not used by any shipped template.
+Treat them as a research path, not
 a production default; if you rely on them, pin the opencode version and verify
 post-execute review output yourself. (See
 `docs/architecture/coder-adapter-contract.md`.)

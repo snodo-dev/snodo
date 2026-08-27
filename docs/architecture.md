@@ -187,7 +187,9 @@ Shipped adapters (`engine/coders/`):
 The opencode backends (`opencode` containerised, `opencode-cli` host) are
 **experimental**: the conformance suite and the `.snodo/` guard + commit
 (ADR 027/030) hold for them, but they do not yet report per-turn progress or
-contribute usage/cost records, and no shipped template uses them. See
+contribute usage/cost telemetry (the `litellm` path records it per job via
+`snodo meta`; cost is operational telemetry, not part of the audit trail —
+ADR 034), and no shipped template uses them. See
 `docs/protocol.md` and `docs/architecture/coder-adapter-contract.md`.
 
 Adapters that write to the working tree **in place** (opencode and similar;
