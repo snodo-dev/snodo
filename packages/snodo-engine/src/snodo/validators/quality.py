@@ -153,14 +153,18 @@ class QualityValidator(ValidatorBase):
         outcome: str,
         output_tail: str = "",
     ) -> None:
-        """Appends a first-class verification_executed event to audit_log."""
+        """Append a first-class verification_executed event to audit_log.
+
+        The audit log is taken ONLY from the validator context.  It is never
+        resolved from the current working directory (Fixes #65): the code
+        under test is not always the project under test, and a cwd-relative
+        ``get_audit_log()`` (default ``.snodo/audit.log``) can point at an
+        unrelated repository — under ``pytest -n auto`` concurrent workers
+        then append to that file simultaneously, corrupt the hash chain, and
+        break the next run.  A verification event without an explicit audit
+        log in context is skipped, not invented from cwd.
+        """
         audit_log = getattr(context, "audit_log", None) if context else None
-        if audit_log is None:
-            try:
-                from snodo.infrastructure.audit import get_audit_log
-                audit_log = get_audit_log()
-            except Exception:
-                pass
 
         if audit_log and hasattr(audit_log, "append_event"):
             task_ref = ""

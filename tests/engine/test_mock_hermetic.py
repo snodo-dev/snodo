@@ -9,6 +9,7 @@ Verifies that under --mock / use_mock_coder=True:
 """
 
 from unittest.mock import MagicMock
+import subprocess
 import pytest
 import litellm
 
@@ -57,7 +58,7 @@ def test_build_completion_fn_preserves_hermetic_mock():
         set_mock_mode(False)
 
 
-def test_graph_execution_under_use_mock_coder_is_hermetic(monkeypatch):
+def test_graph_execution_under_use_mock_coder_is_hermetic(monkeypatch, tmp_path):
     """Full protocol graph execution under use_mock_coder=True makes ZERO live LLM calls."""
     protocol = Protocol(
         protocol_id="test_mock_p",
@@ -68,7 +69,22 @@ def test_graph_execution_under_use_mock_coder_is_hermetic(monkeypatch):
         validators=[Validator(validator_id="quality", validator_type="quality")],
     )
 
-    graph = build_protocol_graph(protocol=protocol, use_mock_coder=True).compile()
+    # Run against an isolated fixture repo, never the suite repo: the graph
+    # classifies a wave and writes .snodo/wave.json under its project_root,
+    # and a project_root defaulting to cwd would write into the repository
+    # running the tests (Fixes #65).
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    (tmp_path / "README.md").write_text("init\n")
+    subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=tmp_path, check=True)
+
+    graph = build_protocol_graph(
+        protocol=protocol,
+        project_root=str(tmp_path),
+        use_mock_coder=True,
+    ).compile()
     task = Task(id="t_hermetic_1", spec="build feature")
 
     # Run graph execution — classifier, validators, and coder must all use mock completion
