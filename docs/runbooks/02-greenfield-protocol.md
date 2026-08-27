@@ -1,7 +1,7 @@
 # Runbook 02 — Building a digital business card, end to end
 
 **Protocol:** `greenfield` · **Project:** a shareable digital business card, live at a custom domain
-**Status:** 🚧 phases 1–3 complete and merged · deploy and remaining features in progress
+**Status:** ✅ 6 phases complete and verified against snodo v0.7.0+
 
 > This is not a template. Every command below is the exact command that was run,
 > in order, on a real project. Copy them. Runbook 01 is the discovery log that
@@ -32,7 +32,7 @@ it chose, not what was imposed:
 python3 --version     # 3.12+
 node --version        # 20+
 git --version
-snodo --version       # 0.6.1+
+snodo --version       # 0.7.0+
 ```
 
 An LLM provider key: `snodo config add <provider> <key>`.
@@ -50,22 +50,15 @@ snodo init --template greenfield
 git add .gitignore && git commit -m "chore: commit .gitignore"
 ```
 
-**The empty commit is required.** Worktrees branch off `main`, which does not
-resolve on a repo with no commits — snodo then runs without isolation and only
-warns (issue #2).
+**The initial commit is required.** Worktrees branch off `main`, which does not
+resolve on a repo with no commits. (In snodo v0.7.0+, unborn-HEAD worktree creation
+fails loud with `WorktreeError` per ADR 025 / Fixes #29, rather than degrading to
+no isolation).
 
-**Commit `.gitignore` immediately.** `init` writes `.snodo/` and adds it to an
-*untracked* `.gitignore`. A routine `git clean -fd` removes both, destroying the
-project identity and audit chain. This happened to us.
+**Commit `.gitignore` immediately.** `init` writes `.snodo/` and adds it to `.gitignore`.
+In snodo v0.7.0+ (Fixes #24), `snodo init` commits `.snodo/` and `.gitignore` safety guards.
 
-If `init` fails with `KeyError: 'greenfield'`, the template needs
-hand-registration in this version:
-
-```bash
-snodo init --template solo --yes
-cp ~/Dev/snodo-public/packages/snodo-foundation/src/snodo/protocols/templates/greenfield.yml \
-   .snodo/protocol.yml
-```
+Note: `greenfield` template registration was fixed in Issue #19 (`snodo init --template greenfield` works out of the box).
 
 Leave `test_command` as `REPLACE_ME`. You cannot know it yet — it is an output
 of phase 1.
@@ -391,35 +384,45 @@ no library. Scope it tightly — byte mode, one error-correction level, automati
 version sizing — and require a test that **decodes** the output back to the
 input rather than asserting the bitmap looks right.
 
-## 9. What the phase model bought
+## 9. Key Empirical Findings
 
-Three real defects, all caught by the same validator:
+### 9.1 Execution vs. Judgement
+Three major defects occurred across the runbook iterations:
+1. **Broken test command recorded in an ADR**: `node --test tests/` in ADR-0004 passed `decide` and `scaffold-gate` judges. Caught by `quality` on execution.
+2. **Toolchain shipped with a failing gate**: `scaffold` toolchain setup passed LLM review; failed on `make check` execution.
+3. **Unguarded optional field crashing on minimal card**: `photoProperty` dereferenced `undefined` in `vcard.js`. Passed pre-execute review; caught by `quality` test execution.
 
-| Defect | Caught by |
-|---|---|
-| Broken test command recorded in an ADR | `quality`, on execution |
-| Toolchain shipped with a failing gate | `quality` |
-| Unguarded optional field crashing on a minimal card | `quality` |
+> **Finding 1**: Every defect caught during the runbook projects was caught by `quality`, the only validator that executes something. Read-only LLM judges passed all of them with detailed, confident justifications.
+>
+> *Qualification*: A post-execute `acceptance` validator (ADR 028) has since been demonstrated in a canary test (Fixes #59) rejecting a real omission (a missing required test/ADR). However, this qualifies rather than overturns the core finding: execution catches what read-only judgement misses.
 
-**Every one was caught by the only validator that executes something.** The
-read-only judges — `security`, `architecture`, `scaffold-gate` — passed all
-three, in detail, with citations.
+### 9.2 Recurring Defect Shapes
+Across fifty closed issues and runbook logs, defects consistently followed two primary structural patterns:
+- **Safety properties degrading to warnings**: e.g., worktree creation failing on empty repos and silently running unisolated (Fixes #2, #29 / ADR 025); truncation proceeding on partial output (Fixes #39); missing read tools evaluating on imagination (Fixes #31).
+- **Operational faults reported as policy judgements**: e.g., missing test commands or exit code 127 (`tsc: not found`) being classified as policy rejections, triggering human adjudication and recovery loops (Fixes #27, #33 / ADR 015).
 
-> `scaffold-gate` passed a repository whose verification command failed, writing
-> *"`make check` … exiting non-zero on any failure. All five criteria are met."*
-> It had read every file and run nothing.
+### 9.3 Silent Gates & Verification Hardening
+Several gates were found reporting green while enforcing nothing:
+- **CI running post-merge**: `.github/workflows/ci.yml` ran on main after merges landed, acting as a post-mortem rather than a gate (Fixes #56 / ADR 025).
+- **Self-reported gate results**: Merges were authorized by agent text summaries rather than empirical verification records (Fixes #57).
+- **Global coverage drift**: `--cov-fail-under=63` allowed 0%-coverage modules to merge undetected (Fixes #61 / ADR 032).
 
-They are good at conformance to a written record, and at catching the class of
-thing a spec-conformance criterion asks about. They cannot establish that code
-runs. Treat the test command as the only thing that knows the truth.
+*Remediation*: The verification hardening suite introduced first-class `verification_executed` audit trail events (ADR 031), patch coverage enforcement over modified lines (ADR 032), mandatory gate canaries proving gates can fail (Fixes #58), and out-of-date validator set notices (Fixes #59).
 
-## 10. Rough edges
+---
 
-| | Workaround |
-|---|---|
-| `init --template greenfield` may raise `KeyError` | see §2 |
-| `SNODO_TOKEN_SECRET` warning every run | harmless for single-process CLI |
-| `Classifier failed after 2 attempts` | harmless; task runs unwaved |
-| Foreground runs are unobservable while running | `--background` gives a job id you can tail |
-| A failed task deletes its worktree | `git archive <branch> \| tar -x -C /tmp/x` |
-| `quality` reports a stack frame, not the assertion | reconstruct as above and run it yourself |
+## 10. Rough Edges & Resolution Status
+
+| Original Friction | Operational Impact | Resolution / Current Status |
+|---|---|---|
+| `init --template greenfield` raised `KeyError` | Template registration gap | **Fixed** in Issue #19 (auto-registered in CLI) |
+| `SNODO_TOKEN_SECRET` warning on every run | Read like a Python runtime crash | **Fixed** in Issue #42 (clean CLI notice) |
+| `PolicyAction` msgpack deserialization warning | Deprecation notice in LangGraph | **Fixed** in Issue #43 (registered with msgpack) |
+| Worktree creation on empty repo silent fallback | Safety property lost by default | **Fixed** in ADR 025 / Issue #29 (fails loud with `WorktreeError`) |
+| Operational faults entering recovery | Config errors caused 4 paid cycles | **Fixed** in ADR 015 / Issue #27 (surfaces as `validator_error`) |
+| Recovery synthesising fixes to `.snodo/protocol.yml` | Coder attempted to alter policy | **Fixed** in ADR 026 & ADR 027 (protected surface & halt blocker) |
+| Coder output truncation proceeding on partial output | Validator judged incomplete code | **Fixed** in Issue #39 (fails execute step) & Issue #67 (observed vs inferred diagnosis) |
+| Worktree isolation vs dependency installation | `npm test` failed with exit 127 | **Resolved**: `test_command` explicitly specifies dependency installation |
+| Task sequences not merging on success | Required manual git merges | **Fixed** in ADR 020 (`_merge_on_success` auto-merges on pass) |
+| Unverified merges landing on main | Risk of unverified code merging | **Fixed** in ADR 031 (`verification_executed` audit event required) |
+| Repeat file reads inflating transcript | Token waste & prompt growth | **Fixed** in ADR 033 (repeat read memory & turn pointers) |
