@@ -225,3 +225,83 @@ def test_convenience_function():
     
     assert decision.action == PolicyAction.PROCEED
     assert decision.consensus_achieved
+
+
+# ========== RECOVERY PRE-EXECUTE TESTS ==========
+
+def test_pre_execute_recovery_tree_state_finding_does_not_block():
+    """In recovery (is_recovery=True), pre-execute warnings/blockers pass forward as evidence without blocking."""
+    evaluator = PolicyEvaluator()
+    results = [
+        make_result("v1", "warn"),
+        make_result("v2", "blocker"),
+    ]
+
+    decision = evaluator.evaluate(
+        results, DisagreementPolicy.UNANIMOUS, is_recovery=True, phase="pre_execute"
+    )
+
+    assert decision.action == PolicyAction.PROCEED_WITH_LOG
+    assert decision.consensus_achieved
+    assert "Pre-execute recovery finding(s)" in decision.justification
+
+
+def test_pre_execute_recovery_operational_error_still_halts():
+    """Operational errors (error=True) during pre-execute recovery still halt fail-closed."""
+    evaluator = PolicyEvaluator()
+    err_result = ValidatorResult(
+        validator_id="v1",
+        severity="blocker",
+        justification="Internal error",
+        error=True,
+    )
+
+    decision = evaluator.evaluate(
+        [err_result], DisagreementPolicy.UNANIMOUS, is_recovery=True, phase="pre_execute"
+    )
+
+    assert decision.action == PolicyAction.HALT
+    assert not decision.consensus_achieved
+    assert "fail-closed" in decision.justification
+
+
+def test_post_execute_recovery_finding_blocks_normally():
+    """Post-execute findings in recovery evaluate normally and block under UNANIMOUS policy."""
+    evaluator = PolicyEvaluator()
+    results = [make_result("v1", "blocker")]
+
+    decision = evaluator.evaluate(
+        results, DisagreementPolicy.UNANIMOUS, is_recovery=True, phase="post_execute"
+    )
+
+    assert decision.action == PolicyAction.HALT
+    assert not decision.consensus_achieved
+    assert "1 blocker(s) present" in decision.justification
+
+
+def test_run_validators_pre_execute_recovery_caps_severity():
+    """run_validators caps pre-execute recovery findings to pass while preserving original severity."""
+    from snodo.validators.runner import run_validators
+    from snodo.core.interfaces import Task
+    from snodo.compiler.models import Protocol, Mode, Validator
+
+    v = Validator(validator_id="arch", validator_type="quality", evaluation_phase="pre_execute")
+    mode = Mode(mode_id="test", name="test", tools=[], validators=["arch"])
+    protocol = Protocol(protocol_id="test", name="test", initial_mode="test", modes=[mode], validators=[v])
+    task = Task(id="t1", spec="test task", depth=1)
+
+    def mock_dispatch(val, ctx, reg):
+        return ValidatorResult(validator_id="arch", severity="warn", justification="stale CSS rule")
+
+    results, cap_originals = run_validators(
+        protocol=protocol,
+        validators=[v],
+        task=task,
+        phase="pre_execute",
+        dispatch_fn=mock_dispatch,
+    )
+
+    assert len(results) == 1
+    assert results[0].severity == "pass"
+    assert "Pre-execute recovery finding (warn)" in results[0].justification
+    assert cap_originals["arch"] == "warn"

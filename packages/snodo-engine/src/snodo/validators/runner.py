@@ -294,7 +294,32 @@ def run_validators(
                     except Exception:
                         pass
                 v_obj = next((v for v in validators if v.validator_id == vid), None)
+                is_recovery = (getattr(task, "depth", 0) > 0 or bool(getattr(task, "prior_failures", None)))
                 if (
+                    phase == "pre_execute"
+                    and is_recovery
+                    and result.severity in ("warn", "blocker")
+                    and not getattr(result, "error", False)
+                ):
+                    original_severity = result.severity
+                    cap_originals[result.validator_id] = original_severity
+                    result = ValidatorResult(
+                        validator_id=result.validator_id,
+                        severity="pass",
+                        justification=f"[Pre-execute recovery finding ({original_severity}): non-blocking evidence for coder] {result.justification}",
+                        cited_criteria=result.cited_criteria,
+                    )
+                    if audit_log is not None:
+                        _cap_data = {
+                            "validator_id": result.validator_id,
+                            "original": original_severity,
+                            "capped": "pass",
+                            "reason": "pre_execute_recovery_tree_state",
+                        }
+                        if session_id:
+                            _cap_data["session_id"] = session_id
+                        audit_log.append_event("severity_cap_applied", _cap_data)
+                elif (
                     v_obj is not None
                     and v_obj.severity_cap is not None
                     and not getattr(result, "error", False)
