@@ -235,8 +235,11 @@ class TestToolLoopDiagnosticFields:
             adapter._call_llm_with_tools("prompt")
         err = str(exc_info.value)
         assert "max_tokens=8000" in err
-        assert "task is too large" in err
         assert "21 chars" in err
+        # Observation is reported; inference is labelled as inference.
+        assert "Observed:" in err
+        assert "Inference (not confirmed):" in err
+        assert "task is too large" in err
 
     def test_includes_content_preview(self):
         adapter = LiteLLMAdapter(workspace_mcp=MagicMock())

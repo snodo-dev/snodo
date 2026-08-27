@@ -125,12 +125,15 @@ class TestTruncationExecutionFailure:
         assert payload["post_validation"] is not None
         assert payload["post_validation"]["outcome"] == "skipped"
 
-        # Reason names the token ceiling (16000) and says task is too large
+        # Reason names the token ceiling (16000) and reports the observation,
+        # labelling the "task is too large" inference as inference.
         reason = payload["reason"]
         assert "max_tokens=16000" in reason
         assert "task is too large" in reason
         assert "16000 tokens" in reason
         assert "38 chars" in reason
+        assert "Observed:" in reason
+        assert "Inference (not confirmed):" in reason
 
     def test_truncation_reasons_coverage(self):
         """All truncation finish reasons ('length', 'max_tokens', 'MAX_TOKENS') trigger ParseError."""
@@ -142,6 +145,8 @@ class TestTruncationExecutionFailure:
             err = str(exc_info.value)
             assert "max_tokens=4000" in err
             assert "task is too large" in err
+            assert "Observed:" in err
+            assert "Inference (not confirmed):" in err
 
     def test_complete_response_unaffected(self, solo_protocol):
         """A complete (non-truncated) response is unaffected."""

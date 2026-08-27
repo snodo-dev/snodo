@@ -850,6 +850,20 @@ def _report_closure(tree, final_state: dict, session_id: Optional[str] = None) -
         print()
         _print_halt_followup(halt_payload, session_id)
 
+        # The structured payload is the SINGLE authoritative outcome.  Never
+        # print a second, unclassified outcome line after it (Fixes #66): in a
+        # recovery chain the root's final_state carries no `error` field (the
+        # error lives in the subtask's payload), so the legacy fallback below
+        # would print "unknown internal error" — one run, two outcomes, the
+        # second unclassified.
+        decision = halt_payload.get("final_decision")
+        if decision == "completed":
+            return 0
+        return 1
+
+    # No structured payload — the failure happened outside the graph (e.g. the
+    # closure driver's own failure state, or a graph that returned without
+    # reaching a terminal node).  Fall back to the legacy classification.
     if tree.outcome == "internal_error" or final_state.get("halt_type") == "internal_error":
         err = final_state.get("error", "unknown internal error")
         print(f"✗ Internal error during execution: {err}", file=sys.stderr)

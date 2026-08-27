@@ -254,6 +254,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A run can no longer report two outcomes. Previously a run that emitted a
+  complete structured halt payload (halt_type, final_decision and raw_halt_type
+  all set and agreeing) could then print "✗ Internal error during execution:
+  unknown internal error" — one run, two outcomes, the second unclassified.
+  The leak was in `_report_closure`: after emitting the authoritative payload
+  it also ran the legacy `tree.outcome == "internal_error"` fallback, and in a
+  recovery chain the root's `final_state` carries no `error` field (the error
+  lives in the subtask's payload), so the fallback printed the generic
+  message. The structured payload is now the single emission site: when it is
+  present, its `final_decision` is the only outcome reported. The legacy
+  classification runs only when no structured payload exists (a failure
+  outside the graph). (Fixes #66).
+
+- The coder truncation diagnosis now reports what was observed and labels
+  inference as inference. "Coder output truncated at max_tokens=64000: task
+  is too large" asserted a cause that was not observed: the same finish_reason
+  occurs when a tool call's arguments exceed the output budget and are cut off
+  mid-argument — a different fault with a different remedy. The message now
+  states the observed facts (finish_reason, generated token/char counts) and
+  presents "the task is too large, or a tool call's arguments were cut off
+  mid-argument" as an inference, not a confirmed diagnosis. (Fixes #67).
+
 - The test suite no longer sleeps in real time where a fake clock works.
   `snodo serve --tunnel` waited a hardcoded 2s for uvicorn to bind
   (`_run_tunnel`), `JobManager.wait_for` polled with a real-time 1s sleep, and

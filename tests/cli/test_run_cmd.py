@@ -758,6 +758,54 @@ class TestClosureHaltPayload:
         out = capsys.readouterr().out
         assert "snodo authorize" not in out
 
+    def test_structured_payload_is_the_only_outcome(self, capsys):
+        """A structured halt payload must be the single outcome — never a
+        second, unclassified line after it (Fixes #66).
+
+        In a recovery chain the root's final_state carries no `error` field
+        (the error lives in the subtask's payload), so the legacy fallback
+        would print "✗ Internal error during execution: unknown internal
+        error" after the authoritative payload — one run, two outcomes, the
+        second unclassified.
+        """
+        from snodo.cli.commands.run_cmd import _report_closure
+        from snodo.engine.closure import ClosureNode
+
+        tree = ClosureNode(
+            task_id="root", depth=0, outcome="internal_error",
+            halt_payload=self._payload("internal_error", reason="coder failed"),
+        )
+        # Root final_state with no `error` field — the exact shape that
+        # previously produced the second, unclassified outcome.
+        result = _report_closure(tree, {"halt_type": "internal_error"})
+        captured = capsys.readouterr()
+        out, err = captured.out, captured.err
+
+        assert result == 1
+        assert "STRUCTURED HALT PAYLOAD" in out
+        assert "unknown internal error" not in out
+        assert "unknown internal error" not in err
+        assert "Internal error during execution" not in out
+        assert "Internal error during execution" not in err
+
+    def test_no_second_outcome_for_blocker_payload(self, capsys):
+        """A blocker payload also emits exactly one outcome."""
+        from snodo.cli.commands.run_cmd import _report_closure
+        from snodo.engine.closure import ClosureNode
+
+        tree = ClosureNode(
+            task_id="t1", depth=0, outcome="blocked",
+            halt_payload=self._payload("blocker", reason="violation"),
+        )
+        result = _report_closure(tree, {"halt_type": "blocked"})
+        captured = capsys.readouterr()
+        out, err = captured.out, captured.err
+
+        assert result == 1
+        assert "STRUCTURED HALT PAYLOAD" in out
+        assert "did not complete successfully" not in out
+        assert "did not complete successfully" not in err
+
     def test_terminal_halt_prefers_deepest_subtask(self):
         from snodo.cli.commands.run_cmd import _find_terminal_halt_payload
         from snodo.engine.closure import ClosureNode
