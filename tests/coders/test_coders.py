@@ -579,3 +579,22 @@ class TestCoderToolLoop:
 
         coder = LiteLLMAdapter()
         assert coder.workspace_mcp is None
+
+    def test_parse_code_artifact_delete_without_content(self):
+        """Parsing submit_files JSON with action 'delete' and no content key succeeds."""
+        from snodo.coders import LiteLLMAdapter
+
+        coder = LiteLLMAdapter()
+        raw_json = json.dumps([
+            {"path": "src/new_file.py", "content": "print(1)", "action": "write"},
+            {"path": "src/orphan_file.py", "action": "delete"},
+        ])
+        artifact = coder._parse_response(raw_json)
+
+        assert len(artifact.files) == 2
+        assert artifact.files[0].path == "src/new_file.py"
+        assert artifact.files[0].action == "write"
+
+        assert artifact.files[1].path == "src/orphan_file.py"
+        assert artifact.files[1].action == "delete"
+        assert artifact.files[1].content == ""
