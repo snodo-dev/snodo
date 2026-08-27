@@ -97,14 +97,18 @@ done
 # branches with no new commits (resume-safe after a hand-resolved conflict),
 # and stops on the first refusal or conflict.
 echo
+# The tool enforcing the gate must not run from an agent's worktree, which may
+# be mid-task, on a different commit, or about to be reset (Fixes #73). Run it
+# from the repository being merged (the checkout this script is run in) or from
+# an installed snodo — never from ~/Dev/snodo-*.
 if command -v snodo >/dev/null 2>&1; then
   echo "▸ snodo merge $BRANCHES"
   # shellcheck disable=SC2086
   snodo merge $BRANCHES || fail "snodo merge refused or failed"
 else
-  # Fall back to the editable-checkout alias (CONTRIBUTING.md) so the wrapper
-  # works from outside a snodo install.
-  SNODO_CMD="${SNODO_CMD:-uv run --project \"$HOME/Dev/snodo-a\" snodo}"
+  # Fall back to the editable-checkout alias (CONTRIBUTING.md), resolved
+  # against THIS repository (the one being merged), not an agent worktree.
+  SNODO_CMD="${SNODO_CMD:-uv run --project \"$PWD\" snodo}"
   echo "▸ $SNODO_CMD merge $BRANCHES"
   # shellcheck disable=SC2086
   eval "$SNODO_CMD merge $BRANCHES" || fail "snodo merge refused or failed"

@@ -11,6 +11,29 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The CI merge gate (`snodo merge`) now polls instead of checking once. Right
+  after a push GitHub has not registered the run yet, so an immediate "CI has
+  never run" was a race, not a verdict — the first merge of every branch
+  failed and the operator had to retry by hand. The gate now waits (with
+  visible progress and a timeout) for a run to appear and conclude
+  (`wait_for_ci_conclusion`), then decides. (Fixes #72).
+
+- CI conclusions now carry their context and distinguish what actually
+  happened. Every conclusion reports the run id, the commit it ran on, and
+  when it concluded; a run whose commit is not the branch tip is `stale` and
+  is never presented as the branch's verdict (a stale failed run was being
+  quoted as current after a fix landed on main). `startup_failure` (a broken
+  workflow — the operator's next action is fixing CI, not the branch),
+  `cancelled` and `timed_out` are reported as distinct states instead of a
+  generic "fix the failure". (Fixes #76, the failure-distinction half of #74).
+
+- The merge gate is no longer run from an agent's worktree.
+  `scripts/merge-agents.sh` invoked `uv run --project ~/Dev/snodo-a snodo`,
+  so the version of snodo enforcing the gate depended on what an agent
+  happened to have checked out — possibly mid-task or about to be reset. The
+  editable-checkout fallback now resolves against the repository being merged
+  (`$PWD`), and an installed `snodo` is preferred. (Fixes #73).
+
 - Real-time terminal progress visibility for post-execute validator verdicts and recovery transitions. Post-execute validator warnings, blockers, and errors are surfaced as they land with icons (`⚠️`, `❌`, `💥`) and clean first-line justification snippets. Recovery subtask spawns (`Recovery (attempt N/M): spawned <fix_task_id> (...)`), recovery stalls (`Recovery stalled`), and depth exhaustion (`Recovery depth exhausted`) are explicitly printed during execution. (Fixes #71).
 
 - Operator human review tracking (`snodo task review <task_id> <verdict>`) and acceptance rate reporting (`snodo task report` / `snodo task review --report`). Reviews append `human_review_recorded` events to `.snodo/audit.log`, maintaining hash-chain integrity. Reports calculate the fraction of completed tasks accepted unchanged over a rolling window (3-category taxonomy: `accepted`, `amended`, `discarded`). Machine-readable JSON output (`snodo.task_review_report.v1`) included. See ADR 036. (Fixes #70).
