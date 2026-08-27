@@ -79,6 +79,7 @@ def _make_initial_state(task_dict: dict, mode: str) -> dict:
             "root_task_ref": task_dict.get("root_task_ref"),
             "root_spec": task_dict.get("root_spec"),
             "prior_failures": task_dict.get("prior_failures", []),
+            "attempt_provenance": task_dict.get("attempt_provenance", []),
             "depth": task_dict.get("depth", 0),
             "flow_type": task_dict.get("flow_type"),
             "wave_id": task_dict.get("wave_id"),
