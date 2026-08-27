@@ -49,6 +49,11 @@ snodo run "implement hello world" --mock   # deterministic, no API calls
 4. **Commits reference the issue**: `Fixes #N` when the change completes it,
    `Refs #N` when partial. GitHub closes the issue on push.
 5. **Every user-visible change adds a `CHANGELOG.md` entry** under `Unreleased`.
+   `CHANGELOG.md` is marked `merge=union` in `.gitattributes`, so parallel
+   agents each appending at the top of `### Added` merge as "keep both" with
+   no conflict (see `tests/golden/test_changelog_union_merge.py`). Keep your
+   entry self-contained under one bullet; do not rewrite or reorder other
+   agents' entries within a single change.
 6. **If a change alters package structure, the execution path, or where an
    invariant is enforced, update `docs/architecture.md` in the same PR.** Keep it
    free of line numbers and of current findings — reference files and functions,
