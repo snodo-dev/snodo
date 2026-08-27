@@ -1,6 +1,6 @@
 """Merge command — merge one or more branches into the base branch, gated on CI.
 
-FILE: snodo/cli/commands/merge_cmd.py (Fixes #56, #57)
+FILE: snodo/cli/commands/merge_cmd.py (Fixes #56, #57, #83)
 
 CI runs on every branch push (``push: branches: ['**']``). A merge must not
 happen on an unverified branch, and an unverified branch must be visibly
@@ -9,6 +9,18 @@ in scope it polls the branch's CI conclusion via ``gh run list`` — waiting,
 with visible progress, for a run to appear and conclude — and merges only
 branches whose CI is green. Merges are authorised by CI, not by an agent's
 self-reported gate results (Fixes #57).
+
+The merge is also the moment the operator looks at an agent's work and decides
+its fate, so it is where the review outcome is recorded (Fixes #83). A
+measurement that depends on remembering does not get taken; recording the
+verdict here makes it part of the merge, not a separate act of discipline:
+
+- ``--review <verdict>`` records the verdict for every merged branch (scripted
+  / attended runs).
+- otherwise, when stdin is a TTY, the operator is prompted after each merge.
+- otherwise (unattended merge — no TTY, no flag), the merge is recorded as
+  **unreviewed**, never as accepted. An unreviewed merge must not silently
+  count as accepted, or the acceptance rate would measure nothing.
 
 The command operates on the git repository's top level (a git root, not a
 ``.snodo/`` project), so it can gate and merge in any clone — the repository's
@@ -34,6 +46,7 @@ other means; it is never the default.
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import List, Optional
@@ -46,6 +59,8 @@ from snodo.infrastructure.ci_gate import (
 )
 from snodo.infrastructure.worktree import merge_task_branch
 from snodo.tools.git import GitError, resolve_base_branch
+
+from snodo.cli.commands.task_cmd import VALID_VERDICTS
 
 class MergeUsageError(Exception):
     """Raised when the command cannot determine where or what to merge."""
@@ -178,9 +193,20 @@ def register(app: typer.Typer) -> None:
             False, "--force", "-f",
             help="Merge even when CI has not run or has failed (human-verified)",
         ),
+        review: Optional[str] = typer.Option(
+            None, "--review",
+            help="Review verdict for merged work: accepted, amended, or discarded",
+        ),
+        no_review: bool = typer.Option(
+            False, "--no-review",
+            help="Never prompt for a review verdict; merged work is recorded as unreviewed",
+        ),
     ):
         """Merge branches into the base branch, gated on each branch's CI conclusion."""
-        return merge_command(SimpleNamespace(branches=branches, force=force))
+        return merge_command(SimpleNamespace(
+            branches=branches, force=force,
+            review=review, no_review=no_review,
+        ))
 
 
 def merge_command(args) -> int:
@@ -310,6 +336,7 @@ def merge_command(args) -> int:
         if outcome == "merged":
             print(f"  ✓ Merged {branch} into the base branch")
             merged_any = True
+            _record_merge_and_review(args, str(repo), branch)
         else:
             # Conflict — escalate, leave branch + worktree intact for a human.
             print(f"✗ Merge conflict merging {branch} into the base branch.", file=sys.stderr)
@@ -318,6 +345,114 @@ def merge_command(args) -> int:
             return 1
 
     return 0 if merged_any else 0
+
+
+def _record_merge_and_review(args, project_root: str, branch: str) -> None:
+    """Record the merge and the review verdict in the audit log.
+
+    The merge is the moment the operator looks at the work and decides its
+    fate, so that is where the verdict belongs (Fixes #83). Resolution order:
+
+    1. ``--review <verdict>`` — explicit verdict for every merged branch
+       (scripted or attended runs).
+    2. stdin is a TTY — the operator is prompted after the merge; blank /
+       invalid input records **unreviewed** (never silently accepted).
+    3. otherwise (unattended merge) — recorded as **unreviewed**.
+
+    ``--no-review`` forces the unattended path even on a TTY (the operator has
+    said they are not reviewing here). An unreviewed merge is recorded with an
+    explicit ``verdict: unreviewed`` event, so the report counts it as
+    unreviewed rather than letting it silently count as accepted.
+    """
+    try:
+        audit_log = _audit_log(project_root)
+    except Exception:
+        # The merge happened; losing the review record must not fail it, but
+        # the unreviewed state is still the honest one and the operator is
+        # told. The merge itself is the gate, the review is a measurement.
+        print(
+            "  ⚠ could not resolve the audit log — review not recorded; "
+            "treat this merge as unreviewed",
+            file=sys.stderr,
+        )
+        return
+
+    now = datetime.now(timezone.utc).isoformat()
+    audit_log.append_event("task_merged", {
+        "op": "task_merged",
+        "task_ref": branch,
+        "branch": branch,
+        "recorded_at": now,
+    })
+
+    verdict = None
+    review_flag = getattr(args, "review", None)
+    no_review = getattr(args, "no_review", False)
+
+    if review_flag:
+        v = review_flag.lower()
+        if v in VALID_VERDICTS:
+            verdict = v
+        else:
+            print(
+                f"  ⚠ invalid --review '{review_flag}' (must be one of "
+                f"{', '.join(sorted(VALID_VERDICTS))}) — recording as unreviewed",
+                file=sys.stderr,
+            )
+    elif not no_review and sys.stdin.isatty():
+        verdict = _prompt_review(branch)
+
+    verdict = verdict or "unreviewed"
+    audit_log.append_event("human_review_recorded", {
+        "op": "human_review_recorded",
+        "task_ref": branch,
+        "branch": branch,
+        "verdict": verdict,
+        "notes": f"recorded at merge time for {branch}",
+        "recorded_at": now,
+    })
+    if verdict == "unreviewed":
+        print(f"  ⚠ no review verdict — recorded {branch} as unreviewed", file=sys.stderr)
+    else:
+        print(f"  ✓ recorded review verdict '{verdict}' for {branch}")
+
+
+def _prompt_review(branch: str) -> Optional[str]:
+    """Prompt the operator for a review verdict; None means no verdict."""
+    print(
+        f"  Review merged work on {branch}: "
+        f"[a]ccepted / [m]mended / [d]iscarded / [s]kip (unreviewed): ",
+        file=sys.stderr,
+        end="",
+        flush=True,
+    )
+    try:
+        answer = sys.stdin.readline().strip().lower()
+    except Exception:
+        return None
+    mapping = {"a": "accepted", "m": "amended", "d": "discarded", "s": "unreviewed", "": "unreviewed"}
+    if answer in mapping:
+        v = mapping[answer]
+        return None if v == "unreviewed" else v
+    print("  (invalid — recording as unreviewed)", file=sys.stderr)
+    return None
+
+
+def _audit_log(project_root: str):
+    """Resolve the audit log for the repository, if any.
+
+    ``snodo merge`` operates on a git root that may not be a ``.snodo/``
+    project, so the audit log is resolved relative to the project root when
+    present and the repository root otherwise. A FRESH ``AuditLog`` is built
+    for the resolved path: the process-global ``get_audit_log`` singleton may
+    already point at a different repository (or at the repository running the
+    suite), and a merge must never append to that (Fixes #65).
+    """
+    from snodo.infrastructure.audit import AuditLog
+    from snodo.infrastructure.paths import resolve_project_root
+
+    project_root = resolve_project_root(project_root) or project_root
+    return AuditLog(str(Path(project_root) / ".snodo" / "audit.log"))
 
 
 def _current_branch(repo: Path) -> Optional[str]:

@@ -287,3 +287,117 @@ class TestMergeCommandCIGate:
 
         assert rc == 2
         assert "not 'main'" in capsys.readouterr().err
+
+
+class TestMergeRecordsReview:
+    """Merging is where the review verdict is recorded (Fixes #83)."""
+
+    def _merge(self, tmp_path, args, merge_result="merged"):
+        repo = _init_repo(tmp_path)
+        _make_branch(repo, "agent-a")
+        with patch("snodo.cli.commands.merge_cmd._resolve_repo_root", return_value=str(repo)), \
+             patch("snodo.cli.commands.merge_cmd.resolve_base_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._current_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._branch_exists", return_value=True), \
+             patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
+             patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
+                   return_value=_conclusion("pass", "CI run 42 passed")), \
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value=merge_result):
+            return merge_command(args)
+        return None
+
+    def test_records_merged_and_unreviewed_when_unattended(self, tmp_path, capsys):
+        """A merge without a verdict and without a TTY records unreviewed, never
+        accepted — an unreviewed merge must not count as accepted."""
+        from snodo.infrastructure.audit import AuditLog
+
+        repo = _init_repo(tmp_path)
+        audit = AuditLog(str(repo / ".snodo" / "audit.log"))
+        with patch("snodo.cli.commands.merge_cmd._resolve_repo_root", return_value=str(repo)), \
+             patch("snodo.cli.commands.merge_cmd.resolve_base_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._current_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._branch_exists", return_value=True), \
+             patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
+             patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
+                   return_value=_conclusion("pass", "CI run 42 passed")), \
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged"), \
+             patch("snodo.cli.commands.merge_cmd._audit_log", return_value=audit):
+            args = SimpleNamespace(branches=["agent-a"], force=False, review=None, no_review=False)
+            rc = merge_command(args)
+
+        assert rc == 0
+        merged = audit.get_history("task_merged")
+        assert len(merged) == 1
+        reviews = audit.get_history("human_review_recorded")
+        assert len(reviews) == 1
+        assert reviews[0].data["verdict"] == "unreviewed"
+        err = capsys.readouterr().err
+        assert "recorded agent-a as unreviewed" in err
+
+    def test_review_flag_records_verdict(self, tmp_path, capsys):
+        from snodo.infrastructure.audit import AuditLog
+
+        repo = _init_repo(tmp_path)
+        audit = AuditLog(str(repo / ".snodo" / "audit.log"))
+        with patch("snodo.cli.commands.merge_cmd._resolve_repo_root", return_value=str(repo)), \
+             patch("snodo.cli.commands.merge_cmd.resolve_base_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._current_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._branch_exists", return_value=True), \
+             patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
+             patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
+                   return_value=_conclusion("pass", "CI run 42 passed")), \
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged"), \
+             patch("snodo.cli.commands.merge_cmd._audit_log", return_value=audit):
+            args = SimpleNamespace(branches=["agent-a"], force=False, review="accepted", no_review=False)
+            rc = merge_command(args)
+
+        assert rc == 0
+        reviews = audit.get_history("human_review_recorded")
+        assert len(reviews) == 1
+        assert reviews[0].data["verdict"] == "accepted"
+        assert "recorded review verdict 'accepted'" in capsys.readouterr().out
+
+    def test_invalid_review_flag_records_unreviewed(self, tmp_path, capsys):
+        from snodo.infrastructure.audit import AuditLog
+
+        repo = _init_repo(tmp_path)
+        audit = AuditLog(str(repo / ".snodo" / "audit.log"))
+        with patch("snodo.cli.commands.merge_cmd._resolve_repo_root", return_value=str(repo)), \
+             patch("snodo.cli.commands.merge_cmd.resolve_base_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._current_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._branch_exists", return_value=True), \
+             patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
+             patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
+                   return_value=_conclusion("pass", "CI run 42 passed")), \
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged"), \
+             patch("snodo.cli.commands.merge_cmd._audit_log", return_value=audit):
+            args = SimpleNamespace(branches=["agent-a"], force=False, review="maybe", no_review=False)
+            rc = merge_command(args)
+
+        assert rc == 0
+        reviews = audit.get_history("human_review_recorded")
+        assert reviews[0].data["verdict"] == "unreviewed"
+        assert "invalid --review" in capsys.readouterr().err
+
+    def test_no_review_flag_skips_prompt_and_records_unreviewed(self, tmp_path, capsys, monkeypatch):
+        from snodo.infrastructure.audit import AuditLog
+
+        repo = _init_repo(tmp_path)
+        audit = AuditLog(str(repo / ".snodo" / "audit.log"))
+        # Even on a TTY, --no-review means unattended: never prompt.
+        monkeypatch.setattr("snodo.cli.commands.merge_cmd.sys.stdin.isatty", lambda: True)
+        with patch("snodo.cli.commands.merge_cmd._resolve_repo_root", return_value=str(repo)), \
+             patch("snodo.cli.commands.merge_cmd.resolve_base_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._current_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._branch_exists", return_value=True), \
+             patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
+             patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
+                   return_value=_conclusion("pass", "CI run 42 passed")), \
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged"), \
+             patch("snodo.cli.commands.merge_cmd._audit_log", return_value=audit):
+            args = SimpleNamespace(branches=["agent-a"], force=False, review=None, no_review=True)
+            rc = merge_command(args)
+
+        assert rc == 0
+        reviews = audit.get_history("human_review_recorded")
+        assert reviews[0].data["verdict"] == "unreviewed"

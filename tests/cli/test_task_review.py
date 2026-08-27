@@ -95,3 +95,31 @@ def test_task_report_json(tmp_path, monkeypatch, capsys):
     assert data["total_completed"] == 1
     assert data["accepted_unchanged"] == 1
     assert data["acceptance_rate_pct"] == 100.0
+
+
+def test_task_report_unreviewed_merge_never_counts_as_accepted(tmp_path, monkeypatch, capsys):
+    """An unreviewed merge is counted as unreviewed, never as accepted — the
+    report's rate is over reviewed tasks only (Fixes #83)."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    audit_log = AuditLog(str(tmp_path / "audit.log"))
+    monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
+
+    # t1 merged with a verdict recorded at merge time (accepted); t2 merged
+    # with no verdict (recorded as unreviewed by snodo merge).
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t1"})
+    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t1", "verdict": "accepted"})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t2"})
+    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t2", "verdict": "unreviewed"})
+
+    args = SimpleNamespace(days=30, json=True)
+    res = task_report_command(args)
+    assert res == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["total_completed"] == 2
+    assert data["total_reviewed"] == 1
+    assert data["accepted_unchanged"] == 1
+    assert data["unreviewed"] == 1
+    # The rate is over reviewed tasks only — the unreviewed merge does not
+    # dilute it, and it does not inflate it either.
+    assert data["acceptance_rate_pct"] == 100.0
