@@ -185,8 +185,9 @@ class LLMValidator(ValidatorBase):
         if self._completion_fn is None:
             res = ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
-                severity="warn",
+                severity="blocker",
                 justification="No completion_fn available",
+                error=True,
             )
             return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
         try:
@@ -195,8 +196,9 @@ class LLMValidator(ValidatorBase):
         except Exception as e:
             res = ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
-                severity="warn",
-                justification=f"LLM validation failed, defaulting to warn: {e}",
+                severity="blocker",
+                justification=f"LLM validation failed due to operational error: {e}",
+                error=True,
             )
         return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
 
@@ -268,12 +270,13 @@ class LLMValidator(ValidatorBase):
                 cf_headers = self._resolve_cf_headers()
                 if cf_headers:
                     kwargs["extra_headers"] = cf_headers
-                response = self._completion_fn(**kwargs)
+                response = self._call_completion_with_retry(**kwargs)
             except Exception as e:
                 return ValidatorResult(
                     validator_id=self.validator_spec.validator_id,
-                    severity="warn",
-                    justification=f"LLM tool-loop error on turn {turn + 1}: {e}",
+                    severity="blocker",
+                    justification=f"LLM tool-loop operational error on turn {turn + 1}: {e}",
+                    error=True,
                 )
 
             msg = response.choices[0].message
@@ -687,8 +690,50 @@ class LLMValidator(ValidatorBase):
             f'{{"severity": "pass", "justification": "Task meets all security criteria."}}\n'
         )
 
+    def _call_completion_with_retry(self, **kwargs) -> Any:
+        """Call completion_fn with retries for transient provider/network errors.
+
+        Retries up to 3 times on transient errors (InternalServerError, network blips, rate limits).
+        Raises the underlying exception if retries are exhausted or non-transient.
+        """
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                return self._completion_fn(**kwargs)
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_transient = any(
+                    term in err_msg
+                    for term in (
+                        "nodename nor servname",
+                        "errno 8",
+                        "connection refused",
+                        "connection reset",
+                        "timeout",
+                        "timed out",
+                        "rate limit",
+                        "500",
+                        "502",
+                        "503",
+                        "504",
+                        "internalservererror",
+                        "serviceunavailable",
+                        "deepseekexception",
+                    )
+                )
+                if is_transient and attempt < max_retries - 1:
+                    _logger.warning(
+                        "Transient LLM provider error on attempt %d for validator %s: %s; retrying...",
+                        attempt + 1,
+                        self.validator_spec.validator_id,
+                        e,
+                    )
+                    time.sleep(0.05 * (2 ** attempt))
+                else:
+                    raise
+
     def _call_llm(self, prompt: str) -> str:
-        """Call the LLM via the completion function.
+        """Call the LLM for a single completion.
 
         Args:
             prompt: The judge prompt
@@ -710,7 +755,7 @@ class LLMValidator(ValidatorBase):
         }
         if not _is_gemini3_plus(self.model):
             kwargs["temperature"] = 0.0
-        response = self._completion_fn(**kwargs)
+        response = self._call_completion_with_retry(**kwargs)
         content = response.choices[0].message.content
         if not content:
             _logger.warning(
@@ -743,7 +788,7 @@ class LLMValidator(ValidatorBase):
         }
         if not _is_gemini3_plus(self.model):
             kwargs["temperature"] = 0.0
-        response = self._completion_fn(**kwargs)
+        response = self._call_completion_with_retry(**kwargs)
         content = response.choices[0].message.content
         if not content:
             _logger.warning(

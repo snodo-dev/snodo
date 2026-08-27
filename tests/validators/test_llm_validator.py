@@ -250,24 +250,38 @@ class TestEvaluate:
 class TestFallback:
     """Tests for fallback behavior when LLM fails."""
 
-    def test_llm_exception_returns_warn(self, security_validator, task):
+    def test_llm_exception_returns_error(self, security_validator, task):
         completion_fn = MagicMock(side_effect=Exception("API rate limit"))
         validator = LLMValidator(security_validator, completion_fn)
 
         result = validator.evaluate(task)
 
-        assert result.severity == "warn"
-        assert "LLM validation failed" in result.justification
-        assert "API rate limit" in result.justification
+        assert result.error is True
+        assert result.severity == "blocker"
+        assert "operational error" in result.justification
         assert result.validator_id == "security"
 
-    def test_llm_timeout_returns_warn(self, security_validator, task):
+    def test_llm_timeout_returns_error(self, security_validator, task):
         completion_fn = MagicMock(side_effect=TimeoutError("Connection timed out"))
         validator = LLMValidator(security_validator, completion_fn)
 
         result = validator.evaluate(task)
-        assert result.severity == "warn"
+        assert result.error is True
+        assert result.severity == "blocker"
         assert "timed out" in result.justification
+
+    def test_llm_transient_dns_error_retries_and_succeeds(self, security_validator, task, monkeypatch):
+        monkeypatch.setattr("snodo.validators.llm_validator.supports_response_schema", lambda model: False)
+        dns_err = Exception("[Errno 8] nodename nor servname provided, or not known")
+        ok_resp = _make_llm_response("pass", "all secure")
+        completion_fn = MagicMock(side_effect=[dns_err, dns_err, ok_resp])
+
+        validator = LLMValidator(security_validator, completion_fn)
+        result = validator.evaluate(task)
+
+        assert result.error is False
+        assert result.severity == "pass"
+        assert completion_fn.call_count == 3
 
     def test_llm_returns_garbage_returns_warn(self, security_validator, task):
         response = MagicMock()
@@ -282,7 +296,7 @@ class TestFallback:
         assert "Could not parse" in result.justification
 
     def test_never_returns_pass_on_failure(self, security_validator, task):
-        """Fallback must be warn, never pass."""
+        """Fallback must be warn or error, never pass."""
         completion_fn = MagicMock(side_effect=Exception("fail"))
         validator = LLMValidator(security_validator, completion_fn)
 
@@ -353,8 +367,8 @@ class TestEngineLoopIntegration:
         assert results[0].severity == "pass"
         assert results[0].justification == "Security checks pass"
 
-    def test_warn_when_no_completion_fn_but_has_criteria(self):
-        """When coder has no _completion_fn but validator has criteria, should warn."""
+    def test_error_when_no_completion_fn_but_has_criteria(self):
+        """When coder has no _completion_fn but validator has criteria, should return operational error."""
         from snodo.engine.loop import GraphBuilder
         from snodo.coders.mock import MockAdapter
 
@@ -370,7 +384,8 @@ class TestEngineLoopIntegration:
 
         assert len(results) == 1
         assert results[0].validator_id == "security"
-        assert results[0].severity == "warn"
+        assert results[0].error is True
+        assert results[0].severity == "blocker"
         assert "completion_fn" in results[0].justification.lower()
 
     def test_stub_used_for_empty_criteria(self):
@@ -418,8 +433,8 @@ class TestEngineLoopIntegration:
         assert results[0].severity == "warn"
         assert "No criteria" in results[0].justification
 
-    def test_llm_failure_returns_warn_in_loop(self):
-        """LLM failure in loop should return warn, not crash."""
+    def test_llm_failure_returns_error_in_loop(self):
+        """LLM failure in loop should return error (operational fault), not crash."""
         from snodo.engine.loop import GraphBuilder
         from snodo.coders.mock import MockAdapter
 
@@ -435,7 +450,8 @@ class TestEngineLoopIntegration:
         results = builder._default_validator(task, validators, None)
 
         assert len(results) == 1
-        assert results[0].severity == "warn"
+        assert results[0].error is True
+        assert results[0].severity == "blocker"
         assert "LLM validation failed" in results[0].justification
 
     def test_multiple_validators_all_evaluated(self):
@@ -943,8 +959,8 @@ class TestPostExecuteToolLoop:
         assert result.severity == "warn"
         assert "diff looks OK" in result.justification
 
-    def test_tool_loop_llm_exception_returns_warn(self, security_validator):
-        """If LLM call throws, return warn."""
+    def test_tool_loop_llm_exception_returns_error(self, security_validator):
+        """If LLM call throws, return error (operational fault)."""
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
         mock_workspace = MagicMock()
@@ -955,8 +971,9 @@ class TestPostExecuteToolLoop:
 
         result = validator.evaluate(ctx)
 
-        assert result.severity == "warn"
-        assert "tool-loop error" in result.justification
+        assert result.error is True
+        assert result.severity == "blocker"
+        assert "tool-loop operational error" in result.justification
 
     def test_tool_loop_no_content_no_tool_calls_fails_closed(self, security_validator):
         """If model returns neither content nor tool_calls, fail-closed as error."""
