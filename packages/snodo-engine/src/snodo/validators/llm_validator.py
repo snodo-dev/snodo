@@ -99,6 +99,64 @@ def _is_gemini3_plus(model: str) -> bool:
     return bool(m and int(m.group(1)) >= 3)
 
 
+def _is_transient_error(e: Exception) -> bool:
+    """Return True if *e* is a transient provider/network error worth retrying.
+
+    Classifies on exception type and HTTP status code, not on error prose.
+    The previous predicate substring-matched the message against terms like
+    ``"500"``, ``"502"`` and ``"deepseekexception"``, so every error from a
+    provider whose name contained those letters was retryable, and a bare
+    status code matched those digits anywhere in the text. A 4xx (except 429)
+    is a client error — retrying it is not honest; a 5xx, 429, connection or
+    timeout is transient.
+    """
+    # Network-level builtins: genuinely transient.
+    if isinstance(e, (ConnectionError, TimeoutError)):
+        return True
+    # DNS resolution failure (errno 8: nodename nor servname).
+    if isinstance(e, OSError) and getattr(e, "errno", None) == 8:
+        return True
+
+    # litellm exception classes.
+    try:
+        from litellm.exceptions import (
+            APIConnectionError,
+            Timeout as LiteLLMTimeout,
+            RateLimitError,
+            InternalServerError,
+            BadGatewayError,
+            ServiceUnavailableError,
+        )
+        if isinstance(
+            e,
+            (APIConnectionError, LiteLLMTimeout, RateLimitError,
+             InternalServerError, BadGatewayError, ServiceUnavailableError),
+        ):
+            return True
+    except ImportError:
+        pass
+
+    # Fall back to the HTTP status code when the exception carries one.
+    status = getattr(e, "status_code", None)
+    if isinstance(status, int):
+        return status in (429, 500, 502, 503, 504)
+    return False
+
+
+def _is_provider_rejection(e: Exception) -> bool:
+    """Return True if *e* is a provider rejecting the request (a 4xx client error).
+
+    Used to distinguish "the provider refused response_format" (a 400 like
+    DeepSeek's "This response_format type is unavailable now") from "the model
+    returned garbage" — only the former makes an unparseable fallback an
+    operational fault rather than a warn verdict (Fixes #84).
+    """
+    status = getattr(e, "status_code", None)
+    if isinstance(status, int):
+        return 400 <= status < 500 and status != 429
+    return False
+
+
 class LLMValidator(ValidatorBase):
     """Evaluates tasks against protocol criteria using an LLM judge."""
 
@@ -173,13 +231,18 @@ class LLMValidator(ValidatorBase):
         # Pre-execute or fallback: single-completion path
         prompt = self._build_prompt(context)
 
-        # Try structured output when the model supports it
+        # Try structured output when the model supports it.  Structured output
+        # must DEGRADE, not fail: a provider that rejects response_format (e.g.
+        # DeepSeek's "This response_format type is unavailable now") must not
+        # take the validator down — fall back to an unstructured call and parse
+        # the verdict from the content (Fixes #84).
+        structured_rejected = False
         if self._completion_fn is not None and supports_response_schema(self.model):
             try:
                 res = self._call_llm_structured(prompt)
                 return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
-            except Exception:
-                pass  # fall through to legacy parse
+            except Exception as e:
+                structured_rejected = _is_provider_rejection(e)
 
         # Legacy: free-text completion + hand-rolled parse
         if self._completion_fn is None:
@@ -193,6 +256,21 @@ class LLMValidator(ValidatorBase):
         try:
             response_text = self._call_llm(prompt)
             res = self._parse_response(response_text)
+            # If the provider rejected structured output AND the unstructured
+            # fallback did not parse, that is an operational fault, not a
+            # verdict — the provider refused the structured call and the
+            # fallback yielded nothing usable (Fixes #84).
+            if structured_rejected and res.severity == "warn" \
+                    and "Could not parse" in res.justification:
+                res = ValidatorResult(
+                    validator_id=self.validator_spec.validator_id,
+                    severity="blocker",
+                    justification=(
+                        "Structured output was rejected by the provider and the "
+                        f"unstructured fallback did not parse: {res.justification}"
+                    ),
+                    error=True,
+                )
         except Exception as e:
             res = ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
@@ -693,34 +771,17 @@ class LLMValidator(ValidatorBase):
     def _call_completion_with_retry(self, **kwargs) -> Any:
         """Call completion_fn with retries for transient provider/network errors.
 
-        Retries up to 3 times on transient errors (InternalServerError, network blips, rate limits).
-        Raises the underlying exception if retries are exhausted or non-transient.
+        Retries up to 3 times on transient errors (5xx, 429, connection, DNS,
+        timeout). Raises the underlying exception if retries are exhausted or
+        the error is not transient (a 4xx other than 429 is a client error —
+        retrying it is not honest).
         """
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 return self._completion_fn(**kwargs)
             except Exception as e:
-                err_msg = str(e).lower()
-                is_transient = any(
-                    term in err_msg
-                    for term in (
-                        "nodename nor servname",
-                        "errno 8",
-                        "connection refused",
-                        "connection reset",
-                        "timeout",
-                        "timed out",
-                        "rate limit",
-                        "500",
-                        "502",
-                        "503",
-                        "504",
-                        "internalservererror",
-                        "serviceunavailable",
-                        "deepseekexception",
-                    )
-                )
+                is_transient = _is_transient_error(e)
                 if is_transient and attempt < max_retries - 1:
                     _logger.warning(
                         "Transient LLM provider error on attempt %d for validator %s: %s; retrying...",
