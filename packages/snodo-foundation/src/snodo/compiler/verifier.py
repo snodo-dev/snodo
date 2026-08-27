@@ -231,6 +231,26 @@ class ProtocolVerifier:
             # Quorum typically needs at least 3 for meaningful threshold
             warning_msg = "WF4 Warning: QUORUM policy with fewer than 3 validators may not be meaningful"
             self.warnings.append(warning_msg)
+        
+        # A single post_execute validator under UNANIMOUS is an unopposed veto
+        # over completed work: the phase is evaluated with total_count == 1, so
+        # that validator's verdict alone decides whether the work passes —
+        # including operational noise from a quality/acceptance judge (Fixes #41).
+        if policy == "unanimous":
+            post_execute = [
+                v.validator_id for v in self.protocol.validators
+                if v.evaluation_phase == "post_execute"
+            ]
+            if len(post_execute) == 1:
+                warning_msg = (
+                    "WF4 Warning: UNANIMOUS policy with exactly one POST_EXECUTE "
+                    f"validator ({post_execute[0]}) gives it an unopposed veto "
+                    "over completed work. It is the only post-execute judge, so "
+                    "a single warn/blocker — including operational noise — "
+                    "blocks every task. Add a second post-execute validator or "
+                    "use a different policy."
+                )
+                self.warnings.append(warning_msg)
     
     def check_wf5(self) -> None:
         """WF5: Constraint consistency - constraints must be valid and non-conflicting.

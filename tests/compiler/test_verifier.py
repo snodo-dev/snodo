@@ -423,6 +423,53 @@ def test_wf4_quorum_with_few_validators_warns():
     assert "QUORUM" in verifier.warnings[0]
 
 
+def test_wf4_unanimous_single_post_execute_warns():
+    """UNANIMOUS with exactly one post_execute validator warns about the veto.
+
+    A single post-execute validator is the only judge of completed work under
+    unanimous (total_count == 1), so its warn/blocker — including operational
+    noise — is an unopposed veto (Fixes #41).
+    """
+    protocol = Protocol(
+        protocol_id="test",
+        name="Test",
+        modes=[Mode(mode_id="m1", name="Mode")],
+        validators=[
+            Validator(validator_id="pre", validator_type="security",
+                      evaluation_phase="pre_execute"),
+            Validator(validator_id="post", validator_type="quality",
+                      evaluation_phase="post_execute"),
+        ],
+        initial_mode="m1",
+        disagreement_policy=DisagreementPolicy.UNANIMOUS
+    )
+
+    verifier = ProtocolVerifier(protocol)
+    verifier.check_wf4()
+    assert any("UNANIMOUS" in w and "POST_EXECUTE" in w for w in verifier.warnings)
+
+
+def test_wf4_unanimous_no_veto_with_two_post_execute():
+    """Two post_execute validators under UNANIMOUS do not warn — no unopposed veto."""
+    protocol = Protocol(
+        protocol_id="test",
+        name="Test",
+        modes=[Mode(mode_id="m1", name="Mode")],
+        validators=[
+            Validator(validator_id="q", validator_type="quality",
+                      evaluation_phase="post_execute"),
+            Validator(validator_id="a", validator_type="acceptance",
+                      evaluation_phase="post_execute"),
+        ],
+        initial_mode="m1",
+        disagreement_policy=DisagreementPolicy.UNANIMOUS
+    )
+
+    verifier = ProtocolVerifier(protocol)
+    verifier.check_wf4()
+    assert not any("POST_EXECUTE" in w for w in verifier.warnings)
+
+
 # ========== WF5: CONSTRAINT CONSISTENCY TESTS ==========
 
 def test_wf5_unique_constraints_pass():

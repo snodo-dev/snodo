@@ -397,6 +397,8 @@ def init_command(args) -> int:
         result = verify_protocol(protocol)
         if not result.passed:
             raise ProtocolWellFormednessError(result.errors)
+        for warning in result.warnings:
+            print(f"Warning: {warning}", file=sys.stderr)
     except Exception as e:
         print(f"Error: Template is not a valid protocol: {e}", file=sys.stderr)
         return 1

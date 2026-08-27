@@ -4,7 +4,7 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 
 | ADR | Title | Date | Audit-log anchor |
 |-----|-------|------|-----------------|
-| [001](001-pyjwt-over-hmac.md) | PyJWT over custom HMAC signing | 2025-05-27 | Task 7.7 (`tokens.py`) |
+| [001](001-pyjwt-over-custom-hmac.md) | PyJWT over custom HMAC signing | 2025-05-27 | Task 7.7 (`tokens.py`) |
 | [002](002-warn-withholds-approval.md) | Warn withholds approval in policy thresholds | 2025-06-01 | Policy semantic fix (`policy.py`) |
 | [003](003-escalate-halt-resolve-resume.md) | ESCALATE as halt → resolve → resume | 2025-05-27 | Task 7.10 (`loop.py`) |
 | [004](004-constraint-predicate-framework.md) | Constraint predicate framework | 2025-05-27 | Task 7.8 (`predicates/`) |
