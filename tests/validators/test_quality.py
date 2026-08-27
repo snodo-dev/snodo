@@ -836,3 +836,39 @@ class TestQualityDispatch:
         assert ev.data["returncode"] == 0
         assert ev.data["validator_id"] == "quality"
         assert "commit" in ev.data
+
+    def test_no_cwd_relative_audit_fallback(self, project_dir, tmp_path, monkeypatch):
+        """Without an explicit audit log in context, no event is written and
+        nothing is resolved from the current working directory (Fixes #65).
+
+        The code under test is not always the project under test: a cwd-relative
+        get_audit_log() (default .snodo/audit.log) can point at an unrelated
+        repository — under pytest -n auto concurrent workers then append to that
+        file simultaneously, corrupt the hash chain, and break the next run.
+        """
+        from snodo.validators.context import ValidatorContext
+        from snodo.core.interfaces import Task
+
+        # Run from an arbitrary cwd (a stand-in for "some other repository").
+        monkeypatch.chdir(tmp_path)
+
+        spec = Validator(
+            validator_id="quality",
+            validator_type="quality",
+            evaluation_phase="post_execute",
+            tooling={"test_command": "echo 'all tests pass'"},
+        )
+        qv = QualityValidator(spec, str(project_dir))
+        ctx = ValidatorContext(
+            task=Task(id="t1", spec="test"),
+            working_directory=str(project_dir),
+            # audit_log deliberately absent — the validator must not resolve
+            # one from cwd.
+        )
+
+        res = qv.evaluate(ctx)
+        assert res.severity == "pass"
+
+        # No audit file may appear at the cwd-relative default path.
+        assert not (tmp_path / ".snodo" / "audit.log").exists()
+        assert not (tmp_path / ".snodo").exists()
