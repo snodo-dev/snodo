@@ -37,4 +37,5 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [032](032-patch-coverage-enforcement.md) | Patch coverage measurement over modified lines | 2026-08-26 | `patch_coverage.py` + `ci.yml` |
 | [033](033-tool-loop-repeat-read-deduplication.md) | Tool loop repeat read memory and result preservation | 2026-08-26 | `litellm.py` + `llm_validator.py` |
 | [034](034-opencode-path-experimental.md) | The opencode coder path is experimental, not supported | 2026-08-26 | `init_cmd.py` + `docs/protocol.md` |
+| [035](035-declared-coder-capability-interface.md) | Declared coder-adapter capability interface; "coder produced nothing" is always a fault | 2026-08-26 | `core/interfaces.py` + `engine/nodes/executor.py` |
 

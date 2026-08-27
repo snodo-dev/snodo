@@ -18,8 +18,42 @@ class ExecutionError(Exception):
 
 
 class Coder(ABC):
-    """Implements tasks. Can be LLM or human or traditional tooling."""
-    
+    """Implements tasks. Can be LLM or human or traditional tooling.
+
+    The engine offers every adapter several optional capabilities (a progress
+    sink, a workspace, a job/task id for correlation, and two behavioural
+    switches). These are DECLARED here, with defaults, so that "this adapter
+    does not support X" is a visible fact rather than a silently skipped
+    ``hasattr`` line (docs/architecture/coder-adapter-contract.md §3.1, #68).
+    An adapter that does not override a capability inherits the default; the
+    engine sets these attributes unconditionally, never behind a guard.
+    """
+
+    #: Workspace the coder reads/writes, injected by the engine when the task
+    #: runs under a workspace. None for adapters that do not use one.
+    workspace_mcp: Optional[Any] = None
+    #: Progress sink handed to the coder by the engine; an adapter that wants
+    #: per-turn progress emits here. None = the adapter reports no progress.
+    progress_callback: Optional[Any] = None
+    #: When True, the coder writes its changes to the working tree directly
+    #: and the executor must NOT replay the returned artifacts through
+    #: WorkspaceMCP (e.g. in-place adapters). Default False: the executor
+    #: writes the artifacts.
+    skip_workspace_write: bool = False
+    #: When True, the coder (or its base class) owns the commit and the
+    #: executor must NOT stage/commit. This does NOT waive the obligation that
+    #: produced work be observable and attributable — "coder produced nothing"
+    #: is a fault regardless of who commits. Default False: the executor
+    #: commits.
+    skip_engine_commit: bool = False
+    #: Correlation ids the engine injects so adapter-side logging/telemetry
+    #: can be attributed to a job and task. Empty when not set.
+    _job_id: str = ""
+    _task_id: str = ""
+    #: Model identifier the adapter is bound to. Used for default-model
+    #: resolution and coder-respawn checks; may be empty on simple adapters.
+    model: str = ""
+
     @abstractmethod
     def implement(self, spec: 'TaskSpec') -> 'CodeArtifact':
         """Generate code from specification."""

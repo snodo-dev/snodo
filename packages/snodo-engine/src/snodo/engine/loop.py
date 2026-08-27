@@ -234,8 +234,12 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self.git_mcp = git_mcp
         self.shell_mcp = shell_mcp
         self.coder = coder or MockAdapter()
-        if hasattr(self.coder, "progress_callback"):
-            self.coder.progress_callback = self._progress
+        # The progress callback is part of the DECLARED coder interface (base
+        # class default on Coder), so it is assigned unconditionally — never
+        # behind a hasattr guard (docs/architecture/coder-adapter-contract.md
+        # §3.1, #68). An adapter that does not report progress inherits the
+        # visible default rather than being silently skipped.
+        self.coder.progress_callback = self._progress
         self.checkpointer = checkpointer
         self._audit_log = audit_log
         self._session_manager = session_manager

@@ -161,6 +161,27 @@ snodo uses [Semantic Versioning](https://semver.org/).
   tended toward safety properties degrading to warnings or operational errors reported as judgements;
   and recent verification hardening (audit events, patch coverage, canary gates) eliminates silent green gates.
 
+- The coder-adapter capability surface is now a DECLARED interface instead of
+  `hasattr` duck typing. The engine previously reached into adapters behind
+  guards (`if hasattr(coder, "progress_callback"): coder.progress_callback =
+  ...`), so any capability it offered optionally was one some adapter silently
+  lacked — which is how per-turn progress landed on one adapter and went
+  unnoticed on the opencode adapters for weeks. The optional capabilities
+  (`workspace_mcp`, `progress_callback`, `_job_id`, `_task_id`, `model`,
+  `skip_workspace_write`, `skip_engine_commit`) now have base-class defaults on
+  the `Coder` ABC, the engine assigns them unconditionally, and a conformance
+  test asserts every registered adapter carries them — "this adapter does not
+  support X" is a visible fact, not a silently skipped line. See ADR 035.
+  (Fixes #68).
+
+- "Coder produced nothing" now raises `ExecutionError` on every adapter path.
+  It was a hard fault on litellm but downgraded to an audit note whenever
+  `skip_engine_commit` was set, so a no-op opencode run continued quietly. The
+  principle: opting out of a mechanism must not silently discharge the
+  responsibility that mechanism carried — `skip_engine_commit` controls who
+  commits, not whether observable work was produced. The
+  `empty_artifact_warning` audit note is removed. See ADR 035. (Fixes #68).
+
 - CI now runs on every branch push (`push: branches: ['**']`) instead of only
   on `main`, and a new `snodo merge <branch>` command gates the merge on the
   branch's latest CI conclusion. Previously CI triggered on `push: [main]` and
