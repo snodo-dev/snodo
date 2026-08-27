@@ -197,7 +197,7 @@ class TestMergeCommandCIGate:
              patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
              patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
                    return_value=_conclusion("pass", "CI run 42 passed")), \
-             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged") as merge:
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value=("merged", [])) as merge:
             rc = merge_command(SimpleNamespace(branches=["agent-a"], force=False))
 
         assert rc == 0
@@ -215,7 +215,7 @@ class TestMergeCommandCIGate:
              patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
              patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
                    return_value=_conclusion("pass", "CI run 42 passed")), \
-             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged") as merge:
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value=("merged", [])) as merge:
             rc = merge_command(SimpleNamespace(branches=["agent-a", "agent-c"], force=False))
 
         assert rc == 0
@@ -234,7 +234,7 @@ class TestMergeCommandCIGate:
              patch("snodo.cli.commands.merge_cmd._branch_exists", return_value=True), \
              patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
              patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion") as gate, \
-             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged") as merge:
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value=("merged", [])) as merge:
             rc = merge_command(SimpleNamespace(branches=["agent-a"], force=True))
 
         assert rc == 0
@@ -271,11 +271,15 @@ class TestMergeCommandCIGate:
              patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
              patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
                    return_value=_conclusion("pass", "CI run 42 passed")), \
-             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="conflict"):
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value=("conflict", ["README.md"])):
             rc = merge_command(SimpleNamespace(branches=["agent-a"], force=False))
 
         assert rc == 1
-        assert "Merge conflict" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "Merge conflict" in err
+        assert "Conflicting path(s): README.md" in err
+        assert "rolled back" in err
+        assert "git merge agent-a" in err
 
     def test_wrong_branch_refuses(self, tmp_path, capsys):
         repo = _init_repo(tmp_path)

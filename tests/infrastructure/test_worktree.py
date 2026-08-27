@@ -129,7 +129,7 @@ def test_merge_task_branch_success(repo):
     subprocess.run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
     subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
 
-    assert merge_task_branch(str(repo), branch) == "merged"
+    assert merge_task_branch(str(repo), branch) == ("merged", [])
 
     assert _current_branch(repo) == "main"
     assert (repo / "feature.txt").exists()  # base branch now has the commit
@@ -146,7 +146,9 @@ def test_merge_task_branch_conflict(repo):
     subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-qm", "main change"], cwd=repo, check=True)
 
-    assert merge_task_branch(str(repo), branch) == "conflict"
+    status, paths = merge_task_branch(str(repo), branch)
+    assert status == "conflict"
+    assert paths == ["README.md"]
 
     # Base branch is left clean (merge aborted) and the source branch survives.
     assert _current_branch(repo) == "main"
