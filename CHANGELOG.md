@@ -11,6 +11,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Tool loop repeat read memory deduplication in `LiteLLMCoder` and `LLMValidator`. When a model
+  repeatedly requests files or line ranges already fetched in an earlier turn (e.g. `read_file`
+  at Turn 3 and Turn 19), the tool loop intercepts the request and returns a turn pointer
+  (`"'<path>' was already fetched using <tool> in Turn N. Refer to the tool response from Turn N"`)
+  without re-executing disk reads or duplicating large file payloads in the transcript. See ADR 033. (Fixes #64).
+
 - A deterministic canary for the `acceptance` validator (Fixes #59): a judge
   driven by the validator's real tool loop against a real tree rejects a real
   omission — a task whose acceptance criterion demands a test (or a decision

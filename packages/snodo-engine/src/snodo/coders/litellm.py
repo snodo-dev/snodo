@@ -21,7 +21,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError
@@ -257,6 +257,7 @@ Return ONLY the JSON array, no other text.
         retried_free_text = False
         finish_reason = None
         start_time = time.monotonic()
+        read_memory: Dict[Tuple[str, str], int] = {}
 
         for turn in range(self.max_tool_turns):
             try:
@@ -327,7 +328,14 @@ Return ONLY the JSON array, no other text.
                             args = json.loads(tc.function.arguments)
                         except (json.JSONDecodeError, TypeError):
                             args = {}
-                        result = self._execute_tool(tool_name, args, workspace)
+                        read_key = _canonical_read_key(tool_name, args)
+                        if read_key is not None and read_key in read_memory:
+                            prev_turn = read_memory[read_key]
+                            result = format_repeat_read_response(tool_name, args, prev_turn)
+                        else:
+                            result = self._execute_tool(tool_name, args, workspace)
+                            if read_key is not None:
+                                read_memory[read_key] = turn + 1
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -665,3 +673,46 @@ def _truncated_log(raw: str, max_chars: int = 2048) -> str:
     if len(raw) <= max_chars:
         return raw
     return raw[:max_chars] + "...<truncated>"
+
+
+def _canonical_read_key(name: str, args: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+    """Return (tool_name, canonical_args_str) for read tools, or None if not a read tool."""
+    read_tools = {
+        "read_file",
+        "read_file_lines",
+        "list_files",
+        "git_show",
+        "read_diff_between_refs",
+        "git_log",
+        "search_symbol",
+        "search_string",
+    }
+    if name not in read_tools:
+        return None
+
+    norm_args = dict(args)
+    for path_key in ("path", "directory", "file_path", "target_file"):
+        if path_key in norm_args and isinstance(norm_args[path_key], str):
+            p = norm_args[path_key].strip()
+            norm_args[path_key] = str(Path(p))
+
+    try:
+        args_str = json.dumps(norm_args, sort_keys=True)
+    except Exception:
+        args_str = str(norm_args)
+
+    return (name, args_str)
+
+
+def format_repeat_read_response(tool_name: str, args: Dict[str, Any], prev_turn: int) -> str:
+    """Format a concise tool response pointing to the previous turn containing the result."""
+    target = args.get("path") or args.get("directory") or args.get("file_path") or ""
+    if target:
+        return (
+            f"'{target}' was already fetched using {tool_name} in Turn {prev_turn}. "
+            f"Refer to the tool response from Turn {prev_turn} for its content."
+        )
+    return (
+        f"Tool '{tool_name}' with identical arguments was already executed in Turn {prev_turn}. "
+        f"Refer to the tool response from Turn {prev_turn} for its content."
+    )
