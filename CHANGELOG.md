@@ -11,6 +11,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Parallel merges no longer conflict on `CHANGELOG.md`. Every agent appends its
+  entry at the top of `### Added`, so any two branches collide on the same
+  lines by construction — six agent merges produced six CHANGELOG-only
+  conflicts, all resolved identically by keeping both entries. `CHANGELOG.md`
+  is now marked `merge=union` in `.gitattributes`: git's built-in union driver
+  merges a parallel append as "keep both", dedupes identical entries, and needs
+  no per-machine configuration. Chosen over fragment files (`changelog.d/` +
+  an assembly step), which would cost an assembly step and the single readable
+  CHANGELOG in the working tree to fix a conflict a merge driver resolves
+  correctly for free. A canary test
+  (`tests/golden/test_changelog_union_merge.py`) fails at the branch if the
+  `.gitattributes` declaration is dropped. See ADR 037. (Fixes #81).
+
 - The tool-loop read memory now covers ranged reads and repeated directory
   listings, which is where transcript growth actually came from. The previous
   dedup keyed on exact tool arguments, so `read_file_lines(f:1-400)` and

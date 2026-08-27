@@ -39,4 +39,5 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [034](034-opencode-path-experimental.md) | The opencode coder path is experimental, not supported | 2026-08-26 | `init_cmd.py` + `docs/protocol.md` |
 | [035](035-declared-coder-capability-interface.md) | Declared coder-adapter capability interface; "coder produced nothing" is always a fault | 2026-08-26 | `core/interfaces.py` + `engine/nodes/executor.py` |
 | [036](036-operator-human-review-tracking.md) | Operator human review tracking via audit log events | 2026-08-26 | `task_cmd.py` + `audit.py` |
+| [037](037-changelog-union-merge.md) | CHANGELOG.md merges with `merge=union`, not fragment files | 2026-08-27 | `.gitattributes` + `test_changelog_union_merge.py` |
 
