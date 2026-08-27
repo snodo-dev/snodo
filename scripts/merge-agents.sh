@@ -75,6 +75,29 @@ current="$(git rev-parse --abbrev-ref HEAD)"
 git merge-base --is-ancestor origin/main main \
   || fail "local main is behind origin/main — run: git pull --ff-only"
 
+# Check the tree is mergeable BEFORE anything expensive happens.
+#
+# `git merge` refuses to run when the index does not match HEAD, even for files
+# neither side of the merge touches — a staged, uncommitted file is enough
+# (verified: an unstaged dirty file merges fine, a staged one fails with exit
+# 128 and "your local changes would be overwritten by merge"). The CI gate waits
+# up to fifteen minutes for a green run before attempting the merge, so without
+# this check a staged file costs a full CI wait and then fails on a condition
+# that was already true before the wait started. That has now happened twice.
+#
+# Untracked files are not a problem and are deliberately not checked.
+DIRTY="$(git diff --cached --name-only; git diff --name-only)"
+if [ -n "$DIRTY" ]; then
+  echo "✗ the working tree has uncommitted changes to tracked files:"
+  echo "$DIRTY" | sort -u | sed 's/^/    /'
+  echo
+  echo "  git merge refuses to run with a dirty index, even for files this merge"
+  echo "  does not touch. Commit or stash them first:"
+  echo "      git stash push -- \$(git diff --cached --name-only; git diff --name-only | sort -u | tr '\\n' ' ')"
+  echo "  Stopping before the CI wait."
+  exit 1
+fi
+
 # ── push each branch so CI runs on it ──────────────────────────────────────
 # CI triggers on `push: branches: ['**']`, so a branch that is never pushed
 # never gets a CI conclusion — and `snodo merge` would refuse it as "CI has
