@@ -198,16 +198,26 @@ def _call_agent(
 
     final_answer = ""
 
-    from snodo.config import provider_env
+    from snodo.config import provider_env, ConfigManager
     _logger.debug("recon: injecting API key for model=%s", model)
+    api_base = ConfigManager.resolve_api_base(model)
+    extra_headers = None
+    if ConfigManager._provider_for_model(model) == "cloudflare":
+        extra_headers = {"x-session-affinity": "recon"}
+
     with provider_env(model):
         for _turn in range(max_turns):
             try:
-                response = litellm.completion(
-                    model=model,
-                    messages=messages,
-                    tools=_READ_ONLY_TOOLS,
-                )
+                kwargs = {
+                    "model": model,
+                    "messages": messages,
+                    "tools": _READ_ONLY_TOOLS,
+                }
+                if api_base:
+                    kwargs["api_base"] = api_base
+                if extra_headers:
+                    kwargs["extra_headers"] = extra_headers
+                response = litellm.completion(**kwargs)
             except Exception as e:
                 return ReconResult(
                     agent=agent_label,

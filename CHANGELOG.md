@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `snodo recon` LLM endpoint resolution and CLI worker completion fixed. `_call_agent` in `snodo.recon` now resolves `api_base` via `ConfigManager.resolve_api_base(model)` and binds provider `extra_headers` (such as Cloudflare `x-session-affinity`), preventing authentication failures when models route through custom endpoints. Additionally, CLI `recon_command` now waits for worker thread completion (`ReconManager.shutdown()`) and outputs the completed results directly to stdout, eliminating interpreter teardown crashes (`cannot schedule new futures after interpreter shutdown`). (Fixes #95).
+
 - Pre-execute validator findings regarding existing repository state during recovery attempts (`task.depth > 0` or prior failures) are passed forward to the coder as non-blocking evidence instead of triggering pre-execute policy escalation or recovery deadlocks. Previously, when a pre-execute validator (such as `architecture` using read tools per ADR 019) detected pre-existing repository state left by an earlier attempt (e.g. a dead module or stale rule), its verdict triggered pre-execute policy escalation under unanimous policy before the coder ran — blocking the exact attempt intended to fix the tree and creating a permanent recovery deadlock. `run_validators` and `PolicyEvaluator` now convert non-error pre-execute recovery tree-state findings into non-blocking evidence passed to the coder, while operational errors (`error=True`) remain fail-closed. (Fixes #90).
 - A task spec that cites a repository path the worktree cannot see is now
   surfaced before the coder is dispatched. A spec naming a file that exists in
