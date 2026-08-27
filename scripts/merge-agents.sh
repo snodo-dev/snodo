@@ -22,7 +22,7 @@ set -uo pipefail
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-ALL_BRANCHES="agent-a agent-b agent-c"
+ALL_BRANCHES="agent-a agent-b agent-c agent-d"
 MERGED=""
 
 worktree_for() {
@@ -30,6 +30,7 @@ worktree_for() {
     agent-a) echo "$HOME/Dev/snodo-a" ;;
     agent-b) echo "$HOME/Dev/snodo-b" ;;
     agent-c) echo "$HOME/Dev/snodo-c" ;;
+    agent-d) echo "$HOME/Dev/snodo-d" ;;
     *)       echo "" ;;
   esac
 }
