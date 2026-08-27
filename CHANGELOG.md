@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Transient LLM provider and network errors during validator execution are now retried before emitting an operational fault, and unrecoverable provider/tool-loop exceptions are reported as `error=True` (`validator_error`) rather than `warn`. Previously, a transient DNS resolution error (`[Errno 8] nodename nor servname provided, or not known`) or API timeout in `LLMValidator` returned `severity="warn"` (`error=False`), causing unanimous disagreement policies to mistake an infrastructure fault for a code judgment warning and trigger unnecessary recovery cycles on healthy runs. Retrying transient errors (up to 3 attempts) transparently resolves momentary network blips, while unhandled operational faults halt cleanly as `validator_error` without entering recovery loops. (Fixes #82).
+
 - The tool-loop read memory now covers ranged reads and repeated directory
   listings, which is where transcript growth actually came from. The previous
   dedup keyed on exact tool arguments, so `read_file_lines(f:1-400)` and
