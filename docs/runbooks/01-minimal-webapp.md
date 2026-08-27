@@ -25,7 +25,8 @@ The whole runbook is followable with **no paid accounts**.
 
 **Why this project:** it is small enough to finish, multi-step enough that
 governance has something to govern, and every task ends in a state a test can
-verify — which matters, because the `quality` validator is what gates progress.
+verify — which matters, because the `quality` validator (and, since ADR 028,
+the post-execute `acceptance` validator) is what gates progress.
 
 ## 2. Prerequisites
 
@@ -43,9 +44,10 @@ snodo --version          # 0.6.1 at time of writing
 
 > **Friction — developing snodo alongside this.** If you are working on snodo
 > itself rather than consuming it, `pip install` gives you the published build.
-> For an editable checkout across the whole uv workspace, alias instead:
+> For an editable checkout across the whole uv workspace, alias instead
+> (documented in `CONTRIBUTING.md`):
 > ```bash
-> alias snodo='uv run --project ~/path/to/snodo-public snodo'
+> alias snodo='uv run --project ~/path/to/snodo snodo'
 > ```
 > A plain `uv tool install snodo` will pull the five sub-packages from PyPI, so
 > they will **not** be editable — which defeats the point if you are patching
@@ -63,7 +65,7 @@ What `solo` gives you:
 | | |
 |---|---|
 | Modes | one (`producer`) — no reviewer separation |
-| Validators | `security`, `architecture`, `meta-spec` (pre-execute) · `quality` (post-execute) |
+| Validators | `security`, `architecture`, `meta-spec` (pre-execute) · `quality`, `acceptance` (post-execute) |
 | Disagreement policy | `unanimous` |
 | Test command | auto-detected from repo marker files (`package.json` → `npm test`) |
 
@@ -71,7 +73,11 @@ Two consequences to expect, both of which shaped how this runbook went:
 
 - **`unanimous` with three LLM judges is strict.** A `warn` from any judge
   withholds approval, so the task escalates to you. On a greenfield repo, with
-  little context to judge against, expect this to happen.
+  little context to judge against, expect this to happen. (Since this was
+  written, `solo` also ships `acceptance` post-execute — ADR 028 — and the
+  verifier warns at load time if a unanimous policy has exactly one
+  post-execute validator, because that is an unopposed veto over completed
+  work; see Fixes #41.)
 - **`meta-spec` polices *your* task descriptions**, not just the agent's output.
   It rejects specs that are "code wearing a spec's clothes" — literal
   implementations rather than intent and constraints. If you are used to writing
@@ -402,6 +408,15 @@ the natural place for "core/ has no runtime dependencies", which is a fact about
 files rather than about a plan. Deferred until one task completes, on the same
 principle as everywhere else here: tune on evidence.
 
+> **Update (ADR 028 / Fixes #59).** The shipped `solo` template now includes a
+> post-execute `acceptance` validator that judges the produced artifacts against
+> the task's acceptance criteria — the completeness check this gap describes,
+> aimed at the spec rather than the ADRs. Its deterministic canary proves it can
+> reject a real omission (a missing required test/ADR). It is not a substitute
+> for a post-execute architecture judge: it checks the task was carried out, not
+> that the code honours the ADRs. The gap for ADR-conformance of produced code
+> remains open.
+
 ### Task 1b — vCard generation (`resolved`, first clean pass)
 
 Four validators, unanimous, one attempt, no recovery. `quality` returned a real
@@ -472,7 +487,7 @@ broad as the criteria you thought to write.
 | 13 | "Cannot determine test command" is an operational fault reported as `warn`, so it enters human adjudication and the recovery loop instead of surfacing as `validator_error` (ADR 015) | Filed as P1 — this is what converted a config error into four paid cycles |
 | 14 | The recovery loop synthesised a fix task instructing the **coder to edit `.snodo/protocol.yml`** — the policy governing it | Filed as P1. Nothing was written, but the protocol should be structurally outside the writable surface |
 | 15 | Coder output truncated at `max_tokens` is a warning; execution continues on partial output | Filed — truncation should fail the execute step, not proceed |
-| 16 | A single post-execute validator under `unanimous` gives `total_count: 1`, an unopposed veto with no counterbalance | Noted. Arguably correct, but worth stating in the template docs |
+| 16 | A single post-execute validator under `unanimous` gives `total_count: 1`, an unopposed veto with no counterbalance | **Fixed** — the verifier now warns at load time when a unanimous policy has exactly one post-execute validator (Fixes #41), and the `solo` template ships two (`quality` + `acceptance`) |
 | 17 | `max_recovery_depth` defaults to 3, so any misdiagnosed fault costs 4 full cycles of 3 judges + coder before stopping | Set to 1 during bootstrap. Filed: skip recovery entirely when the fault class is operational |
 | 18 | **A failed task destroys its own evidence.** Teardown calls `remove_worktree` in an unconditional `finally` with no preserve flag; commits only happen inside execute when artifact paths are parsed. Truncated coder output → nothing committed → worktree deleted → nothing left to inspect. | Filed as P1. Keep the worktree on failure, or commit to the task branch before teardown |
 | 19 | **No dependency installation, ever.** Every task runs in a fresh git worktree, which has no `node_modules` / `.venv` / `target`. `npm test` exits 127 (`tsc: not found`) and the validator reports it as "Tests failed". This is not a greenfield problem — **worktree isolation and dependency installation are in direct conflict, and snodo implements the first without the second.** | Workaround: fold the install into the test command — `test_command: "npm ci --no-audit --no-fund && npm test"`, with the lockfile committed. Filed as P0 — this is the single highest-leverage fix |
@@ -511,6 +526,17 @@ Sample card state (stored in URL hash or vCard export):
 - **Demo repository**: `https://example.com/acme-corp/card-app-demo` (tag `v1.0.0`)
 - **Protocol used**: `solo` (with `acceptance` validator enabled via ADR 028)
 - **Total tasks executed**: 6 tasks across 2 phases
+
+> **Update (ADR 030–036).** Since this runbook was written, the verification
+> work has changed what an operator should expect from the gates: the coder
+> seam is declared rather than duck-typed (ADR 035), in-place coders leave
+> their change reviewable (ADR 030), the opencode path is explicitly
+> experimental (ADR 034), verification executions are first-class audit events
+> (ADR 031), patch coverage is enforced over modified lines (ADR 032), and
+> operator review outcomes are measurable via `snodo task review` / `snodo task
+> report` (ADR 036). The empirical finding that "execution catches what
+> read-only judgement misses" still holds — see runbook 02 §9.1 for the
+> corrected, sharper version.
 
 ## Appendix A — What we deferred, and what it would take
 
