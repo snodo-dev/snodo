@@ -73,10 +73,13 @@ class ValidationNodeMixin:
                                     decision_issuer=self._decision_issuer)
         loop_state.validation_results = results
 
+        is_recovery = (loop_state.task.depth > 0 or bool(loop_state.task.prior_failures))
         decision = self.policy_evaluator.evaluate(
             results, self.protocol.disagreement_policy,
             decision_records=getattr(self, '_decision_records', []),
             task_ref=loop_state.task.id,
+            is_recovery=is_recovery,
+            phase="pre_execute",
         )
         loop_state.policy_decision = decision
 
