@@ -405,3 +405,51 @@ class TestMergeRecordsReview:
         assert rc == 0
         reviews = audit.get_history("human_review_recorded")
         assert reviews[0].data["verdict"] == "unreviewed"
+
+    def test_merge_from_repo_root_records_human_review_recorded(self, tmp_path, capsys):
+        """A merge from a repo root (with unmocked _audit_log) creates/loads audit log and records review."""
+        from snodo.infrastructure.audit import AuditLog
+
+        repo = _init_repo(tmp_path)
+        _make_branch(repo, "agent-a")
+        # Do NOT patch _audit_log — let it resolve real AuditLog at repo root
+        with patch("snodo.cli.commands.merge_cmd._resolve_repo_root", return_value=str(repo)), \
+             patch("snodo.cli.commands.merge_cmd.resolve_base_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._current_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._branch_exists", return_value=True), \
+             patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
+             patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
+                   return_value=_conclusion("pass", "CI run 42 passed")), \
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged"):
+            args = SimpleNamespace(branches=["agent-a"], force=False, review="accepted", no_review=False)
+            rc = merge_command(args)
+
+        assert rc == 0
+        audit_file = repo / ".snodo" / "audit.log"
+        assert audit_file.exists()
+        audit = AuditLog(str(audit_file))
+        reviews = audit.get_history("human_review_recorded")
+        assert len(reviews) == 1
+        assert reviews[0].data["verdict"] == "accepted"
+        assert "recorded review verdict 'accepted'" in capsys.readouterr().out
+
+    def test_unresolvable_audit_log_warns_rather_than_throwing(self, tmp_path, capsys):
+        """When _audit_log throws an exception, merge completes with a warning rather than crashing."""
+        repo = _init_repo(tmp_path)
+        _make_branch(repo, "agent-a")
+        with patch("snodo.cli.commands.merge_cmd._resolve_repo_root", return_value=str(repo)), \
+             patch("snodo.cli.commands.merge_cmd.resolve_base_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._current_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._branch_exists", return_value=True), \
+             patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
+             patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
+                   return_value=_conclusion("pass", "CI run 42 passed")), \
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged"), \
+             patch("snodo.cli.commands.merge_cmd._audit_log", side_effect=RuntimeError("disk unwriteable")):
+            args = SimpleNamespace(branches=["agent-a"], force=False, review="accepted", no_review=False)
+            rc = merge_command(args)
+
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert "could not resolve the audit log" in err
+        assert "review not recorded" in err
