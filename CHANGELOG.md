@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Real-time terminal progress visibility for post-execute validator verdicts and recovery transitions. Post-execute validator warnings, blockers, and errors are surfaced as they land with icons (`⚠️`, `❌`, `💥`) and clean first-line justification snippets. Recovery subtask spawns (`Recovery (attempt N/M): spawned <fix_task_id> (...)`), recovery stalls (`Recovery stalled`), and depth exhaustion (`Recovery depth exhausted`) are explicitly printed during execution. (Fixes #71).
+
 - Operator human review tracking (`snodo task review <task_id> <verdict>`) and acceptance rate reporting (`snodo task report` / `snodo task review --report`). Reviews append `human_review_recorded` events to `.snodo/audit.log`, maintaining hash-chain integrity. Reports calculate the fraction of completed tasks accepted unchanged over a rolling window (3-category taxonomy: `accepted`, `amended`, `discarded`). Machine-readable JSON output (`snodo.task_review_report.v1`) included. See ADR 036. (Fixes #70).
 
 - The opencode coder path is now explicitly **experimental**, not supported.
