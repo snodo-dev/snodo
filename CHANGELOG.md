@@ -24,6 +24,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
   visible fact. This is a warning, not a halt: specs legitimately name paths
   that are meant to be created, and only the operator can tell the two apart.
   (Fixes #93).
+- File deletion support in `submit_files` without requiring `content`. Extended `submit_files` tool schema (`content` optional for delete actions) and `FileArtifact` interface (`content: str = ""`), and updated coder prompt instructions so deleting obsolete or orphaned files created in previous recovery attempts is discoverable and executable without reading file contents first. Executor ignores `FileNotFoundError` when deleting non-existent paths to prevent execution crashes. (Fixes #91).
 
 - `snodo merge` audit log resolution fixed for merges executed from repository roots. `_record_merge_and_review` now wraps audit log resolution and event appending safely inside a `try` block, initializing or loading `<repo_root>/.snodo/audit.log` when merging from a repository root (with or without a pre-existing `.snodo/` project directory), and recording both `task_merged` and `human_review_recorded` events. Loud degradation is preserved so that any unresolvable audit log failure emits an explicit warning rather than throwing an exception. (Fixes #88).
 

@@ -178,7 +178,8 @@ class LiteLLMAdapter(CoderAdapter):
                 "\n"
                 "When you are ready to deliver your changes, call the\n"
                 "`submit_files(files)` tool — this is the ONLY way to deliver file\n"
-                "operations.  Do NOT emit file content as prose or as a JSON text blob.\n"
+                "operations (write or delete). Do NOT emit file content as prose or as a JSON text blob.\n"
+                "To remove obsolete or orphaned files created in earlier attempts, include a file item with action: \"delete\" (content is optional for deletes).\n"
                 "\n"
             )
 
@@ -186,15 +187,16 @@ class LiteLLMAdapter(CoderAdapter):
 ## Output Format
 Your response MUST be a JSON array of file operations. Each element has:
 - "path": file path relative to the project root
-- "content": the full file content
-- "action": "write" (default) or "delete"
+- "content": the full file content (required for "write", optional for "delete")
+- "action": "write" (default) or "delete" (use to remove obsolete or orphaned files)
 
 Return ONLY the JSON array, no other text.
 
 ```json
 [
   {"path": "src/module.py", "content": "def my_function():\\n    pass\\n", "action": "write"},
-  {"path": "tests/test_module.py", "content": "def test_my_function():\\n    assert my_function() is not None\\n", "action": "write"}
+  {"path": "tests/test_module.py", "content": "def test_my_function():\\n    assert my_function() is not None\\n", "action": "write"},
+  {"path": "src/old_orphan.py", "action": "delete"}
 ]
 ```
 """)
@@ -407,8 +409,9 @@ Return ONLY the JSON array, no other text.
             "name": "submit_files",
             "description": (
                 "Submit file operations. Call this exactly once when you are "
-                "ready to deliver ALL your changes. Each file has path, content, "
-                "and an optional action (\"write\" or \"delete\")."
+                "ready to deliver ALL your changes. Each file has path, optional content "
+                "(required for write, optional for delete), and an optional action (\"write\" or \"delete\"). "
+                "Use action=\"delete\" to remove obsolete or orphaned files."
             ),
             "parameters": {
                 "type": "object",
@@ -424,15 +427,15 @@ Return ONLY the JSON array, no other text.
                                 },
                                 "content": {
                                     "type": "string",
-                                    "description": "Full file content",
+                                    "description": "Full file content (required for write, optional for delete)",
                                 },
                                 "action": {
                                     "type": "string",
                                     "enum": ["write", "delete"],
-                                    "description": "write or delete",
+                                    "description": "write (default) or delete. Use delete to remove orphaned or obsolete files.",
                                 },
                             },
-                            "required": ["path", "content"],
+                            "required": ["path"],
                         },
                         "description": "Array of file operations",
                     },
@@ -616,9 +619,10 @@ Return ONLY the JSON array, no other text.
         for item in parsed:
             if not isinstance(item, dict):
                 raise ParseError(f"Expected dict in file operations array, got {type(item).__name__}")
-            if "path" not in item or "content" not in item:
+            action = item.get("action", "write")
+            if "path" not in item or (action != "delete" and "content" not in item):
                 raise ParseError(
-                    f"Each file operation must have 'path' and 'content'. Got keys: {list(item.keys())}"
+                    f"Each file operation must have 'path' (and 'content' for write operations). Got keys: {list(item.keys())}"
                 )
             rel_parts = Path(item["path"]).parts
             if rel_parts and rel_parts[0] == ".snodo":
@@ -626,8 +630,8 @@ Return ONLY the JSON array, no other text.
                 continue
             files.append(FileArtifact(
                 path=item["path"],
-                content=item["content"],
-                action=item.get("action", "write"),
+                content=item.get("content") or "",
+                action=action,
             ))
 
         return CodeArtifact(files=files)
