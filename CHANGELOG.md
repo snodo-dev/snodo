@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Runbooks in `docs/runbooks/` updated to capture today's closed defect patterns and verification lessons. Documents gate canary principles (gate canary necessity proved by 4 canaries written this week; Fixes #58, #74, #81 / ADR 037), pre-execute validator tree-state recovery deadlocks (Fixes #90), spec untracked path unresolvability and coder authorship transfer (Fixes #93), test suite silent under-collection (Fixes #98), and audit hash chain corruption masking (Fixes #96).
+
 - Silent under-collection in pytest test suite execution prevented. `pytest_configure` in `tests/conftest.py` now asserts that pytest's resolved `rootdir` matches the workspace git root, preventing package-local or subdirectory rootdir resolutions from running partial test suites. Additionally, `pytest_collection_modifyitems` enforces a minimum collection count threshold (`>= 2000` tests) when targeting full suite paths (`tests/` or default), causing under-collection to fail loud with a `pytest.UsageError` instead of reporting false passes. (Fixes #98).
 
 - `snodo recon` LLM endpoint resolution and CLI worker completion fixed. `_call_agent` in `snodo.recon` now resolves `api_base` via `ConfigManager.resolve_api_base(model)` and binds provider `extra_headers` (such as Cloudflare `x-session-affinity`), preventing authentication failures when models route through custom endpoints. Additionally, CLI `recon_command` now waits for worker thread completion (`ReconManager.shutdown()`) and outputs the completed results directly to stdout, eliminating interpreter teardown crashes (`cannot schedule new futures after interpreter shutdown`). (Fixes #95).

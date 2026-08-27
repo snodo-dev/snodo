@@ -404,8 +404,8 @@ Three major defects occurred across the runbook iterations:
 
 ### 9.2 Recurring Defect Shapes
 Across fifty closed issues and runbook logs, defects consistently followed two primary structural patterns:
-- **Safety properties degrading to warnings**: e.g., worktree creation failing on empty repos and silently running unisolated (Fixes #2, #29 / ADR 025); truncation proceeding on partial output (Fixes #39); missing read tools evaluating on imagination (Fixes #31).
-- **Operational faults reported as policy judgements**: e.g., missing test commands or exit code 127 (`tsc: not found`) being classified as policy rejections, triggering human adjudication and recovery loops (Fixes #27, #33 / ADR 015).
+- **Safety properties degrading to warnings**: e.g., worktree creation failing on empty repos and silently running unisolated (Fixes #2, #29 / ADR 025); truncation proceeding on partial output (Fixes #39); missing read tools evaluating on imagination (Fixes #31); untracked files in the operator's working tree absent from the task worktree causing spec paths to be unresolvable and transferring file authorship to the coder (Fixes #93); audit log hash chain corruption degrading to an ignored warning for eight hours (Fixes #96).
+- **Operational faults reported as policy judgements**: e.g., missing test commands or exit code 127 (`tsc: not found`) being classified as policy rejections, triggering human adjudication and recovery loops (Fixes #27, #33 / ADR 015); pre-execute validator findings regarding existing repository state (left by attempt 1) triggering pre-execute policy escalation on attempt 2 before the coder runs, deadlocking recovery attempts (Fixes #90); DeepSeek 400 rejection of `response_format` causing validator failures (Fixes #84); transient network/DNS blips reported as `warn` policy rejections (Fixes #82).
 
 ### 9.3 Silent Gates & Verification Hardening
 Several gates were found reporting green while enforcing nothing:
@@ -414,8 +414,10 @@ Several gates were found reporting green while enforcing nothing:
 - **Global coverage drift**: `--cov-fail-under=63` allowed 0%-coverage modules to merge undetected (Fixes #61 / ADR 032).
 - **A broken CI workflow shipped silently**: `ci.yml` was invalid YAML for several merges (the patch-coverage step embedded unindented Python in a `run: |` block scalar); every run failed at startup with no log and no test output, and nothing noticed because the merge path ran its gates locally. A local-suite canary now validates every file under `.github/workflows/` (Fixes #74).
 - **A stale CI conclusion quoted as current**: the merge gate reported a conclusion without saying when it ran or against which commit, so after a fix landed on main it kept quoting a stale failed run on the branch (Fixes #76). Conclusions now carry run id, commit, and time, and a run on an old commit is reported `stale`.
+- **Silent under-collection in test suite**: pytest invoked with a local rootdir collected only 18% (454 of 2577+ tests) of the suite while reporting 100% green pass (Fixes #98).
+- **Every gate needs a canary proving it can fail**: Every gate breaks silently unless paired with an explicit canary test that proves a real violation makes the gate fail. Four canaries written this week each caught a real defect on the day it was written — workflow YAML validator (`test_workflow_validity.py` / Fixes #74), import linter canary (`test_verification_canaries.py` / Fixes #58), toolchain pin canary (`test_toolchain_pin.py` / Fixes #58), and changelog union merge driver canary (`test_changelog_union_merge.py` / Fixes #81 / ADR 037).
 
-*Remediation*: The verification hardening suite introduced first-class `verification_executed` audit trail events (ADR 031), patch coverage enforcement over modified lines (ADR 032), mandatory gate canaries proving gates can fail (Fixes #58), out-of-date validator set notices (Fixes #59), a CI-workflow canary (Fixes #74), and a merge gate that polls for a conclusion and distinguishes startup/cancelled/timeout failures (Fixes #72, #76).
+*Remediation*: The verification hardening suite introduced first-class `verification_executed` audit trail events (ADR 031), patch coverage enforcement over modified lines (ADR 032), mandatory gate canaries proving gates can fail (Fixes #58, #74, #81), out-of-date validator set notices (Fixes #59), a CI-workflow canary (Fixes #74), pytest rootdir & collection threshold enforcement (Fixes #98), pre-execute recovery tree-state forwarding (Fixes #90), spec untracked path warnings (Fixes #93), distinct audit error reporting (Fixes #96), file deletion in `submit_files` without content (Fixes #91), `snodo recon` worker thread shutdown & endpoint resolution (Fixes #95), and a merge gate that polls for a conclusion and distinguishes startup/cancelled/timeout failures (Fixes #72, #76).
 
 ---
 
@@ -438,3 +440,11 @@ Several gates were found reporting green while enforcing nothing:
 | Coder capability negotiation by `hasattr` | Silent divergence between adapters | **Fixed** in ADR 035 (declared interface + conformance test) |
 | OpenCode path status unclear | Container adapter blinded reviewers for months | **Fixed** in ADR 034 (declared experimental) |
 | Operator review outcomes unmeasured | No evidence for unattended-operation claims | **Fixed** in ADR 036 (`snodo task review` / `snodo task report`) |
+| Parallel merges conflicting on `CHANGELOG.md` | Concurrent branch merges collided on `### Added` | **Fixed** in ADR 037 / Issue #81 (`merge=union` in `.gitattributes` + canary test) |
+| Pre-execute validator judging repo state deadlocking recovery | Pre-existing repo state (attempt 1) blocked attempt 2 before coder ran | **Fixed** in Issue #90 (tree-state findings passed as non-blocking evidence forward to coder during recovery) |
+| Spec citing untracked path worktree cannot see | Coder authored missing file; validators judged coder's document | **Fixed** in Issue #93 (warns on missing spec paths & surfaces untracked files at worktree creation) |
+| Audit chain corruption degrading to generic warning | Integrity failure ignored for 8 hours | **Fixed** in Issue #96 (`reset_global_audit_log` test isolation & distinct `AUDIT LOG CHAIN CORRUPTED` diagnostic error) |
+| Test suite silent under-collection | Pytest collected only 18% of suite & reported 100% green | **Fixed** in Issue #98 (`pytest_configure` rootdir guard & minimum 2000 test threshold) |
+| Coder unable to delete orphaned files without content | Coder forced to read full file content to submit `action: "delete"` | **Fixed** in Issue #91 (extended `submit_files` schema & prompt discoverability for content-less deletes) |
+| Structured output provider rejection breaking validators | DeepSeek 400 response_format rejected all validators | **Fixed** in Issue #84 (unstructured fallback parsing & strict HTTP status retry classification) |
+
