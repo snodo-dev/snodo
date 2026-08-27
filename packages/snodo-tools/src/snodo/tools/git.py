@@ -180,9 +180,15 @@ class GitMCP:
         """
         base = base or resolve_base_branch(self.project_root)
         try:
-            self.repo.git.checkout(base)
-        except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            current_branch = self.repo.active_branch.name
+        except Exception:
+            current_branch = None
+
+        if current_branch != base:
+            try:
+                self.repo.git.checkout(base)
+            except GitCommandError as e:
+                raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
 
         try:
             return self.repo.git.merge(branch)
@@ -196,6 +202,18 @@ class GitMCP:
                 raise MergeConflictError(
                     f"Merge conflict merging '{branch}' into '{base}': {stderr}"
                 ) from e
+
+            if "overwritten by merge" in stderr or "overwritten by checkout" in stderr:
+                try:
+                    part_files = self.repo.git.diff("--name-only", f"{base}..{branch}").splitlines()
+                except Exception:
+                    part_files = []
+                if part_files:
+                    part_str = ", ".join(part_files)
+                    raise GitError(
+                        f"Local changes collide with participating branch file(s) [{part_str}]: {stderr}"
+                    ) from e
+
             raise GitError(f"Git command failed: {stderr}") from e
 
     def delete_branch(self, branch: str) -> str:

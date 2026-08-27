@@ -727,3 +727,55 @@ def test_diff_between_refs_post_execute_scenario(temp_git_repo):
     assert "src/module.py" in diff
     assert "new_function" in diff
     assert "return 42" in diff
+
+
+def test_merge_branch_succeeds_with_unrelated_dirty_file(temp_git_repo):
+    """merge_branch succeeds when already on main and an unrelated file is dirty."""
+    git_mcp, tmpdir = temp_git_repo
+
+    # Create feature branch changing feature.py
+    git_mcp.create_branch("feature-b")
+    feat_file = Path(tmpdir) / "feature.py"
+    feat_file.write_text("print('feature')\n")
+    git_mcp.stage_files(["feature.py"])
+    git_mcp.commit("add feature")
+
+    # Switch back to main
+    subprocess.run(["git", "checkout", "main"], cwd=tmpdir, check=True, capture_output=True)
+
+    # Create an unrelated dirty file on main
+    unrelated = Path(tmpdir) / "unrelated.txt"
+    unrelated.write_text("dirty content\n")
+
+    # Call merge_branch("feature-b") — should succeed cleanly
+    result = git_mcp.merge_branch("feature-b", base="main")
+    assert "add feature" in result or "Fast-forward" in result or "Merge" in result or result == ""
+
+    # Verify feature.py exists and unrelated.txt remains dirty
+    assert feat_file.exists()
+    assert unrelated.read_text() == "dirty content\n"
+
+
+def test_merge_branch_reports_colliding_participating_files(temp_git_repo):
+    """merge_branch cites participating files when a local change collides with a branch file."""
+    git_mcp, tmpdir = temp_git_repo
+
+    # Create feature branch modifying README.md
+    git_mcp.create_branch("feature-c")
+    readme = Path(tmpdir) / "README.md"
+    readme.write_text("# Updated Repo in feature-c\n")
+    git_mcp.stage_files(["README.md"])
+    git_mcp.commit("update README in feature-c")
+
+    # Switch back to main
+    subprocess.run(["git", "checkout", "main"], cwd=tmpdir, check=True, capture_output=True)
+
+    # Modify README.md locally on main (dirty colliding file)
+    readme.write_text("# Dirty local README\n")
+
+    # Call merge_branch("feature-c") — should raise GitError citing README.md
+    with pytest.raises(GitError) as exc_info:
+        git_mcp.merge_branch("feature-c", base="main")
+
+    assert "Local changes collide with participating branch file(s) [README.md]" in str(exc_info.value)
+
