@@ -627,7 +627,7 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
             return 1, True, None
 
     try:
-        outcome = merge_task_branch(project_root, branch)
+        outcome, conflicting_paths = merge_task_branch(project_root, branch)
     except GitError as e:
         print(f"✗ Merge failed for {branch}: {e}", file=sys.stderr)
         print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
@@ -652,14 +652,17 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
         print(f"✓ Merged {branch} into the base branch")
         return result, False, branch
 
-    # Conflict — escalate, leave branch + worktree intact for a human.
+    paths_str = ", ".join(conflicting_paths) if conflicting_paths else "unknown path(s)"
     print(f"✗ Merge conflict merging {branch} into the base branch.", file=sys.stderr)
-    print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
+    print(f"  Conflicting path(s): {paths_str}", file=sys.stderr)
+    print("  The merge was rolled back (base branch left clean; source branch intact).", file=sys.stderr)
+    print(f"  To perform the merge manually and resolve conflicts, run:\n    git merge {branch}", file=sys.stderr)
     if audit_log:
         audit_log.append_event("merge_conflict_escalated", {
             "op": "merge_conflict_escalated",
             "task_ref": task.id,
             "branch": branch,
+            "conflicting_paths": conflicting_paths,
             "session_id": session_id,
         })
     return 1, True, None

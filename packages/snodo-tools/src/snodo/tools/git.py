@@ -28,6 +28,9 @@ class MergeConflictError(GitError):
     The merge is aborted so the base branch stays clean; the source branch and
     its worktree are left intact for a human to resolve.
     """
+    def __init__(self, message: str, conflicting_paths: Optional[List[str]] = None):
+        super().__init__(message)
+        self.conflicting_paths = conflicting_paths or []
 
 
 class GitMCP:
@@ -195,12 +198,20 @@ class GitMCP:
         except GitCommandError as e:
             stderr = e.stderr.strip() if e.stderr else str(e)
             if _has_merge_conflict(self.repo):
+                conflicting_paths = []
+                try:
+                    unmerged = self.repo.index.unmerged_blobs()
+                    conflicting_paths = sorted(list(unmerged.keys()))
+                except Exception:
+                    pass
                 try:
                     self.repo.git.merge("--abort")
                 except GitCommandError:
                     pass
+                paths_str = ", ".join(conflicting_paths) if conflicting_paths else "unknown path(s)"
                 raise MergeConflictError(
-                    f"Merge conflict merging '{branch}' into '{base}': {stderr}"
+                    f"Merge conflict merging '{branch}' into '{base}' in [{paths_str}]: {stderr}",
+                    conflicting_paths=conflicting_paths,
                 ) from e
 
             if "overwritten by merge" in stderr or "overwritten by checkout" in stderr:

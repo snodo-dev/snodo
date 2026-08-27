@@ -327,7 +327,7 @@ def merge_command(args) -> int:
 
         # Merge.
         try:
-            outcome = merge_task_branch(str(repo), branch)
+            outcome, conflicting_paths = merge_task_branch(str(repo), branch)
         except GitError as e:
             print(f"✗ Merge failed for {branch}: {e}", file=sys.stderr)
             print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
@@ -338,10 +338,11 @@ def merge_command(args) -> int:
             merged_any = True
             _record_merge_and_review(args, str(repo), branch)
         else:
-            # Conflict — escalate, leave branch + worktree intact for a human.
+            paths_str = ", ".join(conflicting_paths) if conflicting_paths else "unknown path(s)"
             print(f"✗ Merge conflict merging {branch} into the base branch.", file=sys.stderr)
-            print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
-            print("  Resolve it, then re-run `snodo merge` to continue.", file=sys.stderr)
+            print(f"  Conflicting path(s): {paths_str}", file=sys.stderr)
+            print("  The merge was rolled back (base branch left clean; source branch intact).", file=sys.stderr)
+            print(f"  To perform the merge manually and resolve conflicts, run:\n    git merge {branch}", file=sys.stderr)
             return 1
 
     return 0 if merged_any else 0

@@ -12,7 +12,7 @@ Branch:         task/{id}/{slug}  (always off ``main``)
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 _logger = logging.getLogger(__name__)
 
@@ -145,12 +145,13 @@ def remove_worktree(project_root: str, task_id: str) -> None:
     _logger.info("Removed worktree %s", wt_path)
 
 
-def merge_task_branch(project_root: str, branch: str) -> str:
+def merge_task_branch(project_root: str, branch: str) -> Tuple[str, List[str]]:
     """Merge *branch* into the resolved base branch.
 
     Returns:
-        ``"merged"`` on success, ``"conflict"`` when the merge conflicts (the
-        merge is aborted and the source branch/worktree are left intact).
+        Tuple of ``(status, conflicting_paths)`` where status is ``"merged"`` or
+        ``"conflict"`` (the merge is aborted and the source branch/worktree are left
+        intact).
 
     Raises:
         GitError: on any other git failure.
@@ -160,9 +161,9 @@ def merge_task_branch(project_root: str, branch: str) -> str:
     git = GitMCP(project_root)
     try:
         git.merge_branch(branch)
-        return "merged"
-    except MergeConflictError:
-        return "conflict"
+        return "merged", []
+    except MergeConflictError as e:
+        return "conflict", getattr(e, "conflicting_paths", [])
 
 
 def delete_task_branch(project_root: str, branch: str) -> None:
