@@ -5,6 +5,7 @@ FILE: snodo/cli/commands/task_cmd.py
 
 import sys
 from types import SimpleNamespace
+from typing import Optional
 
 import typer
 
@@ -55,6 +56,30 @@ def task_prune(
 ):
     """List and delete stale task branches."""
     return task_prune_command(SimpleNamespace(stale_days=stale_days))
+
+
+@app.command(name="review")
+def task_review(
+    task_id: str = typer.Argument(..., help="Task ID or 'report' to view review statistics"),
+    verdict: Optional[str] = typer.Argument(None, help="Verdict: accepted (unchanged), amended, or discarded"),
+    notes: Optional[str] = typer.Option(None, "--notes", help="Optional review notes"),
+    report: bool = typer.Option(False, "--report", help="Report review acceptance statistics"),
+    days: int = typer.Option(30, "--days", help="Window in days for review report"),
+    json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+):
+    """Record operator review verdict for a completed task or report acceptance rate."""
+    return task_review_command(SimpleNamespace(
+        task_id=task_id, verdict=verdict, notes=notes, report=report, days=days, json=json
+    ))
+
+
+@app.command(name="report")
+def task_report(
+    days: int = typer.Option(30, "--days", help="Window in days for review report"),
+    json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+):
+    """Report operator review acceptance rate over a window."""
+    return task_report_command(SimpleNamespace(days=days, json=json))
 
 
 
@@ -338,4 +363,169 @@ def task_prune_command(args) -> int:
         print(f"Error pruning branches: {e}", file=sys.stderr)
         return 1
 
+    return 0
+
+
+VALID_VERDICTS = {"accepted", "amended", "discarded"}
+
+
+def task_review_command(args) -> int:
+    """Record operator review verdict for a task or generate report."""
+    task_id = getattr(args, "task_id", "")
+    verdict_raw = getattr(args, "verdict", None)
+    notes = getattr(args, "notes", None) or ""
+    report_flag = getattr(args, "report", False)
+    json_out = getattr(args, "json", False)
+
+    if report_flag or task_id.lower() in ("report", "--report"):
+        return task_report_command(args)
+
+    if not task_id:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task_review", "task_id is required", 1)
+        print("Usage: snodo task review <task_id> <verdict> [--notes NOTES]", file=sys.stderr)
+        return 1
+
+    if not verdict_raw or verdict_raw.lower() not in VALID_VERDICTS:
+        valid_str = ", ".join(sorted(VALID_VERDICTS))
+        msg = f"Invalid verdict '{verdict_raw}'. Must be one of: {valid_str}"
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task_review", msg, 1)
+        print(f"Error: {msg}", file=sys.stderr)
+        print("  accepted  : Task completed and accepted unchanged", file=sys.stderr)
+        print("  amended   : Task completed but required manual edits", file=sys.stderr)
+        print("  discarded : Task output was rejected or reverted", file=sys.stderr)
+        return 1
+
+    verdict = verdict_raw.lower()
+    project_root = resolve_project_root()
+    if project_root is None:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task_review", "Not inside a snodo project.", 1)
+        print("Not inside a snodo project.", file=sys.stderr)
+        return 1
+
+    from snodo.infrastructure.audit import get_audit_log
+    from datetime import datetime, timezone
+
+    audit_log = get_audit_log()
+    if audit_log is None:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task_review", "Audit log unavailable.", 1)
+        print("Error: Audit log unavailable.", file=sys.stderr)
+        return 1
+
+    audit_log.append_event("human_review_recorded", {
+        "op": "human_review_recorded",
+        "task_ref": task_id,
+        "verdict": verdict,
+        "notes": notes,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    if json_out:
+        from snodo.cli.json_output import emit_json, schema_name
+        return emit_json({
+            "schema": schema_name("task_review"),
+            "ok": True,
+            "task_id": task_id,
+            "verdict": verdict,
+            "notes": notes,
+        })
+
+    print(f"✓ Recorded review verdict '{verdict}' for task {task_id} in audit log.")
+    return 0
+
+
+def task_report_command(args) -> int:
+    """Report operator human review acceptance statistics over a window."""
+    from datetime import datetime, timezone, timedelta
+    from snodo.infrastructure.audit import get_audit_log
+
+    days = getattr(args, "days", 30) or 30
+    json_out = getattr(args, "json", False)
+
+    project_root = resolve_project_root()
+    if project_root is None:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task_review_report", "Not inside a snodo project.", 1)
+        print("Not inside a snodo project.", file=sys.stderr)
+        return 1
+
+    audit_log = get_audit_log()
+    events = audit_log.events if audit_log else []
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    completed_tasks = set()
+    latest_reviews = {}  # task_ref -> verdict string
+
+    for ev in events:
+        data = ev.data or {}
+        # Parse timestamp if present
+        ev_time = None
+        ts_str = data.get("timestamp") or data.get("recorded_at") or getattr(ev, "timestamp", "")
+        if ts_str:
+            try:
+                ev_time = datetime.fromisoformat(ts_str)
+            except Exception:
+                pass
+
+        if ev_time and ev_time < cutoff:
+            continue
+
+        op = data.get("op") or ev.event_type
+        task_ref = data.get("task_ref") or data.get("task_id")
+
+        if op in ("task_merged", "verification_executed") and data.get("outcome") != "fail":
+            if task_ref:
+                completed_tasks.add(task_ref)
+
+        if op == "human_review_recorded" and task_ref and data.get("verdict"):
+            latest_reviews[task_ref] = data["verdict"].lower()
+
+    # Include any reviewed tasks in total if completed wasn't explicitly logged
+    all_known_tasks = completed_tasks.union(latest_reviews.keys())
+    total_completed = len(all_known_tasks)
+
+    accepted_count = sum(1 for t in all_known_tasks if latest_reviews.get(t) == "accepted")
+    amended_count = sum(1 for t in all_known_tasks if latest_reviews.get(t) == "amended")
+    discarded_count = sum(1 for t in all_known_tasks if latest_reviews.get(t) == "discarded")
+    reviewed_count = accepted_count + amended_count + discarded_count
+    unreviewed_count = max(0, total_completed - reviewed_count)
+
+    rate_pct = (accepted_count / reviewed_count * 100.0) if reviewed_count > 0 else 0.0
+
+    if json_out:
+        from snodo.cli.json_output import emit_json, schema_name
+        return emit_json({
+            "schema": schema_name("task_review_report"),
+            "ok": True,
+            "days_window": days,
+            "total_completed": total_completed,
+            "total_reviewed": reviewed_count,
+            "accepted_unchanged": accepted_count,
+            "amended": amended_count,
+            "discarded": discarded_count,
+            "unreviewed": unreviewed_count,
+            "acceptance_rate_pct": round(rate_pct, 1),
+        })
+
+    print(f"Human Review Acceptance Rate (Last {days} days)")
+    print("-" * 45)
+    print(f"Completed tasks:           {total_completed}")
+    rev_pct = (reviewed_count / total_completed * 100.0) if total_completed > 0 else 0.0
+    print(f"Reviewed tasks:            {reviewed_count} ({rev_pct:.1f}%)")
+    print(f"  - Accepted unchanged:    {accepted_count}")
+    print(f"  - Amended by operator:   {amended_count}")
+    print(f"  - Discarded / reverted:  {discarded_count}")
+    if unreviewed_count > 0:
+        print(f"  - Unreviewed:            {unreviewed_count}")
+    print()
+    print(f"Unchanged Acceptance Rate: {rate_pct:.1f}% ({accepted_count}/{reviewed_count} reviewed tasks accepted unchanged)")
     return 0
