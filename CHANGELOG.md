@@ -260,6 +260,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Full-suite runs no longer pollute the suite repository's own `.snodo/`
+  directory. The verification-audit work (#60) made `QualityValidator` record
+  `verification_executed` events through a cwd-relative `get_audit_log()`
+  (default `.snodo/audit.log`). The code under test is not always the project
+  under test: tests that dispatch the quality validator run with the process
+  cwd at the suite repo, so under `pytest -n auto` concurrent workers appended
+  to the same repo-root audit file, corrupted the hash chain, and the next run
+  failed two tests in `test_run_cmd.py` on a sequence discontinuity. The
+  validator now takes the audit log ONLY from the validator context — a
+  verification event without an explicit audit log in context is skipped,
+  never resolved from cwd. The session-scoped conftest guard (in the spirit of
+  the #48 guard) now also fingerprints the suite repo's own `.snodo/` and
+  fails if any test writes under it; it immediately caught a second instance of
+  the same class — a hermeticity test built a graph without a `project_root`,
+  so wave classification wrote `.snodo/wave.json` into the suite repo — now
+  fixed to run against an isolated fixture repo. (Fixes #65).
+
 - A run can no longer report two outcomes. Previously a run that emitted a
   complete structured halt payload (halt_type, final_decision and raw_halt_type
   all set and agreeing) could then print "✗ Internal error during execution:

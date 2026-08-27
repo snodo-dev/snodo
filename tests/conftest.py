@@ -6,6 +6,7 @@ TEST_SECRET: 32+ byte HMAC key to avoid JWT InsecureKeyLengthWarning
 (RFC 7518 Section 3.2 recommends ≥32 bytes for SHA256).
 """
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -69,6 +70,14 @@ def _guard_suite_repo_unchanged():
     branch and moves HEAD, silently redirecting every subsequent commit. Record
     the suite repo's HEAD and branch set at session start and assert both are
     unchanged at session end.
+
+    The same invariant covers the suite repo's own ``.snodo/`` directory
+    (Fixes #65): code under test is not always the project under test, and a
+    cwd-relative audit log (``.snodo/audit.log``) can point here. Under
+    ``-n auto`` concurrent workers then append to this file simultaneously,
+    corrupt the hash chain, and break the next run. Any content written under
+    the suite repo's ``.snodo/`` during the session is a test-time write
+    escaping into the repository running the tests.
     """
     repo_root = _suite_repo_root()
     if repo_root is None:
@@ -76,9 +85,11 @@ def _guard_suite_repo_unchanged():
         return
     before_head = _head_state(repo_root)
     before_branches = _branch_set(repo_root)
+    before_snodo = _snodo_dir_state(repo_root)
     yield
     after_head = _head_state(repo_root)
     after_branches = _branch_set(repo_root)
+    after_snodo = _snodo_dir_state(repo_root)
     assert after_head == before_head, (
         "A test mutated the repository the test suite runs in: HEAD moved from "
         f"{before_head} to {after_head}. Tests must operate on isolated fixture "
@@ -91,6 +102,34 @@ def _guard_suite_repo_unchanged():
         f"{sorted(after_branches)}. Tests must operate on isolated fixture "
         "repositories."
     )
+    assert after_snodo == before_snodo, (
+        "A test wrote under the suite repository's own .snodo/ directory: the "
+        f"directory state changed from {before_snodo} to {after_snodo}. "
+        "Code under test must never resolve an audit log (or any other state) "
+        "relative to the repository running the tests — use an isolated "
+        "fixture repository instead (Fixes #65)."
+    )
+
+
+def _snodo_dir_state(repo_root) -> dict:
+    """Return a fingerprint of the suite repo's .snodo/ directory, if any.
+
+    Maps each relative path to a content hash, so both new files and content
+    changes to existing files (e.g. an audit log that gained lines) are
+    detected. Absent directory -> None (no suite .snodo/ to protect).
+    """
+    snodo_dir = repo_root / ".snodo"
+    if not snodo_dir.is_dir():
+        return None
+    state: dict = {}
+    for p in sorted(snodo_dir.rglob("*")):
+        if p.is_file():
+            try:
+                data = p.read_bytes()
+            except OSError:
+                data = b"<unreadable>"
+            state[str(p.relative_to(snodo_dir))] = hashlib.sha256(data).hexdigest()
+    return state
 
 
 @pytest.fixture(scope="session", autouse=True)
