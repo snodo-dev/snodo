@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Real-time terminal progress visibility for post-execute validator verdicts and recovery transitions. Post-execute validator warnings, blockers, and errors are surfaced as they land with icons (`⚠️`, `❌`, `💥`) and clean first-line justification snippets. Recovery subtask spawns (`Recovery (attempt N/M): spawned <fix_task_id> (...)`), recovery stalls (`Recovery stalled`), and depth exhaustion (`Recovery depth exhausted`) are explicitly printed during execution. (Fixes #71).
+
 - Operator human review tracking (`snodo task review <task_id> <verdict>`) and acceptance rate reporting (`snodo task report` / `snodo task review --report`). Reviews append `human_review_recorded` events to `.snodo/audit.log`, maintaining hash-chain integrity. Reports calculate the fraction of completed tasks accepted unchanged over a rolling window (3-category taxonomy: `accepted`, `amended`, `discarded`). Machine-readable JSON output (`snodo.task_review_report.v1`) included. See ADR 036. (Fixes #70).
 
 - ADR numbering conformance gate. Two agents working in parallel have claimed
@@ -183,6 +185,22 @@ snodo uses [Semantic Versioning](https://semver.org/).
   when `NO_COLOR` is set, or when piped. `rich` is now an explicit root dependency.
 
 ### Changed
+
+- Merges are now authorised by each branch's CI conclusion, not by an agent's
+  self-reported gate results. The real merge path (`scripts/merge-agents.sh`)
+  now delegates the merge to `snodo merge`, the CI-authorized merge engine: it
+  first pushes each agent branch to origin so the CI workflow (`push:
+  branches: ['**']`) runs on it, then calls `snodo merge` which queries
+  `gh run list --branch` and refuses any branch whose CI has not run, is in
+  progress, or has failed. `snodo merge` now operates on the git root (not a
+  `.snodo/` project), accepts multiple branches per invocation plus the agent
+  short names (`a`, `snodo-a`), skips branches with no new commits
+  (resume-safe after a hand-resolved conflict), and stops on the first
+  refusal or conflict. The wrapper keeps the environment-specific guards the
+  tool cannot know about: it must run on `main`, the merged result is pushed
+  before any worktree is reset, and a worktree is reset only when its branch
+  is provably on `origin/main` AND the worktree is clean. A merge still never
+  depends on a PR existing. (Fixes #57).
 
 - Updated runbooks (`docs/runbooks/01-minimal-webapp.md` and `docs/runbooks/02-greenfield-protocol.md`).
   Drafted missing Section 9 Result in runbook 01, and brought runbook 02 up to date to reflect fifty closed

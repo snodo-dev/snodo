@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Merge the agent branches into main — safely.
+# Merge the agent branches into main — safely, gated on each branch's CI.
 #
-#   · skips a branch that has no new commits (the agent did not commit)
-#   · stops on a conflict without touching anything else
-#   · runs the gates BEFORE pushing, and refuses to push if any fails
-#   · resets an agent worktree only once its work is provably on origin/main
+# This is a thin wrapper over `snodo merge` (the CI-authorized merge engine,
+# Fixes #57). The merge itself — checking each branch's CI conclusion and
+# refusing anything that is not green — is done by `snodo merge`; this script
+# only owns the environment-specific orchestration that `snodo merge` cannot
+# know about:
 #
-# The last rule is the important one: resetting a branch whose work has not
-# landed discards it silently. That has already cost two issues once.
+#   · which worktrees map to which agent branches,
+#   · that a merge must only happen while on `main` and fetched fresh,
+#   · that the merged result is pushed before any worktree is reset,
+#   · that a worktree is reset only when its branch is provably on origin/main
+#     AND the worktree is clean (resetting a dirty tree destroys work in
+#     progress — that has already cost two issues once).
 #
 #   bash scripts/merge-agents.sh          # all agents
 #   bash scripts/merge-agents.sh a        # just agent-a
@@ -68,36 +73,57 @@ current="$(git rev-parse --abbrev-ref HEAD)"
 git merge-base --is-ancestor origin/main main \
   || fail "local main is behind origin/main — run: git pull --ff-only"
 
-# ── merge ────────────────────────────────────────────────────────────────
+# ── push each branch so CI runs on it ──────────────────────────────────────
+# CI triggers on `push: branches: ['**']`, so a branch that is never pushed
+# never gets a CI conclusion — and `snodo merge` would refuse it as "CI has
+# not run". The agent branches live only locally, so push them to origin
+# first; GitHub runs the CI workflow on the push and the gate has something
+# to query (Fixes #57). Branches already on the remote are skipped.
+echo
 for branch in $BRANCHES; do
-  if ! git show-ref --verify --quiet "refs/heads/$branch"; then
-    echo "— $branch: no such branch, skipping"
-    continue
+  git show-ref --verify --quiet "refs/heads/$branch" || continue
+  if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+    echo "— $branch: already on origin"
+  else
+    echo "▸ pushing $branch so CI can run on it"
+    git push -u origin "$branch" || fail "failed to push $branch to origin"
   fi
+done
 
-  if git merge-base --is-ancestor "$branch" main; then
-    echo "— $branch: NO NEW COMMITS — the agent did not commit. Skipping, and NOT resetting it."
-    continue
-  fi
+# ── merge, gated on CI ────────────────────────────────────────────────────
+# The CI gate is the whole point: the merge is authorised by the branch's CI
+# conclusion (queried by `snodo merge`), never by an agent's self-reported
+# gate results (Fixes #57). `snodo merge` operates on the git root, skips
+# branches with no new commits (resume-safe after a hand-resolved conflict),
+# and stops on the first refusal or conflict.
+echo
+if command -v snodo >/dev/null 2>&1; then
+  echo "▸ snodo merge $BRANCHES"
+  # shellcheck disable=SC2086
+  snodo merge $BRANCHES || fail "snodo merge refused or failed"
+else
+  # Fall back to the editable-checkout alias (CONTRIBUTING.md) so the wrapper
+  # works from outside a snodo install.
+  SNODO_CMD="${SNODO_CMD:-uv run --project \"$HOME/Dev/snodo-a\" snodo}"
+  echo "▸ $SNODO_CMD merge $BRANCHES"
+  # shellcheck disable=SC2086
+  eval "$SNODO_CMD merge $BRANCHES" || fail "snodo merge refused or failed"
+fi
 
-  n="$(git rev-list --count "main..$branch")"
-  echo
-  echo "▸ merging $branch  ($n new commit(s))"
-  if ! git merge --no-ff --no-edit "$branch"; then
-    echo
-    echo "✗ conflict merging $branch — unmerged paths:"
-    git diff --name-only --diff-filter=U | sed 's/^/    /'
-    echo
-    echo "  Resolve them, then:"
-    echo "    git add -A && git commit --no-edit && bash scripts/merge-agents.sh"
-    exit 1
+# The merge may have skipped some branches (already ancestors). Track which
+# of the ones we care about actually moved — same logic as the old script:
+# a branch is "merged" once it is an ancestor of main.
+MERGED=""
+for branch in $BRANCHES; do
+  if git show-ref --verify --quiet "refs/heads/$branch" \
+     && git merge-base --is-ancestor "$branch" main; then
+    MERGED="$MERGED $branch"
   fi
-  MERGED="$MERGED $branch"
 done
 
 # Resume-safe: what matters is whether main has anything unpushed, not whether
-# THIS invocation did the merging. After resolving a conflict by hand you re-run
-# the script, and by then every branch is already an ancestor of main.
+# THIS invocation did the merging. After resolving a conflict by hand you
+# re-run the script, and by then every branch is already an ancestor of main.
 UNPUSHED="$(git rev-list --count origin/main..main 2>/dev/null || echo 0)"
 
 if [ -z "$(echo "$MERGED" | tr -d ' ')" ] && [ "$UNPUSHED" = "0" ]; then
@@ -112,32 +138,13 @@ if [ "${SKIP_GATES:-0}" = "1" ]; then
   echo
 else
 
-# ── gates, before the push ───────────────────────────────────────────────
-echo
-echo "▸ gates"
-run_gate() {
-  printf '  %-34s' "$1"
-  if eval "$1" >/tmp/snodo-gate.out 2>&1; then
-    echo "ok"
-  else
-    echo "FAILED"
-    echo
-    tail -30 /tmp/snodo-gate.out | sed 's/^/    /'
-    fail "gate failed: $1
-  main holds the merge but was NOT pushed. Fix, commit, then re-run this script."
-  fi
-}
-run_gate "uv run ruff check ."
-run_gate "uv run lint-imports"
-run_gate "uv run pytest tests/ -q -n auto"
-run_gate "uv run pytest tests/ -m e2e -q -n auto"
-
+# ── push the merged result ─────────────────────────────────────────────────
 echo
 echo "▸ pushing  ($UNPUSHED commit(s) ahead of origin/main)"
 git push || fail "push failed"
 echo "✓ pushed"
 
-fi   # end of gates+push block
+fi   # end of push block
 
 # ── reset only what is provably landed ───────────────────────────────────
 #
