@@ -12,6 +12,7 @@ import time
 from datetime import datetime, UTC
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
+import os
 from pathlib import Path
 
 
@@ -342,15 +343,28 @@ class AuditLog:
 _global_audit_log = None
 
 
-def get_audit_log(log_path: str = ".snodo/audit.log", project_id: str = "") -> AuditLog:
+def reset_global_audit_log() -> None:
+    """Reset the global audit log singleton (primarily for testing)."""
+    global _global_audit_log
+    _global_audit_log = None
+
+
+def get_audit_log(log_path: Optional[str] = None, project_id: str = "") -> AuditLog:
     """Get global audit log instance.
 
     Args:
-        log_path: Path to audit log file
+        log_path: Path to audit log file (defaults to SNODO_HOME/.snodo/audit.log
+            when SNODO_HOME is set, or .snodo/audit.log otherwise).
         project_id: Optional project identifier
     """
     global _global_audit_log
     if _global_audit_log is None:
+        if log_path is None or log_path == ".snodo/audit.log":
+            home = os.environ.get("SNODO_HOME")
+            if home:
+                log_path = os.path.join(home, ".snodo", "audit.log")
+            else:
+                log_path = ".snodo/audit.log"
         _global_audit_log = AuditLog(log_path, project_id=project_id)
     return _global_audit_log
 

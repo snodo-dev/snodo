@@ -454,7 +454,7 @@ class TestMergeRecordsReview:
         assert "recorded review verdict 'accepted'" in capsys.readouterr().out
 
     def test_unresolvable_audit_log_warns_rather_than_throwing(self, tmp_path, capsys):
-        """When _audit_log throws an exception, merge completes with a warning rather than crashing."""
+        """When _audit_log throws a resolution exception, merge completes with resolution warning rather than crashing."""
         repo = _init_repo(tmp_path)
         _make_branch(repo, "agent-a")
         with patch("snodo.cli.commands.merge_cmd._resolve_repo_root", return_value=str(repo)), \
@@ -472,8 +472,58 @@ class TestMergeRecordsReview:
 
         assert rc == 0
         err = capsys.readouterr().err
-        assert "could not resolve the audit log" in err
-        assert "review not recorded" in err
+        assert "audit log resolution failed" in err
+        assert "not recorded" in err
+
+    def test_corrupted_audit_chain_reports_chain_error_distinctly(self, tmp_path, capsys):
+        """When the audit log hash chain is corrupted, _record_merge_and_review reports AUDIT LOG CHAIN CORRUPTED distinctly from a resolution error."""
+        from snodo.core.interfaces import AuditError
+
+        repo = _init_repo(tmp_path)
+        _make_branch(repo, "agent-a")
+        with patch("snodo.cli.commands.merge_cmd._resolve_repo_root", return_value=str(repo)), \
+             patch("snodo.cli.commands.merge_cmd.resolve_base_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._current_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._branch_exists", return_value=True), \
+             patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
+             patch("snodo.cli.commands.merge_cmd._push_branches"), \
+             patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
+                   return_value=_conclusion("pass", "CI run 42 passed")), \
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged"), \
+             patch("snodo.cli.commands.merge_cmd._audit_log", side_effect=AuditError("hash chain broken on line 15")):
+            args = SimpleNamespace(branches=["agent-a"], force=False, review="accepted", no_review=False)
+            rc = merge_command(args)
+
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert "AUDIT LOG CHAIN CORRUPTED" in err
+        assert "hash chain broken on line 15" in err
+        assert "audit log resolution failed" not in err
+
+    def test_real_corrupted_audit_file_reports_chain_error_on_merge(self, tmp_path, capsys):
+        """A real corrupted audit log file on disk causes snodo merge to report AUDIT LOG CHAIN CORRUPTED."""
+        repo = _init_repo(tmp_path)
+        _make_branch(repo, "agent-a")
+        audit_file = repo / ".snodo" / "audit.log"
+        audit_file.parent.mkdir(parents=True, exist_ok=True)
+        audit_file.write_text("corrupted json payload\n")
+
+        with patch("snodo.cli.commands.merge_cmd._resolve_repo_root", return_value=str(repo)), \
+             patch("snodo.cli.commands.merge_cmd.resolve_base_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._current_branch", return_value="main"), \
+             patch("snodo.cli.commands.merge_cmd._branch_exists", return_value=True), \
+             patch("snodo.cli.commands.merge_cmd._count_new_commits", return_value=1), \
+             patch("snodo.cli.commands.merge_cmd._push_branches"), \
+             patch("snodo.cli.commands.merge_cmd.wait_for_ci_conclusion",
+                   return_value=_conclusion("pass", "CI run 42 passed")), \
+             patch("snodo.cli.commands.merge_cmd.merge_task_branch", return_value="merged"):
+            args = SimpleNamespace(branches=["agent-a"], force=False, review="accepted", no_review=False)
+            rc = merge_command(args)
+
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert "AUDIT LOG CHAIN CORRUPTED" in err
+        assert "audit log resolution failed" not in err
 
 
 class TestPushBranches:
