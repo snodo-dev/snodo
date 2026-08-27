@@ -167,13 +167,20 @@ def isolate_snodo_home(monkeypatch):
     credential prompt (offline safety net), and SNODO_TOKEN_SECRET to a
     fixed shared secret so token issuance/verification is deterministic
     and the consumed-token store lives under the isolated SNODO_HOME.
+    Resets the process-global audit log singleton before and after each test
+    so audit events never leak across tests or touch the suite repository.
     The fixture cleans up after itself.
     """
+    from snodo.infrastructure.audit import reset_global_audit_log
+
     monkeypatch.setenv("GIT_TERMINAL_PROMPT", "0")
     home = tempfile.mkdtemp(prefix="snodo_test_")
     monkeypatch.setenv("SNODO_HOME", home)
     monkeypatch.setenv("SNODO_TOKEN_SECRET", TEST_SECRET)
+
+    reset_global_audit_log()
     yield
+    reset_global_audit_log()
     shutil.rmtree(home, ignore_errors=True)
 
 
