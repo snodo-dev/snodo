@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Ranged read coverage tracking and repeated directory listing deduplication in `ReadMemoryTracker`. Ranged file reads (`read_file_lines`) that fall within previously fetched line ranges or full file reads (`read_file`) in Turn N are served from memory with turn pointers. Repeated directory listings (`list_files`) on identical canonical directories are also served from memory with turn pointers, eliminating redundant transcript growth across coder and validator tool loops. (Fixes #77).
+
 - A local-suite canary that validates every file under `.github/workflows/`.
   The gate every other gate depends on is the CI workflow file itself, and it
   had no canary: `ci.yml` was invalid YAML for several merges (the
