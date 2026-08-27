@@ -21,6 +21,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
   the `snodo init` Docker check output, and the minimal-webapp runbook. See
   ADR 034.
 
+- Cost attribution is declared **operational telemetry, not part of the
+  attestation**. The audit trail (INV4, ADR 031) records what a run decided
+  and whether verification ran; it never carries cost — for any coder. Token
+  and cost data live in per-job `state.json` (`snodo meta`), and even the
+  supported `litellm` path records them only for background jobs. The opencode
+  paths' absent usage/cost records are therefore a documented non-goal, not a
+  gap in the attestation. Whether cost should ever become attestable is a
+  change to the attestation contract for all coders (issue #69), deliberately
+  out of scope. See ADR 034.
+
 - Tool loop repeat read memory deduplication in `LiteLLMCoder` and `LLMValidator`. When a model
   repeatedly requests files or line ranges already fetched in an earlier turn (e.g. `read_file`
   at Turn 3 and Turn 19), the tool loop intercepts the request and returns a turn pointer

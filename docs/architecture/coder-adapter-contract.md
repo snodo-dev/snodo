@@ -223,10 +223,13 @@ skipped line.
    **Done** — `tests/coders/test_adapter_conformance.py`.
 3. **Decide whether the opencode path is supported or experimental**, and say so in
    the docs. Sitting between the two is how the container adapter came to silently
-   blind the reviewers. **Done** — **experimental** (ADR 032); recorded in
+   blind the reviewers. **Done** — **experimental** (ADR 034); recorded in
    `docs/protocol.md`, `docs/architecture.md`, the `init` output, and the runbook.
 4. **Decide whether cost attribution is part of the audit trail.** If it is, the
    opencode paths need to contribute to it; if it is not, say so explicitly so the
-   absence is a decision rather than an oversight. **Open** — the experimental
-   designation (ADR 032) states the absence explicitly; revisit if the path is
-   promoted to supported.
+   absence is a decision rather than an oversight. **Done** — **cost is not part
+   of the attestation.** The audit trail never carries cost, for any coder; token
+   and cost data are operational telemetry in per-job `state.json` (`snodo meta`).
+   The opencode paths' absence is a documented non-goal (ADR 034, issue #69).
+   Whether cost should ever become attestable is a change to the attestation
+   contract for all coders, deliberately out of scope here.
