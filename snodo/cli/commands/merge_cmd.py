@@ -327,7 +327,11 @@ def merge_command(args) -> int:
 
         # Merge.
         try:
-            outcome, conflicting_paths = merge_task_branch(str(repo), branch)
+            res = merge_task_branch(str(repo), branch)
+            if isinstance(res, tuple):
+                outcome, conflicting_paths = res
+            else:
+                outcome, conflicting_paths = res, []
         except GitError as e:
             print(f"✗ Merge failed for {branch}: {e}", file=sys.stderr)
             print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)

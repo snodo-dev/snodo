@@ -215,6 +215,17 @@ class GitMCP:
                 ) from e
 
             if "overwritten by merge" in stderr or "overwritten by checkout" in stderr:
+                staged_files = []
+                try:
+                    staged_files = self.repo.git.diff("--cached", "--name-only").splitlines()
+                except Exception:
+                    pass
+                if staged_files:
+                    staged_str = ", ".join(staged_files)
+                    raise GitError(
+                        f"Staged changes in index would be overwritten by merge [{staged_str}]: {stderr}"
+                    ) from e
+
                 try:
                     part_files = self.repo.git.diff("--name-only", f"{base}..{branch}").splitlines()
                 except Exception:
