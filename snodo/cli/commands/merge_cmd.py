@@ -371,6 +371,44 @@ def _record_merge_and_review(args, project_root: str, branch: str) -> None:
     """
     try:
         audit_log = _audit_log(project_root)
+        now = datetime.now(timezone.utc).isoformat()
+        audit_log.append_event("task_merged", {
+            "op": "task_merged",
+            "task_ref": branch,
+            "branch": branch,
+            "recorded_at": now,
+        })
+
+        verdict = None
+        review_flag = getattr(args, "review", None)
+        no_review = getattr(args, "no_review", False)
+
+        if review_flag:
+            v = review_flag.lower()
+            if v in VALID_VERDICTS:
+                verdict = v
+            else:
+                print(
+                    f"  ⚠ invalid --review '{review_flag}' (must be one of "
+                    f"{', '.join(sorted(VALID_VERDICTS))}) — recording as unreviewed",
+                    file=sys.stderr,
+                )
+        elif not no_review and sys.stdin.isatty():
+            verdict = _prompt_review(branch)
+
+        verdict = verdict or "unreviewed"
+        audit_log.append_event("human_review_recorded", {
+            "op": "human_review_recorded",
+            "task_ref": branch,
+            "branch": branch,
+            "verdict": verdict,
+            "notes": f"recorded at merge time for {branch}",
+            "recorded_at": now,
+        })
+        if verdict == "unreviewed":
+            print(f"  ⚠ no review verdict — recorded {branch} as unreviewed", file=sys.stderr)
+        else:
+            print(f"  ✓ recorded review verdict '{verdict}' for {branch}")
     except Exception:
         # The merge happened; losing the review record must not fail it, but
         # the unreviewed state is still the honest one and the operator is
@@ -380,46 +418,6 @@ def _record_merge_and_review(args, project_root: str, branch: str) -> None:
             "treat this merge as unreviewed",
             file=sys.stderr,
         )
-        return
-
-    now = datetime.now(timezone.utc).isoformat()
-    audit_log.append_event("task_merged", {
-        "op": "task_merged",
-        "task_ref": branch,
-        "branch": branch,
-        "recorded_at": now,
-    })
-
-    verdict = None
-    review_flag = getattr(args, "review", None)
-    no_review = getattr(args, "no_review", False)
-
-    if review_flag:
-        v = review_flag.lower()
-        if v in VALID_VERDICTS:
-            verdict = v
-        else:
-            print(
-                f"  ⚠ invalid --review '{review_flag}' (must be one of "
-                f"{', '.join(sorted(VALID_VERDICTS))}) — recording as unreviewed",
-                file=sys.stderr,
-            )
-    elif not no_review and sys.stdin.isatty():
-        verdict = _prompt_review(branch)
-
-    verdict = verdict or "unreviewed"
-    audit_log.append_event("human_review_recorded", {
-        "op": "human_review_recorded",
-        "task_ref": branch,
-        "branch": branch,
-        "verdict": verdict,
-        "notes": f"recorded at merge time for {branch}",
-        "recorded_at": now,
-    })
-    if verdict == "unreviewed":
-        print(f"  ⚠ no review verdict — recorded {branch} as unreviewed", file=sys.stderr)
-    else:
-        print(f"  ✓ recorded review verdict '{verdict}' for {branch}")
 
 
 def _prompt_review(branch: str) -> Optional[str]:
