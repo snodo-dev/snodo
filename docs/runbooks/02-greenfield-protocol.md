@@ -392,9 +392,15 @@ Three major defects occurred across the runbook iterations:
 2. **Toolchain shipped with a failing gate**: `scaffold` toolchain setup passed LLM review; failed on `make check` execution.
 3. **Unguarded optional field crashing on minimal card**: `photoProperty` dereferenced `undefined` in `vcard.js`. Passed pre-execute review; caught by `quality` test execution.
 
-> **Finding 1**: Every defect caught during the runbook projects was caught by `quality`, the only validator that executes something. Read-only LLM judges passed all of them with detailed, confident justifications.
+> **Finding 1 (corrected)**: Pre-execute judgement of a *proposal* has repeatedly caught real defects; post-execute judgement of *artifacts* has been weak, and execution is what catches those.
 >
-> *Qualification*: A post-execute `acceptance` validator (ADR 028) has since been demonstrated in a canary test (Fixes #59) rejecting a real omission (a missing required test/ADR). However, this qualifies rather than overturns the core finding: execution catches what read-only judgement misses.
+> The original finding — "every defect was caught by `quality`, the only validator that executes something; read-only judges passed everything" — was true when written and is now too broad. The evidence since:
+>
+> - **Pre-execute `architecture` has rejected real defects before any code existed.** It rejected a spec whose acceptance criteria were unsatisfiable under the recorded Node floor (Node LTS ≥ 20, §0), citing ADR-0001; it rejected a second spec that asserted the dependency guard was unaffected when the accumulated failure showed that guard rejecting the new import; and it blocked a task because a stored card had to carry a template id while the schema had no such column — the last independently corroborated in `docs/architecture/maturity-assessment-2026-08.md` (§Decision records). These are proposal-stage catches: the judge read the plan and the ADRs and found the plan inconsistent with them, before execution could run.
+> - **Post-execute judgement of artifacts has been weak.** The `acceptance` validator's deterministic canary rejects a real omission (Fixes #59) — a missing required test/ADR — proving the judge *can* fire. But in a live run it returned MET for a criterion naming a command it could not run ("make check passes") while `quality`, which had actually executed the command, held its failing output in the same cycle (Fixes #75, now fixed: execution criteria are UNCHECKABLE by construction for a read-only judge, and a read-only verdict that contradicts an execution result is superseded). The standing finding that read-only judges pass everything was qualified, not overturned, by the canary.
+> - **Execution is what catches the runbook's defects.** All three defects above were caught by `quality` running tests, not by a judge reading the tree.
+>
+> *What remains uncertain*: the pre-execute rejections are real but few — the sample is too small to claim pre-execute judgement is reliable in general, only that it is not uniformly permissive. The `acceptance` canary proves the judge can reject a planted omission; it has not been observed rejecting in a live run, and #75 shows the failure mode it still had. Whether post-execute judgement of artifacts is trustworthy in production is open; the evidence says execution is the load-bearing gate.
 
 ### 9.2 Recurring Defect Shapes
 Across fifty closed issues and runbook logs, defects consistently followed two primary structural patterns:
@@ -406,8 +412,10 @@ Several gates were found reporting green while enforcing nothing:
 - **CI running post-merge**: `.github/workflows/ci.yml` ran on main after merges landed, acting as a post-mortem rather than a gate (Fixes #56 / ADR 025).
 - **Self-reported gate results**: Merges were authorized by agent text summaries rather than empirical verification records (Fixes #57).
 - **Global coverage drift**: `--cov-fail-under=63` allowed 0%-coverage modules to merge undetected (Fixes #61 / ADR 032).
+- **A broken CI workflow shipped silently**: `ci.yml` was invalid YAML for several merges (the patch-coverage step embedded unindented Python in a `run: |` block scalar); every run failed at startup with no log and no test output, and nothing noticed because the merge path ran its gates locally. A local-suite canary now validates every file under `.github/workflows/` (Fixes #74).
+- **A stale CI conclusion quoted as current**: the merge gate reported a conclusion without saying when it ran or against which commit, so after a fix landed on main it kept quoting a stale failed run on the branch (Fixes #76). Conclusions now carry run id, commit, and time, and a run on an old commit is reported `stale`.
 
-*Remediation*: The verification hardening suite introduced first-class `verification_executed` audit trail events (ADR 031), patch coverage enforcement over modified lines (ADR 032), mandatory gate canaries proving gates can fail (Fixes #58), and out-of-date validator set notices (Fixes #59).
+*Remediation*: The verification hardening suite introduced first-class `verification_executed` audit trail events (ADR 031), patch coverage enforcement over modified lines (ADR 032), mandatory gate canaries proving gates can fail (Fixes #58), out-of-date validator set notices (Fixes #59), a CI-workflow canary (Fixes #74), and a merge gate that polls for a conclusion and distinguishes startup/cancelled/timeout failures (Fixes #72, #76).
 
 ---
 
@@ -426,3 +434,7 @@ Several gates were found reporting green while enforcing nothing:
 | Task sequences not merging on success | Required manual git merges | **Fixed** in ADR 020 (`_merge_on_success` auto-merges on pass) |
 | Unverified merges landing on main | Risk of unverified code merging | **Fixed** in ADR 031 (`verification_executed` audit event required) |
 | Repeat file reads inflating transcript | Token waste & prompt growth | **Fixed** in ADR 033 (repeat read memory & turn pointers) |
+| In-place coder changes not reviewable | Post-execute validators reviewed the previous commit | **Fixed** in ADR 030 (base class owns the commit) |
+| Coder capability negotiation by `hasattr` | Silent divergence between adapters | **Fixed** in ADR 035 (declared interface + conformance test) |
+| OpenCode path status unclear | Container adapter blinded reviewers for months | **Fixed** in ADR 034 (declared experimental) |
+| Operator review outcomes unmeasured | No evidence for unattended-operation claims | **Fixed** in ADR 036 (`snodo task review` / `snodo task report`) |
