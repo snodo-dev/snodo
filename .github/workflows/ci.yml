@@ -34,15 +34,7 @@ jobs:
             --cov-fail-under=63 | tee coverage-output.txt
           echo '## Coverage' >> "$GITHUB_STEP_SUMMARY"
           grep '^TOTAL' coverage-output.txt >> "$GITHUB_STEP_SUMMARY" || true
-          uv run python -c "
-from snodo.infrastructure.patch_coverage import parse_git_diff_added_lines, parse_coverage_xml, calculate_patch_coverage, enforce_patch_coverage
-base, added = parse_git_diff_added_lines('.')
-cov = parse_coverage_xml('coverage.xml')
-res = calculate_patch_coverage(added, cov, base)
-ok, msg = enforce_patch_coverage(res, 80.0)
-print(msg)
-if not ok: exit(1)
-"
+          uv run python scripts/enforce_patch_coverage.py
 
   lint:
     runs-on: ubuntu-latest
