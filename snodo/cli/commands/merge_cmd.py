@@ -60,6 +60,7 @@ from snodo.infrastructure.ci_gate import (
 from snodo.infrastructure.worktree import merge_task_branch
 from snodo.tools.git import GitError, resolve_base_branch
 
+from snodo.core.interfaces import AuditError
 from snodo.cli.commands.task_cmd import VALID_VERDICTS
 
 class MergeUsageError(Exception):
@@ -556,13 +557,24 @@ def _record_merge_and_review(args, project_root: str, branch: str) -> None:
             print(f"  ⚠ no review verdict — recorded {branch} as unreviewed", file=sys.stderr)
         else:
             print(f"  ✓ recorded review verdict '{verdict}' for {branch}")
-    except Exception:
-        # The merge happened; losing the review record must not fail it, but
-        # the unreviewed state is still the honest one and the operator is
-        # told. The merge itself is the gate, the review is a measurement.
+    except AuditError as e:
         print(
-            "  ⚠ could not resolve the audit log — review not recorded; "
-            "treat this merge as unreviewed",
+            f"  ✖ AUDIT LOG CHAIN CORRUPTED: {e}\n"
+            f"    Review verdict for {branch} was NOT recorded.\n"
+            f"    To recover: inspect .snodo/audit.log, fix/remove the corrupted entry, "
+            f"or run 'rm .snodo/audit.log' to start a clean chain.",
+            file=sys.stderr,
+        )
+    except (PermissionError, OSError) as e:
+        print(
+            f"  ⚠ audit log file access failed ({e}) — review verdict for {branch} not recorded.\n"
+            f"    To fix: check permissions and write access for .snodo/audit.log.",
+            file=sys.stderr,
+        )
+    except Exception as e:
+        print(
+            f"  ⚠ audit log resolution failed ({e}) — review verdict for {branch} not recorded.\n"
+            f"    To fix: run snodo merge within a valid snodo project repository.",
             file=sys.stderr,
         )
 
