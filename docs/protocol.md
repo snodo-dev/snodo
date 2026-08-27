@@ -96,10 +96,23 @@ modes:
 | `validators` | list[string] | no | Validator IDs active in this mode |
 | `transitions` | dict[string, string] | no | Declarative event→target-mode mappings (documented, not engine-executed) |
 | `constraints` | list[Constraint] | no | Mode-specific constraints |
-| `coder` | string | no | Coder backend (`"litellm"`, `"mock"`) |
+| `coder` | string | no | Coder backend (`"litellm"`, `"mock"`; `"opencode"` and `"opencode-cli"` are **experimental** — see below) |
 | `coder_config` | dict | no | Coder backend configuration |
 | `auto_merge` | bool | no | Override protocol-level `execution.auto_merge` for this mode (default `null`) |
 | `max_recovery_depth` | int | no | Override protocol-level `execution.max_recovery_depth` for this mode (default `null`) |
+
+### Coder backends
+
+`litellm` (any LiteLLM-supported model) and `mock` (deterministic stubs) are
+**supported**. The opencode backends — `opencode` (containerised, Docker/HTTP)
+and `opencode-cli` (host `opencode run`) — are **experimental**: they are
+exercised by the conformance suite and the `.snodo/` guard and commit are
+enforced by the adapter base class (ADR 027/030), but they do not yet report
+per-turn progress or contribute usage/cost records to the audit trail, and
+they are not used by any shipped template. Treat them as a research path, not
+a production default; if you rely on them, pin the opencode version and verify
+post-execute review output yourself. (See
+`docs/architecture/coder-adapter-contract.md`.)
 
 ### Tool set restrictions (WF1)
 
