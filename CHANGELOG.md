@@ -11,6 +11,27 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Runbooks brought up to date and their central finding corrected. Runbook 02
+  §9.1 previously claimed every defect was caught by `quality`, the only
+  validator that executes something, and that read-only judges passed
+  everything. That was true when written and is now too broad: pre-execute
+  `architecture` has repeatedly rejected real defects before any code existed
+  (an unsatisfiable acceptance criterion under the recorded Node floor citing
+  ADR-0001; a spec asserting the dependency guard was unaffected when the
+  accumulated failure showed it rejecting the new import; a stored card
+  requiring a template id the schema lacked — the last corroborated in
+  `docs/architecture/maturity-assessment-2026-08.md`), while post-execute
+  judgement of artifacts has been weak (the `acceptance` canary rejects a real
+  omission per Fixes #59, but a live run returned MET for a command it could
+  not run while `quality` held that command's failing output — Fixes #75). The
+  sharper claim is now stated with citations: pre-execute judgement of a
+  proposal has repeatedly caught real defects; post-execute judgement of
+  artifacts has been weak; execution is what catches those. What remains
+  uncertain is stated explicitly. Both runbooks are refreshed against ADRs
+  030–036 and the verification work (CI-workflow canary, merge-gate polling,
+  stale-conclusion detection, declared coder interface, operator review
+  tracking).
+
 - A local-suite canary that validates every file under `.github/workflows/`.
   The gate every other gate depends on is the CI workflow file itself, and it
   had no canary: `ci.yml` was invalid YAML for several merges (the
