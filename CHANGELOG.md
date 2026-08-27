@@ -380,6 +380,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   background completion that happened to win the race. A deterministic test now
   covers that `submit()` still starts a background worker. (Fixes #86).
 
+- E2E CLI fixtures now nest the project root under each test's tmp path and
+  expose the isolated `snodo_home` separately. This keeps `snodo run` worktree
+  siblings (`<project_root>/../.snodo-worktrees`) per-test instead of sharing
+  one worker-level sibling directory, hardening the e2e suite for CI's parallel
+  `-n auto` run. (Fixes #94).
+
 - `snodo merge` no longer blames a `startup_failure` CI conclusion on the
   branch. A run that never started — typically an invalid workflow definition
   (bad YAML, malformed step) — is not the branch's fault; the message now
