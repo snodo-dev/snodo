@@ -11,6 +11,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The worktree path checker no longer flags slash-containing prose as a
+  missing path. `_spec_referenced_paths` previously treated any token
+  containing a `/` as a cited path, so a spec sentence like
+  `rel=noindex/no-referrer` was flagged as a missing file alongside genuine
+  citations — a guard that cries wolf gets ignored, and this one guards
+  against a failure that already cost a whole task once. A token is now
+  path-like only when it ends in a file extension (`a/b/c.ext`), ends in a
+  trailing slash (`a/b/c/`), or has at least three slash-separated segments
+  (`a/b/c`). The deliberate trade-off: a two-segment extensionless path
+  written in prose (`src/parser`) is now missed, and a path named without a
+  path-like token was already missed. (Fixes #99).
+
 - Silent under-collection in pytest test suite execution prevented. `pytest_configure` in `tests/conftest.py` now asserts that pytest's resolved `rootdir` matches the workspace git root, preventing package-local or subdirectory rootdir resolutions from running partial test suites. Additionally, `pytest_collection_modifyitems` enforces a minimum collection count threshold (`>= 2000` tests) when targeting full suite paths (`tests/` or default), causing under-collection to fail loud with a `pytest.UsageError` instead of reporting false passes. (Fixes #98).
 
 - `snodo recon` LLM endpoint resolution and CLI worker completion fixed. `_call_agent` in `snodo.recon` now resolves `api_base` via `ConfigManager.resolve_api_base(model)` and binds provider `extra_headers` (such as Cloudflare `x-session-affinity`), preventing authentication failures when models route through custom endpoints. Additionally, CLI `recon_command` now waits for worker thread completion (`ReconManager.shutdown()`) and outputs the completed results directly to stdout, eliminating interpreter teardown crashes (`cannot schedule new futures after interpreter shutdown`). (Fixes #95).
