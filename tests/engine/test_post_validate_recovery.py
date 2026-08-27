@@ -288,6 +288,46 @@ class TestRecoverySpec:
         # It reads as an instruction, not a bare state description.
         assert "quality" in spec
 
+    def test_intent_is_the_operative_instruction(self, base_protocol):
+        """The intent is the task; the failures are diagnostic evidence, not a
+        second mandate (Fixes #78)."""
+        from snodo.engine.loop import _build_recovery_spec
+
+        failures = self._failures(
+            {"attempt": 1, "validator_id": "quality", "severity": "blocker",
+             "justification": "Tests failed (exit 2). Output:\nAssertionError: x"},
+        )
+        spec = _build_recovery_spec("implement vcard export", failures)
+
+        # The operative instruction is the intent, stated first.
+        assert spec.index("The task is the INTENT below") < spec.index("FAILURES")
+        # The failures are explicitly framed as evidence, not as the task.
+        assert "diagnostic evidence" in spec
+        assert "do not change the task" in spec
+        assert "do not widen its scope" in spec
+        # The old framing that made the failure list the mandate is gone.
+        assert "Fix the following failures" not in spec
+        assert "Address every failure listed below" not in spec
+
+    def test_failures_do_not_widen_scope(self, base_protocol):
+        """A recovery spec must not invite exploration beyond the intent, no
+        matter how many failures accumulate (Fixes #78)."""
+        from snodo.engine.loop import _build_recovery_spec
+
+        many_failures = self._failures(*[
+            {"attempt": i, "validator_id": "quality", "severity": "blocker",
+             "justification": f"failure {i}"}
+            for i in range(1, 5)
+        ])
+        spec = _build_recovery_spec("implement vcard export", many_failures)
+
+        # The scope anchor is the intent; the failures are evidence attached
+        # to it, never a widening instruction.
+        assert "Implement exactly the intent above" in spec
+        assert "Do not expand the task beyond it" in spec
+        assert "they do not change the task" in spec
+        assert "do not widen its scope" in spec
+
     def test_spec_never_truncates_justification(self, base_protocol):
         from snodo.engine.loop import _build_recovery_spec
 
@@ -341,7 +381,7 @@ class TestRecoverySpec:
         state["task"]["spec"] = "original spec"
         result = builder._post_validate_node(state)
         sub = result["spawned_subtasks"][0]
-        assert "Fix the following failures" in sub["spec"]
+        assert "The task is the INTENT below" in sub["spec"]
         assert "original spec" in sub["spec"]
         assert "Code quality too low" in sub["spec"]
         # No bare "Fix post-validation issues: ..." prefix.
