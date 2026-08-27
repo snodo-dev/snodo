@@ -140,28 +140,38 @@ def _verdict_signature(failures: list) -> tuple:
 def _build_recovery_spec(original_spec: str, failures: list) -> str:
     """Synthesise a recovery spec from the original intent + accumulated failures.
 
-    The original intent is carried forward exactly once, unchanged.  Each
-    failure is an entry dict of the form ``{"attempt", "validator_id",
+    The original intent is carried forward exactly once, unchanged, and is the
+    OPERATIVE instruction: the task is to implement the intent, nothing more.
+    Each failure is an entry dict of the form ``{"attempt", "validator_id",
     "severity", "justification"}`` carrying the attempt number that produced
     it, so the spec never wraps a previous recovery spec and the failure list
-    accumulates instead of nesting (ADR 021).  The justification is preserved
+    accumulates instead of nesting (ADR 021). The justification is preserved
     verbatim — including the bounded stdout/stderr tail the validator captured.
+
+    The failures are framed as DIAGNOSTIC EVIDENCE, not as a second mandate
+    (Fixes #78). A recovery spec that says "fix all these failures" sets the
+    coder's sense of scope from the accumulated failure list — which grows
+    with every attempt — and invites broad exploration: observed twice, a
+    first attempt reached submit_files at turn 16 while its recovery read
+    essentially the whole repository across 48 turns. The intent is the scope
+    anchor; the failures tell the coder what went wrong, not what to build.
     """
     lines = [
-        "Fix the following failures. Each is a real, observed failure from a "
-        "recovery attempt; resolve all of them.",
+        "The task is the INTENT below. Implement it.",
         "",
         "INTENT (unchanged from the original task):",
         original_spec,
         "",
         "CONSTRAINTS:",
-        "- Preserve the original intent and scope; do not add unrelated changes.",
-        "- Address every failure listed below.",
+        "- Implement exactly the intent above. Do not expand the task beyond it.",
+        "- The failures below are diagnostic evidence of what went wrong on "
+        "earlier attempts. Use them to diagnose, but they do not change the "
+        "task and do not widen its scope.",
     ]
 
     if failures:
         lines.append("")
-        lines.append("FAILURES (accumulated across recovery attempts):")
+        lines.append("FAILURES (evidence, accumulated across recovery attempts):")
         for f in failures:
             attempt = f.get("attempt", "?")
             lines.append(
