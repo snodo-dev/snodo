@@ -184,6 +184,12 @@ Shipped adapters (`engine/coders/`):
 - **OpenCodeAdapter** (`opencode_cli_adapter.py`): drives the host `opencode` CLI as the coder
 - **MockAdapter** (`mock.py`): deterministic stub for testing
 
+The opencode backends (`opencode` containerised, `opencode-cli` host) are
+**experimental**: the conformance suite and the `.snodo/` guard + commit
+(ADR 027/030) hold for them, but they do not yet report per-turn progress or
+contribute usage/cost records, and no shipped template uses them. See
+`docs/protocol.md` and `docs/architecture/coder-adapter-contract.md`.
+
 Adapters that write to the working tree **in place** (opencode and similar;
 `skip_workspace_write = True`) inherit `InPlaceCoderAdapter`
 (`coders/base.py`). They bypass `WorkspaceMCP`, so the `.snodo/` boundary

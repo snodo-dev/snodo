@@ -218,11 +218,15 @@ skipped line.
 
 1. **File and fix the container-commit defect.** P1: post-execute validators on
    `opencode/<model>` review the previous commit. Decide (a) or (b) above while
-   fixing it.
+   fixing it. **Done** — ADR 030, `InPlaceCoderAdapter` owns the commit.
 2. **Add the adapter conformance test** over every registered adapter.
+   **Done** — `tests/coders/test_adapter_conformance.py`.
 3. **Decide whether the opencode path is supported or experimental**, and say so in
    the docs. Sitting between the two is how the container adapter came to silently
-   blind the reviewers.
+   blind the reviewers. **Done** — **experimental** (ADR 032); recorded in
+   `docs/protocol.md`, `docs/architecture.md`, the `init` output, and the runbook.
 4. **Decide whether cost attribution is part of the audit trail.** If it is, the
    opencode paths need to contribute to it; if it is not, say so explicitly so the
-   absence is a decision rather than an oversight.
+   absence is a decision rather than an oversight. **Open** — the experimental
+   designation (ADR 032) states the absence explicitly; revisit if the path is
+   promoted to supported.

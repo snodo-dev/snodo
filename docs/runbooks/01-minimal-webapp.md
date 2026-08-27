@@ -111,6 +111,8 @@ Using existing RS256 keypair:
 
 OpenCode adapter: Docker detected. Build the image with:
   docker build -t snodo-opencode:latest -f docker/Dockerfile.opencode .
+  Note: the opencode coder is EXPERIMENTAL — no per-turn progress
+  or usage/cost records, and not used by any shipped template.
 
 Snodo initialized successfully!
 ```

@@ -11,6 +11,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The opencode coder path is now explicitly **experimental**, not supported.
+  The containerised `opencode` and host `opencode-cli` backends are exercised
+  by the adapter conformance suite and the `.snodo/` guard and commit hold for
+  them (ADR 027/030), but they do not yet report per-turn progress or
+  contribute usage/cost records, and no shipped template uses them. The
+  position is recorded where an operator meets the path: `docs/protocol.md`
+  (the `coder` field and a "Coder backends" section), `docs/architecture.md`,
+  the `snodo init` Docker check output, and the minimal-webapp runbook. See
+  ADR 034.
+
 - Tool loop repeat read memory deduplication in `LiteLLMCoder` and `LLMValidator`. When a model
   repeatedly requests files or line ranges already fetched in an earlier turn (e.g. `read_file`
   at Turn 3 and Turn 19), the tool loop intercepts the request and returns a turn pointer

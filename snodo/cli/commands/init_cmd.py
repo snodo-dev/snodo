@@ -515,6 +515,8 @@ def init_command(args) -> int:
             else:
                 print()
                 print("OpenCode adapter: Docker + image ready.")
+            print("  Note: the opencode coder is EXPERIMENTAL — no per-turn progress")
+            print("  or usage/cost records, and not used by any shipped template.")
         else:
             print()
             print("OpenCode adapter: Docker not available. Install Docker to use opencode models.")
