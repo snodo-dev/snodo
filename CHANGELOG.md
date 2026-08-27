@@ -235,6 +235,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Recovery specs no longer widen the coder's sense of scope. The recovery
+  spec previously opened with "Fix the following failures... resolve all of
+  them" and "Address every failure listed below", making the accumulated
+  failure list the operative instruction — and since failures accumulate with
+  every attempt, the coder's scope grew with each cycle. Observed twice in
+  real runs: a first attempt reached `submit_files` at turn 16 with 11 files,
+  while its recovery read essentially the entire repository across 48 turns
+  and 18 minutes before submitting 4 files. The intent is now the operative
+  instruction ("The task is the INTENT below. Implement it.") and the failures
+  are explicitly framed as diagnostic evidence that does not change the task
+  or widen its scope. The intent is still carried exactly once, unchanged, and
+  the failure evidence is still preserved verbatim (ADR 021). (Fixes #78).
+
 - `snodo merge` no longer blames a `startup_failure` CI conclusion on the
   branch. A run that never started — typically an invalid workflow definition
   (bad YAML, malformed step) — is not the branch's fault; the message now
