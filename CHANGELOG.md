@@ -25,6 +25,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
   that occurred; a full GitHub-Actions schema validator is a heavier
   dependency not warranted for files we author. (Fixes #74).
 
+- A criterion naming a command the acceptance validator cannot run is now
+  UNCHECKABLE by construction. A read-only judge without a shell was returning
+  MET for "make check passes" — reasoning that nothing in the tree demonstrably
+  failed it — while `quality`, which had actually run the command, held its
+  failing output in the same cycle. "Verified from the tree" is a weaker claim
+  than "the command passed", and conflating them let a judge assert something
+  execution had already disproved. Post-execute validators additionally now
+  detect that contradiction: when an execution validator reports a failure and a
+  read-only validator claims the same command passed, the read-only verdict is
+  superseded and a `validator_contradiction_detected` audit event records it.
+  (Fixes #75).
+
 - Real-time terminal progress visibility for post-execute validator verdicts and recovery transitions. Post-execute validator warnings, blockers, and errors are surfaced as they land with icons (`⚠️`, `❌`, `💥`) and clean first-line justification snippets. Recovery subtask spawns (`Recovery (attempt N/M): spawned <fix_task_id> (...)`), recovery stalls (`Recovery stalled`), and depth exhaustion (`Recovery depth exhausted`) are explicitly printed during execution. (Fixes #71).
 
 - Operator human review tracking (`snodo task review <task_id> <verdict>`) and acceptance rate reporting (`snodo task report` / `snodo task review --report`). Reviews append `human_review_recorded` events to `.snodo/audit.log`, maintaining hash-chain integrity. Reports calculate the fraction of completed tasks accepted unchanged over a rolling window (3-category taxonomy: `accepted`, `amended`, `discarded`). Machine-readable JSON output (`snodo.task_review_report.v1`) included. See ADR 036. (Fixes #70).
