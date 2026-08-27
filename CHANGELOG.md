@@ -282,6 +282,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Recording a review outcome is now part of the merge, not a separate act of
+  discipline. `snodo task review <id> accepted|amended|discarded` shipped with
+  ADR 036 and was never run once — a measurement that depends on remembering
+  does not get taken. `snodo merge` now records the verdict at the moment the
+  operator looks at the work and decides: each merged branch is written to the
+  audit log (`task_merged` + `human_review_recorded`), with the verdict taken
+  from `--review <verdict>` when given, prompted interactively on a TTY, or —
+  when the merge is unattended (`--no-review`, no TTY, or no answer) —
+  recorded as **unreviewed**. An unreviewed merge is never silently counted as
+  accepted: the report's rate is computed over reviewed tasks only, and the
+  unreviewed count is explicit. (Fixes #83).
+
 - Recovery specs no longer widen the coder's sense of scope. The recovery
   spec previously opened with "Fix the following failures... resolve all of
   them" and "Address every failure listed below", making the accumulated
