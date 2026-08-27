@@ -10,7 +10,9 @@ Branch:         task/{id}/{slug}  (always off ``main``)
 """
 
 import logging
+import re
 import shutil
+import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -28,7 +30,6 @@ class WorktreeIsolationError(Exception):
 
 
 def _slugify(spec: str, max_words: int = 5) -> str:
-    import re
     words = spec.strip().split()[:max_words]
     slug = "-".join(words).lower()
     slug = re.sub(r"[^a-z0-9-]", "", slug)
@@ -45,6 +46,90 @@ def worktree_dir(project_root: str) -> Path:
 
 def worktree_path(project_root: str, task_id: str) -> Path:
     return worktree_dir(project_root) / task_id
+
+
+# Paths a task spec may legitimately name that are not files the coder should
+# be able to read as authority. A spec that cites one of these is not silently
+# transferring authority to the coder.
+_SPEC_PATH_IGNORE = {
+    ".snodo", "docs/decisions", "docs/specs", "docs/architecture",
+    "CHANGELOG.md", "README.md", "CONTRIBUTING.md", "LICENSE",
+    "pyproject.toml", "package.json", "Cargo.toml", "go.mod", "Makefile",
+    ".github", "docker", "scripts", "tests", "uv.lock",
+}
+
+
+def _spec_referenced_paths(spec: str) -> List[str]:
+    """Return repository paths a task spec names, best-effort.
+
+    A spec that cites a path snodo cannot see is a spec whose authority is
+    silently transferred to the coder: the coder writes its own version of the
+    file and the validators then judge the work against the document the coder
+    just authored (issue #93). This extracts candidate paths from the spec text
+    so the caller can check they exist in the worktree before dispatch.
+
+    Extraction is deliberately conservative — it looks for path-like tokens
+    (``a/b/c.ext``, ``a/b/c/``) and bare ``.md``/``.html``/``.json``/``.yml``
+    filenames — and returns paths that are NOT in the ignore set. It is a
+    heuristic: a spec that names a path in prose without a path-like token is
+    not caught here, and a path that is meant to be created is a false positive
+    the caller must tolerate.
+    """
+    found: List[str] = []
+    for token in re.findall(r"[A-Za-z0-9_./-]+", spec):
+        token = token.strip("/")
+        if not token or token.startswith(".") or "/" not in token:
+            continue
+        # Ignore governance/authority paths the coder must not read, and any
+        # path under them (prefix match), so a spec citing docs/decisions/0001
+        # is not flagged.
+        if any(
+            token == ig or token.startswith(ig + "/")
+            for ig in _SPEC_PATH_IGNORE
+        ):
+            continue
+        if token not in found:
+            found.append(token)
+    return found
+
+
+def check_spec_paths_exist(
+    project_root: str,
+    spec: str,
+    worktree: Optional[str] = None,
+) -> List[str]:
+    """Return spec-referenced paths that do NOT exist in the worktree.
+
+    *worktree* is the task worktree (built from the branch); when None, the
+    project root is checked. A path that exists in the operator's working tree
+    but is untracked is absent from the worktree — the coder would invent it
+    (issue #93). This is a warning, not a halt: specs legitimately name paths
+    that are meant to be created, and only the operator can tell the two apart.
+    """
+    base = Path(worktree) if worktree else Path(project_root)
+    missing = []
+    for rel in _spec_referenced_paths(spec):
+        if not (base / rel).exists():
+            missing.append(rel)
+    return missing
+
+
+def surface_untracked_files(project_root: str) -> List[str]:
+    """Return untracked files in the project root that a worktree will not see.
+
+    A task worktree is built from the branch, so an untracked file the operator
+    can see in their working tree is absent from the worktree. If a task spec
+    cites such a file, the coder invents it and the validators judge the work
+    against the coder's own document (issue #93). Surfacing the untracked set
+    at worktree creation makes "the operator can see it and snodo cannot" a
+    visible fact instead of a silent gap.
+    """
+    try:
+        from git import Repo
+        repo = Repo(str(Path(project_root)), search_parent_directories=True)
+        return sorted(repo.untracked_files)
+    except Exception:  # noqa: BLE001 — best-effort; never block on this
+        return []
 
 
 def create_worktree(
@@ -104,6 +189,29 @@ def create_worktree(
 
     repo.git.worktree("add", str(wt_path), "-b", branch_name, base_branch)
     _logger.info("Created worktree %s on branch %s (off %s)", wt_path, branch_name, base_branch)
+
+    # Surface untracked files in the project root: a task worktree is built
+    # from the branch, so an untracked file the operator can see is absent
+    # from the worktree. If the task spec cites such a file, the coder invents
+    # it and the validators judge the work against the coder's own document
+    # (issue #93). This makes "the operator can see it and snodo cannot" a
+    # visible fact at the moment the worktree is created.
+    untracked = surface_untracked_files(project_root)
+    if untracked:
+        print(
+            "  Note: the following untracked files exist in your working tree "
+            "but are NOT in the task worktree (built from the branch):",
+            file=sys.stderr,
+        )
+        for path in untracked:
+            print(f"    - {path}", file=sys.stderr)
+        print(
+            "  If the task spec cites one of these as authority, the coder "
+            "cannot see it and will invent its own version. Commit the file "
+            "or reference it differently.",
+            file=sys.stderr,
+        )
+
     return wt_path
 
 
