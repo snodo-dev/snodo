@@ -779,6 +779,33 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         # Merge post-validate results with existing results
         loop_state.validation_results = loop_state.validation_results + results
 
+        # Detect contradictions between execution validators (quality) and read-only judges (acceptance)
+        quality_failing = [
+            r for r in results
+            if getattr(r, "error", False) or r.severity in ("warn", "blocker")
+        ]
+        acceptance_passing = [
+            r for r in results
+            if r.validator_id == "acceptance" and r.severity == "pass"
+        ]
+        if quality_failing and acceptance_passing:
+            q_res = quality_failing[0]
+            for a_res in acceptance_passing:
+                a_just = a_res.justification or ""
+                self._audit("validator_contradiction_detected", {
+                    "op": "validator_contradiction_detected",
+                    "task_ref": loop_state.task.id,
+                    "execution_validator": q_res.validator_id,
+                    "execution_justification": q_res.justification,
+                    "acceptance_justification": a_just,
+                })
+                if any(kw in a_just.lower() for kw in ("check", "test", "npm", "pytest", "build", "passes", "met")):
+                    a_res.severity = "warn"
+                    a_res.justification = (
+                        f"[CONTRADICTION DETECTED: execution validator '{q_res.validator_id}' failed "
+                        f"({q_res.justification}). Acceptance claim superseded.] {a_just}"
+                    )
+
         # Evaluate policy on post-execute results
         decision = self.policy_evaluator.evaluate(
             results,

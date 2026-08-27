@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Strictly enforced UNCHECKABLE classification for command/build/test execution criteria (`make check`, `npm test`, `pytest`) in `AcceptanceValidator`. Read-only judges without shell tools are explicitly forbidden from marking execution criteria as `MET` by inferring success from static files. Additionally, post-execute validator contradiction detection (`validator_contradiction_detected` audit event) overrides contradictory read-only `pass` claims when execution validators (`quality`) report test/command failures in the same post-execute cycle. (Fixes #75).
+
 - Real-time terminal progress visibility for post-execute validator verdicts and recovery transitions. Post-execute validator warnings, blockers, and errors are surfaced as they land with icons (`⚠️`, `❌`, `💥`) and clean first-line justification snippets. Recovery subtask spawns (`Recovery (attempt N/M): spawned <fix_task_id> (...)`), recovery stalls (`Recovery stalled`), and depth exhaustion (`Recovery depth exhausted`) are explicitly printed during execution. (Fixes #71).
 
 - Operator human review tracking (`snodo task review <task_id> <verdict>`) and acceptance rate reporting (`snodo task report` / `snodo task review --report`). Reviews append `human_review_recorded` events to `.snodo/audit.log`, maintaining hash-chain integrity. Reports calculate the fraction of completed tasks accepted unchanged over a rolling window (3-category taxonomy: `accepted`, `amended`, `discarded`). Machine-readable JSON output (`snodo.task_review_report.v1`) included. See ADR 036. (Fixes #70).
