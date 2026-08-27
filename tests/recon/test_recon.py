@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+import snodo.recon as recon_module
 from snodo.recon import ReconManager, ReconState, ReconResult, ReconError
 
 
@@ -24,7 +25,17 @@ def project_with_snodo():
 
 
 @pytest.fixture
-def recon_mgr(project_with_snodo):
+def recon_mgr(project_with_snodo, monkeypatch):
+    """ReconManager with worker execution isolated from state assertions.
+
+    The production ``submit()`` call saves state, starts a worker thread,
+    and returns.  Reading ``state.json`` immediately afterwards is racy unless
+    the worker body is isolated; tests below assert the state created by
+    ``submit()`` itself, not whether a real worker happened to finish first.
+    """
+    monkeypatch.setattr(recon_module, "_threads", [])
+    monkeypatch.setattr(ReconManager, "_run_recon", lambda *args, **kwargs: None)
+
     mgr = ReconManager(project_with_snodo)
     yield mgr
     mgr.shutdown()
@@ -71,6 +82,35 @@ class TestReconManagerSubmit:
         recon_dir = Path(recon_mgr.recons_dir) / recon_id
         state = json.loads((recon_dir / "state.json").read_text())
         assert state["agents"] == agents
+
+    def test_submit_starts_background_worker(self, project_with_snodo, monkeypatch):
+        class FakeThread:
+            def __init__(self, target=None, args=(), kwargs=None):
+                self.target = target
+                self.args = args
+                self.kwargs = kwargs or {}
+                self.started = False
+
+            def start(self):
+                self.started = True
+
+        fake_threads = []
+
+        def fake_thread(*args, **kwargs):
+            thread = FakeThread(*args, **kwargs)
+            fake_threads.append(thread)
+            return thread
+
+        monkeypatch.setattr(recon_module, "Thread", fake_thread)
+        monkeypatch.setattr(recon_module, "_threads", [])
+        monkeypatch.setattr(ReconManager, "_run_recon", lambda *args, **kwargs: None)
+
+        mgr = ReconManager(project_with_snodo)
+        recon_id = mgr.submit("query", ["./"])
+
+        assert len(fake_threads) == 1
+        assert fake_threads[0].started is True
+        assert fake_threads[0].args == (recon_id, "query", ["./"], ["default"])
 
 
 class TestReconManagerGetStatus:

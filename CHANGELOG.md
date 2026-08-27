@@ -329,6 +329,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   `PathValidationError`, and directory listings omit `.git` entries while
   `.gitignore` and normal project files remain accessible. (Fixes #80).
 
+- The recon test fixture no longer races the background worker. `recon_mgr`
+  isolates `snodo.recon._threads` and stubs the worker body before assertions,
+  so `status="running"` reflects the state written by `submit()` rather than a
+  background completion that happened to win the race. A deterministic test now
+  covers that `submit()` still starts a background worker. (Fixes #86).
+
 - `snodo merge` no longer blames a `startup_failure` CI conclusion on the
   branch. A run that never started — typically an invalid workflow definition
   (bad YAML, malformed step) — is not the branch's fault; the message now
