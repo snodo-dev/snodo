@@ -20,6 +20,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
+          enable-cache: true
       - name: Configure git
         run: |
           git config --global user.email "ci@snodo.dev"
@@ -44,6 +45,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+          enable-cache: true
       - name: Install (uv workspace)
         run: uv sync --all-extras
       - name: Lint (ruff)
