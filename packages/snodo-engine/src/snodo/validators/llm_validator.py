@@ -36,6 +36,7 @@ from snodo.core.interfaces import Task, ValidatorResult
 from snodo.validators.context import ValidatorContext, ValidatorBase
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
+from snodo.coders.litellm import ReadMemoryTracker, format_repeat_read_response
 
 _logger = logging.getLogger(__name__)
 
@@ -247,6 +248,7 @@ class LLMValidator(ValidatorBase):
         retried_free_text = False
         cb = getattr(context, "progress_callback", None) or getattr(self, "progress_callback", None)
         start_time = time.monotonic()
+        read_tracker = ReadMemoryTracker()
 
         for turn in range(tool_turns):
             try:
@@ -322,7 +324,12 @@ class LLMValidator(ValidatorBase):
                         # before the next request.
                         result = self._submit_verdict_feedback(tc)
                     else:
-                        result = self._execute_tool(tool_name, args, workspace, git)
+                        prev_turn = read_tracker.check_read(tool_name, args)
+                        if prev_turn is not None:
+                            result = format_repeat_read_response(tool_name, args, prev_turn)
+                        else:
+                            result = self._execute_tool(tool_name, args, workspace, git)
+                            read_tracker.record_read(tool_name, args, turn + 1)
 
                     messages.append({
                         "role": "tool",

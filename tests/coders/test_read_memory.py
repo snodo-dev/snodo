@@ -24,7 +24,8 @@ def test_canonical_read_key():
 def test_format_repeat_read_response():
     """format_repeat_read_response generates concise turn pointers."""
     msg = format_repeat_read_response("read_file", {"path": "src/scripts/auth.js"}, 3)
-    assert "'src/scripts/auth.js' was already fetched using read_file in Turn 3" in msg
+    assert "File 'src/scripts/auth.js'" in msg
+    assert "was already fetched using read_file in Turn 3" in msg
     assert "Refer to the tool response from Turn 3" in msg
 
 
@@ -87,3 +88,39 @@ def test_litellm_coder_serves_repeat_read_pointer():
     # workspace.read_file should ONLY have been called ONCE (Turn 1), not twice
     assert workspace.read_file.call_count == 1
     workspace.read_file.assert_called_once_with("auth.js")
+
+
+def test_read_memory_tracker_range_coverage():
+    """ReadMemoryTracker detects when ranged reads are covered by earlier full or ranged reads."""
+    from snodo.coders.litellm import ReadMemoryTracker
+
+    tracker = ReadMemoryTracker()
+
+    # Turn 1: read_file("src/app.py") (full file)
+    tracker.record_read("read_file", {"path": "src/app.py"}, turn_idx=1)
+
+    # Turn 2: read_file_lines("src/app.py", start=10, end=50) -> covered by Turn 1!
+    assert tracker.check_read("read_file_lines", {"path": "src/app.py", "start": 10, "end": 50}) == 1
+
+    # Turn 3: read_file_lines("src/utils.py", start=1, end=400)
+    tracker.record_read("read_file_lines", {"path": "src/utils.py", "start": 1, "end": 400}, turn_idx=3)
+
+    # Turn 4: read_file_lines("src/utils.py", start=50, end=150) -> covered by Turn 3!
+    assert tracker.check_read("read_file_lines", {"path": "src/utils.py", "start": 50, "end": 150}) == 3
+
+    # Turn 5: read_file_lines("src/utils.py", start=100, end=500) -> NOT fully covered
+    assert tracker.check_read("read_file_lines", {"path": "src/utils.py", "start": 100, "end": 500}) is None
+
+
+def test_read_memory_tracker_list_files_dedup():
+    """ReadMemoryTracker deduplicates repeated list_files directory listings."""
+    from snodo.coders.litellm import ReadMemoryTracker
+
+    tracker = ReadMemoryTracker()
+
+    # Turn 1: list_files("src")
+    tracker.record_read("list_files", {"directory": "src"}, turn_idx=1)
+
+    # Turn 2: list_files("src") -> covered by Turn 1!
+    assert tracker.check_read("list_files", {"directory": "src"}) == 1
+    assert tracker.check_read("list_files", {"path": "./src/"}) == 1
