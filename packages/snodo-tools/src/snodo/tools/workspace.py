@@ -50,7 +50,8 @@ class WorkspaceMCP:
             Resolved absolute Path object
             
         Raises:
-            PathValidationError: If path escapes project root or attempts to mutate .snodo/
+            PathValidationError: If path escapes project root, accesses .git/, or
+                attempts to mutate .snodo/
         """
         # Convert to Path and resolve (handles .., symlinks, etc.)
         if os.path.isabs(path):
@@ -68,6 +69,11 @@ class WorkspaceMCP:
                 f"Path escapes project root: {path} -> {resolved}"
             )
         
+        if ".git" in rel.parts:
+            raise PathValidationError(
+                f"Path is protected under .git/ and cannot be accessed: {path} -> {resolved}"
+            )
+
         if for_mutation and rel.parts and rel.parts[0] == ".snodo":
             raise PathValidationError(
                 f"Path is protected under .snodo/ and cannot be mutated: {path} -> {resolved}"
@@ -163,10 +169,10 @@ class WorkspaceMCP:
             directory: Directory path (relative to project root or absolute)
             
         Returns:
-            List of file/directory names (not full paths)
+            List of file/directory names (not full paths). `.git` entries are omitted.
             
         Raises:
-            PathValidationError: If path escapes project root
+            PathValidationError: If path escapes project root or is under .git/
             FileNotFoundError: If directory doesn't exist
         """
         validated_path = self.validate_path(directory)
@@ -178,7 +184,11 @@ class WorkspaceMCP:
             raise ValueError(f"Path is not a directory: {directory}")
         
         # List directory contents
-        return [item.name for item in validated_path.iterdir()]
+        return [
+            item.name
+            for item in validated_path.iterdir()
+            if item.name != ".git"
+        ]
     
     def file_exists(self, path: str) -> bool:
         """Check if file exists.

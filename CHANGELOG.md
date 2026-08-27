@@ -235,6 +235,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `WorkspaceMCP` now refuses access to `.git/` paths at the tool surface.
+  Exact `.git`, paths under `.git/`, and absolute `.git` paths raise
+  `PathValidationError`, and directory listings omit `.git` entries while
+  `.gitignore` and normal project files remain accessible. (Fixes #80).
+
 - `snodo merge` no longer blames a `startup_failure` CI conclusion on the
   branch. A run that never started — typically an invalid workflow definition
   (bad YAML, malformed step) — is not the branch's fault; the message now
