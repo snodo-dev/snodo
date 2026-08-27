@@ -286,6 +286,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- CI's test job now runs the full suite in parallel (`-n auto`). The job
+  previously ran `pytest tests/ -m ""` serially — the full suite including e2e
+  took 385s (run 33085073065) and 369s (run 33102852491) while the same suite
+  local is ~50s with `-n auto` and e2e deselected by default. Per-step timing
+  showed the time was not in dependency setup (`uv sync` ≈ 5s) or uv install
+  (≈ 3s) but in the Test + coverage step itself (238–356s): it runs the entire
+  suite — e2e included — on a single process. Adding `-n auto` parallelizes
+  across the runner's cores; nothing tested is dropped (the full `-m ""` suite
+  still runs, and the e2e suite still runs in CI). Local reproduction of the
+  exact CI command with `-n auto`: 138s vs 385s serial, coverage gate still
+  passes at 71%. (Fixes #89).
+
 - Recording a review outcome is now part of the merge, not a separate act of
   discipline. `snodo task review <id> accepted|amended|discarded` shipped with
   ADR 036 and was never run once — a measurement that depends on remembering
