@@ -16,6 +16,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - `snodo merge` conflict messaging updated to accurately reflect that aborted merges leave the base branch clean, and now lists all conflicting file paths. `GitMCP.merge_branch` executes `git merge --abort` on conflict to preserve base branch cleanliness for automated workflows. Previously, the CLI output falsely claimed "The branch and worktree were left intact for manual resolution. Resolve it, then re-run `snodo merge` to continue." when the index was actually clean (`git ls-files -u` empty). The CLI now explicitly lists conflicting paths, explains that the merge was rolled back, and outputs the exact command (`git merge <branch>`) for manual resolution.
 
 - `snodo merge` error messaging for staged index files updated and redundant checkouts skipped. Plain `git merge` strategy ort refuses when files in the index are staged during a 3-way merge attempt (`overwritten by merge`), raising exit code 128. `GitMCP.merge_branch` now detects staged changes in the index (`git diff --cached --name-only`) and reports explicit error advice asking the operator to unstage or commit them before merging. Additionally, redundant `git checkout <base>` calls when already on the base branch are skipped to avoid unnecessary index locks and enable cleaner execution.
+- Structured output degrades instead of failing when a provider rejects
+  `response_format`. DeepSeek returned 400 "This response_format type is
+  unavailable now" for every validator call and the wave classifier,
+  intermittently, for over an hour — a provider rejecting structured output
+  took every validator down. When the structured call is rejected (a 4xx other
+  than 429), the validator now falls back to an unstructured call and parses
+  the verdict from the content; if the fallback does not parse, that is an
+  operational fault (`error=True`), not a warn verdict. The transient-retry
+  predicate is also honest now: it classifies on exception type and HTTP status
+  code instead of substring-matching error prose (the old predicate matched
+  `"500"`/`"502"`/`"deepseekexception"` anywhere in a message, so every error
+  from that provider was retryable). A 4xx other than 429 is a client error and
+  is not retried; 5xx, 429, connection, DNS and timeout errors still are — the
+  retry that rescued this incident is kept. (Fixes #84).
 
 - Transient LLM provider and network errors during validator execution are now retried before emitting an operational fault, and unrecoverable provider/tool-loop exceptions are reported as `error=True` (`validator_error`) rather than `warn`. Previously, a transient DNS resolution error (`[Errno 8] nodename nor servname provided, or not known`) or API timeout in `LLMValidator` returned `severity="warn"` (`error=False`), causing unanimous disagreement policies to mistake an infrastructure fault for a code judgment warning and trigger unnecessary recovery cycles on healthy runs. Retrying transient errors (up to 3 attempts) transparently resolves momentary network blips, while unhandled operational faults halt cleanly as `validator_error` without entering recovery loops. (Fixes #82).
 - Parallel merges no longer conflict on `CHANGELOG.md`. Every agent appends its

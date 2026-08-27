@@ -20,6 +20,7 @@ from litellm import supports_response_schema
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import ValidatorResult
 from snodo.validators.context import ValidatorContext, ValidatorBase
+from snodo.validators.llm_validator import _is_provider_rejection
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
 
@@ -68,17 +69,36 @@ class ProtocolAdherenceValidator(ValidatorBase):
 
         prompt = self._build_prompt(context)
 
-        # Try structured output when the model supports it
+        # Try structured output when the model supports it.  Structured output
+        # must DEGRADE, not fail: a provider that rejects response_format must
+        # not take the validator down — fall back to an unstructured call and
+        # parse the verdict from the content (Fixes #84).
+        structured_rejected = False
         if self._completion_fn is not None and supports_response_schema(self.model):
             try:
                 return self._call_llm_structured(prompt)
-            except Exception:
-                pass  # fall through to legacy parse
+            except Exception as e:
+                structured_rejected = _is_provider_rejection(e)
 
         # Legacy: free-text completion + hand-rolled parse
         try:
             response_text = self._call_llm(prompt)
-            return self._parse_response(response_text)
+            res = self._parse_response(response_text)
+            # If the provider rejected structured output AND the unstructured
+            # fallback did not parse, that is an operational fault, not a
+            # verdict (Fixes #84).
+            if structured_rejected and res.severity == "warn" \
+                    and "Could not parse" in res.justification:
+                return ValidatorResult(
+                    validator_id=self.validator_spec.validator_id,
+                    severity="blocker",
+                    justification=(
+                        "Structured output was rejected by the provider and the "
+                        f"unstructured fallback did not parse: {res.justification}"
+                    ),
+                    error=True,
+                )
+            return res
         except Exception as e:
             return ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
