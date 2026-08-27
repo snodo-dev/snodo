@@ -548,25 +548,23 @@ class TestProgressOutput:
         assert "Validating (pre-execute): security" in out
 
     def test_validate_node_verdicts_verbose_only(self, capsys):
-        """Per-validator verdicts are printed only when verbose is set."""
-        def mock_validator_fn(task, validators, shell_mcp, **kwargs):
-            result = ValidatorResult(validator_id="security", severity="warn",
-                                     justification="warn")
+        """Per-validator pass verdicts are printed only when verbose is set; warnings surface on normal path."""
+        def mock_pass_fn(task, validators, shell_mcp, **kwargs):
+            result = ValidatorResult(validator_id="security", severity="pass", justification="pass")
             cb = kwargs.get("progress_cb")
             if cb is not None:
                 cb("security", result)
             return [result]
 
-        builder = GraphBuilder(self._protocol(), validator_fn=mock_validator_fn)
+        builder = GraphBuilder(self._protocol(), validator_fn=mock_pass_fn)
         builder._validate_node(self._state())
         out = capsys.readouterr().out
-        assert "security: warn" not in out
+        assert "security: pass" not in out
 
-        builder_verbose = GraphBuilder(self._protocol(), validator_fn=mock_validator_fn,
-                                       verbose=True)
+        builder_verbose = GraphBuilder(self._protocol(), validator_fn=mock_pass_fn, verbose=True)
         builder_verbose._validate_node(self._state())
-        out = capsys.readouterr().out
-        assert "security: warn" in out
+        out_verbose = capsys.readouterr().out
+        assert "security: pass" in out_verbose
 
 
 class TestExecutionFailureReporting:

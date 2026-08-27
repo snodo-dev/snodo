@@ -869,6 +869,9 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             loop_state.constraint_violations.append(
                 f"Recovery depth exhausted (depth={current_depth}, max={max_depth})"
             )
+            self._progress(
+                f"  Recovery depth exhausted (depth {current_depth}/{max_depth}): limit reached; halting loop"
+            )
             self._audit("recovery_exhausted", {
                 "op": "recovery_exhausted",
                 "task_ref": loop_state.task.id,
@@ -909,6 +912,9 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                 "Recovery stalled: this attempt produced the same validator "
                 "verdict as the previous attempt; the loop cannot converge."
             )
+            self._progress(
+                f"  Recovery stalled (attempt {current_depth + 1}/{max_depth}): identical validator verdict as previous attempt; halting loop"
+            )
             self._audit("recovery_stalled", {
                 "op": "recovery_stalled",
                 "task_ref": loop_state.task.id,
@@ -936,6 +942,11 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         )
         loop_state.spawned_subtasks.append(fix_task)
         loop_state.needs_recovery = True
+
+        triggers_str = ", ".join(f"{f['validator_id']} ({f['severity']})" for f in new_failures) or "validation failure"
+        self._progress(
+            f"  Recovery (attempt {fix_task.depth}/{max_depth}): spawned {fix_task.id} ({triggers_str})"
+        )
 
         self._audit("subtask_spawned", {
             "op": "subtask_spawned",
@@ -1172,9 +1183,24 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             self._progress(arg1)
 
     def _validator_verdict_cb(self, validator_id: str, result: Any) -> None:
-        """Print a per-validator verdict as it lands (verbose only)."""
+        """Print a per-validator verdict as it lands (warn/blocker/error always; pass in verbose)."""
         severity = getattr(result, "severity", "?")
-        self._progress(f"    ✓ {validator_id}: {severity}", verbose=True)
+        justification = getattr(result, "justification", "") or ""
+        first_line = justification.strip().splitlines()[0] if justification.strip() else ""
+        if len(first_line) > 80:
+            first_line = first_line[:77] + "..."
+
+        if severity == "pass":
+            self._progress(f"    ✓ {validator_id}: pass", verbose=True)
+        elif severity == "warn":
+            snippet = f" — {first_line}" if first_line else ""
+            self._progress(f"    ⚠️ {validator_id}: warn{snippet}")
+        elif severity == "blocker":
+            snippet = f" — {first_line}" if first_line else ""
+            self._progress(f"    ❌ {validator_id}: blocker{snippet}")
+        else:
+            snippet = f" — {first_line}" if first_line else ""
+            self._progress(f"    💥 {validator_id}: {severity}{snippet}")
 
 
 def _build_audit_results(
