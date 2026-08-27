@@ -59,6 +59,24 @@ _SPEC_PATH_IGNORE = {
 }
 
 
+_EXTENSION_RE = re.compile(r"\.[A-Za-z0-9]{1,12}$")
+
+
+def _is_path_like(token: str) -> bool:
+    """Return True when *token* looks like a repository path, not prose.
+
+    A slash-containing token is path-like when it ends in a file extension
+    (``a/b/c.ext``), ends in a trailing slash (``a/b/c/``), or has at least
+    three slash-separated segments (``a/b/c``). Two-segment tokens without an
+    extension (``noindex/no-referrer``, ``and/or``) are prose, not paths.
+    """
+    if token.endswith("/"):
+        return True
+    if _EXTENSION_RE.search(token):
+        return True
+    return token.count("/") >= 2
+
+
 def _spec_referenced_paths(spec: str) -> List[str]:
     """Return repository paths a task spec names, best-effort.
 
@@ -68,17 +86,23 @@ def _spec_referenced_paths(spec: str) -> List[str]:
     just authored (issue #93). This extracts candidate paths from the spec text
     so the caller can check they exist in the worktree before dispatch.
 
-    Extraction is deliberately conservative — it looks for path-like tokens
-    (``a/b/c.ext``, ``a/b/c/``) and bare ``.md``/``.html``/``.json``/``.yml``
-    filenames — and returns paths that are NOT in the ignore set. It is a
-    heuristic: a spec that names a path in prose without a path-like token is
-    not caught here, and a path that is meant to be created is a false positive
-    the caller must tolerate.
+    A token is treated as a cited path only when it is path-like, not merely
+    slash-containing: it must end in a file extension (``a/b/c.ext``), end in
+    a trailing slash (``a/b/c/``), or have at least three slash-separated
+    segments (``a/b/c``). Slash-containing prose such as ``noindex/no-referrer``
+    or ``and/or`` is not a path and is not flagged — a guard that cries wolf
+    gets ignored, and this one guards against a failure that already cost a
+    whole task once (issue #99). The trade-off is deliberate: a two-segment
+    extensionless path written in prose (``src/parser``) is now missed, and a
+    path named without a path-like token was already missed. Paths in the
+    ignore set are never returned.
     """
     found: List[str] = []
     for token in re.findall(r"[A-Za-z0-9_./-]+", spec):
         token = token.strip("/")
         if not token or token.startswith(".") or "/" not in token:
+            continue
+        if not _is_path_like(token):
             continue
         # Ignore governance/authority paths the coder must not read, and any
         # path under them (prefix match), so a spec citing docs/decisions/0001

@@ -209,6 +209,23 @@ def test_check_spec_paths_exist_ignores_governance_paths(repo):
     assert missing == []
 
 
+def test_check_spec_paths_exist_flags_real_path_but_not_slash_prose(repo):
+    """A real cited path is flagged; slash-containing prose is not (Fixes #99).
+
+    The detector must not match anything containing a slash: on its first real
+    run it flagged ``noindex/no-referrer``, which is prose in a sentence, not a
+    filename. A guard that cries wolf gets ignored, and this one guards
+    against a failure that already cost a whole task once.
+    """
+    missing = check_spec_paths_exist(
+        str(repo),
+        "Add rel=noindex/no-referrer to the card footer per "
+        "docs/design/card-footer-qr.html",
+    )
+    assert "docs/design/card-footer-qr.html" in missing
+    assert "noindex/no-referrer" not in missing
+
+
 def test_check_spec_paths_exist_against_worktree(repo, tmp_path):
     """A file present in the project root but absent from the worktree is
     flagged when the worktree is checked — the untracked-file gap."""
