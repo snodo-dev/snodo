@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Operator human review tracking (`snodo task review <task_id> <verdict>`) and acceptance rate reporting (`snodo task report` / `snodo task review --report`). Reviews append `human_review_recorded` events to `.snodo/audit.log`, maintaining hash-chain integrity. Reports calculate the fraction of completed tasks accepted unchanged over a rolling window (3-category taxonomy: `accepted`, `amended`, `discarded`). Machine-readable JSON output (`snodo.task_review_report.v1`) included. See ADR 036. (Fixes #70).
+
 - The opencode coder path is now explicitly **experimental**, not supported.
   The containerised `opencode` and host `opencode-cli` backends are exercised
   by the adapter conformance suite and the `.snodo/` guard and commit hold for
