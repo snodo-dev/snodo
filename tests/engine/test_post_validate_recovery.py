@@ -387,6 +387,51 @@ class TestRecoverySpec:
         # No bare "Fix post-validation issues: ..." prefix.
         assert not sub["spec"].startswith("Fix post-validation issues:")
 
+    def test_spec_omits_provenance_when_no_earlier_attempts(self):
+        from snodo.engine.loop import _build_recovery_spec
+
+        spec = _build_recovery_spec(
+            "implement vcard export",
+            [{"attempt": 1, "validator_id": "quality", "severity": "blocker",
+              "justification": "orphan file"}],
+        )
+        assert "PROVENANCE" not in spec
+
+    def test_spec_includes_earlier_attempt_provenance(self):
+        from snodo.engine.loop import _build_recovery_spec
+
+        failures = [
+            {"attempt": 1, "validator_id": "reachability", "severity": "blocker",
+             "justification": "src/scripts/card-theme.js is orphaned"},
+        ]
+        provenance = [
+            {"attempt": 1, "files": ["src/scripts/card-theme.js", "src/theme.js"]},
+        ]
+        spec = _build_recovery_spec("implement theme toggle", failures, provenance)
+
+        assert "PROVENANCE" in spec
+        assert "attempt 1: src/scripts/card-theme.js, src/theme.js" in spec
+        assert "ownership context" in spec
+        assert "not a rewrite request" in spec
+        assert "supersedes" in spec
+        assert "leave it alone" in spec
+
+    def test_spawned_subtask_carries_current_attempt_provenance(self, base_protocol):
+        def _warn(task, validators, shell_mcp, **kwargs):
+            return [ValidatorResult(validator_id="quality", severity="warn",
+                                    justification="src/scripts/card-theme.js is orphaned")]
+
+        builder = GraphBuilder(base_protocol, validator_fn=_warn)
+        state = _make_state(task_id="nfc")
+        state["artifacts"] = ["src/scripts/card-theme.js", "src/scripts/vcard.js", "git_commit"]
+        result = builder._post_validate_node(state)
+        sub = result["spawned_subtasks"][0]
+
+        assert sub["attempt_provenance"] == [
+            {"attempt": 1, "files": ["src/scripts/card-theme.js", "src/scripts/vcard.js"]},
+        ]
+        assert "attempt 1: src/scripts/card-theme.js, src/scripts/vcard.js" in sub["spec"]
+
 
 class TestRecoveryLinearIds:
     """Recovery ids are numbered linearly off the root, never nested."""

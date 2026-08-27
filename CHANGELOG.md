@@ -387,6 +387,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
   one worker-level sibling directory, hardening the e2e suite for CI's parallel
   `-n auto` run. (Fixes #94).
 
+- Recovery specs now carry provenance for files written by earlier attempts in
+  the same recovery chain. The spec distinguishes ownership from rewrite
+  permission: superseded files are the coder's to remove, but listed files that
+  are still needed or already correct must be left alone. This gives a recovery
+  attempt the context needed to clean up orphaned earlier work without inviting
+  churn against correct files. (Fixes #97).
+
 - `snodo merge` no longer blames a `startup_failure` CI conclusion on the
   branch. A run that never started — typically an invalid workflow definition
   (bad YAML, malformed step) — is not the branch's fault; the message now
