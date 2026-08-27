@@ -83,8 +83,15 @@ git merge-base --is-ancestor origin/main main \
 echo
 for branch in $BRANCHES; do
   git show-ref --verify --quiet "refs/heads/$branch" || continue
-  if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-    echo "— $branch: already on origin"
+  # Compare TIPS, not existence. The branch existing on origin says nothing
+  # about whether this commit is there: on an agent's second task the local
+  # branch has moved ahead, the remote still points at the previous commit, CI
+  # never runs on the new work, and the gate polls to its timeout waiting for a
+  # run that cannot appear.
+  local_tip="$(git rev-parse "$branch")"
+  remote_tip="$(git ls-remote origin "refs/heads/$branch" 2>/dev/null | cut -f1)"
+  if [ -n "$remote_tip" ] && [ "$local_tip" = "$remote_tip" ]; then
+    echo "— $branch: tip already on origin ($(git rev-parse --short "$branch"))"
   else
     echo "▸ pushing $branch so CI can run on it"
     git push -u origin "$branch" || fail "failed to push $branch to origin"
