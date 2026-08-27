@@ -144,6 +144,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Updated runbooks (`docs/runbooks/01-minimal-webapp.md` and `docs/runbooks/02-greenfield-protocol.md`).
+  Drafted missing Section 9 Result in runbook 01, and brought runbook 02 up to date to reflect fifty closed
+  issues and ADRs 015–034. Synthesized empirical findings across runbook executions: execution (`quality`)
+  remains the primary authority for code correctness over read-only LLM judges; early defect patterns
+  tended toward safety properties degrading to warnings or operational errors reported as judgements;
+  and recent verification hardening (audit events, patch coverage, canary gates) eliminates silent green gates.
+
 - CI now runs on every branch push (`push: branches: ['**']`) instead of only
   on `main`, and a new `snodo merge <branch>` command gates the merge on the
   branch's latest CI conclusion. Previously CI triggered on `push: [main]` and
