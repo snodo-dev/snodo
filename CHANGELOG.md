@@ -11,6 +11,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A local-suite canary that validates every file under `.github/workflows/`.
+  The gate every other gate depends on is the CI workflow file itself, and it
+  had no canary: `ci.yml` was invalid YAML for several merges (the
+  patch-coverage step embedded unindented Python in a `run: |` block scalar),
+  every CI run failed at startup with no log and no test output, and nothing
+  noticed because the merge path ran its gates locally. The check parses each
+  workflow as YAML and asserts it is structurally a workflow (`on` trigger,
+  non-empty `jobs`, each job with `runs-on` and at least one `uses`/`run`
+  step), plus canaries proving the gate fails on a malformed workflow. Depth
+  decision: parse + structural validation, no workflow-schema package — PyYAML
+  is already a dependency and the structural checks catch the failure class
+  that occurred; a full GitHub-Actions schema validator is a heavier
+  dependency not warranted for files we author. (Fixes #74).
+
 - Real-time terminal progress visibility for post-execute validator verdicts and recovery transitions. Post-execute validator warnings, blockers, and errors are surfaced as they land with icons (`⚠️`, `❌`, `💥`) and clean first-line justification snippets. Recovery subtask spawns (`Recovery (attempt N/M): spawned <fix_task_id> (...)`), recovery stalls (`Recovery stalled`), and depth exhaustion (`Recovery depth exhausted`) are explicitly printed during execution. (Fixes #71).
 
 - Operator human review tracking (`snodo task review <task_id> <verdict>`) and acceptance rate reporting (`snodo task report` / `snodo task review --report`). Reviews append `human_review_recorded` events to `.snodo/audit.log`, maintaining hash-chain integrity. Reports calculate the fraction of completed tasks accepted unchanged over a rolling window (3-category taxonomy: `accepted`, `amended`, `discarded`). Machine-readable JSON output (`snodo.task_review_report.v1`) included. See ADR 036. (Fixes #70).
@@ -185,6 +199,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   when `NO_COLOR` is set, or when piped. `rich` is now an explicit root dependency.
 
 ### Changed
+
+- `snodo merge` no longer blames a `startup_failure` CI conclusion on the
+  branch. A run that never started — typically an invalid workflow definition
+  (bad YAML, malformed step) — is not the branch's fault; the message now
+  names the workflow-definition problem and points at `.github/workflows/`,
+  which the local suite validates. (Fixes #74).
 
 - Merges are now authorised by each branch's CI conclusion, not by an agent's
   self-reported gate results. The real merge path (`scripts/merge-agents.sh`)

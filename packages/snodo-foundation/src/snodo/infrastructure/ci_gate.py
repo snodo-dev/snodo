@@ -145,6 +145,24 @@ def branch_ci_conclusion(
             ),
         )
 
+    if conclusion == "startup_failure":
+        # The workflow failed before any job ran — typically an invalid
+        # workflow definition (bad YAML, malformed step), not the branch's
+        # work. Telling the operator to fix the branch sends them to the
+        # wrong place (Fixes #74).
+        return CIConclusion(
+            state="fail",
+            run_id=run_id,
+            detail=(
+                f"CI run {run_id} on branch '{branch}' failed at startup "
+                f"(conclusion='{conclusion}') — the workflow itself did not "
+                "start, so no job ran. This is a workflow-definition "
+                "problem, not a failure of the branch's work. Check "
+                ".github/workflows/ (the local suite validates every "
+                "workflow file) before re-merging."
+            ),
+        )
+
     # status == "completed" with no conclusion, or an unknown conclusion.
     return CIConclusion(
         state="not_run",

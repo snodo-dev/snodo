@@ -40,6 +40,16 @@ class TestBranchCIConclusion:
         result = branch_ci_conclusion("/repo", "agent-a", run_gh=lambda *a, **k: _run_json(runs))
         assert result.state == "fail"
 
+    def test_startup_failure_points_at_the_workflow_not_the_branch(self):
+        """A startup_failure (invalid workflow definition) must not be blamed
+        on the branch's work (Fixes #74)."""
+        runs = [{"databaseId": 77, "status": "completed", "conclusion": "startup_failure"}]
+        result = branch_ci_conclusion("/repo", "agent-a", run_gh=lambda *a, **k: _run_json(runs))
+        assert result.state == "fail"
+        assert "failed at startup" in result.detail
+        assert "workflow-definition problem" in result.detail
+        assert "branch's work" in result.detail
+
     def test_in_progress_when_run_queued(self):
         runs = [{"databaseId": 9, "status": "queued", "conclusion": None}]
         result = branch_ci_conclusion("/repo", "agent-a", run_gh=lambda *a, **k: _run_json(runs))
