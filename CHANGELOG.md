@@ -491,6 +491,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The halt payload printed on a successful closure now shows the resolving
+  attempt's verdicts, not the first attempt's. A task that resolved through
+  recovery previously printed `"status": "completed"` alongside
+  `validator_results` containing the FIRST attempt's warns, `"iteration": 1`,
+  and `"post_validation": {"outcome": "recovery"}` — the verdicts belonged to
+  the attempt that failed, not the one that resolved, so a reader saw two
+  warns and an escalate policy decision under a completed status and concluded
+  the run failed. The root's graph invocation ends at the `recovery` node,
+  which writes a payload with `final_decision: "completed"` but `phase:
+  "unknown"` and the first attempt's results; the genuine completion lives in
+  the resolving subtask's payload (`phase: "complete"`). The terminal-payload
+  selection now prefers the deepest genuine-completion payload over the root's
+  recovery-node payload when the tree resolved. (Fixes #85).
+
 - Full-suite runs no longer pollute the suite repository's own `.snodo/`
   directory. The verification-audit work (#60) made `QualityValidator` record
   `verification_executed` events through a cwd-relative `get_audit_log()`

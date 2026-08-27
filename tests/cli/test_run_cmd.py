@@ -833,6 +833,104 @@ class TestClosureHaltPayload:
         found = _find_terminal_halt_payload(root, {})
         assert found["final_decision"] == "escalate"
 
+    def test_resolved_through_recovery_prints_resolving_attempts_verdicts(self):
+        """A task that resolved through recovery must print the resolving
+        attempt's verdicts, not the first attempt's (Fixes #85).
+
+        The root's graph invocation ends at the recovery node, which writes a
+        payload with final_decision 'completed' but phase 'unknown' and the
+        FIRST attempt's warns. The genuine completion lives in the resolving
+        subtask's payload (phase 'complete'). The terminal payload must be the
+        subtask's, so a reader sees the verdicts that actually resolved.
+        """
+        from snodo.cli.commands.run_cmd import _find_terminal_halt_payload
+        from snodo.engine.closure import ClosureNode
+
+        root = ClosureNode(
+            task_id="root", depth=0, outcome="resolved",
+            halt_payload=self._payload(
+                "completed",
+                status="completed",
+                phase="unknown",
+                iteration=1,
+                validator_results=[
+                    {"validator_id": "quality", "severity": "warn",
+                     "justification": "first attempt warn"},
+                ],
+                post_validation={"outcome": "recovery"},
+            ),
+        )
+        child = ClosureNode(
+            task_id="root_fix_1", depth=1, outcome="resolved",
+            halt_payload=self._payload(
+                "completed",
+                status="completed",
+                phase="complete",
+                iteration=2,
+                validator_results=[
+                    {"validator_id": "quality", "severity": "pass",
+                     "justification": "resolving attempt pass"},
+                ],
+                post_validation={"outcome": "passed"},
+            ),
+        )
+        root.subtasks = [child]
+
+        found = _find_terminal_halt_payload(root, {})
+        assert found["phase"] == "complete"
+        assert found["iteration"] == 2
+        assert found["validator_results"][0]["severity"] == "pass"
+        assert "first attempt warn" not in str(found["validator_results"])
+
+    def test_resolved_through_recovery_report_prints_complete_verdicts(self, capsys):
+        """The emitted payload for a resolved-through-recovery run shows the
+        resolving attempt's verdicts under a completed status (Fixes #85)."""
+        from snodo.cli.commands.run_cmd import _report_closure
+        from snodo.engine.closure import ClosureNode
+        import json as _json
+
+        root = ClosureNode(
+            task_id="root", depth=0, outcome="resolved",
+            halt_payload=self._payload(
+                "completed",
+                status="completed",
+                phase="unknown",
+                iteration=1,
+                validator_results=[
+                    {"validator_id": "quality", "severity": "warn",
+                     "justification": "first attempt warn"},
+                ],
+                post_validation={"outcome": "recovery"},
+            ),
+        )
+        child = ClosureNode(
+            task_id="root_fix_1", depth=1, outcome="resolved",
+            halt_payload=self._payload(
+                "completed",
+                status="completed",
+                phase="complete",
+                iteration=2,
+                validator_results=[
+                    {"validator_id": "quality", "severity": "pass",
+                     "justification": "resolving attempt pass"},
+                ],
+                post_validation={"outcome": "passed"},
+            ),
+        )
+        root.subtasks = [child]
+
+        result = _report_closure(root, {"is_blocked": False, "is_complete": True, "artifacts": []})
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "STRUCTURED HALT PAYLOAD" in out
+        section = out.split("--- STRUCTURED HALT PAYLOAD ---")[1].split("--- END STRUCTURED HALT PAYLOAD ---")[0]
+        parsed = _json.loads(section)
+        assert parsed["status"] == "completed"
+        assert parsed["phase"] == "complete"
+        assert parsed["iteration"] == 2
+        assert parsed["validator_results"][0]["severity"] == "pass"
+        assert "first attempt warn" not in str(parsed["validator_results"])
+
 
 class TestLoopSerialization:
     """Tests that halt_type survives the state round-trip."""
