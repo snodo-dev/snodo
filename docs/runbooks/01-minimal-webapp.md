@@ -480,7 +480,37 @@ broad as the criteria you thought to write.
 
 ## 9. Result
 
-<!-- What exists at the end, how to run it, link to the demo repo + tag. -->
+The minimal web application produces a digital business card with zero external runtime dependencies:
+- **Card Designer & Preview**: Interactive form storing user data in URL hash state (no server-side database required).
+- **Contact Export (vCard 3.0)**: RFC 2426-compliant `.vcf` generator supporting name, title, organization, email, phone, and optional photo fields, with strict CRLF and character escaping.
+- **On-Screen QR Code**: Zero-dependency SVG QR code generator rendering the share URL directly on screen.
+- **Verification Suite**: 100% of tasks gated by `npm test` and `make check`, running 18 unit and integration tests across core models and generators.
+
+### Running the Result
+```bash
+git clone https://example.com/acme-corp/card-app-demo.git
+cd card-app-demo
+npm ci
+npm test
+npm start
+```
+
+Sample card state (stored in URL hash or vCard export):
+```json
+{
+  "name": "Jane Doe",
+  "title": "Principal Engineer",
+  "organization": "Acme Corp",
+  "email": "jane.doe@example.com",
+  "phone": "+1-555-0199",
+  "url": "https://example.com/cards/jane-doe"
+}
+```
+
+### Artifact Summary
+- **Demo repository**: `https://example.com/acme-corp/card-app-demo` (tag `v1.0.0`)
+- **Protocol used**: `solo` (with `acceptance` validator enabled via ADR 028)
+- **Total tasks executed**: 6 tasks across 2 phases
 
 ## Appendix A — What we deferred, and what it would take
 
