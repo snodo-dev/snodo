@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `snodo merge` no longer refuses merges when unrelated files in the working tree are dirty. Previously, `GitMCP.merge_branch` unconditionally executed `git checkout <base>` even when the repository was already on the base branch (`main`), causing Git's checkout validation to fail on unrelated dirty files. `merge_branch` now skips redundant `checkout` calls when already on the base branch (matching standard `git merge` behavior). When local changes collide with files actually participating in the merge (`git diff base..branch`), the error message explicitly cites the participating files.
+
 - Transient LLM provider and network errors during validator execution are now retried before emitting an operational fault, and unrecoverable provider/tool-loop exceptions are reported as `error=True` (`validator_error`) rather than `warn`. Previously, a transient DNS resolution error (`[Errno 8] nodename nor servname provided, or not known`) or API timeout in `LLMValidator` returned `severity="warn"` (`error=False`), causing unanimous disagreement policies to mistake an infrastructure fault for a code judgment warning and trigger unnecessary recovery cycles on healthy runs. Retrying transient errors (up to 3 attempts) transparently resolves momentary network blips, while unhandled operational faults halt cleanly as `validator_error` without entering recovery loops. (Fixes #82).
 - Parallel merges no longer conflict on `CHANGELOG.md`. Every agent appends its
   entry at the top of `### Added`, so any two branches collide on the same
