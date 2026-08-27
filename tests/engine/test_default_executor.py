@@ -51,11 +51,14 @@ def mock_token():
 class DummyCoder:
     def __init__(self, files=None, workspace_mcp=None):
         self.workspace_mcp = workspace_mcp
-        self.files = files or []
+        if files is None:
+            files = [DummyFileOp("write", "src/generated.py", "content")]
+        self.files = files
         self.skip_workspace_write = False
         self.skip_engine_commit = False
         self._job_id = None
         self._task_id = None
+        self.progress_callback = None
 
     def implement(self, spec):
         class CodeArtifact:
@@ -176,31 +179,22 @@ def test_file_ops_write_and_delete(sample_protocol, sample_task, mock_token):
     assert "file2.txt" in artifacts_skip
 
 
-def test_empty_artifacts_error(sample_protocol, sample_task, mock_token):
-    """empty artifacts + skip_engine_commit False -> raises ExecutionError"""
-    coder = DummyCoder([])
-    coder.skip_engine_commit = False
+def test_empty_artifacts_always_raise(sample_protocol, sample_task, mock_token):
+    """Empty artifacts raise ExecutionError regardless of skip_engine_commit.
+
+    "Coder produced nothing" is the same fault whether the engine commits the
+    artifacts (skip_engine_commit False) or the adapter commits them itself
+    (skip_engine_commit True): opting out of the commit mechanism does not
+    waive the obligation to produce observable work (#68).
+    """
     workspace_mcp = MagicMock()
     builder = GraphBuilder(sample_protocol)
-    
-    with pytest.raises(ExecutionError, match="Coder produced no file operations"):
-        builder._default_executor(sample_task, mock_token, coder, workspace_mcp, None)
 
-
-def test_empty_artifacts_warning(sample_protocol, sample_task, mock_token):
-    """empty artifacts + skip_engine_commit True -> "empty_artifact_warning" audit, no raise"""
-    coder = DummyCoder([])
-    coder.skip_engine_commit = True
-    workspace_mcp = MagicMock()
-    mock_audit = MagicMock()
-    builder = GraphBuilder(sample_protocol, audit_log=mock_audit)
-    
-    builder._default_executor(sample_task, mock_token, coder, workspace_mcp, None)
-    mock_audit.append_event.assert_any_call("empty_artifact_warning", {
-        "op": "empty_artifact_warning",
-        "task_ref": sample_task.id,
-        "note": "OpenCode completed with no file changes — verify task was necessary",
-    })
+    for skip in (False, True):
+        coder = DummyCoder([])
+        coder.skip_engine_commit = skip
+        with pytest.raises(ExecutionError, match="Coder produced no file operations"):
+            builder._default_executor(sample_task, mock_token, coder, workspace_mcp, None)
 
 
 def test_git_path_success_and_error(sample_protocol, sample_task, mock_token):

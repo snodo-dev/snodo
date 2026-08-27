@@ -17,16 +17,20 @@ class ExecutorMixin:
     """Mixin providing executor node capabilities to GraphBuilder."""
 
     def _prepare_coder(self, coder: Any, workspace_mcp: Optional[Any], task: Task) -> None:
-        """Inject workspace and thread tracking IDs into coder."""
-        if workspace_mcp and hasattr(coder, "workspace_mcp") and coder.workspace_mcp is None:
+        """Inject workspace and thread tracking IDs into coder.
+
+        The coder capability surface is DECLARED on the Coder ABC (base-class
+        defaults), so these assignments are unconditional — never behind a
+        ``hasattr`` guard (docs/architecture/coder-adapter-contract.md §3.1,
+        #68). A coder that does not support a capability inherits a visible
+        default rather than being silently skipped.
+        """
+        if workspace_mcp and getattr(coder, "workspace_mcp", None) is None:
             coder.workspace_mcp = workspace_mcp
 
-        if hasattr(coder, "_job_id"):
-            coder._job_id = self._job_id or self._session_id or ""
-        if hasattr(coder, "_task_id"):
-            coder._task_id = task.id
-        if hasattr(coder, "progress_callback"):
-            coder.progress_callback = getattr(self, "_progress", None)
+        coder._job_id = self._job_id or self._session_id or ""
+        coder._task_id = task.id
+        coder.progress_callback = getattr(self, "_progress", None)
 
     def _ensure_task_branch(self, git_mcp: Optional[Any], task: Task) -> None:
         """Ensure task branch is created and checked out for isolation."""
@@ -42,27 +46,28 @@ class ExecutorMixin:
         artifact_paths = []
         for file_op in code_artifact.files:
             if file_op.action == "delete":
-                if not getattr(coder, "skip_workspace_write", False):
+                if not coder.skip_workspace_write:
                     workspace_mcp.delete_file(file_op.path)
             else:
-                if not getattr(coder, "skip_workspace_write", False):
+                if not coder.skip_workspace_write:
                     workspace_mcp.write_file(file_op.path, file_op.content)
             artifact_paths.append(file_op.path)
 
-        if not artifact_paths and not getattr(coder, "skip_engine_commit", False):
+        if not artifact_paths:
+            # "Coder produced nothing" is the same fault whether the engine
+            # commits the artifacts (skip_engine_commit False) or the adapter
+            # commits them itself (skip_engine_commit True). Opting out of the
+            # engine's commit mechanism does NOT waive the obligation that the
+            # coder produce observable work — a no-op run must fail loudly on
+            # every adapter, not be downgraded to an audit note on some
+            # (docs/architecture/coder-adapter-contract.md §4, #68).
             raise ExecutionError("Coder produced no file operations")
-        if not artifact_paths and getattr(coder, "skip_engine_commit", False):
-            self._audit("empty_artifact_warning", {
-                "op": "empty_artifact_warning",
-                "task_ref": task.id,
-                "note": "OpenCode completed with no file changes — verify task was necessary",
-            })
         return artifact_paths
 
     def _commit_artifacts(self, git_mcp: Optional[Any], coder: Any, artifact_paths: List[str], task: Task) -> List[str]:
         """Commit modified artifact files to repository."""
         git_artifacts = []
-        if git_mcp and artifact_paths and not getattr(coder, "skip_engine_commit", False):
+        if git_mcp and artifact_paths and not coder.skip_engine_commit:
             try:
                 git_mcp.stage_files(artifact_paths)
                 git_mcp.commit(f"feat: {task.spec}")

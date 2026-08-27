@@ -195,3 +195,53 @@ def test_change_is_observable_attributable_and_reviewable(name, tmp_path):
             f"{name}: artifact {f.path} is absent from the diff post-execute "
             "validators review — the two channels disagree."
         )
+
+
+@pytest.mark.parametrize("name", sorted(CODER_REGISTRY))
+def test_declared_capabilities_are_present_on_every_adapter(name):
+    """Every registered adapter carries the DECLARED optional interface.
+
+    The engine injects capabilities unconditionally, never behind a hasattr
+    guard (#68): workspace_mcp, progress_callback, _job_id, _task_id, model,
+    and the two behavioural switches. A registered adapter must expose them
+    (via its own attributes or inherited base-class defaults) so that "this
+    adapter does not support X" is a visible fact — a missing attribute here
+    means the engine would silently skip the adapter, which is the exact
+    divergence this interface exists to make observable.
+    """
+    for expected in (
+        "workspace_mcp",
+        "progress_callback",
+        "_job_id",
+        "_task_id",
+        "model",
+        "skip_workspace_write",
+        "skip_engine_commit",
+    ):
+        assert hasattr(CODER_REGISTRY[name](), expected), (
+            f"{name} lacks declared coder capability '{expected}'. The engine "
+            "assigns these unconditionally; a missing attribute silently "
+            "disconnects the capability (docs/architecture/coder-adapter-"
+            "contract.md §3.1, #68)."
+        )
+
+
+def test_progress_callback_is_injected_unconditionally():
+    """The engine sets progress_callback unconditionally, even on adapters
+    that never emit progress — the absence is never silent (#68)."""
+    from snodo.coders.mock import MockAdapter
+
+    harness = _ExecutorHarness()
+
+    def _progress(msg):
+        return None
+
+    harness._progress = _progress
+    harness._job_id = "job_x"
+    harness._session_id = ""
+    coder = MockAdapter()
+    harness._prepare_coder(coder, None, Task(id="t_x", spec="s"))
+
+    assert coder.progress_callback is _progress
+    assert coder._job_id == "job_x"
+    assert coder._task_id == "t_x"
