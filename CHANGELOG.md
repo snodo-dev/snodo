@@ -565,6 +565,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Audit log test isolation and distinct error reporting in `snodo merge`. Resolved audit log leakage into the suite repository during `pytest -n auto` by redirecting `get_audit_log()` default paths under `SNODO_HOME` when set and resetting the process-global `_global_audit_log` singleton in `conftest.py`'s `isolate_snodo_home` autouse fixture. `_record_merge_and_review` in `snodo merge` now explicitly distinguishes failure modes (audit chain corruption `AuditError`, file permission/IO error `OSError`, and project root resolution failure), surfacing loud, prominent diagnostic guidance for broken hash chains (`rm .snodo/audit.log` to start a clean chain) rather than masking all failures under a generic resolution warning. (Fixes #96).
+
 - The halt payload printed on a successful closure now shows the resolving
   attempt's verdicts, not the first attempt's. A task that resolved through
   recovery previously printed `"status": "completed"` alongside
