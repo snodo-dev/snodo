@@ -272,7 +272,8 @@ class TestFallback:
 
     def test_llm_transient_dns_error_retries_and_succeeds(self, security_validator, task, monkeypatch):
         monkeypatch.setattr("snodo.validators.llm_validator.supports_response_schema", lambda model: False)
-        dns_err = Exception("[Errno 8] nodename nor servname provided, or not known")
+        import socket
+        dns_err = socket.gaierror(8, "nodename nor servname provided, or not known")
         ok_resp = _make_llm_response("pass", "all secure")
         completion_fn = MagicMock(side_effect=[dns_err, dns_err, ok_resp])
 
@@ -282,6 +283,102 @@ class TestFallback:
         assert result.error is False
         assert result.severity == "pass"
         assert completion_fn.call_count == 3
+
+    def test_non_retryable_400_is_not_retried(self, security_validator, task, monkeypatch):
+        """A 4xx (other than 429) is a client error — retrying it is not honest.
+
+        The old predicate substring-matched error prose, so a 400 whose message
+        contained '500' or '502' was retried. Classification is now by exception
+        type and status code (Fixes #84).
+        """
+        from litellm.exceptions import BadRequestError
+
+        monkeypatch.setattr("snodo.validators.llm_validator.supports_response_schema", lambda model: False)
+        err = BadRequestError(
+            message="This response_format type is unavailable now",
+            model="deepseek/deepseek-chat",
+            llm_provider="deepseek",
+            response=None,
+        )
+        completion_fn = MagicMock(side_effect=err)
+
+        validator = LLMValidator(security_validator, completion_fn)
+        result = validator.evaluate(task)
+
+        assert result.error is True
+        assert result.severity == "blocker"
+        # Exactly one call — a non-retryable error is not retried.
+        assert completion_fn.call_count == 1
+
+    def test_retryable_500_is_retried(self, security_validator, task, monkeypatch):
+        """A 5xx is transient and is retried (the retry rescued the incident)."""
+        from litellm.exceptions import InternalServerError
+
+        monkeypatch.setattr("snodo.validators.llm_validator.supports_response_schema", lambda model: False)
+        err = InternalServerError(
+            message="boom", model="deepseek/deepseek-chat",
+            llm_provider="deepseek", response=None,
+        )
+        ok_resp = _make_llm_response("pass", "all secure")
+        completion_fn = MagicMock(side_effect=[err, err, ok_resp])
+
+        validator = LLMValidator(security_validator, completion_fn)
+        result = validator.evaluate(task)
+
+        assert result.error is False
+        assert result.severity == "pass"
+        assert completion_fn.call_count == 3
+
+    def test_structured_rejection_degrades_to_unstructured(self, security_validator, task, monkeypatch):
+        """A provider rejecting response_format must not take the validator down.
+
+        Structured output degrades to an unstructured call; the verdict is
+        parsed from the content (Fixes #84).
+        """
+        from litellm.exceptions import BadRequestError
+
+        monkeypatch.setattr("snodo.validators.llm_validator.supports_response_schema", lambda model: True)
+        reject = BadRequestError(
+            message="This response_format type is unavailable now",
+            model="deepseek/deepseek-chat",
+            llm_provider="deepseek",
+            response=None,
+        )
+        ok_resp = _make_llm_response("pass", "all secure")
+        completion_fn = MagicMock(side_effect=[reject, ok_resp])
+
+        validator = LLMValidator(security_validator, completion_fn, model="deepseek/deepseek-chat")
+        result = validator.evaluate(task)
+
+        assert result.error is False
+        assert result.severity == "pass"
+        assert completion_fn.call_count == 2
+        # The fallback call must NOT carry response_format.
+        assert "response_format" not in completion_fn.call_args_list[1][1]
+
+    def test_structured_rejection_with_unparseable_fallback_is_operational(self, security_validator, task, monkeypatch):
+        """If the provider rejects structured output AND the fallback does not
+        parse, that is an operational fault, not a warn verdict (Fixes #84)."""
+        from litellm.exceptions import BadRequestError
+
+        monkeypatch.setattr("snodo.validators.llm_validator.supports_response_schema", lambda model: True)
+        reject = BadRequestError(
+            message="This response_format type is unavailable now",
+            model="deepseek/deepseek-chat",
+            llm_provider="deepseek",
+            response=None,
+        )
+        garbage = MagicMock()
+        garbage.choices = [MagicMock()]
+        garbage.choices[0].message.content = "I don't understand the question"
+        completion_fn = MagicMock(side_effect=[reject, garbage])
+
+        validator = LLMValidator(security_validator, completion_fn, model="deepseek/deepseek-chat")
+        result = validator.evaluate(task)
+
+        assert result.error is True
+        assert result.severity == "blocker"
+        assert "Structured output was rejected" in result.justification
 
     def test_llm_returns_garbage_returns_warn(self, security_validator, task):
         response = MagicMock()
