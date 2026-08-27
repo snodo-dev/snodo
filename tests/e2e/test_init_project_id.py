@@ -76,7 +76,7 @@ def test_init_with_project_id_config_override(snodo_cli):
     tmp_dir = snodo_cli.home
     
     # 1. Config override only
-    home_dir = Path(tmp_dir) / "snodo_home"
+    home_dir = snodo_cli.snodo_home
     home_dir.mkdir(exist_ok=True)
     config_file = home_dir / "config.yml"
     config_data = {

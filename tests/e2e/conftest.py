@@ -47,38 +47,47 @@ def snodo_cli(tmp_path):
     """Fixture returning a callable that runs snodo as a subprocess.
 
     Each invocation gets:
-        - SNODO_HOME pointing to an isolated tmpdir
+        - a nested project root under the pytest tmpdir
+        - SNODO_HOME pointing to a separate tmpdir for that test
         - SNODO_TOKEN_SECRET set to a fixed deterministic value
         - stdout/stderr captured as text
-        - A git repository initialized in the working directory
+        - a git repository initialized in the nested project root
+
+    The project is nested below *tmp_path* because `snodo run` places task
+    worktrees in `<project_root>/../.snodo-worktrees`. Nesting keeps those
+    siblings per-test under parallel pytest runs.
     """
+    project_root = tmp_path / "project"
+    snodo_home = tmp_path / "snodo_home"
+    project_root.mkdir()
+    snodo_home.mkdir()
+
     # Initialize git repo (snodo requires one)
-    subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), check=False)
+    subprocess.run(["git", "init", "-q"], cwd=str(project_root), check=False)
     subprocess.run(
         ["git", "config", "user.email", "test@e2e.local"],
-        cwd=str(tmp_path), check=False,
+        cwd=str(project_root), check=False,
     )
     subprocess.run(
         ["git", "config", "user.name", "E2E Test"],
-        cwd=str(tmp_path), check=False,
+        cwd=str(project_root), check=False,
     )
 
     def _run(cmd_args: List[str], **kwargs) -> subprocess.CompletedProcess:
-        home = tmp_path / "snodo_home"
-        home.mkdir(exist_ok=True)
         env = os.environ.copy()
-        env["SNODO_HOME"] = str(home)
+        env["SNODO_HOME"] = str(snodo_home)
         env["SNODO_TOKEN_SECRET"] = "e2e_test_fixed_secret_32bytes!"
         env["PYTHONIOENCODING"] = "utf-8"
         return subprocess.run(
             _snodo_cmd() + cmd_args,
-            cwd=str(tmp_path),
+            cwd=str(project_root),
             env=env,
             capture_output=True,
             text=True,
             **kwargs,
         )
-    _run.home = tmp_path
+    _run.home = project_root
+    _run.snodo_home = snodo_home
     return _run
 
 
