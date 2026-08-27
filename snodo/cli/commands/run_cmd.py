@@ -917,24 +917,44 @@ def _find_terminal_halt_payload(tree, final_state: dict) -> Optional[dict]:
     Multi-halt semantics: a closure run can contain several halted nodes. Emit
     the DEEPEST non-completed halt payload (the one whose outcome propagated
     non-"resolved" to the root). Falls back to the root final state's payload.
+
+    A resolved-through-recovery tree is the special case: the root's graph
+    invocation ends at the ``recovery`` node, which writes a payload with
+    ``final_decision: "completed"`` but ``phase: "unknown"`` and the FIRST
+    attempt's validator results (Fixes #85). The genuine completion lives in
+    the resolving subtask's payload (``phase: "complete"``). When the tree
+    resolved, prefer the deepest genuine-completion payload over the root's
+    recovery-node payload, so the printed verdicts belong to the attempt that
+    resolved, not the one that failed.
     """
     from snodo.engine.closure import ClosureNode
 
     best: Optional[dict] = None
     best_depth = -1
+    best_complete: Optional[dict] = None
+    best_complete_depth = -1
 
     def walk(node: ClosureNode) -> None:
-        nonlocal best, best_depth
+        nonlocal best, best_depth, best_complete, best_complete_depth
         p = node.halt_payload
-        if p and p.get("final_decision") not in ("completed", None):
-            if best is None or node.depth > best_depth:
-                best = p
-                best_depth = node.depth
+        if p:
+            decision = p.get("final_decision")
+            if decision not in ("completed", None):
+                if best is None or node.depth > best_depth:
+                    best = p
+                    best_depth = node.depth
+            elif p.get("phase") == "complete":
+                # A genuine completion payload (the resolving attempt's).
+                if best_complete is None or node.depth > best_complete_depth:
+                    best_complete = p
+                    best_complete_depth = node.depth
         for child in node.subtasks:
             walk(child)
 
     walk(tree)
     if best is not None:
         return best
+    if best_complete is not None:
+        return best_complete
     meta = (final_state or {}).get("metadata") or {}
     return meta.get("halt_payload")
