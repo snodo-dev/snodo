@@ -111,6 +111,8 @@ class PolicyEvaluator:
         policy: DisagreementPolicy,
         decision_records: Optional[List[str]] = None,
         task_ref: str = "",
+        is_recovery: bool = False,
+        phase: str = "pre_execute",
     ) -> PolicyDecision:
         """Evaluate validator results against policy.
 
@@ -120,6 +122,8 @@ class PolicyEvaluator:
             decision_records: Optional list of signed DecisionRecord JWTs
                               from the session (human adjudications).
             task_ref: Task ID for matching DecisionRecords.
+            is_recovery: Whether this task is in a recovery cycle (depth > 0).
+            phase: Validation phase ("pre_execute" or "post_execute").
 
         Returns:
             PolicyDecision with action and justification
@@ -152,6 +156,20 @@ class PolicyEvaluator:
                 blocker_count=blocker_count,
                 total_count=total_count,
                 justification=f"{error_count} validator(s) failed to produce a verdict — fail-closed"
+            )
+
+        # Pre-execute findings about existing tree state during recovery (depth > 0 or _fix_ in task_ref)
+        # must not block the recovery attempt from running the coder.
+        in_recovery = is_recovery or ("_fix_" in task_ref)
+        if in_recovery and phase == "pre_execute" and (blocker_count > 0 or warn_count > 0):
+            return PolicyDecision(
+                action=PolicyAction.PROCEED_WITH_LOG,
+                consensus_achieved=True,
+                pass_count=total_count,
+                warn_count=warn_count + blocker_count,
+                blocker_count=0,
+                total_count=total_count,
+                justification=f"Pre-execute recovery finding(s) ({warn_count + blocker_count}) passed to coder as evidence"
             )
 
         # Any blocker always halts (hard invariant — INV3)
@@ -367,6 +385,8 @@ def evaluate_policy(
     quorum_threshold: float = 0.67,
     decision_records: Optional[List[str]] = None,
     task_ref: str = "",
+    is_recovery: bool = False,
+    phase: str = "pre_execute",
 ) -> PolicyDecision:
     """Evaluate policy (convenience function).
 
@@ -376,6 +396,8 @@ def evaluate_policy(
         quorum_threshold: Threshold for QUORUM policy
         decision_records: Optional list of signed DecisionRecord JWTs
         task_ref: Task ID for matching DecisionRecords
+        is_recovery: Whether this task is in a recovery cycle (depth > 0)
+        phase: Validation phase ("pre_execute" or "post_execute")
 
     Returns:
         PolicyDecision
@@ -385,4 +407,6 @@ def evaluate_policy(
         results, policy,
         decision_records=decision_records,
         task_ref=task_ref,
+        is_recovery=is_recovery,
+        phase=phase,
     )
