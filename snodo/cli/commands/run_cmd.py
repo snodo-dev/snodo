@@ -464,6 +464,30 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     worktree_degraded = False
     if worktree_path_val:
         print(f"  Worktree: {worktree_path_val}")
+        # A task spec that cites a path the worktree cannot see is a spec whose
+        # authority is silently transferred to the coder: the coder writes its
+        # own version of the file and the validators judge the work against the
+        # document the coder just authored (issue #93). Warn before dispatch —
+        # not halt, because specs legitimately name paths that are meant to be
+        # created, and only the operator can tell the two apart.
+        from snodo.infrastructure.worktree import check_spec_paths_exist
+        missing = check_spec_paths_exist(project_root, task.spec, worktree=worktree_path_val)
+        if missing:
+            print(
+                "  Warning: the task spec cites paths that do not exist in the "
+                "task worktree:",
+                file=sys.stderr,
+            )
+            for path in missing:
+                print(f"    - {path}", file=sys.stderr)
+            print(
+                "  The coder cannot see these and will invent its own versions, "
+                "and validators will judge the work against what the coder "
+                "authored. If a cited file exists in your working tree but is "
+                "untracked, commit it so the worktree inherits it; if the path "
+                "is meant to be created by the task, ignore this warning.",
+                file=sys.stderr,
+            )
     elif existing_wt:
         print("  Worktree: pre-created worktree not found — running without isolation")
         worktree_degraded = True

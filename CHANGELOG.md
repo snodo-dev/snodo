@@ -11,6 +11,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A task spec that cites a repository path the worktree cannot see is now
+  surfaced before the coder is dispatched. A spec naming a file that exists in
+  the operator's working tree but is untracked is absent from the task worktree
+  (built from the branch), so the coder writes its own version of the file and
+  the validators then judge the work against the document the coder just
+  authored — every verdict internally consistent, nothing reported unusual.
+  `snodo run` now warns when the spec cites paths that do not exist in the
+  worktree, and `create_worktree` surfaces untracked files in the project root
+  at worktree creation, making "the operator can see it and snodo cannot" a
+  visible fact. This is a warning, not a halt: specs legitimately name paths
+  that are meant to be created, and only the operator can tell the two apart.
+  (Fixes #93).
+
 - `snodo merge` audit log resolution fixed for merges executed from repository roots. `_record_merge_and_review` now wraps audit log resolution and event appending safely inside a `try` block, initializing or loading `<repo_root>/.snodo/audit.log` when merging from a repository root (with or without a pre-existing `.snodo/` project directory), and recording both `task_merged` and `human_review_recorded` events. Loud degradation is preserved so that any unresolvable audit log failure emits an explicit warning rather than throwing an exception. (Fixes #88).
 
 - `snodo merge` conflict messaging updated to accurately reflect that aborted merges leave the base branch clean, and now lists all conflicting file paths. `GitMCP.merge_branch` executes `git merge --abort` on conflict to preserve base branch cleanliness for automated workflows. Previously, the CLI output falsely claimed "The branch and worktree were left intact for manual resolution. Resolve it, then re-run `snodo merge` to continue." when the index was actually clean (`git ls-files -u` empty). The CLI now explicitly lists conflicting paths, explains that the merge was rolled back, and outputs the exact command (`git merge <branch>`) for manual resolution.
