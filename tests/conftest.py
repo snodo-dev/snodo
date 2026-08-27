@@ -188,3 +188,45 @@ def isolate_snodo_home(monkeypatch):
 def test_secret() -> str:
     """Return a 32+ byte secret for JWT signing in tests."""
     return TEST_SECRET
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Validate pytest rootdir at configuration time.
+
+    Fails loud if pytest resolves a rootdir that is not the workspace root
+    (e.g., when executed from inside a package subdirectory or sub-folder).
+    """
+    repo_root = _suite_repo_root()
+    if repo_root is None:
+        return
+
+    rootpath = getattr(config, "rootpath", None)
+    resolved_root = Path(rootpath if rootpath is not None else str(config.rootdir)).resolve()
+    expected_root = repo_root.resolve()
+    if resolved_root != expected_root:
+        raise pytest.UsageError(
+            f"pytest rootdir mismatch: resolved '{resolved_root}', but workspace root is '{expected_root}'. "
+            "Running pytest with a package-local or subdirectory rootdir causes silent under-collection. "
+            "Run pytest from the repository root."
+        )
+
+
+def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Enforce minimum collected test count when targeting the full test suite.
+
+    Prevents silent under-collection (e.g., collecting ~450 tests instead of ~2500+).
+    Only applies when running full suite paths (e.g., 'tests/' or default) without `-k` or `-m` filters.
+    """
+    MIN_EXPECTED_TESTS = 2000
+
+    if config.getoption("keyword", None) or config.getoption("markexpr", None):
+        return
+
+    args = getattr(config, "args", [])
+    is_full_suite = not args or all(str(arg).rstrip("/") in {"", ".", "tests"} for arg in args)
+
+    if is_full_suite and len(items) < MIN_EXPECTED_TESTS:
+        raise pytest.UsageError(
+            f"Under-collection detected: collected only {len(items)} tests, but full suite expects >= {MIN_EXPECTED_TESTS}. "
+            f"Rootdir: {config.rootdir}. Ensure you are targeting the full suite from the repository root."
+        )
