@@ -98,36 +98,13 @@ if [ -n "$DIRTY" ]; then
   exit 1
 fi
 
-# ── push each branch so CI runs on it ──────────────────────────────────────
-# CI triggers on `push: branches: ['**']`, so a branch that is never pushed
-# never gets a CI conclusion — and `snodo merge` would refuse it as "CI has
-# not run". The agent branches live only locally, so push them to origin
-# first; GitHub runs the CI workflow on the push and the gate has something
-# to query (Fixes #57). Branches already on the remote are skipped.
-echo
-for branch in $BRANCHES; do
-  git show-ref --verify --quiet "refs/heads/$branch" || continue
-  # Compare TIPS, not existence. The branch existing on origin says nothing
-  # about whether this commit is there: on an agent's second task the local
-  # branch has moved ahead, the remote still points at the previous commit, CI
-  # never runs on the new work, and the gate polls to its timeout waiting for a
-  # run that cannot appear.
-  local_tip="$(git rev-parse "$branch")"
-  remote_tip="$(git ls-remote origin "refs/heads/$branch" 2>/dev/null | cut -f1)"
-  if [ -n "$remote_tip" ] && [ "$local_tip" = "$remote_tip" ]; then
-    echo "— $branch: tip already on origin ($(git rev-parse --short "$branch"))"
-  else
-    echo "▸ pushing $branch so CI can run on it"
-    git push -u origin "$branch" || fail "failed to push $branch to origin"
-  fi
-done
-
 # ── merge, gated on CI ────────────────────────────────────────────────────
 # The CI gate is the whole point: the merge is authorised by the branch's CI
 # conclusion (queried by `snodo merge`), never by an agent's self-reported
-# gate results (Fixes #57). `snodo merge` operates on the git root, skips
-# branches with no new commits (resume-safe after a hand-resolved conflict),
-# and stops on the first refusal or conflict.
+# gate results (Fixes #57). `snodo merge` operates on the git root, pushes
+# every branch in scope up front so CI runs on all of them concurrently
+# (Fixes #92), skips branches with no new commits (resume-safe after a
+# hand-resolved conflict), and stops on the first refusal or conflict.
 echo
 # The tool enforcing the gate must not run from an agent's worktree, which may
 # be mid-task, on a different commit, or about to be reset (Fixes #73). Run it
@@ -187,6 +164,23 @@ echo
 echo "▸ pushing  ($UNPUSHED commit(s) ahead of origin/main)"
 git push || fail "push failed"
 echo "✓ pushed"
+
+# ── gate the MERGED result on CI ─────────────────────────────────────────
+# Per-branch CI cannot catch two branches that pass alone and break together
+# — two branches editing the same CI step did exactly that. After the merge is
+# pushed, the base branch's own CI run is the gate on the COMBINED result
+# (Fixes #92). `snodo ci-wait main` waits for it; a red combined result is
+# reported and the worktrees are NOT reset (the merge is on origin, so nothing
+# is lost, but the agents must not be reset onto a broken main).
+echo
+if command -v snodo >/dev/null 2>&1; then
+  echo "▸ snodo ci-wait main (gating the merged result)"
+  snodo ci-wait main || { echo "✗ merged result failed CI — worktrees NOT reset"; exit 1; }
+else
+  SNODO_CMD="${SNODO_CMD:-uv run --project \"$PWD\" snodo}"
+  echo "▸ $SNODO_CMD ci-wait main (gating the merged result)"
+  eval "$SNODO_CMD ci-wait main" || { echo "✗ merged result failed CI — worktrees NOT reset"; exit 1; }
+fi
 
 fi   # end of push block
 
