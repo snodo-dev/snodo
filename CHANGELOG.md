@@ -302,6 +302,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The merge gate no longer serialises on CI. `snodo merge` previously pushed
+  and polled one branch at a time, so merging N branches cost N CI runs in
+  series — measured today at five branches and roughly forty minutes for a
+  suite that runs in under a minute locally. It now pushes every branch in
+  scope up front (so the CI runs overlap) and then polls+merges each, cutting
+  the wait to ~one run. A branch whose local and remote have diverged — the
+  normal case after a branch was recreated from main following a reset — is
+  force-pushed with `--force-with-lease` instead of failing a fast-forward
+  push (this blocked two merge runs today). A new `snodo ci-wait <branch>`
+  command gates the MERGED result: after the merge is pushed, the base
+  branch's own CI run is the gate on the combined result, because per-branch
+  CI cannot catch two branches that pass alone and break together (two
+  branches editing the same CI step did exactly that today). The wrapper
+  (`scripts/merge-agents.sh`) now relies on `snodo merge` for the push and
+  runs `snodo ci-wait main` after pushing, refusing to reset worktrees onto a
+  red combined result. (Fixes #92).
+
 - CI's test job now runs the full suite in parallel (`-n auto`). The job
   previously ran `pytest tests/ -m ""` serially — the full suite including e2e
   took 385s (run 33085073065) and 369s (run 33102852491) while the same suite

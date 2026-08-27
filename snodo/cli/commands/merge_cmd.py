@@ -49,7 +49,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import typer
 
@@ -164,6 +164,79 @@ def _branch_head_sha(repo: Path, branch: str) -> Optional[str]:
     return None
 
 
+def _remote_tip(repo: Path, branch: str) -> Optional[str]:
+    """Return the remote's tip for *branch*, or None if it has no remote ref."""
+    try:
+        proc = subprocess.run(
+            ["git", "ls-remote", "origin", f"refs/heads/{branch}"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if proc.returncode == 0:
+            parts = proc.stdout.split()
+            return parts[0] if parts else None
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """Run a git command in *repo*, returning the CompletedProcess."""
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+
+def _push_branches(repo: Path, branches: List[str]) -> None:
+    """Push every branch in scope up front so CI runs on all of them
+    concurrently (Fixes #92).
+
+    CI triggers on ``push: branches: ['**']``, so a branch that is never
+    pushed never gets a CI conclusion. Pushing all branches before polling
+    any of them lets the runs overlap instead of serialising one CI run per
+    branch.
+
+    A branch whose local and remote have diverged — the normal case after a
+    branch was recreated from main following a reset — is force-pushed with
+    ``--force-with-lease``: the local branch is authoritative for the agent's
+    work, and the lease refuses to clobber a remote that moved since our last
+    fetch. A fast-forward-only push would fail on a rewritten history and
+    block the merge (Fixes #92).
+    """
+    for branch in branches:
+        if not _branch_exists(repo, branch):
+            continue
+        local_tip = _branch_head_sha(repo, branch)
+        remote_tip = _remote_tip(repo, branch)
+        if remote_tip and remote_tip == local_tip:
+            print(f"— {branch}: tip already on origin")
+            continue
+        if remote_tip and remote_tip != local_tip:
+            print(f"▸ pushing {branch} (force, diverged from origin)")
+            proc = _git(repo, "push", "--force-with-lease", "origin", branch)
+            if proc.returncode != 0:
+                raise MergeUsageError(
+                    f"failed to push {branch} to origin: "
+                    f"{proc.stderr.strip() or proc.stdout.strip()}"
+                )
+        else:
+            print(f"▸ pushing {branch} so CI can run on it")
+            proc = _git(repo, "push", "-u", "origin", branch)
+            if proc.returncode != 0:
+                raise MergeUsageError(
+                    f"failed to push {branch} to origin: "
+                    f"{proc.stderr.strip() or proc.stdout.strip()}"
+                )
+
+
 def _count_new_commits(repo: Path, base: str, branch: str) -> int:
     try:
         proc = subprocess.run(
@@ -208,6 +281,35 @@ def register(app: typer.Typer) -> None:
             review=review, no_review=no_review,
         ))
 
+    @app.command("ci-wait")
+    def ci_wait(
+        branch: str = typer.Argument(..., help="Branch to wait for CI on"),
+        timeout: float = typer.Option(900.0, "--timeout", help="Seconds to wait"),
+    ):
+        """Wait for a branch's CI to conclude; exit 0 when green, 1 otherwise.
+
+        Used to gate the MERGED result: after the merge is pushed, the base
+        branch's own CI run is the gate on the combined result — per-branch CI
+        cannot catch two branches that pass alone and break together (Fixes
+        #92).
+        """
+        return ci_wait_command(SimpleNamespace(branch=branch, timeout=timeout))
+
+
+def ci_wait_command(args) -> int:
+    """Wait for *args.branch*'s CI to conclude; 0 when green, 1 otherwise."""
+    try:
+        repo = Path(_resolve_repo_root())
+    except MergeUsageError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        return 2
+    branch = getattr(args, "branch", "")
+    if not branch:
+        print("Usage: snodo ci-wait <branch>", file=sys.stderr)
+        return 2
+    timeout = float(getattr(args, "timeout", 900.0) or 900.0)
+    return wait_for_main_ci(repo, branch, timeout=timeout)
+
 
 def merge_command(args) -> int:
     """Merge each branch in ``args.branches`` into the base branch, gated on CI.
@@ -247,6 +349,17 @@ def merge_command(args) -> int:
             file=sys.stderr,
         )
         return 2
+
+    # Push every branch in scope up front so CI runs on all of them
+    # concurrently, then poll+merge each (Fixes #92). Pushing one branch at a
+    # time serialises the CI runs: N branches cost N × ~340s. Pushing all
+    # first overlaps them, so the wait is ~one run, not N.
+    if not getattr(args, "force", False):
+        try:
+            _push_branches(repo, branches)
+        except MergeUsageError as e:
+            print(f"✗ {e}", file=sys.stderr)
+            return 1
 
     merged_any = False
     for branch in branches:
@@ -350,6 +463,40 @@ def merge_command(args) -> int:
             return 1
 
     return 0 if merged_any else 0
+
+
+def wait_for_main_ci(
+    repo: Path,
+    base: str,
+    timeout: float = 900.0,
+    progress: Optional[Callable] = None,
+) -> int:
+    """Wait for the merged result (the base branch) to pass CI.
+
+    Per-branch CI cannot catch two branches that pass alone and break
+    together — two branches editing the same CI step did exactly that. After
+    the merge is pushed, the base branch's own CI run is the gate on the
+    COMBINED result (Fixes #92). Returns 0 when green, 1 otherwise.
+    """
+    try:
+        head_sha = _branch_head_sha(repo, base)
+        conclusion = wait_for_ci_conclusion(
+            str(repo),
+            base,
+            head_sha=head_sha,
+            timeout=timeout,
+            progress=progress,
+        )
+    except CIGateError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        return 1
+
+    if conclusion.state == "pass":
+        print(f"  ✓ CI green on merged {base}: {conclusion.detail}")
+        return 0
+    print(f"✗ CI on merged {base} is not green: {conclusion.detail}", file=sys.stderr)
+    print("  Two branches that pass alone can break together; fix the combined result.", file=sys.stderr)
+    return 1
 
 
 def _record_merge_and_review(args, project_root: str, branch: str) -> None:
