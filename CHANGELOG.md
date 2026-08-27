@@ -306,6 +306,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   are explicitly framed as diagnostic evidence that does not change the task
   or widen its scope. The intent is still carried exactly once, unchanged, and
   the failure evidence is still preserved verbatim (ADR 021). (Fixes #78).
+- `WorkspaceMCP` now refuses access to `.git/` paths at the tool surface.
+  Exact `.git`, paths under `.git/`, and absolute `.git` paths raise
+  `PathValidationError`, and directory listings omit `.git` entries while
+  `.gitignore` and normal project files remain accessible. (Fixes #80).
 
 - `snodo merge` no longer blames a `startup_failure` CI conclusion on the
   branch. A run that never started — typically an invalid workflow definition
