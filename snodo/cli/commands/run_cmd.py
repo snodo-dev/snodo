@@ -627,7 +627,11 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
             return 1, True, None
 
     try:
-        outcome, conflicting_paths = merge_task_branch(project_root, branch)
+        res = merge_task_branch(project_root, branch)
+        if isinstance(res, tuple):
+            outcome, conflicting_paths = res
+        else:
+            outcome, conflicting_paths = res, []
     except GitError as e:
         print(f"✗ Merge failed for {branch}: {e}", file=sys.stderr)
         print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)

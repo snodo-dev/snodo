@@ -779,3 +779,34 @@ def test_merge_branch_reports_colliding_participating_files(temp_git_repo):
 
     assert "Local changes collide with participating branch file(s) [README.md]" in str(exc_info.value)
 
+
+def test_merge_branch_fails_with_staged_unrelated_file(temp_git_repo):
+    """merge_branch fails when a staged file in index overlaps 3-way merge paths."""
+    git_mcp, tmpdir = temp_git_repo
+
+    # 1. Create feature branch off initial commit (merge-base)
+    git_mcp.create_branch("feature-d")
+    feat_file = Path(tmpdir) / "feature.py"
+    feat_file.write_text("print('feature')\n")
+    git_mcp.stage_files(["feature.py"])
+    git_mcp.commit("add feature")
+
+    # 2. Switch to main and add/commit scripts/merge-agents.sh
+    subprocess.run(["git", "checkout", "main"], cwd=tmpdir, check=True, capture_output=True)
+    script = Path(tmpdir) / "scripts" / "merge-agents.sh"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("#!/bin/bash\necho v1\n")
+    git_mcp.stage_files(["scripts/merge-agents.sh"])
+    git_mcp.commit("add merge-agents.sh on main")
+
+    # 3. Modify and STAGE scripts/merge-agents.sh on main (staged in index)
+    script.write_text("#!/bin/bash\necho v2 staged\n")
+    git_mcp.stage_files(["scripts/merge-agents.sh"])
+
+    # 4. Call merge_branch("feature-d") — strategy ort 3-way merge fails on staged file
+    with pytest.raises(GitError) as exc_info:
+        git_mcp.merge_branch("feature-d", base="main")
+
+    assert "Staged changes in index would be overwritten by merge" in str(exc_info.value)
+    assert "scripts/merge-agents.sh" in str(exc_info.value)
+
