@@ -111,10 +111,13 @@ class AcceptanceValidator(LLMValidator):
             "- MET: the produced artifacts satisfy it. Evidence exists in the tree.\n",
             "- UNMET: the criterion is verifiable from the tree and the produced "
             "artifacts demonstrably do not satisfy it. This is a finding.\n",
-            "- UNCHECKABLE: the criterion cannot be verified from the tree "
-            "(device behaviour, human judgement, a decision only a human can "
-            "make, performance under real load). This is NEVER a finding — "
-            "return pass for it and say it is uncheckable.\n",
+            "- UNCHECKABLE: the criterion cannot be verified from static tree inspection "
+            "alone (command/suite execution such as running verification tools; "
+            "device behaviour; human judgement; performance under load). This is NEVER a finding — "
+            "return pass for it and say it is uncheckable. You do NOT have shell tools to "
+            "run commands. NEVER mark a command execution criterion as MET by inferring success "
+            "from static files — mark it UNCHECKABLE, return pass for it, and state that command "
+            "execution is uncheckable by read-only judges.\n",
             "\n",
             "A criterion that is verifiable from the tree and unmet is a WARN, "
             "never a blocker.  If every criterion is met or uncheckable, return "
