@@ -22,7 +22,7 @@ set -uo pipefail
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-ALL_BRANCHES="agent-a agent-b agent-c agent-d"
+ALL_BRANCHES="agent-a agent-b agent-c agent-d agent-e"
 MERGED=""
 
 worktree_for() {
@@ -31,6 +31,7 @@ worktree_for() {
     agent-b) echo "$HOME/Dev/snodo-b" ;;
     agent-c) echo "$HOME/Dev/snodo-c" ;;
     agent-d) echo "$HOME/Dev/snodo-d" ;;
+    agent-e) echo "$HOME/Dev/snodo-e" ;;
     *)       echo "" ;;
   esac
 }
@@ -109,17 +110,25 @@ echo
 # be mid-task, on a different commit, or about to be reset (Fixes #73). Run it
 # from the repository being merged (the checkout this script is run in) or from
 # an installed snodo — never from ~/Dev/snodo-*.
+#
+# A refusal or conflict on ONE branch must not discard the branches that
+# merged cleanly before it. `snodo merge` stops at the first refusal, so a run
+# of three branches can leave two merged on local main and then exit non-zero;
+# bailing out here would skip the push below and strand that work unpushed —
+# which has already happened once, leaving a merged agent-b invisible on
+# origin. Record the failure, let the push run, and report it afterwards.
+MERGE_STATUS=0
 if command -v snodo >/dev/null 2>&1; then
   echo "▸ snodo merge $BRANCHES"
   # shellcheck disable=SC2086
-  snodo merge $BRANCHES || fail "snodo merge refused or failed"
+  snodo merge $BRANCHES || MERGE_STATUS=1
 else
   # Fall back to the editable-checkout alias (CONTRIBUTING.md), resolved
   # against THIS repository (the one being merged), not an agent worktree.
   SNODO_CMD="${SNODO_CMD:-uv run --project \"$PWD\" snodo}"
   echo "▸ $SNODO_CMD merge $BRANCHES"
   # shellcheck disable=SC2086
-  eval "$SNODO_CMD merge $BRANCHES" || fail "snodo merge refused or failed"
+  eval "$SNODO_CMD merge $BRANCHES" || MERGE_STATUS=1
 fi
 
 # The merge may have skipped some branches (already ancestors). Track which
@@ -157,6 +166,13 @@ git push || fail "push failed"
 echo "✓ pushed"
 
 fi   # end of push block
+
+# Whatever merged cleanly is now on origin. Only report the refusal afterwards,
+# and stop before resetting any worktree: a branch that did not merge must keep
+# its commits.
+if [ "$MERGE_STATUS" != "0" ]; then
+  fail "snodo merge refused or hit a conflict (branches that merged cleanly were pushed)"
+fi
 
 # ── reset only what is provably landed ───────────────────────────────────
 #
