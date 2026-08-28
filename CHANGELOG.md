@@ -32,6 +32,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `snodo task review --pending` lists every merged unit with no review record,
+  newest first, with unit id, task id, branch, merge timestamp and a one-line
+  spec excerpt. `--json` emits the machine-readable form
+  (`snodo.task_review_pending.v1`). It is read-only: it reads the audit log
+  (`task_merged` / `human_review_recorded` events, keyed on the merge commit
+  SHA) and the session halt payloads for the spec excerpt, and never creates,
+  mutates or clears any review record. The empty case prints a clear message
+  and exits 0. (Fixes #120).
+
 - Custom OpenAI-compatible provider support and decoupled litellm routing. Added `litellm_provider` and `extra_headers` fields to `ProviderConfig`. `ConfigManager` now decouples snodo config key resolution (`_provider_for_model`) from litellm model formatting (`resolve_litellm_model`) and header resolution (`resolve_extra_headers`), eliminating hardcoded provider special cases. `model_discovery.py` now includes a generic `_discover_openai_compatible` fallback fetcher for custom provider endpoints (such as Ollama Cloud at `https://ollama.com/v1`). Documented custom OpenAI-compatible provider configuration with an Ollama Cloud worked example in `README.md`. (Fixes #115).
 - Per-turn tool-loop telemetry is now persisted to each job's `state.json`
   under the `tool_telemetry` key instead of being printed and discarded. Both
