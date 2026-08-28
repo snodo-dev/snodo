@@ -425,6 +425,128 @@ def test_task_show_displays_halt_and_failure(tmp_path, monkeypatch, capsys):
     assert data["ok"] is True
     assert data["halt"]["halt_type"] == "blocked"
     assert data["failure"]["attempt"] == 2
+    assert data["spec"] is None
+
+
+def test_task_show_spec_from_halt_only_record(tmp_path, monkeypatch, capsys):
+    """The spec renders from a halt-only record (Fixes #117)."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "halt", {
+        "t1": {
+            "final_decision": "halt",
+            "halt_type": "blocked",
+            "phase": "pre_execute",
+            "task_spec": "Implement the card footer per docs/design/card-footer-qr.html",
+            "validator_results": [],
+        }
+    })
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=False))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "Task spec:" in out
+    assert "Implement the card footer per docs/design/card-footer-qr.html" in out
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=True))
+    assert res == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["spec"] == "Implement the card footer per docs/design/card-footer-qr.html"
+
+
+def test_task_show_spec_from_task_failure_preferred(tmp_path, monkeypatch, capsys):
+    """task_failure's spec is preferred when both records carry one (Fixes #117)."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "halt", {
+        "t1": {
+            "final_decision": "halt",
+            "halt_type": "blocked",
+            "phase": "post_execute",
+            "task_spec": "halt spec",
+            "validator_results": [],
+        }
+    })
+    mgr.update_decision(session.session_id, "task_failure", {
+        "t1": {
+            "attempt": 1,
+            "branch": "task/t1",
+            "spec": "failure spec",
+        }
+    })
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=False))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "Task spec:" in out
+    assert "failure spec" in out
+    assert "halt spec" not in out
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=True))
+    assert res == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["spec"] == "failure spec"
+
+
+def test_task_show_spec_json_verbatim_untruncated(tmp_path, monkeypatch, capsys):
+    """--json carries the spec verbatim, untruncated (Fixes #117)."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    long_spec = "word " * 500  # well past the 400-char human truncation limit
+    mgr.update_decision(session.session_id, "halt", {
+        "t1": {
+            "final_decision": "halt",
+            "halt_type": "blocked",
+            "phase": "pre_execute",
+            "task_spec": long_spec,
+            "validator_results": [],
+        }
+    })
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=True))
+    assert res == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["spec"] == long_spec
+
+    # Human form is truncated with a pointer to --json.
+    res = task_show_command(SimpleNamespace(task_id="t1", json=False))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "…" in out
+    assert "truncated — full spec: snodo task show t1 --json" in out
+
+
+def test_task_show_no_spec_still_renders(tmp_path, monkeypatch, capsys):
+    """A record with no spec still renders everything else without error (Fixes #117)."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "halt", {
+        "t1": {
+            "final_decision": "halt",
+            "halt_type": "blocked",
+            "phase": "pre_execute",
+            "reason": "no spec here",
+            "validator_results": [{"validator_id": "security", "severity": "blocker", "justification": "x"}],
+        }
+    })
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=False))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "Task:    t1" in out
+    assert "reason:         no spec here" in out
+    assert "Task spec:" not in out
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=True))
+    assert res == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["ok"] is True
+    assert data["spec"] is None
+    assert data["halt"]["reason"] == "no spec here"
 
 
 # ============================================================================

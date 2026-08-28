@@ -11,6 +11,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `snodo task show <task_id>` now prints the task spec — the one field an
+  operator needs to act on a failure. Previously it showed the halt type, the
+  hint and every validator justification but not the spec, forcing an operator
+  to dump the whole session JSON to recover it. The spec is read from
+  `decisions["task_failure"][task_id]["spec"]` when present, falling back to
+  `decisions["halt"][task_id]["task_spec"]`, and is included in the `--json`
+  output under a `"spec"` key verbatim and untruncated. In the human-readable
+  form it is shown last under a clear "Task spec:" heading, truncated at 400
+  characters with a note pointing at `--json` for the full text. (Fixes #117).
+
 - Fixed execution-phase halts missing failure context for `snodo run --retry`. When execution fails (e.g. coder error, missing provider credentials, token store error, or `head_not_moved`), `_execute_node` now calls `_auto_write_failure_context` so structured failure context is persisted to the session checkpoint decision store, allowing `--retry` follow-ups to succeed instead of failing with `No failure context for <task_id>. Cannot retry.` (Fixes #116).
 
 - Concurrent snodo processes can no longer corrupt the audit log's hash chain.

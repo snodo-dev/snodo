@@ -179,6 +179,14 @@ def task_show_command(args) -> int:
         print(f"No record for task {task_id} in session {session.session_id}.")
         return 1
 
+    # The task spec is the one field an operator needs to act on a failure.
+    # Prefer task_failure's spec when both exist (Fixes #117).
+    spec = None
+    if isinstance(failure_entry, dict):
+        spec = failure_entry.get("spec")
+    if spec is None and isinstance(halt_entry, dict):
+        spec = halt_entry.get("task_spec")
+
     if json_out:
         from snodo.cli.json_output import emit_json, schema_name
         return emit_json({
@@ -189,6 +197,7 @@ def task_show_command(args) -> int:
             "mode": session.mode,
             "halt": halt_entry if isinstance(halt_entry, dict) else None,
             "failure": failure_entry if isinstance(failure_entry, dict) else None,
+            "spec": spec,
         })
 
     print(f"Task:    {task_id}")
@@ -222,6 +231,16 @@ def task_show_command(args) -> int:
         files = failure_entry.get("files_changed", [])
         if files:
             print(f"  files:   {', '.join(files)}")
+
+    if spec:
+        print()
+        print("Task spec:")
+        _SPEC_DISPLAY_LIMIT = 400
+        if len(spec) > _SPEC_DISPLAY_LIMIT:
+            print(f"  {spec[:_SPEC_DISPLAY_LIMIT]}…")
+            print(f"  (truncated — full spec: snodo task show {task_id} --json)")
+        else:
+            print(f"  {spec}")
 
     print()
     print("Inspect:")
