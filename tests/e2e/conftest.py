@@ -78,6 +78,12 @@ def snodo_cli(tmp_path):
         env["SNODO_HOME"] = str(snodo_home)
         env["SNODO_TOKEN_SECRET"] = "e2e_test_fixed_secret_32bytes!"
         env["PYTHONIOENCODING"] = "utf-8"
+        # The audit log is a property of the PROJECT (Fixes #111): the CLI must
+        # write to <project_root>/.snodo/audit.log, not to SNODO_HOME. The
+        # in-process suite fixture sets SNODO_AUDIT_LOG to keep unit tests off
+        # the suite repo; a subprocess must NOT inherit it, or it would write
+        # the project's audit log to the test harness's temp file instead.
+        env.pop("SNODO_AUDIT_LOG", None)
         return subprocess.run(
             _snodo_cmd() + cmd_args,
             cwd=str(project_root),
@@ -103,11 +109,21 @@ def initialized_project(snodo_cli):
 
 @pytest.fixture
 def audit_log_entries(snodo_cli):
-    """Parse JSONL audit log from project .snodo/audit.log."""
+    """Parse JSONL audit log from project .snodo/audit.log.
+
+    A missing log and an empty log are different facts: a missing file means
+    the CLI never wrote the project audit log (a resolution bug), while an
+    empty file means the run produced no events. Missing raises so the caller
+    cannot mistake "no log written" for "no events".
+    """
     def _load() -> List[dict]:
         audit_path = snodo_cli.home / ".snodo" / "audit.log"
         if not audit_path.exists():
-            return []
+            raise FileNotFoundError(
+                f"audit log not found at {audit_path} — the CLI did not write "
+                "the project audit log. The audit log must resolve against the "
+                "project root, not SNODO_HOME (Fixes #111)."
+            )
         entries = []
         for line in audit_path.read_text().splitlines():
             if line.strip():
