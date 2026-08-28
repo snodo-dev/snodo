@@ -628,7 +628,7 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
     worktree is left for the caller's normal teardown. On a conflict the task
     is escalated: the branch and worktree survive for a human to resolve.
     """
-    from snodo.infrastructure.worktree import task_branch_name, merge_task_branch
+    from snodo.infrastructure.worktree import task_branch_name, merge_task_branch, merge_head_sha
     from snodo.tools.git import GitError
 
     branch = task_branch_name(task.id, task.spec)
@@ -675,6 +675,7 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
                 "op": "task_merged",
                 "task_ref": task.id,
                 "branch": branch,
+                "merge_sha": merge_head_sha(project_root),
                 "session_id": session_id,
             })
         print(f"✓ Merged {branch} into the base branch")
