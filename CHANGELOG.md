@@ -11,6 +11,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Concurrent snodo processes can no longer corrupt the audit log's hash chain.
+  `AuditLog.append_event` previously derived the next sequence and previous
+  hash from process-local memory, so two processes both wrote "their" next
+  sequence — observed twice in one day as "sequence discontinuity on line 1325
+  (expected 1324, got 1323)" and "line 39 (expected 38, got 28)". Appends now
+  take an exclusive file lock (`fcntl.flock`), re-read the file's last line
+  under the lock to derive the true sequence and previous hash, write, and
+  release; the in-memory `events` list is a cache only, never the source of
+  the next sequence. If the lock cannot be acquired within 10s, `append_event`
+  fails loudly with `AuditError` — it never silently proceeds, because the
+  audit log is the attestation. (Fixes #114).
+
 - Fixed missing verdict message in `snodo task review` CLI command. When no verdict is provided, the command now cleanly reports that a verdict is required rather than printing `Invalid verdict 'None'`. Added comprehensive test suite for `snodo/cli/commands/task_cmd.py` covering `task_report`, `task_review`, `task_list`, `task_show`, `task_abandon`, and `task_prune`, raising test coverage from 28% to 90%. (Fixes #112).
 - Fixed post-execute quality blockers being downgraded to warn during recovery attempts. `PolicyEvaluator.evaluate()` now requires `phase` explicitly, `_post_validate_node` passes `phase="post_execute"` and `is_recovery`, the recovery pre-execute escape branch no longer uses `"_fix_" in task_ref` substring matching, and validator contradiction detection now marks acceptance claims as `blocker` rather than `warn`. (Fixes #106).
 - `InPlaceCoderAdapter._commit_changes` failure path diagnosis and `head_not_moved` halt payload cause reporting. `_commit_changes` in `snodo.coders.base` now sets a structured `last_commit_reason` across all failure paths (`cannot_open_repo`, `git_add_failed`, `nothing_staged`, `git_commit_failed`) and logs warnings when `git add` stages nothing. The engine records `last_commit_reason` during execution and surfaces `commit_reason` directly in the `head_not_moved` halt payload, allowing operators to distinguish coder no-op runs from git command or workspace errors. Additionally, `_diff_to_artifact` in `opencode_cli_adapter.py` now labels unreadable files with `<unreadable: ...>` instead of swallowing read errors into empty content strings. (Fixes #108).
