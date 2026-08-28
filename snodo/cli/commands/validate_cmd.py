@@ -162,7 +162,7 @@ def validate_command(args) -> int:
 
     from snodo.engine.policy import PolicyEvaluator
     decision = PolicyEvaluator().evaluate(
-        results, protocol.disagreement_policy, task_ref=task.id,
+        results, protocol.disagreement_policy, "pre_execute", task_ref=task.id,
     )
     status = classify_outcome(results, decision)
 

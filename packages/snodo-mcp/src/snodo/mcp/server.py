@@ -440,6 +440,7 @@ class CoreToolHandler:
         decision = server._policy_evaluator.evaluate(
             results,
             protocol.disagreement_policy,
+            "pre_execute",
             decision_records=decision_records if server._decision_issuer else None,
             task_ref=task_id,
         )

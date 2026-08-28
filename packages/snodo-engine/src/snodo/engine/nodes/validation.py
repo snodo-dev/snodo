@@ -82,11 +82,12 @@ class ValidationNodeMixin:
 
         is_recovery = (loop_state.task.depth > 0 or bool(loop_state.task.prior_failures))
         decision = self.policy_evaluator.evaluate(
-            results, self.protocol.disagreement_policy,
+            results,
+            self.protocol.disagreement_policy,
+            "pre_execute",
             decision_records=getattr(self, '_decision_records', []),
             task_ref=loop_state.task.id,
             is_recovery=is_recovery,
-            phase="pre_execute",
         )
         loop_state.policy_decision = decision
 
@@ -397,18 +398,21 @@ class ValidationNodeMixin:
                     "acceptance_justification": a_just,
                 })
                 if any(kw in a_just.lower() for kw in ("check", "test", "npm", "pytest", "build", "passes", "met")):
-                    a_res.severity = "warn"
+                    a_res.severity = "blocker"
                     a_res.justification = (
                         f"[CONTRADICTION DETECTED: execution validator '{q_res.validator_id}' failed "
                         f"({q_res.justification}). Acceptance claim superseded.] {a_just}"
                     )
 
         # Evaluate policy on post-execute results
+        is_recovery = (loop_state.task.depth > 0 or bool(loop_state.task.prior_failures))
         decision = self.policy_evaluator.evaluate(
             results,
             self.protocol.disagreement_policy,
+            "post_execute",
             decision_records=getattr(self, '_decision_records', []),
             task_ref=loop_state.task.id,
+            is_recovery=is_recovery,
         )
 
         post_outcome = "passed"

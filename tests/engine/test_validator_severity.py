@@ -131,7 +131,7 @@ class TestPolicyErrorFlagHalts:
             ValidatorResult(validator_id="v2", severity="blocker", justification="crash", error=True),
         ]
         for policy in DisagreementPolicy:
-            decision = evaluator.evaluate(results, policy)
+            decision = evaluator.evaluate(results, policy, phase="post_execute")
             assert decision.action == PolicyAction.HALT
             assert decision.blocker_count == 1
 
@@ -141,7 +141,7 @@ class TestPolicyErrorFlagHalts:
             ValidatorResult(validator_id="v1", severity="blocker", justification="fail", error=True),
             ValidatorResult(validator_id="v2", severity="blocker", justification="fail", error=True),
         ]
-        decision = evaluator.evaluate(results, DisagreementPolicy.UNANIMOUS)
+        decision = evaluator.evaluate(results, DisagreementPolicy.UNANIMOUS, phase="post_execute")
         # Both are blockers; error flag is tracked separately
         assert decision.blocker_count == 2
         assert "fail" in decision.justification
@@ -197,7 +197,7 @@ def test_loop_sets_validator_error_halt_type():
         # Directly set the results and evaluate through policy
         state.validation_results = results
         decision = builder.policy_evaluator.evaluate(
-            results, protocol.disagreement_policy,
+            results, protocol.disagreement_policy, "pre_execute",
         )
         state.policy_decision = decision
 
