@@ -125,13 +125,10 @@ class LiteLLMAdapter(CoderAdapter):
         from snodo.config import ConfigManager
         return ConfigManager.resolve_api_base(self.model)
 
-    def _resolve_cf_headers(self) -> Optional[dict]:
-        """Return extra_headers for Cloudflare Workers AI session affinity."""
+    def _resolve_extra_headers(self) -> Optional[dict]:
+        """Return extra_headers for the model's provider."""
         from snodo.config import ConfigManager
-        provider = ConfigManager._provider_for_model(self.model)
-        if provider == "cloudflare":
-            return {"x-session-affinity": self._task_id or "unknown"}
-        return None
+        return ConfigManager.resolve_extra_headers(self.model, task_id=self._task_id)
 
     def implement(self, spec: TaskSpec) -> CodeArtifact:
         prompt = self._build_prompt(spec)
@@ -220,8 +217,9 @@ Return ONLY the JSON array, no other text.
 
         # Fallback: single raw completion (backward-compatible)
         try:
+            from snodo.config import ConfigManager
             kwargs = {
-                "model": self.model,
+                "model": ConfigManager.resolve_litellm_model(self.model),
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": self.max_tokens,
                 "metadata": {
@@ -233,9 +231,9 @@ Return ONLY the JSON array, no other text.
             api_base = self._resolve_api_base()
             if api_base:
                 kwargs["api_base"] = api_base
-            cf_headers = self._resolve_cf_headers()
-            if cf_headers:
-                kwargs["extra_headers"] = cf_headers
+            extra_headers = self._resolve_extra_headers()
+            if extra_headers:
+                kwargs["extra_headers"] = extra_headers
             if not _is_gemini3_plus(self.model):
                 kwargs["temperature"] = self.temperature
             response = self._completion_fn(**kwargs)
@@ -263,8 +261,9 @@ Return ONLY the JSON array, no other text.
 
         for turn in range(self.max_tool_turns):
             try:
+                from snodo.config import ConfigManager
                 kwargs = {
-                    "model": self.model,
+                    "model": ConfigManager.resolve_litellm_model(self.model),
                     "messages": messages,
                     "tools": tools,
                     "max_tokens": self.max_tokens,
@@ -277,6 +276,9 @@ Return ONLY the JSON array, no other text.
                 api_base = self._resolve_api_base()
                 if api_base:
                     kwargs["api_base"] = api_base
+                extra_headers = self._resolve_extra_headers()
+                if extra_headers:
+                    kwargs["extra_headers"] = extra_headers
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = self.temperature
                 response = self._completion_fn(**kwargs)

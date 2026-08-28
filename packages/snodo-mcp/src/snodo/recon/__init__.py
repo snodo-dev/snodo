@@ -201,15 +201,14 @@ def _call_agent(
     from snodo.config import provider_env, ConfigManager
     _logger.debug("recon: injecting API key for model=%s", model)
     api_base = ConfigManager.resolve_api_base(model)
-    extra_headers = None
-    if ConfigManager._provider_for_model(model) == "cloudflare":
-        extra_headers = {"x-session-affinity": "recon"}
+    model_param = ConfigManager.resolve_litellm_model(model)
+    extra_headers = ConfigManager.resolve_extra_headers(model, task_id="recon")
 
     with provider_env(model):
         for _turn in range(max_turns):
             try:
                 kwargs = {
-                    "model": model,
+                    "model": model_param,
                     "messages": messages,
                     "tools": _READ_ONLY_TOOLS,
                 }

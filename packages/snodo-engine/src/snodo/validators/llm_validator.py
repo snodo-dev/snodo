@@ -180,13 +180,10 @@ class LLMValidator(ValidatorBase):
         self._job_id: str = ""
         self._task_id: str = ""
 
-    def _resolve_cf_headers(self) -> Optional[dict]:
-        """Return extra_headers for Cloudflare Workers AI session affinity."""
+    def _resolve_extra_headers(self) -> Optional[dict]:
+        """Return extra_headers for the model's provider."""
         from snodo.config import ConfigManager
-        provider = ConfigManager._provider_for_model(self.model)
-        if provider == "cloudflare":
-            return {"x-session-affinity": self._task_id or "unknown"}
-        return None
+        return ConfigManager.resolve_extra_headers(self.model, task_id=self._task_id)
 
     @classmethod
     def registered_type(cls) -> str:
@@ -345,8 +342,9 @@ class LLMValidator(ValidatorBase):
 
         for turn in range(tool_turns):
             try:
+                from snodo.config import ConfigManager
                 kwargs = {
-                    "model": self.model,
+                    "model": ConfigManager.resolve_litellm_model(self.model),
                     "messages": messages,
                     "tools": tools,
                     "max_tokens": completion_tokens,
@@ -358,9 +356,9 @@ class LLMValidator(ValidatorBase):
                 }
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = 0.0
-                cf_headers = self._resolve_cf_headers()
-                if cf_headers:
-                    kwargs["extra_headers"] = cf_headers
+                extra_headers = self._resolve_extra_headers()
+                if extra_headers:
+                    kwargs["extra_headers"] = extra_headers
                 response = self._call_completion_with_retry(**kwargs)
             except Exception as e:
                 return ValidatorResult(

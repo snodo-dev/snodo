@@ -243,6 +243,22 @@ Manage API keys and configuration. Subcommands: `show`, `add`, `remove`, `test`,
 snodo config add PROVIDER KEY    Store an API key (provider: openai, anthropic, google)
 ```
 
+#### Custom OpenAI-Compatible Providers (e.g. Ollama Cloud)
+
+You can bring your own OpenAI-compatible endpoint by declaring a custom provider block in `~/.snodo/config.yml`. Specify `litellm_provider: openai` to route completions via LiteLLM's OpenAI handler:
+
+```yaml
+providers:
+  ollama:
+    litellm_provider: openai
+    base_url: https://ollama.com/v1
+    api_key_env: OLLAMA_API_KEY
+```
+
+With this configuration:
+- `snodo models --provider=ollama --flush` discovers models directly from `https://ollama.com/v1/models`.
+- `snodo run "implement feature" --model=ollama/llama-3.3-70b-instruct` executes tasks using your custom provider endpoint without requiring an `openai` provider block.
+
 ### `snodo authorize`
 
 Review and authorize (or reject) pending decisions the orchestrator escalated to a human — disagreement adjudications and `set_model` proposals.
