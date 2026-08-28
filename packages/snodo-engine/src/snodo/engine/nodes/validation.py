@@ -221,6 +221,7 @@ class ValidationNodeMixin:
                     "task_ref": loop_state.task.id,
                     "error": str(e),
                 })
+                self._auto_write_failure_context(loop_state, [])
                 return self._state_to_dict(loop_state)
             self._last_execution_writes = []
             try:
@@ -256,6 +257,7 @@ class ValidationNodeMixin:
                     "paths": list(getattr(e, "paths", [])),
                     "error": str(e),
                 })
+                self._auto_write_failure_context(loop_state, [])
                 return self._state_to_dict(loop_state)
             except ExecutionError as e:
                 loop_state.is_blocked = True
@@ -273,6 +275,7 @@ class ValidationNodeMixin:
                     "task_ref": loop_state.task.id,
                     "error": str(e),
                 })
+                self._auto_write_failure_context(loop_state, [])
                 return self._state_to_dict(loop_state)
 
             loop_state.artifacts.extend(artifacts)
@@ -317,6 +320,7 @@ class ValidationNodeMixin:
                         "artifacts_count": len(loop_state.artifacts),
                         "commit_reason": commit_reason,
                     })
+                    self._auto_write_failure_context(loop_state, [])
                     return self._state_to_dict(loop_state)
 
             # Housekeeping: clear the in-memory slot (enforcement is the store).

@@ -199,19 +199,30 @@ class WritebackMixin:
 
         branch_name = _task_branch_name(task_id, loop_state.task.spec)
 
+        failed_validators = [
+            {
+                "validator_id": r.validator_id,
+                "severity": r.severity,
+                "justification": r.justification,
+            }
+            for r in (results or [])
+            if hasattr(r, "severity") and r.severity in ("blocker", "warn")
+        ]
+
+        if not failed_validators and loop_state.constraint_violations:
+            failed_validators = [
+                {
+                    "validator_id": loop_state.halt_type or "execution_error",
+                    "severity": "blocker",
+                    "justification": "; ".join(loop_state.constraint_violations),
+                }
+            ]
+
         failures[task_id] = {
             "spec": loop_state.task.spec,
             "branch": branch_name,
             "attempt": attempt,
-            "failed_validators": [
-                {
-                    "validator_id": r.validator_id,
-                    "severity": r.severity,
-                    "justification": r.justification,
-                }
-                for r in results
-                if r.severity in ("blocker", "warn")
-            ],
+            "failed_validators": failed_validators,
             "files_changed": list(loop_state.artifacts),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
