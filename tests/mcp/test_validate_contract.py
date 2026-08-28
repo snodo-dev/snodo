@@ -263,11 +263,11 @@ class TestEngineMCPParity:
         from snodo.engine.policy import PolicyEvaluator
 
         engine_decision = PolicyEvaluator().evaluate(
-            engine_results, proto.disagreement_policy, task_ref="t1",
+            engine_results, proto.disagreement_policy, "pre_execute", task_ref="t1",
         )
         mcp_decision = PolicyEvaluator().evaluate(
             [ValidatorResult(**r) for r in mcp["results"]],
-            proto.disagreement_policy, task_ref="t1",
+            proto.disagreement_policy, "pre_execute", task_ref="t1",
         )
         assert engine_decision.total_count == mcp_decision.total_count == 1
         assert engine_decision.action == mcp_decision.action
