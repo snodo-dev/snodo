@@ -643,7 +643,9 @@ class TestPostExecuteToolLoop:
         )
 
     def test_tool_loop_uses_diff_head_minus_1_to_head(self, security_validator):
-        """Post-execute loop should call diff_between_refs(HEAD~1, HEAD)."""
+        """Without base_ref, post-execute loop falls back to
+        diff_between_refs(HEAD~1, HEAD) and labels it as a fallback in the
+        prompt the judge sees (Fixes #109)."""
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "diff --git a/src/auth.py\n+def login():"
         mock_workspace = MagicMock()
@@ -659,6 +661,9 @@ class TestPostExecuteToolLoop:
             if call_count[0] == 1:
                 assert "HEAD~1..HEAD" in messages[0]["content"]
                 assert "diff --git a/src/auth.py" in messages[0]["content"]
+                # The judge is told this is a fallback range, not the
+                # execute-node anchor (Fixes #109).
+                assert "no execute-node HEAD anchor was available" in messages[0]["content"]
             # First call returns a read tool call
             if call_count[0] == 1:
                 resp = MagicMock()
@@ -692,8 +697,59 @@ class TestPostExecuteToolLoop:
 
         assert result.severity == "pass"
         assert "Auth implementation" in result.justification
-        # diff_between_refs was called with HEAD~1, HEAD
+        # diff_between_refs was called with HEAD~1, HEAD (the fallback range)
         mock_git.diff_between_refs.assert_called_once_with("HEAD~1", "HEAD")
+
+    def test_tool_loop_uses_base_ref_when_present(self, security_validator):
+        """With base_ref present, post-execute loop diffs base_ref..HEAD and
+        does NOT label it as a fallback (Fixes #109)."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "diff --git a/src/auth.py\n+def login():"
+        mock_workspace = MagicMock()
+        mock_workspace.list_files.return_value = []
+
+        base_ref = "a" * 40
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            messages = kwargs.get("messages", [])
+            call_count[0] += 1
+            if call_count[0] == 1:
+                assert f"{base_ref}..HEAD" in messages[0]["content"]
+                assert "diff --git a/src/auth.py" in messages[0]["content"]
+                assert "no execute-node HEAD anchor was available" not in messages[0]["content"]
+            if call_count[0] == 1:
+                resp = MagicMock()
+                resp.choices = [MagicMock()]
+                tool_call = MagicMock()
+                tool_call.id = "tc_1"
+                tool_call.function.name = "read_file"
+                tool_call.function.arguments = '{"path": "src/auth.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tool_call]
+                return resp
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = None
+            tc = MagicMock()
+            tc.id = "tc_verdict"
+            tc.function.name = "submit_verdict"
+            tc.function.arguments = json.dumps({
+                "severity": "pass",
+                "justification": "Auth implementation looks good",
+            })
+            resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn, model="gpt-4")
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+        ctx.base_ref = base_ref
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        mock_git.diff_between_refs.assert_called_once_with(base_ref, "HEAD")
 
     def test_tool_loop_executes_read_file_via_workspace(self, security_validator):
         """Tool loop should call workspace.read_file for read_file tool."""
