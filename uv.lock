@@ -3810,7 +3810,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = "==6.155.2" },
     { name = "import-linter", marker = "extra == 'dev'", specifier = "==2.12" },
-    { name = "litellm", specifier = ">=1.80.0" },
+    { name = "litellm", specifier = ">=1.80,<2" },
     { name = "marimo", marker = "extra == 'studies'", specifier = ">=0.9.0" },
     { name = "matplotlib", marker = "extra == 'studies'", specifier = ">=3.7.0" },
     { name = "numpy", marker = "extra == 'studies'", specifier = ">=1.24.0" },
