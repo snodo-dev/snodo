@@ -210,7 +210,7 @@ class TestTaskJson:
         data = _parse_stdout(capsys)
         assert data["schema"] == "snodo.task.v1"
         assert set(data.keys()) == {
-            "schema", "ok", "task_id", "session_id", "mode", "halt", "failure",
+            "schema", "ok", "task_id", "session_id", "mode", "halt", "failure", "spec",
         }
         assert data["task_id"] == "task_abc"
         assert data["halt"]["final_decision"] == "escalate"
