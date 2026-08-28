@@ -2,12 +2,13 @@
 attributable, and reviewable through the same channel.
 
 An adapter produces a :class:`CodeArtifact` (channel A), but post-execute
-validators review the committed diff ``git diff HEAD~1..HEAD`` (channel B —
-the "## Code Change" block in ``llm_validator``/``acceptance``). These two
-channels diverged: ``OpenCodeAdapter`` wrote to the volume-mounted workspace
-in place and never committed, so HEAD did not move and ``HEAD~1..HEAD``
-resolved to the PREVIOUS commit — validators confidently reviewed the wrong
-change and passed.
+validators review the committed diff ``git diff base_ref..HEAD`` (channel B —
+the "## Code Change" block in ``llm_validator``/``acceptance``), where
+``base_ref`` is the execute-node HEAD anchor captured before the coder runs
+(Fixes #103). These two channels diverged: ``OpenCodeAdapter`` wrote to the
+volume-mounted workspace in place and never committed, so HEAD did not move
+and ``HEAD~1..HEAD`` resolved to the PREVIOUS commit — validators confidently
+reviewed the wrong change and passed.
 
 The seam is implicit (an ABC, two ``skip_*`` booleans, ``hasattr`` duck
 typing), so an adapter that lacks the "commit what I wrote" capability is
@@ -150,8 +151,15 @@ _DRIVERS = {
 @pytest.mark.parametrize("name", sorted(CODER_REGISTRY))
 def test_change_is_observable_attributable_and_reviewable(name, tmp_path):
     """Every registered adapter's change is reviewable through the channel
-    post-execute validators actually read (``HEAD~1..HEAD``)."""
+    post-execute validators actually read (``base_ref..HEAD``, where
+    ``base_ref`` is the execute-node HEAD anchor from Fixes #103)."""
     workspace = _git_workspace(tmp_path)
+
+    # The execute node captures the HEAD anchor BEFORE the coder runs
+    # (Fixes #103). In-place adapters write and commit inside implement(), so
+    # the anchor must be taken before the driver.
+    git_mcp = GitMCP(str(workspace))
+    base_ref = git_mcp.get_head_sha()
 
     driver = _DRIVERS.get(name)
     assert driver is not None, (
@@ -168,7 +176,6 @@ def test_change_is_observable_attributable_and_reviewable(name, tmp_path):
     # Engine-equivalent write + commit, exactly the path _default_executor uses.
     harness = _ExecutorHarness()
     workspace_mcp = WorkspaceMCP(str(workspace))
-    git_mcp = GitMCP(str(workspace))
     task = Task(id="task_conformance", spec="add a feature")
     paths = harness._apply_file_operations(workspace_mcp, coder, artifact, task)
     harness._commit_artifacts(git_mcp, coder, paths, task)
@@ -181,12 +188,12 @@ def test_change_is_observable_attributable_and_reviewable(name, tmp_path):
                 f"{name}: artifact {f.path} is not present in the workspace"
             )
 
-    # Channel B — reviewable: post-execute validators read git diff HEAD~1..HEAD
-    # (llm_validator.py / acceptance.py "## Code Change"). It must be THIS
-    # change, not the previous commit and not empty.
-    diff = git_mcp.diff_between_refs("HEAD~1", "HEAD")
+    # Channel B — reviewable: post-execute validators read git diff
+    # base_ref..HEAD (llm_validator.py / acceptance.py "## Code Change"). It
+    # must be THIS change, not the previous commit and not empty.
+    diff = git_mcp.diff_between_refs(base_ref, "HEAD")
     assert diff.strip(), (
-        f"{name}: HEAD~1..HEAD is empty after execution — post-execute "
+        f"{name}: {base_ref}..HEAD is empty after execution — post-execute "
         "validators are blind. An in-place adapter must leave its change "
         "committed (InPlaceCoderAdapter._commit_changes owns this)."
     )
@@ -195,6 +202,118 @@ def test_change_is_observable_attributable_and_reviewable(name, tmp_path):
             f"{name}: artifact {f.path} is absent from the diff post-execute "
             "validators review — the two channels disagree."
         )
+
+
+@pytest.mark.parametrize("name", sorted(CODER_REGISTRY))
+def test_commit_not_happening_is_refused(name, tmp_path):
+    """An adapter that produces file operations but whose commit does not
+    happen is REFUSED with head_not_moved — not merely left with an empty
+    diff (Fixes #109). This is the case that occurred in production and that
+    #103 exists to catch: HEAD~1..HEAD would resolve to the previous commit
+    and the judges would pass."""
+    from snodo.compiler.models import Protocol, Mode, Validator, DisagreementPolicy
+    from snodo.core.interfaces import ValidatorResult
+    from snodo.engine.loop import GraphBuilder
+    from snodo.infrastructure.tokens import TokenIssuer
+    from tests.conftest import TEST_SECRET
+
+    workspace = _git_workspace(tmp_path)
+    driver = _DRIVERS.get(name)
+    assert driver is not None, (
+        f"{name} is registered but has no conformance driver — a registered "
+        "adapter must be covered here or the conformance gate is a hole."
+    )
+
+    spec = TaskSpec(description="add a feature", constraints=[])
+    coder, artifact = driver(name, workspace, spec)
+    assert artifact.files, f"{name}: implement() returned no artifacts"
+
+    protocol = Protocol(
+        protocol_id="conformance_no_commit",
+        name="Conformance No Commit",
+        version="1.0.0",
+        modes=[
+            Mode(
+                mode_id="producer",
+                name="Producer",
+                tools=["edit"],
+                validators=["security", "acceptance"],
+            )
+        ],
+        validators=[
+            Validator(
+                validator_id="security",
+                validator_type="security",
+                criteria=["Check the change"],
+                evaluation_phase="pre_execute",
+            ),
+            Validator(
+                validator_id="acceptance",
+                validator_type="acceptance",
+                evaluation_phase="post_execute",
+                severity_cap="warn",
+                tools=["read_file", "list_files", "read_diff_between_refs"],
+                criteria=["Judge the produced artifacts"],
+            ),
+        ],
+        disagreement_policy=DisagreementPolicy.UNANIMOUS,
+        initial_mode="producer",
+    )
+
+    workspace_mcp = WorkspaceMCP(str(workspace))
+    git_mcp = GitMCP(str(workspace))
+
+    # The commit does not happen: for in-process adapters the engine owns the
+    # commit (skip_engine_commit False), for in-place adapters the base class
+    # owns it (skip_engine_commit True). Disable whichever path applies.
+    def _no_commit(git_mcp, coder, artifact_paths, task):
+        return []
+
+    def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
+        return [
+            ValidatorResult(validator_id=v.validator_id, severity="pass",
+                            justification="ok")
+            for v in validators
+        ]
+
+    harness = _ExecutorHarness()
+    with mock.patch.object(harness, "_commit_artifacts", side_effect=_no_commit):
+        builder = GraphBuilder(
+            protocol,
+            workspace_mcp=workspace_mcp,
+            git_mcp=git_mcp,
+            shell_mcp=None,
+            executor_fn=harness._default_executor,
+            validator_fn=_all_pass,
+            token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
+        )
+        graph = builder.build_graph().compile()
+        result = graph.invoke({
+            "task": {"id": "task_conformance", "spec": "add a feature"},
+            "current_mode": "producer",
+            "iteration": 0,
+            "stage": "execute",
+            "validation_results": [],
+            "validation_token": {"jwt": "valid_token"},
+            "artifacts": [],
+            "constraints_passed": True,
+            "constraint_violations": [],
+            "policy_decision": None,
+            "is_complete": False,
+            "is_blocked": False,
+            "metadata": {},
+            "messages": [],
+            "summary": "",
+        })
+
+    assert result["is_blocked"] is True, (
+        f"{name}: a run whose commit did not happen was NOT refused. The "
+        "post-execute judges would review the previous commit and pass — the "
+        "exact seam #103 exists to catch."
+    )
+    assert result["halt_type"] == "head_not_moved", (
+        f"{name}: expected head_not_moved halt, got {result['halt_type']}"
+    )
 
 
 @pytest.mark.parametrize("name", sorted(CODER_REGISTRY))
