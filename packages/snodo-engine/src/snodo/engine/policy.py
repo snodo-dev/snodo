@@ -109,21 +109,21 @@ class PolicyEvaluator:
         self,
         results: List[ValidatorResult],
         policy: DisagreementPolicy,
+        phase: str,
         decision_records: Optional[List[str]] = None,
         task_ref: str = "",
         is_recovery: bool = False,
-        phase: str = "pre_execute",
     ) -> PolicyDecision:
         """Evaluate validator results against policy.
 
         Args:
             results: List of validator results
             policy: Disagreement policy to apply
+            phase: Validation phase ("pre_execute" or "post_execute"). Required.
             decision_records: Optional list of signed DecisionRecord JWTs
                               from the session (human adjudications).
             task_ref: Task ID for matching DecisionRecords.
             is_recovery: Whether this task is in a recovery cycle (depth > 0).
-            phase: Validation phase ("pre_execute" or "post_execute").
 
         Returns:
             PolicyDecision with action and justification
@@ -158,10 +158,9 @@ class PolicyEvaluator:
                 justification=f"{error_count} validator(s) failed to produce a verdict — fail-closed"
             )
 
-        # Pre-execute findings about existing tree state during recovery (depth > 0 or _fix_ in task_ref)
+        # Pre-execute findings about existing tree state during recovery (is_recovery=True)
         # must not block the recovery attempt from running the coder.
-        in_recovery = is_recovery or ("_fix_" in task_ref)
-        if in_recovery and phase == "pre_execute" and (blocker_count > 0 or warn_count > 0):
+        if is_recovery and phase == "pre_execute" and (blocker_count > 0 or warn_count > 0):
             return PolicyDecision(
                 action=PolicyAction.PROCEED_WITH_LOG,
                 consensus_achieved=True,
@@ -172,7 +171,7 @@ class PolicyEvaluator:
                 justification=f"Pre-execute recovery finding(s) ({warn_count + blocker_count}) passed to coder as evidence"
             )
 
-        # Any blocker always halts (hard invariant — INV3)
+        # Any blocker outside pre-execute recovery evidence always halts (hard invariant — INV3)
         # DecisionRecords are consulted AFTER this check, so they can
         # NEVER override a genuine blocker.
         if blocker_count > 0:
@@ -405,8 +404,8 @@ def evaluate_policy(
     evaluator = PolicyEvaluator(quorum_threshold=quorum_threshold)
     return evaluator.evaluate(
         results, policy,
+        phase=phase,
         decision_records=decision_records,
         task_ref=task_ref,
         is_recovery=is_recovery,
-        phase=phase,
     )

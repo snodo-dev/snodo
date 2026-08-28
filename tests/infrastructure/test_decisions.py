@@ -211,7 +211,7 @@ class TestPolicyDecisionRecordConsultation:
             _make_result("security", "pass"),
             _make_result("architecture", "warn", "Minor concern"),
         ]
-        decision = evaluator.evaluate(results, policy, decision_records=[], task_ref="t1")
+        decision = evaluator.evaluate(results, policy, "post_execute", decision_records=[], task_ref="t1")
         assert decision.action.value == "escalate"
         assert decision.warn_count == 1
 
@@ -227,6 +227,7 @@ class TestPolicyDecisionRecordConsultation:
         ]
         decision = evaluator.evaluate(
             results, policy,
+            "post_execute",
             decision_records=[record.jwt],
             task_ref="t1",
         )
@@ -247,6 +248,7 @@ class TestPolicyDecisionRecordConsultation:
         ]
         decision = evaluator.evaluate(
             results, policy,
+            "post_execute",
             decision_records=["some.forged.jwt"],
             task_ref="t1",
         )
@@ -264,6 +266,7 @@ class TestPolicyDecisionRecordConsultation:
         ]
         decision = evaluator.evaluate(
             results, policy,
+            "post_execute",
             decision_records=["some.jwt"],
             task_ref="t1",
         )
@@ -285,6 +288,7 @@ class TestPolicyDecisionRecordConsultation:
         ]
         decision = evaluator.evaluate(
             results, policy,
+            "post_execute",
             decision_records=[record1.jwt],
             task_ref="t1",
         )
@@ -311,6 +315,7 @@ class TestPolicyDecisionRecordConsultation:
         ]
         decision = evaluator.evaluate(
             results, policy,
+            "post_execute",
             decision_records=[record.jwt],
             task_ref="t1",  # Different task — retry
         )
@@ -332,6 +337,7 @@ class TestPolicyDecisionRecordConsultation:
         ]
         decision = evaluator.evaluate(
             results, policy,
+            "post_execute",
             decision_records=[record.jwt],
             task_ref="t1",
         )
@@ -351,6 +357,7 @@ class TestPolicyDecisionRecordConsultation:
         ]
         decision = evaluator.evaluate(
             results, policy,
+            "post_execute",
             decision_records=[record.jwt],
             task_ref="t1",
         )
@@ -438,6 +445,7 @@ class TestINV3Regression:
         ]
         decision = evaluator.evaluate(
             results, policy,
+            "post_execute",
             decision_records=["fake.jwt"],
             task_ref="t1",
         )
