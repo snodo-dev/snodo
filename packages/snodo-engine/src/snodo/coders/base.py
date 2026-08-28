@@ -10,7 +10,7 @@ directly (opencode and similar) instead of through WorkspaceMCP.
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from snodo.core.interfaces import Coder, CodeArtifact, TaskSpec
 
@@ -81,6 +81,7 @@ class InPlaceCoderAdapter(Coder, ABC):
     skip_engine_commit: bool = True
 
     _workspace: Path
+    last_commit_reason: Optional[str] = None
 
     def implement(self, spec: TaskSpec) -> CodeArtifact:
         """Run the coder, then refuse any .snodo/ mutation it made.
@@ -90,6 +91,7 @@ class InPlaceCoderAdapter(Coder, ABC):
         outside this window, so a change detected here is attributable to the
         coder.
         """
+        self.last_commit_reason = None
         before = self._snapshot_snodo()
         artifact = self._implement_in_place(spec)
         changed = self._changed_snodo_paths(before)
@@ -168,13 +170,15 @@ class InPlaceCoderAdapter(Coder, ABC):
         .snodo/ guard hold automatically, ADR 027).
 
         Non-fatal on failure — the working tree still holds the change — but
-        the post-execute diff would then be empty.
+        the post-execute diff would then be empty. Failure reasons are stored in
+        ``self.last_commit_reason`` for diagnostic reporting.
         """
         from git import Repo, GitCommandError
 
         try:
             repo = Repo(str(self._workspace), search_parent_directories=True)
         except Exception as exc:
+            self.last_commit_reason = f"cannot_open_repo: {exc}"
             _logger.warning(
                 "git readback: cannot open repo at %s: %s", self._workspace, exc
             )
@@ -194,6 +198,7 @@ class InPlaceCoderAdapter(Coder, ABC):
                 ":(exclude,glob)**/.pytest_cache/**", ":(exclude,glob)**/.mypy_cache/**",
             )
         except GitCommandError as exc:
+            self.last_commit_reason = f"git_add_failed: {exc}"
             _logger.warning("git add failed (post-validation diff may be empty): %s", exc)
             return
 
@@ -203,6 +208,8 @@ class InPlaceCoderAdapter(Coder, ABC):
         except GitCommandError:
             pass  # rc != 0 → staged changes exist
         else:
+            self.last_commit_reason = "nothing_staged"
+            _logger.warning("git add staged nothing (coder produced no changes)")
             return
 
         try:
@@ -218,7 +225,9 @@ class InPlaceCoderAdapter(Coder, ABC):
                     "GIT_COMMITTER_EMAIL": "coder@snodo.exp",
                 },
             )
+            self.last_commit_reason = None
         except GitCommandError as exc:
+            self.last_commit_reason = f"git_commit_failed: {exc}"
             _logger.warning(
                 "coder commit failed (post-validation diff may be empty): %s", exc
             )

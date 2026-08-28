@@ -152,6 +152,7 @@ def test_artifact_returned_without_commit_halts_head_not_moved(
         "task_ref": "task_head",
         "base_ref": base_sha,
         "artifacts_count": 1,
+        "commit_reason": "unknown",
     })
     # No generic validate/post_validate pass is emitted for a blocked head.
     ops = [call.args[0] for call in audit.append_event.call_args_list]
@@ -196,3 +197,176 @@ def test_executor_that_commits_moves_head_and_passes(
     assert result["is_blocked"] is False
     assert result["halt_type"] is None
     assert "src/feature.py" in result["artifacts"]
+
+
+def test_inplace_adapter_git_add_failure_names_cause_in_halt_payload(
+    protocol_with_post_execute, temp_workspace
+):
+    """Canary: driving an in-place adapter where git add fails halts with
+    head_not_moved AND names git_add_failed in the halt payload."""
+    from unittest.mock import patch
+    from git import GitCommandError
+    from snodo.infrastructure.tokens import TokenIssuer
+    from snodo.coders.base import InPlaceCoderAdapter
+    from snodo.core.interfaces import CodeArtifact, FileArtifact
+
+    workspace_mcp = WorkspaceMCP(temp_workspace)
+    git_mcp = GitMCP(temp_workspace)
+
+    class DummyInPlaceCoder(InPlaceCoderAdapter):
+        def __init__(self, workspace):
+            self._workspace = Path(workspace)
+
+        def _implement_in_place(self, spec):
+            (self._workspace / "foo.py").write_text("print(1)")
+            return CodeArtifact(files=[FileArtifact(path="foo.py", content="print(1)")])
+
+    coder = DummyInPlaceCoder(temp_workspace)
+
+    def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
+        return [
+            ValidatorResult(validator_id=v.validator_id, severity="pass", justification="ok")
+            for v in validators
+        ]
+
+    builder = GraphBuilder(
+        protocol_with_post_execute,
+        workspace_mcp=workspace_mcp,
+        git_mcp=git_mcp,
+        shell_mcp=None,
+        coder=coder,
+        validator_fn=_all_pass,
+        token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
+    )
+
+    with patch("git.Repo") as mock_repo_cls:
+        mock_repo = MagicMock()
+        mock_repo_cls.return_value = mock_repo
+        mock_repo.git.add.side_effect = GitCommandError("git add", "fatal: pathspec failed")
+        graph = builder.build_graph().compile()
+        result = graph.invoke(_state())
+
+    assert result["is_blocked"] is True
+    assert result["halt_type"] == "head_not_moved"
+    assert result["is_blocked"] is True
+    assert result["halt_type"] == "head_not_moved"
+    payload = result["metadata"]["halt_payload"]
+    assert "commit_reason" in payload
+    assert "git_add_failed" in payload["commit_reason"]
+
+
+def test_inplace_adapter_cannot_open_repo_names_cause_in_halt_payload(
+    protocol_with_post_execute, temp_workspace
+):
+    """Driving an in-place adapter where repo cannot be opened halts with
+    head_not_moved AND names cannot_open_repo in the halt payload."""
+    from unittest.mock import patch
+    from snodo.infrastructure.tokens import TokenIssuer
+    from snodo.coders.base import InPlaceCoderAdapter
+    from snodo.core.interfaces import CodeArtifact, FileArtifact
+
+    workspace_mcp = WorkspaceMCP(temp_workspace)
+    git_mcp = GitMCP(temp_workspace)
+
+    class DummyInPlaceCoder(InPlaceCoderAdapter):
+        def __init__(self, workspace):
+            self._workspace = Path(workspace)
+
+        def _implement_in_place(self, spec):
+            (self._workspace / "foo.py").write_text("print(1)")
+            return CodeArtifact(files=[FileArtifact(path="foo.py", content="print(1)")])
+
+    coder = DummyInPlaceCoder(temp_workspace)
+
+    def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
+        return [
+            ValidatorResult(validator_id=v.validator_id, severity="pass", justification="ok")
+            for v in validators
+        ]
+
+    builder = GraphBuilder(
+        protocol_with_post_execute,
+        workspace_mcp=workspace_mcp,
+        git_mcp=git_mcp,
+        shell_mcp=None,
+        coder=coder,
+        validator_fn=_all_pass,
+        token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
+    )
+
+    with patch("git.Repo", side_effect=Exception("Invalid repo")):
+        graph = builder.build_graph().compile()
+        result = graph.invoke(_state())
+
+    assert result["is_blocked"] is True
+    assert result["halt_type"] == "head_not_moved"
+    payload = result["metadata"]["halt_payload"]
+    assert "cannot_open_repo" in payload.get("commit_reason", "")
+
+
+def test_inplace_adapter_nothing_staged_names_cause_in_halt_payload(
+    protocol_with_post_execute, temp_workspace
+):
+    """Driving an in-place adapter where git add stages nothing halts with
+    head_not_moved AND names nothing_staged in the halt payload."""
+    from unittest.mock import patch, MagicMock
+    from snodo.infrastructure.tokens import TokenIssuer
+    from snodo.coders.base import InPlaceCoderAdapter
+    from snodo.core.interfaces import CodeArtifact, FileArtifact
+
+    workspace_mcp = WorkspaceMCP(temp_workspace)
+    git_mcp = GitMCP(temp_workspace)
+
+    class DummyInPlaceCoder(InPlaceCoderAdapter):
+        def __init__(self, workspace):
+            self._workspace = Path(workspace)
+
+        def _implement_in_place(self, spec):
+            return CodeArtifact(files=[FileArtifact(path="foo.py", content="print(1)")])
+
+    coder = DummyInPlaceCoder(temp_workspace)
+
+    def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
+        return [
+            ValidatorResult(validator_id=v.validator_id, severity="pass", justification="ok")
+            for v in validators
+        ]
+
+    builder = GraphBuilder(
+        protocol_with_post_execute,
+        workspace_mcp=workspace_mcp,
+        git_mcp=git_mcp,
+        shell_mcp=None,
+        coder=coder,
+        validator_fn=_all_pass,
+        token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
+    )
+
+    with patch("git.Repo") as mock_repo_cls:
+        mock_repo = MagicMock()
+        mock_repo_cls.return_value = mock_repo
+        # diff --cached --quiet exits with 0 when nothing is staged
+        mock_repo.git.diff.return_value = ""
+        graph = builder.build_graph().compile()
+        result = graph.invoke(_state())
+
+    assert result["is_blocked"] is True
+    assert result["halt_type"] == "head_not_moved"
+    payload = result["metadata"]["halt_payload"]
+    assert payload.get("commit_reason") == "nothing_staged"
+
+
+def test_opencode_cli_diff_to_artifact_unreadable_file_distinguishable(temp_workspace):
+    """Unreadable files in _diff_to_artifact produce <unreadable: ...> instead of empty string."""
+    from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
+
+    adapter = OpenCodeCLIAdapter()
+    adapter._workspace = Path(temp_workspace)
+
+    # Reference a non-existent file path
+    artifact = adapter._diff_to_artifact([{"file": "non_existent_file.py", "status": "modified"}])
+    assert len(artifact.files) == 1
+    assert artifact.files[0].path == "non_existent_file.py"
+    assert "<unreadable:" in artifact.files[0].content
+
+

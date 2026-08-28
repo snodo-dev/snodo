@@ -288,9 +288,11 @@ class WritebackMixin:
 
         blocker_reason = "; ".join(loop_state.constraint_violations) if loop_state.constraint_violations else None
 
+        pv = meta.get("post_validation")
+        commit_reason = pv.get("commit_reason") if isinstance(pv, dict) else None
         halt = _canonical_halt(loop_state.halt_type) if loop_state.is_blocked else "completed"
 
-        return {
+        payload = {
             "status": "blocked" if loop_state.is_blocked else "completed",
             "halt_type": halt,
             "final_decision": halt,
@@ -314,6 +316,9 @@ class WritebackMixin:
             "blocker_reason": blocker_reason,
             "artifacts_count": len(loop_state.artifacts),
         }
+        if commit_reason is not None:
+            payload["commit_reason"] = commit_reason
+        return payload
 
     def _auto_write_halt_payload(self, loop_state: Any) -> None:
         """Persist halt payload — dual-write: session checkpoint + job state.json.

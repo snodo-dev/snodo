@@ -113,6 +113,7 @@ class ExecutorMixin:
 
         try:
             code_artifact = coder.implement(spec)
+            self._last_commit_reason = getattr(coder, "last_commit_reason", None)
 
             # If workspace available, process file operations
             self._last_execution_writes = [
