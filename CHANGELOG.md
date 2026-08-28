@@ -17,6 +17,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Per-turn tool-loop telemetry is now persisted to each job's `state.json`
+  under the `tool_telemetry` key instead of being printed and discarded. Both
+  the coder loop (`coders/litellm.py`) and the validator loop
+  (`validators/llm_validator.py`) emit one structured record per turn:
+  `task_ref`, `depth`, `attempt`, `role` (coder|validator), `validator_id`,
+  `turn_index`, `tool`, `target_path` (workspace-relative and canonical),
+  `read_hit` (sourced from `ReadMemoryTracker.check_read`, not recomputed),
+  `tokens_in`, `tokens_out`, `elapsed_ms`, and — on the terminal coder turn —
+  `submit_bytes`. This is operational telemetry, NOT part of the hash-chained
+  audit log (ADR 034): ~50 records per task do not belong in the attestation
+  chain. `snodo meta` now reports, per job: orientation ratio (turns before
+  first write / total), path miss rate, re-read rate by depth, and submit-size
+  distribution. Terminal output is unchanged — this adds a sink, it does not
+  replace one. The opencode adapters own their own agent loop and cannot emit
+  these records; their runs have no per-turn telemetry — an acknowledged
+  consequence of ADR 034's experimental status. (Fixes #105).
+
 - The adapter conformance gate now matches the post-execute review contract.
   `tests/coders/test_adapter_conformance.py` previously asserted the review
   diff against `HEAD~1..HEAD` and taught that stale contract in its docstring;

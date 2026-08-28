@@ -50,6 +50,10 @@ class Coder(ABC):
     #: can be attributed to a job and task. Empty when not set.
     _job_id: str = ""
     _task_id: str = ""
+    #: Recovery depth and attempt number (1-based) of the task being executed,
+    #: injected by the engine so per-turn telemetry can be grouped by depth.
+    _depth: int = 0
+    _attempt: int = 1
     #: Model identifier the adapter is bound to. Used for default-model
     #: resolution and coder-respawn checks; may be empty on simple adapters.
     model: str = ""

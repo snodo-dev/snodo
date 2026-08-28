@@ -262,6 +262,7 @@ Return ONLY the JSON array, no other text.
         read_tracker = ReadMemoryTracker()
 
         for turn in range(self.max_tool_turns):
+            turn_start = time.monotonic()
             try:
                 kwargs = {
                     "model": self.model,
@@ -297,6 +298,16 @@ Return ONLY the JSON array, no other text.
             # Check for submit_files before anything else
             files_list = self._extract_submit_files(tool_calls)
             if files_list is not None and files_list:
+                self._emit_turn_telemetry(
+                    turn_index=turn + 1,
+                    tool="submit_files",
+                    target_path="",
+                    read_hit=False,
+                    tokens_in=_usage_tokens(response, "prompt"),
+                    tokens_out=_usage_tokens(response, "completion"),
+                    elapsed_ms=(time.monotonic() - turn_start) * 1000,
+                    submit_bytes=len(json.dumps(files_list).encode("utf-8")),
+                )
                 return json.dumps(files_list)
 
             # Execute read tools
@@ -336,6 +347,15 @@ Return ONLY the JSON array, no other text.
                         else:
                             result = self._execute_tool(tool_name, args, workspace)
                             read_tracker.record_read(tool_name, args, turn + 1)
+                        self._emit_turn_telemetry(
+                            turn_index=turn + 1,
+                            tool=tool_name,
+                            target_path=_normalize_path_arg(args),
+                            read_hit=prev_turn is not None,
+                            tokens_in=_usage_tokens(response, "prompt"),
+                            tokens_out=_usage_tokens(response, "completion"),
+                            elapsed_ms=(time.monotonic() - turn_start) * 1000,
+                        )
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -603,6 +623,47 @@ Return ONLY the JSON array, no other text.
         except Exception as e:
             return f"Tool error: {e}"
 
+    def _emit_turn_telemetry(
+        self,
+        turn_index: int,
+        tool: str,
+        target_path: str,
+        read_hit: bool,
+        tokens_in: int,
+        tokens_out: int,
+        elapsed_ms: float,
+        submit_bytes: int = 0,
+    ) -> None:
+        """Emit one per-turn telemetry record to the job's state.json.
+
+        Operational telemetry, not part of the audit chain (ADR 034). Never
+        raises — telemetry must not crash the tool loop.
+        """
+        try:
+            from snodo.infrastructure.tool_telemetry import (
+                canonical_target_path,
+                persist_tool_telemetry,
+            )
+
+            record = {
+                "task_ref": self._task_id or "unknown",
+                "depth": getattr(self, "_depth", 0) or 0,
+                "attempt": getattr(self, "_attempt", 1) or 1,
+                "role": "coder",
+                "validator_id": "",
+                "turn_index": turn_index,
+                "tool": tool,
+                "target_path": canonical_target_path(target_path),
+                "read_hit": bool(read_hit),
+                "tokens_in": int(tokens_in or 0),
+                "tokens_out": int(tokens_out or 0),
+                "elapsed_ms": round(float(elapsed_ms or 0), 1),
+                "submit_bytes": int(submit_bytes or 0),
+            }
+            persist_tool_telemetry(self._job_id or "unknown", record)
+        except Exception:
+            pass
+
     def _parse_response(self, response: str) -> CodeArtifact:
         parsed = self._extract_json(response)
 
@@ -675,6 +736,22 @@ def _truncated_log(raw: str, max_chars: int = 2048) -> str:
     if len(raw) <= max_chars:
         return raw
     return raw[:max_chars] + "...<truncated>"
+
+
+def _usage_tokens(response: Any, kind: str) -> int:
+    """Extract prompt/completion token counts from a litellm response.
+
+    Returns 0 when the response carries no usage (e.g. mock responses).
+    """
+    try:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return 0
+        if kind == "prompt":
+            return int(getattr(usage, "prompt_tokens", 0) or 0)
+        return int(getattr(usage, "completion_tokens", 0) or 0)
+    except Exception:
+        return 0
 
 
 def _normalize_path_arg(args: Dict[str, Any]) -> str:
