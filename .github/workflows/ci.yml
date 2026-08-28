@@ -29,7 +29,14 @@ jobs:
       - name: Install (uv workspace)
         run: uv sync --all-extras
       - name: Test + coverage
+        shell: bash
         run: |
+          # pipefail is REQUIRED: GitHub Actions runs `run:` as `bash -e {0}`,
+          # which sets errexit but NOT pipefail. Without it the pipeline below
+          # exits with tee's status (always 0) and pytest's exit code — and
+          # --cov-fail-under with it — is silently discarded. This gate
+          # reported green on every branch while main had a failing test.
+          set -o pipefail
           uv run pytest tests/ -m "" -q -n auto --tb=short --timeout=60 \
             --cov --cov-report=xml --cov-report=term-missing \
             --cov-fail-under=63 | tee coverage-output.txt
