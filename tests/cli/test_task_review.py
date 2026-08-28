@@ -145,7 +145,7 @@ def test_task_report_unreviewed_merge_never_counts_as_accepted(tmp_path, monkeyp
     monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
 
     # t1 merged with a verdict recorded at merge time (accepted); t2 merged
-    # with no verdict (recorded as unreviewed by snodo merge).
+    # with no verdict (recorded as unreviewed at merge time).
     audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t1", "merge_sha": "a" * 40})
     audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t1", "merge_sha": "a" * 40, "verdict": "accepted"})
     audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t2", "merge_sha": "b" * 40})
