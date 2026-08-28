@@ -45,6 +45,9 @@ class LoopState:
     metadata: Dict[str, Any] = field(default_factory=dict)
     messages: List[Dict[str, Any]] = field(default_factory=list)
     summary: str = ""
+    #: HEAD sha captured in the execute node before the coder runs; the
+    #: post-execute judges diff base_ref..HEAD. None when no git workspace.
+    base_ref: Optional[str] = None
 
 
 def _build_audit_results(

@@ -609,6 +609,24 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Post-execute validators no longer review the previous commit when HEAD did
+  not move. `llm_validator` and `acceptance` judged `git diff HEAD~1..HEAD`,
+  and nothing established that HEAD moved during execute: an adapter that
+  returned file operations but did not commit left `HEAD~1..HEAD` resolving to
+  the previous unrelated commit, which the judges reviewed and passed.
+  `InPlaceCoderAdapter._commit_changes` returns silently when the repo cannot
+  be opened, `git add` fails, or nothing is staged, so the fault was not
+  surfaced. The execute node now captures the HEAD sha before the coder runs
+  (`GitMCP.get_head_sha`, carried on `LoopState.base_ref` through the langgraph
+  dict serde and on `ValidatorContext.base_ref`), and the judges diff
+  `base_ref..HEAD` instead — falling back to `HEAD~1..HEAD` only when the
+  anchor is absent, with the prompt telling the judge the range is a fallback.
+  If the executor returned artifacts but HEAD did not move, the engine now
+  halts with the distinct `head_not_moved` halt type and a distinct
+  `head_not_moved` audit op instead of passing on the wrong diff.
+  `skip_engine_commit` / `skip_workspace_write` remain capability declarations;
+  opting out no longer transfers an unenforced obligation. (Fixes #103).
+
 - Audit log test isolation and distinct error reporting in `snodo merge`. Resolved audit log leakage into the suite repository during `pytest -n auto` by redirecting `get_audit_log()` default paths under `SNODO_HOME` when set and resetting the process-global `_global_audit_log` singleton in `conftest.py`'s `isolate_snodo_home` autouse fixture. `_record_merge_and_review` in `snodo merge` now explicitly distinguishes failure modes (audit chain corruption `AuditError`, file permission/IO error `OSError`, and project root resolution failure), surfacing loud, prominent diagnostic guidance for broken hash chains (`rm .snodo/audit.log` to start a clean chain) rather than masking all failures under a generic resolution warning. (Fixes #96).
 
 - The halt payload printed on a successful closure now shows the resolving
