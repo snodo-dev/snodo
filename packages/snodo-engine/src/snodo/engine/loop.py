@@ -411,6 +411,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._verbose = verbose
         self._project_context_cache: Optional[Dict[str, Any]] = None
         self._last_execution_writes: List[str] = []
+        self._last_commit_reason: Optional[str] = None
     
     def build_graph(self) -> StateGraph:
         """Build executable StateGraph from protocol.

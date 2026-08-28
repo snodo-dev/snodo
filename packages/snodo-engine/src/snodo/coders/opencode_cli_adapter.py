@@ -140,8 +140,9 @@ class OpenCodeCLIAdapter(InPlaceCoderAdapter):
             file_path = Path(self._workspace) / path
             try:
                 content = file_path.read_text()
-            except Exception:
-                content = ""
+            except Exception as exc:
+                _logger.warning("opencode-cli: failed to read %s: %s", file_path, exc)
+                content = f"<unreadable: {exc}>"
 
             files.append(FileArtifact(path=path, content=content, action="write"))
 

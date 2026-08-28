@@ -292,11 +292,12 @@ class ValidationNodeMixin:
                 except Exception:
                     current_head = None
                 if current_head is not None and current_head == loop_state.base_ref:
+                    commit_reason = getattr(self, "_last_commit_reason", None) or "unknown"
                     loop_state.is_blocked = True
                     loop_state.halt_type = "head_not_moved"
                     loop_state.constraint_violations.append(
                         "The coder reported file operations but HEAD did not "
-                        "move: no commit was created, so post-execute "
+                        f"move (commit failure: {commit_reason}): no commit was created, so post-execute "
                         "validators would review the previous commit instead of "
                         "the produced change. The adapter claimed a commit it "
                         "did not make (skip_engine_commit and skip_workspace_write "
@@ -306,12 +307,14 @@ class ValidationNodeMixin:
                     loop_state.metadata["post_validation"] = {
                         "outcome": "skipped",
                         "reason": "head_not_moved",
+                        "commit_reason": commit_reason,
                     }
                     self._audit("head_not_moved", {
                         "op": "head_not_moved",
                         "task_ref": loop_state.task.id,
                         "base_ref": loop_state.base_ref,
                         "artifacts_count": len(loop_state.artifacts),
+                        "commit_reason": commit_reason,
                     })
                     return self._state_to_dict(loop_state)
 
