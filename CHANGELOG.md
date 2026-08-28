@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `snodo run --retry <task_id>` now falls back to the persisted halt record when no `task_failure` entry exists for the task — halts recorded before commit eab9696 (or on any path that wrote a halt but no failure context) no longer dead-end with `No failure context for <task_id>. Cannot retry.` `_retry_task` synthesises the failure context from `decisions["halt"][task_id]` (spec from `task_spec`, failed validators from `validator_results` or `reason`, attempt 1, branch via `_task_branch_name`, empty `files_changed`), but only when the halt record's `task_id` matches and it is a blocked halt; `task_failure` remains the preferred source when present. (Fixes #121).
+
 - Fixed execution-phase halts missing failure context for `snodo run --retry`. When execution fails (e.g. coder error, missing provider credentials, token store error, or `head_not_moved`), `_execute_node` now calls `_auto_write_failure_context` so structured failure context is persisted to the session checkpoint decision store, allowing `--retry` follow-ups to succeed instead of failing with `No failure context for <task_id>. Cannot retry.` (Fixes #116).
 
 - Concurrent snodo processes can no longer corrupt the audit log's hash chain.

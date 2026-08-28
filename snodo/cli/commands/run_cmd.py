@@ -267,6 +267,56 @@ def _build_description(args) -> str:
     return description
 
 
+def _failure_from_halt_record(session, task_id: str) -> Optional[dict]:
+    """Synthesise retry failure context from a persisted halt record (Fixes #121).
+
+    Tasks that halted before commit eab9696 (or on any path that wrote a halt
+    but no task_failure entry) still carry a structured halt payload at
+    ``decisions["halt"][task_id]`` with task_spec, reason and validator
+    results — enough to reconstruct the failure context ``_retry_task`` needs.
+    Returns None unless the halt record's task_id matches and it is a blocked
+    halt; ``task_failure`` remains the preferred source when present.
+    """
+    from snodo.engine.state import _task_branch_name
+
+    halt = session.checkpoint.decisions.get("halt", {})
+    if not isinstance(halt, dict):
+        return None
+    record = halt.get(task_id)
+    if not isinstance(record, dict) or record.get("task_id") != task_id:
+        return None
+    if record.get("status") != "blocked":
+        return None
+
+    spec = record.get("task_spec", "")
+    validator_results = record.get("validator_results")
+    failed_validators = [
+        {
+            "validator_id": v.get("validator_id", "unknown"),
+            "severity": v.get("severity", "blocker"),
+            "justification": v.get("justification", ""),
+        }
+        for v in (validator_results or [])
+        if isinstance(v, dict) and v.get("severity") in ("blocker", "warn")
+    ]
+    if not failed_validators and record.get("reason"):
+        failed_validators = [
+            {
+                "validator_id": record.get("halt_type") or "execution_error",
+                "severity": "blocker",
+                "justification": record["reason"],
+            }
+        ]
+
+    return {
+        "spec": spec,
+        "branch": _task_branch_name(task_id, spec),
+        "attempt": 1,
+        "failed_validators": failed_validators,
+        "files_changed": [],
+    }
+
+
 def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
     """Retry a failed task on its existing branch with failure context."""
     from snodo.infrastructure.state import read_state
@@ -280,11 +330,16 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
         return 1
 
     task_failure = session.checkpoint.decisions.get("task_failure", {})
-    if not isinstance(task_failure, dict) or task_id not in task_failure:
+    if not isinstance(task_failure, dict):
+        task_failure = {}
+
+    failure = task_failure.get(task_id)
+    if not isinstance(failure, dict):
+        failure = _failure_from_halt_record(session, task_id)
+    if failure is None:
         print(f"No failure context for {task_id}. Cannot retry.", file=sys.stderr)
         return 1
 
-    failure = task_failure[task_id]
     attempt = failure.get("attempt", 0)
 
     protocol_path = Path(args.protocol)
