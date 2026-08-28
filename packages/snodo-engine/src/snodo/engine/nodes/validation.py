@@ -1,6 +1,8 @@
 from typing import Dict, Any, List
 from snodo.engine.state import LoopStage, LoopState, _build_audit_results
 from snodo.core.interfaces import ValidatorResult, ExecutionError
+from snodo.coders.base import SnodoMutationError
+from snodo.infrastructure.tokens import TokenStoreError
 from snodo.engine.policy import PolicyAction, policy_decision_to_dict
 
 
@@ -66,11 +68,16 @@ class ValidationNodeMixin:
             })
             return self._state_to_dict(loop_state)
 
+        self._progress(
+            f"  Validating (pre-execute): {', '.join(v.validator_id for v in validators)}"
+        )
+
         results = self.validator_fn(loop_state.task, validators, self.shell_mcp,
                                     current_mode=loop_state.current_mode,
                                     phase="pre_execute",
                                     authorized_decisions=getattr(self, '_authorized_decisions', []),
-                                    decision_issuer=self._decision_issuer)
+                                    decision_issuer=self._decision_issuer,
+                                    progress_cb=self._validator_verdict_cb)
         loop_state.validation_results = results
 
         is_recovery = (loop_state.task.depth > 0 or bool(loop_state.task.prior_failures))
@@ -93,33 +100,57 @@ class ValidationNodeMixin:
             outcome = "passed"
         elif decision.action == PolicyAction.HALT:
             loop_state.is_blocked = True
-            loop_state.is_blocked = True
             has_errors = any(getattr(r, 'error', False) for r in results)
             loop_state.halt_type = "validator_error" if has_errors else "blocked"
         elif decision.action == PolicyAction.ESCALATE:
-            # Check if the escalation is triggered by warn-only spec validators
-            # (no hard blockers, no errors).  If so, route to spec authoring
-            # instead of halting — the intent needs translation into a proper spec.
             has_blocker = any(r.severity == "blocker" and not getattr(r, 'error', False) for r in results)
             has_error = any(getattr(r, 'error', False) for r in results)
-            if not has_blocker and not has_error and loop_state.spec_authoring_attempts < 2:
+            # Only spec-quality critique may trigger authoring.  A non-spec
+            # objection is about the work, not the wording; laundering it into
+            # the spec changes what the task wants (Fixes #35).  If the only
+            # escalation is from non-spec validators there is nothing to author
+            # from, so escalate normally.
+            spec_critique = [
+                {"validator_id": r.validator_id, "justification": r.justification}
+                for r in results
+                if r.severity != "pass" and self._judges_spec(r.validator_id)
+            ]
+            if (
+                not has_blocker and not has_error
+                and loop_state.spec_authoring_attempts < 2
+                and spec_critique
+            ):
                 loop_state.needs_spec_authoring = True
-                loop_state.metadata["spec_critique"] = [
-                    {"validator_id": r.validator_id, "justification": r.justification}
-                    for r in results if r.severity != "pass"
-                ]
-                loop_state.pending_disagreement = self._build_pending_disagreement(
-                    loop_state, "pre_execute", results, decision
-                )
+                loop_state.metadata["spec_critique"] = spec_critique
                 outcome = "escalated"
-                # NOT is_blocked — will route back to governance
             else:
                 loop_state.is_blocked = True
                 loop_state.halt_type = "escalated"
-                loop_state.pending_disagreement = self._build_pending_disagreement(
-                    loop_state, "pre_execute", results, decision
-                )
                 outcome = "escalated"
+
+            loop_state.pending_disagreement = {
+                "phase": "pre_execute",
+                "policy": self.protocol.disagreement_policy.value,
+                "validator_results": [
+                    {"validator_id": r.validator_id, "severity": r.severity, "justification": r.justification}
+                    for r in results
+                ],
+                "policy_decision": {
+                    "pass_count": decision.pass_count,
+                    "warn_count": decision.warn_count,
+                    "blocker_count": decision.blocker_count,
+                    "total_count": decision.total_count,
+                    "justification": decision.justification,
+                },
+            }
+            self._audit("disagreement_escalated", {
+                "op": "disagreement_escalated",
+                "phase": "pre_execute",
+                "task_ref": loop_state.task.id,
+                "policy": self.protocol.disagreement_policy.value,
+                "validator_results": loop_state.pending_disagreement["validator_results"],
+                "policy_decision": loop_state.pending_disagreement["policy_decision"],
+            })
 
         loop_state.metadata["pre_validation"] = {
             "policy_decision": policy_decision_to_dict(decision),
@@ -159,7 +190,30 @@ class ValidationNodeMixin:
         ):
             # Token verified — safe to use (never None here)
             assert loop_state.validation_token is not None
+            # Single-use: consume at the dispatch boundary (the point where the
+            # token authorises irreversible work). The INSERT is the claim —
+            # atomic across processes. Fail closed if the store is down.
             try:
+                self._token_issuer.consume_token(loop_state.validation_token)
+            except TokenStoreError as e:
+                loop_state.is_blocked = True
+                loop_state.halt_type = "internal_error"
+                loop_state.constraint_violations.append(
+                    f"Token store unavailable: {e}"
+                )
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "skipped",
+                    "reason": f"Token store unavailable: {e}",
+                }
+                self._audit("token_store_unavailable", {
+                    "op": "token_store_unavailable",
+                    "task_ref": loop_state.task.id,
+                    "error": str(e),
+                })
+                return self._state_to_dict(loop_state)
+            self._last_execution_writes = []
+            try:
+                self._progress("  Coder dispatched")
                 artifacts = self.executor_fn(
                     loop_state.task,
                     loop_state.validation_token,
@@ -169,10 +223,36 @@ class ValidationNodeMixin:
                     memory_summary=loop_state.summary,
                     project_context=self._project_context_cache,
                 )
+                self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")
+                loop_state.metadata["attempt_written_files"] = list(self._last_execution_writes)
+            except SnodoMutationError as e:
+                # An in-place-writing coder mutated protected .snodo/ state.
+                # This is a governance violation (INV3-class), not an
+                # execution fault: block with a terminal halt, record the
+                # attempt in the audit trail, and leave the tree for operator
+                # inspection (Fixes #52, ADR 027).
+                loop_state.is_blocked = True
+                loop_state.halt_type = "blocked"
+                loop_state.constraint_violations.append(str(e))
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "skipped",
+                    "reason": str(e),
+                }
+                self._audit("snodo_mutation_blocked", {
+                    "op": "snodo_mutation_blocked",
+                    "task_ref": loop_state.task.id,
+                    "mode": loop_state.current_mode,
+                    "paths": list(getattr(e, "paths", [])),
+                    "error": str(e),
+                })
+                return self._state_to_dict(loop_state)
             except ExecutionError as e:
                 loop_state.is_blocked = True
                 loop_state.halt_type = "internal_error"
                 loop_state.constraint_violations.append(str(e))
+                # Mark post-validation as skipped, not passed: the execute step
+                # failed, so there is nothing to validate and a green
+                # post-validation on zero artifacts must never be emitted.
                 loop_state.metadata["post_validation"] = {
                     "outcome": "skipped",
                     "reason": str(e),
@@ -186,7 +266,7 @@ class ValidationNodeMixin:
 
             loop_state.artifacts.extend(artifacts)
 
-            # Single-use: consume the token after successful dispatch
+            # Housekeeping: clear the in-memory slot (enforcement is the store).
             loop_state.validation_token = None
             self._audit("token_consumed", {
                 "op": "token_consumed",
@@ -232,15 +312,46 @@ class ValidationNodeMixin:
             return self._state_to_dict(loop_state)
 
         # Run post_execute validators
+        self._progress(
+            f"  Post-validating: {', '.join(v.validator_id for v in post_validators)}"
+        )
         results = self.validator_fn(loop_state.task, post_validators, self.shell_mcp,
                                     current_mode=loop_state.current_mode,
                                     phase="post_execute",
                                     authorized_decisions=getattr(self, '_authorized_decisions', []),
                                     decision_issuer=self._decision_issuer,
+                                    progress_cb=self._validator_verdict_cb,
                                     artifacts=list(loop_state.artifacts))
 
         # Merge post-validate results with existing results
         loop_state.validation_results = loop_state.validation_results + results
+
+        # Detect contradictions between execution validators (quality) and read-only judges (acceptance)
+        quality_failing = [
+            r for r in results
+            if getattr(r, "error", False) or r.severity in ("warn", "blocker")
+        ]
+        acceptance_passing = [
+            r for r in results
+            if r.validator_id == "acceptance" and r.severity == "pass"
+        ]
+        if quality_failing and acceptance_passing:
+            q_res = quality_failing[0]
+            for a_res in acceptance_passing:
+                a_just = a_res.justification or ""
+                self._audit("validator_contradiction_detected", {
+                    "op": "validator_contradiction_detected",
+                    "task_ref": loop_state.task.id,
+                    "execution_validator": q_res.validator_id,
+                    "execution_justification": q_res.justification,
+                    "acceptance_justification": a_just,
+                })
+                if any(kw in a_just.lower() for kw in ("check", "test", "npm", "pytest", "build", "passes", "met")):
+                    a_res.severity = "warn"
+                    a_res.justification = (
+                        f"[CONTRADICTION DETECTED: execution validator '{q_res.validator_id}' failed "
+                        f"({q_res.justification}). Acceptance claim superseded.] {a_just}"
+                    )
 
         # Evaluate policy on post-execute results
         decision = self.policy_evaluator.evaluate(
@@ -254,6 +365,7 @@ class ValidationNodeMixin:
         if decision.action == PolicyAction.HALT:
             has_errors = any(getattr(r, 'error', False) for r in results)
             if has_errors:
+                # Validator error — TERMINAL (INV3)
                 loop_state.is_blocked = True
                 loop_state.halt_type = "validator_error"
                 loop_state.constraint_violations.append(
@@ -261,9 +373,11 @@ class ValidationNodeMixin:
                 )
                 post_outcome = "blocked"
             elif self._is_recoverable(loop_state, results):
+                # Overridable blocker / warning — RECOVERABLE
                 self._spawn_recovery_subtask(loop_state, results, decision)
                 post_outcome = "recovery"
             else:
+                # Non-overridable blocker — TERMINAL
                 loop_state.is_blocked = True
                 loop_state.halt_type = "blocked"
                 loop_state.constraint_violations.append(
@@ -271,6 +385,7 @@ class ValidationNodeMixin:
                 )
                 post_outcome = "blocked"
         elif decision.action == PolicyAction.ESCALATE:
+            # ESCALATE is always RECOVERABLE — spawn fix subtask
             self._spawn_recovery_subtask(loop_state, results, decision)
             post_outcome = "recovery"
 
@@ -299,10 +414,6 @@ class ValidationNodeMixin:
     def _route_after_validation(self, state: Dict[str, Any]) -> str:
         """Route after validation based on policy decision."""
         loop_state = self._dict_to_state(state)
-
-        # Spec authoring takes precedence over blocking — re-enter governance
-        if loop_state.needs_spec_authoring:
-            return "governance"
 
         if loop_state.is_blocked:
             return "blocked"
