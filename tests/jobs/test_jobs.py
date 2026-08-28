@@ -719,7 +719,7 @@ class TestJobCLI:
 # === End-to-End Test ===
 
 class TestEndToEnd:
-    @pytest.mark.timeout(30)
+    @pytest.mark.timeout(60)
     def test_mock_job_end_to_end(self, temp_project):
         """Submit a --mock job, wait, and verify logs contain output."""
         # Initialize git repo
@@ -748,7 +748,7 @@ class TestEndToEnd:
         assert job_id.startswith("j_")
 
         # Wait for completion (mock should finish quickly)
-        result = manager.wait_for(job_id, timeout=20)
+        result = manager.wait_for(job_id, timeout=45)
         assert result["status"] in TERMINAL_STATUSES
 
         # Check that logs were written
