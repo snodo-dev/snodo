@@ -86,6 +86,76 @@ def _summarize_tokens(records: list) -> tuple:
     return prompt, completion, prompt + completion
 
 
+def _tool_telemetry_summary(records: list) -> list:
+    """Summarize per-turn tool-loop telemetry for a job.
+
+    Returns a list of human-readable lines covering:
+    - orientation ratio (turns before first write / total turns)
+    - path miss rate (read calls that were not memory hits)
+    - re-read rate by depth (read_hit share per depth)
+    - submit-size distribution (bytes of the submit_files payload)
+    """
+    if not records:
+        return []
+
+    lines = []
+
+    # Orientation ratio: turns before the first write (submit_files) / total.
+    coder_turns = [r for r in records if r.get("role") == "coder"]
+    if coder_turns:
+        total = len(coder_turns)
+        first_submit = next(
+            (r.get("turn_index") for r in coder_turns if r.get("tool") == "submit_files"),
+            None,
+        )
+        if first_submit is not None:
+            orient = first_submit - 1
+            lines.append(
+                f"  Orientation: {orient}/{total} turns before first submit "
+                f"({orient / total:.0%} of coder turns)"
+            )
+        else:
+            lines.append(f"  Orientation: no submit_files recorded ({total} coder turns)")
+
+    # Path miss rate: read calls that were not memory hits.
+    reads = [r for r in records if r.get("tool") not in ("submit_files", "submit_verdict")]
+    if reads:
+        hits = sum(1 for r in reads if r.get("read_hit"))
+        lines.append(
+            f"  Path miss rate: {len(reads) - hits}/{len(reads)} reads were misses "
+            f"({(len(reads) - hits) / len(reads):.0%})"
+        )
+
+    # Re-read rate by depth: read_hit share per depth.
+    by_depth: dict = {}
+    for r in reads:
+        d = r.get("depth", 0)
+        by_depth.setdefault(d, {"total": 0, "hits": 0})
+        by_depth[d]["total"] += 1
+        if r.get("read_hit"):
+            by_depth[d]["hits"] += 1
+    if by_depth:
+        parts = []
+        for d in sorted(by_depth):
+            t = by_depth[d]["total"]
+            h = by_depth[d]["hits"]
+            parts.append(f"depth {d}: {h}/{t} re-reads")
+        lines.append("  Re-read by depth: " + " | ".join(parts))
+
+    # Submit-size distribution.
+    submits = [r for r in records if r.get("tool") == "submit_files" and r.get("submit_bytes")]
+    if submits:
+        sizes = sorted(r["submit_bytes"] for r in submits)
+        n = len(sizes)
+        median = sizes[n // 2] if n % 2 else (sizes[n // 2 - 1] + sizes[n // 2]) / 2
+        lines.append(
+            f"  Submit size: {n} submit(s), median {int(median)} bytes, "
+            f"max {sizes[-1]} bytes"
+        )
+
+    return lines
+
+
 def _per_role_tokens(records: list) -> list:
     """Return [(role, prompt_tok, completion_tok), ...] sorted by total desc."""
     roles: dict = {}
@@ -153,10 +223,13 @@ def _meta_job(project_root: str, job_id: str) -> int:
     state = _read_json(job_dir / "state.json")
     task = _read_json(job_dir / "task.json")
     usage = state.get("usage", [])
+    telemetry = state.get("tool_telemetry", [])
     halt = state.get("halt", {})
 
     if not isinstance(usage, list):
         usage = []
+    if not isinstance(telemetry, list):
+        telemetry = []
 
     status = state.get("status", "unknown")
     created = state.get("created_at", 0)
@@ -182,6 +255,11 @@ def _meta_job(project_root: str, job_id: str) -> int:
     if role_rows:
         parts = [f"{role} {_fmt_tokens(p + c)}" for role, p, c in role_rows]
         print(f"  By role: {' | '.join(parts)}")
+    telemetry_lines = _tool_telemetry_summary(telemetry)
+    if telemetry_lines:
+        print("  Tool-loop telemetry:")
+        for line in telemetry_lines:
+            print(line)
     print(f"  Highlight: {hl}")
     return 0
 
