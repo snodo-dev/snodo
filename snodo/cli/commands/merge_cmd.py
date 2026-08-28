@@ -57,7 +57,7 @@ from snodo.infrastructure.ci_gate import (
     CIGateError,
     wait_for_ci_conclusion,
 )
-from snodo.infrastructure.worktree import merge_task_branch
+from snodo.infrastructure.worktree import merge_head_sha, merge_task_branch
 from snodo.tools.git import GitError, resolve_base_branch
 
 from snodo.core.interfaces import AuditError
@@ -520,10 +520,12 @@ def _record_merge_and_review(args, project_root: str, branch: str) -> None:
     try:
         audit_log = _audit_log(project_root)
         now = datetime.now(timezone.utc).isoformat()
+        merge_sha = merge_head_sha(project_root)
         audit_log.append_event("task_merged", {
             "op": "task_merged",
             "task_ref": branch,
             "branch": branch,
+            "merge_sha": merge_sha,
             "recorded_at": now,
         })
 
@@ -549,6 +551,7 @@ def _record_merge_and_review(args, project_root: str, branch: str) -> None:
             "op": "human_review_recorded",
             "task_ref": branch,
             "branch": branch,
+            "merge_sha": merge_sha,
             "verdict": verdict,
             "notes": f"recorded at merge time for {branch}",
             "recorded_at": now,

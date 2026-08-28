@@ -54,21 +54,25 @@ def test_task_report_calculates_acceptance_rate(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
 
     # Log completed tasks
-    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t1"})
-    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t2"})
-    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t3"})
+    audit_log.append_event("task_complete", {"op": "task_complete", "task_ref": "t1"})
+    audit_log.append_event("task_complete", {"op": "task_complete", "task_ref": "t2"})
+    audit_log.append_event("task_complete", {"op": "task_complete", "task_ref": "t3"})
 
-    # Log human reviews: t1 accepted, t2 amended, t3 discarded
-    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t1", "verdict": "accepted"})
-    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t2", "verdict": "amended"})
-    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t3", "verdict": "discarded"})
+    # Log merged units and human reviews: t1 accepted, t2 amended, t3 discarded
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t1", "merge_sha": "a" * 40})
+    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t1", "merge_sha": "a" * 40, "verdict": "accepted"})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t2", "merge_sha": "b" * 40})
+    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t2", "merge_sha": "b" * 40, "verdict": "amended"})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t3", "merge_sha": "c" * 40})
+    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t3", "merge_sha": "c" * 40, "verdict": "discarded"})
 
     args = SimpleNamespace(days=30, json=False)
     res = task_report_command(args)
     assert res == 0
 
     out = capsys.readouterr().out
-    assert "Completed tasks:           3" in out
+    assert "Completed tasks (task_complete): 3" in out
+    assert "Merged units (task_merged):      3" in out
     assert "Reviewed tasks:            3" in out
     assert "Accepted unchanged:    1" in out
     assert "Amended by operator:   1" in out
@@ -82,8 +86,9 @@ def test_task_report_json(tmp_path, monkeypatch, capsys):
     audit_log = AuditLog(str(tmp_path / "audit.log"))
     monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
 
-    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t1"})
-    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t1", "verdict": "accepted"})
+    audit_log.append_event("task_complete", {"op": "task_complete", "task_ref": "t1"})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t1", "merge_sha": "a" * 40})
+    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t1", "merge_sha": "a" * 40, "verdict": "accepted"})
 
     args = SimpleNamespace(days=30, json=True)
     res = task_report_command(args)
@@ -92,9 +97,44 @@ def test_task_report_json(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     data = json.loads(out)
     assert data["schema"] == "snodo.task_review_report.v1"
-    assert data["total_completed"] == 1
+    assert data["completed_tasks"] == 1
+    assert data["merged_units"] == 1
     assert data["accepted_unchanged"] == 1
     assert data["acceptance_rate_pct"] == 100.0
+
+
+def test_report_counts_two_merges_of_same_branch(tmp_path, monkeypatch, capsys):
+    """Two merges of the same branch with different verdicts are two rows
+    (Fixes #101). Against current main this shows one task."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    audit_log = AuditLog(str(tmp_path / "audit.log"))
+    monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
+
+    audit_log.append_event("task_merged", {
+        "op": "task_merged", "task_ref": "agent-a", "branch": "agent-a",
+        "merge_sha": "a" * 40,
+    })
+    audit_log.append_event("human_review_recorded", {
+        "op": "human_review_recorded", "task_ref": "agent-a", "branch": "agent-a",
+        "merge_sha": "a" * 40, "verdict": "accepted",
+    })
+    audit_log.append_event("task_merged", {
+        "op": "task_merged", "task_ref": "agent-a", "branch": "agent-a",
+        "merge_sha": "b" * 40,
+    })
+    audit_log.append_event("human_review_recorded", {
+        "op": "human_review_recorded", "task_ref": "agent-a", "branch": "agent-a",
+        "merge_sha": "b" * 40, "verdict": "amended",
+    })
+
+    args = SimpleNamespace(days=30, json=True)
+    res = task_report_command(args)
+    assert res == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["merged_units"] == 2
+    assert data["accepted_unchanged"] == 1
+    assert data["amended"] == 1
 
 
 def test_task_report_unreviewed_merge_never_counts_as_accepted(tmp_path, monkeypatch, capsys):
@@ -106,17 +146,17 @@ def test_task_report_unreviewed_merge_never_counts_as_accepted(tmp_path, monkeyp
 
     # t1 merged with a verdict recorded at merge time (accepted); t2 merged
     # with no verdict (recorded as unreviewed by snodo merge).
-    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t1"})
-    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t1", "verdict": "accepted"})
-    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t2"})
-    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t2", "verdict": "unreviewed"})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t1", "merge_sha": "a" * 40})
+    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t1", "merge_sha": "a" * 40, "verdict": "accepted"})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t2", "merge_sha": "b" * 40})
+    audit_log.append_event("human_review_recorded", {"op": "human_review_recorded", "task_ref": "t2", "merge_sha": "b" * 40, "verdict": "unreviewed"})
 
     args = SimpleNamespace(days=30, json=True)
     res = task_report_command(args)
     assert res == 0
 
     data = json.loads(capsys.readouterr().out)
-    assert data["total_completed"] == 2
+    assert data["merged_units"] == 2
     assert data["total_reviewed"] == 1
     assert data["accepted_unchanged"] == 1
     assert data["unreviewed"] == 1
