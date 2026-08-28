@@ -19,8 +19,6 @@ INV3 (non-overridable validation) is structural/emergent — no single site:
   blocks mutation tools → validation cannot be bypassed.
 """
 
-from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -37,52 +35,14 @@ from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.constraints import ConstraintEngine
 from snodo.engine.policy import PolicyEvaluator
+from snodo.engine.state import LoopStage, LoopState  # noqa: F401 — re-exported for existing imports
 from snodo.engine.validators import ValidatorRunner
 from snodo.infrastructure.config import DEFAULT_MODEL
-from snodo.infrastructure.tokens import TokenIssuer, ValidationToken
+from snodo.infrastructure.tokens import TokenIssuer
 from snodo.tools.git import GitMCP
 from snodo.tools.shell import ShellMCP
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.validators.context import ValidatorContext
-
-
-class LoopStage(str, Enum):
-    """Stages in the orchestration loop."""
-    GOVERNANCE = "governance"
-    VALIDATE = "validate"
-    EXECUTE = "execute"
-    MOVE_NEXT = "move_next"
-    COMPLETE = "complete"
-    BLOCKED = "blocked"
-
-
-@dataclass
-class LoopState:
-    """State carried through the orchestration loop."""
-    task: Task
-    current_mode: str
-    validation_results: List[ValidatorResult] = field(default_factory=list)
-    validation_token: Optional[ValidationToken] = None
-    artifacts: List[str] = field(default_factory=list)
-    stage: LoopStage = LoopStage.GOVERNANCE
-    iteration: int = 0
-    constraints_passed: bool = True
-    constraint_violations: List[str] = field(default_factory=list)
-    policy_decision: Optional[Any] = None
-    is_complete: bool = False
-    is_blocked: bool = False
-    halt_type: Optional[str] = None  # "blocked" | "escalated" | "resolution" | "constraint" | "max_iterations" | "wf3" | "validator_error" | "recovery_exhausted"
-    pending_disagreement: Optional[Dict[str, Any]] = None
-    spawned_subtasks: List[Task] = field(default_factory=list)
-    needs_recovery: bool = False
-    needs_spec_authoring: bool = False
-    spec_authoring_attempts: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    messages: List[Dict[str, Any]] = field(default_factory=list)
-    summary: str = ""
-    #: HEAD sha captured in the execute node before the coder runs; the
-    #: post-execute judges diff base_ref..HEAD. None when no git workspace.
-    base_ref: Optional[str] = None
 
 
 from snodo.engine.nodes.context import ContextMixin  # noqa: E402
