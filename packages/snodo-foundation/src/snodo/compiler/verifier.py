@@ -3,10 +3,11 @@
 Implements static checks based on Section 4.4 Well-Formedness Conditions.
 """
 
-from typing import List, Set, Dict
+from pathlib import Path
+from typing import List, Set, Dict, Optional
 from dataclasses import dataclass
 
-from snodo.compiler.models import Protocol, Constraint
+from snodo.compiler.models import Protocol, Constraint, Plan
 import snodo.predicates.scope  # noqa: F401 — ensures predicates self-register
 import snodo.predicates.tests  # noqa: F401
 import snodo.predicates.secrets  # noqa: F401
@@ -329,3 +330,140 @@ def verify_protocol(protocol: Protocol) -> VerificationResult:
     """
     verifier = ProtocolVerifier(protocol)
     return verifier.verify()
+
+
+@dataclass
+class PlanVerificationResult:
+    """Result of plan verification."""
+
+    passed: bool
+    errors: List[str]
+    warnings: List[str]
+
+    def __bool__(self) -> bool:
+        return self.passed
+
+
+class PlanWellFormednessError(Exception):
+    """Raised when a plan fails well-formedness verification at load time."""
+
+    def __init__(self, violations: List[str]):
+        self.violations = violations
+        super().__init__(
+            "Plan violates well-formedness conditions:\n  - "
+            + "\n  - ".join(violations)
+        )
+
+
+def verify_plan(plan: Plan, plan_dir: Optional[Path] = None) -> PlanVerificationResult:
+    """Verify well-formedness of a Plan model.
+
+    Checks:
+    1. Basic structure (intent present, waves defined)
+    2. Unknown parent_task_ref references
+    3. Parent task reference cycles and wave dependency cycles
+    4. Wave-number gaps (e.g. waves 1, 3 without 2)
+    5. Status entries with no matching task in plan waves
+    6. Tasks with missing spec files (when plan_dir is provided)
+    7. Unknown wave dependency references
+
+    Args:
+        plan: Plan model instance
+        plan_dir: Optional Path to plan directory on disk
+
+    Returns:
+        PlanVerificationResult containing passed, errors, and warnings.
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+
+    if not plan.intent:
+        errors.append("Missing intent")
+
+    if not plan.waves:
+        errors.append("No waves defined")
+
+    wave_ids = [w.id for w in plan.waves]
+    wave_id_set = set(wave_ids)
+
+    # Check wave-number gaps: wave IDs should be contiguous 1..N starting at 1
+    if wave_ids:
+        sorted_wave_ids = sorted(wave_ids)
+        expected_range = list(range(1, len(sorted_wave_ids) + 1))
+        if sorted_wave_ids != expected_range:
+            errors.append(
+                f"Wave-number gap detected: expected contiguous 1..{len(sorted_wave_ids)}, found {sorted_wave_ids}"
+            )
+
+    # Check wave dependencies and gather task IDs
+    wave_map = {w.id: w for w in plan.waves}
+    wave_task_ids: Set[str] = set()
+
+    for w in plan.waves:
+        if not w.tasks:
+            warnings.append(f"Wave {w.id} has no tasks")
+        for t in w.tasks:
+            wave_task_ids.add(t)
+
+        for dep in w.depends_on:
+            if dep not in wave_id_set:
+                errors.append(f"Wave {w.id} depends on unknown wave {dep}")
+
+    # Check for wave dependency cycles
+    for w_id in wave_map:
+        visited_waves: Set[int] = set()
+        stack = list(wave_map[w_id].depends_on)
+        while stack:
+            curr_dep = stack.pop(0)
+            if curr_dep == w_id or curr_dep in visited_waves:
+                errors.append(f"Wave dependency cycle detected involving wave {w_id}")
+                break
+            visited_waves.add(curr_dep)
+            if curr_dep in wave_map:
+                stack.extend(wave_map[curr_dep].depends_on)
+
+    # Check status entries with no matching task in plan waves
+    for task_id in plan.tasks:
+        if task_id not in wave_task_ids:
+            errors.append(f"Status entry '{task_id}' has no matching task in plan waves")
+
+    # Check unknown parent_task_ref and parent task cycles
+    all_known_tasks = set(plan.tasks.keys()).union(wave_task_ids)
+    for task_id, task in plan.tasks.items():
+        pref = task.parent_task_ref
+        if pref:
+            if pref not in all_known_tasks:
+                errors.append(f"Task '{task_id}' references unknown parent_task_ref '{pref}'")
+
+    # Check for parent reference cycles
+    cycle_nodes_reported: Set[str] = set()
+    for task_id in plan.tasks:
+        if task_id in cycle_nodes_reported:
+            continue
+        visited: Set[str] = {task_id}
+        curr = plan.tasks[task_id].parent_task_ref
+        while curr:
+            if curr in visited:
+                errors.append(f"Parent reference cycle detected involving task '{task_id}'")
+                cycle_nodes_reported.update(visited)
+                break
+            visited.add(curr)
+            if curr in plan.tasks:
+                curr = plan.tasks[curr].parent_task_ref
+            else:
+                break
+
+    # Check tasks with no spec file (when plan_dir provided)
+    if plan_dir and plan_dir.exists():
+        for w in plan.waves:
+            wave_dir = plan_dir / f"wave_{w.id}"
+            for task_id in w.tasks:
+                spec_file = wave_dir / f"{task_id}_task.md"
+                if not spec_file.exists():
+                    errors.append(f"Missing spec: {task_id}")
+
+    return PlanVerificationResult(
+        passed=len(errors) == 0,
+        errors=errors,
+        warnings=warnings,
+    )

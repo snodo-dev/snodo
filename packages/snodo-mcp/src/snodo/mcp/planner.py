@@ -21,9 +21,19 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from snodo.compiler.models import Plan
+from snodo.compiler.verifier import (
+    verify_plan,
+    PlanWellFormednessError as _BasePlanWellFormednessError,
+)
+
 
 class PlannerError(Exception):
     """Raised when a planner operation fails."""
+
+
+class PlanWellFormednessError(_BasePlanWellFormednessError, PlannerError):
+    """Raised when a plan fails well-formedness verification at load time."""
 
 
 class PlannerMCP:
@@ -434,8 +444,7 @@ class PlannerMCP:
     def validate_plan(self, plan_name: str) -> dict:
         """Validate a plan's completeness and structure.
 
-        Checks: plan.yml exists, intent present, all waves have tasks,
-        all tasks have spec files.
+        Validates the Plan model using verify_plan().
 
         Args:
             plan_name: Plan name to validate
@@ -453,81 +462,49 @@ class PlannerMCP:
 
         plan_file = plan_dir / "plan.yml"
         if not plan_file.exists():
-            return {"valid": False, "errors": ["plan.yml not found"],
-                    "warnings": [], "wave_count": 0, "task_count": 0}
+            return {
+                "valid": False,
+                "errors": ["plan.yml not found"],
+                "warnings": [],
+                "wave_count": 0,
+                "task_count": 0,
+            }
 
         with open(plan_file) as f:
             plan_data = yaml.safe_load(f) or {}
 
-        errors: list[str] = []
-        warnings: list[str] = []
+        status_file = plan_dir / "status.json"
+        status_data = {}
+        if status_file.exists():
+            try:
+                with open(status_file) as f:
+                    status_data = json.load(f) or {}
+            except Exception:
+                status_data = {}
 
-        if not plan_data.get("intent"):
-            errors.append("Missing intent")
-
-        waves = plan_data.get("waves", [])
-        if not waves:
-            errors.append("No waves defined")
-
-        task_count = self._validate_waves(waves, plan_dir, errors, warnings)
+        plan = Plan.from_dict(plan_data, status_data)
+        result = verify_plan(plan, plan_dir=plan_dir)
 
         return {
-            "valid": len(errors) == 0,
-            "errors": errors,
-            "warnings": warnings,
-            "wave_count": len(waves),
-            "task_count": task_count,
+            "valid": result.passed,
+            "errors": result.errors,
+            "warnings": result.warnings,
+            "wave_count": len(plan.waves),
+            "task_count": sum(len(w.tasks) for w in plan.waves),
         }
 
-    @staticmethod
-    def _validate_waves(
-        waves: list, plan_dir: Path, errors: list, warnings: list
-    ) -> int:
-        """Validate wave structure, spec files, and dependencies.
-
-        Args:
-            waves: List of wave dicts from plan.yml
-            plan_dir: Path to plan directory
-            errors: List to append errors to
-            warnings: List to append warnings to
-
-        Returns:
-            Total task count
-        """
-        task_count = 0
-        for wave in waves:
-            wave_id = wave.get("id")
-            tasks = wave.get("tasks", [])
-            if not tasks:
-                warnings.append(f"Wave {wave_id} has no tasks")
-
-            wave_dir = plan_dir / f"wave_{wave_id}"
-            for task_id in tasks:
-                task_count += 1
-                spec_file = wave_dir / f"{task_id}_task.md"
-                if not spec_file.exists():
-                    errors.append(f"Missing spec: {task_id}")
-
-        # Check dependency references
-        wave_ids = {w.get("id") for w in waves}
-        for wave in waves:
-            for dep in wave.get("depends_on", []):
-                if dep not in wave_ids:
-                    errors.append(f"Wave {wave.get('id')} depends on unknown wave {dep}")
-
-        return task_count
-
-    def get_plan(self, plan_name: str) -> dict:
-        """Load a plan's data.
+    def get_plan(self, plan_name: str) -> Plan:
+        """Load and verify a plan's data.
 
         Args:
             plan_name: Plan name
 
         Returns:
-            Plan data dict from plan.yml
+            Plan model instance
 
         Raises:
             PlannerError: If plan not found
+            PlanWellFormednessError: If plan fails verification
         """
         plan_dir = self.plans_dir / plan_name
         if not plan_dir.exists():
@@ -538,7 +515,23 @@ class PlannerMCP:
             raise PlannerError(f"plan.yml not found in: {plan_name}")
 
         with open(plan_file) as f:
-            return yaml.safe_load(f) or {}
+            plan_data = yaml.safe_load(f) or {}
+
+        status_file = plan_dir / "status.json"
+        status_data = {}
+        if status_file.exists():
+            try:
+                with open(status_file) as f:
+                    status_data = json.load(f) or {}
+            except Exception:
+                status_data = {}
+
+        plan = Plan.from_dict(plan_data, status_data)
+        result = verify_plan(plan, plan_dir=plan_dir)
+        if not result.passed:
+            raise PlanWellFormednessError(result.errors)
+
+        return plan
 
     def list_plans(self) -> List[dict]:
         """List all plans with summary info.
