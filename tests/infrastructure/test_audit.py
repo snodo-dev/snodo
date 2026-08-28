@@ -5,6 +5,7 @@ import pytest
 import tempfile
 import json
 import threading
+import time
 from pathlib import Path
 
 from snodo.infrastructure.audit import (
@@ -552,6 +553,78 @@ def test_session_resume_extends_chain(temp_audit_log):
     assert len(resumed.events) == 3
     assert resumed.events[2].previous_hash == last_hash
     assert resumed.verify_chain() is True
+
+
+# ========== CONCURRENT PROCESS APPEND (Fixes #114) ==========
+
+def test_concurrent_process_appends_keep_chain_valid(tmp_path):
+    """Two processes appending concurrently to one log must not corrupt the
+    hash chain (Fixes #114).
+
+    Against current main this must FAIL: append_event derives the next
+    sequence from process-local memory, so two processes both write "their"
+    next sequence and the chain breaks. After the fix the append takes an
+    exclusive file lock and re-reads the last line for the true sequence.
+    """
+    import subprocess
+    import sys
+
+    log_path = tmp_path / "audit.log"
+    barrier = tmp_path / "go"
+    worker = (
+        "import sys, time\n"
+        "from pathlib import Path\n"
+        "from snodo.infrastructure.audit import AuditLog\n"
+        "log = AuditLog(sys.argv[1])\n"
+        "while not Path(sys.argv[3]).exists():\n"
+        "    time.sleep(0.001)\n"
+        "for i in range(50):\n"
+        "    log.append_event('concurrent', {'worker': sys.argv[2], 'i': i})\n"
+    )
+    procs = [
+        subprocess.Popen(
+            [sys.executable, "-c", worker, str(log_path), str(w), str(barrier)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        for w in range(2)
+    ]
+    # Both workers load the (empty) log, then release them together so their
+    # appends genuinely interleave.
+    time.sleep(0.5)
+    barrier.touch()
+    for p in procs:
+        assert p.wait(timeout=60) == 0
+
+    loaded = AuditLog(str(log_path))
+    assert len(loaded.events) == 100
+    assert loaded.verify_chain() is True
+
+
+def test_append_fails_loudly_when_lock_cannot_be_acquired(tmp_path, monkeypatch):
+    """When the exclusive file lock cannot be acquired, append_event fails
+    loudly with AuditError — it never silently proceeds (Fixes #114)."""
+    import snodo.infrastructure.audit as audit_mod
+
+    log_path = tmp_path / "audit.log"
+    audit = AuditLog(str(log_path))
+    audit.append_event("e1", {"a": 1})
+
+    # Simulate another process holding the lock forever.
+    f = open(log_path, "a")
+    audit_mod.fcntl.flock(f.fileno(), audit_mod.fcntl.LOCK_EX)
+
+    monkeypatch.setattr(audit_mod, "_LOCK_TIMEOUT", 0.2)
+
+    with pytest.raises(AuditError, match="Could not acquire the exclusive lock"):
+        audit.append_event("e2", {"b": 2})
+
+    f.close()
+
+    # Nothing was appended; the chain is intact.
+    loaded = AuditLog(str(log_path))
+    assert len(loaded.events) == 1
+    assert loaded.verify_chain() is True
 
 
 def test_audit_log_project_stamping(tmpdir):
