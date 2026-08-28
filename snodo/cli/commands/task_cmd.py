@@ -387,7 +387,19 @@ def task_review_command(args) -> int:
         print("Usage: snodo task review <task_id> <verdict> [--notes NOTES]", file=sys.stderr)
         return 1
 
-    if not verdict_raw or verdict_raw.lower() not in VALID_VERDICTS:
+    if not verdict_raw:
+        valid_str = ", ".join(sorted(VALID_VERDICTS))
+        msg = f"A verdict is required. Must be one of: {valid_str}"
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task_review", msg, 1)
+        print(f"Error: {msg}", file=sys.stderr)
+        print("  accepted  : Task completed and accepted unchanged", file=sys.stderr)
+        print("  amended   : Task completed but required manual edits", file=sys.stderr)
+        print("  discarded : Task output was rejected or reverted", file=sys.stderr)
+        return 1
+
+    if verdict_raw.lower() not in VALID_VERDICTS:
         valid_str = ", ".join(sorted(VALID_VERDICTS))
         msg = f"Invalid verdict '{verdict_raw}'. Must be one of: {valid_str}"
         if json_out:
