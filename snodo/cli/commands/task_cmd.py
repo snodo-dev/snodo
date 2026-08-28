@@ -60,16 +60,17 @@ def task_prune(
 
 @app.command(name="review")
 def task_review(
-    task_id: str = typer.Argument(..., help="Task ID or 'report' to view review statistics"),
+    task_id: Optional[str] = typer.Argument(None, help="Task ID or 'report' to view review statistics"),
     verdict: Optional[str] = typer.Argument(None, help="Verdict: accepted (unchanged), amended, or discarded"),
     notes: Optional[str] = typer.Option(None, "--notes", help="Optional review notes"),
     report: bool = typer.Option(False, "--report", help="Report review acceptance statistics"),
+    pending: bool = typer.Option(False, "--pending", help="List merged units with no review record"),
     days: int = typer.Option(30, "--days", help="Window in days for review report"),
     json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
 ):
-    """Record operator review verdict for a completed task or report acceptance rate."""
+    """Record operator review verdict for a completed task, report acceptance rate, or list pending reviews."""
     return task_review_command(SimpleNamespace(
-        task_id=task_id, verdict=verdict, notes=notes, report=report, days=days, json=json
+        task_id=task_id, verdict=verdict, notes=notes, report=report, pending=pending, days=days, json=json
     ))
 
 
@@ -370,12 +371,16 @@ VALID_VERDICTS = {"accepted", "amended", "discarded"}
 
 
 def task_review_command(args) -> int:
-    """Record operator review verdict for a task or generate report."""
-    task_id = getattr(args, "task_id", "")
+    """Record operator review verdict for a task, list pending reviews, or generate report."""
+    task_id = getattr(args, "task_id", "") or ""
     verdict_raw = getattr(args, "verdict", None)
     notes = getattr(args, "notes", None) or ""
     report_flag = getattr(args, "report", False)
+    pending_flag = getattr(args, "pending", False)
     json_out = getattr(args, "json", False)
+
+    if pending_flag:
+        return task_review_pending_command(args)
 
     if report_flag or task_id.lower() in ("report", "--report"):
         return task_report_command(args)
@@ -567,4 +572,134 @@ def task_report_command(args) -> int:
         print(f"  - Unreviewed:            {unreviewed_count}")
     print()
     print(f"Unchanged Acceptance Rate: {rate_pct:.1f}% ({accepted_count}/{reviewed_count} reviewed tasks accepted unchanged)")
+    return 0
+
+
+def _spec_excerpt(spec: str, max_chars: int = 80) -> str:
+    """Return a one-line excerpt of *spec* for the pending list."""
+    if not spec:
+        return ""
+    one_line = " ".join(spec.split())
+    if len(one_line) <= max_chars:
+        return one_line
+    return one_line[: max_chars - 1] + "…"
+
+
+def task_review_pending_command(args) -> int:
+    """List every merged unit with no review record, newest first.
+
+    Read-only: reads the audit log (task_merged / human_review_recorded) and
+    the session halt payloads for the spec excerpt. Never creates, mutates or
+    clears any review record.
+    """
+    from datetime import datetime
+
+    from snodo.infrastructure.audit import get_audit_log
+
+    json_out = getattr(args, "json", False)
+
+    project_root = resolve_project_root()
+    if project_root is None:
+        if json_out:
+            from snodo.cli.json_output import emit_error
+            return emit_error("task_review_pending", "Not inside a snodo project.", 1)
+        print("Not inside a snodo project.", file=sys.stderr)
+        return 1
+
+    audit_log = get_audit_log()
+    events = audit_log.events if audit_log else []
+
+    # Merge identity -> (task_ref, branch, merge timestamp). The merge commit
+    # SHA is the identity (Fixes #101); the branch name is a human label that
+    # repeats across merges and must not be used as an identity.
+    merged: dict = {}
+    for ev in events:
+        data = ev.data or {}
+        op = data.get("op") or ev.event_type
+        if op != "task_merged":
+            continue
+        identity = _merge_identity(data)
+        if not identity:
+            continue
+        ts_str = data.get("timestamp") or getattr(ev, "timestamp", "")
+        try:
+            ts = datetime.fromisoformat(ts_str) if ts_str else None
+        except (ValueError, TypeError):
+            ts = None
+        merged[identity] = {
+            "task_ref": data.get("task_ref") or data.get("task_id") or identity,
+            "branch": data.get("branch", ""),
+            "merge_ts": ts,
+        }
+
+    # Reviewed identities: any human_review_recorded with a verdict.
+    reviewed: set = set()
+    for ev in events:
+        data = ev.data or {}
+        op = data.get("op") or ev.event_type
+        if op != "human_review_recorded":
+            continue
+        identity = _merge_identity(data)
+        if identity and data.get("verdict"):
+            reviewed.add(identity)
+
+    # Spec excerpt from the session halt payloads (checkpoint.decisions.halt).
+    specs: dict = {}
+    try:
+        from snodo.infrastructure.state import read_state
+        from snodo.infrastructure.session import SessionManager
+
+        state = read_state(project_root)
+        mode = state.current_mode
+        if mode:
+            mgr = SessionManager()
+            session = mgr.get_active_session(mode, project_root)
+            if session:
+                halt = session.checkpoint.decisions.get("halt", {})
+                if isinstance(halt, dict):
+                    for tid, payload in halt.items():
+                        if isinstance(payload, dict) and payload.get("task_spec"):
+                            specs[tid] = payload["task_spec"]
+    except Exception:
+        pass  # Spec excerpt is best-effort; the pending list still works.
+
+    pending = []
+    for identity, info in merged.items():
+        if identity in reviewed:
+            continue
+        task_ref = info["task_ref"]
+        pending.append({
+            "unit_id": identity,
+            "task_id": task_ref,
+            "branch": info["branch"],
+            "merge_timestamp": info["merge_ts"].isoformat() if info["merge_ts"] else "",
+            "spec_excerpt": _spec_excerpt(specs.get(task_ref, "")),
+        })
+
+    # Newest first; units without a parseable timestamp sort last.
+    pending.sort(key=lambda r: r["merge_timestamp"], reverse=True)
+
+    if json_out:
+        from snodo.cli.json_output import emit_json, schema_name
+        return emit_json({
+            "schema": schema_name("task_review_pending"),
+            "ok": True,
+            "count": len(pending),
+            "pending": pending,
+        })
+
+    if not pending:
+        print("No merged units awaiting review.")
+        return 0
+
+    print(f"{len(pending)} merged unit(s) awaiting review:")
+    print()
+    for r in pending:
+        ts = r["merge_timestamp"] or "unknown"
+        print(f"  {r['unit_id']}  {r['branch'] or '—'}  merged {ts}")
+        print(f"    task: {r['task_id']}")
+        if r["spec_excerpt"]:
+            print(f"    spec: {r['spec_excerpt']}")
+    print()
+    print("Review: snodo task review <unit_id> <verdict>")
     return 0
