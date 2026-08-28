@@ -277,6 +277,22 @@ def remove_worktree(project_root: str, task_id: str) -> None:
     _logger.info("Removed worktree %s", wt_path)
 
 
+def merge_head_sha(project_root: str) -> str:
+    """Return the base branch HEAD commit SHA after a merge, or "" if unreadable.
+
+    The merge commit is the natural identity of a merged unit: N merges of the
+    same worktree branch produce N distinct merge commits, so the audit record
+    can tell them apart (Fixes #101). The branch name is a human-readable
+    label, not an identity — it repeats across merges.
+    """
+    try:
+        from git import Repo
+        repo = Repo(str(Path(project_root)), search_parent_directories=True)
+        return repo.head.commit.hexsha
+    except Exception:  # noqa: BLE001 — best-effort; never block on this
+        return ""
+
+
 def merge_task_branch(project_root: str, branch: str) -> Tuple[str, List[str]]:
     """Merge *branch* into the resolved base branch.
 

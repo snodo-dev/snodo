@@ -441,6 +441,18 @@ def task_review_command(args) -> int:
     return 0
 
 
+def _merge_identity(data: dict) -> str:
+    """Return the identity of a merged unit from an event's data.
+
+    The merge commit SHA is the identity (Fixes #101): N merges of the same
+    worktree branch produce N distinct merge commits, so the report can tell
+    them apart. The branch name is a human-readable label that repeats across
+    merges and must not be used as an identity. Legacy events recorded before
+    the SHA was added fall back to ``task_ref``.
+    """
+    return data.get("merge_sha") or data.get("task_ref") or data.get("task_id") or ""
+
+
 def task_report_command(args) -> int:
     """Report operator human review acceptance statistics over a window."""
     from datetime import datetime, timezone, timedelta
@@ -462,8 +474,13 @@ def task_report_command(args) -> int:
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-    completed_tasks = set()
-    latest_reviews = {}  # task_ref -> verdict string
+    # Two distinct denominators (Fixes #101): the engine's completed-task set
+    # (task_complete events, keyed on the task id) and the merged-unit set
+    # (task_merged events, keyed on the merge commit SHA). They answer
+    # different questions and must not be conflated.
+    completed_tasks = set()   # task_refs from task_complete
+    merged_units = set()       # merge identities from task_merged
+    reviews = {}               # merge identity -> verdict
 
     for ev in events:
         data = ev.data or {}
@@ -480,24 +497,32 @@ def task_report_command(args) -> int:
             continue
 
         op = data.get("op") or ev.event_type
-        task_ref = data.get("task_ref") or data.get("task_id")
 
-        if op in ("task_merged", "verification_executed") and data.get("outcome") != "fail":
+        if op == "task_complete":
+            task_ref = data.get("task_ref") or data.get("task_id")
             if task_ref:
                 completed_tasks.add(task_ref)
 
-        if op == "human_review_recorded" and task_ref and data.get("verdict"):
-            latest_reviews[task_ref] = data["verdict"].lower()
+        if op == "task_merged":
+            identity = _merge_identity(data)
+            if identity:
+                merged_units.add(identity)
 
-    # Include any reviewed tasks in total if completed wasn't explicitly logged
-    all_known_tasks = completed_tasks.union(latest_reviews.keys())
-    total_completed = len(all_known_tasks)
+        if op == "human_review_recorded":
+            identity = _merge_identity(data)
+            if identity and data.get("verdict"):
+                reviews[identity] = data["verdict"].lower()
 
-    accepted_count = sum(1 for t in all_known_tasks if latest_reviews.get(t) == "accepted")
-    amended_count = sum(1 for t in all_known_tasks if latest_reviews.get(t) == "amended")
-    discarded_count = sum(1 for t in all_known_tasks if latest_reviews.get(t) == "discarded")
+    # A review without a matching task_merged still counts as a merged unit.
+    merged_units.update(reviews.keys())
+    total_completed = len(completed_tasks)
+    total_merged = len(merged_units)
+
+    accepted_count = sum(1 for t in merged_units if reviews.get(t) == "accepted")
+    amended_count = sum(1 for t in merged_units if reviews.get(t) == "amended")
+    discarded_count = sum(1 for t in merged_units if reviews.get(t) == "discarded")
     reviewed_count = accepted_count + amended_count + discarded_count
-    unreviewed_count = max(0, total_completed - reviewed_count)
+    unreviewed_count = max(0, total_merged - reviewed_count)
 
     rate_pct = (accepted_count / reviewed_count * 100.0) if reviewed_count > 0 else 0.0
 
@@ -507,7 +532,8 @@ def task_report_command(args) -> int:
             "schema": schema_name("task_review_report"),
             "ok": True,
             "days_window": days,
-            "total_completed": total_completed,
+            "completed_tasks": total_completed,
+            "merged_units": total_merged,
             "total_reviewed": reviewed_count,
             "accepted_unchanged": accepted_count,
             "amended": amended_count,
@@ -518,8 +544,9 @@ def task_report_command(args) -> int:
 
     print(f"Human Review Acceptance Rate (Last {days} days)")
     print("-" * 45)
-    print(f"Completed tasks:           {total_completed}")
-    rev_pct = (reviewed_count / total_completed * 100.0) if total_completed > 0 else 0.0
+    print(f"Completed tasks (task_complete): {total_completed}")
+    print(f"Merged units (task_merged):      {total_merged}")
+    rev_pct = (reviewed_count / total_merged * 100.0) if total_merged > 0 else 0.0
     print(f"Reviewed tasks:            {reviewed_count} ({rev_pct:.1f}%)")
     print(f"  - Accepted unchanged:    {accepted_count}")
     print(f"  - Amended by operator:   {amended_count}")

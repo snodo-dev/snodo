@@ -11,6 +11,24 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `snodo task review` report now counts every merged unit, not just the last
+  verdict per worktree branch. The report previously keyed review verdicts on
+  `task_ref`, which the merge path records as the worktree branch name — N
+  merges of one branch collapsed to one row and only the last verdict
+  survived, bounding the report's denominator at the number of worktrees
+  (five) however long tagging ran. Each `task_merged` / `human_review_recorded`
+  event now carries a `merge_sha` (the merge commit) as the unit identity,
+  with the branch name kept as a separate human-readable field; the report
+  keys on that identity, so N merges of one worktree are N rows. The report
+  also reads `task_complete` (the engine's completed-task event) for the
+  completed-task denominator, and the two numbers are labelled distinctly in
+  both text and `--json` output (`completed_tasks` vs `merged_units`) — they
+  answer different questions and conflating them was the bug. The audit log is
+  hash-chained, so this is additive only: the 7 pre-existing events recorded
+  without a `merge_sha` are treated as lost (they fall back to `task_ref` and
+  still collapse), and the report's merged-unit count starts fresh from the
+  first SHA-stamped merge. (Fixes #101).
+
 - The worktree path checker no longer flags slash-containing prose as a
   missing path. `_spec_referenced_paths` previously treated any token
   containing a `/` as a cited path, so a spec sentence like
