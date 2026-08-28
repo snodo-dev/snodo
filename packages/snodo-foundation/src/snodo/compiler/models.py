@@ -416,3 +416,164 @@ class Protocol(BaseModel):
             List of validators matching the phase.
         """
         return [v for v in self.validators if v.evaluation_phase == phase]
+
+
+# ---------------------------------------------------------------------------
+# Plan models (Pydantic view over plan.yml and status.json)
+# ---------------------------------------------------------------------------
+
+class PlanTask(BaseModel):
+    """A task entry within a plan."""
+
+    id: str
+    status: str = Field(default="pending")
+    parent_task_ref: Optional[str] = Field(default=None)
+    depth: int = Field(default=0, ge=0)
+    spec_hash: Optional[str] = Field(default=None)
+
+    def __getitem__(self, item: str) -> Any:
+        if hasattr(self, item):
+            return getattr(self, item)
+        raise KeyError(item)
+
+    def get(self, item: str, default: Any = None) -> Any:
+        if hasattr(self, item):
+            return getattr(self, item)
+        return default
+
+
+class PlanWave(BaseModel):
+    """A wave entry within a plan."""
+
+    id: int
+    depends_on: List[int] = Field(default_factory=list)
+    tasks: List[str] = Field(default_factory=list)
+
+    def __getitem__(self, item: str) -> Any:
+        if hasattr(self, item):
+            return getattr(self, item)
+        raise KeyError(item)
+
+    def get(self, item: str, default: Any = None) -> Any:
+        if hasattr(self, item):
+            return getattr(self, item)
+        return default
+
+
+class Plan(BaseModel):
+    """Pydantic model representing a plan structure.
+
+    Provides a typed view over plan.yml and status.json without altering
+    the on-disk format.
+    """
+
+    name: str
+    intent: str
+    waves: List[PlanWave] = Field(default_factory=list)
+    tasks: Dict[str, PlanTask] = Field(default_factory=dict)
+
+    def __getitem__(self, item: str) -> Any:
+        if hasattr(self, item):
+            return getattr(self, item)
+        raise KeyError(item)
+
+    def get(self, item: str, default: Any = None) -> Any:
+        if hasattr(self, item):
+            return getattr(self, item)
+        return default
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return dict representation matching plan.yml on-disk format."""
+        return {
+            "name": self.name,
+            "intent": self.intent,
+            "waves": [
+                {
+                    "id": w.id,
+                    "depends_on": list(w.depends_on),
+                    "tasks": list(w.tasks),
+                }
+                for w in self.waves
+            ],
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        plan_data: Dict[str, Any],
+        status_data: Optional[Dict[str, Any]] = None,
+    ) -> "Plan":
+        """Construct a Plan model from raw plan_data dict and optional status_data dict.
+
+        Handles legacy string entries and dict task entries in status_data.
+        """
+        name = str(plan_data.get("name") or "")
+        intent = str(plan_data.get("intent") or "")
+        raw_waves = plan_data.get("waves") or []
+
+        waves: List[PlanWave] = []
+        wave_task_ids: List[str] = []
+        for w in raw_waves:
+            if isinstance(w, dict):
+                wid = w.get("id")
+                deps = w.get("depends_on") or []
+                tasks = w.get("tasks") or []
+                try:
+                    wid_int = int(wid) if wid is not None else 0
+                except (ValueError, TypeError):
+                    wid_int = 0
+                deps_int = []
+                for d in deps:
+                    try:
+                        deps_int.append(int(d))
+                    except (ValueError, TypeError):
+                        pass
+                str_tasks = [str(t) for t in tasks]
+                waves.append(PlanWave(id=wid_int, depends_on=deps_int, tasks=str_tasks))
+                wave_task_ids.extend(str_tasks)
+
+        status_tasks = (status_data or {}).get("tasks", {})
+        if not isinstance(status_tasks, dict):
+            status_tasks = {}
+
+        tasks_map: Dict[str, PlanTask] = {}
+
+        # Populate tasks from waves first
+        for tid in wave_task_ids:
+            tasks_map[tid] = PlanTask(id=tid, status="pending")
+
+        # Merge status_tasks
+        for tid, entry in status_tasks.items():
+            tid_str = str(tid)
+            if isinstance(entry, str):
+                status_str = entry
+                parent_ref = None
+                depth_val = 0
+                hash_val = None
+            elif isinstance(entry, dict):
+                status_str = str(entry.get("status", "pending"))
+                parent_ref = entry.get("parent_task_ref")
+                if parent_ref is not None:
+                    parent_ref = str(parent_ref)
+                try:
+                    depth_val = int(entry.get("depth", 0))
+                except (ValueError, TypeError):
+                    depth_val = 0
+                hash_val = entry.get("spec_hash")
+                if hash_val is not None:
+                    hash_val = str(hash_val)
+            else:
+                status_str = "pending"
+                parent_ref = None
+                depth_val = 0
+                hash_val = None
+
+            tasks_map[tid_str] = PlanTask(
+                id=tid_str,
+                status=status_str,
+                parent_task_ref=parent_ref,
+                depth=depth_val,
+                spec_hash=hash_val,
+            )
+
+        return cls(name=name, intent=intent, waves=waves, tasks=tasks_map)
