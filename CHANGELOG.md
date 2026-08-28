@@ -371,6 +371,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Protocol trust is now explicit in the docs. `SECURITY.md` and
+  `docs/protocol.md` state that `protocol.yml` is executable input, name
+  `tooling.test_command` and `prepare_command` as shell-executed fields, and say
+  plainly that snodo does not sandbox protocol-authored commands. Also cap
+  `litellm` from `>=1.80.0` to `>=1.80,<2`; it is the widest-surface dependency
+  on the coding and validation critical path and should not float across a major
+  version boundary. (Fixes #110).
+
 - The merge gate no longer serialises on CI. `snodo merge` previously pushed
   and polled one branch at a time, so merging N branches cost N CI runs in
   series — measured today at five branches and roughly forty minutes for a
