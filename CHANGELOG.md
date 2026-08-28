@@ -51,6 +51,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
   SHA) and the session halt payloads for the spec excerpt, and never creates,
   mutates or clears any review record. The empty case prints a clear message
   and exits 0. (Fixes #120).
+- Added behavioral test suites for CLI commands `snodo meta` (`tests/cli/test_meta_cmd.py`), `snodo status` (`tests/cli/test_status_cmd.py`), and `sandbox_run` (`tests/cli/test_sandbox_run.py`). Covers happy paths with populated sessions, empty/no-session paths, `--json` machine-readable output format, non-zero failure paths, and per-turn tool-loop telemetry summary formatting. (Fixes #118).
 
 - Custom OpenAI-compatible provider support and decoupled litellm routing. Added `litellm_provider` and `extra_headers` fields to `ProviderConfig`. `ConfigManager` now decouples snodo config key resolution (`_provider_for_model`) from litellm model formatting (`resolve_litellm_model`) and header resolution (`resolve_extra_headers`), eliminating hardcoded provider special cases. `model_discovery.py` now includes a generic `_discover_openai_compatible` fallback fetcher for custom provider endpoints (such as Ollama Cloud at `https://ollama.com/v1`). Documented custom OpenAI-compatible provider configuration with an Ollama Cloud worked example in `README.md`. (Fixes #115).
 - Per-turn tool-loop telemetry is now persisted to each job's `state.json`
