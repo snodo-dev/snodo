@@ -9,7 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
+### Fixed
+
+- Fixed post-execute quality blockers being downgraded to warn during recovery attempts. `PolicyEvaluator.evaluate()` now requires `phase` explicitly, `_post_validate_node` passes `phase="post_execute"` and `is_recovery`, the recovery pre-execute escape branch no longer uses `"_fix_" in task_ref` substring matching, and validator contradiction detection now marks acceptance claims as `blocker` rather than `warn`. (Fixes #106).
 
 - `snodo task review` report now counts every merged unit, not just the last
   verdict per worktree branch. The report previously keyed review verdicts on

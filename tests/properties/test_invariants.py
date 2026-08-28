@@ -85,7 +85,7 @@ def test_policy_halt_when_any_blocker(results):
     for policy in [DisagreementPolicy.UNANIMOUS, DisagreementPolicy.MAJORITY,
                    DisagreementPolicy.QUORUM, DisagreementPolicy.ANY]:
         evaluator = PolicyEvaluator()
-        decision = evaluator.evaluate(results, policy)
+        decision = evaluator.evaluate(results, policy, phase="post_execute")
         if any(r.severity == "blocker" for r in results):
             from snodo.engine.policy import PolicyAction
             assert decision.action == PolicyAction.HALT, (
@@ -103,7 +103,7 @@ def test_policy_proceed_when_all_pass(results):
     # Also allow 1 warn if there are at least 2 validators
     for policy in [DisagreementPolicy.UNANIMOUS, DisagreementPolicy.ANY]:
         evaluator = PolicyEvaluator()
-        decision = evaluator.evaluate(clean, policy)
+        decision = evaluator.evaluate(clean, policy, phase="post_execute")
         from snodo.engine.policy import PolicyAction
         assert decision.action in (PolicyAction.PROCEED, PolicyAction.PROCEED_WITH_LOG), (
             f"All-pass should proceed under {policy}"
@@ -293,7 +293,7 @@ def test_policy_error_severity_always_halts(results):
     for policy in [DisagreementPolicy.UNANIMOUS, DisagreementPolicy.MAJORITY,
                    DisagreementPolicy.QUORUM, DisagreementPolicy.ANY]:
         evaluator = PolicyEvaluator()
-        decision = evaluator.evaluate(forced, policy)
+        decision = evaluator.evaluate(forced, policy, phase="post_execute")
         assert decision.action == PolicyAction.HALT, (
             f"Error present but action={decision.action} under {policy}"
         )
@@ -361,7 +361,7 @@ def test_error_result_never_capped_and_always_halts(cap, policy):
         f"error result must not be recorded as capped under cap={cap}"
     )
 
-    decision = PolicyEvaluator().evaluate(results, policy)
+    decision = PolicyEvaluator().evaluate(results, policy, phase="post_execute")
     assert decision.action == PolicyAction.HALT, (
         f"error result did not halt under cap={cap}, policy={policy}"
     )
@@ -381,7 +381,7 @@ def test_policy_warn_unanimous_escalates(results):
         justification=r.justification,
     ) for r in results]
     evaluator = PolicyEvaluator()
-    decision = evaluator.evaluate(all_warn, DisagreementPolicy.UNANIMOUS)
+    decision = evaluator.evaluate(all_warn, DisagreementPolicy.UNANIMOUS, phase="post_execute")
     assert decision.action == PolicyAction.ESCALATE, (
         f"All-warn under unanimous should ESCALATE, got {decision.action}"
     )
