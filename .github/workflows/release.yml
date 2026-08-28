@@ -18,7 +18,17 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: uv sync --only-dev
+        run: uv sync --all-extras
+      - name: Validate tag and CHANGELOG
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: uv run python scripts/check_release_version.py --tag "$RELEASE_TAG"
+      - name: Test suite
+        run: uv run pytest tests/ -q -n auto --timeout=60
+      - name: Lint (ruff)
+        run: uv run ruff check .
+      - name: Architecture (import-linter)
+        run: uv run lint-imports
       - name: Build all packages
         run: uv build --all-packages
       - name: Publish all artifacts
