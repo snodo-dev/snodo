@@ -32,6 +32,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Added `snodo plan validate <name>` CLI command and plan pre-verification in `snodo plan run`. Added `verify_plan_dir` in `snodo.compiler.verifier` to load and verify hand-authored or decomposed plan directories. `snodo plan validate <name>` runs well-formedness verification (detecting wave-number gaps, wave dependency cycles, parent reference cycles, unknown references, missing spec files, and orphan status entries) with optional `--json` machine-readable output. `snodo plan run` pre-verifies the entire plan directory before wave 1 dispatches any tasks, aborting with exit code 1 if errors are found, while printing warnings without aborting. (Fixes #119).
 - Custom OpenAI-compatible provider support and decoupled litellm routing. Added `litellm_provider` and `extra_headers` fields to `ProviderConfig`. `ConfigManager` now decouples snodo config key resolution (`_provider_for_model`) from litellm model formatting (`resolve_litellm_model`) and header resolution (`resolve_extra_headers`), eliminating hardcoded provider special cases. `model_discovery.py` now includes a generic `_discover_openai_compatible` fallback fetcher for custom provider endpoints (such as Ollama Cloud at `https://ollama.com/v1`). Documented custom OpenAI-compatible provider configuration with an Ollama Cloud worked example in `README.md`. (Fixes #115).
 - Per-turn tool-loop telemetry is now persisted to each job's `state.json`
   under the `tool_telemetry` key instead of being printed and discarded. Both

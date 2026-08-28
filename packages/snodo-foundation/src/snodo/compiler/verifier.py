@@ -377,6 +377,9 @@ def verify_plan(plan: Plan, plan_dir: Optional[Path] = None) -> PlanVerification
     errors: List[str] = []
     warnings: List[str] = []
 
+    if plan.parse_errors:
+        errors.extend(plan.parse_errors)
+
     if not plan.intent:
         errors.append("Missing intent")
 
@@ -387,7 +390,8 @@ def verify_plan(plan: Plan, plan_dir: Optional[Path] = None) -> PlanVerification
     wave_id_set = set(wave_ids)
 
     # Check wave-number gaps: wave IDs should be contiguous 1..N starting at 1
-    if wave_ids:
+    has_wave_id_parse_error = any("Wave id " in e for e in plan.parse_errors)
+    if wave_ids and not has_wave_id_parse_error:
         sorted_wave_ids = sorted(wave_ids)
         expected_range = list(range(1, len(sorted_wave_ids) + 1))
         if sorted_wave_ids != expected_range:
@@ -467,3 +471,71 @@ def verify_plan(plan: Plan, plan_dir: Optional[Path] = None) -> PlanVerification
         errors=errors,
         warnings=warnings,
     )
+
+
+def verify_plan_dir(plan_dir: Path) -> PlanVerificationResult:
+    """Load and verify a plan directory on disk.
+
+    Args:
+        plan_dir: Path to the plan directory (containing plan.yml and wave_* dirs)
+
+    Returns:
+        PlanVerificationResult containing passed, errors, and warnings.
+    """
+    import json
+    import yaml
+
+    if not plan_dir.exists():
+        return PlanVerificationResult(
+            passed=False,
+            errors=[f"Plan directory does not exist: {plan_dir}"],
+            warnings=[],
+        )
+    if not plan_dir.is_dir():
+        return PlanVerificationResult(
+            passed=False,
+            errors=[f"Plan path is not a directory: {plan_dir}"],
+            warnings=[],
+        )
+
+    plan_file = plan_dir / "plan.yml"
+    if not plan_file.exists():
+        return PlanVerificationResult(
+            passed=False,
+            errors=[f"plan.yml not found in: {plan_dir}"],
+            warnings=[],
+        )
+
+    try:
+        with open(plan_file) as f:
+            plan_data = yaml.safe_load(f) or {}
+    except Exception as e:
+        return PlanVerificationResult(
+            passed=False,
+            errors=[f"Failed to parse plan.yml: {e}"],
+            warnings=[],
+        )
+
+    status_file = plan_dir / "status.json"
+    status_data = {}
+    if status_file.exists():
+        try:
+            with open(status_file) as f:
+                status_data = json.load(f) or {}
+        except Exception as e:
+            return PlanVerificationResult(
+                passed=False,
+                errors=[f"Failed to parse status.json: {e}"],
+                warnings=[],
+            )
+
+    try:
+        plan = Plan.from_dict(plan_data, status_data)
+    except Exception as e:
+        return PlanVerificationResult(
+            passed=False,
+            errors=[f"Invalid plan structure: {e}"],
+            warnings=[],
+        )
+
+    return verify_plan(plan, plan_dir=plan_dir)

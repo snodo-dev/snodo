@@ -429,7 +429,7 @@ class TestRunPlan:
             mock_planner = MockPlanner.return_value
             mock_planner.get_plan.return_value = {
                 "name": "Test Plan", "intent": "Fix bugs",
-                "waves": [{"id": "w1", "tasks": ["t1"]}]
+                "waves": [{"id": 1, "tasks": ["t1"]}]
             }
             mock_planner.get_status.return_value = {"tasks": {"t1": "pending"}}
 
