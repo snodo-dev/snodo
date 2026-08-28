@@ -11,6 +11,22 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The adapter conformance gate now matches the post-execute review contract.
+  `tests/coders/test_adapter_conformance.py` previously asserted the review
+  diff against `HEAD~1..HEAD` and taught that stale contract in its docstring;
+  #103 moved post-execute validators onto an explicit `base_ref..HEAD`
+  (the execute-node HEAD anchor captured before the coder runs). The gate now
+  captures the anchor before the driver runs and asserts `base_ref..HEAD`,
+  matching what `llm_validator`/`acceptance` read. A new conformance case,
+  parameterised over the same registry, drives the engine graph with the
+  commit disabled and asserts the run is refused with `halt_type
+  == "head_not_moved"` — the no-commit case that occurred in production and
+  that #103 exists to catch. The validator fallback is now tested too: when
+  `base_ref` is absent the tool loop falls back to `HEAD~1..HEAD` AND labels
+  it as a fallback in the judge's prompt ("no execute-node HEAD anchor was
+  available"), while a present `base_ref` diffs `base_ref..HEAD` with no
+  fallback label. (Fixes #109).
+
 - `snodo task review` report now counts every merged unit, not just the last
   verdict per worktree branch. The report previously keyed review verdicts on
   `task_ref`, which the merge path records as the worktree branch name — N
