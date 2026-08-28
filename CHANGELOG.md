@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Fixed execution-phase halts missing failure context for `snodo run --retry`. When execution fails (e.g. coder error, missing provider credentials, token store error, or `head_not_moved`), `_execute_node` now calls `_auto_write_failure_context` so structured failure context is persisted to the session checkpoint decision store, allowing `--retry` follow-ups to succeed instead of failing with `No failure context for <task_id>. Cannot retry.` (Fixes #116).
+
 - Concurrent snodo processes can no longer corrupt the audit log's hash chain.
   `AuditLog.append_event` previously derived the next sequence and previous
   hash from process-local memory, so two processes both wrote "their" next
