@@ -651,6 +651,30 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Audit log test isolation and distinct error reporting in `snodo merge`. Resolved audit log leakage into the suite repository during `pytest -n auto` by redirecting `get_audit_log()` default paths under `SNODO_HOME` when set and resetting the process-global `_global_audit_log` singleton in `conftest.py`'s `isolate_snodo_home` autouse fixture. `_record_merge_and_review` in `snodo merge` now explicitly distinguishes failure modes (audit chain corruption `AuditError`, file permission/IO error `OSError`, and project root resolution failure), surfacing loud, prominent diagnostic guidance for broken hash chains (`rm .snodo/audit.log` to start a clean chain) rather than masking all failures under a generic resolution warning. (Fixes #96).
 
+- The project audit log resolves against the project root, not the user.
+  `get_audit_log()` previously preferred `$SNODO_HOME/.snodo/audit.log` when
+  `SNODO_HOME` was set — but `SNODO_HOME` is the `~/.snodo` equivalent
+  (config, sessions, memory), user-scoped, not project-scoped. A user with
+  `SNODO_HOME` set (supported for read-only-FS deployments) had every
+  project's hash-chained audit log appended to one shared file, so interleaved
+  projects corrupted each other's continuity — the same class of failure #96
+  was fixing — and the project-scoped readers (`task_report`/`task_review`,
+  the dashboard) disagreed with the home-scoped writer. The audit log is a
+  property of the PROJECT: it is the tamper-evident history of what happened
+  in a repository and must travel with that repository. The `SNODO_HOME`
+  preference is reverted; the default is `.snodo/audit.log` against the
+  project root. #96's actual goal — the test suite must not write into the
+  repository's own `.snodo/audit.log` — is preserved by isolating the project
+  root in tests and an explicit `SNODO_AUDIT_LOG` override used only by the
+  test fixture, not by redirecting the default. `reset_global_audit_log()` and
+  the conftest reset are kept. The e2e audit-log fixture now raises when the
+  log file is missing (a missing log and an empty log are different facts).
+  (Fixes #111).
+
+  Note: `.snodo/audit.log.test-polluted` in this repository is the artifact of
+  the original #96 bug (a test-time write that escaped into the suite repo's
+  `.snodo/` before the isolation landed) and can be deleted.
+
 - The halt payload printed on a successful closure now shows the resolving
   attempt's verdicts, not the first attempt's. A task that resolved through
   recovery previously printed `"status": "completed"` alongside
