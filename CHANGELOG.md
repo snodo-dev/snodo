@@ -11,6 +11,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `GraphBuilder` method shadowing over mixin classes removed and canary gate added. Moved live node method implementations (`_governance_node`, `_validate_node`, `_execute_node`, `_post_validate_node`, `_route_after_validation`, `_route_after_post_validation`) into their respective mixins (`GovernanceNodeMixin`, `ValidationNodeMixin`) and deleted redundant shadowing copies in `GraphBuilder` (`snodo/engine/loop.py`). Added MRO method shadowing gate test (`tests/engine/test_graph_builder_mro_gate.py`) to prevent `GraphBuilder` from re-defining methods already declared on its mixins. (Fixes #100).
+
 - The worktree path checker no longer flags slash-containing prose as a
   missing path. `_spec_referenced_paths` previously treated any token
   containing a `/` as a cited path, so a spec sentence like

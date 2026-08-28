@@ -4,7 +4,7 @@ FILE: snodo/engine/nodes/governance.py
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from snodo.engine.state import LoopStage, LoopState
 
@@ -191,8 +191,31 @@ class GovernanceNodeMixin:
             )
             return self._state_to_dict(loop_state)
 
+        # Spec-authoring follow-through: a warn-only pre-execute escalation routed
+        # back here. Author an improved spec from the intent + critique, then let
+        # it re-validate fresh. Lives in this (live) _governance_node because it
+        # shadows the mixin version that holds the same logic.
+        if getattr(loop_state, "needs_spec_authoring", False):
+            loop_state = self._spec_authoring_reentry(loop_state)
+            loop_state.needs_spec_authoring = False
+            return self._state_to_dict(loop_state)
+
         # Load DecisionRecords from session for policy-layer consultation.
-        self._load_decision_records(loop_state)
+        # DecisionRecords are consulted AFTER the blocker HALT in the policy
+        # evaluator, so they can NEVER override a genuine blocker (INV3).
+        self._decision_records: List[str] = []
+        self._authorized_decisions: List[str] = []
+        if self._session_manager:
+            session = self._session_manager.get_active_session(
+                loop_state.current_mode, getattr(self, '_project_root', "")
+            )
+            if session:
+                records = session.checkpoint.decisions.get("decision_records", [])
+                if isinstance(records, list):
+                    self._decision_records = [r for r in records if isinstance(r, str)]
+                auth = session.checkpoint.decisions.get("authorized_decisions", [])
+                if isinstance(auth, list):
+                    self._authorized_decisions = [a for a in auth if isinstance(a, str)]
 
         # Respawn coder if a verified set_model(scope=coder) override exists
         self._maybe_respawn_coder()
@@ -233,23 +256,6 @@ class GovernanceNodeMixin:
                     })
                     return self._state_to_dict(loop_state)
                 raise
-
-        if loop_state.is_blocked:
-            return self._state_to_dict(loop_state)
-
-        # Spec authoring re-entry: translate intent into a proper spec
-        # when pre-execute validation escalated on warn-only validators.
-        if loop_state.needs_spec_authoring:
-            if loop_state.spec_authoring_attempts >= 2:
-                # Cap reached — escalate to halt
-                loop_state.is_blocked = True
-                loop_state.halt_type = "escalated"
-                loop_state.needs_spec_authoring = False
-                loop_state.constraint_violations.append(
-                    "Spec authoring exhausted after 2 attempts"
-                )
-            else:
-                loop_state = self._spec_authoring_reentry(loop_state)
 
         loop_state = self.governance_fn(loop_state, self.protocol)
 
