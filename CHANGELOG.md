@@ -30,6 +30,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Custom OpenAI-compatible provider support and decoupled litellm routing. Added `litellm_provider` and `extra_headers` fields to `ProviderConfig`. `ConfigManager` now decouples snodo config key resolution (`_provider_for_model`) from litellm model formatting (`resolve_litellm_model`) and header resolution (`resolve_extra_headers`), eliminating hardcoded provider special cases. `model_discovery.py` now includes a generic `_discover_openai_compatible` fallback fetcher for custom provider endpoints (such as Ollama Cloud at `https://ollama.com/v1`). Documented custom OpenAI-compatible provider configuration with an Ollama Cloud worked example in `README.md`. (Fixes #115).
+
 - The adapter conformance gate now matches the post-execute review contract.
   `tests/coders/test_adapter_conformance.py` previously asserted the review
   diff against `HEAD~1..HEAD` and taught that stale contract in its docstring;

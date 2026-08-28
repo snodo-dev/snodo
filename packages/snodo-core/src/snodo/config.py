@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from snodo.paths import resolve_home
 
@@ -28,6 +28,8 @@ class ProviderConfig(BaseModel):
     account_id: str = ""
     account_id_env: str = ""
     base_url: str = ""
+    litellm_provider: str = ""
+    extra_headers: Dict[str, str] = Field(default_factory=dict)
 
 
 DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
@@ -51,6 +53,7 @@ DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
         api_key_env="CLOUDFLARE_API_KEY",
         account_id_env="CLOUDFLARE_ACCOUNT_ID",
         models_endpoint="https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/models",
+        extra_headers={"x-session-affinity": "{task_id}"},
     ),
     "deepseek": ProviderConfig(
         api_key_env="DEEPSEEK_API_KEY",
@@ -67,7 +70,7 @@ PROVIDER_MODEL_PREFIXES = {
     "openai": ["gpt-", "o1-", "o3-"],
     "anthropic": ["claude-"],
     "google": ["gemini/", "gemini-"],
-    "cloudflare": ["cloudflare/", "openai/@cf/"],
+    "cloudflare": ["cloudflare/", "openai/@cf/", "@cf/"],
     "deepseek": ["deepseek/"],
 }
 
@@ -209,13 +212,79 @@ class ConfigManager:
         return None
 
     @staticmethod
+    def resolve_litellm_provider(model: str) -> Optional[str]:
+        """Return the provider string litellm should route as for *model*."""
+        provider_key = ConfigManager._provider_for_model(model)
+        if not provider_key:
+            return None
+        pc = ConfigManager().get_providers().get(provider_key)
+        if pc and pc.litellm_provider:
+            return pc.litellm_provider
+        return provider_key
+
+    @staticmethod
+    def resolve_litellm_model(model: str) -> str:
+        """Return the model string formatted for litellm completion.
+
+        If a provider specifies a litellm_provider (e.g. litellm_provider="openai"
+        for provider block "ollama"), formats model as "openai/<model_id>" so litellm
+        routes it properly to the OpenAI-compatible endpoint.
+        """
+        provider_key = ConfigManager._provider_for_model(model)
+        if not provider_key:
+            return model
+        pc = ConfigManager().get_providers().get(provider_key)
+        if pc and pc.litellm_provider:
+            if model.startswith(f"{provider_key}/"):
+                raw_id = model[len(provider_key) + 1:]
+            else:
+                raw_id = model
+            return f"{pc.litellm_provider}/{raw_id}"
+        return model
+
+    @staticmethod
+    def resolve_extra_headers(model: str, task_id: Optional[str] = None) -> Optional[Dict[str, str]]:
+        """Return extra headers configured for model's provider.
+
+        Evaluates template variables like ``{task_id}`` in header values.
+        """
+        provider_key = ConfigManager._provider_for_model(model)
+        if not provider_key:
+            return None
+        pc = ConfigManager().get_providers().get(provider_key)
+        if not pc or not pc.extra_headers:
+            return None
+        tid = task_id or "unknown"
+        headers = {}
+        for k, v in pc.extra_headers.items():
+            headers[k] = v.replace("{task_id}", tid)
+        return headers or None
+
+    @staticmethod
     def _provider_for_model(model: str) -> Optional[str]:
         """Return the provider (snodo config key) for a model string.
 
-        Uses litellm.get_llm_provider() as the primary path.  Falls
-        back to PROVIDER_MODEL_PREFIXES for provider names litellm
-        doesn't recognise.
+        Checks PROVIDER_MODEL_PREFIXES first, then configured provider block
+        names (e.g. "ollama/llama3" → "ollama"), and falls back to litellm's
+        get_llm_provider().
         """
+        if not model:
+            return None
+
+        # 1. Match against PROVIDER_MODEL_PREFIXES
+        for provider, prefixes in PROVIDER_MODEL_PREFIXES.items():
+            for prefix in prefixes:
+                if model.startswith(prefix):
+                    return provider
+
+        # 2. Check if model starts with a configured provider key + "/"
+        providers = ConfigManager().get_providers()
+        if "/" in model:
+            prefix = model.split("/")[0]
+            if prefix in providers:
+                return prefix
+
+        # 3. litellm.get_llm_provider()
         try:
             from litellm import get_llm_provider
             _model, provider_name, _, _ = get_llm_provider(model)
@@ -223,16 +292,11 @@ class ConfigManager:
             provider_name = None
 
         if provider_name:
-            # openai/@cf/... routes through OpenAI endpoint but CF config block
-            if model.startswith("openai/@cf/"):
-                return "cloudflare"
-            return _PROVIDER_ALIASES.get(provider_name, provider_name)
+            aliased = _PROVIDER_ALIASES.get(provider_name, provider_name)
+            if aliased in providers:
+                return aliased
+            return provider_name
 
-        # Fallback: prefix matching for unprefixed model strings
-        for provider, prefixes in PROVIDER_MODEL_PREFIXES.items():
-            for prefix in prefixes:
-                if model.startswith(prefix):
-                    return provider
         return None
 
     def save(self, config: dict) -> None:
