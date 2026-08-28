@@ -12,6 +12,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Fixed post-execute quality blockers being downgraded to warn during recovery attempts. `PolicyEvaluator.evaluate()` now requires `phase` explicitly, `_post_validate_node` passes `phase="post_execute"` and `is_recovery`, the recovery pre-execute escape branch no longer uses `"_fix_" in task_ref` substring matching, and validator contradiction detection now marks acceptance claims as `blocker` rather than `warn`. (Fixes #106).
+- `InPlaceCoderAdapter._commit_changes` failure path diagnosis and `head_not_moved` halt payload cause reporting. `_commit_changes` in `snodo.coders.base` now sets a structured `last_commit_reason` across all failure paths (`cannot_open_repo`, `git_add_failed`, `nothing_staged`, `git_commit_failed`) and logs warnings when `git add` stages nothing. The engine records `last_commit_reason` during execution and surfaces `commit_reason` directly in the `head_not_moved` halt payload, allowing operators to distinguish coder no-op runs from git command or workspace errors. Additionally, `_diff_to_artifact` in `opencode_cli_adapter.py` now labels unreadable files with `<unreadable: ...>` instead of swallowing read errors into empty content strings. (Fixes #108).
+
+### Added
 
 - `snodo task review` report now counts every merged unit, not just the last
   verdict per worktree branch. The report previously keyed review verdicts on
