@@ -30,6 +30,8 @@ class ExecutorMixin:
 
         coder._job_id = self._job_id or self._session_id or ""
         coder._task_id = task.id
+        coder._depth = getattr(task, "depth", 0) or 0
+        coder._attempt = (getattr(task, "depth", 0) or 0) + 1
         coder.progress_callback = getattr(self, "_progress", None)
 
     def _ensure_task_branch(self, git_mcp: Optional[Any], task: Task) -> None:
