@@ -26,6 +26,8 @@ snodo is a local protocol engine. The primary security surface is:
 - JWT validation token signing (`SNODO_TOKEN_SECRET`)
 - MCP server tool gating (WF1 enforcement)
 - API key storage via `snodo config`
+- Protocol-file trust boundary: protocol-authored shell commands such as
+  `tooling.test_command` and `prepare_command`
 
 If you find a bypass of the WF1 token gate or a way to extract stored API
 keys, please report it.
@@ -42,6 +44,12 @@ snodo operates under a **trusted-repository model** (see
   confirmation (default **No**).
 - Repository contents (`package.json` scripts, `conftest.py`, Makefiles, test
   code) are treated as trusted — equivalent to you running them yourself.
+- A `protocol.yml` file is **executable input**, not passive configuration. The
+  protocol fields `tooling.test_command` and `prepare_command` (for example
+  `execution.prepare_command`) are executed through `shell=True`, and snodo does
+  **not** sandbox protocol-authored commands. A protocol file must be trusted
+  like a `Makefile`, `package.json` script, or CI config. Running a protocol you
+  did not write is running code you did not read.
 - Running snodo against untrusted or third-party code is out of scope and
   unsupported; isolation is not claimed. A hosted/multi-tenant deployment would
   invalidate this model and require real isolation.
