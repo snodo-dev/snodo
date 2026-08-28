@@ -238,10 +238,8 @@ def test_plan_missing_spec_file_fails(plan_project_env, capsys):
     assert result == 1
 
     err = capsys.readouterr().err
-    assert "[task_1_1] ERROR: spec file not found" in err
-
-    status = planner.get_status(plan_name)
-    assert status["tasks"]["task_1_1"]["status"] == "blocked"
+    assert "Plan violates well-formedness conditions" in err
+    assert "Missing spec: task_1_1" in err
 
 
 def test_plan_dependency_blocking_fails(plan_project_env, capsys):
