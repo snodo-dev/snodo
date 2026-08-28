@@ -60,6 +60,8 @@ class AcceptanceValidator(LLMValidator):
         active_names: Set[str],
         has_diff: bool,
         change_diff: str,
+        diff_label: str = "",
+        diff_is_fallback: bool = False,
     ) -> str:
         """Judge the produced artifacts against the task's acceptance criteria.
 
@@ -89,11 +91,19 @@ class AcceptanceValidator(LLMValidator):
         ]
 
         if has_diff and change_diff:
-            prompt_parts.extend([
+            label = diff_label or "HEAD~1..HEAD"
+            parts = [
                 "\n",
-                "## Code Change (HEAD~1..HEAD)\n",
+                f"## Code Change ({label})\n",
                 f"```\n{change_diff}\n```\n",
-            ])
+            ]
+            if diff_is_fallback:
+                parts.append(
+                    "NOTE: this diff was read against HEAD~1..HEAD because no "
+                    "execute-node HEAD anchor was available — it may show the "
+                    "previous commit rather than this task's produced change.\n"
+                )
+            prompt_parts.extend(parts)
 
         prompt_parts.extend([
             "\n",

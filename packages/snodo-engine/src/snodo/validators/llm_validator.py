@@ -308,17 +308,30 @@ class LLMValidator(ValidatorBase):
         tools = self._build_tool_definitions(active_names)
         tools.append(self._SUBMIT_VERDICT_DEF)
 
-        # Only prepend diff when the diff tool is in the active set
+        # Only prepend diff when the diff tool is in the active set. Prefer the
+        # execute-node HEAD anchor (base_ref..HEAD); fall back to HEAD~1..HEAD
+        # only when the anchor is absent, and say so in the prompt the judge
+        # sees — a judge reviewing a fallback range should know it.
         has_diff = "read_diff_between_refs" in active_names
         change_diff = ""
+        diff_label = ""
+        diff_is_fallback = False
         if has_diff:
+            base_ref = getattr(context, "base_ref", None)
             try:
-                change_diff = git.diff_between_refs("HEAD~1", "HEAD")
+                if base_ref:
+                    diff_label = f"{base_ref}..HEAD"
+                    change_diff = git.diff_between_refs(base_ref, "HEAD")
+                else:
+                    diff_label = "HEAD~1..HEAD"
+                    change_diff = git.diff_between_refs("HEAD~1", "HEAD")
+                    diff_is_fallback = True
             except Exception:
-                change_diff = "(unable to read diff HEAD~1..HEAD)"
+                change_diff = f"(unable to read diff {diff_label or 'HEAD~1..HEAD'})"
 
         system_prompt = self._build_tool_loop_prompt(
             context, active_names, has_diff, change_diff,
+            diff_label=diff_label, diff_is_fallback=diff_is_fallback,
         )
 
         messages: List[Dict[str, Any]] = [
@@ -469,6 +482,8 @@ class LLMValidator(ValidatorBase):
         active_names: Set[str],
         has_diff: bool,
         change_diff: str,
+        diff_label: str = "",
+        diff_is_fallback: bool = False,
     ) -> str:
         """Build the tool-loop judge prompt for this validator.
 
@@ -497,11 +512,19 @@ class LLMValidator(ValidatorBase):
         ]
 
         if has_diff and change_diff:
-            prompt_parts.extend([
+            label = diff_label or "HEAD~1..HEAD"
+            parts = [
                 "\n",
-                "## Code Change (HEAD~1..HEAD)\n",
+                f"## Code Change ({label})\n",
                 f"```\n{change_diff}\n```\n",
-            ])
+            ]
+            if diff_is_fallback:
+                parts.append(
+                    "NOTE: this diff was read against HEAD~1..HEAD because no "
+                    "execute-node HEAD anchor was available — it may show the "
+                    "previous commit rather than this task's produced change.\n"
+                )
+            prompt_parts.extend(parts)
 
         prompt_parts.extend([
             "\n",

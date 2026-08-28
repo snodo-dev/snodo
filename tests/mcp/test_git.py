@@ -272,6 +272,23 @@ def test_commit(temp_git_repo):
     assert "commit_test.txt" in result or "Test commit message" in result
 
 
+def test_get_head_sha(temp_git_repo):
+    """Test reading the current HEAD sha."""
+    git_mcp, tmpdir = temp_git_repo
+
+    sha1 = git_mcp.get_head_sha()
+    assert len(sha1) == 40
+    assert all(c in "0123456789abcdef" for c in sha1)
+
+    # A new commit changes the HEAD sha.
+    test_file = Path(tmpdir) / "head_sha.txt"
+    test_file.write_text("content")
+    git_mcp.stage_files(["head_sha.txt"])
+    git_mcp.commit("advance HEAD")
+    sha2 = git_mcp.get_head_sha()
+    assert sha2 != sha1
+
+
 def test_commit_nothing_to_commit_raises(temp_git_repo):
     """Test committing with nothing staged raises."""
     git_mcp, _ = temp_git_repo
