@@ -266,6 +266,63 @@ def _discover_deepseek(pc: ProviderConfig) -> List[ModelInfo]:
     return results
 
 
+def _discover_openai_compatible(pc: ProviderConfig, provider_name: str = "openai") -> List[ModelInfo]:
+    """GET /models with Bearer auth or custom headers, parsing standard OpenAI {"data": [{"id": ...}]}."""
+    import httpx
+
+    api_key = _resolve_api_key(provider_name, pc)
+
+    endpoint = pc.models_endpoint
+    if not endpoint and pc.base_url:
+        endpoint = pc.base_url.rstrip("/") + "/models"
+    if not endpoint and provider_name == "openai":
+        endpoint = "https://api.openai.com/v1/models"
+
+    if not endpoint:
+        _logger.warning("No models_endpoint or base_url for provider %s", provider_name)
+        return []
+
+    headers: Dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    if pc.extra_headers:
+        headers.update(pc.extra_headers)
+
+    try:
+        resp = httpx.get(endpoint, headers=headers, timeout=15.0)
+        resp.raise_for_status()
+    except Exception as e:
+        _logger.warning("%s model discovery failed: %s", provider_name, e)
+        return []
+
+    data = resp.json()
+    results = []
+    items = data.get("data", []) if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        items = []
+
+    for item in items:
+        if isinstance(item, dict):
+            mid = item.get("id", "")
+            if mid:
+                results.append(ModelInfo(
+                    provider=provider_name,
+                    id=mid,
+                    full_string=f"{provider_name}/{mid}",
+                    display_name=item.get("display_name", mid),
+                    context_window=item.get("context_window", 0),
+                ))
+        elif isinstance(item, str):
+            results.append(ModelInfo(
+                provider=provider_name,
+                id=item,
+                full_string=f"{provider_name}/{item}",
+                display_name=item,
+                context_window=0,
+            ))
+    return results
+
+
 _DISCOVERY_DISPATCH = {
     "anthropic": _discover_anthropic,
     "openrouter": _discover_openrouter,
@@ -331,10 +388,11 @@ def discover_models(
 
     for name, pc in providers.items():
         discover_fn = _DISCOVERY_DISPATCH.get(name)
-        if discover_fn is None:
-            continue
         try:
-            results = discover_fn(pc)
+            if discover_fn is not None:
+                results = discover_fn(pc)
+            else:
+                results = _discover_openai_compatible(pc, provider_name=name)
         except Exception as e:
             _logger.warning("Discovery failed for %s: %s", name, e)
             results = []
