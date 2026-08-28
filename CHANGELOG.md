@@ -354,6 +354,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
   confirmation defaulting to **No**. Output degrades to plain text when not a TTY,
   when `NO_COLOR` is set, or when piped. `rich` is now an explicit root dependency.
 
+### Removed
+
+- `snodo merge`, the `ci-gate` infrastructure, `ci-wait`, and
+  `scripts/merge-agents.sh` are removed. This was the author's multi-worktree
+  development workflow, not a product feature, and it is not coming back —
+  branch CI status belongs on `CodeHostProvider` if a product feature ever
+  needs it. The product merge path is untouched: `worktree.merge_task_branch`,
+  `resolve_base_branch`, `merge_head_sha`, and `run_cmd._merge_on_success`
+  remain, and `run_cmd` is their caller. (Fixes #104).
+
 ### Changed
 
 - The merge gate no longer serialises on CI. `snodo merge` previously pushed
