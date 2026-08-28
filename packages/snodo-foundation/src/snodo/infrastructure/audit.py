@@ -353,16 +353,18 @@ def get_audit_log(log_path: Optional[str] = None, project_id: str = "") -> Audit
     """Get global audit log instance.
 
     Args:
-        log_path: Path to audit log file (defaults to SNODO_HOME/.snodo/audit.log
-            when SNODO_HOME is set, or .snodo/audit.log otherwise).
+        log_path: Path to audit log file (defaults to ``.snodo/audit.log``,
+            resolved against the project root — the audit log is a property
+            of the PROJECT, not the user, so SNODO_HOME does not redirect it).
+            ``SNODO_AUDIT_LOG`` overrides the default for test isolation only.
         project_id: Optional project identifier
     """
     global _global_audit_log
     if _global_audit_log is None:
         if log_path is None or log_path == ".snodo/audit.log":
-            home = os.environ.get("SNODO_HOME")
-            if home:
-                log_path = os.path.join(home, ".snodo", "audit.log")
+            override = os.environ.get("SNODO_AUDIT_LOG")
+            if override:
+                log_path = override
             else:
                 log_path = ".snodo/audit.log"
         _global_audit_log = AuditLog(log_path, project_id=project_id)
