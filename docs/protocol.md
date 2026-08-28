@@ -3,6 +3,15 @@
 
 The protocol file (`protocol.yml`) declares your team's intent: what work can be done, by whom, under which rules, and with what enforcement. The engine reads this declaration and enforces it structurally — no after-the-fact review.
 
+> **Security note: protocol files are executable input.**
+>
+> A `protocol.yml` is not passive configuration. Protocol fields such as
+> `tooling.test_command` and `prepare_command` (for example
+> `execution.prepare_command`) are executed through `shell=True`, and snodo does
+> **not** sandbox protocol-authored commands. Trust a protocol file like you
+> would trust a `Makefile`, `package.json` script, or CI config. Running a
+> protocol you did not write is running code you did not read.
+
 ## Minimal protocol
 
 ```yaml
@@ -60,6 +69,10 @@ execution:
 | `max_total_fix_attempts` | int | no | Maximum total fix subtasks spawned across the task tree (default `10`, range 1–100) |
 | `auto_merge` | bool | no | Whether a completed task's branch merges into the base branch automatically (default `false`) |
 | `prepare_command` | string | no | Command executed after worktree setup to prepare environment (e.g. `npm ci`, `uv sync`) |
+
+Security note: `execution.prepare_command` is protocol-authored shell input.
+snodo does not sandbox it. Treat it like a `Makefile` target, `package.json`
+script, or CI config.
 
 ### `max_recovery_depth` tradeoff
 
@@ -193,6 +206,10 @@ validators:
 | `constraints` | list[Constraint] | no | Additional predicate constraints |
 | `tooling` | dict | no | Backend tooling configuration (e.g. `test_command` for the quality validator) |
 | `severity_cap` | string | no | Maximum severity this validator can emit. `"warn"` caps blocker to warn — useful for experimental validators. `"blocker"` or absent = full power. |
+
+Security note: `tooling.test_command` (used by the `quality` validator) is
+protocol-authored shell input. snodo does not sandbox it. Treat it like a
+`Makefile` target, `package.json` script, or CI config.
 
 ### Validator types
 
