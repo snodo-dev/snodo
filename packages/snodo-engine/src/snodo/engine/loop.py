@@ -80,6 +80,9 @@ class LoopState:
     metadata: Dict[str, Any] = field(default_factory=dict)
     messages: List[Dict[str, Any]] = field(default_factory=list)
     summary: str = ""
+    #: HEAD sha captured in the execute node before the coder runs; the
+    #: post-execute judges diff base_ref..HEAD. None when no git workspace.
+    base_ref: Optional[str] = None
 
 
 from snodo.engine.nodes.context import ContextMixin  # noqa: E402
@@ -733,6 +736,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         current_mode: str = "",
         phase: str = "",
         artifacts: Optional[List[str]] = None,
+        base_ref: Optional[str] = None,
     ) -> List[ValidatorResult]:
         """Validator dispatch via the shared runner (single implementation).
 
@@ -759,6 +763,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             dispatch_fn=self._dispatch_one,
             progress_cb=self._progress_cb_handler,
             artifacts=artifacts,
+            base_ref=base_ref,
         )
         self._validator_runner.last_cap_originals = cap_originals
         return results

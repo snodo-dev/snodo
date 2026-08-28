@@ -308,6 +308,17 @@ class GitMCP:
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
 
+    def get_head_sha(self) -> str:
+        """Read the current HEAD commit sha.
+
+        Returns:
+            Full 40-char hex sha of the current HEAD commit
+        """
+        try:
+            return self.repo.head.commit.hexsha
+        except Exception as e:
+            raise GitError(f"Could not read HEAD sha: {e}")
+
     def log(self, n: int = 5) -> str:
         """Read recent commits in oneline format.
 

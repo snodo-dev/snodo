@@ -188,6 +188,7 @@ def run_validators(
     dispatch_fn: Any = None,
     progress_cb: Any = None,
     artifacts: Optional[List[str]] = None,
+    base_ref: Optional[str] = None,
 ) -> Tuple[List[ValidatorResult], Dict[str, str]]:
     """Run a list of validators against a task and return ordered results.
 
@@ -251,6 +252,7 @@ def run_validators(
         job_id=session_id,
         task_id=task.id,
         progress_callback=progress_cb,
+        base_ref=base_ref,
     )
 
     # Resolve set_model overrides once per pass

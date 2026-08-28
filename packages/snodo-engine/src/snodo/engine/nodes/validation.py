@@ -179,6 +179,16 @@ class ValidationNodeMixin:
         loop_state = self._dict_to_state(state)
         loop_state.stage = LoopStage.EXECUTE
 
+        # Capture the HEAD sha BEFORE the coder runs. Post-execute judges diff
+        # base_ref..HEAD; without this anchor an adapter that returns file
+        # operations but does not commit leaves HEAD pointing at the previous
+        # unrelated commit, and HEAD~1..HEAD judges that and passes (Fixes #103).
+        if loop_state.base_ref is None and self.git_mcp is not None:
+            try:
+                loop_state.base_ref = self.git_mcp.get_head_sha()
+            except Exception:
+                loop_state.base_ref = None
+
         # Collect project context once (cached on builder)
         if self._project_context_cache is None:
             self._project_context_cache = self._collect_project_context(self.workspace_mcp)
@@ -266,6 +276,45 @@ class ValidationNodeMixin:
 
             loop_state.artifacts.extend(artifacts)
 
+            # The coder produced observable work — the git review channel must
+            # reflect it. If the executor returned artifacts but HEAD did not
+            # move, the adapter claimed a commit it did not make: the
+            # post-execute judges would diff base_ref..HEAD = an empty range
+            # (or worse, review the previous unrelated commit) and pass. This
+            # is a nameable fault, not the generic blocked path (Fixes #103).
+            if (
+                loop_state.artifacts
+                and loop_state.base_ref
+                and self.git_mcp is not None
+            ):
+                try:
+                    current_head = self.git_mcp.get_head_sha()
+                except Exception:
+                    current_head = None
+                if current_head is not None and current_head == loop_state.base_ref:
+                    loop_state.is_blocked = True
+                    loop_state.halt_type = "head_not_moved"
+                    loop_state.constraint_violations.append(
+                        "The coder reported file operations but HEAD did not "
+                        "move: no commit was created, so post-execute "
+                        "validators would review the previous commit instead of "
+                        "the produced change. The adapter claimed a commit it "
+                        "did not make (skip_engine_commit and skip_workspace_write "
+                        "opt out of the engine's commit mechanism, not the "
+                        "obligation that produced work be committed)."
+                    )
+                    loop_state.metadata["post_validation"] = {
+                        "outcome": "skipped",
+                        "reason": "head_not_moved",
+                    }
+                    self._audit("head_not_moved", {
+                        "op": "head_not_moved",
+                        "task_ref": loop_state.task.id,
+                        "base_ref": loop_state.base_ref,
+                        "artifacts_count": len(loop_state.artifacts),
+                    })
+                    return self._state_to_dict(loop_state)
+
             # Housekeeping: clear the in-memory slot (enforcement is the store).
             loop_state.validation_token = None
             self._audit("token_consumed", {
@@ -321,7 +370,8 @@ class ValidationNodeMixin:
                                     authorized_decisions=getattr(self, '_authorized_decisions', []),
                                     decision_issuer=self._decision_issuer,
                                     progress_cb=self._validator_verdict_cb,
-                                    artifacts=list(loop_state.artifacts))
+                                    artifacts=list(loop_state.artifacts),
+                                    base_ref=loop_state.base_ref)
 
         # Merge post-validate results with existing results
         loop_state.validation_results = loop_state.validation_results + results

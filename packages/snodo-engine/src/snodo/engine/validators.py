@@ -59,6 +59,7 @@ class ValidatorRunner:
         decision_issuer: Any = None,
         progress_cb: Any = None,
         artifacts: Optional[List[str]] = None,
+        base_ref: Optional[str] = None,
     ) -> List[ValidatorResult]:
         results, cap_originals = _run(
             protocol=self.protocol,
@@ -78,6 +79,7 @@ class ValidatorRunner:
             dispatch_fn=self._dispatch_one,
             progress_cb=progress_cb,
             artifacts=artifacts,
+            base_ref=base_ref,
         )
         self.last_cap_originals = cap_originals
         return results
