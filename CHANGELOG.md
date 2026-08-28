@@ -621,6 +621,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `LoopState` (and `LoopStage`) are defined exactly once. `engine/loop.py` and
+  `engine/state.py` each defined a `LoopState` dataclass with the same fields,
+  kept in sync by hand — the same defect class as #100, one layer down. The
+  mixins in `engine/nodes/` import from `state.py` (the live one); `loop.py`'s
+  copy was dead except for a `TYPE_CHECKING` import in `constraints.py` and two
+  tests. #103 had to add its `base_ref` field to both definitions, and nothing
+  would have failed if it had been added to only one. `loop.py` now re-exports
+  `LoopState`/`LoopStage` from `state.py` instead of redefining them, and the
+  MRO gate is extended to fail when the same class name is defined in more than
+  one module under `snodo/engine/` — the general form of the check that would
+  have caught this. (Fixes #107).
+
 - Post-execute validators no longer review the previous commit when HEAD did
   not move. `llm_validator` and `acceptance` judged `git diff HEAD~1..HEAD`,
   and nothing established that HEAD moved during execute: an adapter that
