@@ -36,7 +36,7 @@ from snodo.core.interfaces import Task, ValidatorResult
 from snodo.validators.context import ValidatorContext, ValidatorBase
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
-from snodo.coders.litellm import ReadMemoryTracker, format_repeat_read_response
+from snodo.coders.litellm import ReadMemoryTracker, _normalize_path_arg, format_repeat_read_response
 
 _logger = logging.getLogger(__name__)
 
@@ -157,6 +157,22 @@ def _is_provider_rejection(e: Exception) -> bool:
     return False
 
 
+def _usage_tokens(response: Any, kind: str) -> int:
+    """Extract prompt/completion token counts from a litellm response.
+
+    Returns 0 when the response carries no usage (e.g. mock responses).
+    """
+    try:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return 0
+        if kind == "prompt":
+            return int(getattr(usage, "prompt_tokens", 0) or 0)
+        return int(getattr(usage, "completion_tokens", 0) or 0)
+    except Exception:
+        return 0
+
+
 class LLMValidator(ValidatorBase):
     """Evaluates tasks against protocol criteria using an LLM judge."""
 
@@ -179,11 +195,53 @@ class LLMValidator(ValidatorBase):
         self.completion_tokens = _DEFAULT_MAX_TOKENS
         self._job_id: str = ""
         self._task_id: str = ""
+        self._depth: int = 0
+        self._attempt: int = 1
 
     def _resolve_extra_headers(self) -> Optional[dict]:
         """Return extra_headers for the model's provider."""
         from snodo.config import ConfigManager
         return ConfigManager.resolve_extra_headers(self.model, task_id=self._task_id)
+
+    def _emit_turn_telemetry(
+        self,
+        turn_index: int,
+        tool: str,
+        target_path: str,
+        read_hit: bool,
+        tokens_in: int,
+        tokens_out: int,
+        elapsed_ms: float,
+    ) -> None:
+        """Emit one per-turn telemetry record to the job's state.json.
+
+        Operational telemetry, not part of the audit chain (ADR 034). Never
+        raises — telemetry must not crash the tool loop.
+        """
+        try:
+            from snodo.infrastructure.tool_telemetry import (
+                canonical_target_path,
+                persist_tool_telemetry,
+            )
+
+            record = {
+                "task_ref": self._task_id or "unknown",
+                "depth": getattr(self, "_depth", 0) or 0,
+                "attempt": getattr(self, "_attempt", 1) or 1,
+                "role": "validator",
+                "validator_id": self.validator_spec.validator_id,
+                "turn_index": turn_index,
+                "tool": tool,
+                "target_path": canonical_target_path(target_path),
+                "read_hit": bool(read_hit),
+                "tokens_in": int(tokens_in or 0),
+                "tokens_out": int(tokens_out or 0),
+                "elapsed_ms": round(float(elapsed_ms or 0), 1),
+                "submit_bytes": 0,
+            }
+            persist_tool_telemetry(self._job_id or "unknown", record)
+        except Exception:
+            pass
 
     @classmethod
     def registered_type(cls) -> str:
@@ -209,6 +267,8 @@ class LLMValidator(ValidatorBase):
                 self.completion_tokens = ctx_tokens
             self._job_id = getattr(context, "job_id", "") or ""
             self._task_id = getattr(context, "task_id", "") or ""
+            self._depth = getattr(context.task, "depth", 0) or 0
+            self._attempt = (getattr(context.task, "depth", 0) or 0) + 1
 
         # Capability gate: tool-loop runs iff validator declares tools
         # AND MCPs + completion_fn are present. Empty/absent tools =>
@@ -341,6 +401,7 @@ class LLMValidator(ValidatorBase):
         read_tracker = ReadMemoryTracker()
 
         for turn in range(tool_turns):
+            turn_start = time.monotonic()
             try:
                 from snodo.config import ConfigManager
                 kwargs = {
@@ -382,6 +443,15 @@ class LLMValidator(ValidatorBase):
             # Check for submit_verdict before anything else
             verdict = self._extract_submit_verdict(tool_calls)
             if verdict is not None:
+                self._emit_turn_telemetry(
+                    turn_index=turn + 1,
+                    tool="submit_verdict",
+                    target_path="",
+                    read_hit=False,
+                    tokens_in=_usage_tokens(response, "prompt"),
+                    tokens_out=_usage_tokens(response, "completion"),
+                    elapsed_ms=(time.monotonic() - turn_start) * 1000,
+                )
                 return verdict
 
             # If any tool calls (read tools), execute them and continue
@@ -422,6 +492,15 @@ class LLMValidator(ValidatorBase):
                         else:
                             result = self._execute_tool(tool_name, args, workspace, git)
                             read_tracker.record_read(tool_name, args, turn + 1)
+                        self._emit_turn_telemetry(
+                            turn_index=turn + 1,
+                            tool=tool_name,
+                            target_path=_normalize_path_arg(args),
+                            read_hit=prev_turn is not None,
+                            tokens_in=_usage_tokens(response, "prompt"),
+                            tokens_out=_usage_tokens(response, "completion"),
+                            elapsed_ms=(time.monotonic() - turn_start) * 1000,
+                        )
 
                     messages.append({
                         "role": "tool",
