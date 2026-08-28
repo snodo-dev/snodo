@@ -376,6 +376,39 @@ def test_get_audit_log_singleton():
         assert log1 is log2
 
 
+def test_audit_log_resolves_to_project_root_despite_snodo_home(tmp_path, monkeypatch):
+    """The audit log is a property of the PROJECT, not the user.
+
+    SNODO_HOME is the ~/.snodo equivalent — config, sessions, memory all live
+    under it. The project audit log must resolve against the project root even
+    when SNODO_HOME points elsewhere; a home-scoped default would append every
+    project's hash-chained log to one shared file and corrupt each other's
+    continuity (Fixes #111).
+    """
+    from snodo.infrastructure.audit import reset_global_audit_log
+
+    project_root = tmp_path / "project"
+    snodo_home = tmp_path / "snodo_home"
+    project_root.mkdir()
+    snodo_home.mkdir()
+
+    monkeypatch.setenv("SNODO_HOME", str(snodo_home))
+    # The autouse isolate_snodo_home fixture sets SNODO_AUDIT_LOG to keep unit
+    # tests off the suite repo; this canary tests the DEFAULT resolution, so
+    # the override must be cleared.
+    monkeypatch.delenv("SNODO_AUDIT_LOG", raising=False)
+    monkeypatch.chdir(project_root)
+    reset_global_audit_log()
+    try:
+        log = get_audit_log()
+        assert Path(log.log_path).resolve() == (project_root / ".snodo" / "audit.log").resolve(), (
+            f"audit log resolved to {log.log_path} — the project audit log must "
+            "resolve against the project root, not SNODO_HOME"
+        )
+    finally:
+        reset_global_audit_log()
+
+
 def test_log_event_convenience_function():
     """Test log_event convenience function."""
     with tempfile.TemporaryDirectory() as tmpdir:

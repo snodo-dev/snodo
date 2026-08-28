@@ -177,6 +177,13 @@ def isolate_snodo_home(monkeypatch):
     home = tempfile.mkdtemp(prefix="snodo_test_")
     monkeypatch.setenv("SNODO_HOME", home)
     monkeypatch.setenv("SNODO_TOKEN_SECRET", TEST_SECRET)
+    # The audit log is a property of the PROJECT, not the user (Fixes #111), so
+    # SNODO_HOME must not redirect it. In-process tests that call get_audit_log()
+    # without an explicit path would otherwise resolve to the cwd's
+    # .snodo/audit.log — which, when cwd is the suite repository, is the exact
+    # write-into-the-suite-repo failure #96 fixed. SNODO_AUDIT_LOG is an
+    # explicit test-only override that keeps those calls off the suite repo.
+    monkeypatch.setenv("SNODO_AUDIT_LOG", str(Path(home) / "audit.log"))
 
     reset_global_audit_log()
     yield
