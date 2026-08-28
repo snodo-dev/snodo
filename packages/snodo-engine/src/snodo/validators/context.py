@@ -37,6 +37,10 @@ class ValidatorContext:
     job_id: str = ""
     task_id: str = ""
     progress_callback: Optional[Any] = None
+    #: Git ref the post-execute judges diff against (base_ref..HEAD). Captured
+    #: by the execute node before the coder runs so a judge never reviews the
+    #: previous unrelated commit when HEAD did not move.
+    base_ref: Optional[str] = None
 
 
 class ValidatorBase(ABC):

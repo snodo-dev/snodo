@@ -88,6 +88,7 @@ class SerdeMixin:
             metadata=d.get("metadata", {}),
             messages=d.get("messages", []),
             summary=d.get("summary", ""),
+            base_ref=d.get("base_ref"),
             needs_recovery=d.get("needs_recovery", False),
             needs_spec_authoring=d.get("needs_spec_authoring", False),
             spec_authoring_attempts=d.get("spec_authoring_attempts", 0),
@@ -133,6 +134,7 @@ class SerdeMixin:
             "metadata": state.metadata,
             "messages": state.messages,
             "summary": state.summary,
+            "base_ref": state.base_ref,
             "spawned_subtasks": [
                 {
                     "id": s.id,

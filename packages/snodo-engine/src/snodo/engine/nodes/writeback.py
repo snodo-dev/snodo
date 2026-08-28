@@ -28,6 +28,7 @@ _CANONICAL_HALT = {
     "execution_error": "internal_error",
     "recovery_exhausted": "blocker",
     "recovery_stalled": "blocker",
+    "head_not_moved": "blocker",
 }
 
 
@@ -74,6 +75,11 @@ def _blocker_fix_targets(
         return ["policy"]
     if halt_type in ("max_iterations", "recovery_exhausted", "recovery_stalled"):
         return ["spec", "policy"]
+    if halt_type == "head_not_moved":
+        # The coder claimed a commit it did not make — the produced code is
+        # what must change (the adapter must actually commit), so this is a
+        # code fix, not a spec or policy problem.
+        return ["code"]
     if phase == "post_execute":
         return ["code"]
     if any(getattr(r, "cited_criteria", None) for r in (results or [])):
