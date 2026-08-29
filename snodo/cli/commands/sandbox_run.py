@@ -65,7 +65,11 @@ def _run_in_sandbox(args) -> int:
     if not sandbox.is_available():
         print("Warning: Docker not available, falling back to local execution",
               file=sys.stderr)
-        args.sandbox = "local"
+        import dataclasses
+        if dataclasses.is_dataclass(args):
+            args = dataclasses.replace(args, sandbox="local")
+        else:
+            args.sandbox = "local"
         return run_command(args)
 
     if not sandbox.image_exists():

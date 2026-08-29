@@ -433,8 +433,6 @@ def _job_retry(manager, args) -> int:
             return 1
         return _dispatch_as_new_task(args, task_data, job_id)
 
-    # Build retry args with full context for _retry_task
-    from types import SimpleNamespace
     from snodo.infrastructure.audit import get_audit_log
     from snodo.infrastructure.session import SessionManager
     from snodo.infrastructure.paths import require_project_root
@@ -445,7 +443,9 @@ def _job_retry(manager, args) -> int:
     audit_log = get_audit_log(project_id=project_id)
     session_manager = SessionManager(audit_log=audit_log)
 
-    retry_args = SimpleNamespace(
+    from snodo.cli.commands.run_cmd import RunArgs, _retry_task
+
+    retry_args = RunArgs(
         description=revised_spec,
         protocol=getattr(args, "protocol", ".snodo/protocol.yml"),
         model=getattr(args, "model", None),
@@ -453,7 +453,6 @@ def _job_retry(manager, args) -> int:
         session_manager=session_manager,
     )
 
-    from snodo.cli.commands.run_cmd import _retry_task
     return _retry_task(retry_args, task_id, project_root, session_manager)
 
 

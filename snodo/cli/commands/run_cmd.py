@@ -7,9 +7,9 @@ import json
 import logging
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 
@@ -17,6 +17,29 @@ from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
+
+
+@dataclass(frozen=True)
+class RunArgs:
+    """CLI execution arguments for snodo run / snodo plan run."""
+
+    description: Optional[str] = None
+    protocol: str = ".snodo/protocol.yml"
+    model: Optional[str] = None
+    verbose: bool = False
+    mock: bool = False
+    plan: Optional[str] = None
+    wave: Optional[int] = None
+    interactive: bool = False
+    from_pr: Optional[int] = None
+    background: bool = False
+    sandbox: str = "local"
+    resume: Optional[str] = None
+    retry: Optional[str] = None
+    retain_worktree: bool = False
+    no_isolation: bool = False
+    audit_log: Optional[Any] = None
+    session_manager: Optional[Any] = None
 
 
 def register(app: typer.Typer) -> None:
@@ -69,7 +92,7 @@ def register(app: typer.Typer) -> None:
         ),
     ):
         """Execute a task through the protocol."""
-        args = SimpleNamespace(
+        args = RunArgs(
             description=description, protocol=protocol, model=model,
             verbose=verbose, mock=mock, plan=plan, wave=wave,
             interactive=interactive, from_pr=from_pr, background=background,
@@ -219,8 +242,12 @@ def run_command(args) -> int:
     project_id, _ = get_project_id(project_root)
     audit_log = get_audit_log(project_id=project_id)
     session_manager = SessionManager(audit_log=audit_log)
-    args.audit_log = audit_log
-    args.session_manager = session_manager
+    import dataclasses
+    if dataclasses.is_dataclass(args):
+        args = dataclasses.replace(args, audit_log=audit_log, session_manager=session_manager)
+    else:
+        args.audit_log = audit_log
+        args.session_manager = session_manager
 
     if getattr(args, "background", False):
         return _submit_background_job(args)
@@ -902,11 +929,12 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
     from snodo.engine.loop import build_protocol_graph
     try:
         mcp_root = worktree_path or project_root
+        use_mock = getattr(args, "mock", False)
         print("Building execution graph with MCP services...")
         print(f"  Project root: {project_root}")
         print(f"  MCP root: {mcp_root}")
         print("  MCPs: workspace, git, shell")
-        print(f"  Coder: {'mock' if args.mock else 'real LLM'}")
+        print(f"  Coder: {'mock' if use_mock else 'real LLM'}")
         if checkpointer:
             print("  Memory: persistent (SqliteSaver)")
         print()
@@ -914,7 +942,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
         graph = build_protocol_graph(
             protocol,
             project_root=project_root,
-            use_mock_coder=args.mock,
+            use_mock_coder=use_mock,
             model=model,
             checkpointer=checkpointer,
             audit_log=audit_log,
@@ -929,9 +957,11 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
         print("✓ Graph compiled with MCP integration")
         print()
         return compiled_graph
+    except (AttributeError, TypeError):
+        raise
     except Exception as e:
         print(f"Error: Failed to build graph: {e}", file=sys.stderr)
-        if args.verbose:
+        if getattr(args, "verbose", False):
             import traceback
             traceback.print_exc()
         return None

@@ -96,7 +96,9 @@ def plan_run(
     ),
 ):
     """Execute a plan's tasks through the protocol loop."""
-    args = SimpleNamespace(
+    from snodo.cli.commands.run_cmd import RunArgs
+
+    args = RunArgs(
         plan=name, wave=wave, interactive=interactive,
         protocol=protocol, model=model,
     )

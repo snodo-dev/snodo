@@ -63,6 +63,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Fixed `snodo plan run <name>` crashing with `AttributeError` by defining `RunArgs` frozen dataclass in `snodo/cli/commands/run_cmd.py` containing all execution fields defined by `run`. Updated `plan_cmd.plan_run` and `job_cmd._retry_job` to construct `RunArgs`, guarded `args.verbose` access inside `_build_graph` exception handlers, allowed `AttributeError` and `TypeError` to propagate from `_build_graph` instead of masking programming bugs as config errors, and updated `tests/cli/test_plan_cli.py` with derived parameter inspection and end-to-end `--mock` plan execution tests. (Fixes #140).
+
 - Fixed `_select_template` in `snodo/cli/commands/init_cmd.py` silently creating a `team` protocol on prompt abort (`KeyboardInterrupt`) or non-interactive stdin (`EOFError`). KeyboardInterrupt now aborts with a cancellation message and exits non-zero; EOF without `--template` reports that `--template` is required in a non-interactive context and lists available templates. Updated Next steps output to include provider credential setup (`OPENAI_API_KEY` or `snodo config set`), and added comprehensive behavioral test suite in `tests/cli/test_init_cmd.py`. (Fixes #133).
 - `snodo run` now checks for provider credentials before starting any work. Previously a
   fresh install loaded the protocol, opened a session, created a worktree, built and
