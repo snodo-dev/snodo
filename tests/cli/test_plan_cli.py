@@ -241,27 +241,30 @@ def test_plan_add_task_reports_invalid_plan(plan_env, capsys):
 # ============================================================================
 
 def test_plan_add_wave_happy_path(plan_env, capsys):
-    """add-wave adds a wave to plan.yml."""
+    """add-wave adds a wave to plan.yml.
+
+    `plan create` scaffolds wave 1, so the first wave a caller adds is 2.
+    """
     _create_plan(plan_env, "p1")
 
     result = plan_command(SimpleNamespace(
-        plan_action="add-wave", plan="p1", id="1", depends_on=None,
+        plan_action="add-wave", plan="p1", id="2", depends_on=None,
     ))
 
     assert result == 0
     out = capsys.readouterr().out
-    assert "Wave 1 added to plan p1" in out
+    assert "Wave 2 added to plan p1" in out
 
     plan_file = plan_env / ".snodo" / "plans" / "p1" / "plan.yml"
     data = yaml.safe_load(plan_file.read_text())
-    assert [w["id"] for w in data["waves"]] == [1]
+    assert [w["id"] for w in data["waves"]] == [1, 2]
 
 
 def test_plan_add_wave_with_dependency(plan_env, capsys):
     """add-wave --depends-on 1,2 records dependencies."""
-    _create_plan(plan_env, "p1")
-    plan_command(SimpleNamespace(plan_action="add-wave", plan="p1", id="1", depends_on=None))
-    plan_command(SimpleNamespace(plan_action="add-wave", plan="p1", id="2", depends_on=None))
+    _create_plan(plan_env, "p1")  # scaffolds wave 1
+    assert plan_command(SimpleNamespace(
+        plan_action="add-wave", plan="p1", id="2", depends_on=None)) == 0
 
     result = plan_command(SimpleNamespace(
         plan_action="add-wave", plan="p1", id="3", depends_on="1,2",
@@ -289,8 +292,7 @@ def test_plan_add_wave_refuses_non_integer_id(plan_env, capsys):
 
 def test_plan_add_wave_refuses_duplicate_id(plan_env, capsys):
     """add-wave refuses a duplicate wave id."""
-    _create_plan(plan_env, "p1")
-    plan_command(SimpleNamespace(plan_action="add-wave", plan="p1", id="1", depends_on=None))
+    _create_plan(plan_env, "p1")  # scaffolds wave 1
 
     result = plan_command(SimpleNamespace(
         plan_action="add-wave", plan="p1", id="1", depends_on=None,
@@ -306,12 +308,12 @@ def test_plan_add_wave_refuses_unknown_dependency(plan_env, capsys):
     _create_plan(plan_env, "p1")
 
     result = plan_command(SimpleNamespace(
-        plan_action="add-wave", plan="p1", id="2", depends_on="1",
+        plan_action="add-wave", plan="p1", id="2", depends_on="9",
     ))
 
     assert result == 1
     err = capsys.readouterr().err
-    assert "depends on wave 1, which does not exist" in err
+    assert "depends on wave 9, which does not exist" in err
 
 
 # ============================================================================

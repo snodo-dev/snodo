@@ -19,13 +19,18 @@ least one commit — execution creates a worktree per task from `HEAD`.
 $ snodo plan create "Ship the reporting endpoint" --name reporting
 Plan created: reporting
   Intent: Ship the reporting endpoint
-  Waves: 0
+  Waves: 1
   Tasks: 0
 ```
 
-Waves and tasks are always `0`: `create` writes only the scaffold. If you
-omit `--name`, one is derived from the description
-(lowercased, spaces to `_`, truncated to 40 characters).
+`create` writes only the scaffold: one empty wave and no tasks. The wave is
+there so a freshly created plan already validates — `snodo plan validate`
+rejects a plan with no waves at all. Add further waves with
+`snodo plan add-wave`, or author `plan.yml` by hand as below; wave 1 already
+exists, so the first wave you add is 2.
+
+If you omit `--name`, one is derived from the description (lowercased, spaces
+to `_`, truncated to 40 characters).
 
 ## 2. The on-disk layout
 
@@ -35,13 +40,16 @@ omit `--name`, one is derived from the description
   status.json
 ```
 
-As created (`create` never writes waves — this is what you author into):
+As created — one empty wave, no tasks. This is what you author into:
 
 ```yaml
 # .snodo/plans/reporting/plan.yml
 intent: Ship the reporting endpoint
 name: reporting
-waves: []
+waves:
+- depends_on: []
+  id: 1
+  tasks: []
 ```
 
 ```json
