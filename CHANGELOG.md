@@ -9,6 +9,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The flake8-bandit security subset is now triaged at each site. Every
+  `S602`/`S603`/`S607`/`S105`/`S311`/`S314` finding in `packages/` and
+  `snodo/` carries a scoped `# noqa` with its own rule code and reason. Both
+  `S602` (`shell=True`) sites — `validators/quality.py` and
+  `infrastructure/environment.py` — are operator/protocol-authored shell
+  strings (test command and prepare command) sourced from the trusted
+  repository per ADR 014; compound commands require a shell, so they stay
+  `shell=True` with the trust rationale documented. The `S603`/`S607` sites
+  are all argv lists (no shell) where git/docker/opencode are resolved from
+  PATH by design; inputs from task specs, plans, or config are passed as
+  single argv elements, never shell-interpreted. The two `S314` sites parse
+  snodo's own `coverage.xml` output from the CI gate. The `S105` finding is
+  the `Severity.PASS` enum name (not a credential) and the `S311` finding is
+  a non-secret tunnel `short_id` (not a credential). (Fixes #123).
+
 ### Fixed
 
 - `snodo task show <task_id>` now prints the task spec — the one field an

@@ -65,7 +65,7 @@ def _get_git_remote(project_root: str) -> Optional[str]:
     """
     try:
         result = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
+            ["git", "remote", "get-url", "origin"],  # noqa: S607 - git resolved from PATH by design; argv list, no shell, fully controlled flags
             cwd=project_root,
             capture_output=True,
             text=True,

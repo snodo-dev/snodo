@@ -62,7 +62,7 @@ class LocalSandbox(Sandbox):
         start_time = time.time()
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603 - argv list (no shell) from the sandbox command builder; description is one argv element, never interpreted
                 command,
                 cwd=workspace_str,
                 capture_output=True,
