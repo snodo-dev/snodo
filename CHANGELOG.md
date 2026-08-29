@@ -11,6 +11,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Fixed 46 silent try-except-pass blocks across `packages/` (Ruff rule S110) so exceptions in audit log, session persistence, process execution, and resource cleanup are properly logged at warning or debug level instead of being silently swallowed. (Fixes #124).
 - `snodo task show <task_id>` now prints the task spec — the one field an
   operator needs to act on a failure. Previously it showed the halt type, the
   hint and every validator justification but not the spec, forcing an operator

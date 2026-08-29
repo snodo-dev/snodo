@@ -4,10 +4,13 @@ FILE: snodo/project.py
 """
 
 import json
+import logging
 import re
 import subprocess
 import uuid
 from pathlib import Path
+
+_logger = logging.getLogger(__name__)
 
 
 def normalize_remote_url(url: str) -> str:
@@ -71,8 +74,8 @@ def resolve_project_id(project_root: str) -> tuple[str, str]:
                 url = res_url.stdout.strip()
                 if res_url.returncode == 0 and url:
                     return (normalize_remote_url(url), "remote")
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Failed to resolve project remote URL: %s", e)
 
     return ("local:" + uuid.uuid4().hex, "local")
 
@@ -88,8 +91,8 @@ def get_project_id(project_root: str) -> tuple[str, str]:
             scope = data.get("scope", "local")
             if pid:
                 return (pid, scope)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Failed to read cached project ID from %s: %s", project_json_path, e)
 
     # Resolve, cache, and return
     pid, scope = resolve_project_id(project_root)
@@ -112,5 +115,5 @@ def cache_project_id(project_root: str, project_id: str, scope: str) -> None:
         data["scope"] = scope
         with open(project_json_path, "w") as f:
             json.dump(data, f, indent=2)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to cache project ID to %s: %s", project_json_path, e)

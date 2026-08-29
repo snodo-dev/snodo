@@ -11,11 +11,14 @@ on the app layer (snodo.cli).
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+_logger = logging.getLogger(__name__)
 
 
 def _save_state(job_dir: str, state: dict) -> None:
@@ -56,8 +59,8 @@ def main():
             wt = task_data.get("worktree_path")
             if wt:
                 os.environ["SNODO_WORKTREE_PATH"] = wt
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Failed to set SNODO_WORKTREE_PATH from task.json: %s", e)
 
     # Load current state and mark as running
     state = _load_state(job_dir)
@@ -86,8 +89,8 @@ def main():
                     project_root = str(Path(job_dir).parent.parent.parent)
                     job_id = Path(job_dir).name
                     remove_worktree(project_root, job_id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.debug("Failed to remove worktree for completed job %s: %s", job_id, e)
 
     # Write final state
     state = _load_state(job_dir)

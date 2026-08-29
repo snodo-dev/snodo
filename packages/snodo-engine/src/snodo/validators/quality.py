@@ -10,6 +10,7 @@ Input context: working_directory + branch (full repo state).
 NOT artifact_paths or generated code snippets.
 """
 
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
@@ -18,6 +19,8 @@ from snodo.compiler.models import Validator
 from snodo.core.interfaces import ValidatorResult
 from snodo.validators.context import ValidatorBase
 from snodo.validators.registry import _default_registry
+
+logger = logging.getLogger(__name__)
 
 # Auto-detection rules: (marker file, test command)
 _DETECT_RULES = [
@@ -140,8 +143,8 @@ class QualityValidator(ValidatorBase):
             )
             if res.returncode == 0 and res.stdout.strip():
                 return res.stdout.strip()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to resolve git commit hash: %s", e)
         return "uncommitted"
 
     def _audit_verification(
@@ -186,8 +189,8 @@ class QualityValidator(ValidatorBase):
                     "working_directory": str(self.working_directory),
                     "output_tail": output_tail[:400] if output_tail else "",
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to log verification event to audit log: %s", e)
 
     def _run_command(self, command: str, timeout: float, context: Optional[Any] = None) -> ValidatorResult:
         """Run a test command and return the result.
