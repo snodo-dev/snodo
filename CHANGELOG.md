@@ -31,6 +31,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Updated `PlannerMCP.decompose` to return an honest empty plan scaffold with a configurable `waves` parameter (defaulting to 1 empty wave so a freshly created plan passes `verify_plan` validation), and added comprehensive test coverage in `tests/mcp/test_planner.py` for spec generation, depth resolution, ancestor cycle checks, `update_status`, `recompute_depths`, and malformed plan directory handling. (Fixes #129).
 - The flake8-bandit security subset is now triaged at each site. Every
   `S602`/`S603`/`S607`/`S105`/`S311`/`S314` finding in `packages/` and
   `snodo/` carries a scoped `# noqa` with its own rule code and reason. Both
