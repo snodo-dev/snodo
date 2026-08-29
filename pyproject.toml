@@ -126,3 +126,12 @@ omit = ["*/tests/*", "*/__main__.py", "*/site-packages/*"]
 
 [tool.coverage.paths]
 snodo = ["snodo/", "packages/*/src/snodo/"]
+
+[tool.ruff.lint]
+# Pinned deliberately. This is ruff's DEFAULT rule set as of 0.15.x:
+# F (Pyflakes) + E4/E7/E9 (a narrow slice of pycodestyle) = 61 rules.
+# Ruff 0.16 widened its defaults from 61 rules to 415; unpinned, a routine
+# dependabot bump would take this repo from "All checks passed" to 2,206
+# findings with no code change. Rules are added to this list one at a time,
+# each with its violations fixed in the same release.
+select = ["E4", "E7", "E9", "F"]
