@@ -161,13 +161,14 @@ def _get_models(provider_name: str, pc, force_refresh: bool = False) -> list:
         if cached is not None:
             return cached
 
-    from snodo.infrastructure.model_discovery import _DISCOVERY_DISPATCH
+    from snodo.infrastructure.model_discovery import _DISCOVERY_DISPATCH, _discover_openai_compatible
     discover = _DISCOVERY_DISPATCH.get(provider_name)
-    if not discover:
-        return []
 
     try:
-        results = discover(pc)
+        if discover is not None:
+            results = discover(pc)
+        else:
+            results = _discover_openai_compatible(pc, provider_name=provider_name)
     except Exception as e:
         print(f"Discovery failed: {e}", file=sys.stderr)
         return _read_cache(provider_name) or []
@@ -194,7 +195,6 @@ def _lookup_context(full_string: str) -> str:
     meta = catalog_lookup(full_string)
     ctx = meta.get("context", 0)
     return str(ctx) if ctx else "—"
-    return "unknown", "unknown"
 
 
 def _apply_discrete_filters(
