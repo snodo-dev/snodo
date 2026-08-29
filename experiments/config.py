@@ -133,8 +133,8 @@ def _validate(config: dict) -> None:
     for key, (type_fn, lo, hi) in _CONSTRAINTS.items():
         try:
             val = _get_nested(config, key)
-        except KeyError:
-            raise ValueError(f"Missing required config key: {key}")
+        except KeyError as e:
+            raise ValueError(f"Missing required config key: {key}") from e
         if not isinstance(val, type_fn):
             raise ValueError(
                 f"{key}: expected {type_fn.__name__}, got {type(val).__name__} ({val!r})"

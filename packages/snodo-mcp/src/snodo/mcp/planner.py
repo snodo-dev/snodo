@@ -16,6 +16,7 @@ Plans live in .snodo/plans/<plan_name>/ with:
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -26,6 +27,8 @@ from snodo.compiler.verifier import (
     verify_plan,
     PlanWellFormednessError as _BasePlanWellFormednessError,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 class PlannerError(Exception):
@@ -590,8 +593,12 @@ class PlannerMCP:
                             normalized = self._normalize_task_entry(entry)
                             s = normalized["status"]
                             status_counts[s] = status_counts.get(s, 0) + 1
-                except Exception:
-                    pass
+                except Exception as e:
+                    # A plan whose status file cannot be read still lists, but
+                    # with no counts — say so rather than showing zeros as fact.
+                    _logger.warning(
+                        "Could not read plan status %s: %s", status_file, e,
+                    )
 
             plans.append({
                 "name": data.get("name", plan_dir.name),

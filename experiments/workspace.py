@@ -107,7 +107,7 @@ def setup_instance_workspace(instance: dict) -> Workspace:
             raise RuntimeError(
                 f"Workspace setup failed for {repo} @ {base_commit}: "
                 f"shallow: {exc}; full clone: {fallback_exc}"
-            )
+            ) from fallback_exc
 
     # 2. Copy cache -> workspace (fast local copy, one per arm/trial)
     try:
@@ -121,7 +121,9 @@ def setup_instance_workspace(instance: dict) -> Workspace:
         return Workspace(path=dest, base_commit=base_commit)
     except Exception as exc:
         shutil.rmtree(dest, ignore_errors=True)
-        raise RuntimeError(f"Failed to copy cached workspace to {dest}: {exc}")
+        raise RuntimeError(
+            f"Failed to copy cached workspace to {dest}: {exc}"
+        ) from exc
 
 
 def _get_cached(repo: str, base_commit: str, clone_url: str) -> Path:
