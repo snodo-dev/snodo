@@ -378,9 +378,10 @@ def _should_sync(config: Optional[dict] = None) -> bool:
     return bool(cloud.get("sync_enabled")) and bool(cloud.get("api_key", "").strip())
 
 
-#: How long the flush waits for a background sync to finish before giving up.
+#: How long the flush waits for background syncs to finish before giving up.
 #: Bounded, always — a slow or unreachable cloud must never hang the process.
-#: A sync that needs longer is abandoned, the cursor is left where it was, and
+#: The whole flush fits inside one budget, however many syncs are pending; a
+#: sync that needs longer is abandoned, the cursor is left where it was, and
 #: the operator is told on stderr (Fixes #142).
 _SYNC_WAIT_BUDGET = 5.0
 
@@ -390,24 +391,46 @@ _SYNC_WAIT_BUDGET = 5.0
 _pending_syncs: list = []
 
 
+def _pending_count(audit_log: Any, session_id: str) -> int:
+    """Return the number of unsynced events for *session_id*.
+
+    The unsynced backlog — events past the cursor — not the size of the whole
+    log. This is the same measurement the sync itself uses, so the timeout and
+    failure branches of the flush report the same thing (Fixes #142).
+    """
+    events = getattr(audit_log, "events", [])
+    if not events:
+        return 0
+    cursor = CloudSyncState().get_cursor(session_id)
+    return sum(1 for ev in events if ev.sequence > cursor)
+
+
 def flush_pending_syncs() -> None:
-    """Join pending background syncs with a bounded wait and report on stderr.
+    """Join pending background syncs with a single bounded wait and report.
 
     Registered via ``atexit`` so a sync that would succeed in a few seconds
     gets those seconds at process exit, exactly once — not once per task in a
-    multi-task plan. The wait is always bounded: threads stay daemon, so a slow
-    or unreachable cloud never hangs the process. A sync that fails, or that is
-    abandoned because it ran out of time, is reported on stderr in one line and
-    the cursor is left where it was (events re-send next time) (Fixes #142).
+    multi-task plan. The whole flush fits inside one ``_SYNC_WAIT_BUDGET``
+    regardless of how many syncs are pending: threads are joined in turn, each
+    for at most the remaining budget, and anything still running when the
+    budget is spent is abandoned and reported. The wait is always bounded:
+    threads stay daemon, so a slow or unreachable cloud never hangs the
+    process. A sync that fails, or that is abandoned because it ran out of
+    time, is reported on stderr in one line and the cursor is left where it
+    was (events re-send next time) (Fixes #142).
     """
     import sys
+
+    deadline = time.monotonic() + _SYNC_WAIT_BUDGET
 
     while _pending_syncs:
         thread, result, session_id, audit_log = _pending_syncs.pop(0)
         if thread.is_alive():
-            thread.join(timeout=_SYNC_WAIT_BUDGET)
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                thread.join(timeout=remaining)
         if thread.is_alive():
-            pending = len(getattr(audit_log, "events", []))
+            pending = _pending_count(audit_log, session_id)
             print(
                 f"⚠ cloud sync still in progress for {session_id} — "
                 f"{pending} event(s) pending; run `snodo cloud sync --all` to finish.",
@@ -415,7 +438,7 @@ def flush_pending_syncs() -> None:
             )
             continue
         if result.get("failed"):
-            pending = result.get("pending", 0)
+            pending = result.get("pending", _pending_count(audit_log, session_id))
             print(
                 f"⚠ cloud sync failed for {session_id} — "
                 f"{pending} event(s) pending; run `snodo cloud sync --all` to retry.",
