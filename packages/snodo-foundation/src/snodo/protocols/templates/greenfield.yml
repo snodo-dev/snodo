@@ -20,6 +20,19 @@ version: "1.0.0"
 # trivially satisfied, and adding a reviewer mode later cannot violate it.
 
 modes:
+  # Phase 0 — plan. Authoring multi-wave plans and task specs.
+  # Exit gate: plan is decomposed and validated.
+  - mode_id: "plan"
+    name: "Plan"
+    max_recovery_depth: 1  # Phase 0 setup: early failures are spec/plan issues subtasks cannot fix without human direction.
+    tools:
+      - "plan"
+      - "read"
+    validators:
+      - "meta-spec"
+    transitions:
+      planned: "decide"
+
   # Phase 1 — decide. No code. The output is recorded decisions.
   # Exit gate: docs/decisions/ answers the questions the build depends on.
   - mode_id: "decide"
