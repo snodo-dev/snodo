@@ -9,6 +9,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Every snodo command no longer prints LiteLLM `register_model` warnings at
+  import. `snodo --version` on a clean install previously emitted five
+  `LiteLLM:WARNING: register_model: model=... not in built-in cost map`
+  lines — the first thing a new user saw, publishing snodo's model catalog
+  into the terminal. The warnings fired because the Cloudflare model entries
+  registered in `snodo/coders/litellm.py` lack cache cost fields, and the
+  module set the LiteLLM logger to WARNING permanently. The logger is now
+  suppressed to CRITICAL for the duration of the `register_model` call only
+  and restored to its previous level afterwards, so a real cost or routing
+  warning during a run still surfaces. (Fixes #135).
+
 ### Added
 
 - `snodo plan` can now execute and author plans, not just create and inspect
