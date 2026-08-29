@@ -369,7 +369,7 @@ class AuditLog:
                 try:
                     fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
-                except (BlockingIOError, OSError):
+                except (BlockingIOError, OSError) as e:
                     if time.monotonic() >= deadline:
                         f.close()
                         raise AuditError(
@@ -378,7 +378,7 @@ class AuditLog:
                             "Another snodo process is holding it. Refusing to "
                             "append rather than risk a broken hash chain. "
                             f"{_RECOVERY_GUIDANCE}"
-                        )
+                        ) from e
                     time.sleep(0.01)
         except Exception:
             f.close()

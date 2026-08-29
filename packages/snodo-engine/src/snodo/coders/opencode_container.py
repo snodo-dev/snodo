@@ -86,7 +86,7 @@ class OpenCodeContainer:
             )
             return image.id
         except Exception as e:
-            raise OpenCodeContainerError(f"Failed to build image: {e}")
+            raise OpenCodeContainerError(f"Failed to build image: {e}") from e
 
     def start(self, workspace: Path) -> None:
         """Start the opencode server container, reusing an existing one if healthy.
@@ -128,7 +128,7 @@ class OpenCodeContainer:
             )
         except Exception as e:
             self._container = None
-            raise OpenCodeContainerError(f"Failed to start container: {e}")
+            raise OpenCodeContainerError(f"Failed to start container: {e}") from e
 
         self._wait_ready()
 

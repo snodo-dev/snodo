@@ -89,15 +89,15 @@ class OpenCodeCLIAdapter(InPlaceCoderAdapter):
                 text=True,
                 timeout=_OPENCODE_TIMEOUT,
             )
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             raise LLMCallError(
                 "opencode not found on PATH. Install opencode: "
                 "curl -fsSL https://opencode.ai/install | bash"
-            )
-        except subprocess.TimeoutExpired:
+            ) from e
+        except subprocess.TimeoutExpired as e:
             raise LLMCallError(
                 f"opencode run timed out after {_OPENCODE_TIMEOUT}s"
-            )
+            ) from e
 
         if proc.returncode != 0:
             tail = (proc.stderr or "")[:2000] or (proc.stdout or "")[:2000]

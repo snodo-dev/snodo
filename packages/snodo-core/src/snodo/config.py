@@ -144,7 +144,7 @@ class ConfigManager:
             with open(self.config_path) as f:
                 data = yaml.safe_load(f) or {}
         except yaml.YAMLError as e:
-            raise ConfigError(f"Invalid config file: {e}")
+            raise ConfigError(f"Invalid config file: {e}") from e
 
         # Reject legacy api_keys-only configs — providers is the only schema
         if data.get("api_keys") and not data.get("providers"):

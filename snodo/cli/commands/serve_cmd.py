@@ -320,7 +320,7 @@ def _provision_tunnel(
     except RuntimeError:
         raise
     except Exception as e:
-        raise RuntimeError(f"Tunnel provisioning failed: {e}")
+        raise RuntimeError(f"Tunnel provisioning failed: {e}") from e
 
 
 def _rotate_tunnel_token(api_key: str, hostname: str) -> dict:
@@ -352,7 +352,7 @@ def _deprovision_tunnel(api_key: str, hostname: str) -> bool:
     except RuntimeError:
         raise
     except Exception as e:
-        raise RuntimeError(f"Tunnel deprovision failed: {e}")
+        raise RuntimeError(f"Tunnel deprovision failed: {e}") from e
 
 
 def _handle_tunnel_delete(project_root: str, tunnel_config: dict,
