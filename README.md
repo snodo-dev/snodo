@@ -206,7 +206,8 @@ Start MCP server from protocol definition.
 
 ### `snodo plan`
 
-Manage plans. Subcommands: `list`, `status`, `create`, `validate`.
+Manage plans. Subcommands: `list`, `status`, `create`, `validate`,
+`add-wave`, `add-task`, `run`, `delete`.
 
 ```
 snodo plan list                  List all plans with wave and task counts
@@ -224,13 +225,35 @@ snodo plan validate NAME         Verify plan structure and task spec files
                                  (schema snodo.plan_validate.v1)
 ```
 
-`create` scaffolds `plan.yml` and `status.json` but never generates waves —
-it always prints `Waves: 0` and `Tasks: 0`. Author the plan by hand or
-through the MCP planner's `generate_spec`, then execute it with `snodo run`:
+`create` scaffolds `plan.yml` and `status.json` with a single empty wave, so a
+new plan already validates — `validate` rejects a plan with no waves at all.
+It does not generate waves from the description: `Tasks: 0` on a fresh plan is
+expected. Author the plan with the commands below, by editing `plan.yml`
+directly, or through the MCP planner's `generate_spec`.
 
 ```
-snodo run --plan NAME            Execute the plan's tasks, wave by wave
-  --wave, -w INTEGER             Execute only a specific wave (requires --plan)
+snodo plan add-wave NAME ID      Add a wave (integer id) to the plan
+  --depends-on TEXT              Comma-separated wave ids this wave depends on
+snodo plan add-task NAME TASK_ID Add a task to a wave from a spec file
+  --spec-file PATH               Markdown spec for the task (required)
+  --parent TEXT                  Parent task ref, for subtask depth tracking
+  --replace                      Overwrite an existing task spec
+snodo plan delete NAME           Remove a plan directory
+  --force                        Delete even when tasks are completed or
+                                 in progress
+```
+
+Task ids are `<wave>.<seq>_<name>`, e.g. `1.1_models`. Wave 1 exists from
+`create`, so the first wave you add is `2`. Both `add-wave` and `add-task`
+re-verify the plan afterwards and report if the edit left it invalid.
+
+Execute a plan with either form — they take the same arguments and run the
+same code:
+
+```
+snodo plan run NAME              Execute the plan's tasks, wave by wave
+snodo run --plan NAME            Equivalent
+  --wave, -w INTEGER             Execute only a specific wave
   --interactive, -i              Confirm each task before execution
 ```
 
