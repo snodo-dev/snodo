@@ -162,26 +162,33 @@ class PlannerMCP:
                 break
             current_ref = ancestor_entry.get("parent_task_ref")
 
-    def decompose(self, intent: str, plan_name: str) -> dict:
-        """Create initial plan structure from intent.
+    def decompose(self, intent: str, plan_name: str, waves: int = 1) -> dict:
+        """Create an empty plan scaffold on disk with N empty wave slots.
 
-        Creates the plan directory, plan.yml, and status.json.
+        LLM-based automatic decomposition is deferred. Creates the plan
+        directory, plan.yml scaffold with N sequential empty wave slots
+        (default 1, making the scaffold immediately valid), and status.json.
 
         Args:
-            intent: The intent/goal to decompose
+            intent: The intent/goal for the plan
             plan_name: Name for the plan (used as directory name)
+            waves: Number of empty waves to scaffold (default: 1)
 
         Returns:
             Plan data dict with name, intent, waves
 
         Raises:
-            PlannerError: If plan already exists or creation fails
+            PlannerError: If plan already exists, waves is negative/invalid,
+                or creation fails
         """
         if not intent or not intent.strip():
             raise PlannerError("Intent cannot be empty")
 
         if not plan_name or not plan_name.strip():
             raise PlannerError("Plan name cannot be empty")
+
+        if not isinstance(waves, int) or isinstance(waves, bool) or waves < 0:
+            raise PlannerError("waves must be a non-negative integer")
 
         plan_dir = self.plans_dir / plan_name
 
@@ -193,10 +200,19 @@ class PlannerMCP:
         except OSError as e:
             raise PlannerError(f"Failed to create plan directory: {e}") from e
 
+        waves_list = [
+            {
+                "id": i,
+                "depends_on": [i - 1] if i > 1 else [],
+                "tasks": [],
+            }
+            for i in range(1, waves + 1)
+        ]
+
         plan_data = {
             "name": plan_name,
             "intent": intent,
-            "waves": [],
+            "waves": waves_list,
         }
 
         plan_file = plan_dir / "plan.yml"
@@ -551,22 +567,31 @@ class PlannerMCP:
             if not plan_file.exists():
                 continue
 
-            with open(plan_file) as f:
-                data = yaml.safe_load(f) or {}
+            try:
+                with open(plan_file) as f:
+                    data = yaml.safe_load(f)
+                if not isinstance(data, dict):
+                    data = {}
+            except Exception:
+                data = {}
 
-            waves = data.get("waves", [])
-            task_count = sum(len(w.get("tasks", [])) for w in waves)
+            waves = data.get("waves", []) if isinstance(data.get("waves"), list) else []
+            task_count = sum(len(w.get("tasks", [])) for w in waves if isinstance(w, dict))
 
             # Load status counts (normalize entries)
             status_file = plan_dir / "status.json"
             status_counts: dict[str, int] = {}
             if status_file.exists():
-                with open(status_file) as f:
-                    status_data = json.load(f)
-                for entry in status_data.get("tasks", {}).values():
-                    normalized = self._normalize_task_entry(entry)
-                    s = normalized["status"]
-                    status_counts[s] = status_counts.get(s, 0) + 1
+                try:
+                    with open(status_file) as f:
+                        status_data = json.load(f) or {}
+                    if isinstance(status_data, dict):
+                        for entry in status_data.get("tasks", {}).values():
+                            normalized = self._normalize_task_entry(entry)
+                            s = normalized["status"]
+                            status_counts[s] = status_counts.get(s, 0) + 1
+                except Exception:
+                    pass
 
             plans.append({
                 "name": data.get("name", plan_dir.name),

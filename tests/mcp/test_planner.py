@@ -87,7 +87,7 @@ class TestDecompose:
             data = yaml.safe_load(f)
         assert data["name"] == "feature_x"
         assert data["intent"] == "Build feature X"
-        assert data["waves"] == []
+        assert data["waves"] == [{"id": 1, "depends_on": [], "tasks": []}]
 
     def test_creates_status_json(self, planner):
         planner.decompose("Build feature X", "feature_x")
@@ -103,8 +103,35 @@ class TestDecompose:
         assert result == {
             "name": "feature_x",
             "intent": "Build feature X",
-            "waves": [],
+            "waves": [{"id": 1, "depends_on": [], "tasks": []}],
         }
+
+    def test_scaffolds_custom_number_of_waves(self, planner):
+        result = planner.decompose("Build feature X", "feature_x", waves=3)
+        assert len(result["waves"]) == 3
+        assert result["waves"] == [
+            {"id": 1, "depends_on": [], "tasks": []},
+            {"id": 2, "depends_on": [1], "tasks": []},
+            {"id": 3, "depends_on": [2], "tasks": []},
+        ]
+
+    def test_scaffolds_zero_waves(self, planner):
+        result = planner.decompose("Build feature X", "feature_x", waves=0)
+        assert result["waves"] == []
+
+    def test_invalid_waves_param_raises(self, planner):
+        with pytest.raises(PlannerError, match="waves must be a non-negative integer"):
+            planner.decompose("Intent", "plan_a", waves=-1)
+        with pytest.raises(PlannerError, match="waves must be a non-negative integer"):
+            planner.decompose("Intent", "plan_a", waves=True)
+        with pytest.raises(PlannerError, match="waves must be a non-negative integer"):
+            planner.decompose("Intent", "plan_a", waves="abc")
+
+    def test_default_scaffold_is_valid_plan(self, planner):
+        planner.decompose("Intent", "plan_a")
+        result = planner.validate_plan("plan_a")
+        assert result["valid"] is True
+        assert result["wave_count"] == 1
 
     def test_duplicate_plan_raises(self, planner):
         planner.decompose("Intent A", "plan_a")
@@ -199,7 +226,7 @@ class TestGenerateSpec:
         with open(planner.plans_dir / "plan_a" / "plan.yml") as f:
             data = yaml.safe_load(f)
         ids = [w["id"] for w in data["waves"]]
-        assert ids == [2, 3]
+        assert ids == [1, 2, 3]
 
     def test_duplicate_task_id_not_added_twice(self, planner):
         planner.decompose("Intent", "plan_a")
@@ -275,7 +302,7 @@ class TestValidatePlan:
         assert "Missing intent" in result["errors"]
 
     def test_no_waves(self, planner):
-        planner.decompose("Intent", "plan_a")
+        planner.decompose("Intent", "plan_a", waves=0)
         result = planner.validate_plan("plan_a")
         assert "No waves defined" in result["errors"]
 
@@ -1191,3 +1218,170 @@ class TestRecomputeDepthsNoStatusFile:
         plan_dir.mkdir(parents=True)
         result = planner.recompute_depths("no_status")
         assert result == {}
+
+
+class TestGenerateSpecWaveDirectoryAndParentDepth:
+    def test_wave_directory_reuse_when_already_exists(self, planner):
+        planner.decompose("Intent", "plan_a")
+        planner.generate_spec("plan_a", "1.1_models", "spec 1")
+        planner.generate_spec("plan_a", "1.2_routes", "spec 2")
+        wave_dir = planner.plans_dir / "plan_a" / "wave_1"
+        assert wave_dir.exists()
+        assert (wave_dir / "1.1_models_task.md").exists()
+        assert (wave_dir / "1.2_routes_task.md").exists()
+
+    def test_generate_spec_for_higher_wave_num(self, planner):
+        planner.decompose("Intent", "plan_a")
+        planner.generate_spec("plan_a", "10.1_deploy", "deploy spec")
+        wave_dir = planner.plans_dir / "plan_a" / "wave_10"
+        assert wave_dir.exists()
+        assert (wave_dir / "10.1_deploy_task.md").exists()
+
+    def test_parent_and_depth_resolution(self, planner):
+        planner.decompose("Intent", "plan_a")
+        planner.generate_spec("plan_a", "1.1_parent", "parent spec")
+        planner.generate_spec(
+            "plan_a", "1.2_child", "child spec", parent_task_ref="1.1_parent"
+        )
+        status = planner.get_status("plan_a")
+        child_entry = planner._normalize_task_entry(status["tasks"]["1.2_child"])
+        assert child_entry["depth"] == 1
+        assert child_entry["parent_task_ref"] == "1.1_parent"
+
+    def test_nonexistent_parent_ref_raises(self, planner):
+        planner.decompose("Intent", "plan_a")
+        with pytest.raises(PlannerError, match="parent_not_found"):
+            planner.generate_spec(
+                "plan_a", "1.1_child", "child spec", parent_task_ref="ghost_parent"
+            )
+
+    def test_max_subtask_depth_exceeded_raises(self, planner):
+        planner.decompose("Intent", "plan_a")
+        planner.generate_spec("plan_a", "1.1_d0", "d0 spec")
+        planner.generate_spec("plan_a", "1.2_d1", "d1 spec", parent_task_ref="1.1_d0")
+        planner.generate_spec("plan_a", "1.3_d2", "d2 spec", parent_task_ref="1.2_d1")
+        planner.generate_spec("plan_a", "1.4_d3", "d3 spec", parent_task_ref="1.3_d2")
+        with pytest.raises(PlannerError, match="max_subtask_depth_exceeded"):
+            planner.generate_spec(
+                "plan_a", "1.5_d4", "d4 spec", parent_task_ref="1.4_d3"
+            )
+
+
+class TestCheckCycleAncestorWalk:
+    def test_cycle_detected_matches_ancestor_spec(self, planner):
+        planner.decompose("Intent", "plan_a")
+        spec_content = "# Task Spec\nShared content"
+        planner.generate_spec("plan_a", "1.1_parent", spec_content)
+        planner.generate_spec(
+            "plan_a", "1.2_child", "# Child Spec", parent_task_ref="1.1_parent"
+        )
+        with pytest.raises(PlannerError, match="cycle_detected"):
+            planner.generate_spec(
+                "plan_a",
+                "1.3_grandchild",
+                spec_content,
+                parent_task_ref="1.2_child",
+            )
+
+
+class TestUpdateStatusEdgeCases:
+    def test_update_status_legacy_string_entry(self, planner):
+        planner.decompose("Intent", "plan_a")
+        status_file = planner.plans_dir / "plan_a" / "status.json"
+        with open(status_file, "w") as f:
+            json.dump({"tasks": {"1.1_models": "pending"}}, f)
+
+        planner.update_status("plan_a", "1.1_models", "completed")
+        with open(status_file) as f:
+            data = json.load(f)
+        assert data["tasks"]["1.1_models"] == "completed"
+
+    def test_update_status_creates_new_task_entry(self, planner):
+        planner.decompose("Intent", "plan_a")
+        planner.update_status("plan_a", "1.1_new", "in_progress")
+        status = planner.get_status("plan_a")
+        assert status["tasks"]["1.1_new"] == "in_progress"
+
+    def test_update_status_creates_status_json_if_missing(self, planner):
+        planner.decompose("Intent", "plan_a")
+        status_file = planner.plans_dir / "plan_a" / "status.json"
+        status_file.unlink()
+
+        planner.update_status("plan_a", "1.1_new", "blocked")
+        assert status_file.exists()
+        with open(status_file) as f:
+            data = json.load(f)
+        assert data["tasks"]["1.1_new"] == "blocked"
+
+
+class TestRecomputeDepthsTree:
+    def test_recompute_depths_multi_level_tree(self, planner):
+        planner.decompose("Intent", "plan_a")
+        status_file = planner.plans_dir / "plan_a" / "status.json"
+        with open(status_file, "w") as f:
+            json.dump(
+                {
+                    "tasks": {
+                        "1.1_root": {
+                            "status": "pending",
+                            "parent_task_ref": None,
+                            "depth": 5,
+                            "spec_hash": "a",
+                        },
+                        "1.2_child": {
+                            "status": "pending",
+                            "parent_task_ref": "1.1_root",
+                            "depth": 0,
+                            "spec_hash": "b",
+                        },
+                        "1.3_grandchild": {
+                            "status": "pending",
+                            "parent_task_ref": "1.2_child",
+                            "depth": 0,
+                            "spec_hash": "c",
+                        },
+                    }
+                },
+                f,
+            )
+
+        depths = planner.recompute_depths("plan_a")
+        assert depths["1.1_root"] == 0
+        assert depths["1.2_child"] == 1
+        assert depths["1.3_grandchild"] == 2
+
+
+class TestListPlansMalformedDir:
+    def test_list_plans_ignores_regular_file(self, planner):
+        planner.plans_dir.mkdir(parents=True, exist_ok=True)
+        (planner.plans_dir / "notes.txt").write_text("not a plan dir")
+        plans = planner.list_plans()
+        assert plans == []
+
+    def test_list_plans_skips_dir_without_plan_yml(self, planner):
+        planner.plans_dir.mkdir(parents=True, exist_ok=True)
+        (planner.plans_dir / "empty_dir").mkdir()
+        plans = planner.list_plans()
+        assert plans == []
+
+    def test_list_plans_handles_non_dict_plan_yml(self, planner):
+        planner.plans_dir.mkdir(parents=True, exist_ok=True)
+        plan_dir = planner.plans_dir / "bad_yml"
+        plan_dir.mkdir()
+        (plan_dir / "plan.yml").write_text("just a string")
+
+        plans = planner.list_plans()
+        assert len(plans) == 1
+        assert plans[0]["name"] == "bad_yml"
+        assert plans[0]["intent"] == ""
+
+    def test_list_plans_handles_corrupt_status_json(self, planner):
+        planner.decompose("Intent", "plan_a")
+        status_file = planner.plans_dir / "plan_a" / "status.json"
+        status_file.write_text("{corrupt json")
+
+        plans = planner.list_plans()
+        assert len(plans) == 1
+        assert plans[0]["name"] == "plan_a"
+        assert plans[0]["status_counts"] == {}
+
