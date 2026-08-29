@@ -1,0 +1,185 @@
+"""Mode command — manage the active protocol mode.
+
+FILE: snodo/cli/commands/mode_cmd.py (Task 7.19)
+"""
+
+import logging
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import typer
+
+from snodo.infrastructure.state import read_state, write_state
+
+_logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
+# ---------------------------------------------------------------------------
+
+COMMAND_NAME = "mode"
+
+app = typer.Typer(invoke_without_command=True, help="Manage active protocol mode")
+
+
+@app.callback()
+def _mode_callback(ctx: typer.Context):
+    """Manage active protocol mode."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+
+
+@app.command("show")
+def mode_show(
+    json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+):
+    """Show the current active mode."""
+    args = SimpleNamespace(mode_action="show", json=json)
+    return mode_command(args)
+
+
+@app.command("change")
+def mode_change(
+    new_mode: str = typer.Argument(..., help="Mode to switch to"),
+):
+    """Change the active protocol mode."""
+    args = SimpleNamespace(mode_action="change", new_mode=new_mode)
+    return mode_command(args)
+
+
+
+def mode_command(args) -> int:
+    """Manage active protocol mode."""
+    from snodo.infrastructure.paths import require_project_root
+    project_root = require_project_root()
+    state = read_state(project_root)
+    action = getattr(args, "mode_action", "show")
+
+    if action == "show":
+        return _mode_show(args, state, project_root)
+    elif action == "change":
+        return _mode_change(args, state, project_root)
+    else:
+        print("Unknown mode action. Use: show, change", file=sys.stderr)
+        return 1
+
+
+def _mode_show(args, state, project_root) -> int:
+    """Display the current active mode."""
+    json_out = getattr(args, "json", False)
+    if not state.current_mode:
+        if json_out:
+            from snodo.cli.json_output import emit_json, schema_name
+            return emit_json({
+                "schema": schema_name("mode"),
+                "ok": True,
+                "mode": None,
+                "name": None,
+                "active_session": None,
+            })
+        print("No mode set. Run 'snodo mode change <m>' to select one.")
+        return 0
+
+    # Try to load protocol for richer display
+    protocol_path = Path(project_root) / ".snodo" / "protocol.yml"
+    mode_name = state.current_mode
+    if protocol_path.exists():
+        import yaml
+        from snodo.compiler.models import Protocol
+        try:
+            data = yaml.safe_load(protocol_path.read_text())
+            protocol = Protocol(**data)
+            mode = protocol.get_mode(state.current_mode)
+            if mode:
+                mode_name = f"{mode.name} ({state.current_mode})"
+        except Exception as e:
+            _logger.debug("Could not load protocol for mode display: %s", e)
+
+    if json_out:
+        from snodo.cli.json_output import emit_json, schema_name
+        return emit_json({
+            "schema": schema_name("mode"),
+            "ok": True,
+            "mode": state.current_mode,
+            "name": mode_name,
+            "active_session": state.active_session.get(state.current_mode),
+        })
+
+    print(f"Current mode: {mode_name}")
+    if state.active_session:
+        print(f"Active session: {state.active_session}")
+    return 0
+
+
+def _mode_change(args, state, project_root) -> int:
+    """Change the active mode and optionally select a session."""
+    new_mode = getattr(args, "new_mode", "")
+    if not new_mode:
+        print("Error: mode name required", file=sys.stderr)
+        return 1
+
+    # Validate mode exists in protocol
+    protocol_path = Path(project_root) / ".snodo" / "protocol.yml"
+    if not protocol_path.exists():
+        print("Error: .snodo/protocol.yml not found. Run 'snodo init' first.",
+              file=sys.stderr)
+        return 1
+
+    import yaml
+    from snodo.compiler.models import Protocol
+    from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.paths import resolve_home
+
+    try:
+        data = yaml.safe_load(protocol_path.read_text())
+        protocol = Protocol(**data)
+    except Exception as e:
+        print(f"Error loading protocol: {e}", file=sys.stderr)
+        return 1
+
+    mode = protocol.get_mode(new_mode)
+    if not mode:
+        available = ", ".join(m.mode_id for m in protocol.modes)
+        print(f"Error: Mode '{new_mode}' not found. Available: {available}",
+              file=sys.stderr)
+        return 1
+
+    # Update state
+    old_mode = state.current_mode
+    state.current_mode = new_mode
+    write_state(project_root, state)
+
+    # Audit the human-initiated mode change (best-effort)
+    try:
+        from snodo.infrastructure.audit import AuditLog
+        audit_log = AuditLog(str(Path(project_root) / ".snodo" / "audit.log"))
+        audit_log.append_event("mode_change", {
+            "from_mode": old_mode,
+            "to_mode": new_mode,
+            "actor": "human",
+            "command": "snodo mode",
+        })
+    except Exception as e:
+        import sys as _sys
+        print(f"Warning: failed to write audit event: {e}", file=_sys.stderr)
+
+    print(f"Mode changed to: {mode.name} ({new_mode})")
+
+    # Ensure the target mode has an active session
+    session_mgr = SessionManager(sessions_dir=resolve_home() / "sessions")
+    active = session_mgr.get_active_session(new_mode, project_root)
+    if active:
+        print(f"Active session: {active.session_id}")
+    sessions = session_mgr.list_sessions(mode=new_mode, project_root=project_root)
+    if sessions:
+        print()
+        print(f"Available sessions for {new_mode}:")
+        for s in sessions:
+            task = s.checkpoint.current_task or "(none)"
+            marker = " ← active" if active and s.session_id == active.session_id else ""
+            print(f"  {s.session_id}  updated={s.updated_at[:19]}  task={task}{marker}")
+        print()
+    else:
+        print("No sessions for this mode yet. First 'snodo run' will create one.")
+    return 0

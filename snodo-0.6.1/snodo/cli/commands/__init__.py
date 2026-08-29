@@ -1,0 +1,27 @@
+"""Snodo CLI command modules (backward-compatibility shim).
+
+Shared utilities used across command modules live here.
+"""
+
+from snodo.protocols import (  # noqa: F401
+    load_protocol,
+    DEFAULT_PROTOCOL,
+    SOLO_PROTOCOL,
+    TEAM_PROTOCOL,
+    TWO_PLUS_N_PROTOCOL,
+    INTENT_PROTOCOL,
+    PROTOCOL_TEMPLATES,
+    list_templates,
+    template_display_name,
+)
+
+__all__ = [
+    "load_protocol",
+    "DEFAULT_PROTOCOL",
+    "SOLO_PROTOCOL",
+    "TEAM_PROTOCOL",
+    "TWO_PLUS_N_PROTOCOL",
+    "PROTOCOL_TEMPLATES",
+    "list_templates",
+    "template_display_name",
+]
