@@ -9,6 +9,26 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `snodo plan` can now execute and author plans, not just create and inspect
+  them. Four subcommands were added to the plan Typer app: `snodo plan run
+  <name> [--wave N] [--interactive] [--protocol PATH] [--model M]` builds the
+  same SimpleNamespace `snodo run --plan` builds and delegates to
+  `plan_run._run_plan` (imported inside the function, so `snodo run --plan`
+  is unchanged); `snodo plan add-task <plan> <task_id> --spec-file PATH
+  [--parent REF] [--replace]` reads the spec file and calls
+  `planner.generate_spec`, rejecting task ids that are not `<wave>.<seq>_<name>`
+  (e.g. `1.1_models`) and treating a missing spec file as an error, not an
+  empty spec; `snodo plan add-wave <plan> <id> [--depends-on 1,2]` adds a wave
+  to plan.yml, refusing non-integer ids, duplicate ids, and dependencies on
+  waves that do not exist; and `snodo plan delete <name> [--force]` removes a
+  plan directory, refusing without `--force` when any task is completed or
+  in_progress and naming them. After add-task and add-wave the plan is
+  re-verified with `verify_plan_dir`; if it no longer verifies, the errors are
+  reported and the plan is marked invalid rather than silently broken.
+  (Fixes #130).
+
 ### Changed
 
 - The flake8-bandit security subset is now triaged at each site. Every
