@@ -3,6 +3,7 @@
 FILE: snodo/dashboard/panels/cockpit.py
 """
 
+from contextlib import suppress
 from typing import Any, Dict, Optional, List
 
 from rich.markup import escape as _escape
@@ -11,6 +12,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
+from textual.widgets.data_table import RowDoesNotExist
 
 from snodo.dashboard.panels import register_panel, get_panel
 from snodo.dashboard.screens import _short_id
@@ -219,10 +221,10 @@ class CockpitScreen(Screen):
             
         self.selected_session = current_sel_session
         if self.selected_session:
-            try:
+            # The selected row may have been filtered out of the table; the
+            # cursor simply stays put, which is the desired behaviour.
+            with suppress(RowDoesNotExist):
                 sessions_table.move_cursor(row=sessions_table.get_row_index(self.selected_session))
-            except Exception:
-                pass
                 
         # Update Cockpit Header
         self._update_header()
@@ -282,10 +284,10 @@ class CockpitScreen(Screen):
             self.selected_wave = waves[0]["wave_id"]
             
         if self.selected_wave:
-            try:
+            # The selected row may have been filtered out of the table; the
+            # cursor simply stays put, which is the desired behaviour.
+            with suppress(RowDoesNotExist):
                 waves_table.move_cursor(row=waves_table.get_row_index(self.selected_wave))
-            except Exception:
-                pass
 
         # Update Tasks
         wave_id = self.selected_wave
@@ -313,10 +315,10 @@ class CockpitScreen(Screen):
             self.selected_task = flat_tasks[0]["task_ref"]
             
         if self.selected_task:
-            try:
+            # The selected row may have been filtered out of the table; the
+            # cursor simply stays put, which is the desired behaviour.
+            with suppress(RowDoesNotExist):
                 tasks_table.move_cursor(row=tasks_table.get_row_index(self.selected_task))
-            except Exception:
-                pass
 
         # Update Jobs
         task_ref = self.selected_task
@@ -336,10 +338,10 @@ class CockpitScreen(Screen):
             self.selected_job = jobs[0]["job_id"]
             
         if self.selected_job:
-            try:
+            # The selected row may have been filtered out of the table; the
+            # cursor simply stays put, which is the desired behaviour.
+            with suppress(RowDoesNotExist):
                 jobs_table.move_cursor(row=jobs_table.get_row_index(self.selected_job))
-            except Exception:
-                pass
 
         # Update Live Log
         job_id = self.selected_job

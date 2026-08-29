@@ -3,6 +3,7 @@
 FILE: snodo/cli/commands/mode_cmd.py (Task 7.19)
 """
 
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +11,8 @@ from types import SimpleNamespace
 import typer
 
 from snodo.infrastructure.state import read_state, write_state
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
@@ -90,8 +93,8 @@ def _mode_show(args, state, project_root) -> int:
             mode = protocol.get_mode(state.current_mode)
             if mode:
                 mode_name = f"{mode.name} ({state.current_mode})"
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Could not load protocol for mode display: %s", e)
 
     if json_out:
         from snodo.cli.json_output import emit_json, schema_name

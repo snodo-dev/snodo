@@ -4,6 +4,7 @@ FILE: snodo/cli/commands/serve_cmd.py
 """
 
 import json
+import logging
 import os
 import random
 import signal
@@ -18,6 +19,8 @@ from typing import Optional
 import typer
 
 from snodo.cli.commands import load_protocol
+
+_logger = logging.getLogger(__name__)
 
 
 def register(app: typer.Typer) -> None:
@@ -562,8 +565,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         for proc in [cf_process, mcp_process]:
             try:
                 proc.terminate()
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("Could not terminate process: %s", e)
         for proc in [cf_process, mcp_process]:
             try:
                 proc.wait(timeout=5)
@@ -571,8 +574,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                 try:
                     proc.kill()
                     proc.wait(timeout=2)
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.debug("Could not kill process: %s", e)
 
     signal.signal(signal.SIGINT, _cleanup)
     signal.signal(signal.SIGTERM, _cleanup)

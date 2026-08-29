@@ -7,12 +7,15 @@ Kept free of Textual imports so a future `snodo dashboard --web` can reuse it un
 """
 
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from snodo.compiler.models import Protocol, Mode
 from snodo.infrastructure.audit import AuditLog, AuditEvent, AuditError
 from snodo.infrastructure.state import read_state
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -258,8 +261,8 @@ class DashboardDataProvider:
                                 "parent_task_ref": parent,
                                 "depth": depth,
                             })
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning("Could not read plan status files: %s", e)
         return tasks
 
     def get_jobs(self, session_id: str, task_ref: str) -> List[Dict[str, Any]]:
@@ -307,9 +310,9 @@ class DashboardDataProvider:
                             "completed_at": completed,
                             "exit_code": state_data.get("exit_code"),
                         })
-        except Exception:
-            pass
-            
+        except Exception as e:
+            _logger.warning("Could not read job state files: %s", e)
+
         jobs.sort(key=lambda x: x.get("created_at") or 0.0)
         return jobs
 
