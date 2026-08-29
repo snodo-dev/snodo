@@ -54,8 +54,8 @@ class UsageTracker(CustomLogger):
                 outp = meta.get("output_cost")
                 if isinstance(inp, (int, float)) and isinstance(outp, (int, float)):
                     cost = (prompt_tokens * inp) + (completion_tokens * outp)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("Catalog cost calculation failed: %s", e)
 
         meta: dict = {}
         if isinstance(kwargs, dict):
@@ -89,8 +89,8 @@ class UsageTracker(CustomLogger):
         if job_id != "unknown":
             try:
                 _persist_usage(job_id, record)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning("Failed to persist usage for job %s: %s", job_id, e)
 
 
 def _persist_usage(job_id: str, record: dict) -> None:
@@ -108,8 +108,8 @@ def _persist_usage(job_id: str, record: dict) -> None:
         try:
             with open(state_path) as f:
                 state = json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning("Failed to read job state for usage tracking: %s", e)
     usage_list = state.get("usage", [])
     if not isinstance(usage_list, list):
         usage_list = []

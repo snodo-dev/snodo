@@ -4,12 +4,15 @@ FILE: snodo/engine/nodes/writeback.py
 """
 
 import json
+import logging
 import os as _os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Optional
 from snodo.engine.policy import policy_decision_to_dict
 from snodo.engine.state import _task_branch_name
+
+_logger = logging.getLogger(__name__)
 
 
 # Canonical halt outcome. The halt payload's ``halt_type`` and ``final_decision``
@@ -249,8 +252,8 @@ class WritebackMixin:
                 self._session_manager.update_decision(
                     self._session_id, "task_failure", failures,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning("Failed to update task_failure decision for session %s: %s", self._session_id, e)
 
     def _merge_into_job_state(self, updates: dict) -> None:
         """Atomically merge *updates* into the job's state.json (direct write)."""
@@ -264,8 +267,8 @@ class WritebackMixin:
         if state_path.exists():
             try:
                 state = json.loads(state_path.read_text())
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning("Failed to load existing job state from %s: %s", state_path, e)
         state.update(updates)
         tmp = job_dir / "state.json.tmp"
         tmp.write_text(json.dumps(state, indent=2))

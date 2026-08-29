@@ -54,8 +54,8 @@ def _read_cached() -> Optional[dict]:
         age = time.time() - data.get("fetched_at", 0)
         if age < _CACHE_TTL:
             return data.get("catalog")
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Failed to read cached catalog from %s: %s", cp, e)
     return None
 
 
@@ -79,8 +79,8 @@ def get_catalog() -> Optional[dict]:
     if cp.exists():
         try:
             return json.loads(cp.read_text()).get("catalog")
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Failed to read stale cached catalog from %s: %s", cp, e)
     return None
 
 
@@ -191,6 +191,6 @@ def _litellm_fallback(model: str, result: dict) -> dict:
             if ctx:
                 result["context"] = int(ctx)
             return result
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Failed to get model info from litellm: %s", e)
     return result

@@ -359,8 +359,8 @@ class ReconManager:
         """Background entry point — fans out agents, writes results, updates state."""
         try:
             self._run_recon_impl(recon_id, query, paths, agents)
-        except Exception:
-            pass  # Silently discard (test teardown may have removed the dir)
+        except Exception as e:
+            _logger.debug("Recon background task error for %s: %s", recon_id, e)
 
     def _run_recon_impl(self, recon_id: str, query: str, paths: list[str],
                         agents: list[str]) -> None:

@@ -283,8 +283,8 @@ class WaveRegistry:
                         model, {"type": "json_object"}
                     ):
                         kwargs["response_format"] = {"type": "json_object"}
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.debug("Failed to check litellm response_format support: %s", e)
 
                 response = completion_fn(**kwargs)
                 content = response.choices[0].message.content

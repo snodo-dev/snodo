@@ -11,6 +11,7 @@ Project name derived from directory containing .snodo/, sanitized.
 
 import hashlib
 import json
+import logging
 import os
 import platform
 import re
@@ -19,6 +20,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from snodo.compiler.models import Protocol
+
+_logger = logging.getLogger(__name__)
 
 
 def sanitize_project_name(name: str) -> str:
@@ -365,11 +368,11 @@ def purge_project_state(project_root: str) -> Dict[str, Any]:
                     if data.get("project_id") == project_id:
                         sf.unlink()
                         removed += 1
-                except (json.JSONDecodeError, OSError):
-                    pass
+                except (json.JSONDecodeError, OSError) as e:
+                    _logger.debug("Failed to read or remove session file %s: %s", sf, e)
             result["session_count"] = removed
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Failed to clear sessions for project %s: %s", project_id, e)
 
     return result
 

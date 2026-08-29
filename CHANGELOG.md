@@ -13,6 +13,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 - Enforced ruff rule `B904` (`raise-without-from-inside-except`) across `packages/` and `snodo/`. Updated 61 exception re-raise sites to explicitly attach causal exception chains (`from e` or `from None`), ensuring underlying error details (e.g. git command failures, GitHub API exceptions, container errors, and token store errors) are preserved for structured audit logs and halt payloads. (Fixes #122).
 
+- Fixed 46 silent try-except-pass blocks across `packages/` (Ruff rule S110) so exceptions in audit log, session persistence, process execution, and resource cleanup are properly logged at warning or debug level instead of being silently swallowed. (Fixes #124).
 - `snodo task show <task_id>` now prints the task spec — the one field an
   operator needs to act on a failure. Previously it showed the halt type, the
   hint and every validator justification but not the spec, forcing an operator

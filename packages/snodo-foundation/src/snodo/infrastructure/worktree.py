@@ -321,10 +321,10 @@ def delete_task_branch(project_root: str, branch: str) -> None:
         repo = Repo(str(Path(project_root)), search_parent_directories=True)
         try:
             repo.git.branch("-D", branch)
-        except GitCommandError:
-            pass
-    except Exception:
-        pass
+        except GitCommandError as e:
+            _logger.debug("Failed to delete branch %s: %s", branch, e)
+    except Exception as e:
+        _logger.debug("Failed to delete task branch %s: %s", branch, e)
 
 
 def list_worktrees(project_root: str) -> list:

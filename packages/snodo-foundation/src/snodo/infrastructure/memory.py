@@ -306,14 +306,14 @@ def create_summary_model():
         try:
             from langchain_openai import ChatOpenAI
             return ChatOpenAI(model=model, api_key=key)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Failed to initialize ChatOpenAI for summary model: %s", e)
 
     if provider == "anthropic" and key:
         try:
             from langchain_anthropic import ChatAnthropic
             return ChatAnthropic(model=model, api_key=key)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Failed to initialize ChatAnthropic for summary model: %s", e)
 
     return None
