@@ -159,8 +159,26 @@ def _run_plan(args) -> int:
             audit_log = getattr(args, "audit_log", None)
             planner = PlannerMCP(project_root, audit_log=audit_log)
             plan_data = planner.get_plan(args.plan)
-        except (ValueError, PlannerError) as e:
+            status_data = planner.get_status(args.plan)
+            from snodo.compiler.models import Plan
+            plan_model = Plan.from_dict(plan_data, status_data)
+        except (ValueError, PlannerError, Exception) as e:
             print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        plan_dir = planner.plans_dir / args.plan
+        from snodo.compiler.verifier import verify_plan
+        verification = verify_plan(plan_model, plan_dir=plan_dir)
+
+        if verification.warnings:
+            print("Warnings:", file=sys.stderr)
+            for w in verification.warnings:
+                print(f"  - {w}", file=sys.stderr)
+
+        if not verification.passed:
+            print(f"Error: Plan verification failed for '{args.plan}':", file=sys.stderr)
+            for err in verification.errors:
+                print(f"  - {err}", file=sys.stderr)
             return 1
 
         print(f"Plan: {plan_data.get('name', args.plan)}")

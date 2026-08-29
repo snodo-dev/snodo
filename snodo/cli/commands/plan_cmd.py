@@ -64,6 +64,18 @@ def plan_create(
 
 
 
+@app.command("validate")
+def plan_validate(
+    name: str = typer.Argument(..., help="Plan name"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output validation result as JSON",
+    ),
+):
+    """Validate a plan's structure and spec files."""
+    args = SimpleNamespace(plan_action="validate", name=name, json_output=json_output)
+    return plan_command(args)
+
+
 def plan_command(args) -> int:
     """Manage plans."""
     from snodo.mcp.planner import PlannerMCP
@@ -83,8 +95,11 @@ def plan_command(args) -> int:
         return _plan_status(planner, args.name)
     elif args.plan_action == "create":
         return _plan_create(planner, args)
+    elif args.plan_action == "validate":
+        json_out = getattr(args, "json_output", False)
+        return _plan_validate(planner, args.name, json_output=json_out)
     else:
-        print("Unknown plan action. Use: list, status, create", file=sys.stderr)
+        print("Unknown plan action. Use: list, status, create, validate", file=sys.stderr)
         return 1
 
 
@@ -183,3 +198,36 @@ def _print_plan_summary(tasks: dict) -> None:
     if blocked:
         print(f", {blocked} blocked", end="")
     print()
+
+
+def _plan_validate(planner, name: str, json_output: bool = False) -> int:
+    """Validate a plan's structure and spec files."""
+    from snodo.compiler.verifier import verify_plan_dir
+
+    plan_dir = planner.plans_dir / name
+    result = verify_plan_dir(plan_dir)
+
+    if json_output:
+        from snodo.cli.json_output import emit_json, schema_name
+        payload = {
+            "schema": schema_name("plan_validate"),
+            "plan": name,
+            "passed": result.passed,
+            "errors": result.errors,
+            "warnings": result.warnings,
+        }
+        return emit_json(payload, exit_code=0 if result.passed else 1)
+
+    if result.warnings:
+        print("Warnings:", file=sys.stderr)
+        for w in result.warnings:
+            print(f"  - {w}", file=sys.stderr)
+
+    if not result.passed:
+        print(f"Error: Plan verification failed for '{name}':", file=sys.stderr)
+        for err in result.errors:
+            print(f"  - {err}", file=sys.stderr)
+        return 1
+
+    print(f"Plan '{name}' validated successfully.")
+    return 0

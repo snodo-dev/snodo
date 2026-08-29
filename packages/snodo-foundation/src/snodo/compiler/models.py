@@ -471,6 +471,7 @@ class Plan(BaseModel):
     intent: str
     waves: List[PlanWave] = Field(default_factory=list)
     tasks: Dict[str, PlanTask] = Field(default_factory=dict)
+    parse_errors: List[str] = Field(default_factory=list)
 
     def __getitem__(self, item: str) -> Any:
         if hasattr(self, item):
@@ -513,21 +514,45 @@ class Plan(BaseModel):
 
         waves: List[PlanWave] = []
         wave_task_ids: List[str] = []
+        parse_errors: List[str] = []
+
+        def _is_int(val: Any) -> bool:
+            if val is None or isinstance(val, bool):
+                return False
+            if isinstance(val, int):
+                return True
+            if isinstance(val, str):
+                s = val.strip()
+                if not s:
+                    return False
+                if s.startswith("-"):
+                    return s[1:].isdigit()
+                return s.isdigit()
+            return False
+
         for w in raw_waves:
-            if isinstance(w, dict):
+            if isinstance(w, PlanWave):
+                waves.append(w)
+                wave_task_ids.extend([str(t) for t in w.tasks])
+            elif isinstance(w, dict):
                 wid = w.get("id")
                 deps = w.get("depends_on") or []
                 tasks = w.get("tasks") or []
-                try:
-                    wid_int = int(wid) if wid is not None else 0
-                except (ValueError, TypeError):
+
+                if _is_int(wid):
+                    wid_int = int(wid)
+                else:
+                    parse_errors.append(f"Wave id '{wid}' is not an integer")
                     wid_int = 0
-                deps_int = []
+
+                deps_int: List[int] = []
                 for d in deps:
-                    try:
+                    if _is_int(d):
                         deps_int.append(int(d))
-                    except (ValueError, TypeError):
-                        pass
+                    else:
+                        wave_label = wid if wid is not None else wid_int
+                        parse_errors.append(f"Wave {wave_label} depends on non-integer wave '{d}'")
+
                 str_tasks = [str(t) for t in tasks]
                 waves.append(PlanWave(id=wid_int, depends_on=deps_int, tasks=str_tasks))
                 wave_task_ids.extend(str_tasks)
@@ -576,4 +601,10 @@ class Plan(BaseModel):
                 spec_hash=hash_val,
             )
 
-        return cls(name=name, intent=intent, waves=waves, tasks=tasks_map)
+        return cls(
+            name=name,
+            intent=intent,
+            waves=waves,
+            tasks=tasks_map,
+            parse_errors=parse_errors,
+        )
