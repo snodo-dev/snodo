@@ -65,7 +65,7 @@ def spawn_background(cmd: List[str], stdout_path: str, stderr_path: str, cwd: st
     stdout_f = open(stdout_path, "w")
     stderr_f = open(stderr_path, "w")
 
-    proc = subprocess.Popen(
+    proc = subprocess.Popen(  # noqa: S603 - argv list (no shell) from build_command; task description/model are single argv elements, never interpreted
         cmd,
         stdout=stdout_f,
         stderr=stderr_f,

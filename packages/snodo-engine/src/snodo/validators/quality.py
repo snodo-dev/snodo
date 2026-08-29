@@ -132,7 +132,7 @@ class QualityValidator(ValidatorBase):
         """Resolve current git commit hash for working_directory."""
         try:
             res = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
+                ["git", "rev-parse", "HEAD"],  # noqa: S607 - git resolved from PATH by design; argv list, no shell, fully controlled flags
                 cwd=str(self.working_directory),
                 capture_output=True,
                 text=True,
@@ -211,7 +211,7 @@ class QualityValidator(ValidatorBase):
         commit_hash = self._resolve_commit_hash()
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S602 - command is an operator-authored shell string (tooling.test_command or auto-detect literal, e.g. "npm test" / "py.test && flake8"); compound commands require a shell. Source is the trusted protocol file (ADR 014 / #110), executed as the repo owner.
                 command,
                 shell=True,
                 cwd=str(self.working_directory),
