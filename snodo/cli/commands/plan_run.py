@@ -20,6 +20,71 @@ def _task_completed(tasks_status: dict, task_id: str) -> bool:
     return entry == "completed"
 
 
+def _task_is_blocked(tasks_status: dict, task_id: str) -> bool:
+    """Check if a task is marked blocked, handling both string and dict entries."""
+    entry = tasks_status.get(task_id)
+    if isinstance(entry, dict):
+        return entry.get("status") == "blocked"
+    return entry == "blocked"
+
+
+def _resolve_failure_context(session, task_id: str) -> Optional[dict]:
+    """Resolve retry failure context for *task_id*, mirroring ``_retry_task``.
+
+    Prefers ``decisions["task_failure"][task_id]`` and falls back to the
+    persisted halt record via ``_failure_from_halt_record`` — the same
+    resolution ``_retry_task`` uses, reused rather than reimplemented. Returns
+    None when neither source yields a dict.
+    """
+    from snodo.cli.commands.run_cmd import _failure_from_halt_record
+
+    task_failure = session.checkpoint.decisions.get("task_failure", {})
+    if not isinstance(task_failure, dict):
+        task_failure = {}
+    failure = task_failure.get(task_id)
+    if not isinstance(failure, dict):
+        failure = _failure_from_halt_record(session, task_id)
+    return failure
+
+
+def _plan_retry_decision(planner, args, protocol, task_id: str) -> str:
+    """Decide how a blocked task resumes: ``retry``, ``exhausted``, or ``fresh``.
+
+    Mirrors ``_retry_task``'s context resolution and ``max_retries`` handling:
+    - ``retry``: failure context exists and retries remain — execute as a retry.
+    - ``exhausted``: failure context exists but ``max_retries`` is reached — do
+      not re-execute; prints the abandon/override guidance.
+    - ``fresh``: no failure context (or no session manager) — run the task
+      fresh, today's behaviour.
+    """
+    session_manager = getattr(args, "session_manager", None)
+    if session_manager is None:
+        return "fresh"
+
+    from snodo.infrastructure.state import read_state
+    project_root = str(planner.project_root)
+    state = read_state(project_root)
+    mode = state.current_mode or protocol.initial_mode
+
+    session = session_manager.get_active_session(mode, project_root)
+    if session is None:
+        return "fresh"
+
+    failure = _resolve_failure_context(session, task_id)
+    if failure is None:
+        return "fresh"
+
+    attempt = failure.get("attempt", 0)
+    max_retries = getattr(protocol.execution, "max_retries", 3)
+    if attempt >= max_retries:
+        print(f"Task {task_id} has failed {max_retries} times.")
+        print(f"  Review branch {failure.get('branch', 'unknown')} and either:")
+        print(f"  - snodo run --retry {task_id} \"revised spec\" (override spec)")
+        print(f"  - snodo task abandon {task_id} (delete branch)")
+        return "exhausted"
+    return "retry"
+
+
 def _get_completed_waves(waves: list, tasks_status: dict) -> set:
     """Determine which waves are fully completed.
 
@@ -43,6 +108,13 @@ def _get_completed_waves(waves: list, tasks_status: dict) -> set:
 def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool:
     """Execute a single task within a wave.
 
+    A task the status file already marks "blocked" resumes through the retry
+    path when failure context exists (reusing ``_retry_task``'s resolution):
+    it is executed as a retry rather than a fresh dispatch, so the failure
+    context ``_auto_write_failure_context`` persists is consumed. A task at
+    ``max_retries`` is not re-executed. With no failure context, the task runs
+    fresh (today's behaviour) and the line says so.
+
     Returns:
         True on success, False on failure.
     """
@@ -56,6 +128,29 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
         return False
 
     spec = spec_file.read_text()
+
+    status_data = planner.get_status(args.plan)
+    tasks_status = status_data.get("tasks", {})
+    if _task_is_blocked(tasks_status, task_id):
+        decision = _plan_retry_decision(planner, args, protocol, task_id)
+        if decision == "exhausted":
+            print(f"  [{task_id}] not re-executed (max_retries reached)")
+            return False
+        if decision == "retry":
+            from snodo.cli.commands.run_cmd import _retry_task
+            project_root = str(planner.project_root)
+            session_manager = getattr(args, "session_manager", None)
+            print(f"  [{task_id}] resuming as retry (failure context found)")
+            result = _retry_task(args, task_id, project_root, session_manager)
+            if result == 0:
+                planner.update_status(args.plan, task_id, "completed")
+                return True
+            planner.update_status(args.plan, task_id, "blocked")
+            print(f"  [{task_id}] FAILED", file=sys.stderr)
+            return False
+        # decision == "fresh": no failure context — fall through to fresh run
+        print(f"  [{task_id}] no failure context found; running fresh")
+
     planner.update_status(args.plan, task_id, "in_progress")
 
     task = Task(id=task_id, spec=spec)
