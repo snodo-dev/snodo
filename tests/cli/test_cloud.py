@@ -312,7 +312,7 @@ class TestCloudSyncDispatcher:
                     "sndo_live_xxx", "https://api.example.com",
                 )
 
-        assert result is True
+        assert result[0] == "delivered"
         mock_sleep.assert_called_with(1)
         assert mock_post.call_count == 2
 
@@ -334,7 +334,7 @@ class TestCloudSyncDispatcher:
                     "sndo_live_xxx", "https://api.example.com",
                 )
 
-        assert result is False
+        assert result[0] == "retryable"
         # 5 retries: attempt 0 (1s), 1 (2s), 2 (4s), 3 (8s), 4 (16s), attempt 5 → return False
         assert mock_sleep.call_count == 5
         assert mock_post.call_count == 6  # _MAX_RETRIES + 1
@@ -400,6 +400,168 @@ class TestCloudSyncDispatcher:
             sync_if_enabled("sess_t", "/proj", MagicMock(), config=config)
 
         mock_sync.assert_not_called()
+
+    def test_refused_response_records_reason_range_and_skips_automatic_retry(self, tmp_path, monkeypatch):
+        """A 400 refused response leaves cursor, records reason & range, and is skipped on automatic sync."""
+        from unittest.mock import patch, MagicMock
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        state_path = tmp_path / "cloud_sync.json"
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+
+        events = self._make_events(5)
+        audit_log = MagicMock()
+        audit_log.events = events
+
+        dispatcher = CloudSyncDispatcher()
+
+        bad_resp = MagicMock()
+        bad_resp.status_code = 400
+        bad_resp.text = "Malformed event payload"
+
+        with patch("httpx.post", return_value=bad_resp):
+            res = dispatcher.sync("sess_refused", "/proj", audit_log, "sndo_live_xxx", "https://api.example.com")
+
+        assert res["failed"] is True
+        assert res["refused"] is True
+        assert "Malformed event payload" in res["reason"]
+
+        state = CloudSyncState(state_path)
+        assert state.get_cursor("sess_refused") == 0
+        assert state.is_refused("sess_refused") is True
+        info = state.get_summary()["sess_refused"]
+        assert info["refused_range"] == [1, 5]
+        assert info["refused_status_code"] == 400
+
+        with patch("httpx.post") as mock_post:
+            res2 = dispatcher.sync("sess_refused", "/proj", audit_log, "sndo_live_xxx", "https://api.example.com", force=False)
+            mock_post.assert_not_called()
+
+        assert res2["synced"] == 0
+        assert res2["refused"] is True
+
+    def test_retryable_failure_is_retried_on_subsequent_sync(self, tmp_path, monkeypatch):
+        """A 503 server error leaves cursor, does not set refused=True, and is retried on subsequent sync."""
+        from unittest.mock import patch, MagicMock
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        state_path = tmp_path / "cloud_sync.json"
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+
+        events = self._make_events(5)
+        audit_log = MagicMock()
+        audit_log.events = events
+
+        dispatcher = CloudSyncDispatcher()
+
+        err_resp = MagicMock()
+        err_resp.status_code = 503
+        err_resp.text = "Service unavailable"
+
+        with patch("httpx.post", return_value=err_resp):
+            with patch("snodo.infrastructure.cloud_sync.time.sleep"):
+                res = dispatcher.sync("sess_503", "/proj", audit_log, "sndo_live_xxx", "https://api.example.com")
+
+        assert res["failed"] is True
+        assert res.get("refused") is not True
+
+        state = CloudSyncState(state_path)
+        assert state.get_cursor("sess_503") == 0
+        assert state.is_refused("sess_503") is False
+
+        with patch("httpx.post", return_value=err_resp) as mock_post:
+            with patch("snodo.infrastructure.cloud_sync.time.sleep"):
+                dispatcher.sync("sess_503", "/proj", audit_log, "sndo_live_xxx", "https://api.example.com", force=False)
+            assert mock_post.called
+
+    def test_cloud_status_displays_blocked_refused_session(self, tmp_path, monkeypatch, capsys):
+        """snodo cloud status displays BLOCKED (refused: <reason>, seq range) for refused sessions."""
+        from snodo.infrastructure.cloud_sync import CloudSyncState
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+
+        state_path = tmp_path / "cloud_sync.json"
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+
+        state = CloudSyncState(state_path)
+        state.record_refusal("sess_blocked", "HTTP 400: Malformed payload", first_seq=1, last_seq=10, status_code=400)
+
+        with patch("snodo.config.ConfigManager") as MockCM:
+            MockCM.return_value.load.return_value = {
+                "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
+            }
+            res = cloud_status_command()
+
+        assert res == 0
+        out = capsys.readouterr().out
+        assert "BLOCKED (refused: HTTP 400: Malformed payload, seq 1-10)" in out
+
+    def test_operator_explicit_retry_reattempts_refused_batch(self, tmp_path, monkeypatch):
+        """Explicit retry with force=True re-attempts a refused batch."""
+        from unittest.mock import patch, MagicMock
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        state_path = tmp_path / "cloud_sync.json"
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+
+        state = CloudSyncState(state_path)
+        state.record_refusal("sess_blocked", "HTTP 400: Bad payload", first_seq=1, last_seq=5, status_code=400)
+
+        events = self._make_events(5)
+        audit_log = MagicMock()
+        audit_log.events = events
+
+        dispatcher = CloudSyncDispatcher()
+
+        err_resp = MagicMock()
+        err_resp.status_code = 400
+        err_resp.text = "Still bad"
+
+        with patch("httpx.post", return_value=err_resp) as mock_post:
+            res = dispatcher.sync("sess_blocked", "/proj", audit_log, "sndo_live_xxx", "https://api.example.com", force=True)
+
+        assert mock_post.called
+        assert res["refused"] is True
+
+    def test_success_after_refusal_clears_blocked_state(self, tmp_path, monkeypatch, capsys):
+        """A 200 OK after refusal advances cursor and clears blocked state."""
+        from unittest.mock import patch, MagicMock
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+
+        state_path = tmp_path / "cloud_sync.json"
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+
+        state = CloudSyncState(state_path)
+        state.record_refusal("sess_blocked", "HTTP 400: Bad payload", first_seq=1, last_seq=5, status_code=400)
+        assert state.is_refused("sess_blocked") is True
+
+        events = self._make_events(5)
+        audit_log = MagicMock()
+        audit_log.events = events
+
+        dispatcher = CloudSyncDispatcher()
+
+        ok_resp = MagicMock()
+        ok_resp.status_code = 200
+        ok_resp.text = "ok"
+
+        with patch("httpx.post", return_value=ok_resp):
+            res = dispatcher.sync("sess_blocked", "/proj", audit_log, "sndo_live_xxx", "https://api.example.com", force=True)
+
+        assert res["synced"] == 5
+        assert res.get("refused") is not True
+        assert state.get_cursor("sess_blocked") == 5
+        assert state.is_refused("sess_blocked") is False
+
+        with patch("snodo.config.ConfigManager") as MockCM:
+            MockCM.return_value.load.return_value = {
+                "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
+            }
+            cloud_status_command()
+
+        out = capsys.readouterr().out
+        assert "BLOCKED" not in out
+        assert "last_seq=5" in out
 
 
 # ------------------------------------------------------------------#
@@ -564,3 +726,5 @@ class TestCloudSyncCommand:
                             result = cloud_sync_command(session_id="sess_corrupt")
 
         assert result == 1
+
+
