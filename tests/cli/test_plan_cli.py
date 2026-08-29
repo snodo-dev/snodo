@@ -63,9 +63,18 @@ def _planner(project_dir):
 # plan run
 # ============================================================================
 
-def test_plan_run_delegates_to_run_plan_with_same_args(plan_env):
-    """plan run reaches _run_plan with the same args `run --plan` produces."""
-    _create_plan(plan_env, "p1")
+def test_plan_run_args_carries_all_run_command_parameters(plan_env):
+    """plan_run produces a RunArgs instance carrying every parameter derived from `snodo run`."""
+    import inspect
+    import typer
+    from snodo.cli.commands.run_cmd import register
+    from snodo.cli.commands.plan_cmd import plan_run
+
+    app = typer.Typer()
+    register(app)
+
+    run_cmd_info = next(cmd for cmd in app.registered_commands if (cmd.name or cmd.callback.__name__) == "run")
+    run_params = set(inspect.signature(run_cmd_info.callback).parameters.keys())
 
     captured = {}
 
@@ -74,52 +83,87 @@ def test_plan_run_delegates_to_run_plan_with_same_args(plan_env):
         return 0
 
     with patch("snodo.cli.commands.plan_run._run_plan", side_effect=fake_run_plan):
-        result = plan_command(SimpleNamespace(
-            plan_action="run", plan="p1", wave=None, interactive=False,
-            protocol=".snodo/protocol.yml", model=None,
-        ))
+        plan_run("p1", wave=1, interactive=False, protocol=".snodo/protocol.yml", model=None)
 
-    assert result == 0
-    assert captured["args"].plan == "p1"
-    assert captured["args"].wave is None
-    assert captured["args"].interactive is False
-    assert captured["args"].protocol == ".snodo/protocol.yml"
-    assert captured["args"].model is None
+    produced_args = captured["args"]
+    for param_name in run_params:
+        assert hasattr(produced_args, param_name), (
+            f"RunArgs object produced by plan_run is missing parameter '{param_name}' defined on the run command"
+        )
 
 
-def test_plan_run_passes_wave_interactive_model(plan_env):
-    """plan run forwards --wave, --interactive and --model."""
-    _create_plan(plan_env, "p1")
+def test_plan_run_end_to_end_with_mock_coder(tmp_path, monkeypatch):
+    """snodo plan run executes a plan end-to-end through real _run_plan with --mock without AttributeError."""
+    import json
+    import subprocess
+    from snodo.mcp.planner import PlannerMCP
+    from snodo.cli.commands.run_cmd import RunArgs
+    from snodo.cli.commands.plan_run import _run_plan
 
-    captured = {}
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    subprocess.run(["git", "init"], cwd=str(project_dir), capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=str(project_dir), capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=str(project_dir), capture_output=True, check=True)
+    readme = project_dir / "README.md"
+    readme.write_text("test")
+    subprocess.run(["git", "add", "."], cwd=str(project_dir), capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=str(project_dir), capture_output=True, check=True)
 
-    def fake_run_plan(args):
-        captured["args"] = args
-        return 0
+    snodo_dir = project_dir / ".snodo"
+    snodo_dir.mkdir()
 
-    with patch("snodo.cli.commands.plan_run._run_plan", side_effect=fake_run_plan):
-        result = plan_command(SimpleNamespace(
-            plan_action="run", plan="p1", wave=2, interactive=True,
-            protocol=".snodo/protocol.yml", model="gpt-4",
-        ))
+    protocol_content = """
+protocol_id: "test_plan_e2e"
+name: "Test Plan Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    tooling:
+      test_command: "echo test passed"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (snodo_dir / "protocol.yml").write_text(protocol_content)
 
-    assert result == 0
-    assert captured["args"].wave == 2
-    assert captured["args"].interactive is True
-    assert captured["args"].model == "gpt-4"
+    monkeypatch.chdir(project_dir)
+    monkeypatch.setattr("snodo.infrastructure.paths.require_project_root", lambda: str(project_dir))
 
+    planner = PlannerMCP(str(project_dir))
+    planner.decompose("Build test task", "e2e_plan")
 
-def test_plan_run_propagates_run_plan_exit_code(plan_env):
-    """plan run returns whatever _run_plan returns."""
-    _create_plan(plan_env, "p1")
+    spec_dir = snodo_dir / "plans" / "e2e_plan" / "wave_1"
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    spec_file = spec_dir / "1.1_test_task.md"
+    spec_file.write_text("INTENT: Test task intent.\nCONSTRAINTS: Do not break tests.")
 
-    with patch("snodo.cli.commands.plan_run._run_plan", return_value=1):
-        result = plan_command(SimpleNamespace(
-            plan_action="run", plan="p1", wave=None, interactive=False,
-            protocol=".snodo/protocol.yml", model=None,
-        ))
+    plan_file = snodo_dir / "plans" / "e2e_plan" / "plan.yml"
+    plan_data = yaml.safe_load(plan_file.read_text())
+    plan_data["waves"] = [{"id": 1, "tasks": ["1.1_test"]}]
+    plan_file.write_text(yaml.dump(plan_data))
 
-    assert result == 1
+    status_file = snodo_dir / "plans" / "e2e_plan" / "status.json"
+    status_data = {"version": "1.0", "tasks": {"1.1_test": "pending"}}
+    status_file.write_text(json.dumps(status_data))
+
+    subprocess.run(["git", "add", "."], cwd=str(project_dir), capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "add plan and spec"], cwd=str(project_dir), capture_output=True, check=True)
+
+    args = RunArgs(
+        plan="e2e_plan",
+        mock=True,
+        no_isolation=True,
+    )
+
+    res = _run_plan(args)
+    assert res == 0
 
 
 # ============================================================================
