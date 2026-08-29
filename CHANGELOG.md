@@ -11,6 +11,26 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Cloud sync is no longer best-effort, silent, and racing process exit. The
+  automatic sync started in a daemon thread and was killed the instant the
+  command returned — the POST has a 30s timeout and up to 5 backoff retries,
+  so it routinely needed longer than the process lived, and every failure
+  ended at a `_logger.warning` that had no handler without `--verbose`. On a
+  real project it synced nothing for two months before the operator noticed.
+  `sync_if_enabled` now runs the sync in a daemon thread and waits up to a
+  bounded 5s budget for it: a sync that completes within the budget is
+  delivered and the cursor advances; one that exceeds the budget is abandoned
+  (the cursor stays put, so the events re-send next time) and the operator is
+  told on stderr in one line; a failed sync is also reported on stderr without
+  `--verbose`. The wait is always bounded — the thread stays daemon, so a slow
+  or unreachable cloud never hangs the CLI. `snodo cloud status` now answers
+  "is my audit trail actually reaching the cloud?": per session it shows how
+  many events are pending, when the last attempt was, and what went wrong if
+  it failed (a confirmed success clears the pending count and the error). The
+  cursor still advances only on a confirmed success, the audit log on disk
+  stays the source of truth, and `AuditLog.append_event` is untouched.
+  (Fixes #142).
+
 - Every snodo command no longer prints LiteLLM `register_model` warnings at
   import. `snodo --version` on a clean install previously emitted five
   `LiteLLM:WARNING: register_model: model=... not in built-in cost map`

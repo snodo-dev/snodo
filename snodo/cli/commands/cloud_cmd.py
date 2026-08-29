@@ -127,6 +127,10 @@ def cloud_status_command() -> int:
             seq = info.get("last_synced_sequence", 0)
             at = info.get("last_synced_at", 0)
             ts = _format_ts(at) if at else "never"
+            pending = info.get("pending_count", 0)
+            last_attempt = info.get("last_attempt_at", 0)
+            last_attempt_ts = _format_ts(last_attempt) if last_attempt else "never"
+            last_error = info.get("last_error")
             if info.get("refused"):
                 reason = info.get("refused_reason", "refused by server")
                 rng = info.get("refused_range")
@@ -134,6 +138,9 @@ def cloud_status_command() -> int:
                 print(f"  {sid}:  BLOCKED (refused: {reason}, {range_str})  last_seq={seq}  synced_at={ts}")
             else:
                 print(f"  {sid}:  last_seq={seq}  synced_at={ts}")
+            print(f"    pending={pending}  last_attempt={last_attempt_ts}")
+            if last_error:
+                print(f"    last_error: {last_error}")
     else:
         print()
         print("No sessions synced yet.")
