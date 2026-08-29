@@ -9,12 +9,15 @@ Resolves which CodeHostProvider to use for a project:
 4. Fallback to LocalProvider
 """
 
+import logging
 import re
 import subprocess
 from typing import Dict, Optional, Type
 
 from snodo.providers.base import CodeHostProvider, ProviderError
 from snodo.providers.local import LocalProvider
+
+_logger = logging.getLogger(__name__)
 
 
 # Built-in provider name -> class mapping (lazy imports to avoid hard deps)
@@ -192,8 +195,8 @@ def _load_entry_point(name: str) -> Optional[Type[CodeHostProvider]]:
         for ep in eps:
             if ep.name == name:
                 return ep.load()
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Failed to load provider entry point %s: %s", name, e)
     return None
 
 
@@ -213,7 +216,7 @@ def list_providers() -> Dict[str, str]:
         eps = entry_points(group="snodo.providers")
         for ep in eps:
             providers[ep.name] = f"Plugin: {ep.value}"
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Failed to discover provider entry points: %s", e)
 
     return providers

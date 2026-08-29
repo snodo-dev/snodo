@@ -345,8 +345,8 @@ def _read_cache() -> Optional[List[dict]]:
         age = time.time() - data.get("timestamp", 0)
         if age < _CACHE_TTL_SECONDS:
             return data.get("models", [])
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Failed to read model discovery cache from %s: %s", cp, e)
     return None
 
 

@@ -143,8 +143,8 @@ class OpenCodeContainer:
             )
             if containers:
                 return containers[0]
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Failed to list running container by image: %s", e)
         return None
 
     def _is_container_healthy(self) -> bool:
@@ -175,8 +175,8 @@ class OpenCodeContainer:
                 if resp.status_code < 500:
                     _logger.debug("OpenCode server ready at %s", self.base_url)
                     return
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("OpenCode server health check poll error: %s", e)
             time.sleep(0.5)
         raise OpenCodeContainerError(
             f"OpenCode server did not become ready within {timeout}s"
@@ -221,12 +221,12 @@ class OpenCodeContainer:
         if self._container is not None:
             try:
                 self._container.stop(timeout=5)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("Failed to stop opencode container: %s", e)
             try:
                 self._container.remove(force=True)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("Failed to remove opencode container: %s", e)
             self._container = None
 
 
@@ -262,6 +262,6 @@ def _build_provider_env() -> dict:
             if key:
                 for env_name in env_var_names:
                     env[env_name] = key
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to build provider env for opencode: %s", e)
     return env

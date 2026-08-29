@@ -6,6 +6,9 @@ FILE: snodo/engine/nodes/context.py
 from typing import Dict, Any, List, Optional
 from snodo.engine.state import LoopState
 from snodo.tools.workspace import WorkspaceMCP
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class ContextMixin:
@@ -42,8 +45,8 @@ class ContextMixin:
                 loop_state.summary = response.content
                 loop_state.messages = loop_state.messages[-3:]
                 return loop_state
-            except Exception:
-                pass  # Fall through to truncation
+            except Exception as e:
+                _logger.debug("Summarization model failed, falling back to truncation: %s", e)
 
         # Fallback: truncate messages, keep most recent 3
         discarded = loop_state.messages[:-3]

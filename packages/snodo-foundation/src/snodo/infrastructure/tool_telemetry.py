@@ -14,8 +14,11 @@ their runs have no per-turn telemetry — an acknowledged consequence of ADR
 """
 
 import json
+import logging
 import os
 from pathlib import Path
+
+_logger = logging.getLogger(__name__)
 
 
 def canonical_target_path(path: str) -> str:
@@ -60,8 +63,8 @@ def persist_tool_telemetry(job_id: str, record: dict) -> None:
         try:
             with open(state_path) as f:
                 state = json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning("Failed to read job state for tool telemetry: %s", e)
     telemetry = state.get("tool_telemetry", [])
     if not isinstance(telemetry, list):
         telemetry = []

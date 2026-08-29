@@ -9,11 +9,14 @@ Uses docker-py to run tasks in isolated containers with:
 - Configurable timeout
 """
 
+import logging
 import time
 from pathlib import Path
 from typing import Optional
 
 from snodo.sandbox.base import Sandbox, SandboxConfig, SandboxResult, SandboxError
+
+_logger = logging.getLogger(__name__)
 
 
 class DockerSandbox(Sandbox):
@@ -79,8 +82,8 @@ class DockerSandbox(Sandbox):
         if container:
             try:
                 container.remove(force=True)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("Failed to remove container: %s", e)
 
     def run_task(
         self,
@@ -144,8 +147,8 @@ class DockerSandbox(Sandbox):
             if container:
                 try:
                     self._collect_logs(container)
-                except Exception:
-                    pass
+                except Exception as log_err:
+                    _logger.debug("Failed to collect logs during container failure: %s", log_err)
             raise SandboxError(f"Container execution failed: {e}") from e
 
         finally:
@@ -187,6 +190,6 @@ class DockerSandbox(Sandbox):
             try:
                 container = self._client.containers.get(container_id)
                 container.remove(force=True)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("Failed to remove container %s during cleanup: %s", container_id, e)
         self._containers.clear()
