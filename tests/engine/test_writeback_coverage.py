@@ -8,9 +8,12 @@ No source changes — stubs only.
 import json
 from unittest.mock import MagicMock
 
+import pytest
+
 from snodo.compiler.models import Protocol, Mode, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.loop import GraphBuilder
+from snodo.engine.nodes.writeback import JobStateError
 from snodo.engine.state import LoopState
 
 
@@ -280,8 +283,8 @@ class TestMergeIntoJobState:
         assert data["status"] == "done"
         assert data["count"] == 5
 
-    def test_merges_into_existing_state_json(self, tmp_path):
-        """Existing state.json is merged (existing keys preserved)."""
+    def test_valid_state_json_still_merges(self, tmp_path):
+        """Valid state.json → merged normally (existing keys preserved)."""
         job_dir = tmp_path / ".snodo" / "jobs" / "job2"
         job_dir.mkdir(parents=True)
         state_path = job_dir / "state.json"
@@ -295,18 +298,75 @@ class TestMergeIntoJobState:
         assert data["existing"] == "yes"
         assert data["new_key"] == "new_val"
 
-    def test_corrupted_state_json_reset(self, tmp_path):
-        """Corrupt state.json → treated as empty dict, write succeeds."""
+    def test_corrupted_state_json_not_overwritten(self, tmp_path):
+        """Corrupt state.json → original content survives, no overwrite."""
         job_dir = tmp_path / ".snodo" / "jobs" / "job3"
         job_dir.mkdir(parents=True)
-        (job_dir / "state.json").write_text("{{invalid json")
+        state_path = job_dir / "state.json"
+        state_path.write_text("{{invalid json")
         protocol = _make_protocol()
         builder = GraphBuilder(protocol)
         builder._job_id = "job3"
         builder._project_root = str(tmp_path)
-        builder._merge_into_job_state({"fresh": True})
-        data = json.loads((job_dir / "state.json").read_text())
-        assert data["fresh"] is True
+        with pytest.raises(JobStateError):
+            builder._merge_into_job_state({"fresh": True})
+        assert not state_path.exists()
+        quarantined = list(job_dir.glob("state.json.corrupt-*"))
+        assert len(quarantined) == 1
+        assert quarantined[0].read_text() == "{{invalid json"
+
+    def test_corrupted_state_json_quarantined(self, tmp_path):
+        """Corrupt state.json → preserved under state.json.corrupt-<ts>."""
+        job_dir = tmp_path / ".snodo" / "jobs" / "job3"
+        job_dir.mkdir(parents=True)
+        state_path = job_dir / "state.json"
+        state_path.write_text("{{invalid json")
+        protocol = _make_protocol()
+        builder = GraphBuilder(protocol)
+        builder._job_id = "job3"
+        builder._project_root = str(tmp_path)
+        with pytest.raises(JobStateError):
+            builder._merge_into_job_state({"fresh": True})
+        candidates = sorted(job_dir.glob("state.json.corrupt-*"))
+        assert len(candidates) == 1
+        assert candidates[0].read_text() == "{{invalid json"
+
+    def test_corrupted_state_json_audited(self, tmp_path):
+        """Corrupt state.json → fault reaches the audit log."""
+        job_dir = tmp_path / ".snodo" / "jobs" / "job4"
+        job_dir.mkdir(parents=True)
+        (job_dir / "state.json").write_text("{{invalid json")
+        protocol = _make_protocol()
+        builder = GraphBuilder(protocol)
+        audit = MagicMock()
+        builder._audit_log = audit
+        builder._job_id = "job4"
+        builder._project_root = str(tmp_path)
+        with pytest.raises(JobStateError):
+            builder._merge_into_job_state({"fresh": True})
+        audit.append_event.assert_called_once()
+        event_type, data = audit.append_event.call_args[0]
+        assert event_type == "job_state_corrupt"
+        assert data["op"] == "job_state_corrupt"
+        assert data["job_id"] == "job4"
+        assert data["state_file"].endswith("state.json")
+        assert "error" in data
+
+    def test_non_object_state_json_refused(self, tmp_path):
+        """state.json that parses but is not a JSON object → refused."""
+        job_dir = tmp_path / ".snodo" / "jobs" / "job5"
+        job_dir.mkdir(parents=True)
+        (job_dir / "state.json").write_text("[1, 2, 3]")
+        protocol = _make_protocol()
+        builder = GraphBuilder(protocol)
+        builder._job_id = "job5"
+        builder._project_root = str(tmp_path)
+        with pytest.raises(JobStateError):
+            builder._merge_into_job_state({"fresh": True})
+        assert not (job_dir / "state.json").exists()
+        candidates = sorted(job_dir.glob("state.json.corrupt-*"))
+        assert len(candidates) == 1
+        assert candidates[0].read_text() == "[1, 2, 3]"
 
 
 # ---------------------------------------------------------------------------

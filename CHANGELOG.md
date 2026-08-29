@@ -11,6 +11,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A corrupt job `state.json` is no longer silently destroyed. `_merge_into_job_state`
+  previously treated a parse failure as "no state" and rewrote the file containing only the
+  incoming updates, discarding the halt payload, per-turn tool telemetry (#105), and every
+  other recorded field. A parse failure (unparsable JSON, or JSON that is not an object) now
+  preserves the original file under `state.json.corrupt-<timestamp>`, records a
+  `job_state_corrupt` audit event, and raises `JobStateError` — the default is refusal, and a
+  caller that must tolerate corruption opts in by catching it. (Fixes #127).
+
 - `snodo task show <task_id>` now prints the task spec — the one field an
   operator needs to act on a failure. Previously it showed the halt type, the
   hint and every validator justification but not the spec, forcing an operator
