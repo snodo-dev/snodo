@@ -15,6 +15,15 @@ from snodo.engine.state import _task_branch_name
 _logger = logging.getLogger(__name__)
 
 
+class JobStateError(Exception):
+    """The job's state.json is corrupt and could not be merged.
+
+    Raised (after preserving the corrupt file and auditing the fault) instead
+    of silently discarding the job's own record. Callers that must tolerate a
+    corrupt job state have to catch this explicitly — the default is refusal.
+    """
+
+
 # Canonical halt outcome. The halt payload's ``halt_type`` and ``final_decision``
 # are the SAME canonical value, so the payload is self-consistent (final_decision
 # always equals halt_type). The engine's specific halt_type is preserved in
@@ -255,20 +264,69 @@ class WritebackMixin:
             except Exception as e:
                 _logger.warning("Failed to update task_failure decision for session %s: %s", self._session_id, e)
 
+    def _quarantine_corrupt_state(self, job_dir: Path, state_path: Path, error: str) -> Path:
+        """Preserve a corrupt state.json under a .corrupt-<timestamp> name.
+
+        Records the fault in the audit log and returns the quarantine path.
+        The original bytes survive untouched; the caller will not write over
+        the corrupt file.
+        """
+        corrupt_path = job_dir / (
+            "state.json.corrupt-"
+            f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}"
+        )
+        _os.replace(str(state_path), str(corrupt_path))
+        _logger.error(
+            "Job state %s is corrupt (%s); preserved as %s and refusing to write",
+            state_path, error, corrupt_path,
+        )
+        self._audit("job_state_corrupt", {
+            "op": "job_state_corrupt",
+            "job_id": self._job_id,
+            "state_file": str(state_path),
+            "preserved_as": str(corrupt_path),
+            "error": error,
+        })
+        return corrupt_path
+
     def _merge_into_job_state(self, updates: dict) -> None:
-        """Atomically merge *updates* into the job's state.json (direct write)."""
+        """Atomically merge *updates* into the job's state.json (direct write).
+
+        state.json is the job's own record. A corrupt read is never resolved
+        by overwriting it: the corrupt file is preserved under a
+        ``state.json.corrupt-<timestamp>`` name, the fault is recorded in the
+        audit log, and ``JobStateError`` is raised so the caller learns the
+        merge did not happen. Callers that must tolerate a corrupt job state
+        have to catch it explicitly — the default is refusal.
+        """
         if not self._job_id or not self._project_root:
             return
         job_dir = Path(self._project_root) / ".snodo" / "jobs" / self._job_id
         if not job_dir.is_dir():
             return
         state_path = job_dir / "state.json"
-        state = {}
+        state: dict = {}
         if state_path.exists():
             try:
                 state = json.loads(state_path.read_text())
-            except Exception as e:
-                _logger.warning("Failed to load existing job state from %s: %s", state_path, e)
+            except Exception as exc:
+                corrupt_path = self._quarantine_corrupt_state(
+                    job_dir, state_path, str(exc),
+                )
+                raise JobStateError(
+                    f"Job state {state_path} is corrupt and could not be "
+                    f"merged; preserved as {corrupt_path} (see audit log "
+                    f"event job_state_corrupt)"
+                ) from exc
+            if not isinstance(state, dict):
+                corrupt_path = self._quarantine_corrupt_state(
+                    job_dir, state_path, "not a JSON object",
+                )
+                raise JobStateError(
+                    f"Job state {state_path} is not a JSON object and could "
+                    f"not be merged; preserved as {corrupt_path} (see audit "
+                    f"log event job_state_corrupt)"
+                )
         state.update(updates)
         tmp = job_dir / "state.json.tmp"
         tmp.write_text(json.dumps(state, indent=2))
