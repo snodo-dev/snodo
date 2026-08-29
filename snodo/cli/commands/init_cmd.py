@@ -96,7 +96,9 @@ def _select_template(args) -> str:
             choice = input(f"Select [1-{len(names)}]: ").strip()
         except KeyboardInterrupt:
             print("\nAborted: initialization cancelled.", file=sys.stderr)
-            raise SystemExit(1)
+            # Deliberate cancellation, not a fault being wrapped: the
+            # KeyboardInterrupt carries nothing the operator needs.
+            raise SystemExit(1) from None
         except (EOFError, OSError):
             available = ", ".join(list_templates())
             print(
@@ -104,7 +106,9 @@ def _select_template(args) -> str:
                 f"Available templates: {available}",
                 file=sys.stderr,
             )
-            raise SystemExit(1)
+            # The message above is the whole diagnosis; the EOF/OSError adds
+            # nothing an operator can act on.
+            raise SystemExit(1) from None
 
         try:
             idx = int(choice) - 1
