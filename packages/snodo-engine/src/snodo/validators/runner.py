@@ -14,6 +14,7 @@ Do not fork this logic into a second implementation.
 from __future__ import annotations
 
 import copy
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -23,6 +24,8 @@ from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.validators.context import ValidatorContext
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_validators(
@@ -293,8 +296,8 @@ def run_validators(
                 if progress_cb is not None:
                     try:
                         progress_cb(vid, result)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("Progress callback error for validator %s: %s", vid, e)
                 v_obj = next((v for v in validators if v.validator_id == vid), None)
                 is_recovery = (getattr(task, "depth", 0) > 0 or bool(getattr(task, "prior_failures", None)))
                 if (

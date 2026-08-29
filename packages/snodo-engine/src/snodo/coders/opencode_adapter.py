@@ -139,8 +139,8 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
                         ):
                             completed.set()
                             return
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("opencode SSE listener error: %s", e)
 
         thread = threading.Thread(target=_listen_sse, daemon=True)
         thread.start()
@@ -240,8 +240,8 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
                 f"{self.base_url}/session/{session_id}",
                 timeout=5.0,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("opencode session cleanup error for %s: %s", session_id, e)
 
     def _diff_to_artifact(self, diff_entries: list) -> CodeArtifact:
         """Convert opencode diff entries to a CodeArtifact.

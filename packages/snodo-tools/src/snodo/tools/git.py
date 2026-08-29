@@ -9,6 +9,7 @@ operations stay within the project root.
 Uses GitPython for all git operations (no subprocess calls).
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import List, Optional
@@ -16,6 +17,8 @@ from typing import List, Optional
 from git import Repo, GitCommandError, InvalidGitRepositoryError
 
 from snodo.tools.workspace import PathValidationError
+
+_logger = logging.getLogger(__name__)
 
 
 class GitError(Exception):
@@ -202,12 +205,12 @@ class GitMCP:
                 try:
                     unmerged = self.repo.index.unmerged_blobs()
                     conflicting_paths = sorted(list(unmerged.keys()))
-                except Exception:
-                    pass
+                except Exception as err:
+                    _logger.debug("Failed to inspect unmerged blobs: %s", err)
                 try:
                     self.repo.git.merge("--abort")
-                except GitCommandError:
-                    pass
+                except GitCommandError as err:
+                    _logger.debug("Failed to abort merge: %s", err)
                 paths_str = ", ".join(conflicting_paths) if conflicting_paths else "unknown path(s)"
                 raise MergeConflictError(
                     f"Merge conflict merging '{branch}' into '{base}' in [{paths_str}]: {stderr}",
@@ -218,8 +221,8 @@ class GitMCP:
                 staged_files = []
                 try:
                     staged_files = self.repo.git.diff("--cached", "--name-only").splitlines()
-                except Exception:
-                    pass
+                except Exception as err:
+                    _logger.debug("Failed to inspect staged diff: %s", err)
                 if staged_files:
                     staged_str = ", ".join(staged_files)
                     raise GitError(

@@ -240,8 +240,8 @@ class LLMValidator(ValidatorBase):
                 "submit_bytes": 0,
             }
             persist_tool_telemetry(self._job_id or "unknown", record)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning("Failed to persist tool telemetry: %s", e)
 
     @classmethod
     def registered_type(cls) -> str:
@@ -437,8 +437,8 @@ class LLMValidator(ValidatorBase):
                 tools_str = format_tool_call_summary(tool_calls)
                 try:
                     cb(f"    [{elapsed_str}] Turn {turn + 1}: {tools_str}")
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.debug("Telemetry callback error: %s", e)
 
             # Check for submit_verdict before anything else
             verdict = self._extract_submit_verdict(tool_calls)

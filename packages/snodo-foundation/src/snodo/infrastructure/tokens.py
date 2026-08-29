@@ -79,6 +79,9 @@ class ValidationToken:
     expires_at: str = ""
 
 
+_logger = logging.getLogger(__name__)
+
+
 class TokenStore:
     """SQLite-backed consumed-token store (single-use enforcement).
 
@@ -209,8 +212,8 @@ class TokenStore:
             )
             conn.commit()
             self._inserts_since_prune = 0
-        except Exception:  # noqa: BLE001 — opportunistic
-            pass
+        except Exception as e:
+            _logger.debug("Failed to prune expired consumed tokens: %s", e)
 
 
 class TokenIssuer:

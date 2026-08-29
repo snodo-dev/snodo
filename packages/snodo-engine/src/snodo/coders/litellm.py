@@ -663,8 +663,8 @@ Return ONLY the JSON array, no other text.
                 "submit_bytes": int(submit_bytes or 0),
             }
             persist_tool_telemetry(self._job_id or "unknown", record)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning("Failed to persist tool telemetry: %s", e)
 
     def _parse_response(self, response: str) -> CodeArtifact:
         parsed = self._extract_json(response)

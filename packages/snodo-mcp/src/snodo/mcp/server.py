@@ -10,6 +10,7 @@ Transport is handled by FastMCP (see transport.py).
 
 import asyncio
 import hashlib
+import logging
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -26,6 +27,8 @@ from snodo.mcp.job_handlers import JobToolHandler
 from snodo.mcp.model_handlers import ModelToolHandler
 from snodo.mcp.decision_handlers import DecisionToolHandler
 from snodo.mcp.recon_handlers import ReconToolHandler
+
+logger = logging.getLogger(__name__)
 
 
 class MCPError(Exception):
@@ -153,8 +156,8 @@ class ProtocolMCPServer:
             state = read_state(self.project_root)
             if state.current_mode and self.protocol.get_mode(state.current_mode):
                 return state.current_mode
-        except Exception:  # noqa: BLE001 — best-effort attribution
-            pass
+        except Exception as e:  # noqa: BLE001 — best-effort attribution
+            logger.debug("Failed to read current mode from state: %s", e)
 
         return self.protocol.initial_mode
 
@@ -534,8 +537,8 @@ class CoreToolHandler:
             records = session.checkpoint.decisions.get("decision_records", [])
             if isinstance(records, list):
                 return [r for r in records if isinstance(r, str)]
-        except Exception:  # noqa: BLE001 — session read is best-effort
-            pass
+        except Exception as e:  # noqa: BLE001 — session read is best-effort
+            logger.debug("Failed to read decision records from session: %s", e)
         return []
 
     def _persist_escalation(
@@ -589,8 +592,8 @@ class CoreToolHandler:
                 "policy": self.server.protocol.disagreement_policy.value,
                 "decision_id": task_id,
             })
-        except Exception:  # noqa: BLE001 — best-effort persistence
-            pass
+        except Exception as e:  # noqa: BLE001 — best-effort persistence
+            logger.warning("Failed to persist disagreement escalation for %s: %s", task_id, e)
         return task_id
 
     def handle_dispatch_task(self, arguments: Dict[str, Any]) -> dict:
