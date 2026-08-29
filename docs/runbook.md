@@ -112,9 +112,14 @@ Run `snodo init --template <name>` to pick one directly, or `snodo init` to choo
 
 | Command | Description |
 |---------|-------------|
-| `snodo plan create <intent>` | Decompose intent into structured plan |
+| `snodo plan create <intent>` | Create an empty plan to author into (never generates waves) |
 | `snodo plan list` | List all plans |
 | `snodo plan status <name>` | Show plan progress |
+| `snodo plan validate <name>` | Verify plan structure and task spec files (`--json`) |
+| `snodo run --plan <name>` | Execute a plan by name (`--wave N`, `--interactive`) |
+
+See [runbooks/hand-authored-plan.md](runbooks/hand-authored-plan.md) for
+authoring and running a plan by hand.
 
 ### Session
 
