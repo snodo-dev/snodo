@@ -19,13 +19,11 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-
-from snodo.mcp.planner import PlannerMCP, PlannerError
-
+from snodo.mcp.planner import PlannerError, PlannerMCP
 
 # === Fixtures ===
 
@@ -512,7 +510,7 @@ class TestModeFiltering:
         assert "validate_plan" not in tool_names
 
     def test_planner_wf1_enforced(self, protocol_with_planner, project_dir):
-        from snodo.mcp.server import ProtocolMCPServer, MCPError
+        from snodo.mcp.server import MCPError, ProtocolMCPServer
         server = ProtocolMCPServer(protocol_with_planner, project_dir, mode_id="planner")
 
         with pytest.raises(MCPError, match="WF1 violation"):
@@ -582,8 +580,9 @@ class TestDefaultProtocol:
         assert validators["completeness"]["evaluation_phase"] == "pre_execute"
 
     def test_default_protocol_loads_successfully(self):
-        from snodo.cli.main import DEFAULT_PROTOCOL, load_protocol
         import tempfile
+
+        from snodo.cli.main import DEFAULT_PROTOCOL, load_protocol
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             f.write(DEFAULT_PROTOCOL)
             f.flush()
@@ -948,8 +947,9 @@ class TestReplaceFlag:
 class TestPlannerAuditLog:
     @pytest.fixture
     def audit_planner(self, temp_dir):
-        from snodo.infrastructure.audit import AuditLog
         import tempfile
+
+        from snodo.infrastructure.audit import AuditLog
         with tempfile.NamedTemporaryFile(suffix=".log", delete=False) as f:
             log_path = f.name
         audit = AuditLog(log_path)

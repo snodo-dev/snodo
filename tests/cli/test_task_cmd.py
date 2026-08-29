@@ -4,10 +4,14 @@ FILE: tests/cli/test_task_cmd.py
 """
 
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+from snodo.infrastructure.audit import AuditLog
+from snodo.infrastructure.session import SessionManager
+from snodo.infrastructure.state import ProjectState, write_state
 
 from snodo.cli.commands.task_cmd import (
     _merge_identity,
@@ -25,9 +29,6 @@ from snodo.cli.commands.task_cmd import (
     task_show,
     task_show_command,
 )
-from snodo.infrastructure.audit import AuditLog
-from snodo.infrastructure.session import SessionManager
-from snodo.infrastructure.state import ProjectState, write_state
 
 
 def _setup_project_with_session(tmp_path, mode="dev", monkeypatch=None):

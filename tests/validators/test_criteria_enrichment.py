@@ -4,7 +4,7 @@ FILE: tests/validators/test_criteria_enrichment.py
 """
 
 from snodo.core.interfaces import ValidatorResult
-from snodo.validators.runner import extract_cited_indices, enrich_result_with_criteria
+from snodo.validators.runner import enrich_result_with_criteria, extract_cited_indices
 
 
 def test_extract_cited_indices_single():

@@ -11,15 +11,15 @@ Tests ConfigManager and CLI config commands:
 """
 
 import os
+import shutil
 import stat
 import tempfile
-import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+from snodo.config import DEFAULT_MODEL, ConfigError, ConfigManager
 
-from snodo.config import ConfigManager, ConfigError, DEFAULT_MODEL
 from snodo.cli.main import main
 
 
@@ -679,7 +679,7 @@ class TestProviders:
     def test_new_providers_section_parses(self, mgr):
         """New providers section → ProviderConfig models returned."""
         config = {
-            
+
             "model": "gpt-4o",
             "providers": {
                 "openai": {
@@ -708,7 +708,7 @@ class TestProviders:
     def test_new_schema_get_key_works(self, mgr):
         """Under new providers schema, get_key resolves from providers."""
         config = {
-            
+
             "model": "gpt-4o",
             "providers": {
                 "openai": {"api_key": "sk-new-schema"},
@@ -723,7 +723,7 @@ class TestProviders:
     def test_new_schema_get_key_for_model(self, mgr):
         """get_key_for_model resolves under new providers schema."""
         config = {
-            
+
             "model": "gpt-4o",
             "providers": {
                 "openai": {"api_key": "sk-new"},
@@ -737,7 +737,7 @@ class TestProviders:
     def test_new_schema_add_key_routes_to_providers(self, mgr):
         """add_key writes to providers section when present."""
         config = {
-            
+
             "model": "gpt-4o",
             "providers": {"anthropic": {}},
         }
@@ -752,7 +752,7 @@ class TestProviders:
     def test_new_schema_remove_key(self, mgr):
         """remove_key removes from providers section."""
         config = {
-            
+
             "model": "gpt-4o",
             "providers": {"openai": {"api_key": "sk-rm"}},
         }
@@ -785,7 +785,7 @@ class TestProviders:
     def test_config_merges_default_providers(self, mgr):
         """Providers section with only openai still gets anthropic/google/openrouter defaults."""
         config = {
-            
+
             "model": "gpt-4o",
             "providers": {
                 "openai": {"api_key_env": "CUSTOM_OPENAI_KEY"},

@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from snodo.infrastructure.decisions import (
     SigningDecisionRecordIssuer,
     VerifyOnlyDecisionRecordIssuer,
@@ -16,8 +15,8 @@ from snodo.infrastructure.decisions import (
 
 
 def _make_signing_issuer():
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.asymmetric import rsa
     priv = rsa.generate_private_key(65537, 2048, backend=default_backend())
     return SigningDecisionRecordIssuer(priv), priv.public_key()
 

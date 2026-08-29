@@ -2,7 +2,12 @@
 
 import json
 from unittest.mock import MagicMock
-from snodo.coders.litellm import LiteLLMAdapter, _canonical_read_key, format_repeat_read_response
+
+from snodo.coders.litellm import (
+    LiteLLMAdapter,
+    _canonical_read_key,
+    format_repeat_read_response,
+)
 from snodo.core.interfaces import TaskSpec
 
 

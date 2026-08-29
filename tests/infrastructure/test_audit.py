@@ -1,17 +1,15 @@
 """Tests for append-only audit log with hash chain."""
 
 import asyncio
-import pytest
-import tempfile
 import json
+import tempfile
 import threading
 import time
 from pathlib import Path
 
-from snodo.infrastructure.audit import (
-    AuditLog, AuditEvent, get_audit_log, log_event
-)
+import pytest
 from snodo.core.interfaces import AuditError
+from snodo.infrastructure.audit import AuditEvent, AuditLog, get_audit_log, log_event
 
 
 @pytest.fixture
@@ -19,10 +17,10 @@ def temp_audit_log():
     """Create a temporary audit log for testing."""
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.log') as f:
         log_path = f.name
-    
+
     audit_log = AuditLog(log_path)
     yield audit_log
-    
+
     # Cleanup
     Path(log_path).unlink(missing_ok=True)
 
@@ -32,7 +30,7 @@ def temp_audit_log():
 def test_append_single_event(temp_audit_log):
     """Test appending a single event."""
     event = temp_audit_log.append_event("test_event", {"key": "value"})
-    
+
     assert event.sequence == 0
     assert event.event_type == "test_event"
     assert event.data == {"key": "value"}
@@ -45,11 +43,11 @@ def test_append_multiple_events(temp_audit_log):
     event1 = temp_audit_log.append_event("event1", {"data": 1})
     event2 = temp_audit_log.append_event("event2", {"data": 2})
     event3 = temp_audit_log.append_event("event3", {"data": 3})
-    
+
     assert event1.sequence == 0
     assert event2.sequence == 1
     assert event3.sequence == 2
-    
+
     # Verify chain links
     assert event2.previous_hash == event1.event_hash
     assert event3.previous_hash == event2.event_hash
@@ -58,7 +56,7 @@ def test_append_multiple_events(temp_audit_log):
 def test_event_timestamps(temp_audit_log):
     """Test that events have timestamps."""
     event = temp_audit_log.append_event("test", {})
-    
+
     assert "timestamp" in event.__dict__
     assert event.timestamp.endswith("Z") or "+" in event.timestamp  # ISO format
 
@@ -75,7 +73,7 @@ def test_verify_chain_valid(temp_audit_log):
     temp_audit_log.append_event("e1", {"a": 1})
     temp_audit_log.append_event("e2", {"b": 2})
     temp_audit_log.append_event("e3", {"c": 3})
-    
+
     assert temp_audit_log.verify_chain() is True
 
 
@@ -83,10 +81,10 @@ def test_verify_chain_detects_tampered_data(temp_audit_log):
     """Test that tampering with event data breaks verification."""
     temp_audit_log.append_event("e1", {"original": "data"})
     temp_audit_log.append_event("e2", {"more": "data"})
-    
+
     # Tamper with first event's data
     temp_audit_log.events[0].data["original"] = "tampered"
-    
+
     assert temp_audit_log.verify_chain() is False
 
 
@@ -94,10 +92,10 @@ def test_verify_chain_detects_tampered_hash(temp_audit_log):
     """Test that tampering with hash breaks verification."""
     temp_audit_log.append_event("e1", {"data": 1})
     temp_audit_log.append_event("e2", {"data": 2})
-    
+
     # Tamper with hash
     temp_audit_log.events[0].event_hash = "0" * 64
-    
+
     assert temp_audit_log.verify_chain() is False
 
 
@@ -105,10 +103,10 @@ def test_verify_chain_detects_sequence_mismatch(temp_audit_log):
     """Test that sequence number mismatch is detected."""
     temp_audit_log.append_event("e1", {})
     temp_audit_log.append_event("e2", {})
-    
+
     # Tamper with sequence
     temp_audit_log.events[1].sequence = 999
-    
+
     assert temp_audit_log.verify_chain() is False
 
 
@@ -117,10 +115,10 @@ def test_verify_chain_detects_broken_link(temp_audit_log):
     temp_audit_log.append_event("e1", {})
     temp_audit_log.append_event("e2", {})
     temp_audit_log.append_event("e3", {})
-    
+
     # Break the chain by changing previous_hash
     temp_audit_log.events[2].previous_hash = "0" * 64
-    
+
     assert temp_audit_log.verify_chain() is False
 
 
@@ -131,9 +129,9 @@ def test_get_history_all(temp_audit_log):
     temp_audit_log.append_event("type1", {"a": 1})
     temp_audit_log.append_event("type2", {"b": 2})
     temp_audit_log.append_event("type1", {"c": 3})
-    
+
     history = temp_audit_log.get_history()
-    
+
     assert len(history) == 3
     assert all(isinstance(e, AuditEvent) for e in history)
 
@@ -144,10 +142,10 @@ def test_get_history_filtered(temp_audit_log):
     temp_audit_log.append_event("task_validated", {"task": "A"})
     temp_audit_log.append_event("task_created", {"task": "B"})
     temp_audit_log.append_event("task_validated", {"task": "B"})
-    
+
     created_events = temp_audit_log.get_history(event_type="task_created")
     validated_events = temp_audit_log.get_history(event_type="task_validated")
-    
+
     assert len(created_events) == 2
     assert len(validated_events) == 2
     assert all(e.event_type == "task_created" for e in created_events)
@@ -156,10 +154,10 @@ def test_get_history_filtered(temp_audit_log):
 def test_get_history_returns_copy(temp_audit_log):
     """Test that get_history returns a copy, not reference."""
     temp_audit_log.append_event("e1", {})
-    
+
     history = temp_audit_log.get_history()
     history.append("fake_event")
-    
+
     # Original should be unchanged
     assert len(temp_audit_log.get_history()) == 1
 
@@ -169,13 +167,13 @@ def test_get_history_returns_copy(temp_audit_log):
 def test_events_persisted_to_disk(temp_audit_log):
     """Test that events are written to disk."""
     temp_audit_log.append_event("test", {"data": "value"})
-    
+
     # Check file exists and has content
     assert Path(temp_audit_log.log_path).exists()
-    
+
     with open(temp_audit_log.log_path, 'r') as f:
         lines = f.readlines()
-    
+
     assert len(lines) == 1
     event_dict = json.loads(lines[0])
     assert event_dict["event_type"] == "test"
@@ -186,10 +184,10 @@ def test_load_existing_log(temp_audit_log):
     # Create events
     temp_audit_log.append_event("e1", {"data": 1})
     temp_audit_log.append_event("e2", {"data": 2})
-    
+
     # Create new log instance pointing to same file
     new_log = AuditLog(temp_audit_log.log_path)
-    
+
     assert len(new_log.events) == 2
     assert new_log.events[0].event_type == "e1"
     assert new_log.events[1].event_type == "e2"
@@ -200,10 +198,10 @@ def test_jsonl_format(temp_audit_log):
     """Test that log uses JSONL (JSON Lines) format."""
     temp_audit_log.append_event("e1", {})
     temp_audit_log.append_event("e2", {})
-    
+
     with open(temp_audit_log.log_path, 'r') as f:
         lines = f.readlines()
-    
+
     # Each line should be valid JSON
     for line in lines:
         json.loads(line)  # Should not raise
@@ -348,7 +346,7 @@ def test_hash_deterministic(temp_audit_log):
     hash2 = temp_audit_log._compute_hash(
         0, "2024-01-01", "test", {"a": 1}, "0" * 64
     )
-    
+
     assert hash1 == hash2
 
 
@@ -360,7 +358,7 @@ def test_hash_changes_with_data(temp_audit_log):
     hash2 = temp_audit_log._compute_hash(
         0, "2024-01-01", "test", {"a": 2}, "0" * 64
     )
-    
+
     assert hash1 != hash2
 
 
@@ -370,10 +368,10 @@ def test_get_audit_log_singleton():
     """Test that get_audit_log returns singleton."""
     with tempfile.TemporaryDirectory() as tmpdir:
         log_path = Path(tmpdir) / "test.log"
-        
+
         log1 = get_audit_log(str(log_path))
         log2 = get_audit_log(str(log_path))
-        
+
         assert log1 is log2
 
 
@@ -414,13 +412,13 @@ def test_log_event_convenience_function():
     """Test log_event convenience function."""
     with tempfile.TemporaryDirectory() as tmpdir:
         log_path = Path(tmpdir) / "test.log"
-        
+
         # Reset global instance
         import snodo.infrastructure.audit as audit_module
         audit_module._global_audit_log = AuditLog(str(log_path))
-        
+
         event = log_event("test_type", {"test": "data"})
-        
+
         assert event.event_type == "test_type"
         assert event.data == {"test": "data"}
 
@@ -430,7 +428,7 @@ def test_log_event_convenience_function():
 def test_empty_data_dict(temp_audit_log):
     """Test appending event with empty data."""
     event = temp_audit_log.append_event("empty", {})
-    
+
     assert event.data == {}
     assert temp_audit_log.verify_chain() is True
 
@@ -444,9 +442,9 @@ def test_complex_nested_data(temp_audit_log):
         },
         "array": [{"x": 1}, {"y": 2}]
     }
-    
+
     event = temp_audit_log.append_event("complex", complex_data)
-    
+
     assert event.data == complex_data
     assert temp_audit_log.verify_chain() is True
 
@@ -630,23 +628,23 @@ def test_append_fails_loudly_when_lock_cannot_be_acquired(tmp_path, monkeypatch)
 def test_audit_log_project_stamping(tmpdir):
     """Verify that AuditLog stamps project_id on every event and verify_chain passes."""
     from snodo.infrastructure.audit import AuditLog
-    
+
     log_path = Path(tmpdir) / "audit.log"
     # Construct with specific project_id
     audit = AuditLog(str(log_path), project_id="my-test-project-123")
-    
+
     # Append multiple events
     audit.append_event("event1", {"data": 1})
     audit.append_event("event2", {"data": 2})
-    
+
     # 1. verify_chain() returns True
     assert audit.verify_chain() is True
-    
+
     # 2. Assert events in memory have project_id
     assert len(audit.events) == 2
     assert audit.events[0].project_id == "my-test-project-123"
     assert audit.events[1].project_id == "my-test-project-123"
-    
+
     # 3. Assert events on disk have project_id
     resumed = AuditLog(str(log_path))
     assert len(resumed.events) == 2

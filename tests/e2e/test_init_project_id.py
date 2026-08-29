@@ -28,7 +28,7 @@ def test_init_with_git_remote(snodo_cli):
 
     project_json = Path(tmp_dir) / ".snodo" / "project.json"
     assert project_json.exists()
-    
+
     with open(project_json) as f:
         data = json.load(f)
     assert data["id"] == "github.com/myorg/myrepo"
@@ -74,7 +74,7 @@ def test_init_with_project_id_override_flag(snodo_cli):
 def test_init_with_project_id_config_override(snodo_cli):
     """Verify config-file override is cached, and --project-id flag wins over config."""
     tmp_dir = snodo_cli.home
-    
+
     # 1. Config override only
     home_dir = snodo_cli.snodo_home
     home_dir.mkdir(exist_ok=True)
@@ -87,11 +87,11 @@ def test_init_with_project_id_config_override(snodo_cli):
     }
     with open(config_file, "w") as f:
         yaml.safe_dump(config_data, f)
-        
+
     r = snodo_cli(["init", "--template", "solo", "--yes"])
     assert r.returncode == 0
     assert "Project ID:  custom-override-config (override)" in r.stdout
-    
+
     project_json = Path(tmp_dir) / ".snodo" / "project.json"
     with open(project_json) as f:
         data = json.load(f)
@@ -102,7 +102,7 @@ def test_init_with_project_id_config_override(snodo_cli):
     r2 = snodo_cli(["init", "--template", "solo", "--force", "--project-id", "cli-wins", "--yes"])
     assert r2.returncode == 0
     assert "Project ID:  cli-wins (override)" in r2.stdout
-    
+
     with open(project_json) as f:
         data2 = json.load(f)
     assert data2["id"] == "cli-wins"

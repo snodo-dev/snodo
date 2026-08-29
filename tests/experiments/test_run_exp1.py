@@ -536,7 +536,11 @@ class TestGoldCache:
         assert _cached_gold_result(instance) is None
 
     def test_clear_cache(self):
-        from experiments.scoring import _cached_gold_result, _set_cached_gold_result, clear_gold_cache
+        from experiments.scoring import (
+            _cached_gold_result,
+            _set_cached_gold_result,
+            clear_gold_cache,
+        )
         instance = {"instance_id": "t1"}
         _set_cached_gold_result(instance, {"resolved": True})
         clear_gold_cache()

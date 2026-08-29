@@ -3,23 +3,21 @@
 FILE: tests/providers/test_registry.py
 """
 
-import tempfile
 import subprocess
-from unittest.mock import patch, MagicMock
+import tempfile
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from snodo.providers.base import ProviderError
 from snodo.providers.local import LocalProvider
 from snodo.providers.registry import (
-    detect_provider,
-    parse_github_slug,
-    _get_git_remote,
     _detect_from_url,
+    _get_git_remote,
     _load_entry_point,
+    detect_provider,
     list_providers,
+    parse_github_slug,
 )
-
 
 # === parse_github_slug ===
 

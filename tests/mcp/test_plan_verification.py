@@ -4,13 +4,12 @@ FILE: tests/mcp/test_plan_verification.py
 """
 
 import json
+
 import pytest
 import yaml
-
 from snodo.compiler.models import Plan
-from snodo.compiler.verifier import verify_plan, PlanWellFormednessError
-from snodo.mcp.planner import PlannerMCP, PlannerError
-
+from snodo.compiler.verifier import PlanWellFormednessError, verify_plan
+from snodo.mcp.planner import PlannerError, PlannerMCP
 
 # ============================================================================
 # 1. Canary Gate Test: Hand-crafted malformed plan refused at load

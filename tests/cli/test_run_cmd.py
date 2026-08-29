@@ -20,10 +20,9 @@ import os
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # === Helper fixtures ===
 
@@ -86,8 +85,9 @@ class TestFetchPrContext:
         assert "diff --git a/foo" in result
 
     def test_fetch_pr_context_comment_error(self):
-        from snodo.cli.commands.run_cmd import _fetch_pr_context
         from snodo.mcp.pr import PrError
+
+        from snodo.cli.commands.run_cmd import _fetch_pr_context
 
         with patch("snodo.mcp.pr.PrMCP") as MockPr:
             mock_pr = MockPr.return_value
@@ -100,8 +100,9 @@ class TestFetchPrContext:
         assert "Could not fetch PR comments" in result
 
     def test_fetch_pr_context_diff_error(self):
-        from snodo.cli.commands.run_cmd import _fetch_pr_context
         from snodo.mcp.pr import PrError
+
+        from snodo.cli.commands.run_cmd import _fetch_pr_context
 
         with patch("snodo.mcp.pr.PrMCP") as MockPr:
             mock_pr = MockPr.return_value
@@ -452,8 +453,9 @@ class TestRunPlan:
     @patch("snodo.cli.commands.run_cmd.ConfigManager")
     @patch("snodo.cli.commands.run_cmd.load_protocol")
     def test_run_plan_planner_error(self, mock_load, mock_cm, capsys):
-        from snodo.cli.commands.plan_run import _run_plan
         from snodo.mcp.planner import PlannerError
+
+        from snodo.cli.commands.plan_run import _run_plan
 
         mock_load.return_value = MagicMock()
         mock_cm.return_value.get_model.return_value = "gpt-4"
@@ -508,8 +510,9 @@ class TestResolveSession:
         assert mode == "producer"
 
     def test_auto_create_new_session(self, capsys):
-        from snodo.cli.commands.run_cmd import _resolve_session
         from snodo.infrastructure.session import SessionManager
+
+        from snodo.cli.commands.run_cmd import _resolve_session
 
         with tempfile.TemporaryDirectory() as d:
             mgr = SessionManager(sessions_dir=Path(d))
@@ -523,8 +526,9 @@ class TestResolveSession:
             assert "new" in capsys.readouterr().out
 
     def test_auto_resume_existing(self, capsys):
-        from snodo.cli.commands.run_cmd import _resolve_session
         from snodo.infrastructure.session import SessionManager
+
+        from snodo.cli.commands.run_cmd import _resolve_session
 
         with tempfile.TemporaryDirectory() as d:
             mgr = SessionManager(sessions_dir=Path(d))
@@ -537,8 +541,9 @@ class TestResolveSession:
             assert mode == "producer"
 
     def test_explicit_resume(self, capsys):
-        from snodo.cli.commands.run_cmd import _resolve_session
         from snodo.infrastructure.session import SessionManager
+
+        from snodo.cli.commands.run_cmd import _resolve_session
 
         with tempfile.TemporaryDirectory() as d:
             mgr = SessionManager(sessions_dir=Path(d))
@@ -552,8 +557,9 @@ class TestResolveSession:
             assert "resumed" in capsys.readouterr().out
 
     def test_resume_mode_mismatch_rejects(self):
-        from snodo.cli.commands.run_cmd import _resolve_session
         from snodo.infrastructure.session import SessionManager
+
+        from snodo.cli.commands.run_cmd import _resolve_session
 
         with tempfile.TemporaryDirectory() as d:
             mgr = SessionManager(sessions_dir=Path(d))
@@ -565,8 +571,9 @@ class TestResolveSession:
                 _resolve_session(args, mgr, protocol, "/tmp/proj")
 
     def test_resume_project_mismatch_rejects(self):
-        from snodo.cli.commands.run_cmd import _resolve_session
         from snodo.infrastructure.session import SessionManager
+
+        from snodo.cli.commands.run_cmd import _resolve_session
 
         with tempfile.TemporaryDirectory() as d:
             mgr = SessionManager(sessions_dir=Path(d))
@@ -578,8 +585,9 @@ class TestResolveSession:
                 _resolve_session(args, mgr, protocol, "/tmp/proj")
 
     def test_resume_deleted_session_raises(self):
-        from snodo.cli.commands.run_cmd import _resolve_session
         from snodo.infrastructure.session import SessionManager
+
+        from snodo.cli.commands.run_cmd import _resolve_session
 
         with tempfile.TemporaryDirectory() as d:
             mgr = SessionManager(sessions_dir=Path(d))
@@ -592,8 +600,9 @@ class TestResolveSession:
                 _resolve_session(args, mgr, protocol, "/tmp/proj")
 
     def test_resume_nonexistent_raises(self):
-        from snodo.cli.commands.run_cmd import _resolve_session
         from snodo.infrastructure.session import SessionManager
+
+        from snodo.cli.commands.run_cmd import _resolve_session
 
         with tempfile.TemporaryDirectory() as d:
             mgr = SessionManager(sessions_dir=Path(d))
@@ -718,9 +727,11 @@ class TestClosureHaltPayload:
 
     @pytest.mark.parametrize("decision", ["escalate", "blocker", "validator_error", "internal_error"])
     def test_payload_emitted_for_each_halt_case(self, capsys, decision):
-        from snodo.cli.commands.run_cmd import _report_closure
-        from snodo.engine.closure import ClosureNode
         import json as _json
+
+        from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
 
         tree = ClosureNode(
             task_id="t1", depth=0, outcome=decision,
@@ -737,8 +748,9 @@ class TestClosureHaltPayload:
         assert parsed["validator_results"], "validator_results must be non-empty"
 
     def test_no_payload_on_success(self, capsys):
-        from snodo.cli.commands.run_cmd import _report_closure
         from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
 
         tree = ClosureNode(task_id="t1", depth=0, outcome="resolved")
         result = _report_closure(tree, {"is_blocked": False, "is_complete": True, "artifacts": []})
@@ -747,8 +759,9 @@ class TestClosureHaltPayload:
         assert "STRUCTURED HALT PAYLOAD" not in out
 
     def test_validator_error_does_not_advise_authorize(self, capsys):
-        from snodo.cli.commands.run_cmd import _report_closure
         from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
 
         tree = ClosureNode(
             task_id="t1", depth=0, outcome="validator_error",
@@ -768,8 +781,9 @@ class TestClosureHaltPayload:
         error" after the authoritative payload — one run, two outcomes, the
         second unclassified.
         """
-        from snodo.cli.commands.run_cmd import _report_closure
         from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
 
         tree = ClosureNode(
             task_id="root", depth=0, outcome="internal_error",
@@ -790,8 +804,9 @@ class TestClosureHaltPayload:
 
     def test_no_second_outcome_for_blocker_payload(self, capsys):
         """A blocker payload also emits exactly one outcome."""
-        from snodo.cli.commands.run_cmd import _report_closure
         from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
 
         tree = ClosureNode(
             task_id="t1", depth=0, outcome="blocked",
@@ -807,8 +822,9 @@ class TestClosureHaltPayload:
         assert "did not complete successfully" not in err
 
     def test_terminal_halt_prefers_deepest_subtask(self):
-        from snodo.cli.commands.run_cmd import _find_terminal_halt_payload
         from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _find_terminal_halt_payload
 
         root = ClosureNode(
             task_id="root", depth=0, outcome="blocker",
@@ -823,8 +839,9 @@ class TestClosureHaltPayload:
         assert found["final_decision"] == "blocker"
 
     def test_root_halt_used_when_no_subtask_halted(self):
-        from snodo.cli.commands.run_cmd import _find_terminal_halt_payload
         from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _find_terminal_halt_payload
 
         root = ClosureNode(
             task_id="root", depth=0, outcome="escalate",
@@ -843,8 +860,9 @@ class TestClosureHaltPayload:
         subtask's payload (phase 'complete'). The terminal payload must be the
         subtask's, so a reader sees the verdicts that actually resolved.
         """
-        from snodo.cli.commands.run_cmd import _find_terminal_halt_payload
         from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _find_terminal_halt_payload
 
         root = ClosureNode(
             task_id="root", depth=0, outcome="resolved",
@@ -885,9 +903,11 @@ class TestClosureHaltPayload:
     def test_resolved_through_recovery_report_prints_complete_verdicts(self, capsys):
         """The emitted payload for a resolved-through-recovery run shows the
         resolving attempt's verdicts under a completed status (Fixes #85)."""
-        from snodo.cli.commands.run_cmd import _report_closure
-        from snodo.engine.closure import ClosureNode
         import json as _json
+
+        from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
 
         root = ClosureNode(
             task_id="root", depth=0, outcome="resolved",
@@ -936,8 +956,8 @@ class TestLoopSerialization:
     """Tests that halt_type survives the state round-trip."""
 
     def test_round_trip_preserves_halt_type(self):
-        from snodo.engine.loop import GraphBuilder, LoopState
         from snodo.core.interfaces import Task
+        from snodo.engine.loop import GraphBuilder, LoopState
 
         state = LoopState(
             task=Task(id="t1", spec="x"),
@@ -954,8 +974,8 @@ class TestLoopSerialization:
         assert restored.halt_type == "escalated"
 
     def test_halt_type_none_by_default(self):
-        from snodo.engine.loop import LoopState
         from snodo.core.interfaces import Task
+        from snodo.engine.loop import LoopState
 
         state = LoopState(task=Task(id="t1", spec="x"), current_mode="p")
         assert state.halt_type is None
@@ -991,7 +1011,7 @@ class TestLoopSerialization:
 
 class TestAutoMerge:
     def _protocol(self, auto_merge=True):
-        from snodo.compiler.models import Protocol, Mode, Validator, ExecutionConfig
+        from snodo.compiler.models import ExecutionConfig, Mode, Protocol, Validator
         return Protocol(
             protocol_id="am", name="Auto Merge", version="1.0.0",
             modes=[Mode(mode_id="producer", name="Producer", tools=["edit"], validators=["v1"])],
@@ -1031,9 +1051,10 @@ class TestAutoMerge:
                                   "/tmp/wt", False) is True
 
     def test_merge_on_success_clean_merge(self, tmp_path):
-        from snodo.cli.commands.run_cmd import _merge_on_success
-        from snodo.infrastructure.worktree import task_branch_name
         from snodo.core.interfaces import Task
+        from snodo.infrastructure.worktree import task_branch_name
+
+        from snodo.cli.commands.run_cmd import _merge_on_success
 
         repo = tmp_path
         subprocess_run = __import__("subprocess").run
@@ -1059,9 +1080,10 @@ class TestAutoMerge:
         assert (repo / "feature.txt").exists()
 
     def test_merge_on_success_conflict_escalates(self, tmp_path):
-        from snodo.cli.commands.run_cmd import _merge_on_success
-        from snodo.infrastructure.worktree import task_branch_name
         from snodo.core.interfaces import Task
+        from snodo.infrastructure.worktree import task_branch_name
+
+        from snodo.cli.commands.run_cmd import _merge_on_success
 
         repo = tmp_path
         subprocess_run = __import__("subprocess").run
@@ -1098,9 +1120,10 @@ class TestUnverifiedMergeBlocked:
     """Verify _merge_on_success refuses to merge unverified commits."""
 
     def test_unverified_merge_blocked(self, tmp_path):
-        from snodo.cli.commands.run_cmd import _merge_on_success
         from snodo.core.interfaces import Task
         from snodo.infrastructure.audit import AuditLog
+
+        from snodo.cli.commands.run_cmd import _merge_on_success
 
         repo = tmp_path
         subprocess_run = __import__("subprocess").run
@@ -1125,10 +1148,11 @@ class TestUnverifiedMergeBlocked:
         assert events[0].data["op"] == "unverified_merge_blocked"
 
     def test_verified_merge_allowed(self, tmp_path):
-        from snodo.cli.commands.run_cmd import _merge_on_success
         from snodo.core.interfaces import Task
         from snodo.infrastructure.audit import AuditLog
         from snodo.infrastructure.worktree import task_branch_name
+
+        from snodo.cli.commands.run_cmd import _merge_on_success
 
         repo = tmp_path
         subprocess_run = __import__("subprocess").run

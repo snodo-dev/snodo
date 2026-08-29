@@ -7,7 +7,7 @@ Targets missing lines:
 
 from unittest.mock import MagicMock
 
-from snodo.compiler.models import Protocol, Mode, Validator
+from snodo.compiler.models import Mode, Protocol, Validator
 from snodo.core.interfaces import Task
 from snodo.engine.loop import GraphBuilder
 from snodo.engine.state import LoopState

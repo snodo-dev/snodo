@@ -6,7 +6,6 @@ All discover_models calls mocked — no live network.
 from unittest.mock import patch
 
 import pytest
-
 from snodo.mcp.model_handlers import ModelToolHandler
 from snodo.mcp.server import MCPError
 

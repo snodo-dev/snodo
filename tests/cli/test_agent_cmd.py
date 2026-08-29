@@ -7,20 +7,19 @@ _agent_rotate, and _format_time in snodo/cli/commands/agent_cmd.py.
 """
 
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+from snodo.infrastructure.memory import MemoryError as SnodoMemoryError
 
 from snodo.cli.commands.agent_cmd import (
-    agent_command,
     _agent_list,
     _agent_memory,
     _agent_reset,
     _agent_rotate,
     _format_time,
+    agent_command,
 )
-from snodo.infrastructure.memory import MemoryError as SnodoMemoryError
-
 
 # === Fixtures ===
 

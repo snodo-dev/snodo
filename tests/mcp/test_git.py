@@ -9,12 +9,12 @@ Tests cover:
 - 100% coverage
 """
 
-import pytest
+import subprocess
 import tempfile
 from pathlib import Path
-import subprocess
 
-from snodo.tools.git import GitMCP, GitError, PathValidationError, get_git
+import pytest
+from snodo.tools.git import GitError, GitMCP, PathValidationError, get_git
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def temp_git_repo():
             check=True,
             capture_output=True
         )
-        
+
         # Create initial commit
         test_file = Path(tmpdir) / "README.md"
         test_file.write_text("# Test Repo")
@@ -46,7 +46,7 @@ def temp_git_repo():
             check=True,
             capture_output=True
         )
-        
+
         git_mcp = GitMCP(tmpdir)
         yield git_mcp, tmpdir
 
@@ -114,7 +114,7 @@ def test_validate_path_relative(temp_git_repo):
     """Test validating relative path."""
     git_mcp, tmpdir = temp_git_repo
     path = git_mcp.validate_path("test.txt")
-    
+
     assert path.is_relative_to(git_mcp.project_root)
     assert path.name == "test.txt"
 
@@ -123,7 +123,7 @@ def test_validate_path_nested_relative(temp_git_repo):
     """Test validating nested relative path."""
     git_mcp, tmpdir = temp_git_repo
     path = git_mcp.validate_path("subdir/file.txt")
-    
+
     assert path.is_relative_to(git_mcp.project_root)
     assert "subdir" in path.parts
 
@@ -133,7 +133,7 @@ def test_validate_path_absolute_within_root(temp_git_repo):
     git_mcp, tmpdir = temp_git_repo
     abs_path = git_mcp.project_root / "test.txt"
     validated = git_mcp.validate_path(str(abs_path))
-    
+
     assert validated == abs_path
 
 
@@ -164,9 +164,9 @@ def test_create_branch(temp_git_repo):
     """Test creating a new branch."""
     git_mcp, tmpdir = temp_git_repo
     result = git_mcp.create_branch("feature-test")
-    
+
     assert "feature-test" in result or result == ""
-    
+
     # Verify branch was created
     branches = subprocess.run(
         ["git", "branch"],
@@ -182,7 +182,7 @@ def test_create_branch_already_exists_raises(temp_git_repo):
     """Test creating existing branch raises."""
     git_mcp, _ = temp_git_repo
     git_mcp.create_branch("existing")
-    
+
     with pytest.raises(GitError):
         git_mcp.create_branch("existing")
 
@@ -192,13 +192,13 @@ def test_create_branch_already_exists_raises(temp_git_repo):
 def test_stage_files(temp_git_repo):
     """Test staging files."""
     git_mcp, tmpdir = temp_git_repo
-    
+
     # Create a new file
     test_file = Path(tmpdir) / "new_file.txt"
     test_file.write_text("new content")
-    
+
     git_mcp.stage_files(["new_file.txt"])
-    
+
     # Verify file was staged
     status = subprocess.run(
         ["git", "status", "--porcelain"],
@@ -213,14 +213,14 @@ def test_stage_files(temp_git_repo):
 def test_stage_files_multiple(temp_git_repo):
     """Test staging multiple files."""
     git_mcp, tmpdir = temp_git_repo
-    
+
     # Create multiple files
     for i in range(3):
         test_file = Path(tmpdir) / f"file{i}.txt"
         test_file.write_text(f"content {i}")
-    
+
     git_mcp.stage_files([f"file{i}.txt" for i in range(3)])
-    
+
     # Verify all files staged
     status = subprocess.run(
         ["git", "status", "--porcelain"],
@@ -243,7 +243,7 @@ def test_stage_files_empty_list(temp_git_repo):
 def test_stage_files_path_validation(temp_git_repo):
     """Test staging files validates paths."""
     git_mcp, _ = temp_git_repo
-    
+
     with pytest.raises(PathValidationError):
         git_mcp.stage_files(["../outside.txt"])
 
@@ -251,7 +251,7 @@ def test_stage_files_path_validation(temp_git_repo):
 def test_stage_nonexistent_file_raises(temp_git_repo):
     """Test staging nonexistent file raises."""
     git_mcp, _ = temp_git_repo
-    
+
     with pytest.raises(GitError):
         git_mcp.stage_files(["nonexistent.txt"])
 
@@ -261,14 +261,14 @@ def test_stage_nonexistent_file_raises(temp_git_repo):
 def test_commit(temp_git_repo):
     """Test creating a commit."""
     git_mcp, tmpdir = temp_git_repo
-    
+
     # Create and stage a file
     test_file = Path(tmpdir) / "commit_test.txt"
     test_file.write_text("commit content")
     git_mcp.stage_files(["commit_test.txt"])
-    
+
     result = git_mcp.commit("Test commit message")
-    
+
     assert "commit_test.txt" in result or "Test commit message" in result
 
 
@@ -292,7 +292,7 @@ def test_get_head_sha(temp_git_repo):
 def test_commit_nothing_to_commit_raises(temp_git_repo):
     """Test committing with nothing staged raises."""
     git_mcp, _ = temp_git_repo
-    
+
     with pytest.raises(GitError):
         git_mcp.commit("Empty commit")
 
@@ -300,15 +300,15 @@ def test_commit_nothing_to_commit_raises(temp_git_repo):
 def test_commit_with_multiline_message(temp_git_repo):
     """Test commit with multiline message."""
     git_mcp, tmpdir = temp_git_repo
-    
+
     # Create and stage a file
     test_file = Path(tmpdir) / "multiline.txt"
     test_file.write_text("content")
     git_mcp.stage_files(["multiline.txt"])
-    
+
     message = "Title\n\nBody line 1\nBody line 2"
     git_mcp.commit(message)
-    
+
     # Verify commit created
     log = subprocess.run(
         ["git", "log", "-1", "--pretty=format:%B"],
@@ -332,13 +332,13 @@ def test_read_diff_no_changes(temp_git_repo):
 def test_read_diff_with_changes(temp_git_repo):
     """Test reading diff with changes."""
     git_mcp, tmpdir = temp_git_repo
-    
+
     # Modify a file
     test_file = Path(tmpdir) / "README.md"
     test_file.write_text("# Modified content")
-    
+
     diff = git_mcp.read_diff()
-    
+
     assert "README.md" in diff
     assert "Modified content" in diff or "-# Test Repo" in diff
 
@@ -346,13 +346,13 @@ def test_read_diff_with_changes(temp_git_repo):
 def test_read_diff_new_file(temp_git_repo):
     """Test diff shows new file."""
     git_mcp, tmpdir = temp_git_repo
-    
+
     # Create new file
     test_file = Path(tmpdir) / "new.txt"
     test_file.write_text("new content")
-    
+
     diff = git_mcp.read_diff()
-    
+
     # Untracked files don't show in diff, only after staging
     git_mcp.stage_files(["new.txt"])
     diff = git_mcp.read_diff()
@@ -365,20 +365,20 @@ def test_get_status_clean(temp_git_repo):
     """Test status on clean repo."""
     git_mcp, _ = temp_git_repo
     status = git_mcp.get_status()
-    
+
     assert "nothing to commit" in status or "working tree clean" in status
 
 
 def test_get_status_with_changes(temp_git_repo):
     """Test status with changes."""
     git_mcp, tmpdir = temp_git_repo
-    
+
     # Modify file
     test_file = Path(tmpdir) / "README.md"
     test_file.write_text("modified")
-    
+
     status = git_mcp.get_status()
-    
+
     assert "README.md" in status
     assert "modified" in status.lower()
 
@@ -386,13 +386,13 @@ def test_get_status_with_changes(temp_git_repo):
 def test_get_status_untracked_files(temp_git_repo):
     """Test status shows untracked files."""
     git_mcp, tmpdir = temp_git_repo
-    
+
     # Create new file
     test_file = Path(tmpdir) / "untracked.txt"
     test_file.write_text("untracked")
-    
+
     status = git_mcp.get_status()
-    
+
     assert "untracked.txt" in status
     assert "untracked" in status.lower()
 
@@ -532,8 +532,9 @@ def test_log_empty_repo_raises(empty_git_repo):
 
 def test_get_status_git_command_error(temp_git_repo):
     """get_status wraps GitCommandError as GitError."""
+    from unittest.mock import MagicMock, patch
+
     import git as git_lib
-    from unittest.mock import patch, MagicMock
 
     git_mcp, _ = temp_git_repo
 
@@ -563,7 +564,7 @@ def test_get_git_initializes(temp_git_repo):
     """Test get_git initializes instance."""
     _, tmpdir = temp_git_repo
     git = get_git(tmpdir)
-    
+
     assert isinstance(git, GitMCP)
     assert git.project_root == Path(tmpdir).resolve()
 
@@ -573,7 +574,7 @@ def test_get_git_reuses_instance(temp_git_repo):
     _, tmpdir = temp_git_repo
     git1 = get_git(tmpdir)
     git2 = get_git()
-    
+
     assert git1 is git2
 
 
@@ -582,7 +583,7 @@ def test_get_git_no_init_raises():
     # Reset global instance
     import snodo.tools.git as git_module
     git_module._git_instance = None
-    
+
     with pytest.raises(ValueError, match="not initialized"):
         get_git()
 
@@ -592,22 +593,22 @@ def test_get_git_no_init_raises():
 def test_complete_workflow(temp_git_repo):
     """Test complete git workflow."""
     git_mcp, tmpdir = temp_git_repo
-    
+
     # Create branch
     git_mcp.create_branch("feature-workflow")
-    
+
     # Create and stage file
     test_file = Path(tmpdir) / "workflow.txt"
     test_file.write_text("workflow content")
     git_mcp.stage_files(["workflow.txt"])
-    
+
     # Check status
     status = git_mcp.get_status()
     assert "workflow.txt" in status
-    
+
     # Commit
     git_mcp.commit("Add workflow file")
-    
+
     # Verify clean status
     status = git_mcp.get_status()
     assert "nothing to commit" in status or "working tree clean" in status

@@ -20,9 +20,6 @@ from unittest.mock import Mock
 
 import jwt
 import pytest
-
-from tests.conftest import TEST_SECRET
-
 from snodo.core.interfaces import ValidatorResult
 from snodo.infrastructure.tokens import (
     TokenError,
@@ -31,6 +28,7 @@ from snodo.infrastructure.tokens import (
     ValidationToken,
 )
 
+from tests.conftest import TEST_SECRET
 
 # ---------------------------------------------------------------------------
 # Fixtures

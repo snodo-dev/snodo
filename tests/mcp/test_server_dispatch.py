@@ -17,10 +17,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from snodo.compiler.models import Protocol
 from snodo.mcp.server import MCPError, ProtocolMCPServer
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures

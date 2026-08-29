@@ -3,16 +3,14 @@
 FILE: tests/golden/test_template_wellformedness.py (Task 7.13)
 """
 
-import yaml
 from pathlib import Path
 
 import pytest
-
+import snodo.protocols
+import yaml
 from snodo.compiler.models import Protocol
 from snodo.compiler.verifier import verify_protocol
 
-
-import snodo.protocols
 TEMPLATES_DIR = Path(snodo.protocols.__file__).parent / "templates"
 
 

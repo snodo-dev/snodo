@@ -13,7 +13,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _PROMPT_FILE = _PROJECT_ROOT / "snodo" / "prompt_cmd.py"
 

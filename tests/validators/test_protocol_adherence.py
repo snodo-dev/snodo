@@ -3,17 +3,13 @@
 FILE: tests/validators/test_protocol_adherence.py
 """
 
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
-
-from snodo.compiler.models import (
-    Protocol, Mode, Validator
-)
+from snodo.compiler.models import Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.validators.context import ValidatorContext
 from snodo.validators.protocol_adherence import ProtocolAdherenceValidator
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

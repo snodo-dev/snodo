@@ -4,24 +4,22 @@ All HTTP calls mocked — no live network.
 """
 
 import json
-import time
 import tempfile
+import time
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from snodo.infrastructure.config import ProviderConfig
 from snodo.infrastructure.model_discovery import (
-    _discover_anthropic,
-    _discover_openrouter,
-    _discover_google,
-    discover_models,
     _CACHE_TTL_SECONDS,
-    _write_cache,
+    _discover_anthropic,
+    _discover_google,
+    _discover_openrouter,
     _read_cache,
+    _write_cache,
+    discover_models,
 )
-
 
 # === Fixtures ===
 
@@ -254,6 +252,6 @@ class TestDiscoverModels:
 
     def test_provider_config_importable_from_infrastructure(self):
         """ProviderConfig is importable from infrastructure.config."""
-        from snodo.infrastructure.config import ProviderConfig, DEFAULT_PROVIDER_CATALOG
+        from snodo.infrastructure.config import DEFAULT_PROVIDER_CATALOG, ProviderConfig
         assert ProviderConfig is not None
         assert len(DEFAULT_PROVIDER_CATALOG) == 6

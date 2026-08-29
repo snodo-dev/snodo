@@ -4,11 +4,11 @@ Uses fake stubs — no real LLM or filesystem access.
 """
 
 from unittest.mock import MagicMock
+
 from snodo.compiler.models import Constraint, Protocol, Severity
+from snodo.core.interfaces import Task
 from snodo.engine.constraints import ConstraintEngine
 from snodo.engine.loop import LoopState
-from snodo.core.interfaces import Task
-
 
 # ---------------------------------------------------------------------------
 # Helpers

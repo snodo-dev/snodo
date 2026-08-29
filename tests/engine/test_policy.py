@@ -7,12 +7,9 @@ Ensures 100% coverage of policy logic.
 """
 
 import pytest
-from snodo.core.interfaces import ValidatorResult
 from snodo.compiler.models import DisagreementPolicy
-from snodo.engine.policy import (
-    PolicyEvaluator, PolicyAction, evaluate_policy
-)
-
+from snodo.core.interfaces import ValidatorResult
+from snodo.engine.policy import PolicyAction, PolicyEvaluator, evaluate_policy
 
 # ========== HELPER FUNCTIONS ==========
 
@@ -68,9 +65,9 @@ def test_evaluator_init_invalid_threshold_high():
 def test_empty_results_halts():
     """Test that empty results list halts."""
     evaluator = PolicyEvaluator()
-    
+
     decision = evaluator.evaluate([], DisagreementPolicy.UNANIMOUS, phase="post_execute")
-    
+
     assert decision.action == PolicyAction.HALT
     assert not decision.consensus_achieved
     assert decision.total_count == 0
@@ -83,9 +80,9 @@ def test_single_blocker_halts_unanimous():
     """Test single blocker halts with UNANIMOUS policy."""
     evaluator = PolicyEvaluator()
     results = [make_result("v1", "blocker")]
-    
+
     decision = evaluator.evaluate(results, DisagreementPolicy.UNANIMOUS, phase="post_execute")
-    
+
     assert decision.action == PolicyAction.HALT
     assert not decision.consensus_achieved
     assert decision.blocker_count == 1
@@ -100,9 +97,9 @@ def test_blocker_with_passes_halts():
         make_result("v2", "pass"),
         make_result("v3", "blocker")
     ]
-    
+
     decision = evaluator.evaluate(results, DisagreementPolicy.ANY, phase="post_execute")
-    
+
     assert decision.action == PolicyAction.HALT
     assert decision.blocker_count == 1
 
@@ -117,9 +114,9 @@ def test_unanimous_all_pass():
         make_result("v2", "pass"),
         make_result("v3", "pass")
     ]
-    
+
     decision = evaluator.evaluate(results, DisagreementPolicy.UNANIMOUS, phase="post_execute")
-    
+
     assert decision.action == PolicyAction.PROCEED
     assert decision.consensus_achieved
     assert decision.pass_count == 3
@@ -135,9 +132,9 @@ def test_unanimous_all_pass_with_warnings():
         make_result("v2", "warn"),
         make_result("v3", "pass")
     ]
-    
+
     decision = evaluator.evaluate(results, DisagreementPolicy.UNANIMOUS, phase="post_execute")
-    
+
     # warn does NOT count as pass → 2/3 pass < 3 total → ESCALATE
     assert decision.action == PolicyAction.ESCALATE
     assert not decision.consensus_achieved
@@ -156,9 +153,9 @@ def test_majority_all_pass():
         make_result("v2", "pass"),
         make_result("v3", "pass")
     ]
-    
+
     decision = evaluator.evaluate(results, DisagreementPolicy.MAJORITY, phase="post_execute")
-    
+
     assert decision.action == PolicyAction.PROCEED
     assert decision.consensus_achieved
     assert "Majority pass" in decision.justification
@@ -172,9 +169,9 @@ def test_majority_simple_majority():
         make_result("v2", "pass"),
         make_result("v3", "warn")
     ]
-    
+
     decision = evaluator.evaluate(results, DisagreementPolicy.MAJORITY, phase="post_execute")
-    
+
     assert decision.action == PolicyAction.PROCEED_WITH_LOG
     assert decision.consensus_achieved
     assert decision.pass_count == 2
@@ -190,9 +187,9 @@ def test_quorum_meets_threshold():
         make_result("v2", "pass"),
         make_result("v3", "pass")
     ]
-    
+
     decision = evaluator.evaluate(results, DisagreementPolicy.QUORUM, phase="post_execute")
-    
+
     assert decision.action == PolicyAction.PROCEED
     assert decision.consensus_achieved
     assert "Quorum pass" in decision.justification
@@ -204,9 +201,9 @@ def test_any_single_pass():
     """Test ANY with single pass."""
     evaluator = PolicyEvaluator()
     results = [make_result("v1", "pass")]
-    
+
     decision = evaluator.evaluate(results, DisagreementPolicy.ANY, phase="post_execute")
-    
+
     assert decision.action == PolicyAction.PROCEED
     assert decision.consensus_achieved
     assert "At least one pass" in decision.justification
@@ -220,9 +217,9 @@ def test_convenience_function():
         make_result("v1", "pass"),
         make_result("v2", "pass")
     ]
-    
+
     decision = evaluate_policy(results, DisagreementPolicy.UNANIMOUS)
-    
+
     assert decision.action == PolicyAction.PROCEED
     assert decision.consensus_achieved
 
@@ -281,9 +278,9 @@ def test_post_execute_recovery_finding_blocks_normally():
 
 def test_run_validators_pre_execute_recovery_caps_severity():
     """run_validators caps pre-execute recovery findings to pass while preserving original severity."""
-    from snodo.validators.runner import run_validators
+    from snodo.compiler.models import Mode, Protocol, Validator
     from snodo.core.interfaces import Task
-    from snodo.compiler.models import Protocol, Mode, Validator
+    from snodo.validators.runner import run_validators
 
     v = Validator(validator_id="arch", validator_type="quality", evaluation_phase="pre_execute")
     mode = Mode(mode_id="test", name="test", tools=[], validators=["arch"])

@@ -7,9 +7,13 @@ the re-exported copies in snodo.engine.loop.
 
 from unittest.mock import MagicMock
 
-from snodo.engine.state import _build_audit_results, _branch_exists, _slugify, _task_branch_name
 from snodo.core.interfaces import ValidatorResult
-
+from snodo.engine.state import (
+    _branch_exists,
+    _build_audit_results,
+    _slugify,
+    _task_branch_name,
+)
 
 # ---------------------------------------------------------------------------
 # _build_audit_results

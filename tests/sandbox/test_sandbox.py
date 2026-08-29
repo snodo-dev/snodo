@@ -10,15 +10,13 @@ import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
-
-from snodo.sandbox.base import Sandbox, SandboxResult, SandboxConfig, SandboxError
-from snodo.sandbox.local_sandbox import LocalSandbox
-from snodo.sandbox.docker_sandbox import DockerSandbox
 from snodo.sandbox import create_sandbox
-
+from snodo.sandbox.base import Sandbox, SandboxConfig, SandboxError, SandboxResult
+from snodo.sandbox.docker_sandbox import DockerSandbox
+from snodo.sandbox.local_sandbox import LocalSandbox
 
 # === Fixtures ===
 
@@ -805,8 +803,13 @@ class TestImports:
     """Tests that sandbox modules import correctly."""
 
     def test_import_package(self):
-        from snodo.sandbox import Sandbox, SandboxResult
-        from snodo.sandbox import DockerSandbox, LocalSandbox, create_sandbox
+        from snodo.sandbox import (
+            DockerSandbox,
+            LocalSandbox,
+            Sandbox,
+            SandboxResult,
+            create_sandbox,
+        )
         assert Sandbox is not None
         assert SandboxResult is not None
         assert DockerSandbox is not None

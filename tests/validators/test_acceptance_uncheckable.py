@@ -1,11 +1,12 @@
 """Tests for acceptance validator uncheckable command execution criteria & contradiction detection (Fixes #75)."""
 
 from unittest.mock import MagicMock
+
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task, ValidatorResult
+from snodo.engine.loop import GraphBuilder, LoopState
 from snodo.validators.acceptance import AcceptanceValidator
 from snodo.validators.context import ValidatorContext
-from snodo.engine.loop import GraphBuilder, LoopState
 
 
 def test_acceptance_prompt_uncheckable_command_instruction():

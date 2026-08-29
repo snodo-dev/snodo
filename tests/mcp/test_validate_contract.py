@@ -17,19 +17,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.infrastructure.session import SessionManager
 from snodo.mcp.server import ProtocolMCPServer
 
 from tests.mcp._validate_helpers import (
-    validation_passing,
-    warn_completion_fn,
     blocker_completion_fn,
     mock_validator_config,
+    validation_passing,
+    warn_completion_fn,
 )
-
 
 SECURITY_PROTOCOL_DATA = {
     "protocol_id": "contract",
@@ -203,11 +201,10 @@ class TestFailingTestsAreBlocker:
 class TestEngineMCPParity:
     def test_same_validator_same_severity(self, server, protocol, project_dir):
         """The MCP handler and the engine produce identical validator severities."""
-        from snodo.validators.runner import run_validators
-
         # Deterministic (non-LLM) validator so no completion is needed.
         from snodo.validators.context import ValidatorBase
         from snodo.validators.registry import _default_registry
+        from snodo.validators.runner import run_validators
 
         class _FixedWarn(ValidatorBase):
             def __init__(self, validator_spec):
@@ -282,10 +279,11 @@ class TestEngineMCPParity:
 
 class TestEscalateAuthorizeRevalidate:
     def _keys(self):
-        from cryptography.hazmat.primitives.asymmetric import rsa
         from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives.asymmetric import rsa
         from snodo.infrastructure.decisions import (
-            SigningDecisionRecordIssuer, VerifyOnlyDecisionRecordIssuer,
+            SigningDecisionRecordIssuer,
+            VerifyOnlyDecisionRecordIssuer,
         )
         priv = rsa.generate_private_key(65537, 2048, backend=default_backend())
         return SigningDecisionRecordIssuer(priv), VerifyOnlyDecisionRecordIssuer(priv.public_key())

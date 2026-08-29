@@ -9,20 +9,22 @@ domain objects used across property tests.
 import os
 
 from hypothesis import strategies as st
-
 from snodo.compiler.models import (
-    Protocol, Mode, Validator, Severity, DisagreementPolicy,
+    DisagreementPolicy,
+    Mode,
+    Protocol,
+    Severity,
+    Validator,
 )
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.infrastructure.tokens import TokenIssuer
-
 
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
 
 def hypothesis_settings():
-    from hypothesis import settings, HealthCheck
+    from hypothesis import HealthCheck, settings
     max_examples = 100
     if os.environ.get("SNODO_HYPOTHESIS_LONG") == "1":
         max_examples = 1000

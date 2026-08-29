@@ -3,8 +3,8 @@
 FILE: tests/predicates/test_scope.py (Task 7.8)
 """
 
-from snodo.predicates.scope import FilesInScope
 from snodo.predicates.base import PredicateContext
+from snodo.predicates.scope import FilesInScope
 
 
 def test_pre_execute_passes_trivially():
