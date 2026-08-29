@@ -65,3 +65,6 @@ logs/
 experiments/results/
 .wrangler/
 .opencode/
+
+# sdist staging left behind by a failed uv build
+/snodo-[0-9]*/
