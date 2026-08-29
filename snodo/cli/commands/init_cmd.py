@@ -3,11 +3,11 @@
 FILE: snodo/cli/commands/init_cmd.py
 """
 
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
-
 import typer
 import yaml
 from rich.console import Console
@@ -15,6 +15,8 @@ from rich.panel import Panel
 
 from snodo.cli.commands import PROTOCOL_TEMPLATES, list_templates, template_display_name
 from snodo.infrastructure.state import ProjectState, write_state
+
+_logger = logging.getLogger(__name__)
 
 
 def register(app: typer.Typer) -> None:
@@ -158,8 +160,8 @@ def _configure_test_command(args, template_raw: str, project_dir: Path) -> str:
                         updated = True
             if updated:
                 return yaml.dump(data, sort_keys=False)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Could not inject test command into template: %s", e)
 
     return template_raw
 
@@ -339,8 +341,8 @@ def _commit_gitignore(repo, gitignore_path: Path) -> bool:
         # Best-effort: leave the working tree as it was (unstage our add).
         try:
             repo.git.reset("--", str(gitignore_path))
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Could not unstage .gitignore after failed commit: %s", e)
         return False
 
 
@@ -446,8 +448,8 @@ def init_command(args) -> int:
         config_data = {}
         try:
             config_data = ConfigManager().load()
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Could not load config for project id resolution: %s", e)
         
         cfg_project_id = config_data.get("project.id") or config_data.get("project_id")
         override_id = getattr(args, "project_id", None) or cfg_project_id

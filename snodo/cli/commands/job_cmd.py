@@ -3,12 +3,14 @@
 FILE: snodo/cli/commands/job_cmd.py
 """
 
+import logging
 import sys
 import time
 from types import SimpleNamespace
 from typing import Optional
-
 import typer
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
@@ -251,8 +253,8 @@ def _job_logs_watch(manager, job_id: str, stream: str) -> int:
                                 else:
                                     break
                             break
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        _logger.debug("Could not read job status while following logs: %s", e)
                     time.sleep(0.5)
     except KeyboardInterrupt:
         pass

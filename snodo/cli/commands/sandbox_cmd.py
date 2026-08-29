@@ -3,12 +3,15 @@
 FILE: snodo/cli/commands/sandbox_cmd.py (Task 5.4)
 """
 
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
 
 import typer
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
@@ -127,8 +130,8 @@ def _sandbox_status(args) -> int:
             info = sandbox.client.info()
             print(f"  Runtime: {info.get('ServerVersion', 'unknown')}")
             print(f"  OS:      {info.get('OperatingSystem', 'unknown')}")
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Could not read Docker info: %s", e)
     else:
         print("  Docker:  not available")
         print("           Install Docker Desktop or start the daemon.")
