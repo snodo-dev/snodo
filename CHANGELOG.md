@@ -48,6 +48,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A blocked task in a plan no longer restarts from scratch on re-run. `_execute_wave_task`
+  previously re-executed a task the status file marked "blocked" as a fresh dispatch,
+  discarding the failure context `_auto_write_failure_context` persists. A blocked task with
+  failure context now resumes through the retry path — reusing `_retry_task`'s context
+  resolution (prefers `decisions["task_failure"][id]`, falls back to the halt record) and
+  its `max_retries` enforcement. A task at `max_retries` is not re-executed and prints the
+  abandon/override guidance; a blocked task with no failure context runs fresh and the line
+  says so, so the operator can tell the two apart. Completed tasks are still skipped.
+  (Fixes #131).
+
 - Enforced ruff rule `B904` (`raise-without-from-inside-except`) across `packages/` and `snodo/`. Updated 61 exception re-raise sites to explicitly attach causal exception chains (`from e` or `from None`), ensuring underlying error details (e.g. git command failures, GitHub API exceptions, container errors, and token store errors) are preserved for structured audit logs and halt payloads. (Fixes #122).
 
 - Fixed 46 silent try-except-pass blocks across `packages/` (Ruff rule S110) so exceptions in audit log, session persistence, process execution, and resource cleanup are properly logged at warning or debug level instead of being silently swallowed. (Fixes #124).
