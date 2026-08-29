@@ -61,9 +61,56 @@ class CloudSyncState:
         data = self._load()
         if session_id not in data or not isinstance(data.get(session_id), dict):
             data[session_id] = {}
-        data[session_id]["last_synced_sequence"] = sequence
-        data[session_id]["last_synced_at"] = time.time()
+        sess = data[session_id]
+        sess["last_synced_sequence"] = sequence
+        sess["last_synced_at"] = time.time()
+        sess["refused"] = False
+        sess.pop("refused_reason", None)
+        sess.pop("refused_range", None)
+        sess.pop("refused_at", None)
+        sess.pop("refused_status_code", None)
         self._save(data)
+
+    def record_refusal(
+        self,
+        session_id: str,
+        reason: str,
+        first_seq: int,
+        last_seq: int,
+        status_code: Optional[int] = None,
+    ) -> None:
+        """Record that a batch for *session_id* was refused by the cloud server."""
+        data = self._load()
+        if session_id not in data or not isinstance(data.get(session_id), dict):
+            data[session_id] = {}
+        sess = data[session_id]
+        sess["refused"] = True
+        sess["refused_reason"] = reason
+        sess["refused_range"] = [first_seq, last_seq]
+        sess["refused_at"] = time.time()
+        if status_code is not None:
+            sess["refused_status_code"] = status_code
+        self._save(data)
+
+    def clear_refusal(self, session_id: str) -> None:
+        """Clear refused status for *session_id*."""
+        data = self._load()
+        if session_id in data and isinstance(data[session_id], dict):
+            sess = data[session_id]
+            sess["refused"] = False
+            sess.pop("refused_reason", None)
+            sess.pop("refused_range", None)
+            sess.pop("refused_at", None)
+            sess.pop("refused_status_code", None)
+            self._save(data)
+
+    def is_refused(self, session_id: str) -> bool:
+        """Return True if *session_id* sync is currently refused."""
+        data = self._load()
+        sess = data.get(session_id)
+        if isinstance(sess, dict):
+            return bool(sess.get("refused"))
+        return False
 
     def get_summary(self) -> dict:
         """Return full per-session sync summary."""
@@ -83,6 +130,7 @@ class CloudSyncDispatcher:
         audit_log: Any,
         api_key: str,
         api_url: str,
+        force: bool = False,
     ) -> dict:
         """Sync audit events since the last cursor.
 
@@ -92,12 +140,13 @@ class CloudSyncDispatcher:
             audit_log: AuditLog instance (provides .events)
             api_key: Snodo cloud API key
             api_url: Base URL for the ingest API
+            force: If True, re-attempt sync even if session is in refused state
 
         Returns:
-            ``{"synced": int, "failed": bool}``
+            ``{"synced": int, "failed": bool, "refused": bool, "reason": Optional[str]}``
         """
         try:
-            return self._sync_impl(session_id, project_root, audit_log, api_key, api_url)
+            return self._sync_impl(session_id, project_root, audit_log, api_key, api_url, force=force)
         except Exception:
             _logger.warning("Cloud sync threw unexpected exception", exc_info=True)
             return {"synced": 0, "failed": True}
@@ -109,12 +158,23 @@ class CloudSyncDispatcher:
         audit_log: Any,
         api_key: str,
         api_url: str,
+        force: bool = False,
     ) -> dict:
         events = getattr(audit_log, "events", [])
         if not events:
             return {"synced": 0, "failed": False}
 
         state = CloudSyncState()
+
+        if not force and state.is_refused(session_id):
+            info = state._load().get(session_id, {})
+            reason = info.get("refused_reason", "refused by server")
+            _logger.info(
+                "Skipping automatic cloud sync for refused session %s: %s",
+                session_id, reason,
+            )
+            return {"synced": 0, "failed": False, "refused": True, "reason": reason}
+
         cursor = state.get_cursor(session_id)
 
         # Collect unsynced events
@@ -128,23 +188,50 @@ class CloudSyncDispatcher:
 
         synced = 0
         failed = False
+        refused = False
+        refused_reason = None
 
         # Batch into groups of ≤50
         for i in range(0, len(unsynced), _MAX_BATCH_SIZE):
             batch = unsynced[i:i + _MAX_BATCH_SIZE]
-            max_seq = batch[-1].sequence if batch else cursor
-            ok = self._post_batch(
+            first_seq = batch[0].sequence
+            max_seq = batch[-1].sequence
+            res = self._post_batch(
                 session_id, project_root, batch, api_key, api_url,
             )
-            if ok:
+
+            if isinstance(res, tuple):
+                outcome, reason, status_code = res
+            elif res is True:
+                outcome, reason, status_code = ("delivered", "HTTP 200", 200)
+            else:
+                outcome, reason, status_code = ("retryable", "Failed", None)
+
+            if outcome == "delivered":
                 state.advance_cursor(session_id, max_seq)
                 _logger.debug("Cursor advanced to sequence %d", max_seq)
                 synced += len(batch)
+            elif outcome == "refused":
+                state.record_refusal(
+                    session_id,
+                    reason=reason,
+                    first_seq=first_seq,
+                    last_seq=max_seq,
+                    status_code=status_code,
+                )
+                failed = True
+                refused = True
+                refused_reason = reason
+                break
             else:
                 failed = True
                 break
 
-        return {"synced": synced, "failed": failed}
+        res_dict = {"synced": synced, "failed": failed}
+        if refused:
+            res_dict["refused"] = True
+            res_dict["reason"] = refused_reason
+        return res_dict
 
     def _post_batch(
         self,
@@ -153,8 +240,15 @@ class CloudSyncDispatcher:
         batch: list,
         api_key: str,
         api_url: str,
-    ) -> bool:
-        """POST a batch of events. Returns True if cursor should advance."""
+    ) -> tuple[str, str, Optional[int]]:
+        """POST a batch of events.
+
+        Returns:
+            (outcome, reason, status_code) where outcome is one of:
+            - "delivered": HTTP 2xx
+            - "retryable": HTTP 429, 5xx, or network error
+            - "refused": HTTP 4xx (except 429)
+        """
         import httpx
 
         payload_events = []
@@ -194,10 +288,10 @@ class CloudSyncDispatcher:
                     url, content=body, headers=headers, timeout=30.0,
                 )
 
-                if response.status_code == 200:
-                    _logger.debug("Response 200 — accepted=%s",
-                                  response.text[:200])
-                    return True
+                if 200 <= response.status_code < 300:
+                    _logger.debug("Response %d — accepted=%s",
+                                  response.status_code, response.text[:200])
+                    return ("delivered", f"HTTP {response.status_code}", response.status_code)
 
                 body_text = response.text[:500]
 
@@ -220,7 +314,7 @@ class CloudSyncDispatcher:
                             "Cloud sync HTTP %d retries exhausted (session=%s): %s",
                             response.status_code, session_id, body_text,
                         )
-                        return False
+                        return ("retryable", f"HTTP {response.status_code}: {body_text}", response.status_code)
                     _logger.warning(
                         "Cloud sync HTTP %d attempt %d (session=%s): %s",
                         response.status_code, attempt, session_id, body_text,
@@ -229,23 +323,24 @@ class CloudSyncDispatcher:
                     time.sleep(backoff)
                     continue
 
+                reason = f"HTTP {response.status_code}: {body_text.strip() or 'Client error'}"
                 _logger.warning(
-                    "Cloud sync HTTP %d on session=%s: %s",
+                    "Cloud sync HTTP %d REFUSED on session=%s: %s",
                     response.status_code, session_id, body_text,
                 )
-                return False
+                return ("refused", reason, response.status_code)
 
-            except Exception:
+            except Exception as exc:
                 if attempt == _MAX_RETRIES:
                     _logger.warning(
-                        "Cloud sync network error retries exhausted (session=%s)",
-                        session_id, exc_info=True,
+                        "Cloud sync network error retries exhausted (session=%s): %s",
+                        session_id, exc, exc_info=True,
                     )
-                    return False
+                    return ("retryable", f"Network error: {exc}", None)
                 backoff = 2 ** attempt
                 time.sleep(backoff)
 
-        return False
+        return ("retryable", "Retries exhausted", None)
 
 
 def _should_sync(config: Optional[dict] = None) -> bool:

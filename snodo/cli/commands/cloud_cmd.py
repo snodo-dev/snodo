@@ -48,10 +48,10 @@ def cloud_status():
 def cloud_sync(
     sync_all: bool = typer.Option(False, "--all", help="Sync all sessions for the current project"),
     session: str = typer.Option("", "--session", help="Sync a specific session by ID"),
+    force: bool = typer.Option(False, "--force", "--retry", help="Force re-attempt sync for refused sessions"),
 ):
     """Ship unsynced audit events to snodo cloud."""
-    return cloud_sync_command(sync_all=sync_all, session_id=session)
-
+    return cloud_sync_command(sync_all=sync_all, session_id=session, force=force)
 
 
 def cloud_connect_command(api_key: str) -> int:
@@ -127,7 +127,13 @@ def cloud_status_command() -> int:
             seq = info.get("last_synced_sequence", 0)
             at = info.get("last_synced_at", 0)
             ts = _format_ts(at) if at else "never"
-            print(f"  {sid}:  last_seq={seq}  synced_at={ts}")
+            if info.get("refused"):
+                reason = info.get("refused_reason", "refused by server")
+                rng = info.get("refused_range")
+                range_str = f"seq {rng[0]}-{rng[1]}" if rng else "unknown range"
+                print(f"  {sid}:  BLOCKED (refused: {reason}, {range_str})  last_seq={seq}  synced_at={ts}")
+            else:
+                print(f"  {sid}:  last_seq={seq}  synced_at={ts}")
     else:
         print()
         print("No sessions synced yet.")
@@ -149,11 +155,12 @@ def _format_ts(ts: float) -> str:
         return "unknown"
 
 
-def cloud_sync_command(sync_all: bool = False, session_id: str = "") -> int:
+def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool = False) -> int:
     """Sync audit events to snodo cloud for one or more sessions.
 
     --all: sync all sessions for the current project
     --session <id>: sync a specific session
+    --force / --retry: force re-attempt sync for refused sessions
     (no flags): sync the current active session
     """
     from snodo.config import ConfigManager
@@ -228,11 +235,15 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "") -> int:
             total_failed += 1
             continue
 
-        result = dispatcher.sync(sid, proot, audit_log, api_key, api_url)
+        result = dispatcher.sync(sid, proot, audit_log, api_key, api_url, force=force)
 
         if result["synced"] > 0:
             print(f"  {sid}  ✓ {result['synced']} events synced")
             total_synced += result["synced"]
+        elif result.get("refused"):
+            reason = result.get("reason", "refused by server")
+            print(f"  {sid}  BLOCKED (refused: {reason})")
+            total_failed += 1
         elif result.get("failed"):
             print(f"  {sid}  ✗ sync failed")
             total_failed += 1
