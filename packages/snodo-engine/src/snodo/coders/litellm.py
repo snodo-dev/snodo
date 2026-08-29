@@ -45,31 +45,42 @@ if not getattr(_litellm, "success_callback", None):
 _litellm.success_callback.append(UsageTracker())
 
 import logging as _logging  # noqa: E402  — must run after litellm is configured above
-_logging.getLogger("LiteLLM").setLevel(_logging.WARNING)
 
-# CF models absent from models.dev catalog — price via register_model.
-_litellm.register_model({
-    "openai/@cf/google/gemma-4-26b-a4b-it": {
-        "input_cost_per_token": 0.10 / 1_000_000,
-        "output_cost_per_token": 0.30 / 1_000_000,
-    },
-    "openai/@cf/nvidia/nemotron-3-120b-a12b": {
-        "input_cost_per_token": 0.50 / 1_000_000,
-        "output_cost_per_token": 1.50 / 1_000_000,
-    },
-    "openai/@cf/moonshotai/kimi-k2.6": {
-        "input_cost_per_token": 0.95 / 1_000_000,
-        "output_cost_per_token": 4.00 / 1_000_000,
-    },
-    "openai/@cf/moonshotai/kimi-k2.7-code": {
-        "input_cost_per_token": 0.95 / 1_000_000,
-        "output_cost_per_token": 4.00 / 1_000_000,
-    },
-    "openai/@cf/mistralai/mistral-small-3.1-24b-instruct": {
-        "input_cost_per_token": 0.35 / 1_000_000,
-        "output_cost_per_token": 0.55 / 1_000_000,
-    },
-})
+# CF models absent from models.dev catalog — price via register_model. The
+# register_model call emits a WARNING per model ("not in built-in cost map")
+# because the entries lack cache cost fields. These fire on every import —
+# including `snodo --version` — and publish the model catalog into the
+# terminal. Suppress the LiteLLM logger for the duration of the call only,
+# then restore the previous level: a real cost or routing warning during a
+# run must still surface (Fixes #135).
+_litellm_logger = _logging.getLogger("LiteLLM")
+_prev_litellm_level = _litellm_logger.level
+_litellm_logger.setLevel(_logging.CRITICAL)
+try:
+    _litellm.register_model({
+        "openai/@cf/google/gemma-4-26b-a4b-it": {
+            "input_cost_per_token": 0.10 / 1_000_000,
+            "output_cost_per_token": 0.30 / 1_000_000,
+        },
+        "openai/@cf/nvidia/nemotron-3-120b-a12b": {
+            "input_cost_per_token": 0.50 / 1_000_000,
+            "output_cost_per_token": 1.50 / 1_000_000,
+        },
+        "openai/@cf/moonshotai/kimi-k2.6": {
+            "input_cost_per_token": 0.95 / 1_000_000,
+            "output_cost_per_token": 4.00 / 1_000_000,
+        },
+        "openai/@cf/moonshotai/kimi-k2.7-code": {
+            "input_cost_per_token": 0.95 / 1_000_000,
+            "output_cost_per_token": 4.00 / 1_000_000,
+        },
+        "openai/@cf/mistralai/mistral-small-3.1-24b-instruct": {
+            "input_cost_per_token": 0.35 / 1_000_000,
+            "output_cost_per_token": 0.55 / 1_000_000,
+        },
+    })
+finally:
+    _litellm_logger.setLevel(_prev_litellm_level)
 
 _logger = logging.getLogger(__name__)
 
