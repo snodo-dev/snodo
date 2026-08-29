@@ -49,6 +49,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `snodo run` now checks for provider credentials before starting any work. Previously a
+  fresh install loaded the protocol, opened a session, created a worktree, built and
+  compiled the MCP graph, and only then failed with `litellm.AuthenticationError: Missing
+  Anthropic API Key ...`. A preflight in `run_command` resolves the model's provider (via
+  the same `ConfigManager` helpers that load the key, so it cannot disagree with them) and
+  fails immediately with one line naming the provider, the expected environment variable or
+  config key, and the command to set it — exit 1, nothing created. The check is skipped when
+  the coder is mocked (`--mock`) or when no LLM will be called. (Fixes #137).
+
 - A blocked task in a plan no longer restarts from scratch on re-run. `_execute_wave_task`
   previously re-executed a task the status file marked "blocked" as a fresh dispatch,
   discarding the failure context `_auto_write_failure_context` persists. A blocked task with
