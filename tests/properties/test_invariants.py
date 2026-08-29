@@ -7,22 +7,27 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from hypothesis import given, settings, strategies as st, HealthCheck
 import pytest
-
-from snodo.infrastructure.audit import AuditLog
-from snodo.core.interfaces import Task, ValidatorResult
-from snodo.engine.policy import PolicyEvaluator, PolicyAction
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 from snodo.compiler.models import (
-    Protocol, Severity, DisagreementPolicy,
+    DisagreementPolicy,
+    Protocol,
+    Severity,
 )
+from snodo.core.interfaces import Task, ValidatorResult
+from snodo.engine.policy import PolicyAction, PolicyEvaluator
+from snodo.infrastructure.audit import AuditLog
 from snodo.infrastructure.tokens import TokenIssuer, ValidationToken
 
 from tests.strategies import (
+    gen_audit_events,
     hypothesis_settings,
-    protocols, tasks, validator_results,
     identifiers,
-    jwt_tokens, gen_audit_events,
+    jwt_tokens,
+    protocols,
+    tasks,
+    validator_results,
 )
 
 severity_enum_strings = st.sampled_from(["pass", "warn", "blocker"])
@@ -41,8 +46,8 @@ _HYP_SETTINGS = hypothesis_settings()
 @pytest.mark.property
 def test_audit_chain_integrity_after_events(events):
     """Appending arbitrary events preserves chain integrity."""
-    import tempfile
     import shutil
+    import tempfile
     tmpdir = Path(tempfile.mkdtemp())
     try:
         log = AuditLog(str(tmpdir / "audit.log"))
@@ -59,8 +64,8 @@ def test_audit_chain_integrity_after_events(events):
 @pytest.mark.property
 def test_audit_chain_tamper_detected(events):
     """Mutating any event's data breaks verify_chain."""
-    import tempfile
     import shutil
+    import tempfile
     tmpdir = Path(tempfile.mkdtemp())
     log = AuditLog(str(tmpdir / "audit.log"))
     try:
@@ -202,8 +207,9 @@ def test_severity_cap_preserves_pass(orig, cap):
 @pytest.mark.property
 def test_loopstate_dict_roundtrip(task, mode, it):
     """LoopState survives _dict_to_state → _state_to_dict round-trip."""
-    from snodo.engine.loop import LoopState, LoopStage, GraphBuilder
-    from snodo.compiler.models import Mode as CMode, Validator as CMValidator
+    from snodo.compiler.models import Mode as CMode
+    from snodo.compiler.models import Validator as CMValidator
+    from snodo.engine.loop import GraphBuilder, LoopStage, LoopState
 
     protocol = Protocol(
         protocol_id="rt", name="Roundtrip",
@@ -263,8 +269,8 @@ def test_session_decision_roundtrip(task_id, decision_key, decision_val):
 @pytest.mark.property
 def test_files_in_scope_deterministic(artifacts):
     """Same input always produces same output for files_in_scope."""
-    from snodo.predicates.scope import FilesInScope
     from snodo.predicates.base import PredicateContext
+    from snodo.predicates.scope import FilesInScope
 
     pred = FilesInScope()
     ctx = PredicateContext(

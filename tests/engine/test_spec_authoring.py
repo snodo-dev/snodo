@@ -8,7 +8,7 @@ be a redefinition, not a rewrite).
 
 from unittest.mock import MagicMock
 
-from snodo.compiler.models import Protocol, Mode, Validator, DisagreementPolicy
+from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.loop import GraphBuilder
 from snodo.engine.state import LoopState

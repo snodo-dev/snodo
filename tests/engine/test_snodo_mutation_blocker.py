@@ -11,12 +11,11 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
+from snodo.coders.base import InPlaceCoderAdapter, SnodoMutationError
 from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
-from snodo.core.interfaces import Task, TaskSpec, CodeArtifact, ValidatorResult
+from snodo.core.interfaces import CodeArtifact, Task, TaskSpec, ValidatorResult
 from snodo.engine.closure import run_to_closure
 from snodo.engine.loop import build_protocol_graph
-from snodo.coders.base import InPlaceCoderAdapter, SnodoMutationError
 
 
 class _SnodoMutatingCoder(InPlaceCoderAdapter):

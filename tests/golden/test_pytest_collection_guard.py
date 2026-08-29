@@ -5,7 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.conftest import pytest_configure, pytest_collection_modifyitems, _suite_repo_root
+from tests.conftest import (
+    _suite_repo_root,
+    pytest_collection_modifyitems,
+    pytest_configure,
+)
 
 
 def test_pytest_configure_rootdir_mismatch_raises_usage_error():

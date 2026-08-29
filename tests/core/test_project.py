@@ -7,12 +7,11 @@ import json
 import tempfile
 from pathlib import Path
 
-
 from snodo.project import (
+    cache_project_id,
+    get_project_id,
     normalize_remote_url,
     resolve_project_id,
-    get_project_id,
-    cache_project_id,
 )
 
 
@@ -54,7 +53,7 @@ def test_resolve_project_id_no_git():
     with tempfile.TemporaryDirectory() as tmpdir:
         pid1, scope1 = resolve_project_id(tmpdir)
         pid2, scope2 = resolve_project_id(tmpdir)
-        
+
         assert pid1.startswith("local:")
         assert scope1 == "local"
         assert pid2.startswith("local:")
@@ -70,21 +69,21 @@ def test_get_project_id_caching_and_override():
         pid1, scope1 = get_project_id(tmpdir)
         assert pid1.startswith("local:")
         assert scope1 == "local"
-        
+
         # Second call returns cached values (same UUID)
         pid2, scope2 = get_project_id(tmpdir)
         assert pid1 == pid2
         assert scope1 == scope2
-        
+
         # Override project.id in project.json
         project_json = Path(tmpdir) / ".snodo" / "project.json"
         with open(project_json) as f:
             data = json.load(f)
-            
+
         data["project.id"] = "override-project-identity"
         with open(project_json, "w") as f:
             json.dump(data, f)
-            
+
         pid3, scope3 = get_project_id(tmpdir)
         assert pid3 == "override-project-identity"
         assert scope3 == "local"
@@ -94,12 +93,12 @@ def test_cache_project_id():
     """Verify cache_project_id writes data correctly and preserves format."""
     with tempfile.TemporaryDirectory() as tmpdir:
         cache_project_id(tmpdir, "custom-id", "remote")
-        
+
         project_json = Path(tmpdir) / ".snodo" / "project.json"
         assert project_json.exists()
         with open(project_json) as f:
             data = json.load(f)
-            
+
         assert data["id"] == "custom-id"
         assert data["project.id"] == "custom-id"
         assert data["scope"] == "remote"

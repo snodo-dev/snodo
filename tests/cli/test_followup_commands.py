@@ -60,9 +60,10 @@ class TestSuggestedCommandsResolve:
 
 class TestStatusCommand:
     def test_status_shows_protocol_mode_session(self, tmp_path, capsys):
-        from snodo.cli.commands.status_cmd import status_command
         from snodo.infrastructure.session import SessionManager
-        from snodo.infrastructure.state import write_state, ProjectState
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        from snodo.cli.commands.status_cmd import status_command
 
         snodo_dir = tmp_path / ".snodo"
         snodo_dir.mkdir()
@@ -88,9 +89,10 @@ class TestStatusCommand:
         assert "Last run:" in out
 
     def test_status_no_sessions(self, tmp_path, capsys):
-        from snodo.cli.commands.status_cmd import status_command
         from snodo.infrastructure.session import SessionManager
-        from snodo.infrastructure.state import write_state, ProjectState
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        from snodo.cli.commands.status_cmd import status_command
 
         snodo_dir = tmp_path / ".snodo"
         snodo_dir.mkdir()
@@ -114,9 +116,10 @@ class TestStatusCommand:
 
 class TestTaskShowCommand:
     def test_task_show_halt_and_failure(self, tmp_path, capsys):
-        from snodo.cli.commands.task_cmd import task_show_command
         from snodo.infrastructure.session import SessionManager
-        from snodo.infrastructure.state import write_state, ProjectState
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        from snodo.cli.commands.task_cmd import task_show_command
 
         snodo_dir = tmp_path / ".snodo"
         snodo_dir.mkdir()
@@ -147,9 +150,10 @@ class TestTaskShowCommand:
         assert "snodo run --retry task_abc" in out
 
     def test_task_show_unknown_task(self, tmp_path, capsys):
-        from snodo.cli.commands.task_cmd import task_show_command
         from snodo.infrastructure.session import SessionManager
-        from snodo.infrastructure.state import write_state, ProjectState
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        from snodo.cli.commands.task_cmd import task_show_command
 
         snodo_dir = tmp_path / ".snodo"
         snodo_dir.mkdir()
@@ -172,8 +176,9 @@ class TestTaskShowCommand:
 
 class TestSessionListRecency:
     def test_sorted_by_recency_with_inspect(self, tmp_path, capsys):
-        from snodo.cli.commands.session_cmd import session_command
         from snodo.infrastructure.session import SessionManager
+
+        from snodo.cli.commands.session_cmd import session_command
 
         sessions_dir = tmp_path / "sessions"
         sessions_dir.mkdir()
@@ -203,8 +208,9 @@ class TestSessionListRecency:
 
 class TestRunHeaderSuggestions:
     def test_execute_task_prints_task_inspect(self, tmp_path, capsys):
-        from snodo.cli.commands.run_cmd import _execute_task
         from snodo.core.interfaces import Task
+
+        from snodo.cli.commands.run_cmd import _execute_task
 
         protocol = SimpleNamespace(
             name="test", initial_mode="producer",
@@ -229,9 +235,10 @@ class TestRunHeaderSuggestions:
         assert "Inspect: snodo task show task_abc" in out
 
     def test_resolve_session_prints_inspect(self, tmp_path, capsys):
-        from snodo.cli.commands.run_cmd import _resolve_session
         from snodo.infrastructure.session import SessionManager
         from snodo.infrastructure.state import ProjectState
+
+        from snodo.cli.commands.run_cmd import _resolve_session
 
         sessions_dir = tmp_path / "sessions"
         sessions_dir.mkdir()
@@ -249,8 +256,9 @@ class TestRunHeaderSuggestions:
 
 class TestHaltFooterSuggestions:
     def test_halt_footer_prints_followup(self, capsys):
-        from snodo.cli.commands.run_cmd import _report_closure
         from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
 
         payload = {
             "halt_type": "escalate",
@@ -275,8 +283,9 @@ class TestHaltFooterSuggestions:
         assert 'snodo run --retry task_abc "revised spec"' in out
 
     def test_halt_footer_no_retry_on_completed(self, capsys):
-        from snodo.cli.commands.run_cmd import _report_closure
         from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
 
         payload = {
             "halt_type": "completed",
@@ -299,7 +308,8 @@ class TestHaltFooterSuggestions:
 class TestWorksWhenPasted:
     def test_session_show_and_task_show_work(self, tmp_path, monkeypatch):
         from snodo.infrastructure.session import SessionManager
-        from snodo.infrastructure.state import write_state, ProjectState
+        from snodo.infrastructure.state import ProjectState, write_state
+
         from snodo.cli.main import main
 
         home = tmp_path / "home"
@@ -351,7 +361,8 @@ class TestWorksWhenPasted:
 
     def test_retry_command_works(self, tmp_path, monkeypatch):
         from snodo.infrastructure.session import SessionManager
-        from snodo.infrastructure.state import write_state, ProjectState
+        from snodo.infrastructure.state import ProjectState, write_state
+
         from snodo.cli.main import main
 
         home = tmp_path / "home"

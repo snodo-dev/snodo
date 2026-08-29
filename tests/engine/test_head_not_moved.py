@@ -17,12 +17,12 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
-from snodo.compiler.models import Protocol, Mode, Validator, DisagreementPolicy
+from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 from snodo.core.interfaces import ValidatorResult
 from snodo.engine.loop import GraphBuilder
 from snodo.tools.git import GitMCP
 from snodo.tools.workspace import WorkspaceMCP
+
 from tests.conftest import TEST_SECRET
 
 
@@ -205,10 +205,11 @@ def test_inplace_adapter_git_add_failure_names_cause_in_halt_payload(
     """Canary: driving an in-place adapter where git add fails halts with
     head_not_moved AND names git_add_failed in the halt payload."""
     from unittest.mock import patch
+
     from git import GitCommandError
-    from snodo.infrastructure.tokens import TokenIssuer
     from snodo.coders.base import InPlaceCoderAdapter
     from snodo.core.interfaces import CodeArtifact, FileArtifact
+    from snodo.infrastructure.tokens import TokenIssuer
 
     workspace_mcp = WorkspaceMCP(temp_workspace)
     git_mcp = GitMCP(temp_workspace)
@@ -261,9 +262,10 @@ def test_inplace_adapter_cannot_open_repo_names_cause_in_halt_payload(
     """Driving an in-place adapter where repo cannot be opened halts with
     head_not_moved AND names cannot_open_repo in the halt payload."""
     from unittest.mock import patch
-    from snodo.infrastructure.tokens import TokenIssuer
+
     from snodo.coders.base import InPlaceCoderAdapter
     from snodo.core.interfaces import CodeArtifact, FileArtifact
+    from snodo.infrastructure.tokens import TokenIssuer
 
     workspace_mcp = WorkspaceMCP(temp_workspace)
     git_mcp = GitMCP(temp_workspace)
@@ -309,10 +311,11 @@ def test_inplace_adapter_nothing_staged_names_cause_in_halt_payload(
 ):
     """Driving an in-place adapter where git add stages nothing halts with
     head_not_moved AND names nothing_staged in the halt payload."""
-    from unittest.mock import patch, MagicMock
-    from snodo.infrastructure.tokens import TokenIssuer
+    from unittest.mock import MagicMock, patch
+
     from snodo.coders.base import InPlaceCoderAdapter
     from snodo.core.interfaces import CodeArtifact, FileArtifact
+    from snodo.infrastructure.tokens import TokenIssuer
 
     workspace_mcp = WorkspaceMCP(temp_workspace)
     git_mcp = GitMCP(temp_workspace)

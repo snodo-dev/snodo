@@ -4,9 +4,9 @@ Pins DecisionToolHandler._get_active_session, handle_propose_adjudicate,
 and handle_propose_set_model — the human-gated decision proposal path.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 from snodo.mcp.decision_handlers import DecisionToolHandler
 from snodo.mcp.server import MCPError
 

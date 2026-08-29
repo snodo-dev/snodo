@@ -16,9 +16,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from snodo.infrastructure.memory import AgentMemoryManager, MemoryError
-
 
 # === Fixtures ===
 
@@ -398,9 +396,10 @@ class TestEndToEnd:
 
     def test_checkpointer_with_graph(self, temp_project):
         """Graph execution with checkpointer persists state."""
-        from snodo.cli.commands import load_protocol
-        from snodo.engine.loop import build_protocol_graph
         from snodo.core.interfaces import ValidatorResult
+        from snodo.engine.loop import build_protocol_graph
+
+        from snodo.cli.commands import load_protocol
 
         def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
             return [
@@ -473,9 +472,10 @@ class TestEndToEnd:
 
     def test_messages_contain_task_info(self, temp_project):
         """Messages in state contain task and execution info."""
-        from snodo.cli.commands import load_protocol
-        from snodo.engine.loop import build_protocol_graph
         from snodo.core.interfaces import ValidatorResult
+        from snodo.engine.loop import build_protocol_graph
+
+        from snodo.cli.commands import load_protocol
 
         def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
             return [
@@ -543,9 +543,10 @@ class TestSummaryModel:
 
     def test_summary_field_in_end_to_end(self, temp_project):
         """End-to-end graph state includes summary field."""
-        from snodo.cli.commands import load_protocol
-        from snodo.engine.loop import build_protocol_graph
         from snodo.core.interfaces import ValidatorResult
+        from snodo.engine.loop import build_protocol_graph
+
+        from snodo.cli.commands import load_protocol
 
         def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
             return [

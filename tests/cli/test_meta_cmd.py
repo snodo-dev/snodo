@@ -5,6 +5,7 @@ FILE: tests/cli/test_meta_cmd.py
 
 import json
 from types import SimpleNamespace
+
 import pytest
 import typer
 
@@ -21,7 +22,6 @@ from snodo.cli.commands.meta_cmd import (
     meta_command,
     register,
 )
-
 
 # ============================================================================
 # 1. Registration & Command CLI Entrypoint Tests

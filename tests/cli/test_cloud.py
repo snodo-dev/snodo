@@ -5,8 +5,7 @@ FILE: tests/cli/test_cloud.py
 
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import MagicMock, patch
 
 # ------------------------------------------------------------------#
 # Cloud connect / disconnect / status
@@ -223,8 +222,9 @@ class TestCloudSyncDispatcher:
 
     def test_sync_batches_up_to_50(self):
         """Batch of 75 events → two POST calls (50 + 25)."""
-        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
         from unittest.mock import patch
+
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
 
         events = self._make_events(75)
         audit_log = MagicMock()
@@ -288,8 +288,9 @@ class TestCloudSyncDispatcher:
         assert result["failed"] is False
 
     def test_429_retries_with_retry_after(self):
-        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
         from unittest.mock import patch
+
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
 
         events = self._make_events(3)
         audit_log = MagicMock()
@@ -316,8 +317,9 @@ class TestCloudSyncDispatcher:
         assert mock_post.call_count == 2
 
     def test_5xx_exponential_backoff(self):
-        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
         from unittest.mock import patch
+
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
 
         events = self._make_events(3)
         dispatcher = CloudSyncDispatcher()
@@ -356,8 +358,9 @@ class TestCloudSyncDispatcher:
         assert result == {"synced": 0, "failed": True}
 
     def test_unexpected_exception_never_raises(self):
-        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
         from unittest.mock import PropertyMock
+
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
 
         dispatcher = CloudSyncDispatcher()
         audit_log = MagicMock()
@@ -541,8 +544,9 @@ class TestCloudSyncCommand:
         assert result == 1
 
     def test_sync_corrupt_audit_log_reports_failure(self):
-        from snodo.cli.commands.cloud_cmd import cloud_sync_command
         from snodo.core.interfaces import AuditError
+
+        from snodo.cli.commands.cloud_cmd import cloud_sync_command
 
         with patch("snodo.infrastructure.audit.AuditLog", side_effect=AuditError("corrupt chain")):
             with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher"):

@@ -4,8 +4,7 @@ Catches accidental tool additions, removals, or mode/tool assignment changes.
 """
 
 
-from snodo.mcp.tools import TOOL_REGISTRY, MODE_TOOL_MAP
-
+from snodo.mcp.tools import MODE_TOOL_MAP, TOOL_REGISTRY
 
 EXPECTED_TOOL_KEYS = frozenset({
     "read_file",

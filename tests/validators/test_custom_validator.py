@@ -16,14 +16,12 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
-from snodo.compiler.models import Protocol, Mode, Validator
+from snodo.compiler.models import Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.loop import GraphBuilder
 from snodo.tools.workspace import WorkspaceMCP
-from snodo.validators.context import ValidatorContext, ValidatorBase
+from snodo.validators.context import ValidatorBase, ValidatorContext
 from snodo.validators.registry import ValidatorRegistry, _default_registry
-
 
 # ---------------------------------------------------------------
 # Minimal custom validator — doubles as the "getting started" example

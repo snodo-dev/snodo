@@ -8,7 +8,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from snodo.infrastructure.worktree import (
     WorktreeIsolationError,
     check_spec_paths_exist,

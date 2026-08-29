@@ -1,13 +1,12 @@
 """Tests for provider-specific coder adapters."""
 
 import pytest
-
 from snodo.coders import (
-    resolve_adapter_class,
-    OpenAIAdapter,
     AnthropicAdapter,
     GeminiAdapter,
     LiteLLMAdapter,
+    OpenAIAdapter,
+    resolve_adapter_class,
 )
 
 

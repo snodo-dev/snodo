@@ -15,8 +15,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-
 from snodo.mcp.planner import PlannerMCP
+
 from snodo.cli.commands.plan_run import _run_plan
 from snodo.cli.main import main
 
@@ -72,6 +72,7 @@ disagreement_policy: "unanimous"
 def _create_mock_plan(planner: PlannerMCP, name: str = "feature_plan"):
     """Helper to create a plan with wave files on disk."""
     import json
+
     import yaml
 
     plan_dir = planner.plans_dir / name

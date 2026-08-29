@@ -14,8 +14,8 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from hypothesis import given, strategies as st
-
+from hypothesis import given
+from hypothesis import strategies as st
 from snodo.coders.litellm import LiteLLMAdapter
 
 from tests.strategies import hypothesis_settings

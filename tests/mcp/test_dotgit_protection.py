@@ -13,7 +13,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from snodo.compiler.models import Protocol
 from snodo.mcp.server import MCPError, ProtocolMCPServer
 from snodo.tools.workspace import PathValidationError, WorkspaceMCP

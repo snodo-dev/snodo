@@ -13,10 +13,9 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import TransportSecuritySettings
 from pydantic import AnyHttpUrl
-from starlette.testclient import TestClient
-
 from snodo.infrastructure.jwks import JwksClient
 from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
+from starlette.testclient import TestClient
 
 
 def _make_mcp(

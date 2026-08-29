@@ -234,7 +234,7 @@ class TestArtifactsThreadedToPostValidate:
     """The produced artifacts reach the validator context at post-execute."""
 
     def test_post_validate_passes_artifacts_to_validator(self):
-        from snodo.compiler.models import Protocol, Mode
+        from snodo.compiler.models import Mode, Protocol
         from snodo.engine.loop import GraphBuilder
 
         protocol = Protocol(

@@ -4,12 +4,18 @@ Covers: recoverable vs terminal classification, subtask spawning,
 depth cap recovery_exhausted, routing, and audit events.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
-from snodo.compiler.models import Protocol, Mode, Validator, DisagreementPolicy, ExecutionConfig
-from snodo.engine.loop import GraphBuilder
+import pytest
+from snodo.compiler.models import (
+    DisagreementPolicy,
+    ExecutionConfig,
+    Mode,
+    Protocol,
+    Validator,
+)
 from snodo.core.interfaces import ValidatorResult
+from snodo.engine.loop import GraphBuilder
 
 
 @pytest.fixture
@@ -579,8 +585,8 @@ class TestEvidenceReachesFixTask:
     def test_quality_validator_emits_output_tail(self):
         """The quality validator's blocker justification carries the full tail,
         not a one-line summary."""
-        from snodo.validators.quality import QualityValidator
         from snodo.compiler.models import Validator as V
+        from snodo.validators.quality import QualityValidator
 
         spec = V(validator_id="quality", validator_type="quality",
                  evaluation_phase="post_execute",

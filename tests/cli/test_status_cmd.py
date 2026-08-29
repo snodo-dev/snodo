@@ -6,9 +6,12 @@ FILE: tests/cli/test_status_cmd.py
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
 import pytest
 import typer
 import yaml
+from snodo.infrastructure.session import SessionManager
+from snodo.infrastructure.state import ProjectState, write_state
 
 from snodo.cli.commands.status_cmd import (
     _read_protocol,
@@ -16,9 +19,6 @@ from snodo.cli.commands.status_cmd import (
     register,
     status_command,
 )
-from snodo.infrastructure.session import SessionManager
-from snodo.infrastructure.state import ProjectState, write_state
-
 
 # ============================================================================
 # 1. Registration & Registration Entrypoint Tests

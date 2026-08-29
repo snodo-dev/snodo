@@ -8,12 +8,13 @@ Tests cover:
 """
 
 from unittest.mock import MagicMock
-from snodo.engine.progress import format_elapsed, format_tool_call_summary
+
 from snodo.coders.litellm import LiteLLMAdapter
-from snodo.validators.llm_validator import LLMValidator
-from snodo.validators.context import ValidatorContext
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task
+from snodo.engine.progress import format_elapsed, format_tool_call_summary
+from snodo.validators.context import ValidatorContext
+from snodo.validators.llm_validator import LLMValidator
 
 
 def test_format_elapsed():

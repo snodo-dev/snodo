@@ -11,8 +11,7 @@ import jwt
 import pytest
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
-
-from snodo.infrastructure.jwks import JwksClient, JWKS_KID, OAUTH_ISSUER
+from snodo.infrastructure.jwks import JWKS_KID, OAUTH_ISSUER, JwksClient
 
 
 def _b64url(n: int) -> str:

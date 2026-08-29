@@ -19,10 +19,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-from snodo.mcp.pr import PrMCP, PrError
+from snodo.mcp.pr import PrError, PrMCP
 from snodo.providers.base import CodeHostProvider, ProviderError
-
 
 # === Fixtures ===
 
@@ -270,7 +268,7 @@ class TestServerIntegration:
         assert "merge_pr" in pr_tools
 
     def test_mode_tool_map_pr_all_in_registry(self):
-        from snodo.mcp.server import TOOL_REGISTRY, MODE_TOOL_MAP
+        from snodo.mcp.server import MODE_TOOL_MAP, TOOL_REGISTRY
         for tool in MODE_TOOL_MAP["pr"]:
             assert tool in TOOL_REGISTRY
 
@@ -349,7 +347,7 @@ class TestModeFiltering:
 
     def test_reviewer_pr_tools_wf1_enforced(self, protocol_with_pr, project_dir):
         """Mutating PR tools require validation token."""
-        from snodo.mcp.server import ProtocolMCPServer, MCPError
+        from snodo.mcp.server import MCPError, ProtocolMCPServer
         server = ProtocolMCPServer(protocol_with_pr, project_dir, mode_id="reviewer")
 
         # Mutating tools should fail without token
@@ -378,8 +376,9 @@ class TestDefaultProtocol:
     """Test that the default protocol template includes PR tools for reviewer."""
 
     def test_default_protocol_reviewer_has_pr(self):
-        from snodo.cli.main import DEFAULT_PROTOCOL
         import yaml
+
+        from snodo.cli.main import DEFAULT_PROTOCOL
         data = yaml.safe_load(DEFAULT_PROTOCOL)
         reviewer = None
         for mode in data["modes"]:
@@ -390,8 +389,9 @@ class TestDefaultProtocol:
         assert "pr" in reviewer["tools"]
 
     def test_default_protocol_producer_no_pr(self):
-        from snodo.cli.main import DEFAULT_PROTOCOL
         import yaml
+
+        from snodo.cli.main import DEFAULT_PROTOCOL
         data = yaml.safe_load(DEFAULT_PROTOCOL)
         producer = None
         for mode in data["modes"]:

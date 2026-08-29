@@ -13,12 +13,11 @@ Tests cover:
 """
 
 import json
-import pytest
 from unittest.mock import Mock
 
-from snodo.core.interfaces import TaskSpec, FileArtifact, MCPServer, Coder
+import pytest
 from snodo.coders.base import LLMCallError, ParseError
-
+from snodo.core.interfaces import Coder, FileArtifact, MCPServer, TaskSpec
 
 # ========== BASE / ABC TESTS ==========
 
@@ -52,7 +51,7 @@ def test_registry_contains_mock():
 
 def test_get_coder_litellm():
     """get_coder returns LiteLLMAdapter for 'litellm'."""
-    from snodo.coders import get_coder, LiteLLMAdapter
+    from snodo.coders import LiteLLMAdapter, get_coder
     coder = get_coder("litellm", model="gpt-4")
     assert isinstance(coder, LiteLLMAdapter)
     assert coder.model == "gpt-4"
@@ -60,7 +59,7 @@ def test_get_coder_litellm():
 
 def test_get_coder_mock():
     """get_coder returns MockAdapter for 'mock'."""
-    from snodo.coders import get_coder, MockAdapter
+    from snodo.coders import MockAdapter, get_coder
     coder = get_coder("mock")
     assert isinstance(coder, MockAdapter)
 
@@ -163,15 +162,19 @@ def test_backward_compat_basic_coder_adapter():
 
 def test_backward_compat_mock_coder_adapter():
     """MockCoderAdapter alias works from snodo.coders."""
-    from snodo.coders import MockCoderAdapter, MockAdapter
+    from snodo.coders import MockAdapter, MockCoderAdapter
     assert MockCoderAdapter is MockAdapter
 
 
 def test_backward_compat_agents_adapter_import():
     """Old import path snodo.agents.adapter still works."""
     from snodo.agents.adapter import (
-        BasicCoderAdapter, MockCoderAdapter, create_coder,
-        AdapterError, LLMCallError, ParseError
+        AdapterError,
+        BasicCoderAdapter,
+        LLMCallError,
+        MockCoderAdapter,
+        ParseError,
+        create_coder,
     )
     assert BasicCoderAdapter is not None
     assert MockCoderAdapter is not None
@@ -190,6 +193,7 @@ def test_backward_compat_agents_adapter_new_names():
 def test_backward_compat_create_coder():
     """create_coder factory works from both paths."""
     from snodo.coders import create_coder as new_create
+
     from snodo.agents.adapter import create_coder as old_create
     assert new_create is old_create
 
@@ -240,14 +244,14 @@ def test_mode_coder_config_immutable():
 
 def test_create_coder_returns_litellm():
     """create_coder returns LiteLLMAdapter by default."""
-    from snodo.coders import create_coder, LiteLLMAdapter
+    from snodo.coders import LiteLLMAdapter, create_coder
     coder = create_coder()
     assert isinstance(coder, LiteLLMAdapter)
 
 
 def test_create_coder_returns_mock():
     """create_coder returns MockAdapter when mock=True."""
-    from snodo.coders import create_coder, MockAdapter
+    from snodo.coders import MockAdapter, create_coder
     coder = create_coder(mock=True)
     assert isinstance(coder, MockAdapter)
 

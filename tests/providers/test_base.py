@@ -4,7 +4,6 @@ FILE: tests/providers/test_base.py
 """
 
 import pytest
-
 from snodo.providers.base import CodeHostProvider, ProviderError
 
 

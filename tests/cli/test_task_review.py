@@ -2,8 +2,14 @@
 
 import json
 from types import SimpleNamespace
-from snodo.cli.commands.task_cmd import task_review_command, task_report_command, task_review_pending_command
+
 from snodo.infrastructure.audit import AuditLog
+
+from snodo.cli.commands.task_cmd import (
+    task_report_command,
+    task_review_command,
+    task_review_pending_command,
+)
 
 
 def test_task_review_invalid_verdict(tmp_path, monkeypatch):
@@ -286,6 +292,7 @@ def test_pending_delegates_from_review_command(tmp_path, monkeypatch, capsys):
 def test_pending_spec_excerpt_from_session_halt(tmp_path, monkeypatch, capsys):
     """--pending pulls the one-line spec excerpt from the session halt payload."""
     from pathlib import Path
+
     from snodo.infrastructure.session import SessionManager
     from snodo.infrastructure.state import ProjectState, write_state
 

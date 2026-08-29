@@ -5,8 +5,7 @@ Pure logic — no mocks needed.
 
 
 from snodo.infrastructure.model_discovery import ModelInfo
-from snodo.infrastructure.model_resolver import resolve_model, _normalize
-
+from snodo.infrastructure.model_resolver import _normalize, resolve_model
 
 # === Helpers ===
 

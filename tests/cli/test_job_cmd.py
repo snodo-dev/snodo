@@ -15,21 +15,20 @@ Unit tests for snodo/cli/commands/job_cmd.py covering all code paths:
 """
 
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-from snodo.cli.commands.job_cmd import (
-    job_command,
-    _job_list,
-    _job_status,
-    _job_logs,
-    _job_wait,
-    _job_cancel,
-    _format_time,
-)
 from snodo.jobs import JobError
 
+from snodo.cli.commands.job_cmd import (
+    _format_time,
+    _job_cancel,
+    _job_list,
+    _job_logs,
+    _job_status,
+    _job_wait,
+    job_command,
+)
 
 # === Fixtures ===
 
