@@ -155,7 +155,7 @@ def prepare_environment(
             output = str(exc)
     else:
         import subprocess
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S602 - operator/protocol-authored shell string (explicit_command, protocol.execution.prepare_command, or the literal ECOSYSTEM_RULES defaults such as "npm ci" / "uv sync"); compound commands require a shell. Trusted-repo input per ADR 014.
             command_to_run,
             shell=True,
             cwd=str(target_path),

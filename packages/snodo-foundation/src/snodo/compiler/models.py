@@ -63,7 +63,7 @@ class Severity(str, Enum):
     Ordered: PASS < WARN < BLOCKER.  Explicit comparison operators
     override the str-inherited lexicographic ordering.
     """
-    PASS = "pass"
+    PASS = "pass"  # noqa: S105 - the validators' PASS severity enum value ("Pass"), not a password; tripped by the uppercase "PASS" name
     WARN = "warn"
     BLOCKER = "blocker"
 

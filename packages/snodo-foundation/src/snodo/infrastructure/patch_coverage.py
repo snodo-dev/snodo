@@ -77,8 +77,9 @@ def parse_git_diff_added_lines(
         root_path = Path(project_root).resolve()
         # Find merge-base or fall back
         try:
-            mb_proc = subprocess.run(
-                ["git", "merge-base", resolved_base, "HEAD"],
+            mb_proc = subprocess.run(  # noqa: S603 - argv list, no shell; resolved_base (a ref) is one element, never interpreted
+                ["git",  # noqa: S607 - git resolved from PATH by design
+                 "merge-base", resolved_base, "HEAD"],
                 cwd=str(root_path),
                 capture_output=True,
                 text=True,
@@ -92,8 +93,9 @@ def parse_git_diff_added_lines(
             resolved_base = "HEAD~1"
 
         try:
-            diff_proc = subprocess.run(
-                ["git", "diff", "-U0", f"{resolved_base}..HEAD"],
+            diff_proc = subprocess.run(  # noqa: S603 - argv list, no shell; resolved_base is one element, never interpreted
+                ["git",  # noqa: S607 - git resolved from PATH by design
+                 "diff", "-U0", f"{resolved_base}..HEAD"],
                 cwd=str(root_path),
                 capture_output=True,
                 text=True,
@@ -104,7 +106,8 @@ def parse_git_diff_added_lines(
             else:
                 # Fallback to unstaged / staged working tree diff
                 diff_proc = subprocess.run(
-                    ["git", "diff", "-U0", "HEAD"],
+                    ["git",  # noqa: S607 - git resolved from PATH by design
+                     "diff", "-U0", "HEAD"],
                     cwd=str(root_path),
                     capture_output=True,
                     text=True,
@@ -150,10 +153,10 @@ def parse_coverage_xml(xml_content_or_path: str) -> Dict[str, Dict[int, bool]]:
     """Parse coverage.xml content or file path into file_path -> {line_num: covered_bool}."""
     path_or_xml = Path(xml_content_or_path)
     if path_or_xml.exists() and path_or_xml.is_file():
-        tree = ET.parse(path_or_xml)
+        tree = ET.parse(path_or_xml)  # noqa: S314 - XML is snodo's own pytest-cov coverage.xml emitted by the CI gate, not external input
         root = tree.getroot()
     else:
-        root = ET.fromstring(xml_content_or_path)
+        root = ET.fromstring(xml_content_or_path)  # noqa: S314 - XML is snodo's own pytest-cov coverage.xml emitted by the CI gate, not external input
 
     coverage_map: Dict[str, Dict[int, bool]] = {}
 

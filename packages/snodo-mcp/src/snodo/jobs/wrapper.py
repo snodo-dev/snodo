@@ -72,7 +72,8 @@ def main():
     exit_code = 1
     try:
         cmd = [sys.executable, "-m", "snodo", *argv]
-        proc = subprocess.run(cmd, check=False)
+        proc = subprocess.run(cmd, check=False)  # noqa: S603 - argv list (no shell); argv are single CLI elements from the job's task spec, never shell-interpreted
+
         exit_code = proc.returncode
     except Exception as e:
         print(f"Job wrapper error: {e}", file=sys.stderr)

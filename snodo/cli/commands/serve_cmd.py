@@ -259,7 +259,7 @@ def _check_cloudflared() -> bool:
     """Return True if cloudflared is on PATH."""
     try:
         subprocess.run(
-            ["which", "cloudflared"], capture_output=True, text=True, timeout=5,
+            ["which", "cloudflared"], capture_output=True, text=True, timeout=5,  # noqa: S607 - bare command name resolved from PATH by design; argv list, no shell
         )
         return True
     except (subprocess.SubprocessError, FileNotFoundError):
@@ -285,7 +285,7 @@ def _get_snodo_api_key() -> str:
 def _generate_short_id() -> str:
     """Generate a 6-character random alphanumeric short_id."""
     chars = string.ascii_lowercase + string.digits
-    return "".join(random.choices(chars, k=6))
+    return "".join(random.choices(chars, k=6))  # noqa: S311 - non-secret tunnel short_id (a collision-resistance convenience, not a credential); no cryptographic strength needed
 
 
 def _provision_tunnel(
@@ -513,7 +513,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     if mode != "all":
         mcp_cmd.extend(["--mode", mode])
 
-    mcp_process = subprocess.Popen(
+    mcp_process = subprocess.Popen(  # noqa: S603 - argv list (no shell); protocol path and mode are single argv elements, never interpreted
         mcp_cmd,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
@@ -534,7 +534,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         "cloudflared", "tunnel", "run",
         "--token", tunnel_config["tunnel_token"],
     ]
-    cf_process = subprocess.Popen(
+    cf_process = subprocess.Popen(  # noqa: S603 - argv list (no shell); the tunnel token is one argv element to cloudflared, never shell-interpreted
         cf_cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
