@@ -133,8 +133,8 @@ def _fetch_pr_context(pr_number: int, project_root: str) -> str:
     provider = None
     try:
         provider = detect_provider(project_root)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("PR context: provider detection failed: %s", e)
     pr = PrMCP(project_root, provider=provider)
     parts = [f"--- PR #{pr_number} Review Context ---"]
 
@@ -461,8 +461,11 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                     data = json.loads(task_json_path.read_text())
                     data["task_id"] = task.id
                     task_json_path.write_text(json.dumps(data, indent=2) + "\n")
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.warning(
+                        "Could not persist task_id into %s for retry lookup: %s",
+                        task_json_path, e,
+                    )
 
     # Set up git worktree — shared helper used by BOTH CLI inline and background
     from snodo.infrastructure.worktree import (
@@ -510,8 +513,10 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                     "task_ref": task.id,
                     "reason": str(worktree_failure),
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning(
+                    "Could not record worktree_isolation_failed audit event: %s", e,
+                )
         if checkpointer:
             _close_checkpointer(checkpointer)
         return 1
@@ -621,8 +626,11 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         if session_id and session_manager:
             try:
                 session_manager.save_checkpoint(session_id)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning(
+                    "Could not save session checkpoint %s on exit: %s",
+                    session_id, e,
+                )
         # Clean up worktree, or leave it for inspection.
         if worktree_path_val:
             if preserve_worktree:
@@ -630,8 +638,10 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             else:
                 try:
                     remove_worktree(project_root, task.id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.warning(
+                        "Could not remove worktree for task %s: %s", task.id, e,
+                    )
         # Delete the task branch after the worktree is gone (a branch checked
         # out in a worktree cannot be deleted until that worktree is removed).
         if merged_branch:
@@ -827,7 +837,8 @@ def _setup_memory(project_root: str, protocol: Protocol, mode: str):
         checkpointer = memory_mgr.get_checkpointer()
         thread_config = {"configurable": {"thread_id": agent["thread_id"]}}
         return memory_mgr, checkpointer, thread_config
-    except Exception:
+    except Exception as e:
+        _logger.warning("Memory setup failed; continuing without memory: %s", e)
         return None, None, None
 
 
@@ -838,8 +849,8 @@ def _close_checkpointer(checkpointer) -> None:
     try:
         if hasattr(checkpointer, "conn"):
             checkpointer.conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Could not close checkpointer connection: %s", e)
 
 
 def _build_graph(args, protocol: Protocol, project_root: str, model: str,

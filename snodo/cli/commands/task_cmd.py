@@ -3,6 +3,7 @@
 FILE: snodo/cli/commands/task_cmd.py
 """
 
+import logging
 import sys
 from types import SimpleNamespace
 from typing import Optional
@@ -10,6 +11,8 @@ from typing import Optional
 import typer
 
 from snodo.infrastructure.paths import resolve_project_root
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
@@ -280,8 +283,10 @@ def task_abandon_command(args) -> int:
                     mgr.update_decision(
                         session.session_id, "task_failure", task_failures,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.warning(
+                        "Could not clear failure context for task %s: %s", task_id, e,
+                    )
 
     # Delete the branch
     try:
@@ -299,8 +304,8 @@ def task_abandon_command(args) -> int:
     try:
         from snodo.infrastructure.worktree import remove_worktree
         remove_worktree(project_root, task_id)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Could not remove worktree for task %s: %s", task_id, e)
 
     print("Task abandoned.")
     return 0
@@ -526,8 +531,8 @@ def task_report_command(args) -> int:
         if ts_str:
             try:
                 ev_time = datetime.fromisoformat(ts_str)
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                _logger.debug("Could not parse event timestamp %r: %s", ts_str, e)
 
         if ev_time and ev_time < cutoff:
             continue
@@ -679,8 +684,8 @@ def task_review_pending_command(args) -> int:
                     for tid, payload in halt.items():
                         if isinstance(payload, dict) and payload.get("task_spec"):
                             specs[tid] = payload["task_spec"]
-    except Exception:
-        pass  # Spec excerpt is best-effort; the pending list still works.
+    except Exception as e:
+        _logger.debug("Could not read session halt payloads for spec excerpts: %s", e)
 
     pending = []
     for identity, info in merged.items():

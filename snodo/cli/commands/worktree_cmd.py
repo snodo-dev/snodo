@@ -8,6 +8,7 @@ accumulated and clean it up, and ``prune`` uses the protocol's
 ``execution.branch_ttl_days`` so nothing accumulates silently.
 """
 
+import logging
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -18,6 +19,8 @@ import typer
 
 from snodo.infrastructure.paths import require_project_root
 from snodo.infrastructure.worktree import list_worktrees, remove_worktree, worktree_path
+
+_logger = logging.getLogger(__name__)
 
 COMMAND_NAME = "worktree"
 
@@ -66,8 +69,8 @@ def _default_ttl_days(project_root: str) -> int:
             protocol = load_protocol(protocol_path)
             if protocol is not None:
                 return getattr(protocol.execution, "branch_ttl_days", 7)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.debug("Could not read branch_ttl_days from protocol: %s", e)
     return 7
 
 
@@ -135,8 +138,11 @@ def worktree_remove_command(args) -> int:
         for head in git.repo.heads:
             if head.name.startswith(branch_prefix):
                 git.repo.git.branch("-D", head.name)
-    except Exception:
-        pass  # best-effort; the worktree removal below is the real cleanup
+    except Exception as e:
+        _logger.warning(
+            "Could not delete task branch for %s (worktree removal below is the real cleanup): %s",
+            task_id, e,
+        )
 
     remove_worktree(project_root, task_id)
     print(f"Removed worktree for {task_id}.")
