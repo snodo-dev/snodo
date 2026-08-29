@@ -91,6 +91,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Added `plan` mode to the `greenfield` protocol template (`greenfield.yml`). The `plan` mode grants authoring capabilities (`plan` group: `decompose`, `generate_spec`, `validate_plan`, plus `read` group: `read_file`, `list_files`), `meta-spec` validator, and handoff transition to `decide`. Added `"read"` capability group mapping to `MODE_TOOL_MAP` in `tools.py` and added test suite `tests/mcp/test_plan_mode.py` verifying tool resolution and closed-by-default capability refusal for modes lacking `plan`. (Fixes #128).
+
 - `try`-`except`-`pass` blocks in the `snodo/` root package are eliminated
   (S110). Every site was a place where a failure was swallowed in total
   silence. Each was fixed by logging the exception (`logger.debug`/`warning`

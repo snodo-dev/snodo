@@ -573,4 +573,5 @@ MODE_TOOL_MAP = {
         "approve_pr", "reject_pr", "merge_pr",
     ],
     "plan": ["decompose", "generate_spec", "validate_plan"],
+    "read": ["read_file", "list_files"],
 }

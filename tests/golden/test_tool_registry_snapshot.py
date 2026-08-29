@@ -55,6 +55,7 @@ EXPECTED_MODE_TOOL_MAP_KEYS = frozenset({
     "merge",
     "pr",
     "plan",
+    "read",
 })
 
 
