@@ -3,12 +3,13 @@
 FILE: tests/engine/test_loop_decomposed.py
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
-from snodo.compiler.models import Protocol, Mode, Validator
+
+import pytest
+from snodo.compiler.models import Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.loop import GraphBuilder
-from snodo.infrastructure.config import ConfigLoadError, DEFAULT_MODEL
+from snodo.infrastructure.config import DEFAULT_MODEL, ConfigLoadError
 
 
 @pytest.fixture
@@ -75,7 +76,7 @@ def test_init_api_base_set(sample_protocol):
     cfg = {"model": "openai/gpt-4o"}
     provider_mock = MagicMock()
     provider_mock.base_url = "https://custom-api.openai.com/v1"
-    
+
     class MockConfigManager:
         def load(self):
             return cfg
@@ -85,11 +86,11 @@ def test_init_api_base_set(sample_protocol):
         @staticmethod
         def resolve_api_base(model):
             return "https://custom-api.openai.com/v1"
-            
+
     class MockProviderManager:
         def get_providers(self):
             return {"openai": provider_mock}
-            
+
     with patch("snodo.config.ConfigManager", MockConfigManager), \
          patch("snodo.config.provider_env", return_value=MagicMock(__enter__=lambda s: MockProviderManager(), __exit__=lambda *a: None)):
         builder = GraphBuilder(sample_protocol)
@@ -103,7 +104,7 @@ def test_default_validator_fallback_and_error(sample_protocol, sample_task):
     # 1. Fallback config load error
     builder = GraphBuilder(sample_protocol)
     builder._validator_runner._validator_config = None
-    
+
     with patch("snodo.infrastructure.config.load_llm_config", side_effect=ConfigLoadError("Load failed")):
         results = builder._default_validator(sample_task, sample_protocol.validators, None, "producer")
         assert len(results) == 1
@@ -117,10 +118,10 @@ def test_default_validator_fallback_and_error(sample_protocol, sample_task):
     mock_config.max_tokens = 100
     mock_config.max_tool_turns = 5
     builder2._validator_runner._validator_config = mock_config
-    
+
     mock_dispatch = MagicMock(return_value=ValidatorResult(validator_id="security", severity="pass", justification="OK"))
     builder2._dispatch_one = mock_dispatch
-    
+
     results2 = builder2._default_validator(sample_task, sample_protocol.validators, None, "producer")
     assert len(results2) == 1
     assert results2[0].severity == "pass"
@@ -232,23 +233,23 @@ def test_maybe_respawn_coder_scenarios(sample_protocol):
     """_maybe_respawn_coder: overrides present, absent, or unverified/invalid"""
     builder = GraphBuilder(sample_protocol)
     builder._authorized_decisions = [{"decision": "override"}]
-    
+
     # 1. No decision issuer -> returns early
     builder._decision_issuer = None
     builder._maybe_respawn_coder()
-    
+
     # 2. Overrides present but no coder override
     mock_issuer = MagicMock()
     mock_issuer.find_set_model_overrides.return_value = [{"scope": "validator", "proposed_model": "gpt-4"}]
     builder._decision_issuer = mock_issuer
     builder._maybe_respawn_coder()
-    
+
     # 3. Override present -> respawns coder
     mock_issuer.find_set_model_overrides.return_value = [{"scope": "coder", "proposed_model": "google/gemini-2.5-pro"}]
-    
+
     mock_adapter = MagicMock()
     mock_adapter.model = "google/gemini-2.5-pro"
-    
+
     with patch("snodo.coders.resolve_adapter_class", return_value=MagicMock(return_value=mock_adapter)):
         builder._maybe_respawn_coder()
         assert builder._default_model == "google/gemini-2.5-pro"

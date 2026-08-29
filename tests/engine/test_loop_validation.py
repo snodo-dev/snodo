@@ -3,11 +3,12 @@
 FILE: tests/engine/test_loop_validation.py
 """
 
-import pytest
 from unittest.mock import MagicMock
-from snodo.compiler.models import Protocol, Mode, Validator, DisagreementPolicy
-from snodo.engine.loop import GraphBuilder
+
+import pytest
+from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
+from snodo.engine.loop import GraphBuilder
 
 
 @pytest.fixture
@@ -91,7 +92,7 @@ def test_validate_node_wf3_empty_validators(sample_task):
         ],
         initial_mode="producer"
     )
-    
+
     mock_audit = MagicMock()
     builder = GraphBuilder(protocol_empty_validators, audit_log=mock_audit)
     initial_state = {
@@ -147,10 +148,10 @@ def test_validate_node_escalate_spec_authoring(sample_task):
         disagreement_policy=DisagreementPolicy.UNANIMOUS,
         initial_mode="producer"
     )
-    
+
     def mock_validator_fn(task, validators, shell_mcp, **kwargs):
         return [ValidatorResult(validator_id="security", severity="warn", justification="Warning justification")]
-        
+
     mock_audit = MagicMock()
     builder = GraphBuilder(protocol, validator_fn=mock_validator_fn, audit_log=mock_audit)
     initial_state = {
@@ -215,10 +216,10 @@ def test_validate_node_escalate_with_blocker_still_blocks(sample_task):
         disagreement_policy=DisagreementPolicy.UNANIMOUS,
         initial_mode="producer"
     )
-    
+
     def mock_validator_fn(task, validators, shell_mcp, **kwargs):
         return [ValidatorResult(validator_id="security", severity="blocker", justification="Blocker justification")]
-        
+
     mock_audit = MagicMock()
     builder = GraphBuilder(protocol, validator_fn=mock_validator_fn, audit_log=mock_audit)
     initial_state = {
@@ -267,10 +268,10 @@ def test_validate_node_halt_blocker(sample_task):
         disagreement_policy=DisagreementPolicy.UNANIMOUS,
         initial_mode="producer"
     )
-    
+
     def mock_validator_fn(task, validators, shell_mcp, **kwargs):
         return [ValidatorResult(validator_id="security", severity="blocker", justification="Failed")]
-        
+
     builder = GraphBuilder(protocol, validator_fn=mock_validator_fn)
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
@@ -295,20 +296,20 @@ def test_validate_node_halt_blocker(sample_task):
 def test_execute_node_execution_error(sample_protocol, sample_task):
     """_execute_node: executor_fn raises ExecutionError -> blocks & audits"""
     from snodo.core.interfaces import ExecutionError
-    
+
     mock_audit = MagicMock()
     def mock_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
         raise ExecutionError("Execution failed completely")
-        
+
     builder = GraphBuilder(sample_protocol, executor_fn=mock_executor, audit_log=mock_audit)
-    
+
     # Mock token verification to be True
     builder._token_issuer = MagicMock()
     builder._token_issuer.verify_token.return_value = True
-    
+
     # We must also mock _collect_project_context
     builder._collect_project_context = MagicMock(return_value={})
-    
+
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -324,7 +325,7 @@ def test_execute_node_execution_error(sample_protocol, sample_task):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._execute_node(initial_state)
     assert result["is_blocked"] is True
     assert result["halt_type"] == "internal_error"
@@ -343,13 +344,13 @@ def test_execute_node_success(sample_protocol, sample_task):
     mock_audit = MagicMock()
     def mock_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
         return ["file1.txt"]
-        
+
     builder = GraphBuilder(sample_protocol, executor_fn=mock_executor, audit_log=mock_audit)
-    
+
     builder._token_issuer = MagicMock()
     builder._token_issuer.verify_token.return_value = True
     builder._collect_project_context = MagicMock(return_value={})
-    
+
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -365,7 +366,7 @@ def test_execute_node_success(sample_protocol, sample_task):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._execute_node(initial_state)
     assert result["is_blocked"] is False
     assert result["validation_token"] is None
@@ -409,10 +410,10 @@ def test_post_validate_node_bypassed(sample_task):
         disagreement_policy=DisagreementPolicy.UNANIMOUS,
         initial_mode="producer"
     )
-    
+
     mock_audit = MagicMock()
     builder = GraphBuilder(protocol, audit_log=mock_audit)
-    
+
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -428,7 +429,7 @@ def test_post_validate_node_bypassed(sample_task):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._post_validate_node(initial_state)
     assert result["is_blocked"] is False
     mock_audit.append_event.assert_any_call("post_validate_bypassed", {
@@ -463,12 +464,12 @@ def test_post_validate_node_halt(sample_task):
         disagreement_policy=DisagreementPolicy.UNANIMOUS,
         initial_mode="producer"
     )
-    
+
     def mock_validator_fn(task, validators, shell_mcp, **kwargs):
         return [ValidatorResult(validator_id="security", severity="blocker", justification="Failed post-validation")]
-        
+
     builder = GraphBuilder(protocol, validator_fn=mock_validator_fn)
-    
+
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -484,7 +485,7 @@ def test_post_validate_node_halt(sample_task):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._post_validate_node(initial_state)
     assert result["is_blocked"] is True
     assert result["halt_type"] == "blocked"
@@ -589,6 +590,7 @@ class TestExecutionFailureReporting:
 
     def _builder(self, executor_fn):
         from snodo.infrastructure.tokens import TokenIssuer
+
         from tests.conftest import TEST_SECRET
 
         def passing_validator(task, validators, shell_mcp, **kwargs):

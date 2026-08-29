@@ -32,14 +32,12 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
-
 from snodo.coders import CODER_REGISTRY
 from snodo.coders.mock import MockModelResponse
 from snodo.core.interfaces import Task, TaskSpec
 from snodo.engine.nodes.executor import ExecutorMixin
 from snodo.tools.git import GitMCP
 from snodo.tools.workspace import WorkspaceMCP
-
 
 # ========== fixture helpers ==========
 
@@ -211,10 +209,11 @@ def test_commit_not_happening_is_refused(name, tmp_path):
     diff (Fixes #109). This is the case that occurred in production and that
     #103 exists to catch: HEAD~1..HEAD would resolve to the previous commit
     and the judges would pass."""
-    from snodo.compiler.models import Protocol, Mode, Validator, DisagreementPolicy
+    from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
     from snodo.core.interfaces import ValidatorResult
     from snodo.engine.loop import GraphBuilder
     from snodo.infrastructure.tokens import TokenIssuer
+
     from tests.conftest import TEST_SECRET
 
     workspace = _git_workspace(tmp_path)

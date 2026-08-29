@@ -8,23 +8,23 @@ Verifies that under --mock / use_mock_coder=True:
 - MockAdapter provides a hermetic _completion_fn.
 """
 
-from unittest.mock import MagicMock
 import subprocess
-import pytest
-import litellm
+from unittest.mock import MagicMock
 
-from snodo.engine.loop import build_protocol_graph, _build_completion_fn
-from snodo.compiler.models import Protocol, Mode, Validator
-from snodo.core.interfaces import Task, ValidatorResult
+import litellm
+import pytest
 from snodo.coders.mock import (
     MockAdapter,
-    mock_completion_fn,
     is_mock_completion_fn,
-    set_mock_mode,
     is_mock_mode_active,
+    mock_completion_fn,
+    set_mock_mode,
 )
-from snodo.validators.llm_validator import LLMValidator
+from snodo.compiler.models import Mode, Protocol, Validator
+from snodo.core.interfaces import Task, ValidatorResult
+from snodo.engine.loop import _build_completion_fn, build_protocol_graph
 from snodo.validators.context import ValidatorContext
+from snodo.validators.llm_validator import LLMValidator
 
 
 @pytest.fixture(autouse=True)

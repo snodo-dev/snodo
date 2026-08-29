@@ -8,11 +8,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from snodo.infrastructure.paths import (
+    require_project_root,
     resolve_home,
     resolve_project_root,
-    require_project_root,
 )
 from snodo.paths import derive_task_id
 

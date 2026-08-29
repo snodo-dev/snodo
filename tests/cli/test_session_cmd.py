@@ -4,15 +4,14 @@ FILE: tests/cli/test_session_cmd.py
 """
 
 import json
-from datetime import datetime, UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-
 from snodo.infrastructure.session import SessionManager
-from snodo.cli.commands.session_cmd import session_command
 
+from snodo.cli.commands.session_cmd import session_command
 
 PROJECT_ROOT = "/Users/test/Dev/myproject"
 

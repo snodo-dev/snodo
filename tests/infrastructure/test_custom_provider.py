@@ -3,10 +3,13 @@
 FILE: tests/infrastructure/test_custom_provider.py
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from snodo.config import ConfigManager, ProviderConfig
-from snodo.infrastructure.model_discovery import discover_models, _discover_openai_compatible
+from snodo.infrastructure.model_discovery import (
+    _discover_openai_compatible,
+    discover_models,
+)
 
 
 def test_provider_config_fields():

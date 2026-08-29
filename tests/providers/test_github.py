@@ -6,12 +6,10 @@ Tests GitHubProvider using mocked PyGithub objects.
 """
 
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from snodo.providers.base import ProviderError
-
 
 # === Initialization ===
 

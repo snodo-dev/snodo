@@ -4,11 +4,10 @@ Pins apply_resolution: invalid input, session validation, update path,
 audit logging, and FileNotFoundError propagation.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-
 from snodo.mcp.resolution import apply_resolution
-
 
 # ---------------------------------------------------------------------------
 # Input validation

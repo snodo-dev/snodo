@@ -9,12 +9,16 @@ Tests cover:
 
 import pytest
 from pydantic import ValidationError
-
 from snodo.compiler.models import (
-    Protocol, Mode, Role, Validator, Constraint,
-    DisagreementPolicy, Severity, EVALUATION_PHASES
+    EVALUATION_PHASES,
+    Constraint,
+    DisagreementPolicy,
+    Mode,
+    Protocol,
+    Role,
+    Severity,
+    Validator,
 )
-
 
 # ========== VALID PROTOCOL EXAMPLES ==========
 
@@ -348,10 +352,10 @@ def test_yaml_roundtrip():
         "validators": [{"validator_id": "v1", "validator_type": "security"}],
         "initial_mode": "m1"
     }
-    
+
     protocol = Protocol(**protocol_dict)
     assert protocol.protocol_id == "yaml_test"
-    
+
     # Convert back to dict
     output_dict = protocol.model_dump()
     assert output_dict["protocol_id"] == "yaml_test"

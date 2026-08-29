@@ -7,13 +7,12 @@ Covers the fail-closed severity model:
 """
 
 from unittest.mock import MagicMock, patch
+
 import pytest
-
+from snodo.compiler.models import DisagreementPolicy, Validator
 from snodo.core.interfaces import Task, ValidatorResult
-from snodo.compiler.models import Validator, DisagreementPolicy
+from snodo.engine.policy import PolicyAction, PolicyEvaluator
 from snodo.engine.validators import ValidatorRunner
-from snodo.engine.policy import PolicyEvaluator, PolicyAction
-
 
 # ---------------------------------------------------------------------------
 # Helpers

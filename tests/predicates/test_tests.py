@@ -5,8 +5,8 @@ FILE: tests/predicates/test_tests.py (Task 7.8)
 
 from unittest.mock import Mock
 
-from snodo.predicates.tests import TestsExistForModified
 from snodo.predicates.base import PredicateContext
+from snodo.predicates.tests import TestsExistForModified
 
 
 def test_pre_execute_passes_trivially():

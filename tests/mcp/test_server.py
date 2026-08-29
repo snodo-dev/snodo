@@ -8,26 +8,29 @@ and the FastMCP transport bridge (build_fastmcp_server, tool handler delegation)
 
 import inspect
 import json
-import tempfile
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import ValidatorResult
 from snodo.infrastructure.tokens import TokenIssuer
 from snodo.mcp.server import (
-    ProtocolMCPServer,
-    MCPError,
-    TOOL_REGISTRY,
     MODE_TOOL_MAP,
+    TOOL_REGISTRY,
+    MCPError,
+    ProtocolMCPServer,
 )
-from snodo.mcp.transport import build_fastmcp_server, _make_tool_handler, _build_instructions
-from tests.mcp._validate_helpers import validation_passing
+from snodo.mcp.transport import (
+    _build_instructions,
+    _make_tool_handler,
+    build_fastmcp_server,
+)
 
+from tests.mcp._validate_helpers import validation_passing
 
 # === Fixtures ===
 
@@ -420,8 +423,9 @@ class TestCLIServe:
 
     def test_serve_stdio_runs_fastmcp(self, initialized_project):
         """Test serve with stdio transport creates FastMCP and runs it."""
-        from snodo.cli.main import serve_command
         import argparse
+
+        from snodo.cli.main import serve_command
 
         args = argparse.Namespace(
             protocol=".snodo/protocol.yml",
@@ -475,6 +479,7 @@ class TestSoloProtocolTools:
     def test_solo_protocol_exposes_merge_tools(self, project_dir):
         """Solo protocol producer gets merge_branch and delete_branch tools."""
         import yaml
+
         from snodo.cli.commands import SOLO_PROTOCOL
 
         data = yaml.safe_load(SOLO_PROTOCOL)
@@ -496,6 +501,7 @@ class TestSoloProtocolTools:
     def test_team_protocol_producer_no_merge_tools(self, project_dir):
         """Team protocol producer does NOT get merge_branch / delete_branch."""
         import yaml
+
         from snodo.cli.commands import TEAM_PROTOCOL
 
         data = yaml.safe_load(TEAM_PROTOCOL)
@@ -810,8 +816,9 @@ class TestDeriveProjectRoot:
 
     def test_relative_path_resolves(self):
         """Relative protocol path is resolved to absolute."""
-        from snodo.cli.commands.serve_cmd import _derive_project_root
         import os
+
+        from snodo.cli.commands.serve_cmd import _derive_project_root
 
         with tempfile.TemporaryDirectory() as tmpdir:
             snodo_dir = Path(tmpdir) / ".snodo"
@@ -836,9 +843,10 @@ class TestServePortAndProxy:
 
     def test_port_passed_to_fastmcp_settings(self):
         """Port arg is set on mcp.settings.port before run."""
-        from snodo.cli.commands.serve_cmd import _run_server
-        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_server
 
         mock_protocol = MagicMock()
         mock_protocol.protocol_id = "test"
@@ -866,10 +874,11 @@ class TestServePortAndProxy:
 
     def test_forwarded_allow_ips_set_for_sse(self):
         """FORWARDED_ALLOW_IPS is set for sse transport."""
-        from snodo.cli.commands.serve_cmd import _run_server
-        from unittest.mock import MagicMock, patch
-        from types import SimpleNamespace
         import os
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_server
 
         mock_protocol = MagicMock()
         mock_protocol.protocol_id = "test"
@@ -896,10 +905,11 @@ class TestServePortAndProxy:
 
     def test_forwarded_allow_ips_set_for_streamable_http(self):
         """FORWARDED_ALLOW_IPS is set for streamable-http transport."""
-        from snodo.cli.commands.serve_cmd import _run_server
-        from unittest.mock import MagicMock, patch
-        from types import SimpleNamespace
         import os
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_server
 
         mock_protocol = MagicMock()
         mock_protocol.protocol_id = "test"
@@ -925,10 +935,11 @@ class TestServePortAndProxy:
 
     def test_no_forwarded_allow_ips_for_stdio(self):
         """FORWARDED_ALLOW_IPS is NOT set for stdio transport."""
-        from snodo.cli.commands.serve_cmd import _run_server
-        from unittest.mock import MagicMock, patch
-        from types import SimpleNamespace
         import os
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_server
 
         mock_protocol = MagicMock()
         mock_protocol.protocol_id = "test"
@@ -954,9 +965,10 @@ class TestServePortAndProxy:
 
     def test_hint_printed_for_sse(self, capsys):
         """DIY remote access hint printed for sse transport."""
-        from snodo.cli.commands.serve_cmd import _run_server
-        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_server
 
         mock_protocol = MagicMock()
         mock_protocol.protocol_id = "test"
@@ -986,9 +998,10 @@ class TestServePortAndProxy:
 
     def test_no_hint_for_stdio(self, capsys):
         """No DIY hint printed for stdio transport."""
-        from snodo.cli.commands.serve_cmd import _run_server
-        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_server
 
         mock_protocol = MagicMock()
         mock_protocol.protocol_id = "test"
@@ -1024,7 +1037,10 @@ class TestTunnelProvisioning:
 
     def test_tunnel_config_saves_no_client_secret(self, tmp_path):
         """tunnel.json never includes client_secret."""
-        from snodo.cli.commands.serve_cmd import _save_tunnel_config, _load_tunnel_config
+        from snodo.cli.commands.serve_cmd import (
+            _load_tunnel_config,
+            _save_tunnel_config,
+        )
 
         project_root = str(tmp_path)
         config = {
@@ -1060,8 +1076,9 @@ class TestTunnelProvisioning:
 
     def test_check_cloudflared_missing(self):
         """When cloudflared is not on PATH, returns False."""
-        from snodo.cli.commands.serve_cmd import _check_cloudflared
         from unittest.mock import patch
+
+        from snodo.cli.commands.serve_cmd import _check_cloudflared
 
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError
@@ -1069,8 +1086,9 @@ class TestTunnelProvisioning:
 
     def test_check_cloudflared_found(self):
         """When cloudflared is on PATH, returns True."""
-        from snodo.cli.commands.serve_cmd import _check_cloudflared
         from unittest.mock import patch
+
+        from snodo.cli.commands.serve_cmd import _check_cloudflared
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value.returncode = 0
@@ -1082,9 +1100,10 @@ class TestTunnelRunErrors:
 
     def test_no_cloudflared_shows_install_instructions(self):
         """Missing cloudflared prints install help and returns 1."""
-        from snodo.cli.commands.serve_cmd import _run_tunnel
-        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_tunnel
 
         mock_protocol = MagicMock()
         args = SimpleNamespace(
@@ -1099,9 +1118,10 @@ class TestTunnelRunErrors:
 
     def test_no_snodo_account_shows_signup(self):
         """No API key shows signup URL and returns 1."""
-        from snodo.cli.commands.serve_cmd import _run_tunnel
-        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_tunnel
 
         mock_protocol = MagicMock()
         args = SimpleNamespace(
@@ -1117,9 +1137,10 @@ class TestTunnelRunErrors:
 
     def test_rotate_is_no_op(self):
         """--rotate is now a no-op that prints a message."""
-        from snodo.cli.commands.serve_cmd import _run_tunnel
-        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_tunnel
 
         mock_protocol = MagicMock()
         args = SimpleNamespace(
@@ -1136,9 +1157,10 @@ class TestTunnelRunErrors:
 
     def test_first_run_provisions_and_starts_services(self):
         """First run provisions tunnel, saves config, starts subprocesses."""
-        from snodo.cli.commands.serve_cmd import _run_tunnel
-        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_tunnel
 
         mock_protocol = MagicMock()
         args = SimpleNamespace(
@@ -1178,9 +1200,10 @@ class TestTunnelRunErrors:
 
     def test_subsequent_run_uses_stored_config(self):
         """Subsequent run with tunnel.json skips provisioning."""
-        from snodo.cli.commands.serve_cmd import _run_tunnel
-        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_tunnel
 
         mock_protocol = MagicMock()
         args = SimpleNamespace(
@@ -1218,9 +1241,10 @@ class TestTunnelRunErrors:
 
     def test_rotate_is_no_op_ignores_tunnel_config(self):
         """--rotate is a no-op regardless of existing tunnel config."""
-        from snodo.cli.commands.serve_cmd import _run_tunnel
-        from unittest.mock import MagicMock, patch
         from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_tunnel
 
         mock_protocol = MagicMock()
         args = SimpleNamespace(

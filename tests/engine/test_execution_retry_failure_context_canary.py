@@ -5,12 +5,13 @@ FILE: tests/engine/test_execution_retry_failure_context_canary.py
 
 from types import SimpleNamespace
 
-from snodo.cli.commands.run_cmd import _retry_task
 from snodo.core.interfaces import ExecutionError, Task
 from snodo.engine.loop import GraphBuilder
 from snodo.infrastructure.session import SessionManager
 from snodo.infrastructure.state import ProjectState, write_state
 from snodo.protocols import _TEMPLATE_PROTOCOLS
+
+from snodo.cli.commands.run_cmd import _retry_task
 
 
 def test_execution_fault_retry_canary(tmp_path, monkeypatch):

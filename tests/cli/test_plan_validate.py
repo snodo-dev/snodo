@@ -4,11 +4,11 @@ FILE: tests/cli/test_plan_validate.py
 """
 
 import json
-import yaml
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from snodo.cli.commands.plan_cmd import plan_command
 from snodo.cli.commands.plan_run import _run_plan

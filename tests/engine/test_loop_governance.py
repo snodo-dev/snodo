@@ -3,11 +3,12 @@
 FILE: tests/engine/test_loop_governance.py
 """
 
-import pytest
 from unittest.mock import patch
+
+import pytest
 from snodo.compiler.models import Protocol
-from snodo.engine.loop import GraphBuilder
 from snodo.core.interfaces import Task
+from snodo.engine.loop import GraphBuilder
 
 
 @pytest.fixture
@@ -47,7 +48,7 @@ def sample_task():
 def test_governance_max_iterations_exceeded(sample_protocol, sample_task):
     """Test that iteration > 50 blocks the loop with max_iterations halt type."""
     builder = GraphBuilder(sample_protocol)
-    
+
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -63,7 +64,7 @@ def test_governance_max_iterations_exceeded(sample_protocol, sample_task):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._governance_node(initial_state)
     assert result["is_blocked"] is True
     assert result["halt_type"] == "max_iterations"
@@ -74,7 +75,7 @@ def test_governance_wave_classification_failure(sample_protocol, sample_task, ca
     """Test wave-classification exception path printing '[WAVE] classification failed'."""
     builder = GraphBuilder(sample_protocol)
     builder._project_root = "/fake/project"
-    
+
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -90,10 +91,10 @@ def test_governance_wave_classification_failure(sample_protocol, sample_task, ca
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     with patch("snodo.infrastructure.wave_registry.WaveRegistry.classify_task", side_effect=Exception("mocked classification error")):
         result = builder._governance_node(initial_state)
-        
+
     captured = capsys.readouterr()
     assert "[WAVE] classification failed for task_001: mocked classification error" in captured.err
     # The flow type and wave_id should remain unchanged (None) on error

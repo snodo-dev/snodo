@@ -1,13 +1,12 @@
-import pytest
-from unittest.mock import patch
-from pathlib import Path
-import tempfile
 import shutil
 import subprocess
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
+import pytest
 from snodo.compiler.models import Protocol
-from snodo.mcp.server import ProtocolMCPServer, MCPError
-
+from snodo.mcp.server import MCPError, ProtocolMCPServer
 
 FULL_PROTOCOL_DATA = {
     "protocol_id": "test",

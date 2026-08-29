@@ -11,9 +11,7 @@ import sys
 from unittest.mock import patch
 
 import pytest
-
-from snodo.jobs.wrapper import _save_state, _load_state, main
-
+from snodo.jobs.wrapper import _load_state, _save_state, main
 
 # === _save_state / _load_state Tests ===
 
