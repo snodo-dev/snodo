@@ -43,6 +43,17 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `try`-`except`-`pass` blocks in the `snodo/` root package are eliminated
+  (S110). Every site was a place where a failure was swallowed in total
+  silence. Each was fixed by logging the exception (`logger.debug`/`warning`
+  with the exception), handling it, or deliberately suppressing a named
+  exception type with a comment. One genuine swallowed defect was found and
+  fixed: `install_cmd._audit_global` silently dropped failed audit appends —
+  an audit write that fails is part of the attestation and must not be silent;
+  it now logs a warning. The dashboard cockpit's cursor-positioning sites
+  suppress `RowDoesNotExist` (a filtered-out row simply leaves the cursor
+  put). (Fixes #125).
+
 - `snodo task review --pending` lists every merged unit with no review record,
   newest first, with unit id, task id, branch, merge timestamp and a one-line
   spec excerpt. `--json` emits the machine-readable form

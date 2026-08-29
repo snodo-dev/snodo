@@ -3,6 +3,7 @@
 FILE: snodo/cli/commands/install_cmd.py (Task 7.14)
 """
 
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +19,8 @@ from snodo.mcp.installer import (
     purge_project_state, scan_orphans, remove_orphans,
     derive_project_name, get_claude_config_path,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 def register(app: typer.Typer) -> None:
@@ -251,12 +254,16 @@ def _uninstall_orphans(skip_prompt: bool) -> int:
 
 
 def _audit_global(event_type: str, data: dict) -> None:
-    """Write an audit event to the global ~/.snodo/audit.log."""
+    """Write an audit event to the global ~/.snodo/audit.log.
+
+    An audit append that fails must not be silent: the event is part of the
+    attestation. Log a warning so the failure is visible.
+    """
     try:
         from snodo.infrastructure.paths import resolve_home
         from snodo.infrastructure.audit import AuditLog
         log_path = str(resolve_home() / "audit.log")
         log = AuditLog(log_path)
         log.append_event(event_type, data)
-    except Exception:
-        pass  # Audit is best-effort for install/uninstall surface
+    except Exception as e:
+        _logger.warning("Could not record audit event %s: %s", event_type, e)

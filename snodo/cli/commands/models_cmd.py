@@ -4,16 +4,17 @@ FILE: snodo/cli/commands/models_cmd.py
 """
 
 import json
+import logging
 import os
 import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
-
+import typer
 from snodo.infrastructure.paths import resolve_home
 
-import typer
+_logger = logging.getLogger(__name__)
 
 
 def register(app: typer.Typer) -> None:
@@ -60,8 +61,8 @@ def _read_cache(provider: str) -> Optional[list]:
         fetched_at = data.get("fetched_at", 0)
         if time.time() - fetched_at < _CACHE_TTL:
             return data.get("models", [])
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.debug("Could not read model cache %s: %s", path, e)
     return None
 
 
@@ -224,8 +225,8 @@ def _apply_discrete_filters(
                     val = info.get(f"{cost_type}_cost_per_token")
                     if val is not None:
                         return float(val) * 1_000_000
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("Could not look up cost for %s: %s", m.get("full_string", ""), e)
             return None
 
         # 2. Max output cost (excludes unknown output cost)

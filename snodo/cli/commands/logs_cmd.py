@@ -3,11 +3,13 @@
 FILE: snodo/cli/commands/logs_cmd.py
 """
 
+import logging
 import sys
 import time
 from types import SimpleNamespace
-
 import typer
+
+_logger = logging.getLogger(__name__)
 
 
 def register(app: typer.Typer) -> None:
@@ -99,8 +101,8 @@ def _show_job(project_root: str, job_id: str, args) -> int:
                                     else:
                                         break
                                 break
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            _logger.debug("Could not read job status while following logs: %s", e)
                         time.sleep(0.5)
         except KeyboardInterrupt:
             pass
@@ -132,16 +134,16 @@ def _show_recon(project_root: str, recon_id: str) -> int:
         try:
             with open(state_path) as f:
                 state = json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning("Could not read recon state %s: %s", state_path, e)
 
     results = []
     if results_path.exists():
         try:
             with open(results_path) as f:
                 results = json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.warning("Could not read recon results %s: %s", results_path, e)
 
     query = state.get("query", "—")
     status = state.get("status", "—")
