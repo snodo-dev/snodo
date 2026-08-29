@@ -76,8 +76,8 @@ class OpenCodeCLIAdapter(InPlaceCoderAdapter):
         project_root = str(self._workspace)
 
         try:
-            proc = subprocess.run(
-                [
+            proc = subprocess.run(  # noqa: S603 - argv list (no shell); the prompt is one argv element and the model flags are controlled — never shell-interpreted
+                [  # noqa: S607 - opencode resolved from PATH by design (experimental host coder, ADR 027/030)
                     "opencode", "run",
                     "--dir", project_root,
                     "--dangerously-skip-permissions",

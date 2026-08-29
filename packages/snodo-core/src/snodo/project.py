@@ -45,8 +45,9 @@ def resolve_project_id(project_root: str) -> tuple[str, str]:
     """Resolves project identity by checking git remotes or generating a local UUID."""
     try:
         # Try origin remote first
-        res = subprocess.run(
-            ["git", "-C", project_root, "remote", "get-url", "origin"],
+        res = subprocess.run(  # noqa: S603 - argv list, no shell; fully controlled flags; project_root passed as a single -C element
+            ["git",  # noqa: S607 - git resolved from PATH by design; operator's host tool, trusted repo per ADR 014
+             "-C", project_root, "remote", "get-url", "origin"],
             capture_output=True,
             text=True,
             check=False
@@ -56,8 +57,9 @@ def resolve_project_id(project_root: str) -> tuple[str, str]:
             return (normalize_remote_url(url), "remote")
 
         # Fallback to the first remote listed
-        res_list = subprocess.run(
-            ["git", "-C", project_root, "remote"],
+        res_list = subprocess.run(  # noqa: S603 - argv list, no shell; fully controlled flags
+            ["git",  # noqa: S607 - git resolved from PATH by design
+             "-C", project_root, "remote"],
             capture_output=True,
             text=True,
             check=False
@@ -65,8 +67,9 @@ def resolve_project_id(project_root: str) -> tuple[str, str]:
         if res_list.returncode == 0:
             remotes = [r.strip() for r in res_list.stdout.splitlines() if r.strip()]
             if remotes:
-                res_url = subprocess.run(
-                    ["git", "-C", project_root, "remote", "get-url", remotes[0]],
+                res_url = subprocess.run(  # noqa: S603 - argv list, no shell; remote name passed as a single element, never interpreted
+                    ["git",  # noqa: S607 - git resolved from PATH by design
+                     "-C", project_root, "remote", "get-url", remotes[0]],
                     capture_output=True,
                     text=True,
                     check=False

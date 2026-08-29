@@ -119,7 +119,7 @@ class ShellMCP:
         
         # Execute tests
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603 - argv list (no shell) from the ALLOWED_COMMANDS whitelist; test_path/extra_args are single argv elements, never interpreted
                 command,
                 cwd=str(self.project_root),
                 capture_output=True,
