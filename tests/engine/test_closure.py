@@ -10,9 +10,7 @@ completion evidence (``is_complete``), never the mere absence of a failure.
 from unittest.mock import MagicMock
 
 import pytest
-
 from snodo.engine.closure import run_to_closure
-
 
 ROOT_TASK = {"id": "t1", "spec": "build thing", "depth": 0, "parent_task_ref": None}
 

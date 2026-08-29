@@ -6,6 +6,9 @@ FILE: tests/cli/test_sandbox_run.py
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from snodo.jobs import JobError
+from snodo.sandbox import SandboxError
+
 from snodo.cli.commands.sandbox_run import (
     _build_sandbox_command,
     _build_sandbox_env,
@@ -13,9 +16,6 @@ from snodo.cli.commands.sandbox_run import (
     _run_in_sandbox,
     _submit_background_job,
 )
-from snodo.jobs import JobError
-from snodo.sandbox import SandboxError
-
 
 # ============================================================================
 # 1. Helper Functions Unit Tests

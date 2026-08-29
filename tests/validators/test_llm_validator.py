@@ -10,11 +10,9 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task
 from snodo.validators.llm_validator import LLMValidator
-
 
 # === Fixtures ===
 
@@ -408,7 +406,7 @@ class TestEngineLoopIntegration:
 
     def _build_protocol(self):
         """Build a minimal protocol with pre_execute validators."""
-        from snodo.compiler.models import Protocol, Mode
+        from snodo.compiler.models import Mode, Protocol
         return Protocol(
             protocol_id="test",
             name="Test Protocol",
@@ -443,8 +441,8 @@ class TestEngineLoopIntegration:
 
     def test_llm_validator_used_when_completion_fn_available(self):
         """When coder has _completion_fn, LLM validators should be used."""
-        from snodo.engine.loop import GraphBuilder
         from snodo.coders.mock import MockAdapter
+        from snodo.engine.loop import GraphBuilder
 
         protocol = self._build_protocol()
 
@@ -466,8 +464,8 @@ class TestEngineLoopIntegration:
 
     def test_error_when_no_completion_fn_but_has_criteria(self):
         """When coder has no _completion_fn but validator has criteria, should return operational error."""
-        from snodo.engine.loop import GraphBuilder
         from snodo.coders.mock import MockAdapter
+        from snodo.engine.loop import GraphBuilder
 
         protocol = self._build_protocol()
         coder = MockAdapter()
@@ -487,9 +485,9 @@ class TestEngineLoopIntegration:
 
     def test_stub_used_for_empty_criteria(self):
         """Validators without criteria should use stub even if LLM available."""
-        from snodo.engine.loop import GraphBuilder
-        from snodo.compiler.models import Protocol, Mode
         from snodo.coders.mock import MockAdapter
+        from snodo.compiler.models import Mode, Protocol
+        from snodo.engine.loop import GraphBuilder
 
         protocol = Protocol(
             protocol_id="test",
@@ -532,8 +530,8 @@ class TestEngineLoopIntegration:
 
     def test_llm_failure_returns_error_in_loop(self):
         """LLM failure in loop should return error (operational fault), not crash."""
-        from snodo.engine.loop import GraphBuilder
         from snodo.coders.mock import MockAdapter
+        from snodo.engine.loop import GraphBuilder
 
         protocol = self._build_protocol()
 
@@ -553,8 +551,8 @@ class TestEngineLoopIntegration:
 
     def test_multiple_validators_all_evaluated(self):
         """Multiple validators should each get their own LLM call."""
-        from snodo.engine.loop import GraphBuilder
         from snodo.coders.mock import MockAdapter
+        from snodo.engine.loop import GraphBuilder
 
         protocol = self._build_protocol()
 
@@ -579,8 +577,8 @@ class TestEngineLoopIntegration:
 
     def test_model_passed_from_coder(self):
         """LLMValidator should use the coder's model."""
-        from snodo.engine.loop import GraphBuilder
         from snodo.coders.mock import MockAdapter
+        from snodo.engine.loop import GraphBuilder
 
         protocol = self._build_protocol()
 

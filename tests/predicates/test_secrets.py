@@ -5,8 +5,8 @@ FILE: tests/predicates/test_secrets.py (Task 7.8)
 
 from unittest.mock import Mock
 
-from snodo.predicates.secrets import NoSecretsInDiff
 from snodo.predicates.base import PredicateContext
+from snodo.predicates.secrets import NoSecretsInDiff
 
 
 def test_pre_execute_passes_trivially():

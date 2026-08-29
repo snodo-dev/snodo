@@ -6,18 +6,18 @@ global storage at ~/.snodo/sessions/ (configurable via sessions_dir).
 
 import json
 import time
-from datetime import datetime, UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from snodo.infrastructure.session import (
-    SessionManager, Checkpoint, SessionError,
+    Checkpoint,
+    SessionError,
+    SessionManager,
     _mode_prefix,
 )
 from snodo.project import get_project_id
-
 
 # ========== FIXTURES ==========
 

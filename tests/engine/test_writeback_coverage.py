@@ -8,11 +8,10 @@ No source changes — stubs only.
 import json
 from unittest.mock import MagicMock
 
-from snodo.compiler.models import Protocol, Mode, Validator
+from snodo.compiler.models import Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.loop import GraphBuilder
 from snodo.engine.state import LoopState
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -413,11 +412,15 @@ class TestAutoWriteClassificationEdges:
 class TestMaybeRespawnCoderJobId:
     def test_job_id_propagated_to_fresh_coder(self):
         """Line 247: when builder._job_id is set, it's copied to fresh_coder."""
-        from snodo.infrastructure.decisions import SigningDecisionRecordIssuer, VerifyOnlyDecisionRecordIssuer
-        from cryptography.hazmat.primitives.asymmetric import rsa
-        from cryptography.hazmat.backends import default_backend
-        import jwt
         from datetime import datetime, timezone
+
+        import jwt
+        from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from snodo.infrastructure.decisions import (
+            SigningDecisionRecordIssuer,
+            VerifyOnlyDecisionRecordIssuer,
+        )
 
         priv = rsa.generate_private_key(65537, 2048, backend=default_backend())
         SigningDecisionRecordIssuer(priv)

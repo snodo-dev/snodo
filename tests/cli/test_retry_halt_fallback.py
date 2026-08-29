@@ -6,11 +6,11 @@ FILE: tests/cli/test_retry_halt_fallback.py
 from types import SimpleNamespace
 
 import pytest
-
-from snodo.cli.commands.run_cmd import _retry_task
 from snodo.infrastructure.session import SessionManager
 from snodo.infrastructure.state import ProjectState, write_state
 from snodo.protocols import _TEMPLATE_PROTOCOLS
+
+from snodo.cli.commands.run_cmd import _retry_task
 
 
 def _setup(tmp_path, monkeypatch):

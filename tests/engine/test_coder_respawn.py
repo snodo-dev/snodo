@@ -9,8 +9,8 @@ from snodo.engine.loop import GraphBuilder
 
 
 def _make_signing_issuer():
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.asymmetric import rsa
     from snodo.infrastructure.decisions import SigningDecisionRecordIssuer
     priv = rsa.generate_private_key(65537, 2048, backend=default_backend())
     return SigningDecisionRecordIssuer(priv), priv.public_key()
@@ -22,8 +22,9 @@ def _make_verify_issuer(pub):
 
 
 def _make_set_model_jwt(signing_issuer, scope, proposed_model, task_ref="t1"):
-    import jwt
     from datetime import datetime, timezone
+
+    import jwt
     payload = {
         "iat": datetime.now(timezone.utc),
         "task_ref": task_ref,
@@ -38,7 +39,7 @@ def _make_set_model_jwt(signing_issuer, scope, proposed_model, task_ref="t1"):
 
 def _make_builder(coder=None):
     """Create a minimal GraphBuilder with a mock coder."""
-    from snodo.compiler.models import Protocol, Mode, Validator
+    from snodo.compiler.models import Mode, Protocol, Validator
     protocol = Protocol(
         protocol_id="test", name="Test",
         modes=[Mode(mode_id="producer", name="Producer", tools=[], validators=[])],

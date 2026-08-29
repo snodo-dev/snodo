@@ -1,11 +1,11 @@
 """Tests for tool-loop fail-loud behavior (W4-03)."""
 
 import json
-import pytest
 from unittest.mock import MagicMock
 
-from snodo.coders.litellm import LiteLLMAdapter
+import pytest
 from snodo.coders.base import ParseError
+from snodo.coders.litellm import LiteLLMAdapter
 
 
 def _assert_tool_call_ids_answered(messages):

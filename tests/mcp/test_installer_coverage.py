@@ -13,18 +13,16 @@ import os
 from unittest.mock import patch
 
 import pytest
-
 from snodo.compiler.models import Protocol
 from snodo.mcp.installer import (
     get_claude_config_path,
     install,
+    purge_project_state,
+    remove_orphans,
+    scan_orphans,
     uninstall,
     uninstall_all,
-    purge_project_state,
-    scan_orphans,
-    remove_orphans,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

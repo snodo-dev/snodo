@@ -7,11 +7,10 @@ type coercion, and out-of-range rejection.
 import json
 from pathlib import Path
 
-import yaml
 import pytest
+import yaml
 
-from experiments.config import load_config, write_snapshot, format_config
-
+from experiments.config import format_config, load_config, write_snapshot
 
 _VALID_CONFIG = {
     "selection": {

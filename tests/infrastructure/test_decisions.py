@@ -13,17 +13,16 @@ Acceptance criteria:
 - Human-gated: no MCP tool for autonomous minting
 """
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
+from snodo.core.interfaces import ValidatorResult
 from snodo.infrastructure.decisions import (
-    SigningDecisionRecordIssuer,
-    VerifyOnlyDecisionRecordIssuer,
     DecisionError,
     DecisionInvalidSeverityError,
+    SigningDecisionRecordIssuer,
+    VerifyOnlyDecisionRecordIssuer,
 )
-from snodo.core.interfaces import ValidatorResult
-
 
 # === Fixture helpers ===
 
@@ -37,8 +36,8 @@ def _make_result(validator_id: str, severity: str, justification: str = "") -> V
 
 def _gen_keypair():
     """Generate a throwaway RSA keypair for tests."""
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.asymmetric import rsa
     private = rsa.generate_private_key(
         public_exponent=65537, key_size=2048, backend=default_backend(),
     )
@@ -200,8 +199,8 @@ class TestPolicyDecisionRecordConsultation:
     """Policy evaluator consults DecisionRecords after blocker HALT."""
 
     def _make_evaluator(self, issuer=None):
-        from snodo.engine.policy import PolicyEvaluator
         from snodo.compiler.models import DisagreementPolicy
+        from snodo.engine.policy import PolicyEvaluator
         return PolicyEvaluator(decision_issuer=issuer), DisagreementPolicy.UNANIMOUS
 
     def test_warn_without_decision_escalates(self):
@@ -420,8 +419,8 @@ class TestINV3Regression:
     """The old severity-blind resolution_override path is gone."""
 
     def test_loop_state_has_no_resolution_override(self):
-        from snodo.engine.loop import LoopState
         from snodo.core.interfaces import Task
+        from snodo.engine.loop import LoopState
 
         task = Task(id="t1", spec="test")
         state = LoopState(task=task, current_mode="dev")
@@ -429,8 +428,8 @@ class TestINV3Regression:
 
     def test_policy_blocker_before_decision_consultation(self):
         """Verify the order: blocker HALT runs before any DecisionRecord logic."""
-        from snodo.engine.policy import PolicyEvaluator, PolicyAction
         from snodo.compiler.models import DisagreementPolicy
+        from snodo.engine.policy import PolicyAction, PolicyEvaluator
         from snodo.infrastructure.decisions import SigningDecisionRecordIssuer
 
         priv, _ = _gen_keypair()

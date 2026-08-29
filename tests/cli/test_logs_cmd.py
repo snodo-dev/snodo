@@ -5,8 +5,8 @@ FILE: tests/cli/test_logs_cmd.py
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from snodo.cli.commands.logs_cmd import logs_command
 
@@ -25,19 +25,19 @@ def test_logs_watch_drain_loop(capsys):
             mock_manager = MagicMock()
             # mock_manager._job_dir returns the correct dir
             mock_manager._job_dir.return_value = job_dir
-            
+
             # To verify the drain loop runs, we append "line3\n" to the file
             # during the mock get_status call and return completed.
             def mock_get_status(job_id):
                 log_file.write_text("line1\nline2\nline3\n")
                 return {"status": "completed"}
-            
+
             mock_manager.get_status.side_effect = mock_get_status
 
             with patch("snodo.jobs.JobManager", return_value=mock_manager):
                 args = SimpleNamespace(composite_id="j_test", watch=True)
                 result = logs_command(args)
-                
+
                 assert result == 0
                 out = capsys.readouterr().out
                 # First pass reads "line1" and "line2".

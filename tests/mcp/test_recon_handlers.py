@@ -4,9 +4,9 @@ Pins ReconToolHandler.handle_recon, handle_get_recon_status,
 handle_get_recon_results — all success + guard branches.
 """
 
-import pytest
 from unittest.mock import patch
 
+import pytest
 from snodo.mcp.recon_handlers import ReconToolHandler
 from snodo.mcp.server import MCPError
 from snodo.recon import ReconError

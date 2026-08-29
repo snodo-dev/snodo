@@ -10,9 +10,9 @@ halt: its type, phase, and the blocking validators' cited criteria.
 
 from snodo.core.interfaces import ValidatorResult
 from snodo.engine.nodes.writeback import (
-    _build_hint,
-    _build_blocker_hint,
     _blocker_fix_targets,
+    _build_blocker_hint,
+    _build_hint,
 )
 
 

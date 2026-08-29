@@ -4,7 +4,6 @@ FILE: tests/providers/test_local.py
 """
 
 import pytest
-
 from snodo.providers.base import ProviderError
 from snodo.providers.local import LocalProvider
 

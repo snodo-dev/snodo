@@ -12,10 +12,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from snodo.coders.litellm import LiteLLMAdapter
-from snodo.validators.llm_validator import LLMValidator
-from snodo.validators.context import ValidatorContext
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task
+from snodo.validators.context import ValidatorContext
+from snodo.validators.llm_validator import LLMValidator
 
 
 def _make_job_dir(project_root: str, job_id: str) -> Path:

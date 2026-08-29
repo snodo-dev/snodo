@@ -36,8 +36,8 @@ class TestMissingTemplateValidators:
         assert missing_template_validators(template_protocol("2+n")) == []
 
     def test_bespoke_protocol_reports_nothing_missing(self):
+        from snodo.compiler.models import Mode, Protocol, Validator
         from snodo.protocols import missing_template_validators
-        from snodo.compiler.models import Protocol, Mode, Validator
 
         bespoke = Protocol(
             protocol_id="my-custom",
@@ -52,8 +52,8 @@ class TestMissingTemplateValidators:
 
 class TestOutOfDateNotice:
     def test_notice_printed_when_acceptance_missing(self, capsys):
-        from snodo.protocols import template_protocol
         from snodo.compiler.models import Protocol
+        from snodo.protocols import template_protocol
 
         solo = template_protocol("solo")
         data = solo.model_dump()

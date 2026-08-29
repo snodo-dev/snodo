@@ -7,29 +7,27 @@ entry generation, config read/write, merging, uninstall, CLI integration.
 """
 
 import json
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import yaml
-
 from snodo.compiler.models import Protocol
 from snodo.mcp.installer import (
-    sanitize_project_name,
     derive_project_name,
-    get_claude_config_path,
     generate_mcp_entries,
-    read_claude_config,
-    write_claude_config,
+    get_claude_config_path,
     install,
-    uninstall,
-    uninstall_all,
     print_install_result,
     print_uninstall_result,
+    read_claude_config,
+    sanitize_project_name,
+    uninstall,
+    uninstall_all,
+    write_claude_config,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -523,9 +521,9 @@ class TestCLIInstall:
         assert f"snodo-{pname}-reviewer" in data["mcpServers"]
 
     def test_serve_install_with_project_name(self, initialized_project, config_path):
-        from snodo.cli.main import main
-
         import os
+
+        from snodo.cli.main import main
         original_cwd = os.getcwd()
         try:
             os.chdir(initialized_project)
@@ -562,9 +560,9 @@ class TestCLIInstall:
         assert f"snodo-{pname}-producer" in data["mcpServers"]
 
     def test_serve_install_missing_protocol(self, temp_dir, config_path):
-        from snodo.cli.main import main
-
         import os
+
+        from snodo.cli.main import main
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
@@ -575,9 +573,9 @@ class TestCLIInstall:
         assert result == 1
 
     def test_serve_install_success_message(self, initialized_project, config_path, capsys):
-        from snodo.cli.main import main
-
         import os
+
+        from snodo.cli.main import main
         original_cwd = os.getcwd()
         try:
             os.chdir(initialized_project)
@@ -612,9 +610,9 @@ class TestCLIInstall:
         assert str(proto.resolve()) in producer["args"][2]
 
     def test_serve_install_unsupported_os(self, initialized_project):
-        from snodo.cli.main import main
-
         import os
+
+        from snodo.cli.main import main
         original_cwd = os.getcwd()
         try:
             os.chdir(initialized_project)
@@ -810,9 +808,9 @@ class TestCLIUninstall:
         return sanitize_project_name(project_dir.name)
 
     def test_uninstall_removes_entries(self, initialized_project, config_path):
-        from snodo.cli.main import main
-
         import os
+
+        from snodo.cli.main import main
         original_cwd = os.getcwd()
         try:
             os.chdir(initialized_project)
@@ -848,9 +846,9 @@ class TestCLIUninstall:
         assert f"snodo-{pname}-reviewer" in data["mcpServers"]
 
     def test_uninstall_with_project_name(self, initialized_project, config_path):
-        from snodo.cli.main import main
-
         import os
+
+        from snodo.cli.main import main
         original_cwd = os.getcwd()
         try:
             os.chdir(initialized_project)
@@ -915,9 +913,9 @@ class TestCLIUninstall:
         assert len(data["mcpServers"]) == 1
 
     def test_uninstall_success_message(self, initialized_project, config_path, capsys):
-        from snodo.cli.main import main
-
         import os
+
+        from snodo.cli.main import main
         original_cwd = os.getcwd()
         try:
             os.chdir(initialized_project)

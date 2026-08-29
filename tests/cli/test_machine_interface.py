@@ -17,14 +17,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from snodo.cli.json_output import (
-    SCHEMA_VERSION,
-    schema_name,
-    OUTCOME_EXIT_CODES,
-    EXIT_PASS,
     EXIT_BLOCKER,
     EXIT_ESCALATE,
-    EXIT_VALIDATOR_ERROR,
     EXIT_INTERNAL_ERROR,
+    EXIT_PASS,
+    EXIT_VALIDATOR_ERROR,
+    OUTCOME_EXIT_CODES,
+    SCHEMA_VERSION,
+    schema_name,
 )
 
 
@@ -59,9 +59,10 @@ class TestSchema:
 
 class TestStatusJson:
     def test_status_json_parses_and_carries_schema(self, tmp_path, capsys):
-        from snodo.cli.commands.status_cmd import status_command
         from snodo.infrastructure.session import SessionManager
-        from snodo.infrastructure.state import write_state, ProjectState
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        from snodo.cli.commands.status_cmd import status_command
 
         snodo_dir = tmp_path / ".snodo"
         snodo_dir.mkdir()
@@ -101,8 +102,9 @@ class TestStatusJson:
 
 class TestModeJson:
     def test_mode_show_json(self, tmp_path, capsys):
+        from snodo.infrastructure.state import ProjectState, write_state
+
         from snodo.cli.commands.mode_cmd import mode_command
-        from snodo.infrastructure.state import write_state, ProjectState
 
         snodo_dir = tmp_path / ".snodo"
         snodo_dir.mkdir()
@@ -131,8 +133,9 @@ class TestModeJson:
 
 class TestSessionJson:
     def test_session_show_json(self, tmp_path, capsys):
-        from snodo.cli.commands.session_cmd import session_command
         from snodo.infrastructure.session import SessionManager
+
+        from snodo.cli.commands.session_cmd import session_command
 
         sessions_dir = tmp_path / "sessions"
         sessions_dir.mkdir()
@@ -159,8 +162,9 @@ class TestSessionJson:
         }
 
     def test_session_show_json_missing(self, tmp_path, capsys):
-        from snodo.cli.commands.session_cmd import session_command
         from snodo.infrastructure.session import SessionManager
+
+        from snodo.cli.commands.session_cmd import session_command
 
         sessions_dir = tmp_path / "sessions"
         sessions_dir.mkdir()
@@ -185,9 +189,10 @@ class TestSessionJson:
 
 class TestTaskJson:
     def test_task_show_json(self, tmp_path, capsys):
-        from snodo.cli.commands.task_cmd import task_show_command
         from snodo.infrastructure.session import SessionManager
-        from snodo.infrastructure.state import write_state, ProjectState
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        from snodo.cli.commands.task_cmd import task_show_command
 
         snodo_dir = tmp_path / ".snodo"
         snodo_dir.mkdir()
@@ -222,8 +227,9 @@ class TestTaskJson:
 
 class TestWorktreeJson:
     def test_worktree_list_json(self, tmp_path, capsys):
-        from snodo.cli.commands.worktree_cmd import worktree_list_command
         from snodo.infrastructure.worktree import create_worktree
+
+        from snodo.cli.commands.worktree_cmd import worktree_list_command
 
         root = tmp_path / "proj"
         root.mkdir()

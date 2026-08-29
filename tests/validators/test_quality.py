@@ -11,21 +11,17 @@ Covers:
 - Protocol: get_validators_by_phase()
 """
 
-import tempfile
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-from snodo.compiler.models import (
-    Protocol, Mode, Validator, DisagreementPolicy
-)
+from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 from snodo.core.interfaces import ValidatorResult
 from snodo.engine.loop import GraphBuilder, LoopStage, build_protocol_graph
 from snodo.validators.quality import QualityValidator
-
 
 # === Fixtures ===
 
@@ -804,9 +800,9 @@ class TestQualityDispatch:
 
     def test_quality_validator_records_verification_executed_audit_event(self, project_dir):
         """QualityValidator appends a verification_executed audit event."""
+        from snodo.core.interfaces import Task
         from snodo.infrastructure.audit import AuditLog
         from snodo.validators.context import ValidatorContext
-        from snodo.core.interfaces import Task
 
         log_path = Path(project_dir) / "audit.log"
         audit_log = AuditLog(str(log_path))
@@ -846,8 +842,8 @@ class TestQualityDispatch:
         repository — under pytest -n auto concurrent workers then append to that
         file simultaneously, corrupt the hash chain, and break the next run.
         """
-        from snodo.validators.context import ValidatorContext
         from snodo.core.interfaces import Task
+        from snodo.validators.context import ValidatorContext
 
         # Run from an arbitrary cwd (a stand-in for "some other repository").
         monkeypatch.chdir(tmp_path)

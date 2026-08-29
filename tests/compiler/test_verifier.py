@@ -8,18 +8,26 @@ Tests cover:
 """
 
 import pytest
-
 from snodo.compiler.models import (
-    Protocol, Mode, Validator, Constraint, Role,
-    DisagreementPolicy
+    Constraint,
+    DisagreementPolicy,
+    Mode,
+    Protocol,
+    Role,
+    Validator,
 )
 from snodo.compiler.verifier import (
-    ProtocolVerifier, verify_protocol, VerificationResult,
+    ProtocolVerifier,
     ProtocolWellFormednessError,
-    WF1Violation, WF2Violation, WF3Violation, WF4Violation, WF5Violation,
-    WellFormednessViolation
+    VerificationResult,
+    WellFormednessViolation,
+    WF1Violation,
+    WF2Violation,
+    WF3Violation,
+    WF4Violation,
+    WF5Violation,
+    verify_protocol,
 )
-
 
 # ========== HELPER FUNCTIONS ==========
 
@@ -40,7 +48,7 @@ def test_minimal_valid_protocol_passes():
     """Test that a minimal valid protocol passes all checks."""
     protocol = create_minimal_valid_protocol()
     result = verify_protocol(protocol)
-    
+
     assert result.passed
     assert len(result.errors) == 0
     assert bool(result) is True  # Test __bool__ method
@@ -94,7 +102,7 @@ def test_full_valid_protocol_passes():
             expression="valid()"
         )]
     )
-    
+
     result = verify_protocol(protocol)
     assert result.passed
     assert len(result.errors) == 0
@@ -105,7 +113,7 @@ def test_verifier_class_interface():
     protocol = create_minimal_valid_protocol()
     verifier = ProtocolVerifier(protocol)
     result = verifier.verify()
-    
+
     assert result.passed
     assert isinstance(result, VerificationResult)
 
@@ -258,7 +266,7 @@ def test_wf2_unique_roles_pass():
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="m1"
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     verifier.check_wf2()  # Should not raise
 
@@ -277,7 +285,7 @@ def test_wf2_duplicate_roles_fail():
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="m1"
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     with pytest.raises(WF2Violation, match="Duplicate role IDs"):
         verifier.check_wf2()
@@ -293,7 +301,7 @@ def test_wf2_no_roles_pass():
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="m1"
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     verifier.check_wf2()  # Should not raise
 
@@ -315,7 +323,7 @@ def test_wf3_all_validators_defined_pass():
         ],
         initial_mode="m1"
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     verifier.check_wf3()  # Should not raise
 
@@ -331,7 +339,7 @@ def test_wf3_undefined_validator_fails():
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="m1"
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     with pytest.raises(WF3Violation, match="undefined validator"):
         verifier.check_wf3()
@@ -346,7 +354,7 @@ def test_wf3_invalid_initial_mode_fails():
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="nonexistent"
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     with pytest.raises(WF3Violation, match="Initial mode.*not defined"):
         verifier.check_wf3()
@@ -364,7 +372,7 @@ def test_wf4_unanimous_with_one_validator_passes():
         initial_mode="m1",
         disagreement_policy=DisagreementPolicy.UNANIMOUS
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     verifier.check_wf4()  # Should not raise
 
@@ -382,7 +390,7 @@ def test_wf4_majority_with_two_validators_passes():
         initial_mode="m1",
         disagreement_policy=DisagreementPolicy.MAJORITY
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     verifier.check_wf4()  # Should not raise
 
@@ -397,7 +405,7 @@ def test_wf4_majority_with_one_validator_fails():
         initial_mode="m1",
         disagreement_policy=DisagreementPolicy.MAJORITY
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     with pytest.raises(WF4Violation, match="MAJORITY policy requires at least 2"):
         verifier.check_wf4()
@@ -416,7 +424,7 @@ def test_wf4_quorum_with_few_validators_warns():
         initial_mode="m1",
         disagreement_policy=DisagreementPolicy.QUORUM
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     verifier.check_wf4()
     assert len(verifier.warnings) > 0
@@ -504,7 +512,7 @@ def test_wf5_unique_constraints_pass():
             expression="global()"
         )]
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     verifier.check_wf5()  # Should not raise
 
@@ -533,7 +541,7 @@ def test_wf5_duplicate_constraint_ids_fail():
             expression="global()"
         )]
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     with pytest.raises(WF5Violation, match="Duplicate constraint IDs"):
         verifier.check_wf5()
@@ -553,7 +561,7 @@ def test_wf5_empty_expression_fails():
             expression=""  # Empty expression
         )]
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     with pytest.raises(WF5Violation, match="empty expression"):
         verifier.check_wf5()
@@ -573,7 +581,7 @@ def test_wf5_whitespace_expression_fails():
             expression="   "  # Whitespace only
         )]
     )
-    
+
     verifier = ProtocolVerifier(protocol)
     with pytest.raises(WF5Violation, match="empty expression"):
         verifier.check_wf5()
@@ -593,7 +601,7 @@ def test_verify_catches_multiple_violations():
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="m1"
     )
-    
+
     result = verify_protocol(protocol)
     assert not result.passed
     assert len(result.errors) > 0
@@ -605,7 +613,7 @@ def test_verification_result_bool_conversion():
     # Passing result
     result = VerificationResult(passed=True, errors=[], warnings=[])
     assert bool(result) is True
-    
+
     # Failing result
     result = VerificationResult(passed=False, errors=["error"], warnings=[])
     assert bool(result) is False
@@ -628,7 +636,7 @@ def test_verify_stops_on_first_error():
         validators=[Validator(validator_id="v1", validator_type="security")],
         initial_mode="nonexistent"  # WF3
     )
-    
+
     result = verify_protocol(protocol)
     assert not result.passed
     # Should catch first violation and stop

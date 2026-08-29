@@ -46,8 +46,8 @@ def test_list_names():
 
 def test_default_registry_is_populated():
     import snodo.predicates.scope  # noqa: F401
-    import snodo.predicates.tests  # noqa: F401
     import snodo.predicates.secrets  # noqa: F401
+    import snodo.predicates.tests  # noqa: F401
     from snodo.predicates.registry import _default_registry
 
     names = set(_default_registry.list_names())

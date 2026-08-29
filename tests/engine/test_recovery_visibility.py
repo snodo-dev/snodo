@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock
-from snodo.compiler.models import Protocol, Mode, DisagreementPolicy, Validator
+
+from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.loop import GraphBuilder, LoopState
 

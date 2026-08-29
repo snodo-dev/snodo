@@ -10,7 +10,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-
 from snodo.infrastructure.worktree import create_worktree, worktree_path
 
 

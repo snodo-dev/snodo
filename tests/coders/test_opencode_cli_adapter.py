@@ -17,11 +17,9 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-
-from snodo.core.interfaces import TaskSpec
 from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
+from snodo.core.interfaces import TaskSpec
 from snodo.tools.workspace import WorkspaceMCP
-
 
 # ========== WORKSPACE PARAM RESOLUTION ==========
 

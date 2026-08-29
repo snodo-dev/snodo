@@ -128,15 +128,15 @@ def test_privileged_path_reaches_private_key():
 
 def test_verify_only_issuer_raises_on_mint():
     """VerifyOnlyDecisionRecordIssuer raises DecisionMintRejectedError on mint."""
-    from snodo.infrastructure.decisions import (
-        VerifyOnlyDecisionRecordIssuer,
-        DecisionMintRejectedError,
-    )
-    from snodo.core.interfaces import ValidatorResult
+    from cryptography.hazmat.backends import default_backend
 
     # Generate throwaway keypair for test
     from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.hazmat.backends import default_backend
+    from snodo.core.interfaces import ValidatorResult
+    from snodo.infrastructure.decisions import (
+        DecisionMintRejectedError,
+        VerifyOnlyDecisionRecordIssuer,
+    )
     private = rsa.generate_private_key(65537, 2048, backend=default_backend())
     public = private.public_key()
 
@@ -153,14 +153,13 @@ def test_verify_only_issuer_raises_on_mint():
 
 def test_verify_only_issuer_can_verify():
     """VerifyOnlyDecisionRecordIssuer can verify records signed by a signing issuer."""
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from snodo.core.interfaces import ValidatorResult
     from snodo.infrastructure.decisions import (
         SigningDecisionRecordIssuer,
         VerifyOnlyDecisionRecordIssuer,
     )
-    from snodo.core.interfaces import ValidatorResult
-
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.hazmat.backends import default_backend
     private = rsa.generate_private_key(65537, 2048, backend=default_backend())
     public = private.public_key()
 
@@ -177,14 +176,13 @@ def test_verify_only_issuer_can_verify():
 
 def test_tampered_rs256_record_fails():
     """RS256 signature tampering is detected."""
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from snodo.core.interfaces import ValidatorResult
     from snodo.infrastructure.decisions import (
         SigningDecisionRecordIssuer,
         VerifyOnlyDecisionRecordIssuer,
     )
-    from snodo.core.interfaces import ValidatorResult
-
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.hazmat.backends import default_backend
     private = rsa.generate_private_key(65537, 2048, backend=default_backend())
     public = private.public_key()
 
@@ -216,14 +214,13 @@ def test_keypair_generation_idempotent():
 
 def test_signing_issuer_raises_on_blocker():
     """Minting for blocker severity raises DecisionInvalidSeverityError."""
-    from snodo.infrastructure.decisions import (
-        SigningDecisionRecordIssuer,
-        DecisionInvalidSeverityError,
-    )
-    from snodo.core.interfaces import ValidatorResult
-
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from snodo.core.interfaces import ValidatorResult
+    from snodo.infrastructure.decisions import (
+        DecisionInvalidSeverityError,
+        SigningDecisionRecordIssuer,
+    )
     private = rsa.generate_private_key(65537, 2048, backend=default_backend())
 
     issuer = SigningDecisionRecordIssuer(private)
@@ -236,10 +233,9 @@ def test_signing_issuer_raises_on_blocker():
 def test_hs256_legacy_record_returned_none():
     """An HS256-signed DecisionRecord fails verification (retired scheme)."""
     import jwt
-    from snodo.infrastructure.decisions import VerifyOnlyDecisionRecordIssuer
-
-    from cryptography.hazmat.primitives.asymmetric import rsa
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from snodo.infrastructure.decisions import VerifyOnlyDecisionRecordIssuer
     private = rsa.generate_private_key(65537, 2048, backend=default_backend())
 
     # Sign with HS256 (old scheme)

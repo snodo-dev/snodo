@@ -9,22 +9,21 @@ Covers:
 - Internal state writes (audit log, session state, project state) succeed unimpeded.
 """
 
-import tempfile
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
-
-from snodo.tools.workspace import WorkspaceMCP, PathValidationError
-from snodo.tools.git import GitMCP
-from snodo.core.interfaces import TaskSpec, FileArtifact
 from snodo.coders.litellm import LiteLLMAdapter
 from snodo.coders.mock import MockAdapter
 from snodo.coders.opencode_adapter import OpenCodeAdapter
 from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
+from snodo.core.interfaces import FileArtifact, TaskSpec
 from snodo.infrastructure.audit import AuditLog
 from snodo.infrastructure.session import SessionManager
-from snodo.infrastructure.state import write_state, read_state, ProjectState
+from snodo.infrastructure.state import ProjectState, read_state, write_state
+from snodo.tools.git import GitMCP
+from snodo.tools.workspace import PathValidationError, WorkspaceMCP
 
 
 @pytest.fixture

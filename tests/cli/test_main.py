@@ -5,39 +5,44 @@ FILE: tests/cli/test_main.py
 Simplified tests that work with the integrated MCP system.
 """
 
-import pytest
-import tempfile
 import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 import yaml
-import subprocess
+from snodo.compiler.models import Protocol
 
 from snodo.cli.main import (
-    main, load_protocol, DEFAULT_PROTOCOL, SOLO_PROTOCOL, TWO_PLUS_N_PROTOCOL,
+    DEFAULT_PROTOCOL,
     INTENT_PROTOCOL,
+    SOLO_PROTOCOL,
+    TWO_PLUS_N_PROTOCOL,
+    load_protocol,
+    main,
 )
-from snodo.compiler.models import Protocol
 
 
 @pytest.fixture
 def temp_project_dir():
     """Create a temporary project directory for testing."""
     temp_dir = tempfile.mkdtemp()
-    
+
     # Initialize git repo
     subprocess.run(["git", "init"], cwd=temp_dir, capture_output=True, check=True)
     subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=temp_dir, capture_output=True, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=temp_dir, capture_output=True, check=True)
-    
+
     # Initial commit
     readme = Path(temp_dir) / "README.md"
     readme.write_text("test")
     subprocess.run(["git", "add", "README.md"], cwd=temp_dir, capture_output=True, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=temp_dir, capture_output=True, check=True)
-    
+
     original_cwd = Path.cwd()
-    
+
     try:
         import os
         os.chdir(temp_dir)
@@ -130,7 +135,7 @@ def test_init_piped_keeps_default(temp_project_dir):
     with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         with patch('sys.stdin.isatty', return_value=False):
             result = main()
-    
+
     assert result == 0
     from snodo.infrastructure.state import read_state
     state = read_state(str(temp_project_dir))
@@ -207,7 +212,7 @@ def test_load_protocol_success(initialized_project):
     """Test loading valid protocol file."""
     protocol_file = initialized_project / ".snodo" / "protocol.yml"
     protocol = load_protocol(protocol_file)
-    
+
     assert protocol is not None
     assert protocol.protocol_id == "default"
 
@@ -222,7 +227,7 @@ def test_load_protocol_invalid_yaml(temp_project_dir):
     """Test loading invalid YAML."""
     protocol_file = temp_project_dir / "bad.yml"
     protocol_file.write_text("invalid: yaml: content: [\n")
-    
+
     protocol = load_protocol(protocol_file)
     assert protocol is None
 
@@ -231,7 +236,7 @@ def test_load_protocol_invalid_structure(temp_project_dir):
     """Test loading YAML with invalid protocol structure."""
     protocol_file = temp_project_dir / "bad.yml"
     protocol_file.write_text("protocol_id: test\n# missing required fields\n")
-    
+
     protocol = load_protocol(protocol_file)
     assert protocol is None
 
@@ -243,7 +248,7 @@ def test_run_missing_protocol(temp_project_dir):
     (temp_project_dir / ".snodo").mkdir(exist_ok=True)
     with patch('sys.argv', ['snodo', 'run', 'test task', '--mock']):
         result = main()
-    
+
     assert result == 1
 
 
@@ -256,7 +261,7 @@ def test_run_with_valid_protocol(initialized_project):
     """
     with patch('sys.argv', ['snodo', 'run', 'test task', '--mock']):
         result = main()
-    
+
     assert result == 1
 
 
@@ -264,7 +269,7 @@ def test_run_creates_files(initialized_project):
     """Test snodo run exits with block (warn stubs under unanimous)."""
     with patch('sys.argv', ['snodo', 'run', 'add hello function', '--mock']):
         result = main()
-    
+
     assert result == 1
 
 
@@ -273,10 +278,10 @@ def test_run_custom_protocol_path(temp_project_dir):
     (temp_project_dir / ".snodo").mkdir(exist_ok=True)
     custom_protocol = temp_project_dir / "custom.yml"
     custom_protocol.write_text(DEFAULT_PROTOCOL + "\n")
-    
+
     with patch('sys.argv', ['snodo', 'run', 'test task', '--protocol', str(custom_protocol), '--mock']):
         result = main()
-    
+
     assert result == 1
 
 
@@ -286,11 +291,11 @@ def test_end_to_end_init_and_run(temp_project_dir):
     with patch('sys.argv', ['snodo', 'init', '--template', 'team', '--yes']):
         result = main()
     assert result == 0
-    
+
     # Step 2: Verify structure
     assert (temp_project_dir / ".snodo").exists()
     assert (temp_project_dir / ".snodo" / "protocol.yml").exists()
-    
+
     # Step 3: Run task — warn stubs under unanimous → ESCALATE → exit 1
     with patch('sys.argv', ['snodo', 'run', 'implement feature X', '--mock']):
         result = main()
@@ -304,7 +309,7 @@ def test_multiple_tasks_in_sequence(initialized_project):
         "implement feature B",
         "implement feature C"
     ]
-    
+
     for task_desc in tasks:
         with patch('sys.argv', ['snodo', 'run', task_desc, '--mock']):
             result = main()
@@ -317,7 +322,7 @@ def test_no_command_shows_help():
     """Test running snodo without command shows help."""
     with patch('sys.argv', ['snodo']):
         result = main()
-    
+
     assert result == 0
 
 
@@ -368,17 +373,17 @@ def test_run_with_empty_description(initialized_project):
     """Test running with empty task description."""
     with patch('sys.argv', ['snodo', 'run', '', '--mock']):
         result = main()
-    
+
     assert result == 1
 
 
 def test_run_with_special_characters(initialized_project):
     """Test task description with special characters."""
     special_desc = "Implement feature with $pecial @#! characters"
-    
+
     with patch('sys.argv', ['snodo', 'run', special_desc, '--mock']):
         result = main()
-    
+
     assert result == 1
 
 
@@ -673,8 +678,8 @@ global_constraints: []
 
 def test_shipped_solo_protocol_passes_verification():
     """SOLO_PROTOCOL template passes all WF1-WF5 checks."""
-    from snodo.compiler.verifier import verify_protocol
     import yaml
+    from snodo.compiler.verifier import verify_protocol
     data = yaml.safe_load(SOLO_PROTOCOL)
     protocol = Protocol(**data)
     result = verify_protocol(protocol)
@@ -683,8 +688,8 @@ def test_shipped_solo_protocol_passes_verification():
 
 def test_shipped_default_protocol_passes_verification():
     """DEFAULT_PROTOCOL template passes all WF1-WF5 checks."""
-    from snodo.compiler.verifier import verify_protocol
     import yaml
+    from snodo.compiler.verifier import verify_protocol
     data = yaml.safe_load(DEFAULT_PROTOCOL)
     protocol = Protocol(**data)
     result = verify_protocol(protocol)
@@ -786,8 +791,8 @@ def test_intent_protocol_constant_is_valid():
 
 def test_shipped_intent_protocol_passes_verification():
     """INTENT_PROTOCOL template passes all WF1-WF5 checks."""
-    from snodo.compiler.verifier import verify_protocol
     import yaml
+    from snodo.compiler.verifier import verify_protocol
     data = yaml.safe_load(INTENT_PROTOCOL)
     protocol = Protocol(**data)
     result = verify_protocol(protocol)

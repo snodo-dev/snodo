@@ -9,9 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 import snodo.recon as recon_module
-from snodo.recon import ReconManager, ReconState, ReconResult, ReconError
+from snodo.recon import ReconError, ReconManager, ReconResult, ReconState
 
 
 @pytest.fixture
@@ -278,7 +277,7 @@ class TestResolveAgentModel:
 
 class TestReadOnlyTools:
     def test_read_file_tool_surface(self, tmp_path):
-        from snodo.recon import _READ_FILE_TOOL, _LIST_FILES_TOOL
+        from snodo.recon import _LIST_FILES_TOOL, _READ_FILE_TOOL
 
         assert _READ_FILE_TOOL["function"]["name"] == "read_file"
         assert _LIST_FILES_TOOL["function"]["name"] == "list_files"
@@ -300,6 +299,7 @@ class TestReconDefectFixes:
     def test_recon_completes_through_cli_entry_point(self, project_with_snodo, capsys, monkeypatch):
         from types import SimpleNamespace
         from unittest.mock import MagicMock
+
         from snodo.cli.commands.recon_cmd import recon_command
 
         mock_response = MagicMock()
@@ -320,6 +320,7 @@ class TestReconDefectFixes:
 
     def test_api_base_reaches_completion_call_when_configured(self, project_with_snodo):
         from unittest.mock import MagicMock
+
         from snodo.recon import _call_agent
 
         mock_response = MagicMock()

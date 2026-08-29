@@ -99,18 +99,18 @@ def sample_task():
 def temp_workspace():
     """Create a temporary workspace directory."""
     temp_dir = tempfile.mkdtemp()
-    
+
     # Initialize git repo
     subprocess.run(["git", "init"], cwd=temp_dir, capture_output=True, check=True)
     subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=temp_dir, capture_output=True, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=temp_dir, capture_output=True, check=True)
-    
+
     # Initial commit
     readme = Path(temp_dir) / "README.md"
     readme.write_text("test")
     subprocess.run(["git", "add", "README.md"], cwd=temp_dir, capture_output=True, check=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=temp_dir, capture_output=True, check=True)
-    
+
     yield temp_dir
     shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -123,7 +123,7 @@ def test_graph_builder_initialization(sample_protocol, temp_workspace):
     git_mcp = GitMCP(temp_workspace)
     shell_mcp = ShellMCP(temp_workspace)
     coder = MockCoderAdapter()
-    
+
     builder = GraphBuilder(
         sample_protocol,
         workspace_mcp=workspace_mcp,
@@ -131,7 +131,7 @@ def test_graph_builder_initialization(sample_protocol, temp_workspace):
         shell_mcp=shell_mcp,
         coder=coder
     )
-    
+
     assert builder.protocol == sample_protocol
     assert builder.workspace_mcp == workspace_mcp
     assert builder.git_mcp == git_mcp
@@ -143,7 +143,7 @@ def test_build_graph_structure(sample_protocol, temp_workspace):
     """Test build_graph() creates correct graph structure."""
     builder = GraphBuilder(sample_protocol)
     graph = builder.build_graph()
-    
+
     # Check nodes exist
     assert "governance" in graph.nodes
     assert "validate" in graph.nodes
@@ -151,7 +151,7 @@ def test_build_graph_structure(sample_protocol, temp_workspace):
     assert "move_next" in graph.nodes
     assert "blocked" in graph.nodes
     assert "complete" in graph.nodes
-    
+
     # Graph can be compiled (validates structure)
     compiled = graph.compile()
     assert compiled is not None
@@ -159,11 +159,11 @@ def test_build_graph_structure(sample_protocol, temp_workspace):
 
 def test_build_graph_with_custom_functions(sample_protocol, temp_workspace):
     """Test build_graph() with custom governance/validator/executor functions."""
-    
+
     def custom_governance(state, protocol):
         state.metadata["custom"] = "governance"
         return state
-    
+
     def custom_validator(task, validators, shell_mcp, current_mode="", **kwargs):
         return [
             ValidatorResult(
@@ -172,17 +172,17 @@ def test_build_graph_with_custom_functions(sample_protocol, temp_workspace):
                 justification="Custom validator"
             )
         ]
-    
+
     def custom_executor(task, token, coder, workspace_mcp, git_mcp):
         return ["custom_artifact"]
-    
+
     builder = GraphBuilder(
         sample_protocol,
         governance_fn=custom_governance,
         validator_fn=custom_validator,
         executor_fn=custom_executor
     )
-    
+
     assert builder.governance_fn == custom_governance
     assert builder.validator_fn == custom_validator
     assert builder.executor_fn == custom_executor
@@ -193,7 +193,7 @@ def test_build_graph_with_custom_functions(sample_protocol, temp_workspace):
 def test_governance_node(sample_protocol, sample_task, temp_workspace):
     """Test governance node executes correctly."""
     builder = GraphBuilder(sample_protocol)
-    
+
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -209,9 +209,9 @@ def test_governance_node(sample_protocol, sample_task, temp_workspace):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._governance_node(initial_state)
-    
+
     assert result["stage"] == LoopStage.GOVERNANCE.value
     assert result["iteration"] == 1
     assert result["constraints_passed"] is True
@@ -234,7 +234,7 @@ def test_validate_node_success(sample_protocol, sample_task, temp_workspace):
         sample_protocol,
         validator_fn=_all_pass,
     )
-    
+
     state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -250,9 +250,9 @@ def test_validate_node_success(sample_protocol, sample_task, temp_workspace):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._validate_node(state)
-    
+
     assert result["stage"] == LoopStage.VALIDATE.value
     # May have test_runner + 2 validators
     assert len(result["validation_results"]) >= 2
@@ -262,7 +262,7 @@ def test_validate_node_success(sample_protocol, sample_task, temp_workspace):
 
 def test_validate_node_blocker(sample_protocol, sample_task, temp_workspace):
     """Test validate node with blocker result."""
-    
+
     def blocker_validator(task, validators, shell_mcp, current_mode="", **kwargs):  # Fixed signature - 4 args
         return [
             ValidatorResult(
@@ -271,12 +271,12 @@ def test_validate_node_blocker(sample_protocol, sample_task, temp_workspace):
                 justification="Security issue found"
             )
         ]
-    
+
     builder = GraphBuilder(
         sample_protocol,
         validator_fn=blocker_validator
     )
-    
+
     state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -292,9 +292,9 @@ def test_validate_node_blocker(sample_protocol, sample_task, temp_workspace):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._validate_node(state)
-    
+
     assert result["stage"] == LoopStage.VALIDATE.value
     assert result["validation_token"] is None
     assert result["is_blocked"] is True
@@ -303,7 +303,7 @@ def test_validate_node_blocker(sample_protocol, sample_task, temp_workspace):
 def test_validate_node_invalid_mode(sample_protocol, sample_task, temp_workspace):
     """Test validate node with invalid mode."""
     builder = GraphBuilder(sample_protocol)
-    
+
     state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "invalid_mode",
@@ -319,9 +319,9 @@ def test_validate_node_invalid_mode(sample_protocol, sample_task, temp_workspace
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._validate_node(state)
-    
+
     assert result["is_blocked"] is True
     assert len(result["constraint_violations"]) > 0
 
@@ -332,7 +332,7 @@ def test_execute_node(sample_protocol, sample_task, temp_workspace):
     git_mcp = GitMCP(temp_workspace)
     coder = MockCoderAdapter()
     issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600)
-    
+
     builder = GraphBuilder(
         sample_protocol,
         workspace_mcp=workspace_mcp,
@@ -340,7 +340,7 @@ def test_execute_node(sample_protocol, sample_task, temp_workspace):
         coder=coder,
         token_issuer=issuer,
     )
-    
+
     state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -358,9 +358,9 @@ def test_execute_node(sample_protocol, sample_task, temp_workspace):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._execute_node(state)
-    
+
     assert result["stage"] == LoopStage.EXECUTE.value
     assert len(result["artifacts"]) > 0
     # New executor creates files
@@ -370,7 +370,7 @@ def test_execute_node(sample_protocol, sample_task, temp_workspace):
 def test_execute_node_no_token(sample_protocol, sample_task, temp_workspace):
     """Test execute node without token (should not execute)."""
     builder = GraphBuilder(sample_protocol)
-    
+
     state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -386,9 +386,9 @@ def test_execute_node_no_token(sample_protocol, sample_task, temp_workspace):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._execute_node(state)
-    
+
     assert result["stage"] == LoopStage.EXECUTE.value
     assert len(result["artifacts"]) == 0
 
@@ -396,7 +396,7 @@ def test_execute_node_no_token(sample_protocol, sample_task, temp_workspace):
 def test_move_next_node(sample_protocol, sample_task, temp_workspace):
     """Test move_next node marks task complete."""
     builder = GraphBuilder(sample_protocol)
-    
+
     state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -412,9 +412,9 @@ def test_move_next_node(sample_protocol, sample_task, temp_workspace):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._move_next_node(state)
-    
+
     assert result["stage"] == LoopStage.MOVE_NEXT.value
     assert result["is_complete"] is True
 
@@ -422,7 +422,7 @@ def test_move_next_node(sample_protocol, sample_task, temp_workspace):
 def test_blocked_node(sample_protocol, sample_task, temp_workspace):
     """Test blocked terminal node."""
     builder = GraphBuilder(sample_protocol)
-    
+
     state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -438,16 +438,16 @@ def test_blocked_node(sample_protocol, sample_task, temp_workspace):
         "is_blocked": True,
         "metadata": {}
     }
-    
+
     result = builder._blocked_node(state)
-    
+
     assert result["stage"] == LoopStage.BLOCKED.value
 
 
 def test_complete_node(sample_protocol, sample_task, temp_workspace):
     """Test complete terminal node."""
     builder = GraphBuilder(sample_protocol)
-    
+
     state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -463,9 +463,9 @@ def test_complete_node(sample_protocol, sample_task, temp_workspace):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = builder._complete_node(state)
-    
+
     assert result["stage"] == LoopStage.COMPLETE.value
 
 
@@ -475,7 +475,7 @@ def test_route_after_validation_to_execute(sample_protocol, temp_workspace):
     """Test routing to execute when token issued."""
     issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600)
     builder = GraphBuilder(sample_protocol, token_issuer=issuer)
-    
+
     state = {
         "is_blocked": False,
         "validation_token": {"jwt": issuer.issue_token(
@@ -494,7 +494,7 @@ def test_route_after_validation_to_execute(sample_protocol, temp_workspace):
         "is_complete": False,
         "metadata": {}
     }
-    
+
     route = builder._route_after_validation(state)
     assert route == "execute"
 
@@ -502,7 +502,7 @@ def test_route_after_validation_to_execute(sample_protocol, temp_workspace):
 def test_route_after_validation_to_blocked(sample_protocol, temp_workspace):
     """Test routing to blocked when blocker present."""
     builder = GraphBuilder(sample_protocol)
-    
+
     state = {
         "is_blocked": True,
         "validation_token": None,
@@ -518,7 +518,7 @@ def test_route_after_validation_to_blocked(sample_protocol, temp_workspace):
         "is_complete": False,
         "metadata": {}
     }
-    
+
     route = builder._route_after_validation(state)
     assert route == "blocked"
 
@@ -526,7 +526,7 @@ def test_route_after_validation_to_blocked(sample_protocol, temp_workspace):
 def test_route_after_validation_to_governance(sample_protocol, temp_workspace):
     """Test routing back to governance when escalating."""
     builder = GraphBuilder(sample_protocol)
-    
+
     state = {
         "is_blocked": False,
         "validation_token": None,
@@ -542,7 +542,7 @@ def test_route_after_validation_to_governance(sample_protocol, temp_workspace):
         "is_complete": False,
         "metadata": {}
     }
-    
+
     route = builder._route_after_validation(state)
     assert route == "governance"
 
@@ -550,7 +550,7 @@ def test_route_after_validation_to_governance(sample_protocol, temp_workspace):
 def test_route_after_move_to_complete(sample_protocol, temp_workspace):
     """Test routing to complete when task done."""
     builder = GraphBuilder(sample_protocol)
-    
+
     state = {
         "is_complete": True,
         "task": {"id": "test", "spec": "test"},
@@ -566,7 +566,7 @@ def test_route_after_move_to_complete(sample_protocol, temp_workspace):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     route = builder._route_after_move(state)
     assert route == "complete"
 
@@ -574,7 +574,7 @@ def test_route_after_move_to_complete(sample_protocol, temp_workspace):
 def test_route_after_move_to_governance(sample_protocol, temp_workspace):
     """Test routing back to governance for next task."""
     builder = GraphBuilder(sample_protocol)
-    
+
     state = {
         "is_complete": False,
         "task": {"id": "test", "spec": "test"},
@@ -590,7 +590,7 @@ def test_route_after_move_to_governance(sample_protocol, temp_workspace):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     route = builder._route_after_move(state)
     assert route == "governance"
 
@@ -600,7 +600,7 @@ def test_route_after_move_to_governance(sample_protocol, temp_workspace):
 def test_dict_to_state_conversion(sample_protocol, sample_task, temp_workspace):
     """Test converting dict to LoopState."""
     builder = GraphBuilder(sample_protocol)
-    
+
     state_dict = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -618,9 +618,9 @@ def test_dict_to_state_conversion(sample_protocol, sample_task, temp_workspace):
         "is_blocked": False,
         "metadata": {"key": "value"}
     }
-    
+
     loop_state = builder._dict_to_state(state_dict)
-    
+
     assert loop_state.task.id == sample_task.id
     assert loop_state.current_mode == "producer"
     assert loop_state.iteration == 1
@@ -634,7 +634,7 @@ def test_dict_to_state_conversion(sample_protocol, sample_task, temp_workspace):
 def test_state_to_dict_conversion(sample_protocol, sample_task, temp_workspace):
     """Test converting LoopState to dict."""
     builder = GraphBuilder(sample_protocol)
-    
+
     loop_state = LoopState(
         task=sample_task,
         current_mode="producer",
@@ -651,9 +651,9 @@ def test_state_to_dict_conversion(sample_protocol, sample_task, temp_workspace):
         artifacts=["artifact_1"],
         metadata={"key": "value"}
     )
-    
+
     state_dict = builder._state_to_dict(loop_state)
-    
+
     assert state_dict["task"]["id"] == sample_task.id
     assert state_dict["current_mode"] == "producer"
     assert state_dict["iteration"] == 1
@@ -670,9 +670,9 @@ def test_default_governance(sample_protocol, sample_task, temp_workspace):
     """Test default governance always passes."""
     builder = GraphBuilder(sample_protocol)
     state = LoopState(task=sample_task, current_mode="producer")
-    
+
     result = builder._default_governance(state, sample_protocol)
-    
+
     assert result.constraints_passed is True
 
 
@@ -683,12 +683,12 @@ def test_default_validator(sample_protocol, sample_task, temp_workspace):
         Validator(validator_id="v1", validator_type="security"),
         Validator(validator_id="v2", validator_type="architecture")
     ]
-    
+
     # Create shell MCP
     shell_mcp = ShellMCP(temp_workspace)
-    
+
     results = builder._default_validator(sample_task, validators, shell_mcp)
-    
+
     # Should have results for validators (test runner may fail/warn)
     assert len(results) >= 2
 
@@ -718,12 +718,12 @@ def test_default_executor(sample_protocol, sample_task, temp_workspace):
     workspace_mcp = WorkspaceMCP(temp_workspace)
     git_mcp = GitMCP(temp_workspace)
     coder = MockCoderAdapter()
-    
+
     builder = GraphBuilder(sample_protocol)
     token = _make_test_token(sample_task.id)
-    
+
     artifacts = builder._default_executor(sample_task, token, coder, workspace_mcp, git_mcp)
-    
+
     # Should create files
     assert len(artifacts) > 0
     assert any("src/hello.py" in str(a) for a in artifacts)
@@ -734,27 +734,27 @@ def test_default_executor(sample_protocol, sample_task, temp_workspace):
 def test_build_protocol_graph(sample_protocol, temp_workspace):
     """Test convenience function builds graph correctly."""
     graph = build_protocol_graph(sample_protocol, project_root=temp_workspace, use_mock_coder=True)
-    
+
     assert "governance" in graph.nodes
     assert "validate" in graph.nodes
-    
+
     compiled = graph.compile()
     assert compiled is not None
 
 
 def test_build_protocol_graph_with_custom_functions(sample_protocol, temp_workspace):
     """Test convenience function with custom functions."""
-    
+
     def custom_governance(state, protocol):
         return state
-    
+
     graph = build_protocol_graph(
         sample_protocol,
         project_root=temp_workspace,
         use_mock_coder=True,
         governance_fn=custom_governance
     )
-    
+
     assert graph is not None
 
 
@@ -780,7 +780,7 @@ def test_end_to_end_execution(sample_protocol, sample_task, temp_workspace):
         validator_fn=_all_pass,
     )
     compiled_graph = graph.compile()
-    
+
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -796,9 +796,9 @@ def test_end_to_end_execution(sample_protocol, sample_task, temp_workspace):
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = compiled_graph.invoke(initial_state)
-    
+
     # Should complete successfully
     assert result["stage"] == LoopStage.COMPLETE.value
     assert result["is_complete"] is True
@@ -807,7 +807,7 @@ def test_end_to_end_execution(sample_protocol, sample_task, temp_workspace):
 
 def test_end_to_end_execution_with_blocker(sample_protocol, sample_task, temp_workspace):
     """Test loop execution that ends in blocker."""
-    
+
     def blocker_validator(task, validators, shell_mcp, current_mode="", **kwargs):  # Fixed signature
         return [
             ValidatorResult(
@@ -816,12 +816,12 @@ def test_end_to_end_execution_with_blocker(sample_protocol, sample_task, temp_wo
                 justification="Critical issue"
             )
         ]
-    
+
     workspace_mcp = WorkspaceMCP(temp_workspace)
     git_mcp = GitMCP(temp_workspace)
     shell_mcp = ShellMCP(temp_workspace)
     coder = MockCoderAdapter()
-    
+
     builder = GraphBuilder(
         sample_protocol,
         workspace_mcp=workspace_mcp,
@@ -832,7 +832,7 @@ def test_end_to_end_execution_with_blocker(sample_protocol, sample_task, temp_wo
     )
     graph = builder.build_graph()
     compiled_graph = graph.compile()
-    
+
     initial_state = {
         "task": {"id": sample_task.id, "spec": sample_task.spec},
         "current_mode": "producer",
@@ -848,9 +848,9 @@ def test_end_to_end_execution_with_blocker(sample_protocol, sample_task, temp_wo
         "is_blocked": False,
         "metadata": {}
     }
-    
+
     result = compiled_graph.invoke(initial_state)
-    
+
     # Should end in blocked state
     assert result["stage"] == LoopStage.BLOCKED.value
     assert result["is_blocked"] is True

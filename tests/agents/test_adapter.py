@@ -13,15 +13,19 @@ Tests cover:
 - 100% coverage
 """
 
-import pytest
 from unittest.mock import Mock
 
-from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
-from snodo.agents.adapter import (
-    BasicCoderAdapter, MockCoderAdapter, create_coder,
-    AdapterError, LLMCallError, ParseError
-)
+import pytest
+from snodo.core.interfaces import CodeArtifact, FileArtifact, MCPServer, TaskSpec
 
+from snodo.agents.adapter import (
+    AdapterError,
+    BasicCoderAdapter,
+    LLMCallError,
+    MockCoderAdapter,
+    ParseError,
+    create_coder,
+)
 
 # ========== FIXTURES ==========
 
@@ -78,13 +82,13 @@ def test_mock_adapter_returns_custom_code():
 def test_mock_adapter_tracks_calls():
     """Test MockCoderAdapter tracks call count and last spec."""
     adapter = MockCoderAdapter()
-    
+
     spec1 = TaskSpec(description="first", constraints=[])
     spec2 = TaskSpec(description="second", constraints=[])
-    
+
     adapter.implement(spec1)
     adapter.implement(spec2)
-    
+
     assert adapter.call_count == 2
     assert adapter.last_spec == spec2
 
@@ -94,7 +98,7 @@ def test_mock_adapter_tracks_calls():
 def test_basic_adapter_init_defaults():
     """Test BasicCoderAdapter initialization with defaults."""
     adapter = BasicCoderAdapter()
-    
+
     assert adapter.model == "claude-sonnet-4-20250514"
     assert adapter.mcp_servers == []
     assert adapter.temperature == 0.7
@@ -104,14 +108,14 @@ def test_basic_adapter_init_defaults():
 def test_basic_adapter_init_custom():
     """Test BasicCoderAdapter with custom parameters."""
     servers = [Mock(spec=MCPServer)]
-    
+
     adapter = BasicCoderAdapter(
         model="claude-3-sonnet",
         mcp_servers=servers,
         temperature=0.5,
         max_tokens=2000
     )
-    
+
     assert adapter.model == "claude-3-sonnet"
     assert adapter.mcp_servers == servers
     assert adapter.temperature == 0.5
@@ -235,17 +239,17 @@ def test_parse_response_default_action():
 def test_call_llm_success():
     """Test successful LLM call."""
     adapter = BasicCoderAdapter()
-    
+
     # Mock the completion response
     mock_response = Mock()
     mock_response.choices = [Mock()]
     mock_response.choices[0].message.content = "response text"
-    
+
     # Set the mock directly on the instance
     adapter._completion_fn = Mock(return_value=mock_response)
-    
+
     result = adapter._call_llm("test prompt")
-    
+
     assert result == "response text"
     adapter._completion_fn.assert_called_once()
 
@@ -254,7 +258,7 @@ def test_call_llm_no_litellm_raises():
     """Test LLM call without litellm installed."""
     adapter = BasicCoderAdapter()
     adapter._completion_fn = None
-    
+
     with pytest.raises(LLMCallError, match="litellm not available"):
         adapter._call_llm("test prompt")
 
@@ -262,10 +266,10 @@ def test_call_llm_no_litellm_raises():
 def test_call_llm_api_error_raises():
     """Test LLM call with API error."""
     adapter = BasicCoderAdapter()
-    
+
     # Set the mock to raise an exception
     adapter._completion_fn = Mock(side_effect=Exception("API error"))
-    
+
     with pytest.raises(LLMCallError, match="LLM call failed"):
         adapter._call_llm("test prompt")
 
@@ -275,19 +279,19 @@ def test_call_llm_api_error_raises():
 def test_attach_mcp_tool(mock_mcp_server):
     """Test attaching MCP server."""
     adapter = BasicCoderAdapter()
-    
+
     adapter.attach_mcp_tool(mock_mcp_server)
-    
+
     assert mock_mcp_server in adapter.mcp_servers
 
 
 def test_attach_mcp_tool_no_duplicates(mock_mcp_server):
     """Test attaching same MCP server twice doesn't duplicate."""
     adapter = BasicCoderAdapter()
-    
+
     adapter.attach_mcp_tool(mock_mcp_server)
     adapter.attach_mcp_tool(mock_mcp_server)
-    
+
     assert len(adapter.mcp_servers) == 1
 
 
@@ -295,11 +299,11 @@ def test_list_available_tools():
     """Test listing available MCP tools."""
     server1 = Mock(spec=MCPServer)
     server2 = Mock(spec=MCPServer)
-    
+
     adapter = BasicCoderAdapter(mcp_servers=[server1, server2])
-    
+
     tools = adapter.list_available_tools()
-    
+
     assert len(tools) == 2
     assert "mcp_server_0" in tools
     assert "mcp_server_1" in tools
@@ -310,7 +314,7 @@ def test_list_available_tools():
 def test_create_coder_basic():
     """Test create_coder returns BasicCoderAdapter."""
     coder = create_coder()
-    
+
     assert isinstance(coder, BasicCoderAdapter)
     assert coder.model == "claude-sonnet-4-20250514"
 
@@ -318,7 +322,7 @@ def test_create_coder_basic():
 def test_create_coder_custom_model():
     """Test create_coder with custom model."""
     coder = create_coder(model="claude-3-opus")
-    
+
     assert isinstance(coder, BasicCoderAdapter)
     assert coder.model == "claude-3-opus"
 
@@ -326,14 +330,14 @@ def test_create_coder_custom_model():
 def test_create_coder_mock():
     """Test create_coder returns MockCoderAdapter when mock=True."""
     coder = create_coder(mock=True)
-    
+
     assert isinstance(coder, MockCoderAdapter)
 
 
 def test_create_coder_with_mcp_servers(mock_mcp_server):
     """Test create_coder with MCP servers."""
     coder = create_coder(mcp_servers=[mock_mcp_server])
-    
+
     assert isinstance(coder, BasicCoderAdapter)
     assert mock_mcp_server in coder.mcp_servers
 
@@ -438,7 +442,7 @@ def test_parse_response_malformed_json():
 def test_adapter_with_empty_mcp_servers_list():
     """Test adapter with explicitly empty MCP servers."""
     adapter = BasicCoderAdapter(mcp_servers=[])
-    
+
     assert adapter.mcp_servers == []
     assert adapter.list_available_tools() == []
 

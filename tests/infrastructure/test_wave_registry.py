@@ -6,17 +6,16 @@ FILE: tests/infrastructure/test_wave_registry.py
 import json
 import time
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from snodo.infrastructure.wave_registry import (
-    WaveRegistry,
-    WaveEntry,
-    FLOW_TYPES,
-    _generate_wave_id,
-    _fallback,
-)
 from snodo.infrastructure.config import WaveConfig
-
+from snodo.infrastructure.wave_registry import (
+    FLOW_TYPES,
+    WaveEntry,
+    WaveRegistry,
+    _fallback,
+    _generate_wave_id,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -442,7 +441,7 @@ class TestPrompts:
 
     def test_classifier_config_resolves_model(self):
         """Classifier model resolves from llm.classifier.model -> DEFAULT_MODEL (C1)."""
-        from snodo.infrastructure.config import LlmConfig, DEFAULT_MODEL
+        from snodo.infrastructure.config import DEFAULT_MODEL, LlmConfig
         cfg = LlmConfig()
         model = (cfg.classifier.model if cfg.classifier and cfg.classifier.model else None) or DEFAULT_MODEL
         assert model == DEFAULT_MODEL

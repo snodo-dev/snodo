@@ -4,16 +4,16 @@ FILE: tests/infrastructure/test_environment.py
 """
 
 from unittest.mock import MagicMock
-import pytest
 
-from snodo.compiler.models import ExecutionConfig, Protocol, Mode, Validator
+import pytest
+from snodo.compiler.models import ExecutionConfig, Mode, Protocol, Validator
 from snodo.core.interfaces import Task
 from snodo.engine.closure import run_to_closure
 from snodo.engine.loop import build_protocol_graph
 from snodo.infrastructure.environment import (
+    EnvironmentPrepError,
     detect_prepare_command,
     prepare_environment,
-    EnvironmentPrepError,
 )
 
 

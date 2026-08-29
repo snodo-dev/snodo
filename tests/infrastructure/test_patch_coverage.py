@@ -1,10 +1,9 @@
 from snodo.infrastructure.patch_coverage import (
-    parse_git_diff_added_lines,
-    parse_coverage_xml,
     calculate_patch_coverage,
     enforce_patch_coverage,
+    parse_coverage_xml,
+    parse_git_diff_added_lines,
 )
-
 
 SAMPLE_DIFF = """diff --git a/packages/snodo-engine/src/snodo/feature.py b/packages/snodo-engine/src/snodo/feature.py
 new file mode 100644
