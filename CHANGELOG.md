@@ -24,6 +24,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Added CLI test coverage in `tests/cli/test_install_cmd.py` and `tests/cli/test_models_cmd.py` covering happy paths, empty configurations, unconfigured provider errors, `--flush` cache handling, generic OpenAI-compatible model discovery against stubbed endpoints, orphan MCP detection/removal, and purge state cleanup. (Fixes #134).
 - `snodo plan` can now execute and author plans, not just create and inspect
   them. Four subcommands were added to the plan Typer app: `snodo plan run
   <name> [--wave N] [--interactive] [--protocol PATH] [--model M]` builds the
