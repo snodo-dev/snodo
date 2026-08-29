@@ -63,6 +63,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Fixed `_select_template` in `snodo/cli/commands/init_cmd.py` silently creating a `team` protocol on prompt abort (`KeyboardInterrupt`) or non-interactive stdin (`EOFError`). KeyboardInterrupt now aborts with a cancellation message and exits non-zero; EOF without `--template` reports that `--template` is required in a non-interactive context and lists available templates. Updated Next steps output to include provider credential setup (`OPENAI_API_KEY` or `snodo config set`), and added comprehensive behavioral test suite in `tests/cli/test_init_cmd.py`. (Fixes #133).
+- `snodo run` now checks for provider credentials before starting any work. Previously a
+  fresh install loaded the protocol, opened a session, created a worktree, built and
+  compiled the MCP graph, and only then failed with `litellm.AuthenticationError: Missing
+  Anthropic API Key ...`. A preflight in `run_command` resolves the model's provider (via
+  the same `ConfigManager` helpers that load the key, so it cannot disagree with them) and
+  fails immediately with one line naming the provider, the expected environment variable or
+  config key, and the command to set it — exit 1, nothing created. The check is skipped when
+  the coder is mocked (`--mock`) or when no LLM will be called. (Fixes #137).
 
 - A blocked task in a plan no longer restarts from scratch on re-run. `_execute_wave_task`
   previously re-executed a task the status file marked "blocked" as a fresh dispatch,

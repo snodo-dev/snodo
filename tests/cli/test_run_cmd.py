@@ -666,6 +666,110 @@ class TestRunCommandSessionWiring:
         assert args.session_manager is not None
 
 
+# === provider credential preflight (Fixes #137) ===
+
+class TestProviderCredentialPreflight:
+    """run_command fails fast when the model's provider has no credential."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_project_root(self, monkeypatch):
+        """Ensure run_command finds a project root (isolation)."""
+        monkeypatch.setattr(
+            "snodo.infrastructure.paths.require_project_root",
+            lambda: "/fake/project",
+        )
+
+    def _args(self, **overrides):
+        args = SimpleNamespace(
+            description="do the thing",
+            protocol=".snodo/protocol.yml",
+            model=None,
+            mock=False,
+            background=False,
+            sandbox="local",
+        )
+        for k, v in overrides.items():
+            setattr(args, k, v)
+        return args
+
+    def test_no_credential_fails_before_session_or_worktree(self, monkeypatch, capsys):
+        """A run with no credential fails before a session or worktree exists."""
+        from snodo.cli.commands.run_cmd import run_command
+
+        # No ANTHROPIC_API_KEY in env, no key in config (isolated SNODO_HOME).
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        executed = []
+        with patch("snodo.cli.commands.run_cmd._execute_task",
+                   side_effect=lambda *a: executed.append(a) or 0) as mock_exec:
+            with patch("snodo.cli.commands.run_cmd.load_protocol") as mock_load:
+                result = run_command(self._args())
+
+        assert result == 1
+        mock_exec.assert_not_called()
+        mock_load.assert_not_called()
+        err = capsys.readouterr().err
+        assert "anthropic" in err
+        assert "ANTHROPIC_API_KEY" in err
+        assert "snodo config add anthropic" in err
+
+        # No session file was created.
+        sessions_dir = Path(os.environ["SNODO_HOME"]) / "sessions"
+        assert not list(sessions_dir.glob("*.json"))
+
+    def test_credential_in_env_proceeds(self, monkeypatch, capsys):
+        """A run with a credential in the environment proceeds unchanged."""
+        from snodo.cli.commands.run_cmd import run_command
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
+
+        executed = []
+        with patch("snodo.cli.commands.run_cmd._execute_task",
+                   side_effect=lambda *a: executed.append(a) or 0) as mock_exec:
+            with patch("snodo.cli.commands.run_cmd.load_protocol") as mock_load:
+                mock_load.return_value = MagicMock()
+                result = run_command(self._args())
+
+        assert result == 0
+        mock_exec.assert_called_once()
+        assert "No credential" not in capsys.readouterr().err
+
+    def test_credential_in_config_proceeds(self, monkeypatch, capsys):
+        """A run with a key stored in config proceeds unchanged."""
+        from snodo.cli.commands.run_cmd import run_command
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        with patch("snodo.config.ConfigManager.get_key_for_model",
+                   return_value="sk-config-key"):
+            executed = []
+            with patch("snodo.cli.commands.run_cmd._execute_task",
+                       side_effect=lambda *a: executed.append(a) or 0) as mock_exec:
+                with patch("snodo.cli.commands.run_cmd.load_protocol") as mock_load:
+                    mock_load.return_value = MagicMock()
+                    result = run_command(self._args())
+
+        assert result == 0
+        mock_exec.assert_called_once()
+        assert "No credential" not in capsys.readouterr().err
+
+    def test_mock_skips_check(self, monkeypatch, capsys):
+        """--mock skips the credential check entirely."""
+        from snodo.cli.commands.run_cmd import run_command
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        executed = []
+        with patch("snodo.cli.commands.run_cmd._execute_task",
+                   side_effect=lambda *a: executed.append(a) or 0) as mock_exec:
+            with patch("snodo.cli.commands.run_cmd.load_protocol") as mock_load:
+                mock_load.return_value = MagicMock()
+                result = run_command(self._args(mock=True))
+
+        assert result == 0
+        mock_exec.assert_called_once()
+        assert "No credential" not in capsys.readouterr().err
+
+
 # === PlannerMCP audit_log fix in _run_plan (Task 7.3) ===
 
 class TestRunPlanAuditLogFix:
