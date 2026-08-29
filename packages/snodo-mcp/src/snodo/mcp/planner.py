@@ -191,7 +191,7 @@ class PlannerMCP:
         try:
             plan_dir.mkdir(parents=True)
         except OSError as e:
-            raise PlannerError(f"Failed to create plan directory: {e}")
+            raise PlannerError(f"Failed to create plan directory: {e}") from e
 
         plan_data = {
             "name": plan_name,
@@ -297,8 +297,8 @@ class PlannerMCP:
         wave_str = task_id.split(".")[0]
         try:
             return int(wave_str)
-        except ValueError:
-            raise PlannerError(f"Invalid wave number in task_id: {task_id}")
+        except ValueError as e:
+            raise PlannerError(f"Invalid wave number in task_id: {task_id}") from e
 
     def _handle_existing_task(
         self,

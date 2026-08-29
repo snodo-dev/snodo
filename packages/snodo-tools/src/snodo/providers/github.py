@@ -54,7 +54,7 @@ class GitHubProvider(CodeHostProvider):
             self._github = Github(self._token)
             self._repo = self._github.get_repo(repo_slug)
         except Exception as e:
-            raise ProviderError(f"Failed to connect to GitHub repo '{repo_slug}': {e}")
+            raise ProviderError(f"Failed to connect to GitHub repo '{repo_slug}': {e}") from e
 
     @staticmethod
     def _resolve_token() -> Optional[str]:
@@ -76,7 +76,7 @@ class GitHubProvider(CodeHostProvider):
             )
             return pr.html_url
         except Exception as e:
-            raise ProviderError(f"Failed to create PR: {e}")
+            raise ProviderError(f"Failed to create PR: {e}") from e
 
     def read_pr_diff(self, pr_number: int) -> str:
         """Read PR diff by concatenating file patches."""
@@ -92,7 +92,7 @@ class GitHubProvider(CodeHostProvider):
                     patches.append(f"{header}\n(binary file)")
             return "\n".join(patches) if patches else "(no changes)"
         except Exception as e:
-            raise ProviderError(f"Failed to read PR diff: {e}")
+            raise ProviderError(f"Failed to read PR diff: {e}") from e
 
     def post_review_comment(self, pr_number: int, comment: str) -> str:
         """Post a comment on a GitHub PR."""
@@ -101,7 +101,7 @@ class GitHubProvider(CodeHostProvider):
             c = pr.create_issue_comment(comment)
             return c.html_url
         except Exception as e:
-            raise ProviderError(f"Failed to post comment: {e}")
+            raise ProviderError(f"Failed to post comment: {e}") from e
 
     def approve_pr(self, pr_number: int) -> str:
         """Approve a GitHub PR."""
@@ -110,7 +110,7 @@ class GitHubProvider(CodeHostProvider):
             pr.create_review(event="APPROVE")
             return f"PR #{pr_number} approved"
         except Exception as e:
-            raise ProviderError(f"Failed to approve PR: {e}")
+            raise ProviderError(f"Failed to approve PR: {e}") from e
 
     def reject_pr(self, pr_number: int, reason: str) -> str:
         """Request changes on a GitHub PR."""
@@ -119,7 +119,7 @@ class GitHubProvider(CodeHostProvider):
             pr.create_review(body=reason, event="REQUEST_CHANGES")
             return f"PR #{pr_number} changes requested"
         except Exception as e:
-            raise ProviderError(f"Failed to reject PR: {e}")
+            raise ProviderError(f"Failed to reject PR: {e}") from e
 
     def merge_pr(self, pr_number: int) -> str:
         """Merge a GitHub PR."""
@@ -128,7 +128,7 @@ class GitHubProvider(CodeHostProvider):
             result = pr.merge()
             return f"PR #{pr_number} merged: {result.sha[:8]}"
         except Exception as e:
-            raise ProviderError(f"Failed to merge PR: {e}")
+            raise ProviderError(f"Failed to merge PR: {e}") from e
 
     def read_pr_comments(self, pr_number: int) -> str:
         """Read PR comments and reviews as JSON.
@@ -155,4 +155,4 @@ class GitHubProvider(CodeHostProvider):
                 "reviews": reviews,
             })
         except Exception as e:
-            raise ProviderError(f"Failed to read PR comments: {e}")
+            raise ProviderError(f"Failed to read PR comments: {e}") from e

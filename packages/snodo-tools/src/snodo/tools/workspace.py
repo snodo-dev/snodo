@@ -64,10 +64,10 @@ class WorkspaceMCP:
         # Check if resolved path is within project root
         try:
             rel = resolved.relative_to(self.project_root)
-        except ValueError:
+        except ValueError as e:
             raise PathValidationError(
                 f"Path escapes project root: {path} -> {resolved}"
-            )
+            ) from e
         
         if ".git" in rel.parts:
             raise PathValidationError(

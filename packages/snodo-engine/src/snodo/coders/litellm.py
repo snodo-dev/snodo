@@ -242,7 +242,7 @@ Return ONLY the JSON array, no other text.
         except (LLMCallError, ParseError):
             raise
         except Exception as e:
-            raise LLMCallError(f"LLM call failed: {e}")
+            raise LLMCallError(f"LLM call failed: {e}") from e
 
     def _call_llm_with_tools(self, prompt: str) -> str:
         """Bounded tool-use loop with submit_files terminal tool."""
@@ -284,7 +284,7 @@ Return ONLY the JSON array, no other text.
                     kwargs["temperature"] = self.temperature
                 response = self._completion_fn(**kwargs)
             except Exception as e:
-                raise LLMCallError(f"LLM tool-loop error on turn {turn + 1}: {e}")
+                raise LLMCallError(f"LLM tool-loop error on turn {turn + 1}: {e}") from e
 
             self._check_truncation(response)
 

@@ -31,12 +31,12 @@ class DockerSandbox(Sandbox):
             try:
                 import docker
                 self._client = docker.from_env()
-            except ImportError:
+            except ImportError as e:
                 raise SandboxError(
                     "docker package not installed. Install with: pip install docker"
-                )
+                ) from e
             except Exception as e:
-                raise SandboxError(f"Failed to connect to Docker: {e}")
+                raise SandboxError(f"Failed to connect to Docker: {e}") from e
         return self._client
 
     def is_available(self) -> bool:
@@ -177,7 +177,7 @@ class DockerSandbox(Sandbox):
             )
             return image.id
         except Exception as e:
-            raise SandboxError(f"Failed to build image: {e}")
+            raise SandboxError(f"Failed to build image: {e}") from e
 
     def cleanup(self) -> None:
         """Remove any leftover containers."""
