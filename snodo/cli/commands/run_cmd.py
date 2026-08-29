@@ -179,6 +179,33 @@ def _print_missing_template_validators(protocol) -> None:
     )
 
 
+def _preflight_provider_credential(model: str) -> Optional[str]:
+    """Return an error message when *model*'s provider has no credential, else None.
+
+    Reuses ConfigManager's resolution so the preflight cannot disagree with the
+    thing that actually loads the key: the provider is resolved via
+    ``_provider_for_model`` and the credential via ``get_key_for_model`` (config)
+    or the provider's ``api_key_env`` (environment). A provider that declares no
+    credential env var (e.g. a local endpoint) is not preflighted.
+    """
+    mgr = ConfigManager()
+    provider = ConfigManager._provider_for_model(model)
+    if provider is None:
+        return None
+    pc = mgr.get_providers().get(provider)
+    env_var = pc.api_key_env if pc else ""
+    if mgr.get_key_for_model(model):
+        return None
+    if env_var and os.environ.get(env_var):
+        return None
+    if not env_var:
+        return None
+    return (
+        f"Error: No credential for provider '{provider}' (model {model}). "
+        f"Set {env_var} or run: snodo config add {provider} <key>"
+    )
+
+
 def run_command(args) -> int:
     """Execute task through protocol loop - REAL EXECUTION."""
     from snodo.infrastructure.audit import get_audit_log
@@ -214,15 +241,25 @@ def run_command(args) -> int:
     if sandbox_type == "docker":
         return _run_in_sandbox(args)
 
+    mgr = ConfigManager()
+    model = args.model or mgr.get_model()
+
+    # Preflight the provider credential before any session, worktree or graph
+    # work (Fixes #137): a fresh install must fail immediately with one line,
+    # not after the run has already created a session, a worktree and a graph.
+    # Skipped when the coder is mocked — no LLM will be called.
+    if not getattr(args, "mock", False):
+        error = _preflight_provider_credential(model)
+        if error:
+            print(error, file=sys.stderr)
+            return 1
+
     protocol_path = Path(args.protocol)
     if not protocol_path.is_absolute():
         protocol_path = Path(project_root) / args.protocol
     protocol = load_protocol(protocol_path)
     if not protocol:
         return 1
-
-    mgr = ConfigManager()
-    model = args.model or mgr.get_model()
 
     print(f"✓ Loaded protocol: {protocol.name}")
     print(f"  Modes: {', '.join(m.mode_id for m in protocol.modes)}")
