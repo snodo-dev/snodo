@@ -88,7 +88,9 @@ cli/commands/run_cmd.py
         per invocation: context → governance (environment preparation) → pre_validate → execute
                         → post_validate → (loop | complete | escalate | blocked)
   → _report_closure(...)  → closure tree + structured halt payload (single emission site)
-  → teardown: remove worktree, close checkpointer, cloud sync (fire-and-forget)
+  → teardown: remove worktree, close checkpointer, cloud sync (background thread,
+    bounded flush at process exit — syncs whatever succeeds within the budget and
+    reports failures on stderr; the CLI never blocks on the network)
 ```
 
 Validation itself is **one implementation with two callers**: `validators/runner.py`
