@@ -177,12 +177,12 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
             try:
                 self._container.build_image()
             except OpenCodeContainerError as e:
-                raise LLMCallError(f"Failed to build opencode image: {e}")
+                raise LLMCallError(f"Failed to build opencode image: {e}") from e
 
         try:
             self._container.start(self._workspace)
         except OpenCodeContainerError as e:
-            raise LLMCallError(f"Failed to start opencode container: {e}")
+            raise LLMCallError(f"Failed to start opencode container: {e}") from e
 
     def _create_session(self) -> str:
         """POST /session — create a new session and return the ID."""
@@ -208,7 +208,7 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
             _logger.debug("opencode session created: %s", session_id)
             return session_id
         except (httpx.RequestError, json.JSONDecodeError) as e:
-            raise LLMCallError(f"opencode session creation error: {e}")
+            raise LLMCallError(f"opencode session creation error: {e}") from e
 
     def _send_message(self, session_id: str, spec: TaskSpec) -> None:
         """POST /session/{id}/message — submit the task spec with model."""

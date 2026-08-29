@@ -50,7 +50,7 @@ class ReconToolHandler:
         try:
             recon_id = mgr.submit(query, paths, agents)
         except ReconError as e:
-            raise MCPError(str(e))
+            raise MCPError(str(e)) from e
 
         return {
             "recon_id": recon_id,
@@ -73,7 +73,7 @@ class ReconToolHandler:
         try:
             return mgr.get_status(recon_id)
         except ReconError as e:
-            raise MCPError(str(e))
+            raise MCPError(str(e)) from e
 
     def handle_get_recon_results(self, arguments: Dict[str, Any]) -> dict:
         """Get the raw results of a completed recon query."""
@@ -89,7 +89,7 @@ class ReconToolHandler:
         try:
             return mgr.get_results(recon_id)
         except ReconError as e:
-            raise MCPError(str(e))
+            raise MCPError(str(e)) from e
 
     def tool_handlers(self) -> dict:
         return {

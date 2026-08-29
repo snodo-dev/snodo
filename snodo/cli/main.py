@@ -191,7 +191,7 @@ def main(argv=None):
               file=sys.stderr)
         return 2
     except click.exceptions.ClickException:
-        raise SystemExit(2)
+        raise SystemExit(2) from None  # Click exception message already rendered; exit signal only
 
 
 if __name__ == "__main__":

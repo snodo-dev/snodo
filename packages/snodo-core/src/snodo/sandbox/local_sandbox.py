@@ -90,11 +90,11 @@ class LocalSandbox(Sandbox):
                 sandbox_type="local",
             )
 
-        except FileNotFoundError:
-            raise SandboxError(f"Command not found: {command[0]}")
+        except FileNotFoundError as e:
+            raise SandboxError(f"Command not found: {command[0]}") from e
 
         except OSError as e:
-            raise SandboxError(f"Failed to execute command: {e}")
+            raise SandboxError(f"Failed to execute command: {e}") from e
 
     def cleanup(self) -> None:
         """No cleanup needed for local sandbox."""
