@@ -85,7 +85,7 @@ def _select_template(args) -> str:
         return PROTOCOL_TEMPLATES[template_name]
 
     # Interactive prompt — generated from the registry so it can never omit a
-    # shipped template.  Invalid selections re-prompt rather than substituting.
+    # shipped template. Invalid selections re-prompt rather than substituting.
     names = list_templates()
     print("Choose protocol template:")
     for i, name in enumerate(names, start=1):
@@ -94,9 +94,17 @@ def _select_template(args) -> str:
     while True:
         try:
             choice = input(f"Select [1-{len(names)}]: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("Invalid choice. Using default template 'team'.", file=sys.stderr)
-            return PROTOCOL_TEMPLATES["team"]
+        except KeyboardInterrupt:
+            print("\nAborted: initialization cancelled.", file=sys.stderr)
+            raise SystemExit(1)
+        except (EOFError, OSError):
+            available = ", ".join(list_templates())
+            print(
+                "\nError: --template option is required in a non-interactive context.\n"
+                f"Available templates: {available}",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
 
         try:
             idx = int(choice) - 1
@@ -529,7 +537,8 @@ def init_command(args) -> int:
 
     print("\nSnodo initialized successfully!")
     print("\nNext steps:")
-    print("  1. Edit .snodo/protocol.yml to customize your protocol")
-    print("  2. Run: snodo run \"your task description\"")
+    print("  1. Configure provider credentials (e.g. set OPENAI_API_KEY or run 'snodo config set <provider> <key>')")
+    print("  2. Edit .snodo/protocol.yml to customize your protocol")
+    print("  3. Run: snodo run \"your task description\"")
 
     return 0
