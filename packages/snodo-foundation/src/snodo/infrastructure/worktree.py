@@ -188,14 +188,14 @@ def create_worktree(
     # (Fixes #29). Callers that accept a degraded run must say so explicitly.
     try:
         head_commit = repo.head.commit
-    except Exception:  # noqa: BLE001 — unborn HEAD raises repo-specific error types
+    except Exception as e:  # noqa: BLE001 — unborn HEAD raises repo-specific error types
         raise WorktreeIsolationError(
             "Cannot create a task worktree: this repository has no commits "
             "(unborn HEAD), so there is no base branch to branch from. "
             "Make an initial commit first (e.g. 'git add -A && git commit -m "
             "\"initial\"'), then re-run the task. To run without isolation, "
             "pass --no-isolation explicitly."
-        )
+        ) from e
     del head_commit  # only used to prove a resolvable HEAD
 
     # Remove existing worktree if present (retry / partial cleanup)

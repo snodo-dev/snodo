@@ -59,8 +59,8 @@ class GitMCP:
 
         try:
             self.repo = Repo(str(self.project_root), search_parent_directories=True)
-        except InvalidGitRepositoryError:
-            raise ValueError(f"Not a git repository: {self.project_root}")
+        except InvalidGitRepositoryError as e:
+            raise ValueError(f"Not a git repository: {self.project_root}") from e
 
     def validate_path(self, path: str, for_mutation: bool = False) -> Path:
         """Validate that path is within project root.
@@ -82,10 +82,10 @@ class GitMCP:
 
         try:
             rel = resolved.relative_to(self.project_root)
-        except ValueError:
+        except ValueError as e:
             raise PathValidationError(
                 f"Path escapes project root: {path} -> {resolved}"
-            )
+            ) from e
 
         if for_mutation and rel.parts and rel.parts[0] == ".snodo":
             raise PathValidationError(
@@ -106,7 +106,7 @@ class GitMCP:
         try:
             return self.repo.git.checkout("-b", name)
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
     def checkout_branch(self, name: str) -> str:
         """Checkout an existing git branch.
@@ -123,7 +123,7 @@ class GitMCP:
         try:
             return self.repo.git.checkout(name)
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
     def stage_files(self, paths: List[str]) -> str:
         """Stage files for commit.
@@ -148,7 +148,7 @@ class GitMCP:
         try:
             return self.repo.git.add(*validated_paths)
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
     def commit(self, message: str) -> str:
         """Create a commit with message.
@@ -162,7 +162,7 @@ class GitMCP:
         try:
             return self.repo.git.commit("-m", message)
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
     def merge_branch(self, branch: str, base: Optional[str] = None) -> str:
         """Merge a branch into the base branch.
@@ -191,7 +191,7 @@ class GitMCP:
             try:
                 self.repo.git.checkout(base)
             except GitCommandError as e:
-                raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+                raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
         try:
             return self.repo.git.merge(branch)
@@ -250,7 +250,7 @@ class GitMCP:
         try:
             return self.repo.git.branch("-d", branch)
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
     def read_diff(self) -> str:
         """Read current working tree diff.
@@ -263,7 +263,7 @@ class GitMCP:
         try:
             return self.repo.git.diff("HEAD")
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
     def get_status(self) -> str:
         """Get git status.
@@ -274,7 +274,7 @@ class GitMCP:
         try:
             return self.repo.git.status()
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
     def diff_between_refs(self, ref1: str, ref2: str) -> str:
         """Read diff between two git refs.
@@ -289,7 +289,7 @@ class GitMCP:
         try:
             return self.repo.git.diff(f"{ref1}..{ref2}")
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
     def show(self, ref: str, path: str) -> str:
         """Read a file's content at a specific git ref.
@@ -306,7 +306,7 @@ class GitMCP:
         try:
             return self.repo.git.show(f"{ref}:{rel_path}")
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
     def get_head_sha(self) -> str:
         """Read the current HEAD commit sha.
@@ -317,7 +317,7 @@ class GitMCP:
         try:
             return self.repo.head.commit.hexsha
         except Exception as e:
-            raise GitError(f"Could not read HEAD sha: {e}")
+            raise GitError(f"Could not read HEAD sha: {e}") from e
 
     def log(self, n: int = 5) -> str:
         """Read recent commits in oneline format.
@@ -331,7 +331,7 @@ class GitMCP:
         try:
             return self.repo.git.log("--oneline", f"-{n}")
         except GitCommandError as e:
-            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}")
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
 
 # Module-level instance for convenience

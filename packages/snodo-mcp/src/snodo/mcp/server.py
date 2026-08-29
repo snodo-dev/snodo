@@ -313,7 +313,7 @@ class ProtocolMCPServer:
                 raise MCPError(
                     f"WF1 violation: cannot verify validation token for tool "
                     f"'{name}' — token store unavailable: {e}"
-                )
+                ) from e
             if not valid:
                 self._audit("wf1_violation", {
                     "op": "wf1_violation",
@@ -353,7 +353,7 @@ class ProtocolMCPServer:
         try:
             return method(**arguments)
         except Exception as e:
-            raise MCPError(f"Tool execution failed: {e}")
+            raise MCPError(f"Tool execution failed: {e}") from e
 
     def _handle_validate_task(self, arguments: Dict[str, Any]) -> dict:
         return self._core_handler.handle_validate_task(arguments)
@@ -633,7 +633,7 @@ class CoreToolHandler:
                 except TokenStoreError as e:
                     raise MCPError(
                         f"dispatch_task failed: token store unavailable: {e}"
-                    )
+                    ) from e
                 self.server._validation_token = None
             else:
                 consumed = False
@@ -674,7 +674,7 @@ class CoreToolHandler:
             with open(task_path) as f:
                 task_data = json.load(f)
         except Exception as e:
-            raise MCPError(f"Error reading task.json: {e}")
+            raise MCPError(f"Error reading task.json: {e}") from e
 
         task_id = task_data.get("task_id", "")
         original_spec = task_data.get("description", "")

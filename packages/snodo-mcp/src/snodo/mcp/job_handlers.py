@@ -26,7 +26,7 @@ class JobToolHandler:
             full = job_mgr.get_status(job_id)
         except Exception as e:
             from snodo.mcp.server import MCPError
-            raise MCPError(f"Job not found or error: {e}")
+            raise MCPError(f"Job not found or error: {e}") from e
 
         return {
             "id": full.get("id", job_id),
@@ -61,7 +61,7 @@ class JobToolHandler:
             log_content = job_mgr.get_logs(job_id, stream=stream, tail=tail)
         except Exception as e:
             from snodo.mcp.server import MCPError
-            raise MCPError(f"Job not found or error: {e}")
+            raise MCPError(f"Job not found or error: {e}") from e
 
         return {
             "job_id": job_id,

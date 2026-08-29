@@ -65,46 +65,46 @@ class PrMCP:
         try:
             return self.provider.create_pr(branch, title, body)
         except ProviderError as e:
-            raise PrError(str(e))
+            raise PrError(str(e)) from e
 
     def read_pr_diff(self, pr_number: int) -> str:
         """Read the diff of a pull request."""
         try:
             return self.provider.read_pr_diff(pr_number)
         except ProviderError as e:
-            raise PrError(str(e))
+            raise PrError(str(e)) from e
 
     def post_review_comment(self, pr_number: int, comment: str) -> str:
         """Post a comment on a pull request."""
         try:
             return self.provider.post_review_comment(pr_number, comment)
         except ProviderError as e:
-            raise PrError(str(e))
+            raise PrError(str(e)) from e
 
     def approve_pr(self, pr_number: int) -> str:
         """Approve a pull request."""
         try:
             return self.provider.approve_pr(pr_number)
         except ProviderError as e:
-            raise PrError(str(e))
+            raise PrError(str(e)) from e
 
     def reject_pr(self, pr_number: int, reason: str) -> str:
         """Request changes on a pull request."""
         try:
             return self.provider.reject_pr(pr_number, reason)
         except ProviderError as e:
-            raise PrError(str(e))
+            raise PrError(str(e)) from e
 
     def merge_pr(self, pr_number: int) -> str:
         """Merge a pull request."""
         try:
             return self.provider.merge_pr(pr_number)
         except ProviderError as e:
-            raise PrError(str(e))
+            raise PrError(str(e)) from e
 
     def read_pr_comments(self, pr_number: int) -> str:
         """Read comments and reviews on a pull request."""
         try:
             return self.provider.read_pr_comments(pr_number)
         except ProviderError as e:
-            raise PrError(str(e))
+            raise PrError(str(e)) from e
