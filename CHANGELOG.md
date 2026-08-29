@@ -17,16 +17,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
   so it routinely needed longer than the process lived, and every failure
   ended at a `_logger.warning` that had no handler without `--verbose`. On a
   real project it synced nothing for two months before the operator noticed.
-  `sync_if_enabled` now runs the sync in a daemon thread and waits up to a
-  bounded 5s budget for it: a sync that completes within the budget is
-  delivered and the cursor advances; one that exceeds the budget is abandoned
-  (the cursor stays put, so the events re-send next time) and the operator is
-  told on stderr in one line; a failed sync is also reported on stderr without
-  `--verbose`. The wait is always bounded — the thread stays daemon, so a slow
-  or unreachable cloud never hangs the CLI. `snodo cloud status` now answers
-  "is my audit trail actually reaching the cloud?": per session it shows how
-  many events are pending, when the last attempt was, and what went wrong if
-  it failed (a confirmed success clears the pending count and the error). The
+  `sync_if_enabled` now starts the sync in a daemon thread and registers it
+  for a bounded wait at process exit (`flush_pending_syncs`, an atexit flush):
+  a sync that completes within the budget is delivered and the cursor
+  advances; one that exceeds the budget is abandoned (the cursor stays put,
+  so the events re-send next time) and the operator is told on stderr in one
+  line; a failed sync is also reported on stderr without `--verbose`. The
+  whole flush fits inside one bounded budget however many syncs are pending —
+  a ten-task plan waits at most one budget, not ten — and the reported pending
+  count is the unsynced backlog (events past the cursor), not the size of the
+  whole log. The wait is always bounded: threads stay daemon, so a slow or
+  unreachable cloud never hangs the CLI. `snodo cloud status` now answers "is
+  my audit trail actually reaching the cloud?": per session it shows how many
+  events are pending, when the last attempt was, and what went wrong if it
+  failed (a confirmed success clears the pending count and the error). The
   cursor still advances only on a confirmed success, the audit log on disk
   stays the source of truth, and `AuditLog.append_event` is untouched.
   (Fixes #142).

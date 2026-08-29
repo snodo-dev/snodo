@@ -593,6 +593,15 @@ class TestSyncIfEnabledBoundedWait:
     def _config(self):
         return {"cloud": {"sync_enabled": True, "api_key": "sndo_live_xxx", "api_url": "https://api.example.com"}}
 
+    def _events(self, count, start_seq=1):
+        """Create mock events with real sequence numbers (1-based)."""
+        evs = []
+        for i in range(count):
+            ev = MagicMock()
+            ev.sequence = start_seq + i
+            evs.append(ev)
+        return evs
+
     def test_sync_completing_within_budget_is_delivered(self, tmp_path, capsys):
         """A sync that completes within the budget is delivered and the cursor advances."""
         import snodo.infrastructure.cloud_sync as cs
@@ -619,7 +628,8 @@ class TestSyncIfEnabledBoundedWait:
 
     def test_sync_exceeding_budget_does_not_hang_and_reports(self, tmp_path, capsys):
         """A sync that exceeds the budget does not hang the command, leaves the
-        cursor where it was, and produces the stderr line."""
+        cursor where it was, and produces the stderr line. The reported pending
+        count is the unsynced backlog, not the size of the whole log."""
         import time
 
         import snodo.infrastructure.cloud_sync as cs
@@ -627,10 +637,12 @@ class TestSyncIfEnabledBoundedWait:
 
         state_path = tmp_path / "cloud_sync.json"
         state = CloudSyncState(state_path=state_path)
-        state.advance_cursor("sess_slow", 0)
+        # Cursor at 5: events 1-5 are synced, so the unsynced backlog is 3 even
+        # though the log holds 8 events. The report must say 3, not 8.
+        state.advance_cursor("sess_slow", 5)
 
         audit_log = MagicMock()
-        audit_log.events = [MagicMock()] * 3
+        audit_log.events = self._events(8)  # sequences 1..8
 
         def slow_sync(*args, **kwargs):
             time.sleep(10)  # far beyond the budget
@@ -647,23 +659,61 @@ class TestSyncIfEnabledBoundedWait:
         assert elapsed < 8, f"flush_pending_syncs blocked for {elapsed:.1f}s"
 
         # The cursor was not advanced (the sync was abandoned).
-        assert state.get_cursor("sess_slow") == 0
+        assert state.get_cursor("sess_slow") == 5
 
         err = capsys.readouterr().err
         assert "cloud sync still in progress" in err
         assert "3 event(s) pending" in err
+        assert "8 event(s) pending" not in err
 
-    def test_failing_sync_reports_on_stderr_without_verbose(self, tmp_path, capsys):
-        """A failing sync produces the stderr line without --verbose."""
+    def test_multiple_pending_syncs_stay_within_one_budget(self, tmp_path, capsys):
+        """Several pending syncs against a cloud that never responds keep the
+        total flush time within one budget, not one budget per sync."""
+        import time
+
         import snodo.infrastructure.cloud_sync as cs
         from snodo.infrastructure.cloud_sync import CloudSyncState, flush_pending_syncs
 
         state_path = tmp_path / "cloud_sync.json"
         state = CloudSyncState(state_path=state_path)
-        state.advance_cursor("sess_fail", 0)
+        state.advance_cursor("sess_1", 0)
+        state.advance_cursor("sess_2", 0)
+        state.advance_cursor("sess_3", 0)
+
+        def slow_sync(*args, **kwargs):
+            time.sleep(10)  # far beyond the budget
+            return {"synced": 0, "failed": False, "pending": 1}
+
+        start = time.monotonic()
+        with patch("snodo.infrastructure.cloud_sync.CloudSyncState", return_value=state):
+            with patch.object(cs.CloudSyncDispatcher, "sync", side_effect=slow_sync):
+                for sid in ("sess_1", "sess_2", "sess_3"):
+                    audit_log = MagicMock()
+                    audit_log.events = self._events(1)
+                    cs.sync_if_enabled(sid, "/proj", audit_log, config=self._config())
+                flush_pending_syncs()
+        elapsed = time.monotonic() - start
+
+        # Three syncs, one budget: the flush must not scale with the count.
+        assert elapsed < 8, f"flush_pending_syncs blocked for {elapsed:.1f}s across 3 syncs"
+
+        err = capsys.readouterr().err
+        assert err.count("cloud sync still in progress") == 3
+
+    def test_failing_sync_reports_on_stderr_without_verbose(self, tmp_path, capsys):
+        """A failing sync produces the stderr line without --verbose. The
+        reported pending count is the unsynced backlog, not the log size."""
+        import snodo.infrastructure.cloud_sync as cs
+        from snodo.infrastructure.cloud_sync import CloudSyncState, flush_pending_syncs
+
+        state_path = tmp_path / "cloud_sync.json"
+        state = CloudSyncState(state_path=state_path)
+        # Cursor at 6: events 1-6 synced, so the unsynced backlog is 2 even
+        # though the log holds 8 events.
+        state.advance_cursor("sess_fail", 6)
 
         audit_log = MagicMock()
-        audit_log.events = [MagicMock()] * 2
+        audit_log.events = self._events(8)  # sequences 1..8
 
         with patch("snodo.infrastructure.cloud_sync.CloudSyncState", return_value=state):
             with patch.object(cs.CloudSyncDispatcher, "sync",
@@ -674,6 +724,7 @@ class TestSyncIfEnabledBoundedWait:
         err = capsys.readouterr().err
         assert "cloud sync failed" in err
         assert "2 event(s) pending" in err
+        assert "8 event(s) pending" not in err
 
     def test_exit_code_unaffected_by_sync_outcome(self, tmp_path, capsys):
         """The CLI's exit code is unaffected by sync outcome — sync_if_enabled
@@ -682,7 +733,7 @@ class TestSyncIfEnabledBoundedWait:
         from snodo.infrastructure.cloud_sync import sync_if_enabled
 
         audit_log = MagicMock()
-        audit_log.events = [MagicMock()] * 2
+        audit_log.events = self._events(2)
 
         with patch.object(cs.CloudSyncDispatcher, "sync",
                           return_value={"synced": 0, "failed": True, "pending": 2}):
