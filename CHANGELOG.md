@@ -62,6 +62,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Fixed `_select_template` in `snodo/cli/commands/init_cmd.py` silently creating a `team` protocol on prompt abort (`KeyboardInterrupt`) or non-interactive stdin (`EOFError`). KeyboardInterrupt now aborts with a cancellation message and exits non-zero; EOF without `--template` reports that `--template` is required in a non-interactive context and lists available templates. Updated Next steps output to include provider credential setup (`OPENAI_API_KEY` or `snodo config set`), and added comprehensive behavioral test suite in `tests/cli/test_init_cmd.py`. (Fixes #133).
+
 - A blocked task in a plan no longer restarts from scratch on re-run. `_execute_wave_task`
   previously re-executed a task the status file marked "blocked" as a fresh dispatch,
   discarding the failure context `_auto_write_failure_context` persists. A blocked task with
