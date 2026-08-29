@@ -11,6 +11,7 @@ Contract (from snodo-cloud ADR):
   5xx exponential backoff up to 5 retries, never raises.
 """
 
+import atexit
 import json
 import logging
 import os
@@ -57,7 +58,12 @@ class CloudSyncState:
         return 0
 
     def advance_cursor(self, session_id: str, sequence: int) -> None:
-        """Record that events up to *sequence* have been synced."""
+        """Record that events up to *sequence* have been synced.
+
+        A confirmed success clears a refusal, the pending count, and any
+        recorded error, so ``cloud status`` reflects a healthy session
+        (Fixes #141, #142).
+        """
         data = self._load()
         if session_id not in data or not isinstance(data.get(session_id), dict):
             data[session_id] = {}
@@ -69,6 +75,26 @@ class CloudSyncState:
         sess.pop("refused_range", None)
         sess.pop("refused_at", None)
         sess.pop("refused_status_code", None)
+        sess["pending_count"] = 0
+        sess.pop("last_error", None)
+        self._save(data)
+
+    def record_attempt(
+        self, session_id: str, pending: int, error: Optional[str] = None,
+    ) -> None:
+        """Record a sync attempt outcome for *session_id* (Fixes #142).
+
+        Stores how many events were pending, when the attempt happened, and
+        what went wrong (if it failed) so ``cloud status`` can answer "is my
+        audit trail actually reaching the cloud?".
+        """
+        data = self._load()
+        if session_id not in data or not isinstance(data.get(session_id), dict):
+            data[session_id] = {}
+        data[session_id]["pending_count"] = pending
+        data[session_id]["last_attempt_at"] = time.time()
+        if error is not None:
+            data[session_id]["last_error"] = error
         self._save(data)
 
     def record_refusal(
@@ -143,13 +169,14 @@ class CloudSyncDispatcher:
             force: If True, re-attempt sync even if session is in refused state
 
         Returns:
-            ``{"synced": int, "failed": bool, "refused": bool, "reason": Optional[str]}``
+            ``{"synced": int, "failed": bool, "refused": bool, "reason": str,
+                "pending": int}``
         """
         try:
             return self._sync_impl(session_id, project_root, audit_log, api_key, api_url, force=force)
         except Exception:
             _logger.warning("Cloud sync threw unexpected exception", exc_info=True)
-            return {"synced": 0, "failed": True}
+            return {"synced": 0, "failed": True, "pending": 0}
 
     def _sync_impl(
         self,
@@ -162,7 +189,7 @@ class CloudSyncDispatcher:
     ) -> dict:
         events = getattr(audit_log, "events", [])
         if not events:
-            return {"synced": 0, "failed": False}
+            return {"synced": 0, "failed": False, "pending": 0}
 
         state = CloudSyncState()
 
@@ -173,7 +200,7 @@ class CloudSyncDispatcher:
                 "Skipping automatic cloud sync for refused session %s: %s",
                 session_id, reason,
             )
-            return {"synced": 0, "failed": False, "refused": True, "reason": reason}
+            return {"synced": 0, "failed": False, "refused": True, "reason": reason, "pending": 0}
 
         cursor = state.get_cursor(session_id)
 
@@ -184,28 +211,22 @@ class CloudSyncDispatcher:
                 unsynced.append(ev)
 
         if not unsynced:
-            return {"synced": 0, "failed": False}
+            return {"synced": 0, "failed": False, "pending": 0}
 
         synced = 0
         failed = False
         refused = False
         refused_reason = None
+        last_error: Optional[str] = None
 
         # Batch into groups of ≤50
         for i in range(0, len(unsynced), _MAX_BATCH_SIZE):
             batch = unsynced[i:i + _MAX_BATCH_SIZE]
             first_seq = batch[0].sequence
             max_seq = batch[-1].sequence
-            res = self._post_batch(
+            outcome, reason, status_code = self._post_batch(
                 session_id, project_root, batch, api_key, api_url,
             )
-
-            if isinstance(res, tuple):
-                outcome, reason, status_code = res
-            elif res is True:
-                outcome, reason, status_code = ("delivered", "HTTP 200", 200)
-            else:
-                outcome, reason, status_code = ("retryable", "Failed", None)
 
             if outcome == "delivered":
                 state.advance_cursor(session_id, max_seq)
@@ -222,12 +243,17 @@ class CloudSyncDispatcher:
                 failed = True
                 refused = True
                 refused_reason = reason
+                last_error = reason
                 break
-            else:
+            else:  # retryable
                 failed = True
+                last_error = reason
                 break
 
-        res_dict = {"synced": synced, "failed": failed}
+        pending = len(unsynced) - synced
+        state.record_attempt(session_id, pending=pending, error=last_error if failed else None)
+
+        res_dict: dict = {"synced": synced, "failed": failed, "pending": pending}
         if refused:
             res_dict["refused"] = True
             res_dict["reason"] = refused_reason
@@ -240,7 +266,7 @@ class CloudSyncDispatcher:
         batch: list,
         api_key: str,
         api_url: str,
-    ) -> tuple[str, str, Optional[int]]:
+    ) -> tuple:
         """POST a batch of events.
 
         Returns:
@@ -352,13 +378,67 @@ def _should_sync(config: Optional[dict] = None) -> bool:
     return bool(cloud.get("sync_enabled")) and bool(cloud.get("api_key", "").strip())
 
 
+#: How long the flush waits for a background sync to finish before giving up.
+#: Bounded, always — a slow or unreachable cloud must never hang the process.
+#: A sync that needs longer is abandoned, the cursor is left where it was, and
+#: the operator is told on stderr (Fixes #142).
+_SYNC_WAIT_BUDGET = 5.0
+
+#: Pending background syncs registered by ``sync_if_enabled``, drained once at
+#: process exit by ``flush_pending_syncs``. Each entry carries the thread, its
+#: result dict, the session id, and the audit log for the abandoned-case count.
+_pending_syncs: list = []
+
+
+def flush_pending_syncs() -> None:
+    """Join pending background syncs with a bounded wait and report on stderr.
+
+    Registered via ``atexit`` so a sync that would succeed in a few seconds
+    gets those seconds at process exit, exactly once — not once per task in a
+    multi-task plan. The wait is always bounded: threads stay daemon, so a slow
+    or unreachable cloud never hangs the process. A sync that fails, or that is
+    abandoned because it ran out of time, is reported on stderr in one line and
+    the cursor is left where it was (events re-send next time) (Fixes #142).
+    """
+    import sys
+
+    while _pending_syncs:
+        thread, result, session_id, audit_log = _pending_syncs.pop(0)
+        if thread.is_alive():
+            thread.join(timeout=_SYNC_WAIT_BUDGET)
+        if thread.is_alive():
+            pending = len(getattr(audit_log, "events", []))
+            print(
+                f"⚠ cloud sync still in progress for {session_id} — "
+                f"{pending} event(s) pending; run `snodo cloud sync --all` to finish.",
+                file=sys.stderr,
+            )
+            continue
+        if result.get("failed"):
+            pending = result.get("pending", 0)
+            print(
+                f"⚠ cloud sync failed for {session_id} — "
+                f"{pending} event(s) pending; run `snodo cloud sync --all` to retry.",
+                file=sys.stderr,
+            )
+
+
+atexit.register(flush_pending_syncs)
+
+
 def sync_if_enabled(
     session_id: str,
     project_root: str,
     audit_log: Any,
     config: Optional[dict] = None,
 ) -> None:
-    """Fire-and-forget cloud sync if enabled. Runs in a background thread."""
+    """Start a best-effort cloud sync if enabled and register it for the
+    bounded wait at process exit (Fixes #142).
+
+    The sync runs in a daemon thread and is joined with a bounded timeout by
+    ``flush_pending_syncs`` at exit — once per process, whichever task started
+    it. The CLI itself never blocks, and a slow cloud never hangs the process.
+    """
     from threading import Thread
 
     if not _should_sync(config):
@@ -373,15 +453,15 @@ def sync_if_enabled(
     api_url = cloud["api_url"]
 
     dispatcher = CloudSyncDispatcher()
+    result: dict = {"synced": 0, "failed": False, "pending": 0}
 
     def _run_sync():
         try:
-            dispatcher.sync(session_id, project_root, audit_log, api_key, api_url)
+            result.update(dispatcher.sync(session_id, project_root, audit_log, api_key, api_url))
         except Exception as e:
             _logger.warning("Cloud sync background thread failed: %s", e)
+            result["failed"] = True
 
-    thread = Thread(
-        target=_run_sync,
-        daemon=True,
-    )
+    thread = Thread(target=_run_sync, daemon=True)
     thread.start()
+    _pending_syncs.append((thread, result, session_id, audit_log))

@@ -218,7 +218,8 @@ class TestCloudSyncDispatcher:
 
         result = dispatcher.sync("sess_1", "/proj", audit_log, "sndo_live_xxx",
                                   "https://api.example.com")
-        assert result == {"synced": 0, "failed": False}
+        assert result["synced"] == 0
+        assert result["failed"] is False
 
     def test_sync_batches_up_to_50(self):
         """Batch of 75 events → two POST calls (50 + 25)."""
@@ -234,7 +235,8 @@ class TestCloudSyncDispatcher:
 
         with patch.object(CloudSyncState, "get_cursor", return_value=0):
             with patch.object(CloudSyncState, "advance_cursor"):
-                with patch.object(dispatcher, "_post_batch", return_value=True) as mock_post:
+                with patch.object(dispatcher, "_post_batch",
+                                  return_value=("delivered", "HTTP 200", 200)) as mock_post:
                     result = dispatcher.sync(
                         "sess_batch", "/proj", audit_log,
                         "sndo_live_xxx", "https://api.example.com",
@@ -256,7 +258,8 @@ class TestCloudSyncDispatcher:
 
         with patch.object(CloudSyncState, "get_cursor", return_value=0):
             with patch.object(CloudSyncState, "advance_cursor") as mock_advance:
-                with patch.object(dispatcher, "_post_batch", return_value=False):
+                with patch.object(dispatcher, "_post_batch",
+                                  return_value=("retryable", "HTTP 500: boom", 500)):
                     result = dispatcher.sync(
                         "sess_fail", "/proj", audit_log,
                         "sndo_live_xxx", "https://api.example.com",
@@ -278,7 +281,8 @@ class TestCloudSyncDispatcher:
 
         with patch.object(CloudSyncState, "get_cursor", return_value=5):
             with patch.object(CloudSyncState, "advance_cursor"):
-                with patch.object(dispatcher, "_post_batch", return_value=True):
+                with patch.object(dispatcher, "_post_batch",
+                                  return_value=("delivered", "HTTP 200", 200)):
                     result = dispatcher.sync(
                         "sess_cur", "/proj", audit_log,
                         "sndo_live_xxx", "https://api.example.com",
@@ -307,12 +311,12 @@ class TestCloudSyncDispatcher:
         rate_limited.text = "rate limited"
         with patch("httpx.post", side_effect=[rate_limited, ok_resp]) as mock_post:
             with patch("snodo.infrastructure.cloud_sync.time.sleep") as mock_sleep:
-                result = dispatcher._post_batch(
+                outcome, reason, status_code = dispatcher._post_batch(
                     "sess_rl", "/proj", events[:3],
                     "sndo_live_xxx", "https://api.example.com",
                 )
 
-        assert result[0] == "delivered"
+        assert outcome == "delivered"
         mock_sleep.assert_called_with(1)
         assert mock_post.call_count == 2
 
@@ -329,12 +333,12 @@ class TestCloudSyncDispatcher:
         svr_err.text = "service unavailable"
         with patch("httpx.post", return_value=svr_err) as mock_post:
             with patch("snodo.infrastructure.cloud_sync.time.sleep") as mock_sleep:
-                result = dispatcher._post_batch(
+                outcome, reason, status_code = dispatcher._post_batch(
                     "sess_5xx", "/proj", events[:3],
                     "sndo_live_xxx", "https://api.example.com",
                 )
 
-        assert result[0] == "retryable"
+        assert outcome == "retryable"
         # 5 retries: attempt 0 (1s), 1 (2s), 2 (4s), 3 (8s), 4 (16s), attempt 5 → return False
         assert mock_sleep.call_count == 5
         assert mock_post.call_count == 6  # _MAX_RETRIES + 1
@@ -349,13 +353,16 @@ class TestCloudSyncDispatcher:
         # Network error with retries
         with patch("snodo.infrastructure.cloud_sync.CloudSyncState.get_cursor", return_value=0):
             with patch("snodo.infrastructure.cloud_sync.CloudSyncState.advance_cursor"):
-                with patch.object(dispatcher, "_post_batch", return_value=False):
+                with patch.object(dispatcher, "_post_batch",
+                                  return_value=("retryable", "Network error", None)):
                     result = dispatcher.sync(
                         "sess_net", "/proj", audit_log,
                         "sndo_live_xxx", "https://api.example.com",
                     )
 
-        assert result == {"synced": 0, "failed": True}
+        assert result["synced"] == 0
+        assert result["failed"] is True
+        assert result["pending"] == 3
 
     def test_unexpected_exception_never_raises(self):
         from unittest.mock import PropertyMock
@@ -373,9 +380,11 @@ class TestCloudSyncDispatcher:
             "sndo_live_xxx", "https://api.example.com",
         )
 
-        assert result == {"synced": 0, "failed": True}
+        assert result["synced"] == 0
+        assert result["failed"] is True
 
     def test_sync_if_enabled_spawns_thread(self):
+        import snodo.infrastructure.cloud_sync as cs
         from snodo.infrastructure.cloud_sync import sync_if_enabled
 
         config = {"cloud": {"sync_enabled": True, "api_key": "sndo_live_xxx", "api_url": "https://api.example.com"}}
@@ -390,6 +399,8 @@ class TestCloudSyncDispatcher:
                     t.join(timeout=1)
 
         mock_sync.assert_called_once()
+        # Drain the registered thread so it doesn't leak into later tests.
+        cs._pending_syncs.clear()
 
     def test_sync_if_enabled_disabled_does_nothing(self):
         from snodo.infrastructure.cloud_sync import sync_if_enabled
@@ -562,6 +573,174 @@ class TestCloudSyncDispatcher:
         out = capsys.readouterr().out
         assert "BLOCKED" not in out
         assert "last_seq=5" in out
+
+
+# ------------------------------------------------------------------#
+# Bounded-wait sync behaviours (Fixes #142)
+# ------------------------------------------------------------------#
+
+class TestSyncIfEnabledBoundedWait:
+    """A sync that completes within the budget is delivered and the cursor
+    advances; one that exceeds the budget does not hang the command, leaves
+    the cursor where it was, and produces the stderr line; a failing sync
+    produces the stderr line without --verbose.
+
+    The bounded wait happens at process exit (``flush_pending_syncs``, an
+    atexit flush of the background threads started by ``sync_if_enabled``),
+    once per process, not once per task.
+    """
+
+    def _config(self):
+        return {"cloud": {"sync_enabled": True, "api_key": "sndo_live_xxx", "api_url": "https://api.example.com"}}
+
+    def test_sync_completing_within_budget_is_delivered(self, tmp_path, capsys):
+        """A sync that completes within the budget is delivered and the cursor advances."""
+        import snodo.infrastructure.cloud_sync as cs
+        from snodo.infrastructure.cloud_sync import CloudSyncState, flush_pending_syncs
+
+        state_path = tmp_path / "cloud_sync.json"
+        state = CloudSyncState(state_path=state_path)
+        state.advance_cursor("sess_ok", 0)
+
+        audit_log = MagicMock()
+        audit_log.events = []
+
+        before = len(cs._pending_syncs)
+        with patch("snodo.infrastructure.cloud_sync.CloudSyncState", return_value=state):
+            with patch.object(cs.CloudSyncDispatcher, "sync",
+                              return_value={"synced": 5, "failed": False, "pending": 0}):
+                cs.sync_if_enabled("sess_ok", "/proj", audit_log, config=self._config())
+                assert len(cs._pending_syncs) == before + 1
+                flush_pending_syncs()
+
+        # The thread finished; the pending entry was drained; no stderr line.
+        assert len(cs._pending_syncs) == before
+        assert capsys.readouterr().err == ""
+
+    def test_sync_exceeding_budget_does_not_hang_and_reports(self, tmp_path, capsys):
+        """A sync that exceeds the budget does not hang the command, leaves the
+        cursor where it was, and produces the stderr line."""
+        import time
+
+        import snodo.infrastructure.cloud_sync as cs
+        from snodo.infrastructure.cloud_sync import CloudSyncState, flush_pending_syncs
+
+        state_path = tmp_path / "cloud_sync.json"
+        state = CloudSyncState(state_path=state_path)
+        state.advance_cursor("sess_slow", 0)
+
+        audit_log = MagicMock()
+        audit_log.events = [MagicMock()] * 3
+
+        def slow_sync(*args, **kwargs):
+            time.sleep(10)  # far beyond the budget
+            return {"synced": 0, "failed": False, "pending": 3}
+
+        start = time.monotonic()
+        with patch("snodo.infrastructure.cloud_sync.CloudSyncState", return_value=state):
+            with patch.object(cs.CloudSyncDispatcher, "sync", side_effect=slow_sync):
+                cs.sync_if_enabled("sess_slow", "/proj", audit_log, config=self._config())
+                flush_pending_syncs()
+        elapsed = time.monotonic() - start
+
+        # The flush did not hang: it returned within the bounded budget.
+        assert elapsed < 8, f"flush_pending_syncs blocked for {elapsed:.1f}s"
+
+        # The cursor was not advanced (the sync was abandoned).
+        assert state.get_cursor("sess_slow") == 0
+
+        err = capsys.readouterr().err
+        assert "cloud sync still in progress" in err
+        assert "3 event(s) pending" in err
+
+    def test_failing_sync_reports_on_stderr_without_verbose(self, tmp_path, capsys):
+        """A failing sync produces the stderr line without --verbose."""
+        import snodo.infrastructure.cloud_sync as cs
+        from snodo.infrastructure.cloud_sync import CloudSyncState, flush_pending_syncs
+
+        state_path = tmp_path / "cloud_sync.json"
+        state = CloudSyncState(state_path=state_path)
+        state.advance_cursor("sess_fail", 0)
+
+        audit_log = MagicMock()
+        audit_log.events = [MagicMock()] * 2
+
+        with patch("snodo.infrastructure.cloud_sync.CloudSyncState", return_value=state):
+            with patch.object(cs.CloudSyncDispatcher, "sync",
+                              return_value={"synced": 0, "failed": True, "pending": 2}):
+                cs.sync_if_enabled("sess_fail", "/proj", audit_log, config=self._config())
+                flush_pending_syncs()
+
+        err = capsys.readouterr().err
+        assert "cloud sync failed" in err
+        assert "2 event(s) pending" in err
+
+    def test_exit_code_unaffected_by_sync_outcome(self, tmp_path, capsys):
+        """The CLI's exit code is unaffected by sync outcome — sync_if_enabled
+        returns None and never raises."""
+        import snodo.infrastructure.cloud_sync as cs
+        from snodo.infrastructure.cloud_sync import sync_if_enabled
+
+        audit_log = MagicMock()
+        audit_log.events = [MagicMock()] * 2
+
+        with patch.object(cs.CloudSyncDispatcher, "sync",
+                          return_value={"synced": 0, "failed": True, "pending": 2}):
+            result = sync_if_enabled("sess_x", "/proj", audit_log, config=self._config())
+
+        assert result is None
+        # Drain the registered thread so it doesn't leak into later tests.
+        cs.flush_pending_syncs()
+        capsys.readouterr()  # drain stderr
+
+
+# ------------------------------------------------------------------#
+# cloud status pending/error reporting (Fixes #142)
+# ------------------------------------------------------------------#
+
+class TestCloudStatusPending:
+    def test_status_reports_pending_count_and_last_error(self, tmp_path, capsys):
+        """cloud status reports a non-zero pending count for a session with
+        unsynced events, and the last error after a failure."""
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+
+        with patch("snodo.config.ConfigManager") as MockCM:
+            mock_mgr = MockCM.return_value
+            mock_mgr.load.return_value = {
+                "cloud": {"api_key": "sndo_live_xxx", "sync_enabled": True},
+            }
+
+            with patch("snodo.infrastructure.cloud_sync.CloudSyncState") as MockState:
+                MockState.return_value.get_summary.return_value = {
+                    "sess_pending": {
+                        "last_synced_sequence": 10,
+                        "last_synced_at": 1700000000,
+                        "pending_count": 7,
+                        "last_attempt_at": 1700000100,
+                        "last_error": "HTTP 500: internal error",
+                    },
+                }
+                result = cloud_status_command()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "sess_pending" in out
+        assert "pending=7" in out
+        assert "last_error: HTTP 500: internal error" in out
+
+    def test_status_clears_error_after_success(self, tmp_path, capsys):
+        """After a confirmed success the pending count is zero and the last
+        error is gone."""
+        from snodo.infrastructure.cloud_sync import CloudSyncState
+
+        path = tmp_path / "cloud_sync.json"
+        state = CloudSyncState(state_path=path)
+        state.record_attempt("sess_ok", pending=5, error="HTTP 500: boom")
+        state.advance_cursor("sess_ok", 5)
+
+        summary = state.get_summary()["sess_ok"]
+        assert summary["pending_count"] == 0
+        assert "last_error" not in summary
 
 
 # ------------------------------------------------------------------#
