@@ -204,10 +204,21 @@ def test_evaluate_warns(task, producer_mode, protocol, validator_spec):
     )
     result = val.evaluate(ctx)
     assert result.severity == "warn"
+    # A genuine warn verdict is not an operational fault (Fixes #136).
+    assert not result.error
+    assert "planning work detected" in result.justification
 
 
-def test_evaluate_llm_failure_falls_back_to_warn(task, producer_mode, protocol, validator_spec):
-    mock_llm = Mock(side_effect=Exception("API unavailable"))
+def test_evaluate_parse_level_warn_stays_warn(task, producer_mode, protocol, validator_spec):
+    """Unparseable LLM content yields a warn verdict — it must NOT become a blocker.
+
+    Only the catch-all for a failed call is an operational fault; a parse
+    warn means the call ran and produced a verdict we could not read.
+    """
+    mock_llm = Mock()
+    mock_llm.return_value = Mock(
+        choices=[Mock(message=Mock(content="I cannot answer that"))]
+    )
     val = ProtocolAdherenceValidator(validator_spec, mock_llm)
     ctx = ValidatorContext(
         task=task, current_mode=producer_mode, protocol=protocol,
@@ -218,7 +229,32 @@ def test_evaluate_llm_failure_falls_back_to_warn(task, producer_mode, protocol, 
     )
     result = val.evaluate(ctx)
     assert result.severity == "warn"
-    assert "defaulting to warn" in result.justification.lower()
+    assert not result.error
+    assert "Could not parse" in result.justification
+
+
+def test_evaluate_llm_failure_is_operational_blocker(task, producer_mode, protocol, validator_spec):
+    """An exception from the LLM call is an operational fault, not a warn verdict.
+
+    The validator never executed, so it has no verdict to report. Reporting
+    "warn" would let a validator outage pass work under a non-unanimous
+    policy (Fixes #136).
+    """
+    mock_llm = Mock(side_effect=Exception("API unavailable"))
+    val = ProtocolAdherenceValidator(validator_spec, mock_llm)
+    ctx = ValidatorContext(
+        task=task, current_mode=producer_mode, protocol=protocol,
+        mode_name=producer_mode.name,
+        mode_tools=list(producer_mode.tools),
+        mode_transitions=dict(producer_mode.transitions),
+        mode_validator_refs=list(producer_mode.validators),
+    )
+    result = val.evaluate(ctx)
+    assert result.severity == "blocker"
+    assert result.error is True
+    assert "could not execute" in result.justification.lower()
+    assert "operational error" in result.justification.lower()
+    assert "defaulting to warn" not in result.justification.lower()
 
 
 # ---------------------------------------------------------------------------
