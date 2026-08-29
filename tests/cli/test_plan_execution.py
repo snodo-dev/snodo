@@ -12,7 +12,7 @@ Covers:
 """
 
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from snodo.mcp.planner import PlannerMCP
@@ -336,3 +336,164 @@ def test_plan_cli_main_integration(plan_project_env):
     assert result == 0
     status = planner.get_status(plan_name)
     assert status["tasks"]["task_1_1"]["status"] == "completed"
+
+
+# ---------------------------------------------------------------------------
+# Blocked-task resume through the retry path (Fixes #131)
+# ---------------------------------------------------------------------------
+
+def _make_plan_args(plan_name, **overrides):
+    """Build the SimpleNamespace args used by _run_plan / _execute_wave_task."""
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml",
+        model=None,
+        plan=plan_name,
+        wave=None,
+        mock=True,
+        interactive=False,
+        no_isolation=True,
+    )
+    for k, v in overrides.items():
+        setattr(args, k, v)
+    return args
+
+
+def _setup_session_with_failure(project_dir, task_id, attempt=1, spec="Spec for task 1.1"):
+    """Create an active session carrying task_failure context for *task_id*.
+
+    Returns the SessionManager so tests can attach it to args.session_manager.
+    """
+    from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.state import ProjectState, write_state
+    from snodo.protocols import _TEMPLATE_PROTOCOLS
+
+    protocol = _TEMPLATE_PROTOCOLS["solo"]
+    mode = protocol.modes[0].mode_id
+    write_state(project_dir, ProjectState(current_mode=mode))
+
+    session_mgr = SessionManager(sessions_dir=project_dir / ".snodo" / "sessions")
+    session = session_mgr.create_session(mode, str(project_dir))
+    session_mgr.update_decision(session.session_id, "task_failure", {
+        task_id: {
+            "spec": spec,
+            "branch": f"task/{task_id}",
+            "attempt": attempt,
+            "failed_validators": [
+                {
+                    "validator_id": "quality",
+                    "severity": "blocker",
+                    "justification": "tests do not pass",
+                }
+            ],
+            "files_changed": ["src/a.py"],
+        },
+    })
+    return session_mgr
+
+
+def test_blocked_task_with_failure_context_resumes_as_retry(plan_project_env, capsys):
+    """A blocked task with failure context resumes through the retry path."""
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "retry_plan")
+    planner.update_status(plan_name, "task_1_1", "blocked")
+
+    session_mgr = _setup_session_with_failure(plan_project_env, "task_1_1")
+    args = _make_plan_args(plan_name, session_manager=session_mgr)
+
+    executed = []
+
+    def mock_retry_task(a, task_id, project_root, session_manager):
+        executed.append(task_id)
+        return 0
+
+    with patch("snodo.cli.commands.run_cmd._retry_task", side_effect=mock_retry_task):
+        result = _run_plan(args)
+
+    assert result == 0
+    assert executed == ["task_1_1"]
+    out = capsys.readouterr().out
+    assert "[task_1_1] resuming as retry (failure context found)" in out
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_1"]["status"] == "completed"
+    assert status["tasks"]["task_2_1"]["status"] == "completed"
+
+
+def test_blocked_task_without_context_runs_fresh(plan_project_env, capsys):
+    """A blocked task with no failure context runs fresh and says so."""
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "fresh_plan")
+    planner.update_status(plan_name, "task_1_1", "blocked")
+
+    args = _make_plan_args(plan_name, session_manager=MagicMock())
+
+    executed = []
+
+    def mock_execute_task(a, protocol, task, model):
+        executed.append(task.id)
+        return 0
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+        result = _run_plan(args)
+
+    assert result == 0
+    assert executed == ["task_1_1", "task_2_1"]
+    out = capsys.readouterr().out
+    assert "[task_1_1] no failure context found; running fresh" in out
+    assert "[task_1_1] executing..." in out
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_1"]["status"] == "completed"
+
+
+def test_blocked_task_at_max_retries_not_reexecuted(plan_project_env, capsys):
+    """A task at max_retries is not re-executed and prints abandon/override guidance."""
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "exhausted_plan")
+    planner.update_status(plan_name, "task_1_1", "blocked")
+
+    session_mgr = _setup_session_with_failure(plan_project_env, "task_1_1", attempt=3)
+    args = _make_plan_args(plan_name, session_manager=session_mgr)
+
+    executed = []
+
+    def mock_execute_task(a, protocol, task, model):
+        executed.append(task.id)
+        return 0
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+        result = _run_plan(args)
+
+    assert result == 1
+    assert executed == []
+    out = capsys.readouterr().out
+    assert "[task_1_1] not re-executed (max_retries reached)" in out
+    assert "Task task_1_1 has failed 3 times." in out
+    assert "snodo run --retry task_1_1" in out
+    assert "snodo task abandon task_1_1" in out
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_1"]["status"] == "blocked"
+
+
+def test_completed_task_still_skipped(plan_project_env, capsys):
+    """A completed task is still skipped on re-run."""
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "skip_plan")
+    planner.update_status(plan_name, "task_1_1", "completed")
+
+    args = _make_plan_args(plan_name)
+
+    executed = []
+
+    def mock_execute_task(a, protocol, task, model):
+        executed.append(task.id)
+        return 0
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+        result = _run_plan(args)
+
+    assert result == 0
+    assert executed == ["task_2_1"]
+    out = capsys.readouterr().out
+    assert "[task_1_1] skipped (completed)" in out
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_1"]["status"] == "completed"
+    assert status["tasks"]["task_2_1"]["status"] == "completed"
