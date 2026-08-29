@@ -71,6 +71,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
   fails immediately with one line naming the provider, the expected environment variable or
   config key, and the command to set it — exit 1, nothing created. The check is skipped when
   the coder is mocked (`--mock`) or when no LLM will be called. (Fixes #137).
+- `ProtocolAdherenceValidator` no longer reports fail-open `warn` when it could not
+  execute. Its catch-all previously returned `severity="warn"` when the LLM call
+  raised — implying the gate ran and was mildly unhappy — which lets work pass on a
+  validator outage under non-unanimous policies. An exception from the call now
+  returns `severity="blocker"` with `error=True` and a justification naming it an
+  operational error (the shape `llm_validator` and this validator's provider-rejection
+  branch already used). Genuine parse-level warn verdicts are unchanged: they still
+  report `warn` with `error` unset. (Fixes #136).
 
 - A blocked task in a plan no longer restarts from scratch on re-run. `_execute_wave_task`
   previously re-executed a task the status file marked "blocked" as a fresh dispatch,

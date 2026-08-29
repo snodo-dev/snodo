@@ -56,7 +56,9 @@ class ProtocolAdherenceValidator(ValidatorBase):
 
         Returns:
             ValidatorResult with severity and justification.
-            Falls back to "warn" on LLM or parse failure.
+            A parse failure yields a warn verdict; a validator that could
+            not execute yields blocker with error=True (operational fault,
+            not a verdict).
         """
         # Prefer context-provided values over instance defaults
         if context.completion_fn is not None:
@@ -100,10 +102,19 @@ class ProtocolAdherenceValidator(ValidatorBase):
                 )
             return res
         except Exception as e:
+            # The validator never ran, so it has produced no verdict.
+            # Reporting "warn" would let a validator outage pass work under
+            # a non-unanimous policy; this is an operational fault, not a
+            # judgement (same shape as llm_validator and the provider-
+            # rejection branch above, Fixes #84).
             return ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
-                severity="warn",
-                justification=f"Protocol-adherence LLM validation failed, defaulting to warn: {e}",
+                severity="blocker",
+                justification=(
+                    f"Protocol-adherence validator could not execute due to "
+                    f"an operational error: {e}"
+                ),
+                error=True,
             )
 
     # ------------------------------------------------------------------
