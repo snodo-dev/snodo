@@ -206,15 +206,37 @@ Start MCP server from protocol definition.
 
 ### `snodo plan`
 
-Manage plans. Subcommands: `list`, `status`, `create`.
+Manage plans. Subcommands: `list`, `status`, `create`, `validate`.
 
 ```
-snodo plan create DESCRIPTION    Create a new plan from an intent description
-  --name, -n TEXT                Plan name (auto-generated if omitted)
+snodo plan list                  List all plans with wave and task counts
+snodo plan status NAME           Show per-wave task progress
+snodo plan create DESCRIPTION    Create an empty plan to author into
+  --name, -n TEXT                Plan name (auto-generated from the
+                                 description if omitted)
   --protocol TEXT                Path to protocol file
-  --model, -m TEXT               Model to use
+                                 [default: .snodo/protocol.yml]
+  --model, -m TEXT               Model to use (accepted; currently unused)
   --mock                         Use mock coder instead of real LLM
+                                 (accepted; currently unused)
+snodo plan validate NAME         Verify plan structure and task spec files
+  --json                         Emit the result as JSON
+                                 (schema snodo.plan_validate.v1)
 ```
+
+`create` scaffolds `plan.yml` and `status.json` but never generates waves —
+it always prints `Waves: 0` and `Tasks: 0`. Author the plan by hand or
+through the MCP planner's `generate_spec`, then execute it with `snodo run`:
+
+```
+snodo run --plan NAME            Execute the plan's tasks, wave by wave
+  --wave, -w INTEGER             Execute only a specific wave (requires --plan)
+  --interactive, -i              Confirm each task before execution
+```
+
+A plan is verified before its first task runs and every time it is loaded.
+See [docs/runbooks/hand-authored-plan.md](docs/runbooks/hand-authored-plan.md)
+for a worked example of authoring and running a plan by hand.
 
 ### `snodo session`
 
