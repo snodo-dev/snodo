@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Documented interchangeable coder backends (`litellm`, `opencode`, `opencode-cli`, `agy`, `mock`), `--coder` selection precedence, model role separation (judging vs execution), in-place coder commit ownership and `.snodo/` boundary protection, installation/authentication requirements, and `SubprocessCoderAdapter` extension guidelines across `README.md`, `docs/protocol.md`, and `docs/architecture.md`. (Fixes #147).
+
 ### Fixed
 
 - Cloud sync is no longer best-effort, silent, and racing process exit. The
