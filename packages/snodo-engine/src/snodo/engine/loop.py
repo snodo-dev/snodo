@@ -317,12 +317,11 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         validator_model = _resolve_model_for_role(config, "validator", DEFAULT_MODEL)
         classifier_model = _resolve_model_for_role(config, "classifier", DEFAULT_MODEL)
 
-        if is_mock_mode_active() or (isinstance(self.coder, MockAdapter) and _base_fn is not None):
-            validator_completion_fn = _build_completion_fn(validator_model, _base_fn)
-            classifier_completion_fn = _build_completion_fn(classifier_model, _base_fn)
-        elif _base_fn is None and not is_mock_mode_active():
-            validator_completion_fn = None
-            classifier_completion_fn = None
+        if is_mock_mode_active() or isinstance(self.coder, MockAdapter):
+            from snodo.coders.mock import mock_completion_fn
+            mock_base = _base_fn or mock_completion_fn
+            validator_completion_fn = _build_completion_fn(validator_model, mock_base)
+            classifier_completion_fn = _build_completion_fn(classifier_model, mock_base)
         else:
             with provider_env(validator_model), provider_env(classifier_model):
                 validator_completion_fn = _build_completion_fn(validator_model, _base_fn or litellm_completion)
