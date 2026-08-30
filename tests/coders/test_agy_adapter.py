@@ -167,8 +167,9 @@ def test_namespaced_model_is_forwarded_to_the_cli(
     coder = get_coder(coder_name, model=namespaced, workspace=temp_workspace)
     argv = coder._build_argv("do the thing", str(temp_workspace), coder._bare_model())
 
-    assert "--model" in argv
-    assert argv[argv.index("--model") + 1] == bare
+    flag = "--model" if "--model" in argv else "-m"
+    assert flag in argv
+    assert argv[argv.index(flag) + 1] == bare
 
 
 @pytest.mark.parametrize("coder_name", ["agy", "opencode-cli"])

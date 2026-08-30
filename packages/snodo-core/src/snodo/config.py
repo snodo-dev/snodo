@@ -94,6 +94,10 @@ def _set_api_key_env(mgr: "ConfigManager", model: str) -> None:
                 os.environ[pc.api_key_env] = api_key
             if pc and pc.account_id_env and pc.account_id:
                 os.environ[pc.account_id_env] = pc.account_id
+            if pc and pc.litellm_provider:
+                target_pc = DEFAULT_PROVIDER_CATALOG.get(pc.litellm_provider)
+                if target_pc and target_pc.api_key_env:
+                    os.environ[target_pc.api_key_env] = api_key
 
 
 @contextmanager
@@ -340,12 +344,9 @@ class ConfigManager:
         Returns:
             API key string, or None if not configured
         """
-        config = self.load()
-        providers_raw = config.get("providers", {})
-        if isinstance(providers_raw, dict):
-            entry = providers_raw.get(provider, {})
-            if isinstance(entry, dict):
-                return entry.get("api_key")
+        pc = self.get_providers().get(provider)
+        if pc and pc.api_key:
+            return pc.api_key
         return None
 
     def remove_key(self, provider: str) -> bool:

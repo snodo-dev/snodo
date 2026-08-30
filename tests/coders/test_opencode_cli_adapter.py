@@ -66,8 +66,8 @@ class TestBareModel:
         adapter = OpenCodeCLIAdapter(model="opencode-cli/deepseek/deepseek-chat")
         assert adapter._bare_model() == "deepseek/deepseek-chat"
 
-    def test_no_prefix_passthrough(self):
-        adapter = OpenCodeCLIAdapter(model="deepseek/deepseek-chat")
+    def test_opencode_prefix_stripping(self):
+        adapter = OpenCodeCLIAdapter(model="opencode/deepseek/deepseek-chat")
         assert adapter._bare_model() == "deepseek/deepseek-chat"
 
 
