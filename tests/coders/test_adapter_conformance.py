@@ -120,10 +120,10 @@ def _drive_opencode_adapter(name: str, workspace: Path, spec: TaskSpec):
     return coder, artifact
 
 
-def _drive_opencode_cli_adapter(name: str, workspace: Path, spec: TaskSpec):
-    """Host-CLI path: shells ``opencode run``, which writes in place."""
-    from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
-    coder = OpenCodeCLIAdapter(model="opencode-cli/deepseek/deepseek-chat", workspace=workspace)
+def _drive_subprocess_cli_adapter(name: str, workspace: Path, spec: TaskSpec):
+    """Host-CLI path: shells host CLI (opencode run, agy -p), which writes in place."""
+    cls = CODER_REGISTRY[name]
+    coder = cls(model=f"{name}/test-model", workspace=workspace)
 
     def fake_run(cmd, **kwargs):
         (workspace / "src").mkdir(parents=True, exist_ok=True)
@@ -142,7 +142,8 @@ _DRIVERS = {
     "gemini": _drive_llm_adapter,
     "mock": _drive_mock_adapter,
     "opencode": _drive_opencode_adapter,
-    "opencode-cli": _drive_opencode_cli_adapter,
+    "opencode-cli": _drive_subprocess_cli_adapter,
+    "agy": _drive_subprocess_cli_adapter,
 }
 
 
