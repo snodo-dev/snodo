@@ -934,11 +934,23 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
     try:
         mcp_root = worktree_path or project_root
         use_mock = getattr(args, "mock", False)
+        from snodo.coders import resolve_coder_name
+        from snodo.compiler.models import Protocol as _Protocol
+        mode_coder = None
+        if isinstance(protocol, _Protocol):
+            initial_mode_obj = protocol.get_mode(protocol.initial_mode)
+            mode_coder = getattr(initial_mode_obj, "coder", None) if initial_mode_obj else None
+        coder_name = resolve_coder_name(
+            model=model,
+            mode_coder=mode_coder,
+            cli_coder=getattr(args, "coder", None),
+            use_mock=use_mock,
+        )
         print("Building execution graph with MCP services...")
         print(f"  Project root: {project_root}")
         print(f"  MCP root: {mcp_root}")
         print("  MCPs: workspace, git, shell")
-        print(f"  Coder: {'mock' if use_mock else 'real LLM'}")
+        print(f"  Coder: {coder_name}")
         if checkpointer:
             print("  Memory: persistent (SqliteSaver)")
         print()

@@ -11,6 +11,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A run now records which coder produced the work. `snodo run` previously
+  printed "Coder: real LLM" for every non-mock coder, and neither the halt
+  payload nor the audit trail carried a coder field — a run under litellm,
+  opencode and agy were indistinguishable afterwards, in the output and in
+  the record. The resolved coder is now named in the run banner, in the halt
+  payload (`coder` alongside `model`), and in the `dispatch` audit event,
+  using the registry name the operator would pass to `--coder` (e.g.
+  `litellm`, `opencode-cli`, `agy`), not a class name. A completed task also
+  clears any pending decision left by an earlier failed attempt — a standing
+  proposal to proceed past a blocker that no longer exists must not survive a
+  successful run — while a task that halts still records one. (Fixes #148).
+
 - Cloud sync is no longer best-effort, silent, and racing process exit. The
   automatic sync started in a daemon thread and was killed the instant the
   command returned — the POST has a 30s timeout and up to 5 backoff retries,

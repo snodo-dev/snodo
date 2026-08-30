@@ -4,6 +4,7 @@ from snodo.core.interfaces import ValidatorResult, ExecutionError
 from snodo.coders.base import SnodoMutationError
 from snodo.infrastructure.tokens import TokenStoreError
 from snodo.engine.policy import PolicyAction, policy_decision_to_dict
+from snodo.engine.nodes.writeback import _coder_registry_name
 
 
 class ValidationNodeMixin:
@@ -335,6 +336,8 @@ class ValidationNodeMixin:
             "task_ref": loop_state.task.id,
             "token_id": loop_state.task.id,
             "mode": loop_state.current_mode,
+            "coder": _coder_registry_name(getattr(self, "coder", None)),
+            "model": getattr(self, "_default_model", None),
             "artifacts_count": len(loop_state.artifacts),
         })
 

@@ -380,6 +380,8 @@ def test_execute_node_success(sample_protocol, sample_task):
         "task_ref": sample_task.id,
         "token_id": sample_task.id,
         "mode": "producer",
+        "coder": "mock",
+        "model": builder._default_model,
         "artifacts_count": 1,
     })
 

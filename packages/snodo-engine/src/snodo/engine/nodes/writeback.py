@@ -153,6 +153,25 @@ def _build_hint(
     return ""
 
 
+def _coder_registry_name(coder: Any) -> str:
+    """Return the registry name the operator would pass to ``--coder``.
+
+    The coder instance may carry a ``coder_name`` attribute (set by the
+    resolver) or be a registered class; fall back to the class name only when
+    neither is available. The registry name, not the class name, is what the
+    operator selects with ``--coder`` (Fixes #148).
+    """
+    name = getattr(coder, "coder_name", None)
+    if name:
+        return name
+    from snodo.coders import CODER_REGISTRY
+    cls = type(coder)
+    for reg_name, reg_cls in CODER_REGISTRY.items():
+        if reg_cls is cls:
+            return reg_name
+    return cls.__name__
+
+
 class WritebackMixin:
     """Mixin providing payload persistence and decision writeback capabilities."""
 
@@ -244,7 +263,13 @@ class WritebackMixin:
         )
 
     def _clear_failure_context(self, loop_state: Any) -> None:
-        """Remove failure context for a task when execution succeeds."""
+        """Remove failure context and pending decisions for a task when it
+        completes.
+
+        A completed task must not leave an open adjudication request behind: a
+        pending decision recorded by an earlier failed attempt is a standing
+        proposal to proceed past a blocker that no longer exists (Fixes #148).
+        """
         if not self._session_manager or not self._session_id:
             return
 
@@ -263,6 +288,16 @@ class WritebackMixin:
                 )
             except Exception as e:
                 _logger.warning("Failed to update task_failure decision for session %s: %s", self._session_id, e)
+
+        pending = session.checkpoint.decisions.get("pending_decisions", {})
+        if isinstance(pending, dict) and task_id in pending:
+            del pending[task_id]
+            try:
+                self._session_manager.update_decision(
+                    self._session_id, "pending_decisions", pending,
+                )
+            except Exception as e:
+                _logger.warning("Failed to update pending_decisions for session %s: %s", self._session_id, e)
 
     def _quarantine_corrupt_state(self, job_dir: Path, state_path: Path, error: str) -> Path:
         """Preserve a corrupt state.json under a .corrupt-<timestamp> name.
@@ -375,6 +410,8 @@ class WritebackMixin:
             "iteration": loop_state.iteration,
             "current_mode": loop_state.current_mode,
             "phase": phase,
+            "coder": _coder_registry_name(getattr(self, "coder", None)),
+            "model": getattr(self, "_default_model", None),
             "validator_results": [
                 {"validator_id": r.validator_id, "severity": r.severity,
                  "justification": r.justification}
