@@ -174,40 +174,29 @@ warns and audits (`session_corrupt`), and a corrupt *active* session raises
 
 ## Adapter pattern
 
-Coders implement a single interface:
+Coders implement a single interface (`snodo.coders.base.CoderAdapter`):
 ```python
 class Coder(ABC):
     def implement(self, spec: TaskSpec) -> CodeArtifact:
         ...
 ```
 
-Shipped adapters (`engine/coders/`):
-- **LiteLLMAdapter** (`litellm.py`): routes to ~100+ LLM providers via litellm
-- **OpenCodeAdapter** (`opencode_cli_adapter.py`): drives the host `opencode` CLI as the coder
-- **MockAdapter** (`mock.py`): deterministic stub for testing
+Shipped adapters in `snodo.coders`:
+- **LiteLLMAdapter** (`litellm.py`): Direct completions via LiteLLM (~100+ providers).
+- **AGYAdapter** (`agy_adapter.py`): Shells out to Antigravity CLI (`agy -p`) on host.
+- **OpenCodeCLIAdapter** (`opencode_cli_adapter.py`): Shells out to host `opencode run`.
+- **OpenCodeAdapter** (`opencode_adapter.py`): HTTP client to containerised OpenCode server in Docker (`POST /session`).
+- **MockAdapter** (`mock.py`): Deterministic stubs for dry-runs and testing.
 
-The opencode backends (`opencode` containerised, `opencode-cli` host) are
-**experimental**: the conformance suite and the `.snodo/` guard + commit
-(ADR 027/030) hold for them, but they do not yet report per-turn progress or
-contribute usage/cost telemetry (the `litellm` path records it per job via
-`snodo meta`; cost is operational telemetry, not part of the audit trail —
-ADR 034), and no shipped template uses them. See
-`docs/protocol.md` and `docs/architecture/coder-adapter-contract.md`.
+### SubprocessCoderAdapter & In-Place Execution
 
-Adapters that write to the working tree **in place** (opencode and similar;
-`skip_workspace_write = True`) inherit `InPlaceCoderAdapter`
-(`coders/base.py`). They bypass `WorkspaceMCP`, so the `.snodo/` boundary
-cannot be enforced at the tool surface: the base class snapshots `.snodo/`
-around the coder call and raises `SnodoMutationError` if the coder mutated it,
-which the engine surfaces as a terminal `blocker` halt with a
-`snodo_mutation_blocked` audit event (ADR 027). The base class also owns the
-**commit**: after the coder runs it stages and commits the working tree with
-an explicit identity, so `HEAD` moves and post-execute validators that review
-`git diff HEAD~1..HEAD` ("## Code Change") see exactly the change the adapter
-returned as a `CodeArtifact` — the two channels cannot diverge (ADR 030).
-In-process adapters (litellm, mock) can only write through `WorkspaceMCP`,
-which refuses `.snodo/` writes (ADR 026); the executor commits their changes
-(`_commit_artifacts`), moving `HEAD` the same way.
+Adapters that write directly to the working tree (`skip_workspace_write = True`, `skip_engine_commit = True`) inherit `InPlaceCoderAdapter` (`coders/base.py`) or its host CLI subclass `SubprocessCoderAdapter` (`coders/subprocess_adapter.py`):
+
+1. **Host CLI Subprocess Abstraction**: `SubprocessCoderAdapter` manages prompt generation (`_build_prompt`), subprocess invocation, timeout handling, git diff readback (`_read_changes_from_disk`), and `CodeArtifact` construction. Host CLI adapters set `binary`, `model_prefix`, `install_hint`, and implement `_build_argv`. Adding a new host CLI adapter requires minimal code (e.g. `AGYAdapter` took 37 lines).
+2. **Model Role Separation (`_bare_model`)**: `SubprocessCoderAdapter._bare_model()` strips judging models passed via `-m` (returning `""`) so external CLI tools use their own default models, unless the model string is explicitly prefixed with the adapter's `model_prefix` (e.g., `agy/...`, `opencode-cli/...`).
+3. **`.snodo/` Boundary Guard**: In-place coders bypass `WorkspaceMCP`, so `InPlaceCoderAdapter` snapshots `.snodo/` around the coder execution and raises `SnodoMutationError` if mutated, triggering a `snodo_mutation_blocked` blocker halt (ADR 027).
+4. **Commit Ownership**: `InPlaceCoderAdapter._commit_changes()` stages and commits changes after the coder finishes, ensuring `HEAD` moves and post-execute validators reviewing `git diff HEAD~1..HEAD` see the exact change produced (ADR 030).
+5. **Telemetry & Conformance**: Per ADR 034, absence of per-turn cost/token records for external coders is operational telemetry (non-goal), not an attestation gap. Any adapter added to `CODER_REGISTRY` (`snodo/coders/__init__.py`) is automatically available via `--coder` and included in the adapter conformance test suite (`tests/coders/test_adapter_conformance.py`).
 
 Code-host providers follow the same pattern (`providers/registry.py:detect_provider()` → GitHub or local).
 
