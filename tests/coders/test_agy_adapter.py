@@ -137,3 +137,65 @@ def test_snodo_mutation_raises_error(temp_workspace: Path):
             adapter.implement(spec)
 
     assert ".snodo/illegal_edit.txt" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# A model string only reaches the CLI when it names THIS adapter's namespace.
+#
+# `snodo run -m X` names the model that JUDGES the work — it is resolved
+# through litellm for the validators and the classifier. An external coding
+# agent owns its own catalog and cannot route it:
+#
+#   agy run failed (rc=1): invalid model selection
+#   (--model "deepseek/deepseek-v4-flash"): not recognized as a known model
+#
+# So a non-namespaced model must be dropped, leaving the tool on its own
+# default.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "coder_name,namespaced,bare",
+    [
+        ("agy", "agy/Gemini 3.6 Flash (Medium)", "Gemini 3.6 Flash (Medium)"),
+        ("opencode-cli", "opencode-cli/deepseek/deepseek-chat", "deepseek/deepseek-chat"),
+    ],
+)
+def test_namespaced_model_is_forwarded_to_the_cli(
+    coder_name, namespaced, bare, temp_workspace: Path,
+):
+    """A model named in the adapter's own namespace reaches --model, unprefixed."""
+    coder = get_coder(coder_name, model=namespaced, workspace=temp_workspace)
+    argv = coder._build_argv("do the thing", str(temp_workspace), coder._bare_model())
+
+    assert "--model" in argv
+    assert argv[argv.index("--model") + 1] == bare
+
+
+@pytest.mark.parametrize("coder_name", ["agy", "opencode-cli"])
+@pytest.mark.parametrize(
+    "validator_model",
+    ["deepseek/deepseek-v4-flash", "ollama/deepseek-v4-flash", "claude-sonnet-4-20250514"],
+)
+def test_validator_model_is_not_forwarded_to_the_cli(
+    coder_name, validator_model, temp_workspace: Path,
+):
+    """A model that is not in this adapter's namespace never reaches --model.
+
+    This is the regression: -m sets the judging model, and forwarding it made
+    the external agent reject the run before writing anything.
+    """
+    coder = get_coder(coder_name, model=validator_model, workspace=temp_workspace)
+
+    assert coder._bare_model() == ""
+    argv = coder._build_argv("do the thing", str(temp_workspace), coder._bare_model())
+    assert "--model" not in argv
+    assert validator_model not in argv
+
+
+@pytest.mark.parametrize("coder_name", ["agy", "opencode-cli"])
+def test_no_model_at_all_omits_the_flag(coder_name, temp_workspace: Path):
+    """With no model given, the CLI is left on its own last-selected default."""
+    coder = get_coder(coder_name, workspace=temp_workspace)
+
+    assert coder._bare_model() == ""
+    assert "--model" not in coder._build_argv("x", str(temp_workspace), coder._bare_model())
