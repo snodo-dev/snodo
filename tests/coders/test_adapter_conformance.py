@@ -210,7 +210,6 @@ def test_commit_not_happening_is_refused(name, tmp_path):
     #103 exists to catch: HEAD~1..HEAD would resolve to the previous commit
     and the judges would pass."""
     from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
-    from snodo.core.interfaces import ValidatorResult
     from snodo.engine.loop import GraphBuilder
     from snodo.infrastructure.tokens import TokenIssuer
 
@@ -236,14 +235,14 @@ def test_commit_not_happening_is_refused(name, tmp_path):
                 mode_id="producer",
                 name="Producer",
                 tools=["edit"],
-                validators=["security", "acceptance"],
+                validators=["llm_check", "acceptance"],
             )
         ],
         validators=[
             Validator(
-                validator_id="security",
-                validator_type="security",
-                criteria=["Check the change"],
+                validator_id="llm_check",
+                validator_type="llm_check",
+                criteria=["Check task requirements"],
                 evaluation_phase="pre_execute",
             ),
             Validator(
@@ -268,42 +267,37 @@ def test_commit_not_happening_is_refused(name, tmp_path):
     def _no_commit(git_mcp, coder, artifact_paths, task):
         return []
 
-    def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
-        return [
-            ValidatorResult(validator_id=v.validator_id, severity="pass",
-                            justification="ok")
-            for v in validators
-        ]
+    from snodo.coders.mock import mock_completion_fn
 
     harness = _ExecutorHarness()
     with mock.patch.object(harness, "_commit_artifacts", side_effect=_no_commit):
-        builder = GraphBuilder(
-            protocol,
-            workspace_mcp=workspace_mcp,
-            git_mcp=git_mcp,
-            shell_mcp=None,
-            executor_fn=harness._default_executor,
-            validator_fn=_all_pass,
-            token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
-        )
-        graph = builder.build_graph().compile()
-        result = graph.invoke({
-            "task": {"id": "task_conformance", "spec": "add a feature"},
-            "current_mode": "producer",
-            "iteration": 0,
-            "stage": "execute",
-            "validation_results": [],
-            "validation_token": {"jwt": "valid_token"},
-            "artifacts": [],
-            "constraints_passed": True,
-            "constraint_violations": [],
-            "policy_decision": None,
-            "is_complete": False,
-            "is_blocked": False,
-            "metadata": {},
-            "messages": [],
-            "summary": "",
-        })
+        with mock.patch("litellm.completion", side_effect=mock_completion_fn):
+            builder = GraphBuilder(
+                protocol,
+                workspace_mcp=workspace_mcp,
+                git_mcp=git_mcp,
+                shell_mcp=None,
+                executor_fn=harness._default_executor,
+                token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
+            )
+            graph = builder.build_graph().compile()
+            result = graph.invoke({
+                "task": {"id": "task_conformance", "spec": "add a feature"},
+                "current_mode": "producer",
+                "iteration": 0,
+                "stage": "execute",
+                "validation_results": [],
+                "validation_token": {"jwt": "valid_token"},
+                "artifacts": [],
+                "constraints_passed": True,
+                "constraint_violations": [],
+                "policy_decision": None,
+                "is_complete": False,
+                "is_blocked": False,
+                "metadata": {},
+                "messages": [],
+                "summary": "",
+            })
 
     assert result["is_blocked"] is True, (
         f"{name}: a run whose commit did not happen was NOT refused. The "

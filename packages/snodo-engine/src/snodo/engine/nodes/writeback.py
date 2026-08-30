@@ -500,7 +500,8 @@ class WritebackMixin:
         self._default_model = new_model
 
         # Keep the validator runner in sync
-        self._validator_runner._completion_fn = self._completion_fn
+        if self._completion_fn is not None:
+            self._validator_runner._completion_fn = self._completion_fn
         self._validator_runner._default_model = self._default_model
 
         self._audit("coder_respawned", {
