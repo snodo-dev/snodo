@@ -9,7 +9,7 @@ Tests cover:
 - MockAdapter (renamed from MockCoderAdapter)
 - Backward-compatible aliases
 - Mode model coder fields
-- create_coder factory
+- Coder registry pattern (get_coder, CODER_REGISTRY)
 """
 
 import json
@@ -174,11 +174,9 @@ def test_backward_compat_agents_adapter_import():
         LLMCallError,
         MockCoderAdapter,
         ParseError,
-        create_coder,
     )
     assert BasicCoderAdapter is not None
     assert MockCoderAdapter is not None
-    assert create_coder is not None
     assert issubclass(LLMCallError, AdapterError)
     assert issubclass(ParseError, AdapterError)
 
@@ -188,14 +186,6 @@ def test_backward_compat_agents_adapter_new_names():
     from snodo.agents.adapter import LiteLLMAdapter, MockAdapter
     assert LiteLLMAdapter is not None
     assert MockAdapter is not None
-
-
-def test_backward_compat_create_coder():
-    """create_coder factory works from both paths."""
-    from snodo.coders import create_coder as new_create
-
-    from snodo.agents.adapter import create_coder as old_create
-    assert new_create is old_create
 
 
 # ========== MODE MODEL CODER FIELDS ==========
@@ -238,29 +228,6 @@ def test_mode_coder_config_immutable():
     )
     with pytest.raises(Exception):
         mode.coder = "other"
-
-
-# ========== CREATE CODER FACTORY ==========
-
-def test_create_coder_returns_litellm():
-    """create_coder returns LiteLLMAdapter by default."""
-    from snodo.coders import LiteLLMAdapter, create_coder
-    coder = create_coder()
-    assert isinstance(coder, LiteLLMAdapter)
-
-
-def test_create_coder_returns_mock():
-    """create_coder returns MockAdapter when mock=True."""
-    from snodo.coders import MockAdapter, create_coder
-    coder = create_coder(mock=True)
-    assert isinstance(coder, MockAdapter)
-
-
-def test_create_coder_custom_model():
-    """create_coder passes model to LiteLLMAdapter."""
-    from snodo.coders import create_coder
-    coder = create_coder(model="claude-3-opus")
-    assert coder.model == "claude-3-opus"
 
 
 # ========== TASK 6.7: TASKSPEC CONTEXT FIELDS ==========

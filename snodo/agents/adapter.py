@@ -11,7 +11,6 @@ from snodo.coders import (  # noqa: F401
     MockAdapter,
     BasicCoderAdapter,
     MockCoderAdapter,
-    create_coder,
     AdapterError,
     LLMCallError,
     ParseError,
