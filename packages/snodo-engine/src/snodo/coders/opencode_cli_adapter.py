@@ -2,186 +2,31 @@
 
 FILE: snodo/coders/opencode_cli_adapter.py
 
-Runs opencode directly on the host machine (not in Docker) via::
-
-    opencode run --dir <project_root> --dangerously-skip-permissions <prompt> -m <model>
-
-Changes are read back from the working tree via git diff (opencode writes
-files in-place).  Proven in experiments/arms/arm_a_opencode.py.
+Runs opencode directly on the host machine via SubprocessCoderAdapter.
 """
 
-import logging
-import subprocess
-from pathlib import Path
-from typing import Any, Optional
+from typing import List
 
-from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
-from snodo.coders.base import InPlaceCoderAdapter, LLMCallError
-
-_logger = logging.getLogger(__name__)
-
-_OPENCODE_TIMEOUT = 1800  # 30 minutes (big repos e.g. django/matplotlib need >10m)
+from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
 
 
-class OpenCodeCLIAdapter(InPlaceCoderAdapter):
-    """Coder adapter backed by the host ``opencode run`` CLI.
+class OpenCodeCLIAdapter(SubprocessCoderAdapter):
+    """Coder adapter backed by the host ``opencode run`` CLI."""
 
-    Writes to the working tree in place (never through WorkspaceMCP), so the
-    .snodo/ boundary is enforced by the base class: a post-run .snodo/
-    mutation raises ``SnodoMutationError`` instead of being filtered out of
-    the artifact report (Fixes #52, ADR 027).
-    """
+    binary: str = "opencode"
+    model_prefix: str = "opencode-cli/"
+    install_hint: str = (
+        "Install opencode: curl -fsSL https://opencode.ai/install | bash"
+    )
 
-    skip_engine_commit: bool = True
-    skip_workspace_write: bool = True
-
-    def __init__(
-        self,
-        model: str = "opencode/",
-        temperature: float = 0.7,
-        workspace: Optional[Path] = None,
-        workspace_mcp: Optional[Any] = None,
-        **kwargs,
-    ):
-        self.model = model
-        self.temperature = temperature
-
-        if workspace is not None:
-            self._workspace = workspace
-        elif workspace_mcp is not None:
-            from snodo.tools.workspace import WorkspaceMCP
-            if isinstance(workspace_mcp, WorkspaceMCP):
-                self._workspace = workspace_mcp.project_root
-            else:
-                self._workspace = Path.cwd()
-        else:
-            self._workspace = Path.cwd()
-
-    def _bare_model(self) -> str:
-        """Strip the ``opencode-cli/`` prefix to get the bare model ID."""
-        model = self.model
-        if model.startswith("opencode-cli/"):
-            return model[len("opencode-cli/"):]
-        return model
-
-    def _implement_in_place(self, spec: TaskSpec) -> CodeArtifact:
-        """Run ``opencode run`` on the host and read back changes via git.
-
-        1. Build prompt from the TaskSpec
-        2. Shell ``opencode run --dir <workspace> --dangerously-skip-permissions <prompt> -m <model>``
-        3. Detect changed files via git diff (staged + unstaged + untracked)
-        4. Build CodeArtifact from on-disk content
-        """
-        prompt = self._build_prompt(spec)
-        project_root = str(self._workspace)
-
-        try:
-            proc = subprocess.run(  # noqa: S603 - argv list (no shell); the prompt is one argv element and the model flags are controlled — never shell-interpreted
-                [  # noqa: S607 - opencode resolved from PATH by design (experimental host coder, ADR 027/030)
-                    "opencode", "run",
-                    "--dir", project_root,
-                    "--dangerously-skip-permissions",
-                    prompt,
-                    "-m", self._bare_model(),
-                ],
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                timeout=_OPENCODE_TIMEOUT,
-            )
-        except FileNotFoundError as e:
-            raise LLMCallError(
-                "opencode not found on PATH. Install opencode: "
-                "curl -fsSL https://opencode.ai/install | bash"
-            ) from e
-        except subprocess.TimeoutExpired as e:
-            raise LLMCallError(
-                f"opencode run timed out after {_OPENCODE_TIMEOUT}s"
-            ) from e
-
-        if proc.returncode != 0:
-            tail = (proc.stderr or "")[:2000] or (proc.stdout or "")[:2000]
-            raise LLMCallError(
-                f"opencode run failed (rc={proc.returncode}): {tail}"
-            )
-
-        diff_entries = self._read_changes_from_disk()
-        if not diff_entries:
-            combined = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
-            tail = combined[-1000:]
-            _logger.warning(
-                "opencode run completed but no changes detected "
-                "(rc=0). output tail: %s", tail,
-            )
-
-        # The base class commits the working-tree changes after this returns
-        # (InPlaceCoderAdapter._commit_changes), so post-execute validators
-        # that read the committed diff (read_diff_between_refs ->
-        # HEAD~1..HEAD) see THIS change. opencode writes files in place and
-        # never commits; without the base-class commit the reviewed diff is
-        # the previous commit and any post-execute reviewer is blind (this is
-        # what silently neutered arm-c review in EXP1).
-
-        return self._diff_to_artifact(diff_entries)
-
-    def _diff_to_artifact(self, diff_entries: list) -> CodeArtifact:
-        """Build a CodeArtifact from diff entries, re-reading content from disk."""
-        files = []
-        for entry in diff_entries:
-            path = entry.get("file", "")
-            if not path:
-                continue
-            status = entry.get("status", "modified")
-
-            if status == "deleted":
-                files.append(FileArtifact(path=path, content="", action="delete"))
-                continue
-
-            file_path = Path(self._workspace) / path
-            try:
-                content = file_path.read_text()
-            except Exception as exc:
-                _logger.warning("opencode-cli: failed to read %s: %s", file_path, exc)
-                content = f"<unreadable: {exc}>"
-
-            files.append(FileArtifact(path=path, content=content, action="write"))
-
-        if not files:
-            _logger.warning("opencode-cli returned no files — task completed with no changes")
-            return CodeArtifact(files=[])
-
-        return CodeArtifact(files=files)
-
-    def _build_prompt(self, spec: TaskSpec) -> str:
-        """Build a prompt from the TaskSpec (mirrors OpenCodeAdapter)."""
-        language = spec.project_context.get("language", "unknown")
-        lang_hint = f" ({language} project)" if language != "unknown" else ""
-
-        parts = [
-            f"You are an expert software engineer{lang_hint}.",
-            "Generate code based on the following specification.",
-            "",
+    def _build_argv(self, prompt: str, project_root: str, model: str) -> List[str]:
+        return [
+            "opencode",
+            "run",
+            "--dir",
+            project_root,
+            "--dangerously-skip-permissions",
+            prompt,
+            "-m",
+            model,
         ]
-
-        structure = spec.project_context.get("structure", "")
-        if structure:
-            parts.append(f"## Directory Structure\n```\n{structure}\n```")
-            parts.append("")
-
-        if spec.memory_summary:
-            parts.append(f"## Session History\n{spec.memory_summary}")
-            parts.append("")
-
-        parts.append(f"## Task\n{spec.description}")
-
-        if spec.constraints:
-            parts.append("\n## Constraints")
-            for c in spec.constraints:
-                parts.append(f"- {c}")
-
-        parts.append("")
-        parts.append(
-            "Write the implementation to disk. Create all necessary files."
-        )
-
-        return "\n".join(parts)
