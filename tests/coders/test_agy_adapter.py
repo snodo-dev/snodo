@@ -154,21 +154,21 @@ def test_snodo_mutation_raises_error(temp_workspace: Path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
-    "coder_name,namespaced,bare",
+    "coder_name,namespaced,bare,flag",
     [
-        ("agy", "agy/Gemini 3.6 Flash (Medium)", "Gemini 3.6 Flash (Medium)"),
-        ("opencode-cli", "opencode-cli/deepseek/deepseek-chat", "deepseek/deepseek-chat"),
+        ("agy", "agy/Gemini 3.6 Flash (Medium)", "Gemini 3.6 Flash (Medium)", "--model"),
+        ("opencode-cli", "opencode-cli/deepseek/deepseek-chat", "deepseek/deepseek-chat", "-m"),
     ],
 )
 def test_namespaced_model_is_forwarded_to_the_cli(
-    coder_name, namespaced, bare, temp_workspace: Path,
+    coder_name, namespaced, bare, flag, temp_workspace: Path,
 ):
-    """A model named in the adapter's own namespace reaches --model, unprefixed."""
+    """A model named in the adapter's own namespace reaches --model or -m, unprefixed."""
     coder = get_coder(coder_name, model=namespaced, workspace=temp_workspace)
     argv = coder._build_argv("do the thing", str(temp_workspace), coder._bare_model())
 
-    assert "--model" in argv
-    assert argv[argv.index("--model") + 1] == bare
+    assert flag in argv
+    assert argv[argv.index(flag) + 1] == bare
 
 
 @pytest.mark.parametrize("coder_name", ["agy", "opencode-cli"])

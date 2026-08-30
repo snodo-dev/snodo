@@ -66,9 +66,9 @@ class TestBareModel:
         adapter = OpenCodeCLIAdapter(model="opencode-cli/deepseek/deepseek-chat")
         assert adapter._bare_model() == "deepseek/deepseek-chat"
 
-    def test_no_prefix_passthrough(self):
+    def test_no_prefix_returns_empty_to_drop_model(self):
         adapter = OpenCodeCLIAdapter(model="deepseek/deepseek-chat")
-        assert adapter._bare_model() == "deepseek/deepseek-chat"
+        assert adapter._bare_model() == ""
 
 
 # ========== GIT-DIFF READBACK ==========
