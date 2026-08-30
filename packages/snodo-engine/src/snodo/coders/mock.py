@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
 from snodo.coders.base import CoderAdapter
+from snodo.infrastructure.config import DEFAULT_MODEL
 
 _GLOBAL_MOCK_MODE: bool = False
 
@@ -129,8 +130,11 @@ class MockAdapter(CoderAdapter):
 
     def __init__(
         self,
-        mock_files: Optional[list] = None
+        mock_files: Optional[list] = None,
+        model: Optional[str] = None,
+        **kwargs: Any,
     ):
+        self.model = model or DEFAULT_MODEL
         self.mock_files = mock_files or [
             FileArtifact(path="src/hello.py", content="def hello():\n    return 'world'"),
             FileArtifact(path="tests/test_hello.py", content="def test_hello():\n    assert hello() == 'world'"),

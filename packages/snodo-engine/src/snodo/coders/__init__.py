@@ -5,9 +5,8 @@ FILE: snodo/coders/__init__.py
 Registry pattern for pluggable coder backends.
 """
 
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, Optional, Type
 
-from snodo.core.interfaces import Coder, MCPServer
 from snodo.coders.base import CoderAdapter, AdapterError as AdapterError, LLMCallError as LLMCallError, ParseError as ParseError
 from snodo.coders.litellm import LiteLLMAdapter
 from snodo.coders.mock import MockAdapter
@@ -34,6 +33,38 @@ CODER_REGISTRY: Dict[str, Type[CoderAdapter]] = {
 }
 
 
+def resolve_coder_name(
+    model: str = DEFAULT_MODEL,
+    mode_coder: Optional[str] = None,
+    cli_coder: Optional[str] = None,
+    use_mock: bool = False,
+) -> str:
+    """Resolve the coder registry name following precedence:
+    1. Explicit CLI choice (cli_coder)
+    2. Protocol mode choice (mode_coder)
+    3. Model string prefix mapping (opencode-cli/, opencode/, gpt/o1/o3, claude, gemini)
+    4. Default ('mock' if use_mock else 'litellm')
+    """
+    if use_mock:
+        return "mock"
+    if cli_coder:
+        return cli_coder
+    if mode_coder:
+        return mode_coder
+    if model:
+        if model.startswith("opencode-cli/"):
+            return "opencode-cli"
+        if model.startswith("opencode/"):
+            return "opencode"
+        if model.startswith(("gpt", "o1", "o3")):
+            return "openai"
+        if model.startswith("claude"):
+            return "anthropic"
+        if model.startswith(("gemini", "google/")):
+            return "gemini"
+    return "litellm"
+
+
 def resolve_adapter_class(model: str) -> Type[CoderAdapter]:
     """Resolve the appropriate coder adapter class for a model string.
 
@@ -43,24 +74,15 @@ def resolve_adapter_class(model: str) -> Type[CoderAdapter]:
     Returns:
         CoderAdapter subclass best suited for the model.
     """
-    if model.startswith(("gpt", "o1", "o3")):
-        return OpenAIAdapter
-    if model.startswith("claude"):
-        return AnthropicAdapter
-    if model.startswith(("gemini", "google/")):
-        return GeminiAdapter
-    if model.startswith("opencode-cli/"):
-        return OpenCodeCLIAdapter
-    if model.startswith("opencode/"):
-        return OpenCodeAdapter
-    return LiteLLMAdapter
+    coder_name = resolve_coder_name(model=model)
+    return CODER_REGISTRY[coder_name]
 
 
 def get_coder(name: str, **config: Any) -> CoderAdapter:
     """Get a coder adapter by registry name.
 
     Args:
-        name: Registered coder name (e.g., "litellm", "mock")
+        name: Registered coder name (e.g., "litellm", "mock", "opencode-cli")
         **config: Configuration passed to the adapter constructor
 
     Returns:
@@ -73,27 +95,3 @@ def get_coder(name: str, **config: Any) -> CoderAdapter:
         available = ", ".join(sorted(CODER_REGISTRY.keys()))
         raise KeyError(f"Unknown coder '{name}'. Available: {available}")
     return CODER_REGISTRY[name](**config)
-
-
-def create_coder(
-    model: str = DEFAULT_MODEL,
-    mcp_servers: Optional[List[MCPServer]] = None,
-    mock: bool = False
-) -> Coder:
-    """Factory function to create a Coder instance.
-
-    Args:
-        model: Model identifier
-        mcp_servers: List of MCP servers
-        mock: If True, return MockAdapter for testing
-
-    Returns:
-        Coder instance
-    """
-    if mock:
-        return MockAdapter()
-
-    return LiteLLMAdapter(
-        model=model,
-        mcp_servers=mcp_servers
-    )
