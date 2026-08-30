@@ -80,8 +80,12 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         model = self.model
         if not self.model_prefix:
             return model
-        if model.startswith(self.model_prefix):
-            return model[len(self.model_prefix):]
+        prefixes = (self.model_prefix,)
+        if self.model_prefix == "opencode-cli/":
+            prefixes = ("opencode-cli/", "opencode/")
+        for prefix in prefixes:
+            if model.startswith(prefix):
+                return model[len(prefix):]
         return ""
 
     @abstractmethod
