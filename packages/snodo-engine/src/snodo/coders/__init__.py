@@ -15,6 +15,7 @@ from snodo.coders.anthropic_adapter import AnthropicAdapter
 from snodo.coders.gemini_adapter import GeminiAdapter
 from snodo.coders.opencode_adapter import OpenCodeAdapter
 from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
+from snodo.coders.agy_adapter import AGYAdapter
 from snodo.infrastructure.config import DEFAULT_MODEL
 
 # Backward-compatible aliases
@@ -30,6 +31,7 @@ CODER_REGISTRY: Dict[str, Type[CoderAdapter]] = {
     "gemini": GeminiAdapter,
     "opencode": OpenCodeAdapter,
     "opencode-cli": OpenCodeCLIAdapter,
+    "agy": AGYAdapter,
 }
 
 
@@ -42,7 +44,7 @@ def resolve_coder_name(
     """Resolve the coder registry name following precedence:
     1. Explicit CLI choice (cli_coder)
     2. Protocol mode choice (mode_coder)
-    3. Model string prefix mapping (opencode-cli/, opencode/, gpt/o1/o3, claude, gemini)
+    3. Model string prefix mapping (opencode-cli/, opencode/, agy/, gpt/o1/o3, claude, gemini)
     4. Default ('mock' if use_mock else 'litellm')
     """
     if use_mock:
@@ -56,6 +58,8 @@ def resolve_coder_name(
             return "opencode-cli"
         if model.startswith("opencode/"):
             return "opencode"
+        if model.startswith("agy/"):
+            return "agy"
         if model.startswith(("gpt", "o1", "o3")):
             return "openai"
         if model.startswith("claude"):
