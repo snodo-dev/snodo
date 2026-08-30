@@ -57,11 +57,32 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             self._workspace = Path.cwd()
 
     def _bare_model(self) -> str:
-        """Strip the registry prefix from the model string."""
+        """Return the model to pass to the CLI, or "" to let it choose.
+
+        An external coding agent owns its own model catalog — agy offers
+        "Gemini 3.6 Flash (Medium)", opencode offers whatever its providers
+        expose. snodo's ``-m`` names the model that JUDGES the work: it is
+        resolved through litellm for the validators and the classifier, and it
+        is meaningless to the CLI. Forwarding it produced:
+
+            agy run failed (rc=1): invalid model selection
+            (--model "deepseek/deepseek-v4-flash"): not recognized as a known
+            model or custom model in settings
+
+        So a model reaches the CLI only when the operator named one in THIS
+        adapter's namespace (``agy/...``, ``opencode-cli/...``). Anything else
+        yields "", and ``_build_argv`` omits the flag so the tool falls back to
+        its own last-selected default.
+
+        (Selecting the coder's model explicitly, while the validators keep
+        theirs, needs a separate flag — ``-m`` cannot carry both.)
+        """
         model = self.model
-        if self.model_prefix and model.startswith(self.model_prefix):
+        if not self.model_prefix:
+            return model
+        if model.startswith(self.model_prefix):
             return model[len(self.model_prefix):]
-        return model
+        return ""
 
     @abstractmethod
     def _build_argv(self, prompt: str, project_root: str, model: str) -> list[str]:
@@ -74,7 +95,11 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         argv = self._build_argv(prompt, project_root, bare_model)
 
         try:
-            proc = subprocess.run(
+            # noqa carried over from opencode_cli_adapter when this call moved
+            # here in the subprocess-adapter refactor. The binary name is a
+            # class attribute, never operator input; the prompt and model are
+            # single argv elements and are never shell-interpreted.
+            proc = subprocess.run(  # noqa: S603 - argv list, no shell; binary is a class attribute
                 argv,
                 cwd=project_root,
                 capture_output=True,
