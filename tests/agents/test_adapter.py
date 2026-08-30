@@ -24,7 +24,6 @@ from snodo.agents.adapter import (
     LLMCallError,
     MockCoderAdapter,
     ParseError,
-    create_coder,
 )
 
 # ========== FIXTURES ==========
@@ -311,35 +310,30 @@ def test_list_available_tools():
 
 # ========== FACTORY FUNCTION TESTS ==========
 
-def test_create_coder_basic():
-    """Test create_coder returns BasicCoderAdapter."""
-    coder = create_coder()
+def test_get_coder_basic():
+    """Test get_coder returns BasicCoderAdapter for litellm."""
+    from snodo.coders import get_coder
+    coder = get_coder("litellm", model="claude-sonnet-4-20250514")
 
     assert isinstance(coder, BasicCoderAdapter)
     assert coder.model == "claude-sonnet-4-20250514"
 
 
-def test_create_coder_custom_model():
-    """Test create_coder with custom model."""
-    coder = create_coder(model="claude-3-opus")
+def test_get_coder_custom_model():
+    """Test get_coder with custom model."""
+    from snodo.coders import get_coder
+    coder = get_coder("litellm", model="claude-3-opus")
 
     assert isinstance(coder, BasicCoderAdapter)
     assert coder.model == "claude-3-opus"
 
 
-def test_create_coder_mock():
-    """Test create_coder returns MockCoderAdapter when mock=True."""
-    coder = create_coder(mock=True)
+def test_get_coder_mock():
+    """Test get_coder returns MockCoderAdapter when name='mock'."""
+    from snodo.coders import get_coder
+    coder = get_coder("mock")
 
     assert isinstance(coder, MockCoderAdapter)
-
-
-def test_create_coder_with_mcp_servers(mock_mcp_server):
-    """Test create_coder with MCP servers."""
-    coder = create_coder(mcp_servers=[mock_mcp_server])
-
-    assert isinstance(coder, BasicCoderAdapter)
-    assert mock_mcp_server in coder.mcp_servers
 
 
 # ========== INTEGRATION TEST ==========

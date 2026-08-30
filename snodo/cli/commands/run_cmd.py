@@ -26,6 +26,7 @@ class RunArgs:
     description: Optional[str] = None
     protocol: str = ".snodo/protocol.yml"
     model: Optional[str] = None
+    coder: Optional[str] = None
     verbose: bool = False
     mock: bool = False
     plan: Optional[str] = None
@@ -55,6 +56,9 @@ def register(app: typer.Typer) -> None:
         ),
         model: Optional[str] = typer.Option(
             None, "--model", "-m", help="Model to use (e.g., claude-sonnet-4-20250514, gpt-4)",
+        ),
+        coder: Optional[str] = typer.Option(
+            None, "--coder", help="Coder backend name (e.g., litellm, opencode-cli, mock)",
         ),
         verbose: bool = typer.Option(False, "--verbose", help="Show detailed output"),
         mock: bool = typer.Option(False, "--mock", help="Use mock coder instead of real LLM"),
@@ -93,7 +97,7 @@ def register(app: typer.Typer) -> None:
     ):
         """Execute a task through the protocol."""
         args = RunArgs(
-            description=description, protocol=protocol, model=model,
+            description=description, protocol=protocol, model=model, coder=coder,
             verbose=verbose, mock=mock, plan=plan, wave=wave,
             interactive=interactive, from_pr=from_pr, background=background,
             sandbox=sandbox, resume=resume, retry=retry,
@@ -944,6 +948,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             project_root=project_root,
             use_mock_coder=use_mock,
             model=model,
+            coder_name=getattr(args, "coder", None),
             checkpointer=checkpointer,
             audit_log=audit_log,
             session_manager=session_manager,

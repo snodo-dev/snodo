@@ -314,15 +314,14 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
 
         config = ConfigManager().load()
 
-        validator_model = _resolve_model_for_role(config, "validator", DEFAULT_MODEL)
-        classifier_model = _resolve_model_for_role(config, "classifier", DEFAULT_MODEL)
+        validator_model = _resolve_model_for_role(config, "validator", self._default_model)
+        classifier_model = _resolve_model_for_role(config, "classifier", self._default_model)
 
-        if is_mock_mode_active() or (isinstance(self.coder, MockAdapter) and _base_fn is not None):
-            validator_completion_fn = _build_completion_fn(validator_model, _base_fn)
-            classifier_completion_fn = _build_completion_fn(classifier_model, _base_fn)
-        elif _base_fn is None and not is_mock_mode_active():
-            validator_completion_fn = None
-            classifier_completion_fn = None
+        if is_mock_mode_active() or isinstance(self.coder, MockAdapter):
+            from snodo.coders.mock import mock_completion_fn
+            mock_base = _base_fn or mock_completion_fn
+            validator_completion_fn = _build_completion_fn(validator_model, mock_base)
+            classifier_completion_fn = _build_completion_fn(classifier_model, mock_base)
         else:
             with provider_env(validator_model), provider_env(classifier_model):
                 validator_completion_fn = _build_completion_fn(validator_model, _base_fn or litellm_completion)
@@ -850,6 +849,7 @@ def build_protocol_graph(
     use_mock_coder: bool = False,
     model: Optional[str] = None,
     coder: Optional[Any] = None,
+    coder_name: Optional[str] = None,
     workspace_mcp: Optional[Any] = None,
     git_mcp: Optional[Any] = None,
     shell_mcp: Optional[Any] = None,
@@ -872,6 +872,7 @@ def build_protocol_graph(
         model: Model identifier for the coder (default: claude-sonnet-4-20250514)
         coder: Pre-built coder adapter. When supplied it is used as-is and
             ``model``/``use_mock_coder`` are ignored — injection point for tests.
+        coder_name: Registered coder backend name (e.g. "litellm", "opencode-cli")
         checkpointer: LangGraph checkpointer for persistent agent memory
         audit_log: Optional AuditLog for INV4 event logging
         session_manager: Optional SessionManager for INV5 session state
@@ -903,25 +904,31 @@ def build_protocol_graph(
     if shell_mcp is None:
         shell_mcp = ShellMCP(mcp_root)
 
-    from snodo.coders import resolve_adapter_class
+    from snodo.coders import get_coder, resolve_coder_name
     from snodo.infrastructure.config import load_llm_config
     llm_cfg = load_llm_config()
 
     # Initialize coder with LLM config knobs if not passed directly
     if coder is None:
+        initial_mode_obj = protocol.get_mode(protocol.initial_mode)
+        mode_coder = getattr(initial_mode_obj, "coder", None) if initial_mode_obj else None
         resolved_model = model or DEFAULT_MODEL
-        adapter_cls = resolve_adapter_class(resolved_model)
+        resolved_name = resolve_coder_name(
+            model=resolved_model,
+            mode_coder=mode_coder,
+            cli_coder=coder_name,
+            use_mock=use_mock_coder,
+        )
         if use_mock_coder:
             from snodo.coders.mock import set_mock_mode
             set_mock_mode(True)
-            coder = MockAdapter()
-        else:
-            coder = adapter_cls(
-                model=resolved_model,
-                max_tokens=llm_cfg.coder.max_tokens,
-                max_tool_turns=llm_cfg.coder.max_tool_turns,
-                workspace_mcp=workspace_mcp,
-            )
+        coder = get_coder(
+            resolved_name,
+            model=resolved_model,
+            max_tokens=llm_cfg.coder.max_tokens,
+            max_tool_turns=llm_cfg.coder.max_tool_turns,
+            workspace_mcp=workspace_mcp,
+        )
 
     custom_functions.pop("workspace_mcp", None)
     custom_functions.pop("git_mcp", None)
