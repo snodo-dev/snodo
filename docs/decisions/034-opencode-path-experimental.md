@@ -28,7 +28,8 @@ The opencode coder backends — `opencode` (containerised, Docker/HTTP) and
 `opencode-cli` (host `opencode run`) — are **experimental**, not supported.
 
 "Experimental" means: the path is exercised by the conformance suite
-(`tests/coders/test_adapter_conformance.py`) and the structural guarantees
+(`tests/coders/test_adapter_conformance.py`) with real protocol validators running
+against engine-level completion function resolution, and the structural guarantees
 hold for it — the `.snodo/` mutation guard and the commit that keeps the
 review channel correct are enforced by the `InPlaceCoderAdapter` base class
 (ADR 027/030), so it cannot silently blind reviewers again. But it is not a
