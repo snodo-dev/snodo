@@ -293,11 +293,6 @@ def run_validators(
                     error=True,
                 )
             if result is not None:
-                if progress_cb is not None:
-                    try:
-                        progress_cb(vid, result)
-                    except Exception as e:
-                        logger.debug("Progress callback error for validator %s: %s", vid, e)
                 v_obj = next((v for v in validators if v.validator_id == vid), None)
                 is_recovery = (getattr(task, "depth", 0) > 0 or bool(getattr(task, "prior_failures", None)))
                 if (
@@ -313,6 +308,7 @@ def run_validators(
                         severity="pass",
                         justification=f"[Pre-execute recovery finding ({original_severity}): non-blocking evidence for coder] {result.justification}",
                         cited_criteria=result.cited_criteria,
+                        severity_original=original_severity,
                     )
                     if audit_log is not None:
                         _cap_data = {
@@ -337,6 +333,8 @@ def run_validators(
                             validator_id=result.validator_id,
                             severity=v_obj.severity_cap.value,
                             justification=result.justification,
+                            cited_criteria=result.cited_criteria,
+                            severity_original=original_severity,
                         )
                         cap_originals[result.validator_id] = original_severity
                         if audit_log is not None:
@@ -348,6 +346,13 @@ def run_validators(
                             if session_id:
                                 _cap_data["session_id"] = session_id
                             audit_log.append_event("severity_cap_applied", _cap_data)
+                # Report the *final* (post-cap) severity so the operator's view
+                # matches the audit record; carry the pre-cap value alongside it.
+                if progress_cb is not None:
+                    try:
+                        progress_cb(vid, result)
+                    except Exception as e:
+                        logger.debug("Progress callback error for validator %s: %s", vid, e)
                 results_by_id[vid] = result
 
     results = [results_by_id[v.validator_id] for v in validators]
