@@ -27,6 +27,7 @@ _THIRD_PARTY_ACTIONS = (
     "actions/checkout",
     "actions/upload-artifact",
     "astral-sh/setup-uv",
+    "codecov/codecov-action",
     "github/codeql-action",
     "ossf/scorecard-action",
     "pypa/gh-action-pip-audit",

@@ -44,10 +44,15 @@ jobs:
           set -o pipefail
           uv run pytest tests/ -m "" -q -n auto --tb=short --timeout=60 \
             --cov --cov-report=xml --cov-report=term-missing \
-            --cov-fail-under=63 | tee coverage-output.txt
+            --cov-fail-under=75 | tee coverage-output.txt
           echo '## Coverage' >> "$GITHUB_STEP_SUMMARY"
           grep '^TOTAL' coverage-output.txt >> "$GITHUB_STEP_SUMMARY" || true
           uv run python scripts/enforce_patch_coverage.py
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
 
   lint:
     runs-on: ubuntu-latest
