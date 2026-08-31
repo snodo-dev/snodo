@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v6
       - name: Install uv
@@ -38,3 +38,13 @@ jobs:
         run: uv build --all-packages
       - name: Publish all artifacts
         run: uv publish dist/*
+      - name: Create GitHub Release
+        run: |
+          uv run python scripts/changelog_release_body.py --tag "$RELEASE_TAG" > /tmp/release-notes.md
+          gh release create "$RELEASE_TAG" \
+            --title "$RELEASE_TAG" \
+            --notes-file /tmp/release-notes.md \
+            dist/*
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
