@@ -2,6 +2,16 @@
 
 snodo executes protocol tasks under interchangeable code generation backends (**coders**). The coder generates code, while snodo enforces protocol governance, runs validation gates, and maintains an append-only audit log.
 
+![Every snodo run gets its own git worktree on a task branch off main; the coder and gates run inside it, and it merges back on success or is retained on failure.](assets/worktree.svg)
+
+*Isolation comes first and is not the coder's business. A task never runs in your
+working tree unless you ask for that with `--no-isolation`.*
+
+![Three coder mechanisms write into the same task worktree and converge on one identical post-execute gate and merge path.](assets/coder-paths.svg)
+
+*All three write into that same worktree. What differs is which process boundary
+the write crosses and who makes the commit — everything after is identical.*
+
 ## Supported and External Coders
 
 | Coder (`--coder`) | Description | Type | Requirements | Authentication |

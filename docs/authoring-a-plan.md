@@ -32,6 +32,10 @@ fail in ways that look like model error.
 
 ---
 
+![A plan runs wave by wave: each task in a wave gets its own worktree and branch, and a barrier is only crossed once every task in the preceding wave has merged.](assets/plan-waves.svg)
+
+---
+
 ## 2. Layout
 
 ```

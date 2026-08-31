@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 430" width="920" height="430" role="img" aria-label="Three coder mechanisms — an in-process LLM client, a host CLI subprocess, and an opencode server in a Docker container — all write into the same task worktree and converge on one identical post-execute gate and merge path.">
+<defs><marker id="ca" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#848E97"/></marker></defs>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#848E97">
+<text x="12" y="22" font-size="10.5" letter-spacing="1.2" opacity=".7">MECHANISM</text>
+<text x="330" y="22" font-size="10.5" letter-spacing="1.2" opacity=".7">BOUNDARY · WHO COMMITS</text>
+<text x="612" y="22" font-size="10.5" letter-spacing="1.2" opacity=".7">SHARED</text>
+<line x1="12" y1="30" x2="908" y2="30" stroke="#848E97" stroke-width="1" opacity=".4"/>
+<rect x="12" y="48" width="200" height="72" rx="4" fill="none" stroke="#848E97" stroke-width="1.5"/>
+<text x="24" y="70" font-size="12.5">litellm</text>
+<text x="24" y="90" font-size="11" opacity=".8">in-process tool loop</text>
+<text x="24" y="107" font-size="11" opacity=".8">submit_files()</text>
+<line x1="216" y1="84" x2="440" y2="84" stroke="#848E97" stroke-width="1.5" marker-end="url(#ca)"/>
+<text x="328" y="74" text-anchor="middle" font-size="10.5" opacity=".9">no boundary</text>
+<text x="328" y="101" text-anchor="middle" font-size="10.5" opacity=".75">engine writes, engine commits</text>
+<rect x="12" y="158" width="200" height="72" rx="4" fill="none" stroke="#848E97" stroke-width="1.5"/>
+<text x="24" y="180" font-size="12.5">opencode-cli · agy</text>
+<text x="24" y="200" font-size="11" opacity=".8">subprocess on host</text>
+<text x="24" y="217" font-size="11" opacity=".8">cwd = worktree</text>
+<line x1="216" y1="194" x2="440" y2="194" stroke="#2DA5A0" stroke-width="1.5" marker-end="url(#ca)"/>
+<text x="328" y="184" text-anchor="middle" font-size="10.5" fill="#2DA5A0">process</text>
+<text x="328" y="211" text-anchor="middle" font-size="10.5" opacity=".75">tool edits in place, adapter commits</text>
+<rect x="12" y="268" width="200" height="86" rx="4" fill="none" stroke="#848E97" stroke-width="1.5"/>
+<text x="24" y="290" font-size="12.5">opencode</text>
+<text x="24" y="310" font-size="11" opacity=".8">server in Docker</text>
+<text x="24" y="327" font-size="11" opacity=".8">POST /session</text>
+<text x="24" y="344" font-size="11" opacity=".8">SSE /event</text>
+<line x1="216" y1="311" x2="440" y2="311" stroke="#2DA5A0" stroke-width="1.5" marker-end="url(#ca)"/>
+<text x="328" y="301" text-anchor="middle" font-size="10.5" fill="#2DA5A0">process + container</text>
+<text x="328" y="328" text-anchor="middle" font-size="10.5" opacity=".75">bind mount /workspace, adapter commits</text>
+<rect x="444" y="42" width="152" height="318" rx="4" fill="none" stroke="#2DA5A0" stroke-width="1.5"/>
+<text x="520" y="188" text-anchor="middle" font-size="12.5" fill="#2DA5A0">task worktree</text>
+<text x="520" y="208" text-anchor="middle" font-size="11" opacity=".82">one branch</text>
+<text x="520" y="224" text-anchor="middle" font-size="11" opacity=".82">one commit</text>
+<line x1="600" y1="201" x2="656" y2="201" stroke="#848E97" stroke-width="1.5" marker-end="url(#ca)"/>
+<rect x="660" y="90" width="248" height="222" rx="4" fill="none" stroke="#848E97" stroke-width="1.5"/>
+<text x="784" y="118" text-anchor="middle" font-size="12.5">identical from here</text>
+<line x1="676" y1="130" x2="892" y2="130" stroke="#848E97" stroke-width="1" opacity=".45"/>
+<text x="678" y="154" font-size="11.5" opacity=".9">post-execute validators</text>
+<text x="678" y="176" font-size="11.5" opacity=".9">disagreement policy</text>
+<text x="678" y="198" font-size="11.5" opacity=".9">halt taxonomy</text>
+<text x="678" y="220" font-size="11.5" opacity=".9">hash-chained audit log</text>
+<text x="678" y="242" font-size="11.5" opacity=".9">recovery, to depth</text>
+<text x="678" y="264" font-size="11.5" opacity=".9">merge or retain</text>
+<text x="678" y="292" font-size="10.5" opacity=".72">validators run on their own model,</text>
+<text x="678" y="305" font-size="10.5" opacity=".72">never the coder's</text>
+<text x="12" y="392" font-size="10.5" opacity=".75">In-place coders own their commit (ADR 030) and are blocked from touching .snodo/ (ADR 027).</text>
+<text x="12" y="410" font-size="10.5" opacity=".75">A coder that produces no file operations fails on every path — opting out of the engine's commit does not waive producing work.</text>
+</g></svg>
