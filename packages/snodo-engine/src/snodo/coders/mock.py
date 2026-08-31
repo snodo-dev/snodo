@@ -116,7 +116,8 @@ def is_mock_completion_fn(fn: Any) -> bool:
     """Return True if fn is mock_completion_fn or marked with _is_mock."""
     if fn is None:
         return False
-    if fn == mock_completion_fn or getattr(fn, "_is_mock", False) is True:
+    target = getattr(fn, "func", fn)
+    if target == mock_completion_fn or getattr(target, "_is_mock", False) is True or getattr(fn, "_is_mock", False) is True:
         return True
     return is_mock_mode_active()
 

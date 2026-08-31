@@ -921,9 +921,6 @@ def build_protocol_graph(
             cli_coder=coder_name,
             use_mock=use_mock_coder,
         )
-        if use_mock_coder:
-            from snodo.coders.mock import set_mock_mode
-            set_mock_mode(True)
         coder = get_coder(
             resolved_name,
             model=resolved_model,
