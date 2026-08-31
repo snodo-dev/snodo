@@ -31,10 +31,10 @@ The Wave 8 studies (`studies/`) produce the paper's Section 5 figures:
 
 | Study | Section | What it shows |
 |-------|---------|---------------|
-| [policy_monte_carlo](../studies/policy_monte_carlo/notebook.py) | 5.1 | False-block vs false-pass trade-off curves across the four disagreement policies, using the real PolicyEvaluator |
-| [detection_probability](../studies/detection_probability/notebook.py) | 5.2 | Monte Carlo validation of the paper's quorum-miss formula and structural-vs-behavioral failure rate bounds |
-| [byzantine_robustness](../studies/byzantine_robustness/notebook.py) | 5.3 | Adversarial validator sensitivity — quantifying the design cost of INV3's unconditional blocker semantics |
-| [overhead_benchmarks](../studies/overhead_benchmarks/notebook.py) | 5.4 | Real governance overhead: per-operation latency + end-to-end governed-vs-ungoverned comparison |
+| [policy_monte_carlo](https://github.com/snodo-dev/snodo/blob/main/studies/policy_monte_carlo/notebook.py) | 5.1 | False-block vs false-pass trade-off curves across the four disagreement policies, using the real PolicyEvaluator |
+| [detection_probability](https://github.com/snodo-dev/snodo/blob/main/studies/detection_probability/notebook.py) | 5.2 | Monte Carlo validation of the paper's quorum-miss formula and structural-vs-behavioral failure rate bounds |
+| [byzantine_robustness](https://github.com/snodo-dev/snodo/blob/main/studies/byzantine_robustness/notebook.py) | 5.3 | Adversarial validator sensitivity — quantifying the design cost of INV3's unconditional blocker semantics |
+| [overhead_benchmarks](https://github.com/snodo-dev/snodo/blob/main/studies/overhead_benchmarks/notebook.py) | 5.4 | Real governance overhead: per-operation latency + end-to-end governed-vs-ungoverned comparison |
 
 All studies are deterministic (seeded RNG) and produce paper-styled SVG figures + CSV data. Run with `make studies` from the repository root.
 

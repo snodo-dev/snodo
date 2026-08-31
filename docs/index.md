@@ -40,4 +40,4 @@ Every enforcement rule is declared in `protocol.yml` — modes, validators, seve
 
 Why PyJWT over custom HMAC? Why does warn withhold approval? Why ESCALATE → resolve → resume rather than auto-retry? Every design decision is documented as an ADR, extracted from the development audit log.
 
-[Decisions →](decisions/)
+[Decisions →](decisions/README.md)

@@ -73,8 +73,17 @@ def test_same_protocol_runs_under_two_coders_with_identical_validator_model():
 
 
 def test_coder_selection_precedence():
-    """Assert precedence: CLI choice > Mode.coder > Model prefix fallback > Default."""
-    # 1. Explicit CLI choice wins over Mode.coder and model prefix
+    """Assert precedence: Mock flag > CLI choice > Mode.coder > Model prefix fallback > Default."""
+    # 1. Explicit --mock (use_mock=True) wins over explicit CLI choice (--coder agy), Mode.coder, and model prefix
+    res0 = resolve_coder_name(
+        model="gpt-4o",
+        mode_coder="opencode",
+        cli_coder="agy",
+        use_mock=True,
+    )
+    assert res0 == "mock"
+
+    # 2. Explicit CLI choice wins over Mode.coder and model prefix when use_mock is False
     res1 = resolve_coder_name(
         model="gpt-4o",
         mode_coder="opencode",
@@ -82,7 +91,7 @@ def test_coder_selection_precedence():
     )
     assert res1 == "opencode-cli"
 
-    # 2. Mode.coder wins over model prefix fallback when CLI choice is None
+    # 3. Mode.coder wins over model prefix fallback when CLI choice is None
     res2 = resolve_coder_name(
         model="gpt-4o",
         mode_coder="opencode",
@@ -90,7 +99,7 @@ def test_coder_selection_precedence():
     )
     assert res2 == "opencode"
 
-    # 3. Model prefix fallback wins when CLI choice and Mode.coder are None
+    # 4. Model prefix fallback wins when CLI choice and Mode.coder are None
     res3 = resolve_coder_name(
         model="opencode-cli/deepseek/deepseek-chat",
         mode_coder=None,
@@ -107,13 +116,9 @@ def test_coder_selection_precedence():
     res3_gemini = resolve_coder_name(model="gemini-2.5-pro")
     assert res3_gemini == "gemini"
 
-    # 4. Default fallback when no prefix matches
+    # 5. Default fallback when no prefix matches
     res4 = resolve_coder_name(model="unknown-provider/custom-model")
     assert res4 == "litellm"
-
-    # 5. Mock override when use_mock is True
-    res5 = resolve_coder_name(model="gpt-4o", use_mock=True)
-    assert res5 == "mock"
 
 
 def test_unknown_coder_name_fails_with_registry_keys_message():

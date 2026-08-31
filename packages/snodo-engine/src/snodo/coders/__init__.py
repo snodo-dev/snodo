@@ -42,10 +42,11 @@ def resolve_coder_name(
     use_mock: bool = False,
 ) -> str:
     """Resolve the coder registry name following precedence:
-    1. Explicit CLI choice (cli_coder)
-    2. Protocol mode choice (mode_coder)
-    3. Model string prefix mapping (opencode-cli/, opencode/, agy/, gpt/o1/o3, claude, gemini)
-    4. Default ('mock' if use_mock else 'litellm')
+    1. Explicit mock flag (use_mock / --mock)
+    2. Explicit CLI choice (cli_coder / --coder)
+    3. Protocol mode choice (mode_coder / mode.coder)
+    4. Model string prefix mapping (opencode-cli/, opencode/, agy/, gpt/o1/o3, claude, gemini)
+    5. Default fallback ('litellm')
     """
     if use_mock:
         return "mock"

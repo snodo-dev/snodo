@@ -98,3 +98,18 @@ clean:
 	find studies -name "*.svg" -path "*/outputs/*" -delete
 	find studies -name "*.csv" -path "*/outputs/*" -delete
 	@echo "Cleaned all study outputs"
+
+# ──────────────────────────────────────────────
+# Documentation
+# ──────────────────────────────────────────────
+
+.PHONY: docs docs-serve deploy-docs
+
+docs:
+	uv run mkdocs build --strict
+
+docs-serve:
+	uv run mkdocs serve
+
+deploy-docs: docs
+	npx wrangler pages deploy site --project-name=snodo-docs
