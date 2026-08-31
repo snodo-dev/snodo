@@ -60,6 +60,18 @@ transfer of the responsibility that mechanism carried.
     asserts the gates actually run under every adapter: no adapter passes on a
     fabricated LLM capability, and no adapter halts on a missing one.*
     *Amended 2026-08-30 (#152): The bounded toolset capabilities (`read_files` batch read tool, `submit_files` multi-turn accumulation, `parallel_tool_calls=True`) are exclusive to the LiteLLM tool-use loop; external coders (`opencode`, `agy`) drive their own in-place agent execution loops.*
+    *Amended 2026-08-31 (#163): three capabilities are **litellm-path-only**,
+    because the subprocess and container coders run their own agent loops and
+    the engine does not re-implement them: the `read_files` batch tool with its
+    path/byte caps, `submit_files` accumulation across turns, and the recovery
+    read-set carry-forward (the paths a prior attempt inspected, fed to the next
+    recovery spec). This is a **declared scope boundary**, not a silent gap: the
+    same principle that governs `skip_engine_commit` applies — opting out of a
+    mechanism must not silently discharge the responsibility it carried. The
+    responsibility these capabilities carry (bounded, multi-file reads; staged
+    delivery; warm-starting recovery) is discharged by the external coder's own
+    agent loop, and the engine's gates still run under every adapter (ADR 039).
+    The adapters are not restructured.*
 
 3. **"Coder produced nothing" raises `ExecutionError` on every path.**
    `skip_engine_commit` controls *who commits*, not *whether observable work

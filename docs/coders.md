@@ -16,11 +16,25 @@ the write crosses and who makes the commit — everything after is identical.*
 
 | Coder (`--coder`) | Description | Type | Requirements | Authentication |
 |---|---|---|---|---|
-| `litellm` *(default)* | Direct LLM completions via LiteLLM (~100+ providers) | Engine-Managed | Python `litellm` (built-in) | Provider API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc. or `snodo config add`) |
+| `litellm` *(default)* | Direct LLM completions via LiteLLM (~100+ providers) | Engine-Managed | Python `litellm` (built-in) | Provider API keys for the **validators**, which always run through LiteLLM (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc. or `snodo config add`) |
 | `opencode` | OpenCode server running in Docker container over HTTP | In-Place Container | Docker daemon running; image `opencode:latest` | OpenCode config/env variables inside container |
-| `opencode-cli` | Host `opencode run` CLI invocation | In-Place Host CLI | `opencode` CLI on PATH | `opencode auth login` or host provider env vars (`OPENROUTER_API_KEY`, etc.) |
-| `agy` | Antigravity CLI (`agy -p`) host invocation | In-Place Host CLI | `agy` CLI on PATH | `agy login` / Google Cloud host credentials |
+| `opencode-cli` | Host `opencode run` CLI invocation | In-Place Host CLI | `opencode` CLI on PATH | `opencode auth login` or host provider env vars (`OPENROUTER_API_KEY`, etc.) — the coder authenticates against your own subscription |
+| `agy` | Antigravity CLI (`agy -p`) host invocation | In-Place Host CLI | `agy` CLI on PATH | `agy login` / Google Cloud host credentials — the coder authenticates against your own subscription |
 | `mock` | Deterministic stub for dry-runs and testing | Stub | None | None |
+
+### Authentication: keys are for the validators
+
+Provider API keys are a requirement of the **validators**, which always run
+through LiteLLM — not of the coder. The coder need not use one: `opencode-cli`
+and `agy` authenticate against the operator's own subscription, so no provider
+key is spent on writing the code. `--mock` needs nothing at all.
+
+Beyond the built-in catalog (Anthropic, OpenAI, Google, OpenRouter, DeepSeek and
+Cloudflare Workers AI), any OpenAI-compatible endpoint works by declaring a
+provider block with `base_url` and `litellm_provider: openai` — that is the
+mechanism, and it covers Ollama Cloud, a local Ollama or `llama.cpp` server,
+vLLM, LM Studio, and self-hosted gateways. A local endpoint that needs no key is
+not asked for one.
 
 ## Model Role Separation: Judging vs Execution
 
