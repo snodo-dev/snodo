@@ -771,24 +771,32 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             self._progress(arg1)
 
     def _validator_verdict_cb(self, validator_id: str, result: Any) -> None:
-        """Print a per-validator verdict as it lands (warn/blocker/error always; pass in verbose)."""
+        """Print a per-validator verdict as it lands (warn/blocker/error always; pass in verbose).
+
+        Reports the *stored* (post-cap) severity so this line never contradicts
+        the audit record; when a severity_cap was applied the pre-cap value is
+        shown alongside it rather than hidden.
+        """
         severity = getattr(result, "severity", "?")
         justification = getattr(result, "justification", "") or ""
         first_line = justification.strip().splitlines()[0] if justification.strip() else ""
         if len(first_line) > 80:
             first_line = first_line[:77] + "..."
 
+        original = getattr(result, "severity_original", None)
+        cap_note = f" (from {original})" if original and original != severity else ""
+
         if severity == "pass":
-            self._progress(f"    ✓ {validator_id}: pass", verbose=True)
+            self._progress(f"    ✓ {validator_id}: pass{cap_note}", verbose=True)
         elif severity == "warn":
             snippet = f" — {first_line}" if first_line else ""
-            self._progress(f"    ⚠️ {validator_id}: warn{snippet}")
+            self._progress(f"    ⚠️ {validator_id}: warn{cap_note}{snippet}")
         elif severity == "blocker":
             snippet = f" — {first_line}" if first_line else ""
-            self._progress(f"    ❌ {validator_id}: blocker{snippet}")
+            self._progress(f"    ❌ {validator_id}: blocker{cap_note}{snippet}")
         else:
             snippet = f" — {first_line}" if first_line else ""
-            self._progress(f"    💥 {validator_id}: {severity}{snippet}")
+            self._progress(f"    💥 {validator_id}: {severity}{cap_note}{snippet}")
 
 
 def _build_audit_results(
