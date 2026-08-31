@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snodo-engine"
-version = "0.7.0"
+version = "0.7.1"
 description = "Snodo engine — protocol loop graph, coders, and validators"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "The Snodo Authors", email = "noreply@snodo.dev" }]
 dependencies = [
-    "snodo-core==0.7.0",
-    "snodo-tools==0.7.0",
-    "snodo-foundation==0.7.0",
+    "snodo-core==0.7.1",
+    "snodo-tools==0.7.1",
+    "snodo-foundation==0.7.1",
     "pydantic>=2.12.0",
     "pyyaml>=6.0",
     "langchain>=0.3.0",
