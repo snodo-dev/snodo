@@ -9,6 +9,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.7.0] — 2026-08-31
+
+The release that makes the coder swappable. `litellm`, `opencode`,
+`opencode-cli`, `agy` and `mock` are now interchangeable on the same project
+under the same gates: validators and the classifier no longer borrow their LLM
+client from the coder, so a subprocess coder that has none is judged exactly as
+the in-process one is. `--coder` selects the backend independently of the model,
+and the run banner, halt payload and audit trail all name which coder actually
+did the work.
+
+
 ### Added
 
 - Accumulated `submit_files` file operations across turns in `LiteLLMAdapter`, delivering the complete accumulated set atomically when complete or when turn budget finishes instead of terminating on the first `submit_files` call. Added `read_files` batch read tool and explicitly configured `parallel_tool_calls=True` in completion requests. (Fixes #152).
