@@ -13,6 +13,9 @@
 
 **AI-SDLC Protocol Engine** — a governance layer for AI-assisted software development.
 
+![Three coder mechanisms — an in-process LLM client, a host CLI subprocess, and an opencode server in a Docker container — write into the same task worktree and converge on one identical gate and merge path.](https://raw.githubusercontent.com/snodo-dev/snodo/main/docs/assets/coder-paths.svg)
+
+
 snodo lets you define a *protocol* — a YAML specification of operational modes, validators, and constraints — and then executes tasks through that protocol. Each task passes through validation gates before and after execution, with disagreement policies (unanimous, majority, quorum, any) determining whether work proceeds, escalates, or halts. The result is a structured, auditable workflow where AI-generated code is checked against your standards before it lands.
 
 **Preprint:** [*Specifying AI-SDLC Processes: A Protocol Language for Human-Agent Boundaries*](https://arxiv.org/abs/2606.20615) — arXiv:2606.20615 ([doi:10.48550/arXiv.2606.20615](https://doi.org/10.48550/arXiv.2606.20615)).

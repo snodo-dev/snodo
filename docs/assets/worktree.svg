@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 250" width="920" height="250" role="img" aria-label="A task run creates a sibling worktree on a task branch off main, runs the coder and gates inside it, then merges back and removes the worktree on success or retains it on failure.">
+<defs><marker id="wa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#848E97"/></marker></defs>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#848E97">
+<rect x="12" y="86" width="150" height="62" rx="4" fill="none" stroke="#848E97" stroke-width="1.5"/>
+<text x="87" y="111" text-anchor="middle" font-size="13">your repo</text>
+<text x="87" y="130" text-anchor="middle" font-size="11.5" opacity=".72">branch: main</text>
+<line x1="166" y1="117" x2="246" y2="117" stroke="#848E97" stroke-width="1.5" marker-end="url(#wa)"/>
+<text x="206" y="106" text-anchor="middle" font-size="10.5" opacity=".8">worktree add</text>
+<rect x="250" y="52" width="238" height="130" rx="4" fill="none" stroke="#2DA5A0" stroke-width="1.5"/>
+<text x="369" y="76" text-anchor="middle" font-size="12.5" fill="#2DA5A0">.snodo-worktrees/&lt;task_id&gt;/</text>
+<line x1="266" y1="88" x2="472" y2="88" stroke="#2DA5A0" stroke-width="1" opacity=".45"/>
+<text x="369" y="109" text-anchor="middle" font-size="11.5" opacity=".85">branch  task/&lt;id&gt;/&lt;slug&gt;</text>
+<text x="369" y="129" text-anchor="middle" font-size="11.5" opacity=".85">off main, sibling dir</text>
+<text x="369" y="157" text-anchor="middle" font-size="11.5">coder writes · gates judge</text>
+<line x1="492" y1="117" x2="572" y2="117" stroke="#848E97" stroke-width="1.5" marker-end="url(#wa)"/>
+<text x="532" y="106" text-anchor="middle" font-size="10.5" opacity=".8">commit</text>
+<rect x="576" y="86" width="118" height="62" rx="4" fill="none" stroke="#848E97" stroke-width="1.5"/>
+<text x="635" y="113" text-anchor="middle" font-size="12.5">gates pass?</text>
+<text x="635" y="131" text-anchor="middle" font-size="11" opacity=".72">policy decides</text>
+<line x1="698" y1="103" x2="762" y2="62" stroke="#3FA46A" stroke-width="1.5" marker-end="url(#wa)"/>
+<text x="742" y="72" text-anchor="end" font-size="10.5" fill="#3FA46A">yes</text>
+<rect x="766" y="26" width="142" height="60" rx="4" fill="none" stroke="#3FA46A" stroke-width="1.5"/>
+<text x="837" y="50" text-anchor="middle" font-size="12" fill="#3FA46A">merge to main</text>
+<text x="837" y="68" text-anchor="middle" font-size="10.5" opacity=".8">branch + worktree</text>
+<text x="837" y="81" text-anchor="middle" font-size="10.5" opacity=".8">deleted</text>
+<line x1="698" y1="131" x2="762" y2="180" stroke="#C99A2E" stroke-width="1.5" marker-end="url(#wa)"/>
+<text x="742" y="168" text-anchor="end" font-size="10.5" fill="#C99A2E">no</text>
+<rect x="766" y="150" width="142" height="60" rx="4" fill="none" stroke="#C99A2E" stroke-width="1.5"/>
+<text x="837" y="174" text-anchor="middle" font-size="12" fill="#C99A2E">worktree retained</text>
+<text x="837" y="192" text-anchor="middle" font-size="10.5" opacity=".8">recovery, or yours</text>
+<text x="837" y="205" text-anchor="middle" font-size="10.5" opacity=".8">to inspect</text>
+<text x="12" y="234" font-size="10.5" opacity=".75">A repo with no commits refuses to run rather than falling back to your working tree — WorktreeIsolationError.</text>
+</g></svg>

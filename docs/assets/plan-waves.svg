@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 330" width="920" height="330" role="img" aria-label="A plan runs wave by wave: tasks within a wave each get their own worktree and branch and run independently, and a wave barrier is only crossed once every task in the preceding wave has merged.">
+<defs><marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#848E97"/></marker></defs>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#848E97">
+<text x="12" y="22" font-size="10.5" letter-spacing="1.2" opacity=".7">WAVE 1</text>
+<line x1="12" y1="30" x2="352" y2="30" stroke="#848E97" stroke-width="1" opacity=".4"/>
+<rect x="12" y="44" width="164" height="66" rx="4" fill="none" stroke="#848E97" stroke-width="1.5"/>
+<text x="26" y="66" font-size="12">1.1_host-split</text>
+<text x="26" y="85" font-size="10.5" opacity=".78">own worktree</text>
+<text x="26" y="100" font-size="10.5" opacity=".78">own branch</text>
+<rect x="12" y="126" width="164" height="66" rx="4" fill="none" stroke="#848E97" stroke-width="1.5"/>
+<text x="26" y="148" font-size="12">1.2_router-tests</text>
+<text x="26" y="167" font-size="10.5" opacity=".78">own worktree</text>
+<text x="26" y="182" font-size="10.5" opacity=".78">own branch</text>
+<line x1="180" y1="77" x2="238" y2="110" stroke="#848E97" stroke-width="1.5" marker-end="url(#pa)"/>
+<line x1="180" y1="159" x2="238" y2="128" stroke="#848E97" stroke-width="1.5" marker-end="url(#pa)"/>
+<line x1="252" y1="20" x2="252" y2="216" stroke="#C0574A" stroke-width="2.5" stroke-dasharray="7 5"/>
+<text x="264" y="122" font-size="12" fill="#C0574A">barrier</text>
+<text x="264" y="140" font-size="10.5" opacity=".8">every task in</text>
+<text x="264" y="154" font-size="10.5" opacity=".8">wave 1 merged</text>
+<text x="392" y="22" font-size="10.5" letter-spacing="1.2" opacity=".7">WAVE 2 · depends_on [1]</text>
+<line x1="392" y1="30" x2="732" y2="30" stroke="#848E97" stroke-width="1" opacity=".4"/>
+<line x1="368" y1="118" x2="418" y2="118" stroke="#848E97" stroke-width="1.5" marker-end="url(#pa)"/>
+<rect x="422" y="86" width="164" height="66" rx="4" fill="none" stroke="#848E97" stroke-width="1.5"/>
+<text x="436" y="108" font-size="12">2.1_landing</text>
+<text x="436" y="127" font-size="10.5" opacity=".78">starts from a tree</text>
+<text x="436" y="142" font-size="10.5" opacity=".78">containing wave 1</text>
+<line x1="590" y1="119" x2="646" y2="119" stroke="#848E97" stroke-width="1.5" marker-end="url(#pa)"/>
+<rect x="650" y="86" width="180" height="66" rx="4" fill="none" stroke="#3FA46A" stroke-width="1.5"/>
+<text x="740" y="112" text-anchor="middle" font-size="12" fill="#3FA46A">status.json</text>
+<text x="740" y="132" text-anchor="middle" font-size="10.5" opacity=".8">per-task outcome</text>
+<text x="740" y="146" text-anchor="middle" font-size="10.5" opacity=".8">resumable</text>
+<text x="12" y="256" font-size="10.5" opacity=".75">There is no way to say "2.1 needs 1.2". Dependencies exist between waves only — if B needs A's output, B goes in a later wave.</text>
+<text x="12" y="274" font-size="10.5" opacity=".75">Two tasks editing the same function belong in different waves even without a logical dependency: the second would otherwise be judged</text>
+<text x="12" y="288" font-size="10.5" opacity=".75">against a tree that does not contain the first.</text>
+<text x="12" y="314" font-size="10.5" opacity=".75">Wave ids must be contiguous from 1. Every spec must stand alone — .snodo/plans/&lt;name&gt;/wave_&lt;N&gt;/&lt;task_id&gt;_task.md</text>
+</g></svg>
