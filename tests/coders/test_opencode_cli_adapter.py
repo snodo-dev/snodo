@@ -66,9 +66,18 @@ class TestBareModel:
         adapter = OpenCodeCLIAdapter(model="opencode-cli/deepseek/deepseek-chat")
         assert adapter._bare_model() == "deepseek/deepseek-chat"
 
-    def test_no_prefix_passthrough(self):
+    def test_model_outside_this_namespace_is_dropped(self):
+        """A model that is not opencode-cli's is NOT passed through.
+
+        `snodo run -m X` names the model that JUDGES the work — it is resolved
+        through litellm for the validators and the classifier. opencode owns
+        its own catalog and cannot route it. Forwarding it made the CLI reject
+        the run before writing anything, so an unnamespaced model yields "" and
+        the CLI falls back to its own default. This test previously asserted
+        the passthrough that caused that.
+        """
         adapter = OpenCodeCLIAdapter(model="deepseek/deepseek-chat")
-        assert adapter._bare_model() == "deepseek/deepseek-chat"
+        assert adapter._bare_model() == ""
 
 
 # ========== GIT-DIFF READBACK ==========
