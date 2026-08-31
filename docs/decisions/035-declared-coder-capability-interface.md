@@ -46,10 +46,19 @@ transfer of the responsibility that mechanism carried.
    silently skipped line.
 
 2. **A conformance test asserts every registered adapter carries the declared
-   interface**, so a future adapter that drops a capability fails at the branch
-   rather than surfacing months later (the same pattern ADR 027 established for
-   the `.snodo/` guard, and that the existing channel-A/B conformance test
-   established for observability).
+    interface**, so a future adapter that drops a capability fails at the branch
+    rather than surfacing months later (the same pattern ADR 027 established for
+    the `.snodo/` guard, and that the existing channel-A/B conformance test
+    established for observability).
+    *Amended 2026-08-30 (ADR 039, #143): since the engine builds the
+    validator/classifier client from configuration when the coder supplies none,
+    the conformance set covers more than interface carriage. Its per-adapter
+    graph runs (parametrized over every registered coder, e.g.
+    `test_commit_not_happening_is_refused`) drive the protocol's gates — real
+    `llm_check` pre-execute and `acceptance` post-execute validators — through
+    the engine's own completion-function resolution. The suite therefore also
+    asserts the gates actually run under every adapter: no adapter passes on a
+    fabricated LLM capability, and no adapter halts on a missing one.*
 
 3. **"Coder produced nothing" raises `ExecutionError` on every path.**
    `skip_engine_commit` controls *who commits*, not *whether observable work
