@@ -46,13 +46,14 @@ class TestBuildAuditResults:
         assert "severity_at_cap" not in entries[0]
 
     def test_severity_at_cap_flagged(self):
-        """When result.severity equals validator severity_cap.value → flag set."""
+        """When a cap actually fired (id in cap_originals) → flag set."""
         cap = MagicMock()
         cap.value = "warn"
         v = self._make_validator(vid="v1", severity_cap=cap)
         r = self._make_result(vid="v1", severity="warn")
-        entries = _build_audit_results([v], [r])
+        entries = _build_audit_results([v], [r], cap_originals={"v1": "blocker"})
         assert entries[0]["severity_at_cap"] is True
+        assert entries[0]["severity_original"] == "blocker"
 
     def test_no_cap_no_flag(self):
         """No severity_cap → severity_at_cap not added."""
@@ -70,6 +71,21 @@ class TestBuildAuditResults:
         entries = _build_audit_results([v], [r])
         assert "severity_at_cap" not in entries[0]
 
+    def test_uncapped_at_cap_value_no_flag(self):
+        """Genuine warn under a warn cap is not flagged as capped.
+
+        severity_at_cap must mean a cap actually fired (the id appears in
+        cap_originals), not merely that the result's severity equals the cap
+        value.
+        """
+        cap = MagicMock()
+        cap.value = "warn"
+        v = self._make_validator(vid="v1", severity_cap=cap)
+        r = self._make_result(vid="v1", severity="warn")
+        entries = _build_audit_results([v], [r])
+        assert "severity_at_cap" not in entries[0]
+        assert "severity_original" not in entries[0]
+
     def test_more_results_than_validators_no_crash(self):
         """Extra results beyond validators list length skip cap check gracefully."""
         v = self._make_validator(vid="v1")
@@ -80,15 +96,34 @@ class TestBuildAuditResults:
         assert "severity_at_cap" not in entries[1]
 
     def test_multiple_results_mixed_caps(self):
-        """Multiple results: first at cap, second not at cap."""
+        """Multiple results: first capped, second not capped."""
         cap = MagicMock()
         cap.value = "warn"
         v1 = self._make_validator(vid="v1", severity_cap=cap)
         v2 = self._make_validator(vid="v2", severity_cap=None)
         r1 = self._make_result(vid="v1", severity="warn")
         r2 = self._make_result(vid="v2", severity="blocker")
-        entries = _build_audit_results([v1, v2], [r1, r2])
+        entries = _build_audit_results(
+            [v1, v2], [r1, r2], cap_originals={"v1": "blocker"}
+        )
         assert entries[0]["severity_at_cap"] is True
+        assert "severity_at_cap" not in entries[1]
+
+    def test_misordered_validators_pairs_by_id(self):
+        """Results pair to validators by id, not by list position."""
+        cap = MagicMock()
+        cap.value = "warn"
+        v1 = self._make_validator(vid="v1", severity_cap=cap)
+        v2 = self._make_validator(vid="v2", severity_cap=None)
+        r1 = self._make_result(vid="v1", severity="warn")
+        r2 = self._make_result(vid="v2", severity="pass")
+        # Misordered: v1 (capped) is second in the list, its result is first.
+        entries = _build_audit_results(
+            [v2, v1], [r1, r2], cap_originals={"v1": "blocker"}
+        )
+        assert entries[0]["validator_id"] == "v1"
+        assert entries[0]["severity_at_cap"] is True
+        assert entries[1]["validator_id"] == "v2"
         assert "severity_at_cap" not in entries[1]
 
 

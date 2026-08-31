@@ -55,24 +55,28 @@ def _build_audit_results(
 ) -> list:
     """Build audit results array with capping metadata.
 
-    Compares each result against its validator spec's severity_cap.
-    When capping occurred, adds original_severity and severity_capped
-    flags to the audit payload.
+    Results are paired to validators by ``validator_id``, never positionally:
+    ``run_validators`` returns results keyed by id, so a filtered or reordered
+    validators list must not silently misattribute a cap.
+
+    ``severity_at_cap`` is set only when a cap actually fired — i.e. the
+    validator's id appears in *cap_originals* (the pre-cap severity recorded
+    by ``run_validators``).  A result whose severity merely equals the cap
+    value is genuine output, not evidence of a downgrade.  *cap_originals* is
+    the authoritative record of a cap; the field names are kept stable for
+    consumers.
     """
+    validators_by_id = {v.validator_id: v for v in validators}
     audit_results = []
-    for i, r in enumerate(results):
+    for r in results:
         entry = {
             "validator_id": r.validator_id,
             "severity": r.severity,
             "justification": r.justification,
         }
-        # Check if this result was capped
-        if i < len(validators):
-            v = validators[i]
-            if v.severity_cap is not None and r.severity == v.severity_cap.value:
-                # Severity matches the cap — may have been downgraded.
-                entry["severity_at_cap"] = True
-        if cap_originals and r.validator_id in cap_originals:
+        v = validators_by_id.get(r.validator_id)
+        if v is not None and cap_originals and r.validator_id in cap_originals:
+            entry["severity_at_cap"] = True
             entry["severity_original"] = cap_originals[r.validator_id]
         audit_results.append(entry)
     return audit_results
