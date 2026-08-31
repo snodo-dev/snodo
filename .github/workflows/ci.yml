@@ -83,14 +83,15 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-      - name: Install (uv workspace)
-        run: uv sync --all-extras
       - name: Export locked dependencies
+        # No `uv sync` here on purpose: the audit reads the lockfile, it does not
+        # need the project installed. Installing also created a uv-managed .venv
+        # with no `pip` in it, which the pypa/gh-action-pip-audit action then
+        # activated and failed inside ("No module named pip"). uvx runs the tool
+        # in its own isolated environment instead.
         run: uv export --all-extras --no-dev --no-emit-project --no-emit-workspace -o requirements-audit.txt
       - name: Audit dependencies (pip-audit)
-        uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
-        with:
-          inputs: requirements-audit.txt
+        run: uvx "pip-audit@2.9.0" -r requirements-audit.txt
       - name: Lint workflows (zizmor)
         run: uvx "zizmor@1.30.0" --format=github .
         env:

@@ -60,9 +60,9 @@ def test_scorecard_publishes_results():
 
 def test_ci_runs_pip_audit_and_zizmor():
     text = _workflow("ci.yml")
-    assert "pypa/gh-action-pip-audit" in text
-    assert "zizmor" in text
     assert "pip-audit" in text
+    assert "requirements-audit.txt" in text
+    assert "zizmor" in text
 
 
 def test_release_publishes_with_attestations():
