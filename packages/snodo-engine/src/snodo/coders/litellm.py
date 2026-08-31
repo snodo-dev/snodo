@@ -178,15 +178,16 @@ class LiteLLMAdapter(CoderAdapter):
         if self.workspace_mcp is not None:
             prompt_parts.append(
                 "\n## Available Tools\n"
-                "You may call read-only tools to inspect the current state of files "
-                "before generating your changes. Use read_file(path) to see existing "
-                "content, read_file_lines(path, start, end) for line ranges, and "
-                "list_files(directory) to explore the project.\n"
+                "Tool calls and turns are expensive! Prefer reading multiple files in a single turn using "
+                "`read_files(paths=[...])` rather than making individual `read_file` calls. You may also use "
+                "`read_file(path)` for a single file, `read_file_lines(path, start, end)` for line ranges, and "
+                "`list_files(directory)` to explore the project.\n"
                 "Read existing files you need to modify so you can make faithful edits.\n"
                 "\n"
-                "When you are ready to deliver your changes, call the\n"
-                "`submit_files(files)` tool — this is the ONLY way to deliver file\n"
-                "operations (write or delete). Do NOT emit file content as prose or as a JSON text blob.\n"
+                "When you are ready to deliver your changes, call the `submit_files(files)` tool. "
+                "You may call `submit_files` multiple times across turns to stage or update files. "
+                "File operations accumulate by path across calls and are delivered atomically when complete. "
+                "Do NOT emit file content as prose or as a JSON text blob.\n"
                 "To remove obsolete or orphaned files created in earlier attempts, include a file item with action: \"delete\" (content is optional for deletes).\n"
                 "\n"
             )
@@ -256,7 +257,7 @@ Return ONLY the JSON array, no other text.
             raise LLMCallError(f"LLM call failed: {e}") from e
 
     def _call_llm_with_tools(self, prompt: str) -> str:
-        """Bounded tool-use loop with submit_files terminal tool."""
+        """Bounded tool-use loop with submit_files tool and read_files batch reads."""
         workspace = self.workspace_mcp
         tools = self._build_tool_definitions()
         tools.append(self._SUBMIT_FILES_DEF)
@@ -269,6 +270,7 @@ Return ONLY the JSON array, no other text.
         finish_reason = None
         start_time = time.monotonic()
         read_tracker = ReadMemoryTracker()
+        accumulated_files: Dict[str, Dict[str, Any]] = {}
 
         for turn in range(self.max_tool_turns):
             turn_start = time.monotonic()
@@ -278,6 +280,7 @@ Return ONLY the JSON array, no other text.
                     "model": ConfigManager.resolve_litellm_model(self.model),
                     "messages": messages,
                     "tools": tools,
+                    "parallel_tool_calls": True,
                     "max_tokens": self.max_tokens,
                     "metadata": {
                         "job_id": self._job_id or "unknown",
@@ -295,7 +298,19 @@ Return ONLY the JSON array, no other text.
                     kwargs["temperature"] = self.temperature
                 response = self._completion_fn(**kwargs)
             except Exception as e:
-                raise LLMCallError(f"LLM tool-loop error on turn {turn + 1}: {e}") from e
+                self._emit_turn_telemetry(
+                    turn_index=turn + 1,
+                    tool="error",
+                    target_path="",
+                    read_hit=False,
+                    tokens_in=0,
+                    tokens_out=0,
+                    elapsed_ms=(time.monotonic() - turn_start) * 1000,
+                )
+                staged_info = f" ({len(accumulated_files)} file(s) staged)" if accumulated_files else ""
+                raise LLMCallError(
+                    f"LLM tool-loop error on turn {turn + 1}{staged_info}: {e}"
+                ) from e
 
             self._check_truncation(response)
 
@@ -308,22 +323,6 @@ Return ONLY the JSON array, no other text.
                 tools_str = format_tool_call_summary(tool_calls)
                 self.progress_callback(f"    [{elapsed_str}] Turn {turn + 1}: {tools_str}")
 
-            # Check for submit_files before anything else
-            files_list = self._extract_submit_files(tool_calls)
-            if files_list is not None and files_list:
-                self._emit_turn_telemetry(
-                    turn_index=turn + 1,
-                    tool="submit_files",
-                    target_path="",
-                    read_hit=False,
-                    tokens_in=_usage_tokens(response, "prompt"),
-                    tokens_out=_usage_tokens(response, "completion"),
-                    elapsed_ms=(time.monotonic() - turn_start) * 1000,
-                    submit_bytes=len(json.dumps(files_list).encode("utf-8")),
-                )
-                return json.dumps(files_list)
-
-            # Execute read tools
             if tool_calls:
                 messages.append({
                     "role": "assistant",
@@ -344,11 +343,29 @@ Return ONLY the JSON array, no other text.
                 for tc in tool_calls:
                     tool_name = tc.function.name
                     if tool_name == "submit_files":
-                        # submit_files present but not a valid completion
-                        # (zero files or unparseable args) — feed back a tool
-                        # response so every tool_call_id is answered before
-                        # the next request.
-                        result = self._submit_files_feedback(tc)
+                        files_list = self._extract_submit_files(tc)
+                        if files_list is not None and files_list:
+                            for f in files_list:
+                                if isinstance(f, dict) and "path" in f:
+                                    accumulated_files[f["path"]] = f
+                            self._emit_turn_telemetry(
+                                turn_index=turn + 1,
+                                tool="submit_files",
+                                target_path="",
+                                read_hit=False,
+                                tokens_in=_usage_tokens(response, "prompt"),
+                                tokens_out=_usage_tokens(response, "completion"),
+                                elapsed_ms=(time.monotonic() - turn_start) * 1000,
+                                submit_bytes=len(json.dumps(files_list).encode("utf-8")),
+                            )
+                            staged_count = len(files_list)
+                            total_count = len(accumulated_files)
+                            result = (
+                                f"Staged {staged_count} file operation(s). Total accumulated across turns: {total_count} file(s). "
+                                f"You may call submit_files again to stage additional or updated files, or finish when complete."
+                            )
+                        else:
+                            result = self._submit_files_feedback(tc)
                     else:
                         try:
                             args = json.loads(tc.function.arguments)
@@ -376,6 +393,10 @@ Return ONLY the JSON array, no other text.
                     })
                 continue
 
+            # No tool calls on this turn — deliver accumulated files if any
+            if accumulated_files:
+                return json.dumps(list(accumulated_files.values()))
+
             # No tool calls — free-text, try corrective retry once
             if msg.content is not None and not retried_free_text:
                 retried_free_text = True
@@ -400,7 +421,11 @@ Return ONLY the JSON array, no other text.
                 )
             break
 
-        # Hit turn cap — try last assistant content for legacy parse
+        # Loop finished (max_tool_turns reached) — deliver accumulated files if any
+        if accumulated_files:
+            return json.dumps(list(accumulated_files.values()))
+
+        # Hit turn cap with no accumulated files — try last assistant content for legacy parse
         for m in reversed(messages):
             if m.get("role") == "assistant" and m.get("content"):
                 return self._try_parse_or_fail(
@@ -441,8 +466,9 @@ Return ONLY the JSON array, no other text.
         "function": {
             "name": "submit_files",
             "description": (
-                "Submit file operations. Call this exactly once when you are "
-                "ready to deliver ALL your changes. Each file has path, optional content "
+                "Submit file operations. You may call this tool multiple times across turns "
+                "to stage or update files. File operations accumulate by path across calls and "
+                "are applied atomically when complete. Each file has path, optional content "
                 "(required for write, optional for delete), and an optional action (\"write\" or \"delete\"). "
                 "Use action=\"delete\" to remove obsolete or orphaned files."
             ),
@@ -479,21 +505,33 @@ Return ONLY the JSON array, no other text.
     }
 
     @staticmethod
-    def _extract_submit_files(tool_calls: list) -> Optional[List[Dict]]:
-        """Scan tool_calls for submit_files and return the files array if found.
+    def _extract_submit_files(target: Any) -> Optional[List[Dict]]:
+        """Extract files list from a submit_files tool call object or tool_calls list.
 
-        Returns None if submit_files is not present or has invalid arguments.
+        Returns None if submit_files is not present or has invalid/unparseable arguments.
         """
-        for tc in (tool_calls or []):
-            if tc.function.name != "submit_files":
-                continue
-            try:
-                args = json.loads(tc.function.arguments)
-            except (json.JSONDecodeError, TypeError):
-                return None
-            files = args.get("files", [])
-            if isinstance(files, list):
-                return files
+        if target is None:
+            return None
+        if isinstance(target, list):
+            for tc in target:
+                res = LiteLLMAdapter._extract_submit_files(tc)
+                if res is not None:
+                    return res
+            return None
+
+        name = getattr(getattr(target, "function", None), "name", None)
+        if name != "submit_files":
+            return None
+
+        try:
+            raw_args = getattr(target.function, "arguments", "{}")
+            args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+        files = args.get("files", [])
+        if isinstance(files, list):
+            return files
         return None
 
     @staticmethod
@@ -575,6 +613,24 @@ Return ONLY the JSON array, no other text.
             {
                 "type": "function",
                 "function": {
+                    "name": "read_files",
+                    "description": "Read full contents of multiple files in a single tool call (turns are expensive, use this to read multiple files at once)",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "paths": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "File paths relative to project root",
+                            },
+                        },
+                        "required": ["paths"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "read_file",
                     "description": "Read full file content",
                     "parameters": {
@@ -625,7 +681,19 @@ Return ONLY the JSON array, no other text.
     ) -> str:
         """Execute a read-only tool call and return the result as a string."""
         try:
-            if name == "read_file":
+            if name == "read_files":
+                paths = args.get("paths", [])
+                if not isinstance(paths, list) or not paths:
+                    return "No paths provided to read_files."
+                results = []
+                for p in paths:
+                    try:
+                        content = workspace.read_file(str(p))
+                        results.append(f"=== {p} ===\n{content}")
+                    except Exception as e:
+                        results.append(f"=== {p} ===\nError reading file: {e}")
+                return "\n\n".join(results)
+            elif name == "read_file":
                 return workspace.read_file(args["path"])
             elif name == "read_file_lines":
                 return workspace.read_file_lines(args["path"], args["start"], args["end"])
@@ -783,7 +851,7 @@ def _normalize_path_arg(args: Dict[str, Any]) -> str:
 
 def _extract_line_range(tool_name: str, args: Dict[str, Any]) -> Tuple[int, float]:
     """Extract (start_line, end_line) range from tool args."""
-    if tool_name == "read_file":
+    if tool_name in ("read_file", "read_files"):
         return (1, float("inf"))
 
     if tool_name in ("read_file_lines", "read_lines"):
@@ -819,6 +887,7 @@ class ReadMemoryTracker:
         Returns the 1-based turn_idx if covered, else None.
         """
         read_tools = {
+            "read_files",
             "read_file",
             "read_file_lines",
             "read_lines",
@@ -839,7 +908,23 @@ class ReadMemoryTracker:
         if exact_key and exact_key in self.exact_reads:
             return self.exact_reads[exact_key]
 
-        # 2. File line range / whole file coverage check
+        # 2. Batch read check
+        if tool_name == "read_files":
+            paths = args.get("paths", [])
+            if isinstance(paths, list) and paths:
+                all_read = True
+                first_turn = None
+                for p in paths:
+                    norm_p = Path(str(p).strip()).as_posix() if isinstance(p, str) else ""
+                    if not norm_p or norm_p not in self.file_ranges:
+                        all_read = False
+                        break
+                    if first_turn is None:
+                        first_turn = self.file_ranges[norm_p][0][2]
+                if all_read:
+                    return first_turn
+
+        # 3. File line range / whole file coverage check
         if tool_name in ("read_file", "read_file_lines", "read_lines"):
             path = _normalize_path_arg(args)
             if path and path in self.file_ranges:
@@ -848,7 +933,7 @@ class ReadMemoryTracker:
                     if cov_start <= req_start and cov_end >= req_end:
                         return turn_idx
 
-        # 3. Directory listing check
+        # 4. Directory listing check
         if tool_name in ("list_files", "list_directory", "ls"):
             dir_path = _normalize_path_arg(args) or "."
             if dir_path in self.dir_listings:
@@ -861,6 +946,16 @@ class ReadMemoryTracker:
         exact_key = _canonical_read_key(tool_name, args)
         if exact_key:
             self.exact_reads[exact_key] = turn_idx
+
+        if tool_name == "read_files":
+            paths = args.get("paths", [])
+            if isinstance(paths, list):
+                for p in paths:
+                    if isinstance(p, str) and p.strip():
+                        norm_p = Path(p.strip()).as_posix()
+                        if norm_p not in self.file_ranges:
+                            self.file_ranges[norm_p] = []
+                        self.file_ranges[norm_p].append((1, float("inf"), turn_idx))
 
         if tool_name in ("read_file", "read_file_lines", "read_lines"):
             path = _normalize_path_arg(args)
@@ -879,6 +974,7 @@ class ReadMemoryTracker:
 def _canonical_read_key(name: str, args: Dict[str, Any]) -> Optional[Tuple[str, str]]:
     """Return (tool_name, canonical_args_str) for read tools, or None if not a read tool."""
     read_tools = {
+        "read_files",
         "read_file",
         "read_file_lines",
         "read_lines",
@@ -911,7 +1007,7 @@ def _canonical_read_key(name: str, args: Dict[str, Any]) -> Optional[Tuple[str, 
 def format_repeat_read_response(tool_name: str, args: Dict[str, Any], prev_turn: int) -> str:
     """Format a concise tool response pointing to the previous turn containing the result."""
     target = _normalize_path_arg(args)
-    if tool_name in ("read_file", "read_file_lines", "read_lines"):
+    if tool_name in ("read_file", "read_files", "read_file_lines", "read_lines"):
         req_start, req_end = _extract_line_range(tool_name, args)
         range_str = f"lines {req_start}-{int(req_end)}" if req_end != float("inf") else "full file"
         if target:

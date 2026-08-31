@@ -117,13 +117,14 @@ def test_every_tool_call_id_gets_a_response(turns):
     workspace.list_files.return_value = ["a.py", "b.py"]
 
     responses = [_make_response(turn) for turn in turns]
-    # Final turn: a valid submit_files completion so the loop terminates.
+    # Final tool call to stage changes, followed by a completion response with no tool calls.
     responses.append(_make_response([
         _make_tool_call(
             "submit_files", "call_final",
             json.dumps({"files": [{"path": "a.py", "content": "x"}]}),
         )
     ]))
+    responses.append(_make_response([]))
 
     adapter = LiteLLMAdapter(workspace_mcp=workspace)
     adapter._completion_fn = MagicMock(side_effect=responses)

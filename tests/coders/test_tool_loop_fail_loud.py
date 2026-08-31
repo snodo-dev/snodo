@@ -77,7 +77,7 @@ class TestToolLoopSubmitFilesHappyPath:
         workspace.read_file.return_value = "old content"
         adapter = LiteLLMAdapter(workspace_mcp=workspace)
 
-        # First turn: read_file, second turn: submit_files
+        # First turn: read_file, second turn: submit_files, third turn: model signals done
         adapter._completion_fn = MagicMock(side_effect=[
             _make_mock_response(
                 content=None,
@@ -89,6 +89,7 @@ class TestToolLoopSubmitFilesHappyPath:
                     {"path": "src/main.py", "content": "new content"},
                 ])],
             ),
+            _make_mock_response(content="Done", tool_calls=None, finish_reason="stop"),
         ])
         result = adapter._call_llm_with_tools("prompt")
         parsed = json.loads(result)
@@ -276,7 +277,8 @@ class TestToolLoopResponseInvariant:
 
     def _run(self, responses, workspace=None):
         adapter = LiteLLMAdapter(workspace_mcp=workspace or MagicMock())
-        adapter._completion_fn = MagicMock(side_effect=responses)
+        full_responses = list(responses) + [_make_mock_response(content="Done", tool_calls=None, finish_reason="stop")]
+        adapter._completion_fn = MagicMock(side_effect=full_responses)
         return adapter, adapter._call_llm_with_tools("prompt")
 
     def _last_messages(self, adapter):
