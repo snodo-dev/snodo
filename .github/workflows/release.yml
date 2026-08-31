@@ -43,6 +43,11 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           attestations: true
+          # Six packages are published in one step. A partial upload followed by
+          # a re-run must not be fatal: v0.7.0 reached PyPI while the step still
+          # exited 2, because re-uploading an existing file is an error by
+          # default. Skip what is already there and let the rest through.
+          skip-existing: true
       - name: Create GitHub Release
         run: |
           uv run python scripts/changelog_release_body.py --tag "$RELEASE_TAG" > /tmp/release-notes.md
