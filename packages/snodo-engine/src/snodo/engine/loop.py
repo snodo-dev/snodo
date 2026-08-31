@@ -79,7 +79,9 @@ def _build_completion_fn(model: str, base_fn: Optional[Callable]) -> Optional[Ca
     import functools
 
     from snodo.config import ConfigManager
-    kwargs: dict[str, Any] = {"model": model}
+    resolver = getattr(ConfigManager, "resolve_litellm_model", None)
+    litellm_model = resolver(model) if resolver else model
+    kwargs: dict[str, Any] = {"model": litellm_model}
     api_base = ConfigManager.resolve_api_base(model)
     if api_base:
         kwargs["api_base"] = api_base
