@@ -297,10 +297,6 @@ Return ONLY the JSON array, no other text.
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = self.temperature
                 response = self._completion_fn(**kwargs)
-            except StopIteration:
-                if accumulated_files:
-                    return json.dumps(list(accumulated_files.values()))
-                raise
             except Exception as e:
                 self._emit_turn_telemetry(
                     turn_index=turn + 1,
