@@ -60,7 +60,7 @@ class TestWorkspaceResolution:
 # ========== BARE MODEL ==========
 
 class TestBareModel:
-    """_bare_model strips the opencode-cli/ prefix."""
+    """_bare_model strips this adapter's prefix, and drops anything else."""
 
     def test_strips_prefix(self):
         adapter = OpenCodeCLIAdapter(model="opencode-cli/deepseek/deepseek-chat")
