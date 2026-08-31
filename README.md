@@ -23,9 +23,7 @@ snodo is an actively-developed research implementation (beta). Current state of 
 
 | Metric | Value |
 |---|---|
-| Tests | **2,125 passing** across 88 files — unit, integration, end-to-end, and property-based |
-| Coverage | **67%** (whole-repo) — gated in CI (fail under 63%); badge committed at `.github/badges/coverage.svg` |
-| Code | ~24,700 lines across **6 packages** |
+| Code | ~33,800 lines across **5 packages** (`snodo-core`, `snodo-tools`, `snodo-foundation`, `snodo-engine`, `snodo-mcp`) |
 | Complexity | average cyclomatic complexity **A (3.9)** — no high-complexity hotspots |
 | Lint / architecture | `ruff` clean; package layering enforced in CI by `import-linter` |
 | Python | 3.12 and 3.13 (CI matrix) |
@@ -188,10 +186,11 @@ snodo executes protocol tasks under interchangeable code generation backends (**
 
 `resolve_coder_name()` selects the active coder by evaluating criteria in strict order:
 
-1. **Explicit CLI Flag**: `--coder <name>` (e.g., `snodo run "task" --coder agy`).
-2. **Protocol Mode Field**: `coder: <name>` declared in a mode definition in `.snodo/protocol.yml` (`modes[].coder`).
-3. **Model Prefix Mapping**: Inferred from model prefix: `opencode-cli/` → `opencode-cli`, `opencode/` → `opencode`, `agy/` → `agy`, `gpt`/`o1`/`o3` → `openai`, `claude` → `anthropic`, `gemini`/`google/` → `gemini`.
-4. **Default Fallback**: `'mock'` if `--mock` is set, otherwise `'litellm'`.
+1. **Explicit Mock Flag**: `--mock` / `use_mock_coder=True` (always returns `'mock'`).
+2. **Explicit CLI Flag**: `--coder <name>` (e.g., `snodo run "task" --coder agy`).
+3. **Protocol Mode Field**: `coder: <name>` declared in a mode definition in `.snodo/protocol.yml` (`modes[].coder`).
+4. **Model Prefix Mapping**: Inferred from model prefix: `opencode-cli/` → `opencode-cli`, `opencode/` → `opencode`, `agy/` → `agy`, `gpt`/`o1`/`o3` → `openai`, `claude` → `anthropic`, `gemini`/`google/` → `gemini`.
+5. **Default Fallback**: `'litellm'`.
 
 ### In-Place Coders vs `litellm`
 
@@ -256,6 +255,21 @@ DESCRIPTION             Task description (required unless --plan is used)
 --background, -b        Run task in background
 --sandbox TEXT          Sandbox type: local or docker [default: local]
 --resume TEXT           Resume execution from session ID
+--retry                 Retry execution of a halted task using saved failure context
+--retain-worktree       Retain task git worktree after execution finishes
+--no-isolation          Run task directly in the main repository working tree
+```
+
+### `snodo status`
+
+Show status of the active snodo session, mode, and task progress.
+
+### `snodo validate`
+
+Validate the project protocol definition and well-formedness rules.
+
+```
+--protocol TEXT         Path to protocol file [default: .snodo/protocol.yml]
 ```
 
 ### `snodo serve`
@@ -474,6 +488,16 @@ snodo cloud connect <api-key>
 ### `snodo task`
 
 Manage task branches. Subcommands: `list`, `abandon`, `prune`.
+
+### `snodo worktree`
+
+Manage git worktrees used for task isolation. Subcommands: `list`, `remove`, `prune`.
+
+```
+snodo worktree list
+snodo worktree remove WORKTREE_NAME
+snodo worktree prune
+```
 
 ## Architecture
 

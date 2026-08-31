@@ -69,6 +69,10 @@ studies = [
     "matplotlib>=3.7.0",
     "pandas>=2.0.0",
 ]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+]
 
 [project.scripts]
 snodo = "snodo.cli.main:main"

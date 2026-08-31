@@ -1,12 +1,12 @@
 # Snodo Architecture
 
-How enforcement works from top to bottom. For individual design decisions, see [ADRs](decisions/).
+How enforcement works from top to bottom. For individual design decisions, see [ADRs](decisions/README.md).
 
 > **Maintenance note.** This document references files and functions, deliberately
 > **not line numbers** — line references go stale within weeks and were the main
 > source of drift in earlier revisions. If a change alters package structure, the
 > execution path, or where an invariant is enforced, update this file in the same PR
-> (see [CONTRIBUTING](../CONTRIBUTING.md)). Current findings and priorities live in
+> (see [CONTRIBUTING](https://github.com/snodo-dev/snodo/blob/main/CONTRIBUTING.md)). Current findings and priorities live in
 > GitHub Issues, never here.
 
 ## Overview
