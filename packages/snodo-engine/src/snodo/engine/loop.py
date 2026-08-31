@@ -147,10 +147,57 @@ def _normalize_attempt_provenance(provenance: Optional[list]) -> list:
     return normalized
 
 
+def _attempt_read_files(loop_state: "LoopState") -> Dict[str, List[str]]:
+    """Return the paths the current attempt inspected, as ``{files, directories}``.
+
+    Paths only — the executor records the coder's read-set, never its file
+    contents, so a later recovery attempt reuses the map of where to look
+    without ever inheriting a stale view of a file it must now fix (#157).
+    """
+    recorded = loop_state.metadata.get("attempt_read_files")
+    if isinstance(recorded, dict):
+        files = {str(p) for p in (recorded.get("files") or []) if str(p).strip()}
+        dirs = {str(p) for p in (recorded.get("directories") or []) if str(p).strip()}
+        return {"files": sorted(files), "directories": sorted(dirs)}
+    return {"files": [], "directories": []}
+
+
+def _normalize_attempt_reads(reads: Optional[list]) -> list:
+    """Normalize accumulated per-attempt read history, dropping empty entries."""
+    normalized = []
+    for entry in reads or []:
+        files = sorted({str(p) for p in (entry.get("files") or []) if str(p).strip()})
+        dirs = sorted({str(p) for p in (entry.get("directories") or []) if str(p).strip()})
+        if files or dirs:
+            normalized.append(
+                {"attempt": entry.get("attempt", "?"), "files": files, "directories": dirs}
+            )
+    return normalized
+
+
+def _combine_attempt_reads(
+    prior_reads: Optional[list],
+    current_attempt: int,
+    current_reads: Dict[str, List[str]],
+) -> list:
+    """Accumulate per-attempt inspection paths across a recovery chain.
+
+    Mirrors :func:`_combine_attempt_provenance` but for reads, and carries only
+    paths — never contents (see :func:`_attempt_read_files`).
+    """
+    history = _normalize_attempt_reads(prior_reads)
+    files = sorted({str(p) for p in (current_reads.get("files") or []) if str(p).strip()})
+    dirs = sorted({str(p) for p in (current_reads.get("directories") or []) if str(p).strip()})
+    if files or dirs:
+        history.append({"attempt": current_attempt, "files": files, "directories": dirs})
+    return history
+
+
 def _build_recovery_spec(
     original_spec: str,
     failures: list,
     attempt_provenance: Optional[list] = None,
+    attempt_reads: Optional[list] = None,
 ) -> str:
     """Synthesise a recovery spec from the original intent + accumulated failures.
 
@@ -175,8 +222,19 @@ def _build_recovery_spec(
     request: the coder may remove a superseded file from its own earlier
     attempt, but must not churn a listed file merely because it appears there
     (Fixes #97).
+
+    ``attempt_reads`` is the map of paths earlier attempts inspected (files
+    read, directories listed). It is carried to cut the recovery attempt's
+    cold start — it re-opens the previous search rather than exploring the
+    whole repo again (Fixes #157). It is deliberately paths ONLY, never file
+    contents: between attempts the tree has changed (the prior attempt wrote
+    files, the worktree moved), so a cached version handed to the next coder
+    would make a stale view authoritative — worse than re-reading. The coder is
+    told these are hints about where to look and must open a file before editing
+    it.
     """
     provenance = _normalize_attempt_provenance(attempt_provenance)
+    reads = _normalize_attempt_reads(attempt_reads)
     lines = [
         "The task is the INTENT below. Implement it.",
         "",
@@ -207,6 +265,25 @@ def _build_recovery_spec(
         for entry in provenance:
             files = ", ".join(entry["files"])
             lines.append(f"- attempt {entry['attempt']}: {files}")
+
+    if reads:
+        lines.append("")
+        lines.append(
+            "PRIOR INSPECTION MAP (paths earlier attempts opened — NOT their contents):"
+        )
+        lines.append(
+            "- These point at where the relevant code lived so you can go "
+            "straight there instead of exploring the whole repository again. "
+            "The tree has changed since: open a file before editing it and "
+            "never assume you already know what a listed file contains."
+        )
+        for entry in reads:
+            parts = []
+            if entry["files"]:
+                parts.append("files: " + ", ".join(entry["files"]))
+            if entry["directories"]:
+                parts.append("dirs: " + ", ".join(entry["directories"]))
+            lines.append(f"- attempt {entry['attempt']}: " + "; ".join(parts))
 
     if failures:
         lines.append("")
@@ -372,6 +449,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._verbose = verbose
         self._project_context_cache: Optional[Dict[str, Any]] = None
         self._last_execution_writes: List[str] = []
+        self._last_execution_reads: Dict[str, List[str]] = {"files": [], "directories": []}
         self._last_commit_reason: Optional[str] = None
     
     def build_graph(self) -> StateGraph:
@@ -540,7 +618,12 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             attempt_no,
             _attempt_written_files(loop_state),
         )
-        spec = _build_recovery_spec(root_spec, accumulated, provenance)
+        read_history = _combine_attempt_reads(
+            loop_state.task.attempt_reads,
+            attempt_no,
+            _attempt_read_files(loop_state),
+        )
+        spec = _build_recovery_spec(root_spec, accumulated, provenance, read_history)
 
         # Identify triggering validators (warn / blocker)
         trigger_ids = [f["validator_id"] for f in new_failures]
@@ -554,6 +637,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             root_spec=root_spec,
             prior_failures=accumulated,
             attempt_provenance=provenance,
+            attempt_reads=read_history,
             depth=current_depth + 1,
         )
         loop_state.spawned_subtasks.append(fix_task)
