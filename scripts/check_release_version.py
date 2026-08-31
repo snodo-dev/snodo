@@ -40,6 +40,33 @@ def changelog_has_version_section(changelog_path: Path, version: str) -> bool:
     return re.search(pattern, text, re.MULTILINE) is not None
 
 
+def extract_changelog_section(changelog_path: Path, version: str) -> str | None:
+    """Return the body of a version's CHANGELOG section, or None if missing.
+
+    The heading line (``## [0.6.0] — 2026-08-21``) is excluded; the body runs
+    from the first content line to the ``---`` separator that precedes the next
+    section (or, failing that, the next level-2 heading). ``###`` subsections
+    and their bullets belong to the section and are kept. The separator itself
+    is excluded, so the extracted body is the release notes verbatim.
+    """
+    text = changelog_path.read_text(encoding="utf-8")
+    start_match = re.search(
+        rf"^#+\s+\[{re.escape(version)}\][^\n]*\n",
+        text,
+        re.MULTILINE,
+    )
+    if not start_match:
+        return None
+    start = start_match.end()
+    end_match = re.search(
+        r"^---\s*$|^##\s+",
+        text[start:],
+        re.MULTILINE,
+    )
+    body = text[start : start + end_match.start()] if end_match else text[start:]
+    return body.strip()
+
+
 def validate_release(
     tag: str,
     pyproject_version: str,
