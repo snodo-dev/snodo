@@ -124,12 +124,26 @@ class LiteLLMAdapter(CoderAdapter):
 
         self._job_id: str = ""
         self._task_id: str = ""
+        #: Per-attempt read memory; None until a tool-loop run populates it.
+        #: Exposed as paths only (see ``last_read_paths``) so a later recovery
+        #: attempt can reuse the map of what was inspected, never its contents.
+        self._read_tracker: Optional["ReadMemoryTracker"] = None
 
         try:
             from litellm import completion
             self._completion_fn = completion
         except ImportError:
             self._completion_fn = None
+
+    @property
+    def last_read_paths(self) -> List[str]:
+        """File paths opened by the most recent attempt (paths only, no contents)."""
+        return list(self._read_tracker.file_ranges) if self._read_tracker else []
+
+    @property
+    def last_listed_dirs(self) -> List[str]:
+        """Directory paths listed by the most recent attempt."""
+        return list(self._read_tracker.dir_listings) if self._read_tracker else []
 
     def _resolve_api_base(self) -> Optional[str]:
         """Return api_base for the current model, if provider has base_url set."""
@@ -142,6 +156,7 @@ class LiteLLMAdapter(CoderAdapter):
         return ConfigManager.resolve_extra_headers(self.model, task_id=self._task_id)
 
     def implement(self, spec: TaskSpec) -> CodeArtifact:
+        self._read_tracker = None
         prompt = self._build_prompt(spec)
         response = self._call_llm(prompt)
         return self._parse_response(response)
@@ -269,6 +284,7 @@ Return ONLY the JSON array, no other text.
         finish_reason = None
         start_time = time.monotonic()
         read_tracker = ReadMemoryTracker()
+        self._read_tracker = read_tracker
 
         for turn in range(self.max_tool_turns):
             turn_start = time.monotonic()
@@ -874,6 +890,23 @@ class ReadMemoryTracker:
             dir_path = _normalize_path_arg(args) or "."
             if dir_path not in self.dir_listings:
                 self.dir_listings[dir_path] = turn_idx
+
+    def export_paths(self) -> Dict[str, List[str]]:
+        """Return the paths this attempt inspected, WITHOUT their contents.
+
+        ``files`` are paths opened via read_file/read_file_lines/read_lines;
+        ``directories`` are paths listed via list_files/list_directory/ls.
+
+        Contents are deliberately excluded (Fixes #157 follow-up on recovery
+        cold-start): between attempts the tree changes, and handing a later
+        attempt a cached version of a file it must now fix would make a stale
+        view authoritative — worse than re-reading. Only the map of *where the
+        previous attempt looked* is safe to carry forward.
+        """
+        return {
+            "files": sorted(self.file_ranges.keys()),
+            "directories": sorted(self.dir_listings.keys()),
+        }
 
 
 def _canonical_read_key(name: str, args: Dict[str, Any]) -> Optional[Tuple[str, str]]:
