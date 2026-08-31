@@ -3,7 +3,7 @@
 FILE: tests/engine/test_loop_governance.py
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from snodo.compiler.models import Protocol
@@ -193,6 +193,85 @@ def test_classify_wave_passes_classifier_config(sample_protocol, sample_task):
 
     # The registry was constructed with a classifier= kwarg.
     assert "classifier" in mock_registry_cls.call_args[1]
+
+
+def test_classify_wave_emits_audit_event(sample_protocol, sample_task):
+    """The classification is emitted into the audit trail (Fixes #154).
+
+    cloud_sync ships audit events only, so wave_id must reach an audit event
+    for a consumer of the event stream to see which wave a task belongs to.
+    flow_type belongs with it. An unwaved task (wave_id None) is legitimate
+    and is emitted as an empty wave_id — distinguishable from a failed
+    classification, which raises before the event is appended.
+    """
+    audit = MagicMock()
+    builder = GraphBuilder(sample_protocol, audit_log=audit)
+    builder._project_root = "/fake/project"
+
+    state = {
+        "task": {"id": sample_task.id, "spec": sample_task.spec},
+        "current_mode": "producer",
+        "iteration": 0,
+        "stage": "governance",
+        "validation_results": [],
+        "validation_token": None,
+        "artifacts": [],
+        "constraints_passed": True,
+        "constraint_violations": [],
+        "policy_decision": None,
+        "is_complete": False,
+        "is_blocked": False,
+        "metadata": {},
+    }
+    with patch(
+        "snodo.infrastructure.wave_registry.WaveRegistry.classify_task",
+        return_value={"flow_type": "defect", "wave_id": "w_0001", "task_summary": "s"},
+    ):
+        builder._governance_node(state)
+
+    audit.append_event.assert_any_call("task_classified", {
+        "op": "task_classified",
+        "task_ref": "task_001",
+        "flow_type": "defect",
+        "wave_id": "w_0001",
+        "task_summary": "s",
+    })
+
+
+def test_classify_wave_audit_event_unwaved(sample_protocol, sample_task):
+    """An unwaved task is emitted with an empty wave_id, not fabricated."""
+    audit = MagicMock()
+    builder = GraphBuilder(sample_protocol, audit_log=audit)
+    builder._project_root = "/fake/project"
+
+    state = {
+        "task": {"id": sample_task.id, "spec": sample_task.spec},
+        "current_mode": "producer",
+        "iteration": 0,
+        "stage": "governance",
+        "validation_results": [],
+        "validation_token": None,
+        "artifacts": [],
+        "constraints_passed": True,
+        "constraint_violations": [],
+        "policy_decision": None,
+        "is_complete": False,
+        "is_blocked": False,
+        "metadata": {},
+    }
+    with patch(
+        "snodo.infrastructure.wave_registry.WaveRegistry.classify_task",
+        return_value={"flow_type": "feature", "wave_id": None, "task_summary": None},
+    ):
+        builder._governance_node(state)
+
+    audit.append_event.assert_any_call("task_classified", {
+        "op": "task_classified",
+        "task_ref": "task_001",
+        "flow_type": "feature",
+        "wave_id": "",
+        "task_summary": None,
+    })
 
 
 def test_governance_node_delegates_to_single_classify_wave(sample_protocol, sample_task):
