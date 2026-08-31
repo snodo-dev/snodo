@@ -381,7 +381,8 @@ def test_execute_node_success(sample_protocol, sample_task):
         "token_id": sample_task.id,
         "mode": "producer",
         "coder": "mock",
-        "model": builder._default_model,
+        "coder_model": builder.coder.model,
+        "judging_model": builder._default_model,
         "artifacts_count": 1,
     })
 
