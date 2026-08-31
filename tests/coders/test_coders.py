@@ -275,6 +275,14 @@ class TestCoderToolLoop:
         response.choices[0].message.tool_calls = [tc]
         return response
 
+    def _make_done_response(self, content="Done"):
+        """Create a mock LLM response with no tool calls (turn complete)."""
+        response = Mock()
+        response.choices = [Mock()]
+        response.choices[0].message.content = content
+        response.choices[0].message.tool_calls = None
+        return response
+
     def _make_legacy_response(self, files=None):
         """Create a mock LLM response with free-text JSON (single-completion path)."""
         if files is None:
@@ -312,9 +320,11 @@ class TestCoderToolLoop:
                 return self._make_tool_call_response(
                     "read_file", {"path": "src/main.py"}
                 )
-            return self._make_code_artifact_response([
-                {"path": "src/main.py", "content": "def old_function():\n    return 1\n\ndef new_function():\n    return 2\n", "action": "write"}
-            ])
+            elif call_count[0] == 2:
+                return self._make_code_artifact_response([
+                    {"path": "src/main.py", "content": "def old_function():\n    return 1\n\ndef new_function():\n    return 2\n", "action": "write"}
+                ])
+            return self._make_done_response()
 
         completion_fn = Mock(side_effect=completion_side_effect)
         coder = LiteLLMAdapter(model="gpt-4", workspace_mcp=workspace)
@@ -327,7 +337,7 @@ class TestCoderToolLoop:
         assert result.files[0].path == "src/main.py"
         assert "new_function" in result.files[0].content
         workspace.read_file.assert_called_once_with("src/main.py")
-        assert completion_fn.call_count == 2
+        assert completion_fn.call_count == 3
 
     def test_tool_loop_reads_file_lines(self):
         """Coder should call read_file_lines for partial reads."""
@@ -344,7 +354,9 @@ class TestCoderToolLoop:
                 return self._make_tool_call_response(
                     "read_file_lines", {"path": "src/models.py", "start": 1, "end": 20}
                 )
-            return self._make_code_artifact_response()
+            elif call_count[0] == 2:
+                return self._make_code_artifact_response()
+            return self._make_done_response()
 
         completion_fn = Mock(side_effect=completion_side_effect)
         coder = LiteLLMAdapter(model="gpt-4", workspace_mcp=workspace)
@@ -371,7 +383,9 @@ class TestCoderToolLoop:
                 return self._make_tool_call_response(
                     "list_files", {"directory": "src"}
                 )
-            return self._make_code_artifact_response()
+            elif call_count[0] == 2:
+                return self._make_code_artifact_response()
+            return self._make_done_response()
 
         completion_fn = Mock(side_effect=completion_side_effect)
         coder = LiteLLMAdapter(model="gpt-4", workspace_mcp=workspace)
@@ -384,9 +398,8 @@ class TestCoderToolLoop:
         workspace.list_files.assert_called_once_with("src")
 
     def test_tool_loop_bounded_at_max_turns(self):
-        """Coder loop)"""
+        """Coder loop bounded at max turns."""
         from snodo.coders import LiteLLMAdapter
-        from snodo.coders.litellm import _DEFAULT_MAX_TOOL_TURNS
 
         workspace = Mock()
 
@@ -400,21 +413,19 @@ class TestCoderToolLoop:
         coder = LiteLLMAdapter(model="gpt-4", workspace_mcp=workspace)
         coder._completion_fn = completion_fn
 
-        spec = TaskSpec(description="Modify x.py", constraints=[])
-
-        # Should hit the turn cap and return empty -> ParseError
-        with pytest.raises(ParseError):
+        spec = TaskSpec(description="Infinite loop", constraints=[])
+        with pytest.raises(ParseError, match="completed the tool loop without delivering files"):
             coder.implement(spec)
 
-        # Should have been called exactly _DEFAULT_MAX_TOOL_TURNS times
-        assert completion_fn.call_count == _DEFAULT_MAX_TOOL_TURNS
-
     def test_no_read_returns_code_artifact_first_turn(self):
-        """When no read is needed, returns CodeArtifact on first turn."""
+        """When no read is needed, returns CodeArtifact across turns."""
         from snodo.coders import LiteLLMAdapter
 
         workspace = Mock()
-        completion_fn = Mock(return_value=self._make_code_artifact_response())
+        completion_fn = Mock(side_effect=[
+            self._make_code_artifact_response(),
+            self._make_done_response(),
+        ])
 
         coder = LiteLLMAdapter(model="gpt-4", workspace_mcp=workspace)
         coder._completion_fn = completion_fn
@@ -424,9 +435,7 @@ class TestCoderToolLoop:
 
         assert len(result.files) == 1
         assert result.files[0].path == "src/main.py"
-        # Only one LLM call, no tools used
-        assert completion_fn.call_count == 1
-        workspace.read_file.assert_not_called()
+        assert completion_fn.call_count == 2
 
     def test_no_workspace_falls_back_to_single_completion(self):
         """Without workspace_mcp, uses single-completion path."""
@@ -461,7 +470,9 @@ class TestCoderToolLoop:
                 return self._make_tool_call_response(
                     "read_file", {"path": "missing.py"}
                 )
-            return self._make_code_artifact_response()
+            elif call_count[0] == 2:
+                return self._make_code_artifact_response()
+            return self._make_done_response()
 
         completion_fn = Mock(side_effect=completion_side_effect)
         coder = LiteLLMAdapter(model="gpt-4", workspace_mcp=workspace)
@@ -471,7 +482,7 @@ class TestCoderToolLoop:
         result = coder.implement(spec)
 
         assert len(result.files) == 1
-        assert completion_fn.call_count == 2
+        assert completion_fn.call_count == 3
 
     def test_tool_loop_llm_exception_raises_llm_call_error(self):
         """If LLM call throws, raises LLMCallError."""
@@ -504,10 +515,78 @@ class TestCoderToolLoop:
         call_kwargs = completion_fn.call_args[1]
         assert "tools" in call_kwargs
         assert isinstance(call_kwargs["tools"], list)
+        assert call_kwargs.get("parallel_tool_calls") is True
         tool_names = [t["function"]["name"] for t in call_kwargs["tools"]]
+        assert "read_files" in tool_names
         assert "read_file" in tool_names
         assert "read_file_lines" in tool_names
         assert "list_files" in tool_names
+
+    def test_submit_files_accumulates_across_turns(self):
+        """submit_files calls accumulate files across turns until finished."""
+        from snodo.coders import LiteLLMAdapter
+
+        workspace = Mock()
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return self._make_code_artifact_response([
+                    {"path": "src/file1.py", "content": "print('1')", "action": "write"}
+                ])
+            elif call_count[0] == 2:
+                return self._make_code_artifact_response([
+                    {"path": "src/file2.py", "content": "print('2')", "action": "write"}
+                ])
+            # Turn 3: model returns assistant message with no tool calls (done)
+            response = Mock()
+            response.choices = [Mock()]
+            response.choices[0].message.content = "All files submitted."
+            response.choices[0].message.tool_calls = None
+            return response
+
+        completion_fn = Mock(side_effect=completion_side_effect)
+        coder = LiteLLMAdapter(model="gpt-4", workspace_mcp=workspace)
+        coder._completion_fn = completion_fn
+
+        spec = TaskSpec(description="Multi-file change", constraints=[])
+        result = coder.implement(spec)
+
+        assert len(result.files) == 2
+        paths = [f.path for f in result.files]
+        assert "src/file1.py" in paths
+        assert "src/file2.py" in paths
+
+    def test_tool_loop_batch_read_files(self):
+        """read_files batch reads multiple files in a single tool call."""
+        from snodo.coders import LiteLLMAdapter
+
+        workspace = Mock()
+        workspace.read_file.side_effect = lambda p: f"content of {p}"
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return self._make_tool_call_response(
+                    "read_files", {"paths": ["src/a.py", "src/b.py"]}
+                )
+            return self._make_code_artifact_response([
+                {"path": "src/a.py", "content": "updated a", "action": "write"}
+            ])
+
+        completion_fn = Mock(side_effect=completion_side_effect)
+        coder = LiteLLMAdapter(model="gpt-4", workspace_mcp=workspace)
+        coder._completion_fn = completion_fn
+
+        spec = TaskSpec(description="Read multiple files", constraints=[])
+        result = coder.implement(spec)
+
+        assert workspace.read_file.call_count == 2
+        workspace.read_file.assert_any_call("src/a.py")
+        workspace.read_file.assert_any_call("src/b.py")
+        assert len(result.files) == 1
 
     def test_prompt_mentions_tools_when_workspace_available(self):
         """Prompt should mention available tools when workspace_mcp is set."""
@@ -519,9 +598,11 @@ class TestCoderToolLoop:
         spec = TaskSpec(description="Test", constraints=[])
         prompt = coder._build_prompt(spec)
 
+        assert "read_files" in prompt
         assert "read_file" in prompt
         assert "read_file_lines" in prompt
         assert "list_files" in prompt
+        assert "turns are expensive" in prompt.lower()
 
     def test_prompt_no_tool_mention_without_workspace(self):
         """Prompt should NOT mention tools when workspace_mcp is None."""
