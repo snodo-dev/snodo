@@ -70,8 +70,11 @@ studies = [
     "pandas>=2.0.0",
 ]
 docs = [
-    "mkdocs>=1.6.0",
-    "mkdocs-material>=9.5.0",
+    # Upper bound is deliberate: MkDocs 2.0 removes the plugin system and
+    # rewrites theming, and mkdocs-material states it will not work there.
+    # An unbounded >=1.6.0 would silently pull it in on a clean clone.
+    "mkdocs>=1.6.0,<2",
+    "mkdocs-material>=9.5.0,<10",
 ]
 
 [project.scripts]
