@@ -7,7 +7,7 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2606.20615-b31b1b)](https://arxiv.org/abs/2606.20615)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Tests](https://img.shields.io/badge/tests-2125%20passing-3DBF4F)](https://github.com/snodo-dev/snodo/actions/workflows/ci.yml)
-[![Coverage](https://raw.githubusercontent.com/snodo-dev/snodo/main/.github/badges/coverage.svg)](.github/badges/coverage.svg)
+[![Coverage](https://codecov.io/gh/snodo-dev/snodo/branch/main/graph/badge.svg)](https://codecov.io/gh/snodo-dev/snodo)
 
 **AI-SDLC Protocol Engine** — a governance layer for AI-assisted software development.
 
