@@ -87,6 +87,10 @@ class Task(BaseModel):
     # wrote in the cumulative worktree. This is ownership context, not a
     # rewrite request.
     attempt_provenance: List[Dict[str, Any]] = Field(default_factory=list)
+    # Recovery read-set: paths earlier attempts inspected (files read,
+    # directories listed). Paths only, never contents — the tree changes
+    # between attempts and a cached version must not become authoritative.
+    attempt_reads: List[Dict[str, Any]] = Field(default_factory=list)
     depth: int = 0
     flow_type: Optional[str] = None
     wave_id: Optional[str] = None

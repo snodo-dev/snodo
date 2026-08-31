@@ -225,6 +225,7 @@ class ValidationNodeMixin:
                 self._auto_write_failure_context(loop_state, [])
                 return self._state_to_dict(loop_state)
             self._last_execution_writes = []
+            self._last_execution_reads = {"files": [], "directories": []}
             try:
                 self._progress("  Coder dispatched")
                 artifacts = self.executor_fn(
@@ -238,6 +239,7 @@ class ValidationNodeMixin:
                 )
                 self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")
                 loop_state.metadata["attempt_written_files"] = list(self._last_execution_writes)
+                loop_state.metadata["attempt_read_files"] = dict(self._last_execution_reads)
             except SnodoMutationError as e:
                 # An in-place-writing coder mutated protected .snodo/ state.
                 # This is a governance violation (INV3-class), not an
