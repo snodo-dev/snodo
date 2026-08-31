@@ -63,11 +63,15 @@ release:
 	uv run ruff check . || { echo "Lint failed. Aborting release."; exit 1; }
 	uv run lint-imports || { echo "Import contracts broken. Aborting release."; exit 1; }
 	$(MAKE) bump PART=$(PART)
-	$(eval V := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml))
-	git add -A
-	git commit -m "release: v$(V)"
-	git tag -a "v$(V)" -m "snodo v$(V)"
-	git push origin main --follow-tags
+	@# Read the version in the SHELL, after bump has run. A make-level eval here
+	@# would be expanded when make expands this recipe — before any line of it runs —
+	@# and would capture the pre-bump version, tagging the release with the
+	@# version it just replaced.
+	@V=$$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml) && \
+	  git add -A && \
+	  git commit -m "release: v$$V" && \
+	  git tag -a "v$$V" -m "snodo v$$V" && \
+	  git push origin main --follow-tags
 
 # ──────────────────────────────────────────────
 # Experiment task selection
