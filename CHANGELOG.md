@@ -11,6 +11,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Accumulated `submit_files` file operations across turns in `LiteLLMAdapter`, delivering the complete accumulated set atomically when complete or when turn budget finishes instead of terminating on the first `submit_files` call. Added `read_files` batch read tool and explicitly configured `parallel_tool_calls=True` in completion requests. (Fixes #152).
 - Documented interchangeable coder backends (`litellm`, `opencode`, `opencode-cli`, `agy`, `mock`), `--coder` selection precedence, model role separation (judging vs execution), in-place coder commit ownership and `.snodo/` boundary protection, installation/authentication requirements, and `SubprocessCoderAdapter` extension guidelines across `README.md`, `docs/protocol.md`, and `docs/architecture.md`. (Fixes #147).
 
 ### Fixed

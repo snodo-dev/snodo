@@ -59,6 +59,7 @@ transfer of the responsibility that mechanism carried.
     the engine's own completion-function resolution. The suite therefore also
     asserts the gates actually run under every adapter: no adapter passes on a
     fabricated LLM capability, and no adapter halts on a missing one.*
+    *Amended 2026-08-30 (#152): The bounded toolset capabilities (`read_files` batch read tool, `submit_files` multi-turn accumulation, `parallel_tool_calls=True`) are exclusive to the LiteLLM tool-use loop; external coders (`opencode`, `agy`) drive their own in-place agent execution loops.*
 
 3. **"Coder produced nothing" raises `ExecutionError` on every path.**
    `skip_engine_commit` controls *who commits*, not *whether observable work
