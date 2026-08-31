@@ -12,6 +12,12 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # codecov-action mints an OIDC token for tokenless uploads from public
+      # repos; without this it falls back to the unauthenticated path, which
+      # Codecov rate-limits — and fail_ci_if_error: false makes that silent.
+      id-token: write
     env:
       NO_COLOR: "1"
     strategy:
