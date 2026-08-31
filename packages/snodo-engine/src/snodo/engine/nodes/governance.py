@@ -169,6 +169,19 @@ class GovernanceNodeMixin:
                 if result.get("task_summary"):
                     loop_state.metadata["task_summary"] = result["task_summary"]
                 self._auto_write_classification(loop_state)
+                # The classification must reach the audit trail: cloud_sync ships
+                # audit events only, so a wave_id that lives solely in the session
+                # checkpoint / job state.json never leaves the machine. An unwaved
+                # task is legitimate (WaveRegistry returns None) and is emitted as
+                # an empty wave_id — distinguishable from a failed classification,
+                # which raises before this event is appended (Fixes #154).
+                self._audit("task_classified", {
+                    "op": "task_classified",
+                    "task_ref": loop_state.task.id,
+                    "flow_type": loop_state.task.flow_type,
+                    "wave_id": loop_state.task.wave_id,
+                    "task_summary": result.get("task_summary"),
+                })
             except Exception as exc:
                 import sys as _sys
                 print(
