@@ -3,6 +3,7 @@ __pycache__/
 *$py.class
 .pytest_cache/
 .coverage
+.coverage.*
 coverage.xml
 coverage-output.txt
 htmlcov/
