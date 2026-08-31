@@ -171,15 +171,15 @@ def test_namespaced_model_is_forwarded_to_the_cli(
     assert argv[argv.index(flag) + 1] == bare
 
 
-@pytest.mark.parametrize("coder_name", ["agy", "opencode-cli"])
+@pytest.mark.parametrize("coder_name,flag", [("agy", "--model"), ("opencode-cli", "-m")])
 @pytest.mark.parametrize(
     "validator_model",
     ["deepseek/deepseek-v4-flash", "ollama/deepseek-v4-flash", "claude-sonnet-4-20250514"],
 )
 def test_validator_model_is_not_forwarded_to_the_cli(
-    coder_name, validator_model, temp_workspace: Path,
+    coder_name, flag, validator_model, temp_workspace: Path,
 ):
-    """A model that is not in this adapter's namespace never reaches --model.
+    """A model that is not in this adapter's namespace never reaches the model flag.
 
     This is the regression: -m sets the judging model, and forwarding it made
     the external agent reject the run before writing anything.
@@ -188,14 +188,52 @@ def test_validator_model_is_not_forwarded_to_the_cli(
 
     assert coder._bare_model() == ""
     argv = coder._build_argv("do the thing", str(temp_workspace), coder._bare_model())
-    assert "--model" not in argv
+    assert flag not in argv
     assert validator_model not in argv
 
 
-@pytest.mark.parametrize("coder_name", ["agy", "opencode-cli"])
-def test_no_model_at_all_omits_the_flag(coder_name, temp_workspace: Path):
+@pytest.mark.parametrize("coder_name,flag", [("agy", "--model"), ("opencode-cli", "-m")])
+def test_no_model_at_all_omits_the_flag(coder_name, flag, temp_workspace: Path):
     """With no model given, the CLI is left on its own last-selected default."""
     coder = get_coder(coder_name, workspace=temp_workspace)
 
     assert coder._bare_model() == ""
-    assert "--model" not in coder._build_argv("x", str(temp_workspace), coder._bare_model())
+    argv = coder._build_argv("x", str(temp_workspace), coder._bare_model())
+    assert flag not in argv
+
+
+def test_halt_payload_coder_and_judging_model_attribution(temp_workspace: Path):
+    """Halt payload attributes coder, coder_model, and judging_model correctly."""
+    from snodo.engine.state import LoopState
+    from snodo.core.interfaces import Task
+
+    protocol = Protocol(
+        protocol_id="test",
+        name="Test",
+        version="1.0.0",
+        initial_mode="p",
+        modes=[Mode(mode_id="p", name="P", tools=["edit"])],
+        validators=[Validator(validator_id="v1", validator_type="security")],
+        disagreement_policy="unanimous",
+    )
+    task = Task(id="t1", spec="spec")
+
+    # 1. External CLI coder with judging model (coder_model should be None, judging_model should be specified model)
+    coder = get_coder("agy", model="deepseek/deepseek-v4-flash", workspace=temp_workspace)
+    builder = GraphBuilder(protocol=protocol, coder=coder)
+    builder._default_model = "deepseek/deepseek-v4-flash"
+    state = LoopState(task=task, current_mode="p", is_blocked=True, halt_type="blocked")
+
+    payload = builder._build_halt_payload(state)
+    assert payload["coder"] == "agy"
+    assert payload["coder_model"] is None
+    assert payload["judging_model"] == "deepseek/deepseek-v4-flash"
+
+    # 2. External CLI coder with explicit namespaced model (coder_model should be knowable, e.g. "Gemini 3.5 Flash")
+    coder_namespaced = get_coder("agy", model="agy/Gemini 3.5 Flash", workspace=temp_workspace)
+    builder_namespaced = GraphBuilder(protocol=protocol, coder=coder_namespaced)
+    builder_namespaced._default_model = "gpt-4o"
+    payload_namespaced = builder_namespaced._build_halt_payload(state)
+    assert payload_namespaced["coder"] == "agy"
+    assert payload_namespaced["coder_model"] == "Gemini 3.5 Flash"
+    assert payload_namespaced["judging_model"] == "gpt-4o"

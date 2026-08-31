@@ -20,13 +20,14 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
     )
 
     def _build_argv(self, prompt: str, project_root: str, model: str) -> List[str]:
-        return [
+        argv = [
             "opencode",
             "run",
             "--dir",
             project_root,
             "--dangerously-skip-permissions",
             prompt,
-            "-m",
-            model,
         ]
+        if model:
+            argv.extend(["-m", model])
+        return argv

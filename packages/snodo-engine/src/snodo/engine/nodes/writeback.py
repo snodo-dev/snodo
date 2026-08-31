@@ -399,6 +399,16 @@ class WritebackMixin:
         commit_reason = pv.get("commit_reason") if isinstance(pv, dict) else None
         halt = _canonical_halt(loop_state.halt_type) if loop_state.is_blocked else "completed"
 
+        coder_obj = getattr(self, "coder", None)
+        coder_name = _coder_registry_name(coder_obj)
+        if hasattr(coder_obj, "_bare_model"):
+            bare = coder_obj._bare_model()
+            coder_model = bare if bare else None
+        else:
+            coder_model = getattr(coder_obj, "model", None)
+
+        judging_model = getattr(self, "_default_model", None)
+
         payload = {
             "status": "blocked" if loop_state.is_blocked else "completed",
             "halt_type": halt,
@@ -410,8 +420,9 @@ class WritebackMixin:
             "iteration": loop_state.iteration,
             "current_mode": loop_state.current_mode,
             "phase": phase,
-            "coder": _coder_registry_name(getattr(self, "coder", None)),
-            "model": getattr(self, "_default_model", None),
+            "coder": coder_name,
+            "coder_model": coder_model,
+            "judging_model": judging_model,
             "validator_results": [
                 {"validator_id": r.validator_id, "severity": r.severity,
                  "justification": r.justification}
