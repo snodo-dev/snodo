@@ -99,6 +99,8 @@ class ValidatorResult(BaseModel):
     justification: str
     error: bool = False
     cited_criteria: Optional[List[str]] = None
+    #: Pre-cap severity when a severity_cap downgraded this result; None otherwise.
+    severity_original: Optional[str] = None
 
 
 class TaskSpec(BaseModel):
