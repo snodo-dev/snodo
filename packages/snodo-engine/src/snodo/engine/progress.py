@@ -41,6 +41,13 @@ def format_tool_call_summary(tool_calls: Optional[List[Any]]) -> str:
         if name == "read_file":
             path = args.get("path", "")
             formatted.append(f"read_file({path})")
+        elif name == "read_files":
+            paths = args.get("paths", [])
+            if isinstance(paths, list):
+                paths_str = ", ".join(str(p) for p in paths)
+                formatted.append(f"read_files({paths_str})")
+            else:
+                formatted.append(f"read_files({paths})")
         elif name == "read_file_lines":
             path = args.get("path", "")
             start = args.get("start", "")
