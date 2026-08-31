@@ -105,13 +105,12 @@ Note the project's threat model (ADR 014): snodo assumes the repository it is
 initialised in is **trusted**. Reports that depend on running snodo against
 hostile third-party code are out of scope.
 
-## Coverage badge
+## Coverage reporting
 
-After meaningful coverage changes, regenerate and commit the badge:
+Code coverage is measured in CI and published live to [Codecov](https://codecov.io/gh/snodo-dev/snodo). CI enforces a minimum 75% total repo coverage gate (`--cov-fail-under=75`). Run coverage locally with:
 
 ```bash
-uv run pytest tests/ -m "" --cov=snodo --cov-report=xml
-uv run genbadge coverage -i coverage.xml -o .github/badges/coverage.svg
+uv run pytest tests/ -m "" --cov --cov-report=term-missing
 ```
 
 ## Code of conduct
