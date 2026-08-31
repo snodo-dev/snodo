@@ -54,7 +54,16 @@ uv sync --all-extras   # installs all workspace packages editable, plus dev + st
 ### Requirements
 
 - Python 3.12+
-- API keys for your LLM provider (Anthropic, OpenAI, or Google)
+- A model for the **validators**, which always run through LiteLLM. Providers with
+  built-in configuration: Anthropic, OpenAI, Google, OpenRouter, DeepSeek and
+  Cloudflare Workers AI. Any other OpenAI-compatible endpoint works by declaring a
+  provider block with `base_url` and `litellm_provider: openai` — that covers
+  Ollama Cloud, a local Ollama or `llama.cpp` server, vLLM, LM Studio, and
+  self-hosted gateways. A local endpoint that needs no key is not asked for one.
+- A **coder**, which need not be the same thing. `--coder opencode-cli` or
+  `--coder agy` delegate code generation to a CLI authenticated against your own
+  subscription, so no provider key is spent on writing the code. `--mock` needs
+  nothing at all.
 
 ## Quickstart
 
@@ -126,7 +135,24 @@ snodo config add anthropic sk-ant-...      # store a provider key
 snodo config set model claude-sonnet-4     # set the default model
 ```
 
-A provider key already exported in your environment (e.g. `ANTHROPIC_API_KEY`) is auto-detected if it isn't in the config. See [Configuration](#configuration) for the full file format.
+A provider key already exported in your environment (e.g. `ANTHROPIC_API_KEY`) is auto-detected if it isn't in the config.
+
+For a provider outside the built-in catalog — Ollama Cloud, a local Ollama or
+`llama.cpp` server, vLLM, or any other OpenAI-compatible endpoint — declare a
+provider block instead:
+
+```yaml
+providers:
+  ollama:
+    base_url: https://ollama.com/v1
+    api_key_env: OLLAMA_API_KEY
+    litellm_provider: openai      # route ollama/<model> through the OpenAI protocol
+```
+
+`litellm_provider: openai` is what makes an arbitrary compatible endpoint work:
+snodo rewrites `ollama/<model>` to `openai/<model>` and sends it to `base_url`.
+Omit `api_key_env` for a local server that needs no key. See
+[Configuration](#configuration) for the full file format.
 
 ### 3. Run a task
 
