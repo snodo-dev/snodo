@@ -237,3 +237,17 @@ def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config
             f"Under-collection detected: collected only {len(items)} tests, but full suite expects >= {MIN_EXPECTED_TESTS}. "
             f"Rootdir: {config.rootdir}. Ensure you are targeting the full suite from the repository root."
         )
+
+
+@pytest.fixture(autouse=True)
+def _reset_global_mock_mode():
+    """Mock mode is a process-global latch set by production code
+    (engine/loop.py) and never cleared. Without this, any test that
+    builds a graph with use_mock_coder=True poisons every test that
+    follows it in the same process — invisible under -n auto, fatal
+    under a serial run.
+    """
+    from snodo.coders.mock import set_mock_mode
+    set_mock_mode(False)
+    yield
+    set_mock_mode(False)
