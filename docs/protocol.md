@@ -116,17 +116,32 @@ modes:
 
 ### Coder backends
 
-`litellm` (any LiteLLM-supported model) and `mock` (deterministic stubs) are
-**supported**. The opencode backends — `opencode` (containerised, Docker/HTTP)
-and `opencode-cli` (host `opencode run`) — are **experimental**: they are
-exercised by the conformance suite and the `.snodo/` guard and commit are
-enforced by the adapter base class (ADR 027/030), but they do not yet report
-per-turn progress or record usage/cost telemetry (the `litellm` path records
-it per job via `snodo meta`), and they are not used by any shipped template.
-Treat them as a research path, not
-a production default; if you rely on them, pin the opencode version and verify
-post-execute review output yourself. (See
-`docs/architecture/coder-adapter-contract.md`.)
+snodo supports interchangeable code generation backends declared via `--coder` or a mode's `coder` field:
+
+- **`litellm`** *(default, supported)*: Routes completions via LiteLLM (~100+ providers). The engine writes artifacts via `WorkspaceMCP` and manages commits and per-turn telemetry.
+- **`agy`** *(host CLI)*: Shells out to Antigravity CLI (`agy -p`) on the host. Edits files in place and commits to git upon completion.
+- **`opencode-cli`** *(host CLI, experimental)*: Shells out to host `opencode run`. Edits files in place and commits to git upon completion.
+- **`opencode`** *(container, experimental)*: OpenCode server running in Docker over HTTP (`POST /session`, `POST /session/{id}/message`). Edits files in place in the volume-mounted workspace and commits to git upon completion.
+- **`mock`** *(supported)*: Deterministic stub for dry runs and testing.
+
+#### Selection Precedence
+
+1. `--coder <name>` CLI option on `snodo run` / `snodo plan run`.
+2. `coder: <name>` field in the active protocol mode definition.
+3. Model prefix mapping (`opencode-cli/`, `opencode/`, `agy/`, `gpt`/`o1`/`o3`, `claude`, `gemini`).
+4. Default (`mock` if `--mock` is set, otherwise `litellm`).
+
+#### Model Role Separation (Judging vs Execution)
+
+- **`-m` / `--model` sets the JUDGING model**: Passing `-m` specifies the model used by LiteLLM for **validators** (pre/post-execute gates) and the **classifier**.
+- **External CLI Coders use their own model catalogs**: External CLI tools (`agy`, `opencode-cli`) use their own CLI configuration and internal catalogs. Non-prefixed model names passed to `-m` are stripped by `SubprocessCoderAdapter._bare_model()` so the CLI uses its own default model.
+- **Explicit Coder Model**: To set an external coder's model explicitly while keeping `-m` for validators, use the adapter namespace prefix (e.g. `--model agy/gemini-2.5-pro` or `--model opencode-cli/claude-3-7-sonnet`).
+
+#### In-Place Coders & Governance
+
+External in-place coders (`opencode`, `opencode-cli`, `agy`) inherit `InPlaceCoderAdapter` (`skip_engine_commit = True`, `skip_workspace_write = True`). They write directly to the working tree, snapshot and enforce `.snodo/` mutation boundaries (ADR 027), and commit the result so post-execute validators reviewing `git diff HEAD~1..HEAD` see the exact change (ADR 030).
+
+Per **ADR 034**, the absence of per-turn usage or token metrics for external coders is a stated decision (non-goal), not an attestation gap: token and cost metrics reside in per-job `state.json` telemetry (`snodo meta`), while snodo's audit log attests to governance decisions and verification evidence.
 
 ### Tool set restrictions (WF1)
 
