@@ -499,6 +499,30 @@ class TestCoderToolLoop:
         with pytest.raises(LLMCallError, match="tool-loop error"):
             coder.implement(spec)
 
+    def test_tool_loop_llm_exception_with_staged_files_raises_llm_call_error(self):
+        """If LLM call throws on turn 2 after staging files on turn 1, raises LLMCallError with staged info."""
+        from snodo.coders import LiteLLMAdapter
+
+        workspace = Mock()
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return self._make_code_artifact_response([
+                    {"path": "src/file1.py", "content": "print('1')", "action": "write"}
+                ])
+            raise Exception("Connection timed out after 600s")
+
+        completion_fn = Mock(side_effect=completion_side_effect)
+        coder = LiteLLMAdapter(model="gpt-4", workspace_mcp=workspace)
+        coder._completion_fn = completion_fn
+
+        spec = TaskSpec(description="Test staged timeout", constraints=[])
+
+        with pytest.raises(LLMCallError, match="1 file\(s\) staged"):
+            coder.implement(spec)
+
     def test_tool_loop_uses_tools_kwarg(self):
         """Tool loop must pass tools=[...] to completion_fn."""
         from snodo.coders import LiteLLMAdapter
