@@ -4,6 +4,7 @@ site_url: https://docs.snodo.dev
 repo_url: https://github.com/snodo-dev/snodo
 repo_name: snodo-dev/snodo
 edit_uri: edit/main/docs/
+strict: true
 
 theme:
   name: material
@@ -25,16 +26,30 @@ theme:
 nav:
   - Home: index.md
   - Use Snodo:
-      - Install & run: runbook.md
+      - Quickstart: runbook.md
+      - Coder backends: coders.md
+      - Authoring a plan: authoring-a-plan.md
+      - Machine interface: machine-interface.md
       - Protocol reference: protocol.md
+      - Runbooks:
+          - Minimal webapp: runbooks/01-minimal-webapp.md
+          - Greenfield protocol: runbooks/02-greenfield-protocol.md
+          - Hand-authored plan: runbooks/hand-authored-plan.md
   - Extend & contribute:
       - Architecture: architecture.md
+      - Coder adapter contract: architecture/coder-adapter-contract.md
       - Extending Snodo: extending.md
       - Design decisions: decisions/README.md
   - Research: research/README.md
 
+exclude_docs: |
+  specs/*
+  architecture/maturity-assessment-*.md
+  architecture/verification-hardening-plan.md
+
 not_in_nav: |
   decisions/0*.md
+  research/*.md
 
 markdown_extensions:
   - admonition

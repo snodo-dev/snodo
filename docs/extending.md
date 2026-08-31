@@ -85,7 +85,7 @@ from snodo.validators.registry import _default_registry
 _default_registry.register("custom_type", CustomValidator)
 ```
 
-[ADR 005](../../docs/decisions/005-protocol-adherence-validator.md) for the design rationale.
+[ADR 005](decisions/005-protocol-adherence-validator.md) for the design rationale.
 
 ---
 
@@ -145,7 +145,7 @@ Three predicates ship for reference (`snodo/predicates/`):
 - `tests_exist_for_modified` — requires test files for each modified implementation file
 - `no_secrets_in_diff` — scans git diff for credential patterns
 
-[ADR 004](../../docs/decisions/004-constraint-predicate-framework.md) for the design rationale.
+[ADR 004](decisions/004-constraint-predicate-framework.md) for the design rationale.
 
 ---
 
@@ -185,7 +185,7 @@ modes:
 
 The engine resolves `coder` to an adapter class at graph build time (`loop.py` passes the `coder` parameter to `GraphBuilder`). The `--mock` CLI flag overrides to `MockAdapter`.
 
-[ADR 007](../../docs/decisions/007-coder-adapter-provider-pattern.md) for the design rationale.
+[ADR 007](decisions/007-coder-adapter-provider-pattern.md) for the design rationale.
 
 ---
 
@@ -248,7 +248,7 @@ metadata:
 
 Two ship: `GitHubProvider` (`snodo/providers/github.py`, backed by PyGithub) and `LocalProvider` (no-op remote, PR operations raise `ProviderError`).
 
-[ADR 007](../../docs/decisions/007-coder-adapter-provider-pattern.md) for the design rationale.
+[ADR 007](decisions/007-coder-adapter-provider-pattern.md) for the design rationale.
 
 ---
 

@@ -126,10 +126,11 @@ snodo supports interchangeable code generation backends declared via `--coder` o
 
 #### Selection Precedence
 
-1. `--coder <name>` CLI option on `snodo run` / `snodo plan run`.
-2. `coder: <name>` field in the active protocol mode definition.
-3. Model prefix mapping (`opencode-cli/`, `opencode/`, `agy/`, `gpt`/`o1`/`o3`, `claude`, `gemini`).
-4. Default (`mock` if `--mock` is set, otherwise `litellm`).
+1. `--mock` / `use_mock_coder=True` option (always returns `'mock'`).
+2. `--coder <name>` CLI option on `snodo run` / `snodo plan run`.
+3. `coder: <name>` field in the active protocol mode definition.
+4. Model prefix mapping (`opencode-cli/`, `opencode/`, `agy/`, `gpt`/`o1`/`o3`, `claude`, `gemini`).
+5. Default (`litellm`).
 
 #### Model Role Separation (Judging vs Execution)
 
