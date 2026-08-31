@@ -331,13 +331,24 @@ class ValidationNodeMixin:
                 "task_ref": loop_state.task.id,
             })
 
+        coder_obj = getattr(self, "coder", None)
+        coder_name = _coder_registry_name(coder_obj)
+        if hasattr(coder_obj, "_bare_model"):
+            bare = coder_obj._bare_model()
+            coder_model = bare if bare else None
+        else:
+            coder_model = getattr(coder_obj, "model", None)
+
+        judging_model = getattr(self, "_default_model", None)
+
         self._audit("dispatch", {
             "op": "dispatch",
             "task_ref": loop_state.task.id,
             "token_id": loop_state.task.id,
             "mode": loop_state.current_mode,
-            "coder": _coder_registry_name(getattr(self, "coder", None)),
-            "model": getattr(self, "_default_model", None),
+            "coder": coder_name,
+            "coder_model": coder_model,
+            "judging_model": judging_model,
             "artifacts_count": len(loop_state.artifacts),
         })
 

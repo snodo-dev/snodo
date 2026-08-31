@@ -93,7 +93,8 @@ class TestCoderInHaltPayload:
         payload = builder._build_halt_payload(state)
 
         assert payload["coder"] == "mock"
-        assert payload["model"] == "mock-model"
+        assert payload["coder_model"] == "claude-sonnet-4-20250514"
+        assert payload["judging_model"] == "mock-model"
 
     def test_coder_differs_between_two_coders(self):
         from snodo.coders import MockAdapter
@@ -132,13 +133,25 @@ class TestCoderInAuditTrail:
         state = _make_loop_state()
         state.validation_token = None
         state.artifacts = ["src/a.py"]
+
+        coder_obj = getattr(builder, "coder", None)
+        coder_name = _coder_registry_name(coder_obj)
+        if hasattr(coder_obj, "_bare_model"):
+            bare = coder_obj._bare_model()
+            coder_model = bare if bare else None
+        else:
+            coder_model = getattr(coder_obj, "model", None)
+
+        judging_model = getattr(builder, "_default_model", None)
+
         builder._audit("dispatch", {
             "op": "dispatch",
             "task_ref": state.task.id,
             "token_id": state.task.id,
             "mode": state.current_mode,
-            "coder": _coder_registry_name(builder.coder),
-            "model": builder._default_model,
+            "coder": coder_name,
+            "coder_model": coder_model,
+            "judging_model": judging_model,
             "artifacts_count": len(state.artifacts),
         })
 
@@ -146,7 +159,8 @@ class TestCoderInAuditTrail:
         event_type, data = audit.append_event.call_args[0]
         assert event_type == "dispatch"
         assert data["coder"] == "mock"
-        assert data["model"] == "mock-model"
+        assert data["coder_model"] == "claude-sonnet-4-20250514"
+        assert data["judging_model"] == "mock-model"
 
 
 # ---------------------------------------------------------------------------
