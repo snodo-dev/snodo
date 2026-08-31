@@ -91,8 +91,38 @@ def test_graph_execution_under_use_mock_coder_is_hermetic(monkeypatch, tmp_path)
     state = graph.invoke({"task": task.model_dump(), "current_mode": "producer"})
 
     assert state is not None
-    # Verify task was processed hermetically without raising network error
-    assert is_mock_mode_active()
+    # Process global mock mode remains unmutated (False)
+    assert is_mock_mode_active() is False
+
+
+def test_mock_graph_followed_by_real_graph_in_same_process(tmp_path):
+    """Building a mock graph followed by a real graph in the same process leaves the second graph non-mock."""
+    from snodo.coders.litellm import LiteLLMAdapter
+    from snodo.engine.loop import GraphBuilder
+
+    protocol = Protocol(
+        protocol_id="test_isolation",
+        name="Test Isolation Protocol",
+        version="1.0.0",
+        initial_mode="producer",
+        modes=[Mode(mode_id="producer", name="Producer", tools=["edit"])],
+        validators=[Validator(validator_id="quality", validator_type="quality")],
+    )
+
+    # 1. Build first graph via build_protocol_graph with use_mock_coder=True
+    build_protocol_graph(
+        protocol=protocol,
+        project_root=str(tmp_path),
+        use_mock_coder=True,
+    )
+    assert is_mock_mode_active() is False
+
+    # 2. Build second graph with real LiteLLMAdapter in same process
+    coder_real = LiteLLMAdapter(model="gpt-4o")
+    builder_real = GraphBuilder(protocol, coder=coder_real, project_root=str(tmp_path))
+    assert not isinstance(builder_real.coder, MockAdapter)
+    assert is_mock_completion_fn(builder_real._validator_runner._completion_fn) is False
+    assert is_mock_mode_active() is False
 
 
 def test_llm_validator_under_mock_mode_is_hermetic():
