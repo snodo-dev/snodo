@@ -8,7 +8,7 @@
 [![Docs](https://img.shields.io/badge/docs-snodo.dev-2DD4BF)](https://docs.snodo.dev)
 [![arXiv](https://img.shields.io/badge/arXiv-2606.20615-b31b1b)](https://arxiv.org/abs/2606.20615)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Coverage](https://raw.githubusercontent.com/snodo-dev/snodo/main/.github/badges/coverage.svg)](.github/badges/coverage.svg)
+[![Coverage](https://codecov.io/gh/snodo-dev/snodo/branch/main/graph/badge.svg)](https://codecov.io/gh/snodo-dev/snodo)
 [![Downloads](https://img.shields.io/pypi/dm/snodo)](https://pypi.org/project/snodo/)
 [![Code of Conduct](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa)](CODE_OF_CONDUCT.md)
 [![Security Policy](https://img.shields.io/badge/security-policy-brightgreen)](SECURITY.md)
