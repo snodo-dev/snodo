@@ -1,5 +1,7 @@
 # snodo
 [![CI](https://github.com/snodo-dev/snodo/actions/workflows/ci.yml/badge.svg)](https://github.com/snodo-dev/snodo/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/snodo-dev/snodo/actions/workflows/codeql.yml/badge.svg)](https://github.com/snodo-dev/snodo/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/snodo-dev/snodo/badge)](https://scorecard.dev/viewer/?uri=github.com/snodo-dev/snodo)
 [![PyPI](https://img.shields.io/pypi/v/snodo)](https://pypi.org/project/snodo/)
 [![Python](https://img.shields.io/pypi/pyversions/snodo)](https://pypi.org/project/snodo/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue)](LICENSE)

@@ -12,11 +12,14 @@ jobs:
       id-token: write
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           python-version: "3.12"
+          enable-cache: false
       - name: Configure git
         run: |
           git config --global user.email "ci@snodo.dev"
@@ -37,7 +40,9 @@ jobs:
       - name: Build all packages
         run: uv build --all-packages
       - name: Publish all artifacts
-        run: uv publish dist/*
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          attestations: true
       - name: Create GitHub Release
         run: |
           uv run python scripts/changelog_release_body.py --tag "$RELEASE_TAG" > /tmp/release-notes.md
