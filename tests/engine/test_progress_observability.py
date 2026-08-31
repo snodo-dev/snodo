@@ -50,8 +50,15 @@ def test_format_tool_call_summary():
     tc_submit_verdict.function.name = "submit_verdict"
     tc_submit_verdict.function.arguments = '{"severity": "pass", "justification": "ok"}'
 
+    tc_read_files = MagicMock()
+    tc_read_files.function.name = "read_files"
+    tc_read_files.function.arguments = '{"paths": ["src/a.py", "src/b.py"]}'
+
     summary = format_tool_call_summary([tc_read, tc_lines])
     assert summary == "read_file(src/main.py), read_file_lines(src/main.py:1-20)"
+
+    summary_read_files = format_tool_call_summary([tc_read_files])
+    assert summary_read_files == "read_files(src/a.py, src/b.py)"
 
     summary_list = format_tool_call_summary([tc_list])
     assert summary_list == "list_files(.)"

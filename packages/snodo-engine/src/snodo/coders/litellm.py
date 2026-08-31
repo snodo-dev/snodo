@@ -685,14 +685,51 @@ Return ONLY the JSON array, no other text.
                 paths = args.get("paths", [])
                 if not isinstance(paths, list) or not paths:
                     return "No paths provided to read_files."
+
+                max_paths = 10
+                max_bytes = 32768
+
+                requested_paths = [str(p) for p in paths]
+                processed_paths = requested_paths[:max_paths]
+                omitted_paths = requested_paths[max_paths:]
+
                 results = []
-                for p in paths:
+                current_bytes = 0
+                truncated = False
+
+                for p in processed_paths:
                     try:
-                        content = workspace.read_file(str(p))
-                        results.append(f"=== {p} ===\n{content}")
+                        content = workspace.read_file(p)
+                        header = f"=== {p} ===\n"
+                        entry = header + content
+                        entry_bytes = len(entry.encode("utf-8"))
+
+                        if current_bytes + entry_bytes > max_bytes:
+                            allowed_content_bytes = max_bytes - current_bytes - len(header.encode("utf-8")) - 100
+                            if allowed_content_bytes > 0:
+                                truncated_content = content.encode("utf-8")[:allowed_content_bytes].decode("utf-8", errors="ignore")
+                                results.append(f"{header}{truncated_content}\n[TRUNCATED: Content cut off at 32KB batch limit]")
+                            else:
+                                results.append(f"{header}[OMITTED: Exceeded 32KB batch limit]")
+                            truncated = True
+                            idx = processed_paths.index(p)
+                            omitted_paths.extend(processed_paths[idx + 1:])
+                            break
+                        else:
+                            results.append(entry)
+                            current_bytes += entry_bytes
                     except Exception as e:
                         results.append(f"=== {p} ===\nError reading file: {e}")
-                return "\n\n".join(results)
+
+                output = "\n\n".join(results)
+                if omitted_paths or truncated:
+                    notice_parts = []
+                    if omitted_paths:
+                        notice_parts.append(f"{len(omitted_paths)} path(s) omitted ({', '.join(omitted_paths)})")
+                    if truncated:
+                        notice_parts.append("content truncated at 32KB batch limit")
+                    output += f"\n\n[TRUNCATED BATCH: {'; '.join(notice_parts)}. Use read_file_lines(path, start, end) for targeted line ranges.]"
+                return output
             elif name == "read_file":
                 return workspace.read_file(args["path"])
             elif name == "read_file_lines":

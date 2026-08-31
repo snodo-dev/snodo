@@ -612,6 +612,35 @@ class TestCoderToolLoop:
         workspace.read_file.assert_any_call("src/b.py")
         assert len(result.files) == 1
 
+    def test_read_files_path_cap_truncation(self):
+        """read_files caps requests to max 10 paths and informs the coder of omitted paths."""
+        from snodo.coders.litellm import LiteLLMAdapter
+
+        workspace = Mock()
+        workspace.read_file.side_effect = lambda p: f"content of {p}"
+
+        paths = [f"src/file_{i}.py" for i in range(15)]
+        output = LiteLLMAdapter._execute_tool("read_files", {"paths": paths}, workspace)
+
+        assert workspace.read_file.call_count == 10
+        assert "[TRUNCATED BATCH: 5 path(s) omitted" in output
+        assert "src/file_10.py" in output
+        assert "src/file_14.py" in output
+
+    def test_read_files_byte_cap_truncation(self):
+        """read_files caps output bytes to 32KB limit and informs coder of truncation."""
+        from snodo.coders.litellm import LiteLLMAdapter
+
+        workspace = Mock()
+        # Each file is ~10KB
+        workspace.read_file.side_effect = lambda p: "x" * 10240
+
+        paths = ["src/a.py", "src/b.py", "src/c.py", "src/d.py"]
+        output = LiteLLMAdapter._execute_tool("read_files", {"paths": paths}, workspace)
+
+        assert "[TRUNCATED BATCH:" in output
+        assert "content truncated at 32KB batch limit" in output
+
     def test_prompt_mentions_tools_when_workspace_available(self):
         """Prompt should mention available tools when workspace_mcp is set."""
         from snodo.coders import LiteLLMAdapter
