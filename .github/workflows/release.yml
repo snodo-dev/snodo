@@ -17,6 +17,11 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@snodo.dev"
+          git config --global user.name "snodo CI"
+          git config --global init.defaultBranch main
       - name: Install dependencies
         run: uv sync --all-extras
       - name: Validate tag and CHANGELOG
