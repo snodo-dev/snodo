@@ -108,7 +108,8 @@ class TestCoderTelemetry:
             [_tool_call("submit_files", {"files": [{"path": "src/app.py", "content": "x"}]})],
             usage=usage,
         )
-        adapter._completion_fn = MagicMock(side_effect=[resp1, resp2])
+        resp3 = _make_response([])
+        adapter._completion_fn = MagicMock(side_effect=[resp1, resp2, resp3])
         adapter._execute_tool = MagicMock(return_value="file content")
 
         adapter._call_llm_with_tools("prompt")

@@ -96,14 +96,21 @@ def test_litellm_adapter_emits_turn_progress():
     resp2.choices[0].message.tool_calls = [tc_submit]
     resp2.choices[0].finish_reason = "tool_calls"
 
-    adapter._completion_fn = MagicMock(side_effect=[resp1, resp2])
+    resp3 = MagicMock()
+    resp3.choices = [MagicMock()]
+    resp3.choices[0].message.content = "Done"
+    resp3.choices[0].message.tool_calls = None
+    resp3.choices[0].finish_reason = "stop"
+
+    adapter._completion_fn = MagicMock(side_effect=[resp1, resp2, resp3])
     adapter._execute_tool = MagicMock(return_value="file content")
 
     res = adapter._call_llm_with_tools("prompt")
     assert res is not None
-    assert len(emitted) == 2
+    assert len(emitted) == 3
     assert "Turn 1: read_file(src/app.py)" in emitted[0]
     assert "Turn 2: submit_files(1 file(s))" in emitted[1]
+    assert "Turn 3: (no tools called)" in emitted[2]
 
 
 def test_llm_validator_emits_turn_progress():
