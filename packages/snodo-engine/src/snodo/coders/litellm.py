@@ -297,10 +297,24 @@ Return ONLY the JSON array, no other text.
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = self.temperature
                 response = self._completion_fn(**kwargs)
-            except Exception as e:
+            except StopIteration:
                 if accumulated_files:
                     return json.dumps(list(accumulated_files.values()))
-                raise LLMCallError(f"LLM tool-loop error on turn {turn + 1}: {e}") from e
+                raise
+            except Exception as e:
+                self._emit_turn_telemetry(
+                    turn_index=turn + 1,
+                    tool="error",
+                    target_path="",
+                    read_hit=False,
+                    tokens_in=0,
+                    tokens_out=0,
+                    elapsed_ms=(time.monotonic() - turn_start) * 1000,
+                )
+                staged_info = f" ({len(accumulated_files)} file(s) staged)" if accumulated_files else ""
+                raise LLMCallError(
+                    f"LLM tool-loop error on turn {turn + 1}{staged_info}: {e}"
+                ) from e
 
             self._check_truncation(response)
 
@@ -333,7 +347,7 @@ Return ONLY the JSON array, no other text.
                 for tc in tool_calls:
                     tool_name = tc.function.name
                     if tool_name == "submit_files":
-                        files_list = self._extract_submit_files_from_tc(tc)
+                        files_list = self._extract_submit_files(tc)
                         if files_list is not None and files_list:
                             for f in files_list:
                                 if isinstance(f, dict) and "path" in f:
@@ -495,37 +509,33 @@ Return ONLY the JSON array, no other text.
     }
 
     @staticmethod
-    def _extract_submit_files_from_tc(tc: Any) -> Optional[List[Dict]]:
-        """Extract files list from a submit_files tool call.
+    def _extract_submit_files(target: Any) -> Optional[List[Dict]]:
+        """Extract files list from a submit_files tool call object or tool_calls list.
 
-        Returns None if arguments are unparseable or files is not a list.
+        Returns None if submit_files is not present or has invalid/unparseable arguments.
         """
+        if target is None:
+            return None
+        if isinstance(target, list):
+            for tc in target:
+                res = LiteLLMAdapter._extract_submit_files(tc)
+                if res is not None:
+                    return res
+            return None
+
+        name = getattr(getattr(target, "function", None), "name", None)
+        if name != "submit_files":
+            return None
+
         try:
-            args = json.loads(tc.function.arguments)
+            raw_args = getattr(target.function, "arguments", "{}")
+            args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
         except (json.JSONDecodeError, TypeError):
             return None
+
         files = args.get("files", [])
         if isinstance(files, list):
             return files
-        return None
-
-    @staticmethod
-    def _extract_submit_files(tool_calls: list) -> Optional[List[Dict]]:
-        """Scan tool_calls for submit_files and return the files array if found.
-
-        Returns None if submit_files is not present or has invalid arguments.
-        """
-        for tc in (tool_calls or []):
-            name = getattr(getattr(tc, "function", None), "name", None)
-            if name != "submit_files":
-                continue
-            try:
-                args = json.loads(tc.function.arguments)
-            except (json.JSONDecodeError, TypeError):
-                return None
-            files = args.get("files", [])
-            if isinstance(files, list):
-                return files
         return None
 
     @staticmethod
