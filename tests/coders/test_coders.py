@@ -641,6 +641,19 @@ class TestCoderToolLoop:
         assert "[TRUNCATED BATCH:" in output
         assert "content truncated at 32KB batch limit" in output
 
+    def test_read_files_duplicate_paths_truncation(self):
+        """read_files handles duplicate paths during byte-cap truncation without index corruption."""
+        from snodo.coders.litellm import LiteLLMAdapter
+
+        workspace = Mock()
+        workspace.read_file.side_effect = lambda p: "x" * 20000
+
+        paths = ["src/a.py", "src/a.py", "src/b.py"]
+        output = LiteLLMAdapter._execute_tool("read_files", {"paths": paths}, workspace)
+
+        assert "[TRUNCATED BATCH:" in output
+        assert "1 path(s) omitted (src/b.py)" in output
+
     def test_prompt_mentions_tools_when_workspace_available(self):
         """Prompt should mention available tools when workspace_mcp is set."""
         from snodo.coders import LiteLLMAdapter

@@ -697,7 +697,7 @@ Return ONLY the JSON array, no other text.
                 current_bytes = 0
                 truncated = False
 
-                for p in processed_paths:
+                for idx, p in enumerate(processed_paths):
                     try:
                         content = workspace.read_file(p)
                         header = f"=== {p} ===\n"
@@ -712,7 +712,6 @@ Return ONLY the JSON array, no other text.
                             else:
                                 results.append(f"{header}[OMITTED: Exceeded 32KB batch limit]")
                             truncated = True
-                            idx = processed_paths.index(p)
                             omitted_paths.extend(processed_paths[idx + 1:])
                             break
                         else:
