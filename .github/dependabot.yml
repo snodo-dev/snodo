@@ -1,10 +1,16 @@
 version: 2
 updates:
+  # cooldown keeps Dependabot from proposing a version published minutes ago —
+  # the window in which a compromised release is most likely to still be live.
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
