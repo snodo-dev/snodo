@@ -122,6 +122,13 @@ class ExecutorMixin:
                 file_op.path for file_op in code_artifact.files
                 if getattr(file_op, "action", "write") != "delete"
             ]
+            # Paths the coder inspected this attempt (paths only, never
+            # contents) so a recovery attempt starts from where the last one
+            # looked instead of cold (#157 follow-up).
+            self._last_execution_reads = {
+                "files": sorted(set(getattr(coder, "last_read_paths", []) or [])),
+                "directories": sorted(set(getattr(coder, "last_listed_dirs", []) or [])),
+            }
             if workspace_mcp:
                 artifact_paths = self._apply_file_operations(workspace_mcp, coder, code_artifact, task)
                 artifacts.extend(artifact_paths)
