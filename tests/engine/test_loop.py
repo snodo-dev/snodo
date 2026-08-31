@@ -1978,7 +1978,7 @@ def test_severity_enum_ordering():
 
 
 def test_audit_results_includes_severity_at_cap(sample_protocol, sample_task, tmp_path):
-    """Audit results include severity_at_cap when result sits at cap boundary."""
+    """Audit results include severity_at_cap when a cap actually fired."""
     from snodo.compiler.models import Validator as CMValidator
 
     # Build a validator with severity_cap=warn, returns blocker → capped
@@ -1989,10 +1989,13 @@ def test_audit_results_includes_severity_at_cap(sample_protocol, sample_task, tm
     results_list = [ValidatorResult(validator_id="vc", severity="warn",
                                      justification="capped blocker")]
 
-    audit_results = _build_audit_results([capped_v], results_list)
+    audit_results = _build_audit_results(
+        [capped_v], results_list, cap_originals={"vc": "blocker"}
+    )
     assert len(audit_results) == 1
     assert audit_results[0]["severity"] == "warn"
     assert audit_results[0]["severity_at_cap"] is True
+    assert audit_results[0]["severity_original"] == "blocker"
 
 
 def test_audit_results_no_cap_no_flag(sample_task):
@@ -2009,6 +2012,66 @@ def test_audit_results_no_cap_no_flag(sample_task):
     audit_results = _build_audit_results([no_cap_v], results_list)
     assert len(audit_results) == 1
     assert "severity_at_cap" not in audit_results[0]
+
+
+def test_audit_results_uncapped_at_cap_value_no_flag(sample_task):
+    """A genuine warn under a warn cap is not flagged as capped.
+
+    severity_at_cap must mean a cap actually fired (the validator id appears
+    in cap_originals), not merely that the result's severity equals the cap
+    value.  A validator that genuinely returned warn under a warn cap is
+    unflagged.
+    """
+    from snodo.compiler.models import Validator as CMValidator
+
+    capped_v = CMValidator(
+        validator_id="vc", validator_type="security",
+        evaluation_phase="pre_execute", severity_cap=Severity.WARN,
+    )
+    results_list = [ValidatorResult(validator_id="vc", severity="warn",
+                                     justification="genuine warn")]
+
+    audit_results = _build_audit_results([capped_v], results_list)
+    assert len(audit_results) == 1
+    assert audit_results[0]["severity"] == "warn"
+    assert "severity_at_cap" not in audit_results[0]
+    assert "severity_original" not in audit_results[0]
+
+
+def test_audit_results_pairs_by_validator_id_not_position(sample_task):
+    """Results are paired to validators by id, not by list position.
+
+    run_validators returns results keyed by validator_id; a filtered or
+    reordered validators list must not silently misattribute a cap.
+    """
+    from snodo.compiler.models import Validator as CMValidator
+
+    capped_v = CMValidator(
+        validator_id="vc", validator_type="security",
+        evaluation_phase="pre_execute", severity_cap=Severity.WARN,
+    )
+    other_v = CMValidator(
+        validator_id="vo", validator_type="security",
+        evaluation_phase="pre_execute",
+    )
+    # Misordered: the capped validator is second in the list, but the result
+    # for it is first.  Positional pairing would attribute the cap to "vo".
+    results_list = [
+        ValidatorResult(validator_id="vc", severity="warn",
+                         justification="capped blocker"),
+        ValidatorResult(validator_id="vo", severity="pass",
+                         justification="ok"),
+    ]
+
+    audit_results = _build_audit_results(
+        [other_v, capped_v], results_list, cap_originals={"vc": "blocker"}
+    )
+    assert len(audit_results) == 2
+    assert audit_results[0]["validator_id"] == "vc"
+    assert audit_results[0]["severity_at_cap"] is True
+    assert audit_results[0]["severity_original"] == "blocker"
+    assert audit_results[1]["validator_id"] == "vo"
+    assert "severity_at_cap" not in audit_results[1]
 
 
 def test_classifier_completion_fn_binds_api_base_for_its_provider():

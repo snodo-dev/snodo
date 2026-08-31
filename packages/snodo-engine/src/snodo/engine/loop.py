@@ -35,7 +35,14 @@ from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.constraints import ConstraintEngine
 from snodo.engine.policy import PolicyEvaluator
-from snodo.engine.state import LoopStage, LoopState  # noqa: F401 — re-exported for existing imports
+from snodo.engine.state import (  # noqa: F401 — re-exported for existing imports
+    LoopStage,
+    LoopState,
+    _branch_exists,
+    _build_audit_results,
+    _slugify,
+    _task_branch_name,
+)
 from snodo.engine.validators import ValidatorRunner
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.infrastructure.tokens import TokenIssuer
@@ -789,60 +796,6 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         else:
             snippet = f" — {first_line}" if first_line else ""
             self._progress(f"    💥 {validator_id}: {severity}{snippet}")
-
-
-def _build_audit_results(
-    validators: list, results: list, cap_originals: Optional[dict] = None
-) -> list:
-    """Build audit results array with capping metadata.
-
-    Compares each result against its validator spec's severity_cap.
-    When capping occurred, adds original_severity and severity_capped
-    flags to the audit payload.
-    """
-    audit_results = []
-    for i, r in enumerate(results):
-        entry = {
-            "validator_id": r.validator_id,
-            "severity": r.severity,
-            "justification": r.justification,
-        }
-        # Check if this result was capped
-        if i < len(validators):
-            v = validators[i]
-            if v.severity_cap is not None and r.severity == v.severity_cap.value:
-                # Severity matches the cap — may have been downgraded.
-                entry["severity_at_cap"] = True
-        if cap_originals and r.validator_id in cap_originals:
-            entry["severity_original"] = cap_originals[r.validator_id]
-        audit_results.append(entry)
-    return audit_results
-
-
-def _slugify(spec: str, max_words: int = 5) -> str:
-    """Convert a task spec into a branch-safe slug.
-
-    Takes the first *max_words* words, lowercases, hyphenates,
-    and strips non-alphanumeric characters.
-    """
-    import re
-    words = spec.strip().split()[:max_words]
-    slug = "-".join(words).lower()
-    slug = re.sub(r"[^a-z0-9-]", "", slug)
-    return slug
-
-
-def _task_branch_name(task_id: str, spec: str) -> str:
-    """Build a branch name: task/{task_id}/{slug}."""
-    return f"task/{task_id}/{_slugify(spec)}"
-
-
-def _branch_exists(git_mcp: Any, name: str) -> bool:
-    """Return True if *name* is an existing branch head."""
-    try:
-        return name in git_mcp.repo.heads
-    except Exception:
-        return False
 
 
 def build_protocol_graph(
