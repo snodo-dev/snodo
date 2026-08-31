@@ -110,10 +110,10 @@ clean:
 .PHONY: docs docs-serve deploy-docs
 
 docs:
-	uv run mkdocs build --strict
+	uv run --extra docs mkdocs build --strict
 
 docs-serve:
-	uv run mkdocs serve
+	uv run --extra docs mkdocs serve
 
 deploy-docs: docs
 	npx wrangler pages deploy site --project-name=snodo-docs
