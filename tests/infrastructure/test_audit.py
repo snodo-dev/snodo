@@ -122,6 +122,93 @@ def test_verify_chain_detects_broken_link(temp_audit_log):
     assert temp_audit_log.verify_chain() is False
 
 
+# ========== DETAILED VERIFICATION (reason reporting) ==========
+
+def _filled(temp_audit_log, n=3):
+    for i in range(n):
+        temp_audit_log.append_event(f"e{i}", {"i": i})
+    return temp_audit_log
+
+
+def test_detailed_valid_has_no_reason(temp_audit_log):
+    _filled(temp_audit_log)
+    status = temp_audit_log.verify_chain_detailed()
+    assert status.valid is True
+    assert status.reason == ""
+    assert status.event_count == 3
+    assert status.sequence is None
+
+
+def test_detailed_reports_event_hash_mismatch(temp_audit_log):
+    _filled(temp_audit_log)
+    temp_audit_log.events[0].data["i"] = "tampered"
+    status = temp_audit_log.verify_chain_detailed()
+    assert status.valid is False
+    assert status.reason == "event_hash_mismatch"
+    assert status.sequence == 0
+    assert status.detail  # a human sentence is present
+
+
+def test_detailed_reports_link_break(temp_audit_log):
+    _filled(temp_audit_log)
+    temp_audit_log.events[2].previous_hash = "0" * 64
+    status = temp_audit_log.verify_chain_detailed()
+    assert status.valid is False
+    assert status.reason == "link_break"
+    assert status.sequence == 2
+
+
+def test_detailed_reports_sequence_gap(temp_audit_log):
+    _filled(temp_audit_log)
+    temp_audit_log.events[1].sequence = 999
+    status = temp_audit_log.verify_chain_detailed()
+    assert status.valid is False
+    assert status.reason == "sequence_gap"
+
+
+def test_detailed_reports_genesis_hash(temp_audit_log):
+    _filled(temp_audit_log)
+    temp_audit_log.events[0].previous_hash = "a" * 64
+    status = temp_audit_log.verify_chain_detailed()
+    assert status.valid is False
+    assert status.reason == "genesis_hash"
+
+
+def test_detailed_reports_load_incomplete():
+    log = AuditLog.__new__(AuditLog)
+    log.log_path = Path("/nonexistent/audit.log")
+    log._project_id = ""
+    log._lock = threading.Lock()
+    log._load_ok = False
+    log.events = []
+    status = log.verify_chain_detailed()
+    assert status.valid is False
+    assert status.reason == "load_incomplete"
+
+
+def test_detailed_reports_file_length_mismatch(tmp_path):
+    log_path = tmp_path / "audit.log"
+    _write_events(log_path, 5)
+    truncated = AuditLog.__new__(AuditLog)
+    truncated.log_path = log_path
+    truncated._project_id = ""
+    truncated._lock = threading.Lock()
+    truncated._load_ok = True
+    truncated.events = AuditLog(str(log_path)).events[:2]
+    status = truncated.verify_chain_detailed()
+    assert status.valid is False
+    assert status.reason == "file_length_mismatch"
+
+
+def test_bool_and_detailed_agree(temp_audit_log):
+    """verify_chain() == verify_chain_detailed().valid across valid and tampered."""
+    _filled(temp_audit_log)
+    assert temp_audit_log.verify_chain() == temp_audit_log.verify_chain_detailed().valid
+    temp_audit_log.events[1].event_hash = "b" * 64
+    assert temp_audit_log.verify_chain() is False
+    assert temp_audit_log.verify_chain_detailed().valid is False
+
+
 # ========== HISTORY TESTS ==========
 
 def test_get_history_all(temp_audit_log):
