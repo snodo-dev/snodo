@@ -1154,6 +1154,65 @@ class TestAutoMerge:
         assert _should_auto_merge(proto, "producer", self._tree("resolved"),
                                   "/tmp/wt", False) is True
 
+    def test_resolved_auto_merge_off_reports_unmerged_branch(self, tmp_path, capsys):
+        """A resolved task with auto_merge off must name the unmerged branch and
+        record it, so a stranded run is distinguishable from one that merged."""
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+
+        from snodo.cli.commands.run_cmd import _report_unmerged_branch, _should_auto_merge
+
+        proto = self._protocol(auto_merge=False)
+        tree = self._tree("resolved")
+        assert _should_auto_merge(proto, "producer", tree, "/tmp/wt", False) is False
+
+        task = Task(id="task_stranded", spec="a resolved feature")
+        branch = task_branch_name(task.id, task.spec)
+        audit_log = AuditLog(str(tmp_path / "audit.log"))
+
+        _report_unmerged_branch(
+            str(tmp_path), task, proto, "producer", tree,
+            "/tmp/wt", False, "sess_1", audit_log,
+        )
+
+        err = capsys.readouterr().err
+        assert branch in err
+        assert "auto-merge not enabled" in err
+        assert "main has NOT moved" in err
+
+        events = audit_log.get_history("task_unmerged")
+        assert len(events) == 1
+        assert events[0].data["op"] == "task_unmerged"
+        assert events[0].data["branch"] == branch
+        assert events[0].data["merged"] is False
+        assert "auto-merge not enabled" in events[0].data["reason"]
+
+    def test_resolved_degraded_reports_working_tree_not_branch(self, tmp_path, capsys):
+        """Degraded isolation leaves work in the working tree, not on a branch:
+        the report says so instead of naming a branch that was never created."""
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+
+        from snodo.cli.commands.run_cmd import _report_unmerged_branch
+
+        proto = self._protocol(auto_merge=True)
+        task = Task(id="task_degraded", spec="no isolation")
+        audit_log = AuditLog(str(tmp_path / "audit.log"))
+
+        _report_unmerged_branch(
+            str(tmp_path), task, proto, "producer", self._tree("resolved"),
+            None, True, "sess_1", audit_log,
+        )
+
+        err = capsys.readouterr().err
+        assert "isolation degraded" in err
+        assert "working tree" in err
+        assert "git merge" not in err
+        events = audit_log.get_history("task_unmerged")
+        assert len(events) == 1
+        assert "isolation degraded" in events[0].data["reason"]
+
     def test_merge_on_success_clean_merge(self, tmp_path):
         from snodo.core.interfaces import Task
         from snodo.infrastructure.worktree import task_branch_name

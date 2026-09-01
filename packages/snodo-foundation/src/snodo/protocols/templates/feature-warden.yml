@@ -76,6 +76,11 @@ initial_mode: "producer"
 # while recovery stall detection bounds non-converging loops.
 execution:
   max_recovery_depth: 3
+  # Single-operator protocol: the operator is both producer and reviewer, so a
+  # task that reaches a genuine "resolved" closure has already been accepted by
+  # the only human in the loop. Merge its branch automatically so the work lands
+  # on the base branch instead of stranding on a task branch.
+  auto_merge: true
 
 global_constraints:
   - constraint_id: "no_secrets"
