@@ -5,8 +5,10 @@ FILE: snodo/project.py
 
 import json
 import logging
+import os
 import re
 import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -84,24 +86,48 @@ def resolve_project_id(project_root: str) -> tuple[str, str]:
 
 
 def _is_system_root_or_temp(path: Path | str) -> bool:
-    """Check if path is a shared system root or temp root.
+    """Check if path is a shared system root, home directory, or process temp root.
 
-    Shared roots like ``/``, ``~``, ``/tmp``, ``/var/tmp``, and macOS
-    ``/var/folders/.../T`` must never have a ``.snodo`` created directly
-    under them, as doing so pollutes the machine and intercepts project
-    resolution for all processes.
+    Shared roots like ``/``, ``~``, ``/tmp``, ``/var/tmp``, macOS ``/var/folders/.../T``,
+    and any runtime temp root ($TMPDIR, tempfile.gettempdir()) must never have
+    a ``.snodo`` directory created directly under them, as doing so pollutes the
+    machine and intercepts project resolution for all processes.
     """
     try:
         resolved = Path(path).resolve()
     except Exception:
         return False
+
     if resolved == Path("/").resolve() or resolved == Path.home().resolve():
         return True
-    p_str = str(resolved).replace("\\", "/")
-    if p_str in ["/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp"]:
+
+    sys_temp_paths = {
+        Path("/tmp").resolve(),
+        Path("/var/tmp").resolve(),
+        Path("/private/tmp").resolve(),
+        Path("/private/var/tmp").resolve(),
+    }
+    if resolved in sys_temp_paths:
         return True
+
+    live_tmpdir = os.environ.get("TMPDIR")
+    if live_tmpdir:
+        try:
+            if resolved == Path(live_tmpdir).resolve():
+                return True
+        except Exception:  # noqa: S110
+            pass
+
+    try:
+        if resolved == Path(tempfile.gettempdir()).resolve():
+            return True
+    except Exception:  # noqa: S110
+        pass
+
+    p_str = str(resolved).replace("\\", "/")
     if resolved.name == "T" and ("var/folders" in p_str or "private/var/folders" in p_str):
         return True
+
     return False
 
 
