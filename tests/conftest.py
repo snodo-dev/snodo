@@ -253,15 +253,32 @@ def _reset_global_mock_mode():
     set_mock_mode(False)
 
 
-_SYSTEM_TMP_ROOTS = [
-    Path(os.environ.get("TMPDIR", "/tmp")).resolve(),
-    Path("/tmp").resolve(),
-    Path("/var/tmp").resolve(),
-]
+def _get_system_tmp_roots() -> set[Path]:
+    roots = {
+        Path("/tmp").resolve(),
+        Path("/var/tmp").resolve(),
+        Path("/private/tmp").resolve(),
+        Path("/private/var/tmp").resolve(),
+    }
+    tmpdir_env = os.environ.get("TMPDIR")
+    if tmpdir_env:
+        try:
+            roots.add(Path(tmpdir_env).resolve())
+        except Exception:
+            pass
+    try:
+        roots.add(Path(tempfile.gettempdir()).resolve())
+    except Exception:
+        pass
+    for p in list(roots):
+        p_str = str(p).replace("\\", "/")
+        if p.name == "T" and ("var/folders" in p_str or "private/var/folders" in p_str):
+            roots.add(p)
+    return roots
 
 
 def pytest_sessionstart(session):
-    for root in _SYSTEM_TMP_ROOTS:
+    for root in _get_system_tmp_roots():
         target = root / ".snodo"
         if target.is_dir():
             shutil.rmtree(target, ignore_errors=True)
@@ -269,10 +286,22 @@ def pytest_sessionstart(session):
             target.unlink(missing_ok=True)
 
 
-def pytest_runtest_teardown(item, nextitem):
-    for root in _SYSTEM_TMP_ROOTS:
+@pytest.fixture(autouse=True)
+def _guard_no_temp_snodo_leak(request):
+    old_snodo_env = {
+        k: os.environ[k]
+        for k in ["SNODO_PROJECT_ROOT", "SNODO_JOB_ID", "SNODO_WORKTREE_PATH", "SNODO_HOME"]
+        if k in os.environ
+    }
+    yield
+    for k in ["SNODO_PROJECT_ROOT", "SNODO_JOB_ID", "SNODO_WORKTREE_PATH", "SNODO_HOME"]:
+        if k in old_snodo_env:
+            os.environ[k] = old_snodo_env[k]
+        else:
+            os.environ.pop(k, None)
+    for root in _get_system_tmp_roots():
         target = root / ".snodo"
         if target.is_dir():
             shutil.rmtree(target, ignore_errors=True)
-            raise RuntimeError(f"TEST LEAKED .snodo TO {root}: {item.nodeid}")
+            pytest.fail(f"TEST LEAKED .snodo TO {root}: {request.node.nodeid}", pytrace=False)
 
