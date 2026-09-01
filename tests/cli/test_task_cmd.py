@@ -319,6 +319,39 @@ def test_task_list_shows_branches(tmp_path, monkeypatch, capsys):
     assert "task/t1" in out
 
 
+def test_task_list_shows_all_tasks_and_honest_statuses(tmp_path, monkeypatch, capsys):
+    """task_list_command displays all tasks from session records and git branches with honest status."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "task_failure", {
+        "t_failed": {"branch": "task/t_failed", "attempt": 2}
+    })
+    mgr.update_decision(session.session_id, "halt", {
+        "t_merged": {"final_decision": "proceed", "phase": "completed"},
+        "t_completed": {"final_decision": "proceed", "phase": "completed"}
+    })
+
+    mock_git = MagicMock()
+    b1 = MagicMock()
+    b1.name = "task/t_completed/add-feature"
+    b1.commit.committed_date = 1000000
+    b2 = MagicMock()
+    b2.name = "task/t_in_progress/work"
+    b2.commit.committed_date = 1000000
+    mock_git.repo.heads = [b1, b2]
+    monkeypatch.setattr("snodo.tools.git.GitMCP", lambda p: mock_git)
+
+    res = task_list_command(SimpleNamespace())
+    assert res == 0
+    out = capsys.readouterr().out
+
+    assert "t_failed" in out and "failed" in out
+    assert "t_merged" in out and "merged" in out
+    assert "t_completed" in out and "completed" in out
+    assert "t_in_progress" in out and "in_progress" in out
+
+
 # ============================================================================
 # 5. task_show_command tests
 # ============================================================================
