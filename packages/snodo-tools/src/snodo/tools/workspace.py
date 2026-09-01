@@ -9,6 +9,7 @@ prevents directory traversal attacks.
 from pathlib import Path
 from typing import List, Optional
 import os
+import re
 
 
 class PathValidationError(Exception):
@@ -262,6 +263,97 @@ class WorkspaceMCP:
         """
         validated_path = self.validate_path(path)
         return str(validated_path)
+
+    def search_string(self, query: str, directory: str = ".") -> str:
+        """Search text files in directory for matching string/pattern.
+
+        Args:
+            query: Literal string or pattern to search for
+            directory: Subdirectory to search under
+
+        Returns:
+            Formatted search matches as string: "rel_path:line_num: line_content"
+        """
+        if not query:
+            return "Query parameter cannot be empty."
+
+        validated = self.validate_path(directory)
+        matches = []
+        max_matches = 50
+
+        for root, dirs, files in os.walk(validated):
+            dirs[:] = [d for d in dirs if d not in {".git", ".snodo", "__pycache__", "node_modules", ".venv"}]
+            for fname in sorted(files):
+                fpath = Path(root) / fname
+                try:
+                    rel_path = fpath.relative_to(self.project_root)
+                except ValueError:
+                    continue
+
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                        for line_idx, line in enumerate(f, start=1):
+                            if query in line:
+                                clean_line = line.rstrip()
+                                matches.append(f"{rel_path}:{line_idx}: {clean_line}")
+                                if len(matches) >= max_matches:
+                                    break
+                except Exception:
+                    continue
+                if len(matches) >= max_matches:
+                    break
+            if len(matches) >= max_matches:
+                break
+
+        if not matches:
+            return f"No matches found for '{query}' in {directory}"
+        return "\n".join(matches)
+
+    def search_symbol(self, name: str, directory: str = ".") -> str:
+        """Search for symbol definition (class, def, function, struct, fn, type, const) in directory.
+
+        Args:
+            name: Symbol name to search for
+            directory: Subdirectory to search under
+
+        Returns:
+            Formatted symbol definition matches as string
+        """
+        if not name:
+            return "Symbol name parameter cannot be empty."
+
+        pattern = re.compile(rf"\b(def|class|function|fn|struct|type|const|let|var)\s+{re.escape(name)}\b")
+        validated = self.validate_path(directory)
+        matches = []
+        max_matches = 50
+
+        for root, dirs, files in os.walk(validated):
+            dirs[:] = [d for d in dirs if d not in {".git", ".snodo", "__pycache__", "node_modules", ".venv"}]
+            for fname in sorted(files):
+                fpath = Path(root) / fname
+                try:
+                    rel_path = fpath.relative_to(self.project_root)
+                except ValueError:
+                    continue
+
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                        for line_idx, line in enumerate(f, start=1):
+                            if pattern.search(line):
+                                clean_line = line.rstrip()
+                                matches.append(f"{rel_path}:{line_idx}: {clean_line}")
+                                if len(matches) >= max_matches:
+                                    break
+                except Exception:
+                    continue
+                if len(matches) >= max_matches:
+                    break
+            if len(matches) >= max_matches:
+                break
+
+        if not matches:
+            return f"No symbol definitions found for '{name}' in {directory}"
+        return "\n".join(matches)
 
 
 # Module-level instance for convenience

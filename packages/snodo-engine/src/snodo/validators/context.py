@@ -41,6 +41,10 @@ class ValidatorContext:
     #: by the execute node before the coder runs so a judge never reviews the
     #: previous unrelated commit when HEAD did not move.
     base_ref: Optional[str] = None
+    #: CodeArtifact produced by coder implementation
+    code_artifact: Optional[Any] = None
+    #: Metadata dictionary carrying artifact and run properties (e.g. test_governing_mutations)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class ValidatorBase(ABC):

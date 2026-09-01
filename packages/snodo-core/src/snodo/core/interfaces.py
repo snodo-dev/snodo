@@ -57,6 +57,10 @@ class Coder(ABC):
     #: Model identifier the adapter is bound to. Used for default-model
     #: resolution and coder-respawn checks; may be empty on simple adapters.
     model: str = ""
+    #: When True, the coder has access to and observes test execution feedback
+    #: during implementation (e.g. LiteLLMAdapter with test runner access).
+    #: Default False: the coder does not observe tests.
+    observes_tests: bool = False
 
     @abstractmethod
     def implement(self, spec: 'TaskSpec') -> 'CodeArtifact':
@@ -125,3 +129,4 @@ class FileArtifact(BaseModel):
 class CodeArtifact(BaseModel):
     """Generated code output — list of file operations."""
     files: List[FileArtifact] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
