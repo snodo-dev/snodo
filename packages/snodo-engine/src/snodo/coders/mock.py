@@ -1,8 +1,13 @@
 """Mock coder adapter for testing.
 
-FILE: snodo/coders/mock.py (Fixes #12)
+FILE: snodo/coders/mock.py (Fixes #12, #185)
 
 Returns deterministic outputs without making LLM calls.
+
+The mock exists to exercise the engine loop deterministically.  Its output
+must therefore satisfy every validator that judges it — including the quality
+validator (pytest).  The default fixture files are kept in sync with each
+other so they always pass their own tests.
 """
 
 import json
@@ -137,8 +142,8 @@ class MockAdapter(CoderAdapter):
     ):
         self.model = model or DEFAULT_MODEL
         self.mock_files = mock_files or [
-            FileArtifact(path="src/hello.py", content="def hello():\n    return 'world'"),
-            FileArtifact(path="tests/test_hello.py", content="def test_hello():\n    assert hello() == 'world'"),
+            FileArtifact(path="src/hello.py", content="def hello():\n    return 'world'\n"),
+            FileArtifact(path="tests/test_hello.py", content="from src.hello import hello\n\n\ndef test_hello():\n    assert hello() == 'world'\n"),
         ]
         self.call_count = 0
         self.last_spec: Optional[TaskSpec] = None
