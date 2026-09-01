@@ -165,3 +165,8 @@ global_constraints:
 # while recovery stall detection bounds non-converging loops.
 execution:
   max_recovery_depth: 3
+  # Producer and reviewer are separate roles here: a resolved closure means the
+  # producer's work passed mechanical verification, not that a human reviewed it.
+  # Auto-merging would push unreviewed work onto the base branch and defeat the
+  # point of the separation, so merging stays a deliberate operator action.
+  auto_merge: false

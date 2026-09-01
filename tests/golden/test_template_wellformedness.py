@@ -207,3 +207,29 @@ def test_2plus_n_wf1_exclusive_tools():
     for tool in p.exclusive_tools:
         holders = [m.mode_id for m in p.modes if tool in m.tools]
         assert len(holders) <= 1, f"exclusive tool '{tool}' held by {holders}"
+
+
+SINGLE_OPERATOR_TEMPLATES = ["solo", "greenfield", "bugfix-surgeon", "feature-warden", "intent"]
+PRODUCER_REVIEWER_TEMPLATES = ["team", "2+n"]
+
+
+@pytest.mark.parametrize("name", SINGLE_OPERATOR_TEMPLATES)
+def test_single_operator_templates_auto_merge(name):
+    p = _load(name)
+    result = verify_protocol(p)
+    assert result.passed, f"{name}.yml WF violations: {result.errors}"
+    for mode in p.modes:
+        assert p.auto_merge_enabled(mode.mode_id) is True, (
+            f"{name}.yml mode '{mode.mode_id}' must auto-merge (single-operator protocol)"
+        )
+
+
+@pytest.mark.parametrize("name", PRODUCER_REVIEWER_TEMPLATES)
+def test_producer_reviewer_templates_do_not_auto_merge(name):
+    """An unreviewed auto-merge would defeat the producer/reviewer separation,
+    so those templates keep merging a deliberate operator action."""
+    p = _load(name)
+    for mode in p.modes:
+        assert p.auto_merge_enabled(mode.mode_id) is False, (
+            f"{name}.yml mode '{mode.mode_id}' must NOT auto-merge"
+        )
