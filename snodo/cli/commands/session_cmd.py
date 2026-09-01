@@ -98,6 +98,24 @@ def _session_list(mgr: SessionManager, args) -> int:
     sessions = mgr.list_sessions(mode=mode, project_root=project)
     if not sessions:
         print("No sessions found.")
+
+    # Surface audited-but-missing sessions: an id the audit chain asserts
+    # existed but whose file is not under this home's store must not be a
+    # silent gap in the listing (Fixes the cross-SNODO_HOME divergence).
+    from snodo.infrastructure.paths import require_project_root
+    try:
+        project_root = require_project_root()
+        missing = mgr.audited_missing_ids(project_root)
+    except SystemExit:
+        missing = []
+    if missing:
+        if sessions:
+            print()
+        print("Audited but not in this store (created under another SNODO_HOME?):")
+        for sid in missing:
+            print(f"  {sid}  (audit log cites this id; no file found)")
+        return 0
+    if not sessions:
         return 0
 
     sessions.sort(key=lambda s: s.updated_at, reverse=True)
@@ -116,9 +134,48 @@ def _session_show(mgr: SessionManager, args) -> int:
     try:
         session = mgr.load_session(session_id)
     except FileNotFoundError:
+        # The session id may be audited-but-missing: the audit log is
+        # project-scoped while session files are home-scoped, so a session
+        # created under another snodo home is evidenced in the audit chain yet
+        # invisible to a reader attached to this store. Surface that instead of
+        # a bare "not found".
+        from snodo.infrastructure.paths import require_project_root
+        from snodo.infrastructure.session import SessionError
+
+        try:
+            project_root = require_project_root()
+            audited = mgr.is_audited_but_missing(session_id, project_root)
+        except (SystemExit, SessionError):
+            audited = False
         if json_out:
             from snodo.cli.json_output import emit_error
-            return emit_error("session", f"Session not found: {session_id}", 1)
+            msg = (
+                f"Session id {session_id} is recorded in the audit log but has "
+                "no file under this snodo home's sessions dir — it was likely "
+                "created under a different SNODO_HOME."
+                if audited
+                else f"Session not found: {session_id}"
+            )
+            return emit_error("session", msg, 1)
+        if audited:
+            from snodo.paths import resolve_home
+            home = resolve_home()
+            print(
+                f"Error: Session {session_id} has audit records (session_started/"
+                f"resume) but no session file under {mgr.sessions_dir}.",
+                file=sys.stderr,
+            )
+            print(
+                "  The session was likely created under a different SNODO_HOME; "
+                "its file is not in this store.",
+                file=sys.stderr,
+            )
+            print(
+                f"  This reader is using SNODO_HOME={home}; the session's file "
+                f"lives under the home that ran it.",
+                file=sys.stderr,
+            )
+            return 1
         print(f"Error: Session not found: {session_id}", file=sys.stderr)
         return 1
 
