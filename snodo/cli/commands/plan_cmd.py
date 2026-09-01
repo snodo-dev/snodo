@@ -12,6 +12,17 @@ from typing import Optional
 
 import typer
 
+
+def exec_option(name: str):
+    """Return a shared ``snodo plan run`` execution option.
+
+    Delegates to the single declaration in ``run_cmd`` so ``plan run`` exposes
+    exactly the execution options ``snodo run`` does (Fixes #186).
+    """
+    from snodo.cli.commands.run_cmd import _execution_option
+    return _execution_option(name)
+
+
 # ---------------------------------------------------------------------------
 # Self-registering Typer app (discovered by snodo/cli/main.py discovery loop)
 # ---------------------------------------------------------------------------
@@ -82,25 +93,27 @@ def plan_validate(
 @app.command("run")
 def plan_run(
     name: str = typer.Argument(..., help="Plan name to execute"),
-    wave: Optional[int] = typer.Option(
-        None, "--wave", "-w", help="Execute only a specific wave",
-    ),
-    interactive: bool = typer.Option(
-        False, "--interactive", "-i", help="Confirm each task before execution",
-    ),
+    wave: Optional[int] = exec_option("wave"),
+    interactive: bool = exec_option("interactive"),
     protocol: str = typer.Option(
         ".snodo/protocol.yml", "--protocol", help="Path to protocol file",
     ),
-    model: Optional[str] = typer.Option(
-        None, "--model", "-m", help="Model to use",
-    ),
+    model: Optional[str] = exec_option("model"),
+    coder: Optional[str] = exec_option("coder"),
+    mode: Optional[str] = exec_option("mode"),
+    verbose: bool = exec_option("verbose"),
+    mock: bool = exec_option("mock"),
+    retain_worktree: bool = exec_option("retain_worktree"),
+    no_isolation: bool = exec_option("no_isolation"),
 ):
     """Execute a plan's tasks through the protocol loop."""
     from snodo.cli.commands.run_cmd import RunArgs
 
     args = RunArgs(
         plan=name, wave=wave, interactive=interactive,
-        protocol=protocol, model=model,
+        protocol=protocol, model=model, coder=coder, mode=mode,
+        verbose=verbose, mock=mock,
+        retain_worktree=retain_worktree, no_isolation=no_isolation,
     )
     return _plan_run(args)
 
