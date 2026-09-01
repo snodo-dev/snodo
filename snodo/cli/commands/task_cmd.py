@@ -101,12 +101,12 @@ def _parse_timestamp(ts_val: Any) -> Any:
                 dt = dt.replace(tzinfo=timezone.utc)
             return dt
         except (ValueError, TypeError):
-            pass
-    return datetime.now(timezone.utc)
+            return datetime.now(timezone.utc)
+    return None
 
 
 def _get_all_task_branches(project_root: str) -> dict:
-    """Collect all task branches and task records from session state and git."""
+    """Collect all task branches and task records from session state, audit log, and git."""
     from datetime import datetime, timezone
     from snodo.infrastructure.state import read_state
     from snodo.infrastructure.session import SessionManager
@@ -117,11 +117,14 @@ def _get_all_task_branches(project_root: str) -> dict:
     task_failures: dict = {}
     halts: dict = {}
     classifications: dict = {}
+    session_ts = None
+    session = None
 
     if mode:
         mgr = SessionManager()
         session = mgr.get_active_session(mode, project_root)
         if session:
+            session_ts = _parse_timestamp(getattr(session, "last_updated", None))
             decisions = session.checkpoint.decisions or {}
             tf = decisions.get("task_failure", {})
             if isinstance(tf, dict):
@@ -133,10 +136,34 @@ def _get_all_task_branches(project_root: str) -> dict:
             if isinstance(c, dict):
                 classifications = c
 
+    merged_tasks = set()
+    audit_timestamps: dict = {}
+    try:
+        from snodo.infrastructure.audit import get_audit_log
+        audit_log = get_audit_log()
+        events = audit_log.read_events()
+        for ev in events:
+            data = ev.payload or {}
+            op = data.get("op") or ev.event_type
+            task_ref = data.get("task_ref") or data.get("task_id") or data.get("task")
+            ts = _parse_timestamp(data.get("timestamp") or getattr(ev, "timestamp", None))
+            if task_ref:
+                if ts and task_ref not in audit_timestamps:
+                    audit_timestamps[task_ref] = ts
+                if op == "task_merged":
+                    merged_tasks.add(task_ref)
+                    b_name = data.get("branch")
+                    if b_name:
+                        merged_tasks.add(b_name)
+    except Exception as e:
+        _logger.debug("Could not inspect audit log: %s", e)
+
     git_task_branches: dict = {}
+    git_available = False
     try:
         from snodo.tools.git import GitMCP
         git = GitMCP(project_root)
+        git_available = True
         for head in git.repo.heads:
             if head.name.startswith("task/"):
                 branch_suffix = head.name[5:]
@@ -144,7 +171,7 @@ def _get_all_task_branches(project_root: str) -> dict:
                 try:
                     commit_ts = datetime.fromtimestamp(head.commit.committed_date, tz=timezone.utc)
                 except Exception:
-                    commit_ts = datetime.now(timezone.utc)
+                    commit_ts = None
                 git_task_branches[task_id] = {
                     "name": head.name,
                     "commit_date": commit_ts,
@@ -152,7 +179,13 @@ def _get_all_task_branches(project_root: str) -> dict:
     except Exception as e:
         _logger.debug("Could not inspect git task branches: %s", e)
 
-    all_task_ids = set(task_failures.keys()) | set(halts.keys()) | set(classifications.keys()) | set(git_task_branches.keys())
+    all_task_ids = (
+        set(task_failures.keys())
+        | set(halts.keys())
+        | set(classifications.keys())
+        | set(git_task_branches.keys())
+        | {t for t in merged_tasks if isinstance(t, str) and not t.startswith("task/")}
+    )
     tasks = {}
 
     for tid in sorted(all_task_ids):
@@ -161,46 +194,63 @@ def _get_all_task_branches(project_root: str) -> dict:
         class_entry = classifications.get(tid) if isinstance(classifications.get(tid), dict) else None
         git_info = git_task_branches.get(tid)
 
-        has_git = git_info is not None
+        has_git = True if git_info else (False if git_available else None)
         if git_info:
             branch = git_info["name"]
         elif failure_entry and failure_entry.get("branch"):
             branch = failure_entry["branch"]
         else:
-            branch = f"task/{tid}" if (halt_entry or class_entry) else "—"
+            branch = f"task/{tid}" if (halt_entry or class_entry or tid in merged_tasks) else "—"
+
+        is_merged = (tid in merged_tasks) or (branch in merged_tasks)
 
         attempt = 1
         if failure_entry and "attempt" in failure_entry:
             attempt = failure_entry["attempt"]
         elif halt_entry and "attempt" in halt_entry:
-            attempt = halt_entry["attempt"]
+            attempt = halt_entry.get("attempt", 1)
 
-        if failure_entry:
+        if is_merged:
+            status = "merged"
+        elif failure_entry:
             status = "failed"
         elif halt_entry:
-            final_dec = halt_entry.get("final_decision")
+            halt_status = halt_entry.get("status")
             halt_type = halt_entry.get("halt_type")
-            phase = halt_entry.get("phase")
-            if final_dec == "proceed" or halt_type == "task_complete" or phase == "completed":
-                status = "completed" if has_git else "merged"
-            elif final_dec == "halt":
+            final_dec = halt_entry.get("final_decision")
+            blocked_types = (
+                "blocker", "escalate", "validator_error", "internal_error",
+                "recovery_exhausted", "execution_error", "wf3", "constraint",
+                "head_not_moved", "max_iterations",
+            )
+            if (
+                halt_status == "blocked"
+                or halt_type in blocked_types
+                or final_dec in ("blocker", "escalate", "validator_error", "internal_error")
+            ):
                 status = "failed"
+            elif halt_status == "completed" or halt_type == "completed" or final_dec == "completed":
+                status = "completed"
             else:
-                status = "completed" if not has_git else "in_progress"
-        elif has_git:
+                status = "completed" if has_git is not True else "in_progress"
+        elif has_git is True:
             status = "in_progress"
         else:
-            status = "unknown"
+            status = "completed"
 
         ts = None
         if failure_entry and failure_entry.get("timestamp"):
             ts = _parse_timestamp(failure_entry.get("timestamp"))
-        elif halt_entry and halt_entry.get("timestamp"):
+        if not ts and halt_entry and halt_entry.get("timestamp"):
             ts = _parse_timestamp(halt_entry.get("timestamp"))
-        elif git_info:
-            ts = git_info["commit_date"]
-        else:
-            ts = datetime.now(timezone.utc)
+        if not ts:
+            ts = audit_timestamps.get(tid) or audit_timestamps.get(branch)
+        if not ts and git_info:
+            ts = git_info.get("commit_date")
+        if not ts and session_ts:
+            ts = session_ts
+        if not ts:
+            ts = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
         spec = None
         if failure_entry and failure_entry.get("spec"):
@@ -216,7 +266,7 @@ def _get_all_task_branches(project_root: str) -> dict:
             "attempt": attempt,
             "status": status,
             "timestamp": ts,
-            "has_git_branch": has_git,
+            "has_git_branch": has_git is True,
             "has_failure_context": failure_entry is not None,
             "spec": spec,
         }

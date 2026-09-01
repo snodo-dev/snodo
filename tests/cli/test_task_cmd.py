@@ -324,13 +324,36 @@ def test_task_list_shows_all_tasks_and_honest_statuses(tmp_path, monkeypatch, ca
     monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
     mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
 
-    mgr.update_decision(session.session_id, "task_failure", {
-        "t_failed": {"branch": "task/t_failed", "attempt": 2}
-    })
     mgr.update_decision(session.session_id, "halt", {
-        "t_merged": {"final_decision": "proceed", "phase": "completed"},
-        "t_completed": {"final_decision": "proceed", "phase": "completed"}
+        "t_blocked": {
+            "status": "blocked",
+            "halt_type": "blocker",
+            "final_decision": "blocker",
+            "raw_halt_type": "blocker",
+            "task_id": "t_blocked",
+            "phase": "post_execute",
+        },
+        "t_completed": {
+            "status": "completed",
+            "halt_type": "completed",
+            "final_decision": "completed",
+            "task_id": "t_completed",
+            "phase": "complete",
+        },
+        "t_merged": {
+            "status": "completed",
+            "halt_type": "completed",
+            "final_decision": "completed",
+            "task_id": "t_merged",
+            "phase": "complete",
+        }
     })
+
+    from snodo.infrastructure.audit import get_audit_log
+    audit_path = tmp_path / ".snodo" / "audit.log"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    audit = get_audit_log(str(audit_path))
+    audit.append_event("task_merged", {"op": "task_merged", "task_ref": "t_merged", "branch": "task/t_merged"})
 
     mock_git = MagicMock()
     b1 = MagicMock()
@@ -346,7 +369,7 @@ def test_task_list_shows_all_tasks_and_honest_statuses(tmp_path, monkeypatch, ca
     assert res == 0
     out = capsys.readouterr().out
 
-    assert "t_failed" in out and "failed" in out
+    assert "t_blocked" in out and "failed" in out
     assert "t_merged" in out and "merged" in out
     assert "t_completed" in out and "completed" in out
     assert "t_in_progress" in out and "in_progress" in out
@@ -763,3 +786,62 @@ def test_typer_app_command_wrappers(tmp_path, monkeypatch):
     assert task_prune(7) == 1
     assert task_review("t1", verdict="accepted", report=False, days=30, json=True) == 1
     assert task_report(days=30, json=True) == 1
+
+
+def test_task_list_git_exception_does_not_convert_completed_to_merged(tmp_path, monkeypatch, capsys):
+    """Git inspection exceptions leave completed tasks as 'completed', not guessed 'merged'."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "halt", {
+        "t1": {
+            "status": "completed",
+            "halt_type": "completed",
+            "final_decision": "completed",
+            "task_id": "t1",
+        }
+    })
+
+    # Force GitMCP to fail
+    monkeypatch.setattr("snodo.tools.git.GitMCP", MagicMock(side_effect=RuntimeError("git error")))
+
+    res = task_list_command(SimpleNamespace())
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "t1" in out
+    assert "completed" in out
+    assert "merged" not in out
+
+
+def test_task_prune_untimestamped_halt_record_pruned(tmp_path, monkeypatch, capsys):
+    """Untimestamped halt records fall back to session mtime/epoch and are pruned when stale."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    # Record halt with NO timestamp
+    mgr.update_decision(session.session_id, "halt", {
+        "t_old": {
+            "status": "completed",
+            "halt_type": "completed",
+            "task_id": "t_old",
+        }
+    })
+
+    # Set session last_updated to an old date (> 7 days)
+    session.last_updated = (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()
+    monkeypatch.setattr(mgr, "get_active_session", lambda m, p: session)
+
+    mock_git = MagicMock()
+    b_old = MagicMock()
+    b_old.name = "task/t_old"
+    b_old.commit.committed_date = 100000
+    mock_git.repo.heads = [b_old]
+    monkeypatch.setattr("snodo.tools.git.GitMCP", lambda p: mock_git)
+    monkeypatch.setattr("snodo.infrastructure.worktree.remove_worktree", lambda p, t: None)
+
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    res = task_prune_command(SimpleNamespace(stale_days=7))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "Found 1 stale task branch" in out
+    assert "t_old" in out
