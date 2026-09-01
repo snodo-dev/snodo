@@ -568,3 +568,34 @@ def test_fallback_validator_result_in_process(monkeypatch):
     if old_interfaces is not None:
         sys.modules["snodo.core.interfaces"] = old_interfaces
     importlib.reload(shell_mod)
+
+
+def test_validate_test_path_flag_injection_raises(temp_project):
+    """Test that test_path starting with '-' raises ValueError."""
+    shell_mcp, _ = temp_project
+    with pytest.raises(ValueError, match="cannot start with '-'"):
+        shell_mcp._validate_test_path("--override-ini")
+
+
+def test_validate_test_path_traversal_raises(temp_project):
+    """Test that test_path escaping project root raises ValueError."""
+    shell_mcp, _ = temp_project
+    with pytest.raises(ValueError, match="escapes project root"):
+        shell_mcp._validate_test_path("../../etc/passwd")
+
+
+def test_validate_extra_args_disallowed_flag_raises(temp_project):
+    """Test that disallowed flags in extra_args raise ValueError."""
+    shell_mcp, _ = temp_project
+    with pytest.raises(ValueError, match="Disallowed flag"):
+        shell_mcp._validate_extra_args(["-p", "plugin"])
+
+
+@patch("subprocess.run")
+def test_run_tests_raw_success(mock_run, temp_project):
+    """Test run_tests_raw returning exit code, stdout, stderr dict."""
+    shell_mcp, _ = temp_project
+    mock_run.return_value = MagicMock(returncode=0, stdout="OK", stderr="")
+
+    res = shell_mcp.run_tests_raw("tests/", "pytest")
+    assert res == {"exit_code": 0, "stdout": "OK", "stderr": ""}

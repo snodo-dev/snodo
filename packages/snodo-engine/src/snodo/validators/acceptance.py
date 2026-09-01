@@ -105,6 +105,25 @@ class AcceptanceValidator(LLMValidator):
                 )
             prompt_parts.extend(parts)
 
+        mutations = []
+        if hasattr(context, "code_artifact") and getattr(context.code_artifact, "metadata", None):
+            mutations = context.code_artifact.metadata.get("test_governing_mutations", [])
+        elif hasattr(context, "metadata") and isinstance(context.metadata, dict):
+            mutations = context.metadata.get("test_governing_mutations", [])
+
+        if mutations:
+            mutation_lines = [f"  - {m['path']} ({m['kind']})" for m in mutations if isinstance(m, dict)]
+            prompt_parts.extend([
+                "\n",
+                "## Test-Governing File Modifications Detected (ADR 040)\n",
+                "The coder modified or deleted test-governing files during this task:\n",
+                "\n".join(mutation_lines),
+                "\n\n",
+                "ATTENTION: Evaluate whether these test-governing file changes were explicitly authorized by "
+                "the task specification or if they represent unauthorized test weakening or deletion. If a test file "
+                "was modified or deleted to suppress failures without spec authorization, report this as UNMET with severity='warn'.\n",
+            ])
+
         prompt_parts.extend([
             "\n",
             "## Available Tools\n",
