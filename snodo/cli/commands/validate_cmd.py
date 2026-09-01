@@ -199,7 +199,7 @@ def _instruction(status: str) -> str:
     if status == "pass":
         return "Validation passed. The task may proceed to execution."
     if status == "escalate":
-        return "Human review required. Run: snodo authorize <decision_id>."
+        return "Human review required. Run: snodo authorize <task_id>."
     if status == "blocker":
         return "Blockers present. Fix the code and re-validate; if exhausted, revise the spec."
     if status == "validator_error":
