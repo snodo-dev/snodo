@@ -213,10 +213,10 @@ class TestTestKeys:
     def test_test_keys_calls_per_provider(self, mock_test, mgr):
         mgr.add_key("openai", "sk-test")
         mgr.add_key("anthropic", "sk-ant")
-        mock_test.return_value = True
+        mock_test.return_value = "valid"
 
         results = mgr.test_keys()
-        assert results == {"openai": True, "anthropic": True}
+        assert results == {"openai": "valid", "anthropic": "valid"}
         assert mock_test.call_count == 2
 
     @patch("snodo.config.ConfigManager._test_single_key")
@@ -225,22 +225,29 @@ class TestTestKeys:
         mgr.add_key("anthropic", "sk-bad")
 
         def side_effect(provider, key, pc=None):
-            return provider == "openai"
+            return "valid" if provider == "openai" else "invalid"
         mock_test.side_effect = side_effect
 
         results = mgr.test_keys()
-        assert results["openai"] is True
-        assert results["anthropic"] is False
+        assert results["openai"] == "valid"
+        assert results["anthropic"] == "invalid"
 
     def test_test_single_key_without_litellm(self, mgr):
         with patch.dict("sys.modules", {"litellm": None}):
             result = mgr._test_single_key("openai", "sk-test")
-            assert result is False
+            assert result == "untestable"
 
     def test_test_single_key_unknown_provider(self, mgr):
         with patch("snodo.config.completion", create=True):
             result = mgr._test_single_key("unknown_provider", "key")
-            assert result is False
+            assert result == "untestable"
+
+    def test_test_single_key_no_probe_model_returns_untestable(self, mgr):
+        """Provider with no probe model is reported as untestable rather than invalid."""
+        from snodo.config import ProviderConfig
+        pc = ProviderConfig(api_key_env="CUSTOM_KEY", probe_model="")
+        result = mgr._test_single_key("custom", "sk-test", pc=pc)
+        assert result == "untestable"
 
     def test_test_single_key_success(self, mgr):
         """Test key validation happy path with mocked litellm."""
@@ -248,7 +255,7 @@ class TestTestKeys:
         with patch.dict("sys.modules", {"litellm": MagicMock(completion=mock_completion)}):
             # Clear the cached import so it re-imports
             result = mgr._test_single_key("openai", "sk-test-key")
-            assert result is True
+            assert result == "valid"
             assert os.environ.get("OPENAI_API_KEY") != "sk-test-key"  # Cleaned up
 
     def test_test_single_key_restores_env_var(self, mgr):
@@ -259,7 +266,7 @@ class TestTestKeys:
             mock_completion = MagicMock()
             with patch.dict("sys.modules", {"litellm": MagicMock(completion=mock_completion)}):
                 result = mgr._test_single_key("anthropic", "sk-new-key")
-                assert result is True
+                assert result == "valid"
                 assert os.environ["ANTHROPIC_API_KEY"] == old_value
         finally:
             if "ANTHROPIC_API_KEY" in os.environ:
@@ -267,11 +274,11 @@ class TestTestKeys:
                     del os.environ["ANTHROPIC_API_KEY"]
 
     def test_test_single_key_api_failure(self, mgr):
-        """Test key validation returns False on API error."""
-        mock_completion = MagicMock(side_effect=Exception("Invalid key"))
+        """Genuinely rejected key reports as invalid."""
+        mock_completion = MagicMock(side_effect=Exception("Invalid API key"))
         with patch.dict("sys.modules", {"litellm": MagicMock(completion=mock_completion)}):
             result = mgr._test_single_key("openai", "sk-bad-key")
-            assert result is False
+            assert result == "invalid"
 
     def test_test_single_key_cleans_up_env_on_failure(self, mgr):
         """Env var is cleaned up even when API call fails."""
@@ -353,7 +360,7 @@ class TestCLIConfigTest:
     @patch("snodo.config.ConfigManager._test_single_key")
     def test_test_keys_all_valid(self, mock_test, cli_config_dir, capsys):
         cli_config_dir.add_key("openai", "sk-good")
-        mock_test.return_value = True
+        mock_test.return_value = "valid"
 
         result = main(["config", "test"])
         assert result == 0
@@ -361,9 +368,20 @@ class TestCLIConfigTest:
         assert "valid" in out
 
     @patch("snodo.config.ConfigManager._test_single_key")
+    def test_test_keys_untestable_reports_untestable_and_succeeds(self, mock_test, cli_config_dir, capsys):
+        cli_config_dir.add_key("ollama", "sk-ollama")
+        mock_test.return_value = "untestable"
+
+        result = main(["config", "test"])
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "ollama: ? untestable" in out
+        assert "✗ invalid" not in out
+
+    @patch("snodo.config.ConfigManager._test_single_key")
     def test_test_keys_some_invalid(self, mock_test, cli_config_dir, capsys):
         cli_config_dir.add_key("openai", "sk-bad")
-        mock_test.return_value = False
+        mock_test.return_value = "invalid"
 
         result = main(["config", "test"])
         assert result == 1
@@ -772,6 +790,10 @@ class TestProviders:
         assert DEFAULT_PROVIDER_CATALOG["google"].api_key_env == "GEMINI_API_KEY"
         assert DEFAULT_PROVIDER_CATALOG["cloudflare"].api_key_env == "CLOUDFLARE_API_KEY"
         assert DEFAULT_PROVIDER_CATALOG["deepseek"].api_key_env == "DEEPSEEK_API_KEY"
+        assert DEFAULT_PROVIDER_CATALOG["anthropic"].probe_model == "claude-3-haiku-20240307"
+        assert DEFAULT_PROVIDER_CATALOG["openai"].probe_model == "gpt-4o-mini"
+        assert DEFAULT_PROVIDER_CATALOG["google"].probe_model == "gemini/gemini-2.0-flash"
+        assert DEFAULT_PROVIDER_CATALOG["deepseek"].probe_model == "deepseek/deepseek-chat"
 
     def test_provider_for_model_resolves(self, mgr):
         """_provider_for_model maps model prefixes to provider names."""
