@@ -49,6 +49,11 @@ def resolve_project_root(start: Optional[str] = None) -> Optional[str]:
     ``~/.snodo/`` (global config directory) is explicitly excluded
     from project-marker detection.
     """
+    if not start and "SNODO_PROJECT_ROOT" in os.environ:
+        candidate = Path(os.environ["SNODO_PROJECT_ROOT"]).resolve()
+        if (candidate / ".snodo").is_dir():
+            return str(candidate)
+
     home = Path.home()
     directory = Path(start).resolve() if start else Path.cwd()
     for parent in [directory] + list(directory.parents):
@@ -56,6 +61,12 @@ def resolve_project_root(start: Optional[str] = None) -> Optional[str]:
             continue  # ~/.snodo is global config, not a project marker
         if (parent / ".snodo").is_dir():
             return str(parent)
+
+    if "SNODO_PROJECT_ROOT" in os.environ:
+        candidate = Path(os.environ["SNODO_PROJECT_ROOT"]).resolve()
+        if (candidate / ".snodo").is_dir():
+            return str(candidate)
+
     return None
 
 

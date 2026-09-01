@@ -199,6 +199,20 @@ def _job_status(manager, job_id: str) -> int:
     if exit_code is not None:
         print(f"Exit code: {exit_code}")
 
+    error = status.get("error")
+    if error and isinstance(error, str):
+        print(f"Error: {error}")
+    elif status.get("status") == "failed" or (exit_code is not None and exit_code != 0):
+        stderr_content = manager.get_logs(job_id, stream="stderr", tail=10)
+        if stderr_content and isinstance(stderr_content, str) and stderr_content.strip():
+            print("Error:")
+            for line in stderr_content.strip().splitlines():
+                print(f"  {line}")
+        elif exit_code == -1:
+            print("Error: Process died unexpectedly (crashed without updating state)")
+        elif exit_code is not None:
+            print(f"Error: Process exited with code {exit_code}")
+
     print()
     if task.get("description"):
         print(f"Description: {task['description']}")
@@ -220,6 +234,19 @@ def _job_logs(manager, job_id: str, stream: str, tail, watch: bool = False) -> i
     if content:
         print(content, end="")
     else:
+        if stream == "stdout":
+            stderr_content = manager.get_logs(job_id, stream="stderr", tail=tail)
+            if stderr_content and isinstance(stderr_content, str) and stderr_content.strip():
+                print(f"(no stdout output — showing stderr)\n{stderr_content}", end="")
+                return 0
+            try:
+                status = manager.get_status(job_id)
+                error = status.get("error")
+                if error and isinstance(error, str):
+                    print(f"(no stdout output — error: {error})")
+                    return 0
+            except Exception as e:
+                _logger.debug("Could not read job status for error fallback: %s", e)
         print(f"(no {stream} output)")
     return 0
 

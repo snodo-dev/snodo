@@ -27,6 +27,7 @@ class RunArgs:
     protocol: str = ".snodo/protocol.yml"
     model: Optional[str] = None
     coder: Optional[str] = None
+    mode: Optional[str] = None
     verbose: bool = False
     mock: bool = False
     plan: Optional[str] = None
@@ -59,6 +60,9 @@ def register(app: typer.Typer) -> None:
         ),
         coder: Optional[str] = typer.Option(
             None, "--coder", help="Coder backend name (e.g., litellm, opencode-cli, mock)",
+        ),
+        mode: Optional[str] = typer.Option(
+            None, "--mode", help="Execution mode override",
         ),
         verbose: bool = typer.Option(False, "--verbose", help="Show detailed output"),
         mock: bool = typer.Option(False, "--mock", help="Use mock coder instead of real LLM"),
@@ -97,7 +101,7 @@ def register(app: typer.Typer) -> None:
     ):
         """Execute a task through the protocol."""
         args = RunArgs(
-            description=description, protocol=protocol, model=model, coder=coder,
+            description=description, protocol=protocol, model=model, coder=coder, mode=mode,
             verbose=verbose, mock=mock, plan=plan, wave=wave,
             interactive=interactive, from_pr=from_pr, background=background,
             sandbox=sandbox, resume=resume, retry=retry,
@@ -922,7 +926,7 @@ def _resolve_session(args, session_manager, protocol, project_root):
     """
     from snodo.infrastructure.state import read_state
     state = read_state(project_root)
-    mode = state.current_mode or protocol.initial_mode
+    mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
 
     if session_manager is None:
         return None, mode

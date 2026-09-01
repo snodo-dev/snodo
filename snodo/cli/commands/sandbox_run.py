@@ -14,6 +14,10 @@ def _build_sandbox_command(args) -> list:
     command = ["snodo", "run", args.description, "--protocol", args.protocol]
     if args.model:
         command.extend(["--model", args.model])
+    if getattr(args, "coder", None):
+        command.extend(["--coder", args.coder])
+    if getattr(args, "mode", None):
+        command.extend(["--mode", args.mode])
     if getattr(args, "mock", False):
         command.append("--mock")
     if getattr(args, "verbose", False):
@@ -115,6 +119,9 @@ def _submit_background_job(args) -> int:
     """
     from snodo.jobs import JobManager, JobError
     from snodo.infrastructure.paths import require_project_root
+    from snodo.infrastructure.state import read_state
+    from snodo.coders import resolve_coder_name
+    from snodo.cli.commands import load_protocol
 
     if getattr(args, "plan", None):
         print("Error: --plan and --background cannot be used together", file=sys.stderr)
@@ -136,10 +143,27 @@ def _submit_background_job(args) -> int:
 
     with provider_env(model) as mgr:
         project_root = require_project_root()
+        state = read_state(project_root)
+        mode = getattr(args, "mode", None) or state.current_mode or "producer"
+
+        protocol_obj = load_protocol(protocol_path)
+        mode_coder = None
+        if protocol_obj:
+            initial_mode_obj = protocol_obj.get_mode(mode) or protocol_obj.get_mode(protocol_obj.initial_mode)
+            mode_coder = getattr(initial_mode_obj, "coder", None) if initial_mode_obj else None
+        coder = resolve_coder_name(
+            model=model,
+            mode_coder=mode_coder,
+            cli_coder=getattr(args, "coder", None),
+            use_mock=getattr(args, "mock", False),
+        )
+
         task_args = {
             "description": args.description,
             "protocol": args.protocol,
             "model": model,
+            "coder": coder,
+            "mode": mode,
             "mock": getattr(args, "mock", False),
             "verbose": getattr(args, "verbose", False),
             "from_pr": getattr(args, "from_pr", None),
