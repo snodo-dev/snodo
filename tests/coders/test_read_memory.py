@@ -9,6 +9,7 @@ from snodo.coders.litellm import (
     format_repeat_read_response,
 )
 from snodo.core.interfaces import TaskSpec
+from snodo.tools.workspace import WorkspaceMCP
 
 
 def test_canonical_read_key():
@@ -129,3 +130,205 @@ def test_read_memory_tracker_list_files_dedup():
     # Turn 2: list_files("src") -> covered by Turn 1!
     assert tracker.check_read("list_files", {"directory": "src"}) == 1
     assert tracker.check_read("list_files", {"path": "./src/"}) == 1
+
+
+def test_repeated_identical_search_does_not_repeat():
+    """A search_string call repeated across turns dedupes, regardless of how the
+    optional default `directory` is spelled (Fixes #184)."""
+    from snodo.coders.litellm import ReadMemoryTracker
+
+    tracker = ReadMemoryTracker()
+    tracker.record_read("search_string", {"query": "tests"}, turn_idx=5)
+
+    assert tracker.check_read("search_string", {"query": "tests"}) == 5
+    assert tracker.check_read("search_string", {"query": "tests", "directory": "."}) == 5
+    assert tracker.check_read("search_string", {"query": "tests", "directory": "./"}) == 5
+    assert tracker.check_read("search_string", {"query": "tests", "directory": ""}) == 5
+    assert tracker.check_read("search_string", {"query": "tests", "directory": None}) == 5
+
+    # A genuinely different search must still run.
+    assert tracker.check_read("search_string", {"query": "src/scripts"}) is None
+    assert tracker.check_read("search_string", {"query": "tests", "directory": "src"}) is None
+
+
+def test_repeated_identical_symbol_search_does_not_repeat():
+    """search_symbol repeats dedupe too, including argument-order spelling."""
+    from snodo.coders.litellm import ReadMemoryTracker
+
+    tracker = ReadMemoryTracker()
+    tracker.record_read("search_symbol", {"name": "AuthManager", "directory": "src"}, turn_idx=7)
+
+    assert tracker.check_read("search_symbol", {"name": "AuthManager", "directory": "src"}) == 7
+    assert tracker.check_read("search_symbol", {"directory": "src", "name": "AuthManager"}) == 7
+    assert tracker.check_read("search_symbol", {"name": "AuthManager"}) is None
+
+
+def test_two_spellings_of_same_path_dedupe_to_single_read(tmp_path):
+    """Every spelling the workspace resolver unifies dedupes to one read (Fixes #184)."""
+    from snodo.coders.litellm import ReadMemoryTracker
+
+    target = tmp_path / "src" / "scripts" / "main.js"
+    target.parent.mkdir(parents=True)
+    target.write_text("console.log(1)\n")
+
+    tracker = ReadMemoryTracker(project_root=str(tmp_path))
+    tracker.record_read("read_file", {"path": "src/scripts/main.js"}, turn_idx=9)
+
+    # Same call and alias spellings of the same file — all covered by Turn 9.
+    assert tracker.check_read("read_file", {"path": "src/scripts/main.js"}) == 9
+    assert tracker.check_read("read_file", {"path": "./src/scripts/main.js"}) == 9
+    assert tracker.check_read("read_file", {"path": "src/scripts//main.js"}) == 9
+    assert tracker.check_read("read_file", {"path": "src\\scripts\\main.js"}) == 9
+    assert tracker.check_read("read_file", {"path": str(target)}) == 9
+
+    # Batch reads dedupe via the per-file coverage check on aliased paths too.
+    assert tracker.check_read("read_files", {"paths": ["./src/scripts/main.js"]}) == 9
+
+    # A different file is not covered.
+    assert tracker.check_read("read_file", {"path": "src/other.js"}) is None
+
+
+def test_read_files_batch_key_dedupes_across_path_spellings(tmp_path):
+    """read_files with an aliased path list matches the recorded batch exactly."""
+    from snodo.coders.litellm import ReadMemoryTracker
+
+    tracker = ReadMemoryTracker(project_root=str(tmp_path))
+    tracker.record_read("read_files", {"paths": ["a.js", "b.js"]}, turn_idx=3)
+    assert tracker.check_read("read_files", {"paths": ["./a.js", "./b.js"]}) == 3
+
+
+def test_search_repeat_response_names_the_term():
+    """The dedupe pointer for searches names the term and says not to repeat it."""
+    msg = format_repeat_read_response("search_string", {"query": "tests"}, 12)
+    assert "search_string for 'tests' was already run in Turn 12" in msg
+    assert "wastes a turn" in msg
+
+
+def test_directory_in_search_term_gets_guidance_not_a_scan(tmp_path):
+    """A directory passed in the search-term slot returns a correction instead of
+    scanning the tree (Fixes #184)."""
+    from snodo.tools.workspace import WorkspaceMCP
+
+    proj = tmp_path / "proj"
+    (proj / "src" / "scripts").mkdir(parents=True)
+    (proj / "src" / "scripts" / "main.js").write_text("HELLO main\n")
+    ws = WorkspaceMCP(str(proj))
+
+    real = ws.search_string
+    spy = MagicMock(side_effect=real)
+    ws.search_string = spy
+
+    out = LiteLLMAdapter._execute_tool("search_string", {"query": "src/scripts"}, ws)
+    assert spy.call_count == 0
+    assert "'src/scripts' is a directory" in out
+    assert 'directory="src/scripts"' in out
+
+    # A legitimate text search still executes.
+    out2 = LiteLLMAdapter._execute_tool("search_string", {"query": "HELLO"}, ws)
+    assert spy.call_count == 1
+    assert "main.js:1" in out2
+
+    # An explicit, different directory alongside a path-like term is a
+    # legitimate scoped search and still executes.
+    out3 = LiteLLMAdapter._execute_tool(
+        "search_string", {"query": "src", "directory": "src/scripts"}, ws
+    )
+    assert spy.call_count == 2
+    assert "is a directory" not in out3
+
+
+def test_tool_loop_repeated_search_executes_workspace_once(tmp_path):
+    """End-to-end: the same logical search across turns hits the workspace once;
+    the repeats come back as turn pointers."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "main.py").write_text("NEEDLE = 1\n")
+    workspace = WorkspaceMCP(str(proj))
+    real = workspace.search_string
+    spy = MagicMock(side_effect=real)
+    workspace.search_string = spy
+
+    coder = LiteLLMAdapter(model="gpt-4o", workspace_mcp=workspace, max_tool_turns=6)
+    seen_messages: list = []
+
+    def _tc(cid, name, args):
+        tc = MagicMock()
+        tc.id = cid
+        tc.function.name = name
+        tc.function.arguments = json.dumps(args)
+        return tc
+
+    def mock_completion(**kwargs):
+        messages = kwargs["messages"]
+        seen_messages.append(list(messages))
+        n = len(messages)
+        if n == 1:
+            tcs = [_tc("c1", "search_string", {"query": "NEEDLE"})]
+        elif n == 3:
+            tcs = [_tc("c2", "search_string", {"query": "NEEDLE", "directory": "."})]
+        elif n == 5:
+            tcs = [_tc("c3", "search_string", {"query": "NEEDLE", "directory": None})]
+        else:
+            tcs = [_tc("c4", "submit_files", {"files": [{"path": "main.py", "content": "NEEDLE = 2"}]})]
+        msg = MagicMock()
+        msg.content = None
+        msg.tool_calls = tcs
+        resp = MagicMock()
+        resp.choices = [MagicMock(message=msg, finish_reason="tool_calls")]
+        resp.usage = None
+        return resp
+
+    coder._completion_fn = mock_completion
+    spec = TaskSpec(id="t1", description="test task", constraints=[])
+    artifact = coder.implement(spec)
+
+    assert len(artifact.files) == 1
+    assert spy.call_count == 1
+    # The last completion request carries the whole conversation so far.
+    final_msgs = seen_messages[-1]
+    tool_msgs = [m["content"] for m in final_msgs if m.get("role") == "tool"]
+    repeats = [t for t in tool_msgs if "already run in Turn 1" in t]
+    assert len(repeats) == 2
+
+
+def test_tool_loop_wrong_slot_search_guides_then_dedupes(tmp_path):
+    """The directory-in-query misuse costs one guidance response, not a scan,
+    and its repetition dedupes from there."""
+    proj = tmp_path / "proj"
+    (proj / "tests").mkdir(parents=True)
+    workspace = WorkspaceMCP(str(proj))
+    spy = MagicMock(return_value="no matches")
+    workspace.search_string = spy
+
+    coder = LiteLLMAdapter(model="gpt-4o", workspace_mcp=workspace, max_tool_turns=6)
+
+    def _tc(cid, name, args):
+        tc = MagicMock()
+        tc.id = cid
+        tc.function.name = name
+        tc.function.arguments = json.dumps(args)
+        return tc
+
+    def mock_completion(**kwargs):
+        n = len(kwargs["messages"])
+        if n == 1:
+            tcs = [_tc("c1", "search_string", {"query": "tests"})]
+        elif n == 3:
+            tcs = [_tc("c2", "search_string", {"query": "tests"})]
+        else:
+            tcs = [_tc("c3", "submit_files", {"files": [{"path": "x.py", "content": "x = 1"}]})]
+        msg = MagicMock()
+        msg.content = None
+        msg.tool_calls = tcs
+        resp = MagicMock()
+        resp.choices = [MagicMock(message=msg, finish_reason="tool_calls")]
+        resp.usage = None
+        return resp
+
+    coder._completion_fn = mock_completion
+    spec = TaskSpec(id="t1", description="test task", constraints=[])
+    artifact = coder.implement(spec)
+
+    assert len(artifact.files) == 1
+    # The wrong call never scanned the tree; its repeat was served from memory.
+    assert spy.call_count == 0
