@@ -42,4 +42,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [037](037-changelog-union-merge.md) | CHANGELOG.md merges with `merge=union`, not fragment files | 2026-08-27 | `.gitattributes` + `test_changelog_union_merge.py` |
 | [038](038-orchestrator-role-and-audit-contract.md) | The Orchestrator Role & Audit Trail Contract | 2026-08-27 | `docs/decisions/038-orchestrator-role-and-audit-contract.md` |
 | [039](039-validation-independent-of-coder.md) | Validation is independent of the coder; engine builds its LLM client from configuration | 2026-08-30 | `engine/loop.py` (`GraphBuilder.__init__`) |
-
+| [040](040-coder-observes-declared-test-runner.md) | The coder observes the declared test runner; the validators still judge | 2026-09-01 | `coders/litellm.py` + `tools/shell.py` + `validators/acceptance.py` |
