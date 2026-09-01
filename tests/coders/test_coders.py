@@ -16,7 +16,7 @@ import json
 from unittest.mock import Mock
 
 import pytest
-from snodo.coders.base import LLMCallError, ParseError
+from snodo.coders.base import LLMCallError, TurnBudgetExhausted
 from snodo.core.interfaces import Coder, FileArtifact, MCPServer, TaskSpec
 
 # ========== BASE / ABC TESTS ==========
@@ -29,9 +29,10 @@ def test_coder_adapter_is_coder_abc():
 
 def test_exception_hierarchy():
     """Exception classes have correct hierarchy."""
-    from snodo.coders.base import AdapterError, LLMCallError, ParseError
+    from snodo.coders.base import AdapterError, LLMCallError, ParseError, TurnBudgetExhausted
     assert issubclass(LLMCallError, AdapterError)
     assert issubclass(ParseError, AdapterError)
+    assert issubclass(TurnBudgetExhausted, AdapterError)
     assert issubclass(AdapterError, Exception)
 
 
@@ -453,7 +454,7 @@ class TestCoderToolLoop:
         workspace.list_files.assert_called_once_with("src")
 
     def test_tool_loop_bounded_at_max_turns(self):
-        """Coder loop bounded at max turns."""
+        """Coder loop bounded at max turns raises the distinct turn-budget outcome."""
         from snodo.coders import LiteLLMAdapter
 
         workspace = Mock()
@@ -469,7 +470,7 @@ class TestCoderToolLoop:
         coder._completion_fn = completion_fn
 
         spec = TaskSpec(description="Infinite loop", constraints=[])
-        with pytest.raises(ParseError, match="completed the tool loop without delivering files"):
+        with pytest.raises(TurnBudgetExhausted, match="turn budget"):
             coder.implement(spec)
 
     def test_no_read_returns_code_artifact_first_turn(self):

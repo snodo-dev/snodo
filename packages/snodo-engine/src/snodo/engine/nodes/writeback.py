@@ -37,6 +37,7 @@ _CANONICAL_HALT = {
     "constraint": "blocker",
     "wf3": "blocker",
     "max_iterations": "blocker",
+    "turn_budget_exhausted": "blocker",
     "execution_error": "internal_error",
     "recovery_exhausted": "blocker",
     "recovery_stalled": "blocker",
@@ -75,8 +76,8 @@ def _blocker_fix_targets(
     A blocker has three fix targets — the code, the spec, or the policy. Which
     apply depends on the halt in hand:
     - a protocol violation (``constraint``, ``wf3``) is a policy problem;
-    - a loop that never converged (``max_iterations``, ``recovery_*``) is a
-      spec or policy problem;
+    - a loop that never converged (``max_iterations``, ``recovery_*``,
+      ``turn_budget_exhausted``) is a spec or policy problem;
     - a post-execute rejection of produced artifacts is a code problem;
     - a pre-execute rejection of the proposal is a spec problem — unless the
       block cites a criterion, in which case the criterion lives in the
@@ -85,7 +86,7 @@ def _blocker_fix_targets(
     halt_type = halt_type or ""
     if halt_type in ("constraint", "wf3"):
         return ["policy"]
-    if halt_type in ("max_iterations", "recovery_exhausted", "recovery_stalled"):
+    if halt_type in ("max_iterations", "turn_budget_exhausted", "recovery_exhausted", "recovery_stalled"):
         return ["spec", "policy"]
     if halt_type == "head_not_moved":
         # The coder claimed a commit it did not make — the produced code is
