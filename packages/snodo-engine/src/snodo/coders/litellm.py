@@ -233,7 +233,9 @@ class LiteLLMAdapter(CoderAdapter):
                 "`read_files(paths=[...])` rather than making individual `read_file` calls. You may also use "
                 "`read_file(path)` for a single file, `read_file_lines(path, start, end)` for line ranges, and "
                 "`list_files(directory)` to explore the project.\n"
-                "You can search the codebase using `search_string(query)` and locate symbol definitions using `search_symbol(name)`.\n"
+                "You can search inside file contents using `search_string(query, directory)` — `query` is the text to FIND, "
+                "and the folder to look in goes in `directory` — and locate symbol definitions using "
+                "`search_symbol(name, directory)` — `name` is an identifier like \"AuthManager\", never a path.\n"
                 "You can run the project's declared test runner to observe test output before submitting using `run_tests(test_path, command_type)`.\n"
                 "Read existing files you need to modify so you can make faithful edits.\n"
                 "\n"
@@ -344,7 +346,7 @@ Return ONLY the JSON array, no other text.
         retried_free_text = False
         finish_reason = None
         start_time = time.monotonic()
-        read_tracker = ReadMemoryTracker()
+        read_tracker = ReadMemoryTracker(getattr(workspace, "project_root", None))
         accumulated_files: Dict[str, Dict[str, Any]] = {}
         test_governing_mutations: Dict[str, Dict[str, str]] = {}
         self._read_tracker = read_tracker
@@ -781,12 +783,24 @@ Return ONLY the JSON array, no other text.
                 "type": "function",
                 "function": {
                     "name": "search_string",
-                    "description": "Search codebase text files for a query string or pattern",
+                    "description": (
+                        "Search inside file contents for a literal string. `query` is the TEXT "
+                        "to find — it is never a file or directory path. To restrict the search "
+                        "to a folder, pass that folder as `directory`. To see what a folder "
+                        "contains, use list_files instead."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "query": {"type": "string", "description": "String or pattern to search for"},
-                            "directory": {"type": "string", "description": "Directory relative to project root", "default": "."},
+                            "query": {
+                                "type": "string",
+                                "description": "Literal text to find inside file contents. NOT a path — file and directory paths belong in `directory`.",
+                            },
+                            "directory": {
+                                "type": "string",
+                                "description": "Optional folder to search inside, relative to project root (e.g. \"src\"). Defaults to \".\" (the whole project).",
+                                "default": ".",
+                            },
                         },
                         "required": ["query"],
                     },
@@ -796,12 +810,24 @@ Return ONLY the JSON array, no other text.
                 "type": "function",
                 "function": {
                     "name": "search_symbol",
-                    "description": "Search codebase for symbol definitions (class, def, function, struct, fn, type, const)",
+                    "description": (
+                        "Find where a symbol is defined (class, def, function, struct, fn, type, "
+                        "const). `name` is an identifier such as \"AuthManager\" — it is never a "
+                        "file or directory path. To restrict the search to a folder, pass that "
+                        "folder as `directory`."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "name": {"type": "string", "description": "Symbol name to locate"},
-                            "directory": {"type": "string", "description": "Directory relative to project root", "default": "."},
+                            "name": {
+                                "type": "string",
+                                "description": "Symbol identifier to locate (e.g. \"parse_config\"). NOT a path — file and directory paths belong in `directory`.",
+                            },
+                            "directory": {
+                                "type": "string",
+                                "description": "Optional folder to search inside, relative to project root (e.g. \"src\"). Defaults to \".\" (the whole project).",
+                                "default": ".",
+                            },
                         },
                         "required": ["name"],
                     },
@@ -888,12 +914,18 @@ Return ONLY the JSON array, no other text.
             elif name == "search_string":
                 query = args.get("query", "")
                 directory = args.get("directory", ".")
+                misuse = _search_term_directory_guidance(workspace, "search_string", "query", query, directory)
+                if misuse is not None:
+                    return misuse
                 if hasattr(workspace, "search_string"):
                     return workspace.search_string(query, directory)
                 return f"search_string unavailable on workspace: {workspace}"
             elif name == "search_symbol":
                 symbol_name = args.get("name", "")
                 directory = args.get("directory", ".")
+                misuse = _search_term_directory_guidance(workspace, "search_symbol", "name", symbol_name, directory)
+                if misuse is not None:
+                    return misuse
                 if hasattr(workspace, "search_symbol"):
                     return workspace.search_symbol(symbol_name, directory)
                 return f"search_symbol unavailable on workspace: {workspace}"
@@ -1081,17 +1113,79 @@ def _usage_tokens(response: Any, kind: str) -> int:
         return 0
 
 
-def _normalize_path_arg(args: Dict[str, Any]) -> str:
+def _search_term_directory_guidance(
+    workspace: Any, tool_name: str, term_key: str, term: Any, directory: Any,
+) -> Optional[str]:
+    """Return a correction message when the search-term slot holds a directory path.
+
+    ADR 040 tools shipped with a transcript where the coder called
+    search_string(tests), search_string(src/scripts) — ninety turns of
+    full-tree scans for directory NAMES (Fixes #184). The value in the term
+    slot resolves to an existing directory and no explicit folder was given,
+    so the model was almost certainly naming where to look, not what to find.
+    Answering with guidance instead of a scan bounds the loop: one wrong call
+    costs one turn, and the repeated call dedupes from there.
+    """
+    term_str = str(term or "").strip()
+    if not term_str:
+        return None
+    dir_str = str(directory if directory is not None else ".").strip()
+    if dir_str and dir_str not in (".", "./", term_str):
+        # An explicit folder alongside the term: a legitimate scoped search
+        # for text that happens to look like a path fragment.
+        return None
+    validator = getattr(workspace, "validate_path", None)
+    if validator is None:
+        return None
+    try:
+        resolved = validator(term_str)
+    except Exception:
+        return None
+    if not isinstance(resolved, Path):
+        return None
+    try:
+        is_dir = bool(resolved.is_dir())
+    except Exception:
+        is_dir = False
+    if not is_dir:
+        return None
+    return (
+        f"{tool_name} searches inside file contents: `{term_key}` is the text to find, not a path. "
+        f"'{term_str}' is a directory in this project, so nothing was searched. "
+        f"To search inside it, call {tool_name}({term_key}=<text to find>, directory=\"{term_str}\"). "
+        f"To see what it contains, call list_files(directory=\"{term_str}\"). "
+        f"To find where a symbol is defined, call search_symbol(name=<identifier>)."
+    )
+
+
+def _canonical_rel_path(value: Any, project_root: Optional[Path] = None) -> str:
+    """Normalize a path argument the same way the workspace resolves it.
+
+    Deduplication must not depend on spelling: './x', 'x/', 'a//b', 'a\\b' and
+    an absolute path under the project root all address one file, and the
+    resolver treats them as one, so the dedup key must too (Fixes #184).
+    """
+    p = str(value).replace("\\", "/").strip()
+    if not p:
+        return "."
+    path = Path(p)
+    if project_root is not None and path.is_absolute():
+        try:
+            path = path.resolve().relative_to(project_root)
+        except (ValueError, OSError) as e:
+            # Outside the root (or unresolvable): keep the absolute form so
+            # the dedup key is at least stable across calls.
+            _logger.debug("Dedup key kept absolute for path outside root %s: %s", project_root, e)
+    return path.as_posix()
+
+
+def _normalize_path_arg(args: Dict[str, Any], project_root: Optional[Path] = None) -> str:
     """Extract and normalize a path argument string."""
     for path_key in ("path", "directory", "file_path", "target_file", "file"):
         val = args.get(path_key)
         if val and isinstance(val, str):
-            p = val.strip()
-            if p:
-                try:
-                    return Path(p).as_posix()
-                except Exception:
-                    return p
+            if val.strip():
+                return _canonical_rel_path(val, project_root)
     return ""
 
 
@@ -1116,10 +1210,34 @@ def _extract_line_range(tool_name: str, args: Dict[str, Any]) -> Tuple[int, floa
     return (1, float("inf"))
 
 
+_READ_TOOLS = frozenset({
+    "read_files",
+    "read_file",
+    "read_file_lines",
+    "read_lines",
+    "list_files",
+    "list_directory",
+    "ls",
+    "git_show",
+    "read_diff_between_refs",
+    "git_log",
+    "search_symbol",
+    "search_string",
+})
+
+
 class ReadMemoryTracker:
     """Tracks read file contents, line ranges, directory listings, and tool arguments across turns."""
 
-    def __init__(self) -> None:
+    def __init__(self, project_root: Optional[Any] = None) -> None:
+        #: Same root the workspace resolves against; lets dedup keys treat
+        #: every spelling of one path as one path (Fixes #184).
+        self._project_root: Optional[Path] = None
+        if project_root:
+            try:
+                self._project_root = Path(str(project_root)).resolve()
+            except Exception:
+                self._project_root = None
         # Exact canonical (tool_name, norm_args_json) -> turn_idx (1-based)
         self.exact_reads: Dict[Tuple[str, str], int] = {}
         # file_path -> [(start_line, end_line, turn_idx), ...]
@@ -1132,25 +1250,11 @@ class ReadMemoryTracker:
 
         Returns the 1-based turn_idx if covered, else None.
         """
-        read_tools = {
-            "read_files",
-            "read_file",
-            "read_file_lines",
-            "read_lines",
-            "list_files",
-            "list_directory",
-            "ls",
-            "git_show",
-            "read_diff_between_refs",
-            "git_log",
-            "search_symbol",
-            "search_string",
-        }
-        if tool_name not in read_tools:
+        if tool_name not in _READ_TOOLS:
             return None
 
         # 1. Exact argument match
-        exact_key = _canonical_read_key(tool_name, args)
+        exact_key = _canonical_read_key(tool_name, args, self._project_root)
         if exact_key and exact_key in self.exact_reads:
             return self.exact_reads[exact_key]
 
@@ -1161,7 +1265,7 @@ class ReadMemoryTracker:
                 all_read = True
                 first_turn = None
                 for p in paths:
-                    norm_p = Path(str(p).strip()).as_posix() if isinstance(p, str) else ""
+                    norm_p = _canonical_rel_path(p, self._project_root) if isinstance(p, str) and p.strip() else ""
                     if not norm_p or norm_p not in self.file_ranges:
                         all_read = False
                         break
@@ -1172,7 +1276,7 @@ class ReadMemoryTracker:
 
         # 3. File line range / whole file coverage check
         if tool_name in ("read_file", "read_file_lines", "read_lines"):
-            path = _normalize_path_arg(args)
+            path = _normalize_path_arg(args, self._project_root)
             if path and path in self.file_ranges:
                 req_start, req_end = _extract_line_range(tool_name, args)
                 for cov_start, cov_end, turn_idx in self.file_ranges[path]:
@@ -1181,7 +1285,7 @@ class ReadMemoryTracker:
 
         # 4. Directory listing check
         if tool_name in ("list_files", "list_directory", "ls"):
-            dir_path = _normalize_path_arg(args) or "."
+            dir_path = _normalize_path_arg(args, self._project_root) or "."
             if dir_path in self.dir_listings:
                 return self.dir_listings[dir_path]
 
@@ -1189,7 +1293,7 @@ class ReadMemoryTracker:
 
     def record_read(self, tool_name: str, args: Dict[str, Any], turn_idx: int) -> None:
         """Record a successful read tool execution in memory."""
-        exact_key = _canonical_read_key(tool_name, args)
+        exact_key = _canonical_read_key(tool_name, args, self._project_root)
         if exact_key:
             self.exact_reads[exact_key] = turn_idx
 
@@ -1198,13 +1302,13 @@ class ReadMemoryTracker:
             if isinstance(paths, list):
                 for p in paths:
                     if isinstance(p, str) and p.strip():
-                        norm_p = Path(p.strip()).as_posix()
+                        norm_p = _canonical_rel_path(p, self._project_root)
                         if norm_p not in self.file_ranges:
                             self.file_ranges[norm_p] = []
                         self.file_ranges[norm_p].append((1, float("inf"), turn_idx))
 
         if tool_name in ("read_file", "read_file_lines", "read_lines"):
-            path = _normalize_path_arg(args)
+            path = _normalize_path_arg(args, self._project_root)
             if path:
                 req_start, req_end = _extract_line_range(tool_name, args)
                 if path not in self.file_ranges:
@@ -1212,7 +1316,7 @@ class ReadMemoryTracker:
                 self.file_ranges[path].append((req_start, req_end, turn_idx))
 
         if tool_name in ("list_files", "list_directory", "ls"):
-            dir_path = _normalize_path_arg(args) or "."
+            dir_path = _normalize_path_arg(args, self._project_root) or "."
             if dir_path not in self.dir_listings:
                 self.dir_listings[dir_path] = turn_idx
 
@@ -1234,30 +1338,38 @@ class ReadMemoryTracker:
         }
 
 
-def _canonical_read_key(name: str, args: Dict[str, Any]) -> Optional[Tuple[str, str]]:
-    """Return (tool_name, canonical_args_str) for read tools, or None if not a read tool."""
-    read_tools = {
-        "read_files",
-        "read_file",
-        "read_file_lines",
-        "read_lines",
-        "list_files",
-        "list_directory",
-        "ls",
-        "git_show",
-        "read_diff_between_refs",
-        "git_log",
-        "search_symbol",
-        "search_string",
-    }
-    if name not in read_tools:
+def _canonical_read_key(
+    name: str, args: Dict[str, Any], project_root: Optional[Path] = None,
+) -> Optional[Tuple[str, str]]:
+    """Return (tool_name, canonical_args_str) for read tools, or None if not a read tool.
+
+    The key must describe the CALL, not the spelling: an optional parameter
+    left absent is the same call as one sent at its default, a null parameter
+    is the same as an absent one, and every path alias the resolver unifies
+    must unify here too — otherwise the dedup that is supposed to bound the
+    search/read loop lets one call become ninety (Fixes #184).
+    """
+    if name not in _READ_TOOLS:
         return None
 
-    norm_args = dict(args)
-    for path_key in ("path", "directory", "file_path", "target_file"):
-        if path_key in norm_args and isinstance(norm_args[path_key], str):
-            p = norm_args[path_key].strip()
-            norm_args[path_key] = str(Path(p).as_posix())
+    norm_args: Dict[str, Any] = {}
+    for key, val in args.items():
+        if val is None:
+            continue  # a null optional parameter is an omitted one
+        if key == "paths" and isinstance(val, list):
+            norm_args[key] = [
+                _canonical_rel_path(p, project_root)
+                for p in val
+                if isinstance(p, str) and p.strip()
+            ]
+        elif key in ("path", "directory", "file_path", "target_file", "file") and isinstance(val, str):
+            norm_args[key] = _canonical_rel_path(val, project_root)
+        else:
+            norm_args[key] = val
+
+    # 'directory' defaults to "." — explicit and implicit are one call.
+    if norm_args.get("directory") == ".":
+        norm_args.pop("directory")
 
     try:
         args_str = json.dumps(norm_args, sort_keys=True)
@@ -1269,6 +1381,16 @@ def _canonical_read_key(name: str, args: Dict[str, Any]) -> Optional[Tuple[str, 
 
 def format_repeat_read_response(tool_name: str, args: Dict[str, Any], prev_turn: int) -> str:
     """Format a concise tool response pointing to the previous turn containing the result."""
+    if tool_name in ("search_string", "search_symbol"):
+        term_key = "query" if tool_name == "search_string" else "name"
+        term = str((args or {}).get(term_key) or "").strip()
+        if term:
+            return (
+                f"{tool_name} for '{term}' was already run in Turn {prev_turn}. "
+                f"Refer to the tool response from Turn {prev_turn} for its results. "
+                "Repeating this call returns the same output and wastes a turn — "
+                "search for a different term, read a specific file, or proceed to submit_files."
+            )
     target = _normalize_path_arg(args)
     if tool_name in ("read_file", "read_files", "read_file_lines", "read_lines"):
         req_start, req_end = _extract_line_range(tool_name, args)

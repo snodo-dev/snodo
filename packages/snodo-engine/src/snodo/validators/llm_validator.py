@@ -398,7 +398,7 @@ class LLMValidator(ValidatorBase):
         retried_free_text = False
         cb = getattr(context, "progress_callback", None) or getattr(self, "progress_callback", None)
         start_time = time.monotonic()
-        read_tracker = ReadMemoryTracker()
+        read_tracker = ReadMemoryTracker(getattr(workspace, "project_root", None))
 
         for turn in range(tool_turns):
             turn_start = time.monotonic()
