@@ -40,8 +40,25 @@ def task_branch_name(task_id: str, spec: str) -> str:
     return f"task/{task_id}/{_slugify(spec)}"
 
 
+_WORKTREE_CONTAINER = ".snodo-worktrees"
+
+
 def worktree_dir(project_root: str) -> Path:
-    return Path(project_root).parent / ".snodo-worktrees"
+    """Return the container that holds this project's task worktrees.
+
+    Worktrees live in a ``.snodo-worktrees`` directory that is a *sibling* of
+    the project root. When *project_root* already sits inside such a container
+    — which happens when the project root resolves to a task worktree, e.g. an
+    agent running inside its own worktree — reuse that container instead of
+    nesting another one. The blind ``parent / ".snodo-worktrees"`` produced
+    ``.snodo-worktrees/.snodo-worktrees`` and made the worktree directory list
+    itself (Fixes #192).
+    """
+    p = Path(project_root)
+    for ancestor in (p, *p.parents):
+        if ancestor.name == _WORKTREE_CONTAINER:
+            return ancestor
+    return p.parent / _WORKTREE_CONTAINER
 
 
 def worktree_path(project_root: str, task_id: str) -> Path:

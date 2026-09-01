@@ -86,6 +86,54 @@ class TestWorktreeCommands:
         assert "task_valid" in out
         assert ".snodo-worktrees" not in out
 
+    def test_worktree_dir_is_not_nested_when_inside_a_container(self, git_project):
+        """worktree_dir must never nest .snodo-worktrees inside itself.
+
+        When the project root resolves to a task worktree (an agent running
+        inside its own worktree), the naive ``parent/.snodo-worktrees`` produced
+        ``.snodo-worktrees/.snodo-worktrees`` and made the worktree directory
+        list itself. The container is reused instead (Fixes #192)."""
+        from snodo.infrastructure.worktree import worktree_dir, worktree_path
+
+        container = worktree_dir(str(git_project))
+        assert container.name == ".snodo-worktrees"
+        assert ".snodo-worktrees/.snodo-worktrees" not in str(container)
+
+        inner = worktree_path(str(git_project), "task_a")
+        # Resolving from inside a worktree reuses the same container, no doubling.
+        assert worktree_dir(str(inner)) == container
+        assert ".snodo-worktrees/.snodo-worktrees" not in str(worktree_dir(str(inner)))
+
+    def test_list_from_inside_worktree_shows_siblings_not_a_doubled_path(
+        self, git_project, capsys
+    ):
+        """Listing while inside a worktree shows the real siblings and never a
+        ``.snodo-worktrees/.snodo-worktrees`` path (Fixes #192)."""
+        from snodo.cli.commands.worktree_cmd import worktree_list_command
+        from snodo.infrastructure.worktree import create_worktree, worktree_dir, worktree_path
+
+        create_worktree(str(git_project), "task_a", "spec a")
+        create_worktree(str(git_project), "task_b", "spec b")
+
+        # A legacy nested container left behind by an earlier run: its contents
+        # must never surface as retained worktrees of this project.
+        (worktree_dir(str(git_project)) / ".snodo-worktrees" / "ghost").mkdir(
+            parents=True, exist_ok=True
+        )
+
+        inner = str(worktree_path(str(git_project), "task_a"))
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root",
+                   return_value=inner):
+            result = worktree_list_command(SimpleNamespace(json=True))
+
+        assert result == 0
+        import json
+        data = json.loads(capsys.readouterr().out)
+        names = {e["task_id"] for e in data["worktrees"]}
+        assert {"task_a", "task_b"} <= names
+        assert "ghost" not in names
+        assert not any(".snodo-worktrees/.snodo-worktrees" in e["path"] for e in data["worktrees"])
+
     def test_prune_days_zero_refused_unguarded(self, git_project, capsys):
         from snodo.cli.commands.worktree_cmd import worktree_prune_command
 

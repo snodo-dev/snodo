@@ -195,3 +195,43 @@ class TestSessionPrune:
 
         assert result == 0
         assert "0 stale" in capsys.readouterr().out
+
+    def test_prune_days_overrides_config_max_age(self, mgr, capsys):
+        """`session prune --days N` overrides the engine's max session age."""
+        session = mgr.create_session("producer", PROJECT_ROOT)
+        path = mgr.sessions_dir / f"{session.session_id}.json"
+        data = json.loads(path.read_text())
+        data["updated_at"] = (datetime.now(UTC) - timedelta(days=10)).isoformat()
+        path.write_text(json.dumps(data, indent=2))
+
+        args = SimpleNamespace(
+            session_action="prune", sessions_dir=mgr.sessions_dir, days=7,
+        )
+        # A generous config default would NOT prune a 10-day session; --days 7 does.
+        with patch("snodo.config.ConfigManager") as mock_cm:
+            mock_cm.return_value.get_engine_value.return_value = 999
+            result = session_command(args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "1 stale" in out
+        assert "max age: 7 days" in out
+
+    def test_session_prune_flag_wires_days_to_args(self, monkeypatch):
+        """The --days option is threaded onto the args the prune action reads,
+        and is absent (None) when the flag is not given."""
+        from typer.testing import CliRunner
+
+        from snodo.cli.commands import session_cmd
+
+        captured = {}
+        monkeypatch.setattr(session_cmd, "SessionManager", lambda *a, **k: object())
+        monkeypatch.setattr(
+            session_cmd, "_session_prune",
+            lambda mgr, args: captured.update(days=getattr(args, "days", "unset")) or 0,
+        )
+        runner = CliRunner()
+        assert runner.invoke(session_cmd.app, ["prune", "--days", "7"]).exit_code == 0
+        assert captured["days"] == 7
+        assert runner.invoke(session_cmd.app, ["prune"]).exit_code == 0
+        assert captured["days"] is None
