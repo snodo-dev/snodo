@@ -611,11 +611,13 @@ class TestRunner:
         assert "do something" in cmd
 
     def test_build_command_with_flags(self):
-        """build_command() includes --mock, --model, --verbose flags."""
+        """build_command() includes --mock, --model, --verbose, --coder, --mode flags."""
         task_args = {
             "description": "task",
             "protocol": "proto.yml",
             "model": "gpt-4",
+            "coder": "opencode-cli",
+            "mode": "reviewer",
             "mock": True,
             "verbose": True,
             "from_pr": 42,
@@ -625,6 +627,10 @@ class TestRunner:
         assert "--verbose" in cmd
         assert "--model" in cmd
         assert "gpt-4" in cmd
+        assert "--coder" in cmd
+        assert "opencode-cli" in cmd
+        assert "--mode" in cmd
+        assert "reviewer" in cmd
         assert "--from-pr" in cmd
         assert "42" in cmd
 
@@ -715,21 +721,53 @@ class TestJobCLI:
         captured = capsys.readouterr()
         assert "--plan" in captured.err and "--background" in captured.err
 
+    def test_startup_failure_surfaces_diagnosable_reason(self, temp_project, capsys):
+        """A job that fails at startup surfaces diagnosable reason in status and logs."""
+        from snodo.cli.main import main
+        manager = JobManager(str(temp_project))
+        job_dir = manager.jobs_dir / "j_fail01"
+        job_dir.mkdir()
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "failed",
+            "exit_code": 1,
+            "created_at": time.time(),
+            "completed_at": time.time(),
+        }))
+        (job_dir / "task.json").write_text(json.dumps({"description": "failing task"}))
+        (job_dir / "stdout.log").write_text("")
+        (job_dir / "stderr.log").write_text("Error: Not inside a Snodo project\n")
+
+        # Test job status surfaces stderr error
+        status_res = main(["job", "status", "j_fail01"])
+        assert status_res == 0
+        status_out = capsys.readouterr().out
+        assert "Status: failed" in status_out
+        assert "Error:" in status_out
+        assert "Not inside a Snodo project" in status_out
+
+        # Test job logs surfaces stderr when stdout is empty
+        logs_res = main(["job", "logs", "j_fail01"])
+        assert logs_res == 0
+        logs_out = capsys.readouterr().out
+        assert "(no stdout output — showing stderr)" in logs_out
+        assert "Not inside a Snodo project" in logs_out
+
 
 # === End-to-End Test ===
 
 class TestEndToEnd:
     @pytest.mark.timeout(60)
     def test_mock_job_end_to_end(self, temp_project):
-        """Submit a --mock job, wait, and verify logs contain output."""
-        # Initialize git repo
+        """Submit a --mock job in a repo where .snodo is gitignored, wait, and verify success."""
+        # Initialize git repo with .snodo in .gitignore (matching real projects)
+        (temp_project / ".gitignore").write_text(".snodo/\n.snodo-worktrees/\n")
         subprocess.run(["git", "init"], cwd=str(temp_project), capture_output=True)
         subprocess.run(["git", "config", "user.email", "test@test.com"],
                        cwd=str(temp_project), capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test"],
                        cwd=str(temp_project), capture_output=True)
         Path(temp_project / "README.md").write_text("test")
-        subprocess.run(["git", "add", "."], cwd=str(temp_project), capture_output=True)
+        subprocess.run(["git", "add", ".gitignore", "README.md"], cwd=str(temp_project), capture_output=True)
         subprocess.run(["git", "commit", "-m", "init"],
                        cwd=str(temp_project), capture_output=True)
 
@@ -750,13 +788,12 @@ class TestEndToEnd:
         # Wait for completion (mock should finish quickly)
         result = manager.wait_for(job_id, timeout=45)
         assert result["status"] in TERMINAL_STATUSES
+        assert result["status"] == "completed"
 
         # Check that logs were written
         stdout = manager.get_logs(job_id, stream="stdout")
-        stderr = manager.get_logs(job_id, stream="stderr")
-        # At minimum, the wrapper should have produced some output
-        assert len(stdout) > 0 or len(stderr) > 0 or result["status"] == "completed"
+        assert len(stdout) > 0
 
-        # Verify state.json has final status
+        # Verify state.json has exit_code 0
         status = manager.get_status(job_id)
-        assert status["exit_code"] is not None
+        assert status["exit_code"] == 0

@@ -114,6 +114,7 @@ class JobManager:
             fresh_state["status"] = "failed"
             fresh_state["completed_at"] = time.time()
             fresh_state["exit_code"] = -1
+            fresh_state["error"] = "Process died unexpectedly (crashed without updating state)"
             self._save_state(job_dir, fresh_state)
             return fresh_state
         except PermissionError:

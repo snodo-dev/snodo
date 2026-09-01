@@ -70,6 +70,7 @@ def main():
     _save_state(job_dir, state)
 
     exit_code = 1
+    wrapper_error = None
     try:
         cmd = [sys.executable, "-m", "snodo", *argv]
         proc = subprocess.run(cmd, check=False)  # noqa: S603 - argv list (no shell); argv are single CLI elements from the job's task spec, never shell-interpreted
@@ -77,6 +78,7 @@ def main():
         exit_code = proc.returncode
     except Exception as e:
         print(f"Job wrapper error: {e}", file=sys.stderr)
+        wrapper_error = str(e)
         exit_code = 1
     finally:
         # Belt-and-suspenders cleanup on success only. A failed task keeps its
@@ -101,6 +103,8 @@ def main():
         state["status"] = status
     state["exit_code"] = exit_code
     state["completed_at"] = time.time()
+    if wrapper_error:
+        state["error"] = f"Job wrapper error: {wrapper_error}"
 
     _save_state(job_dir, state)
 

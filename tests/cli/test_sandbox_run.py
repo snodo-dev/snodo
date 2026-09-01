@@ -262,3 +262,52 @@ def test_submit_background_job_happy_path(capsys, tmp_path, monkeypatch):
     assert "snodo job logs j_sub12345" in out
     assert "snodo job wait j_sub12345" in out
     assert "snodo meta j_sub12345" in out
+
+
+def test_submit_background_job_preserves_coder_and_mode(tmp_path, monkeypatch):
+    """_submit_background_job includes coder and mode in task_args."""
+    protocol_file = tmp_path / "protocol.yml"
+    protocol_file.write_text("name: test")
+
+    mock_job_mgr = MagicMock()
+    captured_args = {}
+    mock_job_mgr.submit.side_effect = lambda a: captured_args.update(a) or "j_123"
+
+    monkeypatch.setattr("snodo.jobs.JobManager", lambda root: mock_job_mgr)
+    monkeypatch.setattr("snodo.infrastructure.paths.require_project_root", lambda: str(tmp_path))
+    monkeypatch.setattr("snodo.config.ConfigManager.get_model", lambda self: "mock-model")
+
+    args = SimpleNamespace(
+        plan=None,
+        description="Background task description",
+        protocol=str(protocol_file),
+        model="mock-model",
+        coder="opencode-cli",
+        mode="producer",
+        mock=False,
+        verbose=False,
+        from_pr=None,
+    )
+    res = _submit_background_job(args)
+    assert res == 0
+    assert captured_args.get("coder") == "opencode-cli"
+    assert captured_args.get("mode") == "producer"
+
+
+def test_build_sandbox_command_with_coder_and_mode():
+    """_build_sandbox_command includes --coder and --mode flags."""
+    args = SimpleNamespace(
+        description="Implement user auth",
+        protocol=".snodo/protocol.yml",
+        model="gpt-4o",
+        coder="opencode-cli",
+        mode="reviewer",
+        mock=False,
+        verbose=False,
+        from_pr=None,
+    )
+    cmd = _build_sandbox_command(args)
+    assert "--coder" in cmd
+    assert cmd[cmd.index("--coder") + 1] == "opencode-cli"
+    assert "--mode" in cmd
+    assert cmd[cmd.index("--mode") + 1] == "reviewer"

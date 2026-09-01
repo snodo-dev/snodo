@@ -90,6 +90,20 @@ class TestResolveProjectRoot:
             id_from_sub = hashlib.sha256(root_from_sub.encode()).hexdigest()[:16]
             assert id_from_root == id_from_sub
 
+    def test_uses_snodo_project_root_env_var(self, monkeypatch):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "myproject"
+            project_root.mkdir()
+            (project_root / ".snodo").mkdir()
+
+            outside_dir = Path(tmp) / "outside_worktree"
+            outside_dir.mkdir()
+
+            monkeypatch.setenv("SNODO_PROJECT_ROOT", str(project_root))
+            with patch.object(Path, "cwd", return_value=outside_dir):
+                result = resolve_project_root()
+                assert result == str(project_root.resolve())
+
 
 class TestDeriveTaskId:
     def test_stable_digest_format(self):
