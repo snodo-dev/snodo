@@ -673,9 +673,21 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             project_name = Path(project_root).name
             memory_mgr.record_task(project_name, mode)
 
-        result = _report_closure(closure_tree, final_state, session_id=session_id)
-
         resolved = closure_tree is not None and closure_tree.outcome == "resolved"
+
+        # A resolved closure that will not merge leaves the completed work on a
+        # task branch while the base branch never moves. Say so — naming the
+        # branch and the reason — before the follow-up block, so a run whose work
+        # is stranded is never mistaken for one whose work landed.
+        if resolved and not _should_auto_merge(
+            protocol, mode, closure_tree, worktree_path_val, worktree_degraded
+        ):
+            _report_unmerged_branch(
+                project_root, task, protocol, mode, closure_tree,
+                worktree_path_val, worktree_degraded, session_id, audit_log,
+            )
+
+        result = _report_closure(closure_tree, final_state, session_id=session_id)
 
         # Auto-merge on genuine completion (closure outcome "resolved").
         if _should_auto_merge(protocol, mode, closure_tree, worktree_path_val, worktree_degraded):
@@ -736,21 +748,83 @@ def _print_worktree_retained(project_root, task, worktree_path_val) -> None:
     print(f"  List/remove: snodo worktree list / snodo worktree remove {task.id}")
 
 
+def _auto_merge_block_reason(protocol, mode, closure_tree, worktree_path_val, worktree_degraded):
+    """Return None when the branch should be merged, else the reason it will not be.
+
+    Tests the three conditions in order and names the first that blocks the
+    merge: auto-merge not enabled for this mode (protocol + mode override), the
+    closure not genuinely resolved, and isolation degraded (no worktree was
+    created — the work is already in the working tree, so there is no branch to
+    merge). Used by both the decision (``_should_auto_merge``) and the loud
+    report of a resolved-but-unmerged branch, so the reason a run shows is the
+    same reason the decision used.
+    """
+    if not getattr(protocol, "auto_merge_enabled", lambda _m: False)(mode):
+        return f"auto-merge not enabled for mode '{mode}'"
+    if closure_tree is None or closure_tree.outcome != "resolved":
+        return "closure not resolved"
+    if worktree_degraded:
+        return "isolation degraded (no task worktree — work is in the working tree)"
+    if not worktree_path_val:
+        return "no task worktree (work is in the working tree)"
+    return None
+
+
 def _should_auto_merge(protocol, mode, closure_tree, worktree_path_val, worktree_degraded) -> bool:
     """Decide whether a completed task's branch should be merged.
 
     Requires: auto-merge enabled for the mode (protocol + mode override), the
     closure genuinely resolved, and real isolation (a worktree was created —
     if it was not, the work is already in the working tree and there is nothing
-    to merge).
+    to merge). See ``_auto_merge_block_reason`` for the per-condition reasons.
     """
-    if not getattr(protocol, "auto_merge_enabled", lambda _m: False)(mode):
-        return False
-    if closure_tree is None or closure_tree.outcome != "resolved":
-        return False
+    return _auto_merge_block_reason(
+        protocol, mode, closure_tree, worktree_path_val, worktree_degraded
+    ) is None
+
+
+def _report_unmerged_branch(project_root, task, protocol, mode, closure_tree,
+                            worktree_path_val, worktree_degraded, session_id, audit_log) -> None:
+    """Report a resolved task whose branch was NOT merged, and audit it.
+
+    A resolved closure that does not merge leaves the completed work on a task
+    branch while the base branch never moves — indistinguishable from a run
+    whose work landed unless it says so. This prints the branch and the reason
+    (the same reason ``_auto_merge_block_reason`` used) and records a
+    ``task_unmerged`` event, so an unmerged run is distinguishable afterwards.
+    """
+    reason = _auto_merge_block_reason(
+        protocol, mode, closure_tree, worktree_path_val, worktree_degraded
+    )
+    if reason is None:
+        return
+
+    from snodo.infrastructure.worktree import task_branch_name
+
+    branch = task_branch_name(task.id, task.spec)
+    print("⚠ Task resolved but its work was NOT merged to the base branch.", file=sys.stderr)
+    print(f"  Reason: {reason}", file=sys.stderr)
     if worktree_degraded or not worktree_path_val:
-        return False
-    return True
+        print(
+            "  Isolation was degraded, so the changes are in your working tree; "
+            "commit them there.",
+            file=sys.stderr,
+        )
+    else:
+        print(f"  Branch holding the work: {branch}", file=sys.stderr)
+        print(
+            f"  main has NOT moved. Merge it with: git merge {branch}",
+            file=sys.stderr,
+        )
+    if audit_log:
+        audit_log.append_event("task_unmerged", {
+            "op": "task_unmerged",
+            "task_ref": task.id,
+            "branch": branch,
+            "reason": reason,
+            "merged": False,
+            "session_id": session_id,
+        })
 
 
 def _merge_on_success(project_root, task, result, session_id, audit_log) -> tuple:
