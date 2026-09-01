@@ -122,8 +122,9 @@ def test_task_report_days_window_and_unparseable_timestamps(tmp_path, monkeypatc
     assert data["completed_tasks"] == 3  # t_new, t_no_ts, t_bad_ts (t_old cut off)
 
 
-def test_task_report_zero_reviewed_acceptance_rate(tmp_path, monkeypatch, capsys):
-    """When total_reviewed is 0, acceptance_rate_pct reports 0.0."""
+def test_task_report_zero_reviewed_has_no_acceptance_rate(tmp_path, monkeypatch, capsys):
+    """When total_reviewed is 0, acceptance_rate_pct reports no rate (null),
+    not 0.0% — an empty denominator is not a zero-percent acceptance."""
     monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
     audit_log = AuditLog(str(tmp_path / "audit.log"))
     monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
@@ -136,7 +137,7 @@ def test_task_report_zero_reviewed_acceptance_rate(tmp_path, monkeypatch, capsys
 
     data = json.loads(capsys.readouterr().out)
     assert data["total_reviewed"] == 0
-    assert data["acceptance_rate_pct"] == 0.0
+    assert data["acceptance_rate_pct"] is None
 
 
 def test_task_report_outside_project_root(tmp_path, monkeypatch, capsys):
