@@ -9,6 +9,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The ADR 040 search tools no longer consume runs. The `search_string` /
+  `search_symbol` schemas and prompt text now say explicitly that the first
+  parameter is the text or identifier to find and that folders belong in
+  `directory`; a directory passed in the search-term slot returns a one-turn
+  correction instead of a full-tree scan. `ReadMemoryTracker` canonicalizes
+  dedup keys the way the resolver treats paths — default, `null` and absent
+  optional arguments are one call, and `./x`, `x//y`, `src\x` and absolute
+  paths under the project root all address one file — so a repeated search
+  comes back as a turn pointer instead of repeating, and two spellings of a
+  path deduplicate to a single read. (Fixes #184)
+
 ---
 
 ## [0.7.1] — 2026-08-31
