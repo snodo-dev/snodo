@@ -31,6 +31,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
   exhaustions). It now surfaces as a distinct `TurnBudgetExhausted` exception
   mapped to the raw halt `turn_budget_exhausted` (canonical `blocker`, fix
   targets spec/policy), and recovery does not spawn for it. (Fixes #191)
+- `snodo plan run` now exposes the full shared execution surface of `snodo run`
+  — `--coder`, `--mock`, `--mode`, `--verbose`, `--no-isolation` and
+  `--retain-worktree` were declared only on `snodo run`, so a plan — the
+  surface an orchestrator drives — could not select a coder or mock a run.
+  The two commands now bind a single shared option declaration in
+  `snodo/cli/commands/run_cmd.py`, and `tests/cli/test_surface_parity.py` pins
+  the two command surfaces against each other so the next option added to one
+  fails loudly if it is missing from the other. (Fixes #186)
 
 ---
 
