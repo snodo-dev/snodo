@@ -68,6 +68,17 @@ release:
 	@# and would capture the pre-bump version, tagging the release with the
 	@# version it just replaced.
 	@V=$$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml) && \
+	  uv run python scripts/check_release_version.py --tag "v$$V" || { \
+		echo "Release gate failed for v$$V (see errors above)."; \
+		echo "The version bump is uncommitted — nothing has been tagged or pushed."; \
+		echo "Add the CHANGELOG section for v$$V, then commit, tag and push"; \
+		echo "manually (git add -A && git commit -m \"release: v$$V\" &&"; \
+		echo "git tag -a \"v$$V\" -m \"snodo v$$V\" && git push origin main --follow-tags),"; \
+		echo "or discard the bump (git checkout -- pyproject.toml packages/*/pyproject.toml uv.lock)"; \
+		echo "and re-run after writing the section."; \
+		exit 1; \
+	}
+	@V=$$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml) && \
 	  git add -A && \
 	  git commit -m "release: v$$V" && \
 	  git tag -a "v$$V" -m "snodo v$$V" && \

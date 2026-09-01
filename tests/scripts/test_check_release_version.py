@@ -217,6 +217,33 @@ def test_release_workflow_creates_github_release():
     assert text.index("Publish all artifacts") < text.index("Create GitHub Release")
 
 
+def test_make_release_runs_changelog_gate_after_bump_before_commit():
+    """make release must gate the CHANGELOG against the version being released.
+
+    The gate runs check_release_version.py AFTER the bump (so it validates the
+    new version, not the one being replaced) and BEFORE anything irreversible
+    (git add/commit/tag/push). A failure must leave the tree with only the
+    uncommitted bump, and the recipe must say so.
+    """
+    makefile = Path(__file__).resolve().parents[2] / "Makefile"
+    text = makefile.read_text(encoding="utf-8")
+
+    assert "scripts/check_release_version.py" in text
+    assert "$(MAKE) bump" in text
+    assert "git commit -m \"release: v$$V\"" in text
+    assert "git tag -a \"v$$V\"" in text
+    assert "git push origin main --follow-tags" in text
+
+    # The gate must sit between the bump and the commit/tag/push block.
+    assert text.index("$(MAKE) bump") < text.index("scripts/check_release_version.py")
+    assert text.index("scripts/check_release_version.py") < text.index("git commit -m \"release: v$$V\"")
+
+    # A failed gate must not have committed anything yet, and must tell the
+    # operator how to proceed.
+    assert "nothing has been tagged or pushed" in text
+    assert "uncommitted" in text
+
+
 def test_changelog_release_body_extracts_version_section(tmp_path, capsys):
     changelog = tmp_path / "CHANGELOG.md"
     _write_changelog(changelog, "0.6.2")
