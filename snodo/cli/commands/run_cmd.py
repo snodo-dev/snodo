@@ -20,6 +20,60 @@ from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 
 
+# === Shared execution options (single declaration) ===
+#
+# `snodo run` and `snodo plan run` drive the same execution — plan run walks the
+# same planner/runner as `snodo run --plan` — so they must expose the same
+# options. Options are declared HERE, once, and both commands bind the shared
+# instance, so the flag names, help text and types cannot drift (Fixes #186).
+# This is the divergence behind the missing `--coder` on `snodo plan run`, and
+# it has now cost two defects: an option added to one command silently did not
+# exist on the other.
+#
+# The shared subset is exactly the RunArgs fields that are settable from the
+# CLI. A single declaration means the option surface and the args object are
+# derived from one place and cannot disagree.
+
+
+def _execution_option(name: str) -> typer.Option:
+    """Return the shared ``snodo run`` / ``snodo plan run`` option by name.
+
+    The dict is built once at import and every command parameter binds the
+    shared instance, so a change here is visible to both commands and to the
+    surface test (``tests/cli/test_surface_parity.py``).
+    """
+    return _EXECUTION_OPTIONS[name]
+
+
+def _build_execution_options() -> dict:
+    """Declare the shared execution options for ``run`` and ``plan run``.
+
+    Kept as a function so the declaration reads as one block; evaluated once at
+    import into ``_EXECUTION_OPTIONS``.
+    """
+    return {
+        "model": typer.Option(None, "--model", "-m",
+                              help="Model to use (e.g., claude-sonnet-4-20250514, gpt-4)"),
+        "coder": typer.Option(None, "--coder",
+                              help="Coder backend name (e.g., litellm, opencode-cli, mock)"),
+        "mode": typer.Option(None, "--mode", help="Execution mode override"),
+        "verbose": typer.Option(False, "--verbose", help="Show detailed output"),
+        "mock": typer.Option(False, "--mock", help="Use mock coder instead of real LLM"),
+        "wave": typer.Option(None, "--wave", "-w",
+                             help="Execute only a specific wave (requires --plan)"),
+        "interactive": typer.Option(False, "--interactive", "-i",
+                                    help="Confirm each task before execution"),
+        "no_isolation": typer.Option(False, "--no-isolation",
+                                     help="Run without worktree isolation even when one cannot be created. "
+                                          "Never set automatically: losing isolation is a warning, not an error."),
+        "retain_worktree": typer.Option(False, "--retain-worktree",
+                                        help="Keep the task worktree regardless of outcome"),
+    }
+
+
+_EXECUTION_OPTIONS = _build_execution_options()
+
+
 @dataclass(frozen=True)
 class RunArgs:
     """CLI execution arguments for snodo run / snodo plan run."""
@@ -56,26 +110,16 @@ def register(app: typer.Typer) -> None:
         protocol: str = typer.Option(
             ".snodo/protocol.yml", "--protocol", help="Path to protocol file",
         ),
-        model: Optional[str] = typer.Option(
-            None, "--model", "-m", help="Model to use (e.g., claude-sonnet-4-20250514, gpt-4)",
-        ),
-        coder: Optional[str] = typer.Option(
-            None, "--coder", help="Coder backend name (e.g., litellm, opencode-cli, mock)",
-        ),
-        mode: Optional[str] = typer.Option(
-            None, "--mode", help="Execution mode override",
-        ),
-        verbose: bool = typer.Option(False, "--verbose", help="Show detailed output"),
-        mock: bool = typer.Option(False, "--mock", help="Use mock coder instead of real LLM"),
+        model: Optional[str] = _execution_option("model"),
+        coder: Optional[str] = _execution_option("coder"),
+        mode: Optional[str] = _execution_option("mode"),
+        verbose: bool = _execution_option("verbose"),
+        mock: bool = _execution_option("mock"),
         plan: Optional[str] = typer.Option(
             None, "--plan", "-p", help="Execute a plan by name",
         ),
-        wave: Optional[int] = typer.Option(
-            None, "--wave", "-w", help="Execute only a specific wave (requires --plan)",
-        ),
-        interactive: bool = typer.Option(
-            False, "--interactive", "-i", help="Confirm each task before execution",
-        ),
+        wave: Optional[int] = _execution_option("wave"),
+        interactive: bool = _execution_option("interactive"),
         from_pr: Optional[int] = typer.Option(
             None, "--from-pr", help="Fetch PR comments as task context",
         ),
@@ -91,14 +135,8 @@ def register(app: typer.Typer) -> None:
         retry: Optional[str] = typer.Option(
             None, "--retry", help="Retry a failed task by ID (requires P0 branch isolation)",
         ),
-        retain_worktree: bool = typer.Option(
-            False, "--retain-worktree", help="Keep the task worktree regardless of outcome",
-        ),
-        no_isolation: bool = typer.Option(
-            False, "--no-isolation",
-            help="Run without worktree isolation even when one cannot be created. "
-                 "Never set automatically: losing isolation is a warning, not an error.",
-        ),
+        retain_worktree: bool = _execution_option("retain_worktree"),
+        no_isolation: bool = _execution_option("no_isolation"),
     ):
         """Execute a task through the protocol."""
         args = RunArgs(
