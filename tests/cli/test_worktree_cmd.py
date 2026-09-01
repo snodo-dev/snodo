@@ -53,9 +53,12 @@ class TestWorktreeCommands:
 
     def test_remove_deletes_worktree_and_branch(self, git_project):
         from snodo.cli.commands.worktree_cmd import worktree_remove_command
+        from snodo.tools.git import GitMCP
 
         create_worktree(str(git_project), "task_x", "spec x")
         assert worktree_path(git_project, "task_x").exists()
+        git = GitMCP(str(git_project))
+        assert any(h.name.startswith("task/task_x") for h in git.repo.heads)
 
         with patch("snodo.cli.commands.worktree_cmd.require_project_root",
                    return_value=str(git_project)):
@@ -63,6 +66,61 @@ class TestWorktreeCommands:
 
         assert result == 0
         assert not worktree_path(git_project, "task_x").exists()
+        git = GitMCP(str(git_project))
+        assert not any(h.name.startswith("task/task_x") for h in git.repo.heads)
+
+    def test_list_filters_hidden_directories(self, git_project, capsys):
+        from snodo.cli.commands.worktree_cmd import worktree_list_command
+        from snodo.infrastructure.worktree import worktree_dir
+
+        create_worktree(str(git_project), "task_valid", "spec valid")
+        hidden_dir = worktree_dir(str(git_project)) / ".snodo-worktrees"
+        hidden_dir.mkdir(parents=True, exist_ok=True)
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root",
+                   return_value=str(git_project)):
+            result = worktree_list_command(SimpleNamespace())
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "task_valid" in out
+        assert ".snodo-worktrees" not in out
+
+    def test_prune_days_zero_refused_unguarded(self, git_project, capsys):
+        from snodo.cli.commands.worktree_cmd import worktree_prune_command
+
+        create_worktree(str(git_project), "task_zero", "zero spec")
+        assert worktree_path(git_project, "task_zero").exists()
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root",
+                   return_value=str(git_project)):
+            result = worktree_prune_command(SimpleNamespace(days=0, force=False))
+
+        assert result == 1
+        assert worktree_path(git_project, "task_zero").exists()
+        err = capsys.readouterr().err
+        assert "must be at least 1 day" in err
+
+    def test_prune_skips_failure_retained_worktrees(self, git_project, capsys, monkeypatch):
+        from snodo.cli.commands.worktree_cmd import worktree_prune_command
+
+        create_worktree(str(git_project), "task_failed", "failed spec")
+        _set_age(git_project, "task_failed", days_old=30)
+        assert worktree_path(git_project, "task_failed").exists()
+
+        monkeypatch.setattr(
+            "snodo.cli.commands.worktree_cmd._has_failure_context",
+            lambda proj, tid: tid == "task_failed",
+        )
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root",
+                   return_value=str(git_project)):
+            result = worktree_prune_command(SimpleNamespace(days=7, force=False))
+
+        assert result == 0
+        assert worktree_path(git_project, "task_failed").exists()
+        out = capsys.readouterr().out
+        assert "Skipping task_failed: retained for failure evidence" in out
 
     def test_prune_removes_stale_and_keeps_fresh(self, git_project):
         from snodo.cli.commands.worktree_cmd import worktree_prune_command
@@ -73,7 +131,7 @@ class TestWorktreeCommands:
 
         with patch("snodo.cli.commands.worktree_cmd.require_project_root",
                    return_value=str(git_project)):
-            result = worktree_prune_command(SimpleNamespace(days=7))
+            result = worktree_prune_command(SimpleNamespace(days=7, force=True))
 
         assert result == 0
         assert not worktree_path(git_project, "task_old").exists()
