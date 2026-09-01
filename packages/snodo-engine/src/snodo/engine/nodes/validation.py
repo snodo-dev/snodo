@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 from snodo.engine.state import LoopStage, LoopState, _build_audit_results
 from snodo.core.interfaces import ValidatorResult, ExecutionError
-from snodo.coders.base import SnodoMutationError
+from snodo.coders.base import SnodoMutationError, TurnBudgetExhausted
 from snodo.infrastructure.tokens import TokenStoreError
 from snodo.engine.policy import PolicyAction, policy_decision_to_dict
 from snodo.engine.nodes.writeback import _coder_registry_name
@@ -258,6 +258,26 @@ class ValidationNodeMixin:
                     "task_ref": loop_state.task.id,
                     "mode": loop_state.current_mode,
                     "paths": list(getattr(e, "paths", [])),
+                    "error": str(e),
+                })
+                self._auto_write_failure_context(loop_state, [])
+                return self._state_to_dict(loop_state)
+            except TurnBudgetExhausted as e:
+                # The coder burned its full turn budget without submitting. A
+                # bounded, anticipated outcome — not a crash and not a
+                # validator verdict — so it gets its own terminal halt instead
+                # of ``internal_error``, and recovery must NOT spawn against it
+                # (retrying a turn-budget exhaustion cannot converge).
+                loop_state.is_blocked = True
+                loop_state.halt_type = "turn_budget_exhausted"
+                loop_state.constraint_violations.append(str(e))
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "skipped",
+                    "reason": str(e),
+                }
+                self._audit("coder_turn_budget_exhausted", {
+                    "op": "coder_turn_budget_exhausted",
+                    "task_ref": loop_state.task.id,
                     "error": str(e),
                 })
                 self._auto_write_failure_context(loop_state, [])

@@ -5,7 +5,7 @@ FILE: snodo/engine/nodes/executor.py
 
 from typing import Dict, Any, List, Optional, Union
 from snodo.core.interfaces import Task, TaskSpec, ExecutionError
-from snodo.coders.base import SnodoMutationError
+from snodo.coders.base import SnodoMutationError, TurnBudgetExhausted
 from snodo.infrastructure.tokens import ValidationToken
 from snodo.coders import LiteLLMAdapter, MockAdapter
 from snodo.tools.workspace import WorkspaceMCP
@@ -144,6 +144,11 @@ class ExecutorMixin:
             # Propagate unchanged so the engine can surface a blocker halt and
             # audit the attempt (Fixes #52) — this is a governance violation,
             # not an execution fault.
+            raise
+        except TurnBudgetExhausted:
+            # The coder ran out of turns without submitting — a bounded,
+            # anticipated outcome. Propagate unchanged so the engine reports it
+            # under its own halt outcome instead of as a generic execution fault.
             raise
         except ExecutionError:
             raise

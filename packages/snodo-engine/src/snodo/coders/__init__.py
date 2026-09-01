@@ -7,7 +7,13 @@ Registry pattern for pluggable coder backends.
 
 from typing import Any, Dict, Optional, Type
 
-from snodo.coders.base import CoderAdapter, AdapterError as AdapterError, LLMCallError as LLMCallError, ParseError as ParseError
+from snodo.coders.base import (
+    CoderAdapter,
+    AdapterError as AdapterError,
+    LLMCallError as LLMCallError,
+    ParseError as ParseError,
+    TurnBudgetExhausted as TurnBudgetExhausted,
+)
 from snodo.coders.litellm import LiteLLMAdapter
 from snodo.coders.mock import MockAdapter
 from snodo.coders.openai_adapter import OpenAIAdapter

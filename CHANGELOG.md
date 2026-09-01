@@ -22,6 +22,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
   comes back as a turn pointer instead of repeating, and two spellings of a
   path deduplicate to a single read. (Fixes #184)
 
+- A coder that exhausts its tool-loop turn budget without submitting is now a
+  nameable halt, not an internal error. The coder loop used to raise a generic
+  `ParseError`, which the executor wrapped into `ExecutionError` and the
+  execute node reported as `internal_error` — so a bounded, anticipated
+  outcome looked like a crash, and the recovery ladder kept spawning attempts
+  against a condition retrying could never change (three identical ~20-minute
+  exhaustions). It now surfaces as a distinct `TurnBudgetExhausted` exception
+  mapped to the raw halt `turn_budget_exhausted` (canonical `blocker`, fix
+  targets spec/policy), and recovery does not spawn for it. (Fixes #191)
+
 ---
 
 ## [0.7.1] — 2026-08-31
