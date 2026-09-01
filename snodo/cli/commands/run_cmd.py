@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -492,6 +493,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
     from snodo.infrastructure.paths import require_project_root
     project_root = require_project_root()
+    _record_task_start(project_root, task.id, task.spec)
     audit_log = getattr(args, "audit_log", None)
     session_manager = getattr(args, "session_manager", None)
 
@@ -692,6 +694,11 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             )
 
         result = _report_closure(closure_tree, final_state, session_id=session_id)
+
+        halt_payload = _find_terminal_halt_payload(closure_tree, final_state)
+        _record_task_completion(
+            project_root, task.id, "completed" if resolved else "failed", halt_payload
+        )
 
         # Auto-merge on genuine completion (closure outcome "resolved").
         if _should_auto_merge(protocol, mode, closure_tree, worktree_path_val, worktree_degraded):
@@ -1211,3 +1218,62 @@ def _find_terminal_halt_payload(tree, final_state: dict) -> Optional[dict]:
         return best_complete
     meta = (final_state or {}).get("metadata") or {}
     return meta.get("halt_payload")
+
+
+def _record_task_start(project_root: str, task_id: str, spec: str) -> None:
+    """Record initial task metadata under .snodo/tasks/<task_id>/state.json."""
+    try:
+        task_dir = Path(project_root) / ".snodo" / "tasks" / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+        state_path = task_dir / "state.json"
+        state = {}
+        if state_path.exists():
+            try:
+                state = json.loads(state_path.read_text())
+            except Exception:
+                state = {}
+        if not isinstance(state, dict):
+            state = {}
+        state["task_id"] = task_id
+        state["description"] = spec
+        if "created_at" not in state:
+            state["created_at"] = time.time()
+        state["started_at"] = time.time()
+        state["status"] = "running"
+        tmp = task_dir / "state.json.tmp"
+        tmp.write_text(json.dumps(state, indent=2) + "\n")
+        os.replace(str(tmp), str(state_path))
+    except Exception as e:
+        _logger.debug("Could not record task start: %s", e)
+
+
+def _record_task_completion(
+    project_root: str,
+    task_id: str,
+    status: str,
+    halt_payload: Optional[dict] = None,
+) -> None:
+    """Record final task completion and halt payload under .snodo/tasks/<task_id>/state.json."""
+    try:
+        task_dir = Path(project_root) / ".snodo" / "tasks" / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+        state_path = task_dir / "state.json"
+        state = {}
+        if state_path.exists():
+            try:
+                state = json.loads(state_path.read_text())
+            except Exception:
+                state = {}
+        if not isinstance(state, dict):
+            state = {}
+        state["task_id"] = task_id
+        state["completed_at"] = time.time()
+        state["status"] = status
+        if halt_payload:
+            state["halt"] = halt_payload
+        tmp = task_dir / "state.json.tmp"
+        tmp.write_text(json.dumps(state, indent=2) + "\n")
+        os.replace(str(tmp), str(state_path))
+    except Exception as e:
+        _logger.debug("Could not record task completion: %s", e)
+

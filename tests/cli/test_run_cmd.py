@@ -505,7 +505,7 @@ class TestResolveSession:
         args = SimpleNamespace(resume=None)
         protocol = MagicMock()
         protocol.initial_mode = "producer"
-        session, mode = _resolve_session(args, None, protocol, "/tmp/proj")
+        session, mode = _resolve_session(args, None, protocol, "/fake/proj")
         assert session is None
         assert mode == "producer"
 
@@ -519,7 +519,7 @@ class TestResolveSession:
             args = SimpleNamespace(resume=None)
             protocol = MagicMock()
             protocol.initial_mode = "producer"
-            session, mode = _resolve_session(args, mgr, protocol, "/tmp/proj")
+            session, mode = _resolve_session(args, mgr, protocol, d)
             assert session is not None
             assert session.mode == "producer"
             assert mode == "producer"
@@ -532,11 +532,11 @@ class TestResolveSession:
 
         with tempfile.TemporaryDirectory() as d:
             mgr = SessionManager(sessions_dir=Path(d))
-            existing = mgr.create_session("producer", "/tmp/proj")
+            existing = mgr.create_session("producer", d)
             args = SimpleNamespace(resume=None)
             protocol = MagicMock()
             protocol.initial_mode = "producer"
-            session, mode = _resolve_session(args, mgr, protocol, "/tmp/proj")
+            session, mode = _resolve_session(args, mgr, protocol, d)
             assert session.session_id == existing.session_id
             assert mode == "producer"
 
@@ -547,11 +547,11 @@ class TestResolveSession:
 
         with tempfile.TemporaryDirectory() as d:
             mgr = SessionManager(sessions_dir=Path(d))
-            session = mgr.create_session("producer", "/tmp/proj")
+            session = mgr.create_session("producer", d)
             args = SimpleNamespace(resume=session.session_id)
             protocol = MagicMock()
             protocol.initial_mode = "producer"
-            resolved, mode = _resolve_session(args, mgr, protocol, "/tmp/proj")
+            resolved, mode = _resolve_session(args, mgr, protocol, d)
             assert resolved.session_id == session.session_id
             assert mode == "producer"
             assert "resumed" in capsys.readouterr().out
@@ -1350,3 +1350,49 @@ class TestUnverifiedMergeBlocked:
         assert preserve is False
         assert merged == branch
         assert (repo / "file.txt").exists()
+
+
+class TestForegroundTelemetryPersistence:
+    def test_foreground_run_telemetry_persists_and_is_readable(self, temp_project, capsys):
+        """A foreground snodo run persists task telemetry and is readable via snodo meta."""
+        import json
+        import subprocess
+        from snodo.cli.main import main
+        from snodo.paths import derive_task_id
+
+        # Initialize git repo in temp_project
+        subprocess.run(["git", "init", "-q"], cwd=str(temp_project), check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=str(temp_project), check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=str(temp_project), check=True)
+        (temp_project / "README.md").write_text("init\n")
+        subprocess.run(["git", "add", "README.md"], cwd=str(temp_project), check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=str(temp_project), check=True)
+
+        task_desc = "implement calculator function"
+        task_id = derive_task_id(task_desc)
+
+        # Execute foreground run with --mock
+        res = main(["run", "--mock", task_desc])
+        assert res == 0
+
+        # Verify task state was created under .snodo/tasks/<task_id>/state.json
+        task_state_file = temp_project / ".snodo" / "tasks" / task_id / "state.json"
+        assert task_state_file.exists()
+
+        # Read back using snodo meta <task_id>
+        meta_res = main(["meta", task_id])
+        assert meta_res == 0
+        out = capsys.readouterr().out
+        assert f"Task {task_id}" in out
+        assert "implement calculator function" in out
+
+        # Read back using snodo meta <task_id> --json
+        meta_json_res = main(["meta", task_id, "--json"])
+        assert meta_json_res == 0
+        json_out = capsys.readouterr().out
+        data = json.loads(json_out)
+        assert data["schema"] == "snodo.meta.v1"
+        assert data["id"] == task_id
+        assert data["type"] == "task"
+        assert data["ok"] is True
+

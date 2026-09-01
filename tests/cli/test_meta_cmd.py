@@ -148,15 +148,15 @@ def test_meta_job_happy_path_with_telemetry(tmp_path, capsys):
 # ============================================================================
 
 def test_meta_task_no_jobs_dir(tmp_path, capsys):
-    """_meta_task returns 1 when .snodo/jobs directory does not exist."""
+    """_meta_task returns 1 when no jobs or task state exist."""
     res = _meta_task(str(tmp_path), "task_missing")
     assert res == 1
     err = capsys.readouterr().err
-    assert "No jobs directory found." in err
+    assert "No jobs found for task task_missing." in err
 
 
 def test_meta_task_no_matching_jobs(tmp_path, capsys):
-    """_meta_task returns 1 when no jobs match task_id."""
+    """_meta_task returns 1 when no jobs match task_id and no task state exists."""
     jobs_dir = tmp_path / ".snodo" / "jobs"
     jobs_dir.mkdir(parents=True)
 
@@ -166,7 +166,7 @@ def test_meta_task_no_matching_jobs(tmp_path, capsys):
     assert "No jobs found for task task_unmatched." in err
 
 
-def test_meta_task_happy_path(tmp_path, capsys):
+def test_meta_task_happy_path_jobs(tmp_path, capsys):
     """_meta_task aggregates tokens, cost, duration across matching jobs."""
     jobs_dir = tmp_path / ".snodo" / "jobs"
     job1_dir = jobs_dir / "j_job1"
@@ -203,6 +203,111 @@ def test_meta_task_happy_path(tmp_path, capsys):
     assert "j_job2" in out
 
 
+def test_meta_task_foreground_telemetry(tmp_path, capsys):
+    """_meta_task displays telemetry and usage from foreground task state."""
+    task_dir = tmp_path / ".snodo" / "tasks" / "task_fg123"
+    task_dir.mkdir(parents=True)
+
+    task_state = {
+        "task_id": "task_fg123",
+        "description": "Implement foreground telemetry test",
+        "status": "completed",
+        "started_at": 200.0,
+        "completed_at": 208.5,
+        "usage": [
+            {"role": "coder", "prompt_tokens": 1200, "completion_tokens": 400, "cost": 0.012},
+        ],
+        "tool_telemetry": [
+            {
+                "task_ref": "task_fg123",
+                "role": "coder",
+                "turn_index": 1,
+                "tool": "read_files",
+                "target_path": "src/module.py",
+                "read_hit": False,
+                "tokens_in": 600,
+                "tokens_out": 100,
+                "elapsed_ms": 500.0,
+                "submit_bytes": 0,
+            },
+            {
+                "task_ref": "task_fg123",
+                "role": "coder",
+                "turn_index": 2,
+                "tool": "submit_files",
+                "target_path": "",
+                "read_hit": False,
+                "tokens_in": 600,
+                "tokens_out": 300,
+                "elapsed_ms": 800.0,
+                "submit_bytes": 1024,
+            },
+        ],
+        "halt": {"final_decision": "completed", "artifacts_count": 1},
+    }
+    (task_dir / "state.json").write_text(json.dumps(task_state))
+
+    res = _meta_task(str(tmp_path), "task_fg123")
+    assert res == 0
+
+    out = capsys.readouterr().out
+    assert "Task task_fg123  [completed]  8.5s" in out
+    assert "Task: Implement foreground telemetry test" in out
+    assert "Tokens: 1.6k (prompt 1.2k / completion 400)" in out
+    assert "Cost: $0.0120" in out
+    assert "Orientation: 1/2 turns before first submit" in out
+    assert "Path miss rate: 1/1 reads were misses" in out
+    assert "Submit size: 1 submit(s), median 1024 bytes, max 1024 bytes" in out
+
+
+def test_meta_task_json_output(tmp_path, capsys):
+    """_meta_task with json_out=True emits snodo.meta.v1 schema with tool_telemetry."""
+    task_dir = tmp_path / ".snodo" / "tasks" / "task_json_test"
+    task_dir.mkdir(parents=True)
+
+    task_state = {
+        "task_id": "task_json_test",
+        "description": "Test JSON output schema",
+        "status": "completed",
+        "started_at": 10.0,
+        "completed_at": 15.0,
+        "usage": [
+            {"role": "coder", "prompt_tokens": 500, "completion_tokens": 200, "cost": 0.005},
+        ],
+        "tool_telemetry": [
+            {
+                "task_ref": "task_json_test",
+                "role": "coder",
+                "turn_index": 1,
+                "tool": "read_files",
+                "target_path": "src/main.py",
+                "read_hit": False,
+                "tokens_in": 300,
+                "tokens_out": 50,
+                "elapsed_ms": 400.0,
+                "submit_bytes": 0,
+            },
+        ],
+        "halt": {"final_decision": "completed", "artifacts_count": 1},
+    }
+    (task_dir / "state.json").write_text(json.dumps(task_state))
+
+    res = _meta_task(str(tmp_path), "task_json_test", json_out=True)
+    assert res == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["schema"] == "snodo.meta.v1"
+    assert data["ok"] is True
+    assert data["id"] == "task_json_test"
+    assert data["type"] == "task"
+    assert data["status"] == "completed"
+    assert data["tokens"]["total"] == 700
+    assert len(data["tool_telemetry"]) == 1
+    assert data["tool_telemetry"][0]["tool"] == "read_files"
+    assert "tool_telemetry_summary" in data
+    assert "path_miss_rate" in data["tool_telemetry_summary"]
+
+
 # ============================================================================
 # 4. Routing & Prefix Dispatch Tests
 # ============================================================================
@@ -214,22 +319,22 @@ def test_meta_command_routing(tmp_path, monkeypatch):
     job_called = []
     task_called = []
 
-    monkeypatch.setattr("snodo.cli.commands.meta_cmd._meta_job", lambda root, jid: job_called.append(jid) or 0)
-    monkeypatch.setattr("snodo.cli.commands.meta_cmd._meta_task", lambda root, tid, force=False: task_called.append((tid, force)) or 0)
+    monkeypatch.setattr("snodo.cli.commands.meta_cmd._meta_job", lambda root, jid, json_out=False: job_called.append((jid, json_out)) or 0)
+    monkeypatch.setattr("snodo.cli.commands.meta_cmd._meta_task", lambda root, tid, force=False, json_out=False: task_called.append((tid, force, json_out)) or 0)
 
     # j_ prefix -> job
-    meta_command(SimpleNamespace(composite_id="j_abc"))
-    assert job_called == ["j_abc"]
+    meta_command(SimpleNamespace(composite_id="j_abc", json=False))
+    assert job_called == [("j_abc", False)]
 
     # task_ prefix -> task
-    meta_command(SimpleNamespace(composite_id="task_xyz"))
-    assert task_called == [("task_xyz", False)]
+    meta_command(SimpleNamespace(composite_id="task_xyz", json=True))
+    assert task_called == [("task_xyz", False, True)]
 
     # Unknown prefix -> fallback logic
     job_dir = tmp_path / ".snodo" / "jobs" / "custom_job"
     job_dir.mkdir(parents=True)
-    meta_command(SimpleNamespace(composite_id="custom_job"))
-    assert job_called == ["j_abc", "custom_job"]
+    meta_command(SimpleNamespace(composite_id="custom_job", json=False))
+    assert job_called == [("j_abc", False), ("custom_job", False)]
 
 
 # ============================================================================
