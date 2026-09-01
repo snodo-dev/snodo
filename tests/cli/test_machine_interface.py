@@ -400,3 +400,56 @@ class TestValidateJson:
         data = _parse_stdout(capsys)
         assert data["ok"] is False
         assert "error" in data
+
+
+# ---------------------------------------------------------------------------
+# meta --json
+# ---------------------------------------------------------------------------
+
+class TestMetaJson:
+    def test_meta_task_json_parses_and_carries_schema(self, tmp_path, capsys):
+        from snodo.cli.commands.meta_cmd import meta_command
+
+        task_dir = tmp_path / ".snodo" / "tasks" / "task_meta_schema"
+        task_dir.mkdir(parents=True)
+        (task_dir / "state.json").write_text(json.dumps({
+            "task_id": "task_meta_schema",
+            "description": "Schema verification task",
+            "status": "completed",
+            "started_at": 100.0,
+            "completed_at": 105.0,
+            "usage": [{"role": "coder", "prompt_tokens": 100, "completion_tokens": 50, "cost": 0.001}],
+            "tool_telemetry": [
+                {
+                    "task_ref": "task_meta_schema",
+                    "role": "coder",
+                    "turn_index": 1,
+                    "tool": "read_files",
+                    "target_path": "a.py",
+                    "read_hit": False,
+                    "tokens_in": 100,
+                    "tokens_out": 50,
+                    "elapsed_ms": 200.0,
+                    "submit_bytes": 0,
+                }
+            ],
+            "halt": {"final_decision": "completed", "artifacts_count": 1},
+        }))
+
+        with patch("snodo.cli.commands.meta_cmd.resolve_project_root", return_value=str(tmp_path)):
+            result = meta_command(SimpleNamespace(composite_id="task_meta_schema", json=True))
+
+        assert result == 0
+        data = _parse_stdout(capsys)
+        assert data["schema"] == "snodo.meta.v1"
+        assert data["ok"] is True
+        assert data["id"] == "task_meta_schema"
+        assert data["type"] == "task"
+        assert set(data.keys()) == {
+            "schema", "ok", "id", "type", "status", "duration_seconds",
+            "description", "tokens", "cost", "cost_formatted", "roles",
+            "tool_telemetry", "tool_telemetry_summary", "highlight", "jobs",
+        }
+        assert data["tokens"] == {"prompt": 100, "completion": 50, "total": 150}
+        assert len(data["tool_telemetry"]) == 1
+
