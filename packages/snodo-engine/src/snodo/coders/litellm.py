@@ -90,8 +90,43 @@ _DEFAULT_MAX_TOOL_TURNS = 20
 
 
 def _is_gemini3_plus(model: str) -> bool:
-    m = re.search(r'gemini-(\d+)', model)
-    return bool(m and int(m.group(1)) >= 3)
+    """Check if model is Gemini 3.0 or higher."""
+    return "gemini-3" in model.lower() or "gemini-4" in model.lower()
+
+
+def _is_test_governing_file(path: str) -> bool:
+    """Check if a file path governs test behavior (ADR 040 Point 5)."""
+    p = str(path).replace("\\", "/").strip().lower()
+    parts = p.split("/")
+    filename = parts[-1]
+
+    if any(part in {"tests", "test", "spec", "specs"} for part in parts[:-1]):
+        return True
+
+    if (
+        filename.startswith("test_")
+        or filename.endswith("_test.py")
+        or filename.endswith(".test.js")
+        or filename.endswith(".test.ts")
+        or filename.endswith(".spec.js")
+        or filename.endswith(".spec.ts")
+    ):
+        return True
+
+    governing_filenames = {
+        "conftest.py",
+        "pytest.ini",
+        "tox.ini",
+        "pyproject.toml",
+        ".coveragerc",
+        "setup.cfg",
+        "cargo.toml",
+        "package.json",
+        "jest.config.js",
+        "jest.config.ts",
+        "vitest.config.ts",
+    }
+    return filename in governing_filenames
 
 
 class LiteLLMAdapter(CoderAdapter):
@@ -121,6 +156,7 @@ class LiteLLMAdapter(CoderAdapter):
         self.max_tool_turns = max_tool_turns if max_tool_turns is not None else _DEFAULT_MAX_TOOL_TURNS
         self.workspace_mcp = workspace_mcp
         self.progress_callback = progress_callback
+        self.observes_tests = True
 
         self._job_id: str = ""
         self._task_id: str = ""
@@ -197,6 +233,8 @@ class LiteLLMAdapter(CoderAdapter):
                 "`read_files(paths=[...])` rather than making individual `read_file` calls. You may also use "
                 "`read_file(path)` for a single file, `read_file_lines(path, start, end)` for line ranges, and "
                 "`list_files(directory)` to explore the project.\n"
+                "You can search the codebase using `search_string(query)` and locate symbol definitions using `search_symbol(name)`.\n"
+                "You can run the project's declared test runner to observe test output before submitting using `run_tests(test_path, command_type)`.\n"
                 "Read existing files you need to modify so you can make faithful edits.\n"
                 "\n"
                 "When you are ready to deliver your changes, call the `submit_files(files)` tool. "
@@ -271,8 +309,30 @@ Return ONLY the JSON array, no other text.
         except Exception as e:
             raise LLMCallError(f"LLM call failed: {e}") from e
 
+    def _finalize_accumulated_deliveries(
+        self,
+        accumulated_files: Dict[str, Dict[str, Any]],
+        test_governing_mutations: Dict[str, Dict[str, str]],
+    ) -> str:
+        """Finalize accumulated deliveries, record audit events, and attach metadata."""
+        metadata: Dict[str, Any] = {}
+        if test_governing_mutations:
+            mutations_list = list(test_governing_mutations.values())
+            metadata["test_governing_mutations"] = mutations_list
+            metadata["test_mutation_detected"] = True
+            self._emit_audit_event(
+                "test_modified",
+                {
+                    "mutations": mutations_list,
+                    "job_id": self._job_id,
+                    "task_id": self._task_id,
+                },
+            )
+        self._last_artifact_metadata = metadata
+        return json.dumps(list(accumulated_files.values()))
+
     def _call_llm_with_tools(self, prompt: str) -> str:
-        """Bounded tool-use loop with submit_files tool and read_files batch reads."""
+        """Bounded tool-use loop with submit_files, search tools, and test runner observation."""
         workspace = self.workspace_mcp
         tools = self._build_tool_definitions()
         tools.append(self._SUBMIT_FILES_DEF)
@@ -286,10 +346,12 @@ Return ONLY the JSON array, no other text.
         start_time = time.monotonic()
         read_tracker = ReadMemoryTracker()
         accumulated_files: Dict[str, Dict[str, Any]] = {}
+        test_governing_mutations: Dict[str, Dict[str, str]] = {}
         self._read_tracker = read_tracker
 
         for turn in range(self.max_tool_turns):
             turn_start = time.monotonic()
+            test_runs_this_turn = 0
             try:
                 from snodo.config import ConfigManager
                 kwargs = {
@@ -363,7 +425,14 @@ Return ONLY the JSON array, no other text.
                         if files_list is not None and files_list:
                             for f in files_list:
                                 if isinstance(f, dict) and "path" in f:
-                                    accumulated_files[f["path"]] = f
+                                    path = f["path"]
+                                    action = f.get("action", "write")
+                                    accumulated_files[path] = f
+                                    if _is_test_governing_file(path):
+                                        test_governing_mutations[path] = {
+                                            "path": path,
+                                            "kind": action,
+                                        }
                             self._emit_turn_telemetry(
                                 turn_index=turn + 1,
                                 tool="submit_files",
@@ -382,6 +451,27 @@ Return ONLY the JSON array, no other text.
                             )
                         else:
                             result = self._submit_files_feedback(tc)
+                    elif tool_name == "run_tests":
+                        if test_runs_this_turn >= 3:
+                            result = "Test execution limit reached for this turn (max 3 runs per turn). Proceed with implementation or submit_files."
+                        else:
+                            test_runs_this_turn += 1
+                            try:
+                                args = json.loads(tc.function.arguments)
+                            except (json.JSONDecodeError, TypeError):
+                                args = {}
+                            test_path = args.get("test_path", "")
+                            command_type = args.get("command_type", "pytest")
+                            result = self._execute_coder_run_tests(test_path, command_type, workspace, turn + 1)
+                        self._emit_turn_telemetry(
+                            turn_index=turn + 1,
+                            tool="run_tests",
+                            target_path=_normalize_path_arg(args if 'args' in locals() else {}),
+                            read_hit=False,
+                            tokens_in=_usage_tokens(response, "prompt"),
+                            tokens_out=_usage_tokens(response, "completion"),
+                            elapsed_ms=(time.monotonic() - turn_start) * 1000,
+                        )
                     else:
                         try:
                             args = json.loads(tc.function.arguments)
@@ -411,7 +501,7 @@ Return ONLY the JSON array, no other text.
 
             # No tool calls on this turn — deliver accumulated files if any
             if accumulated_files:
-                return json.dumps(list(accumulated_files.values()))
+                return self._finalize_accumulated_deliveries(accumulated_files, test_governing_mutations)
 
             # No tool calls — free-text, try corrective retry once
             if msg.content is not None and not retried_free_text:
@@ -439,7 +529,7 @@ Return ONLY the JSON array, no other text.
 
         # Loop finished (max_tool_turns reached) — deliver accumulated files if any
         if accumulated_files:
-            return json.dumps(list(accumulated_files.values()))
+            return self._finalize_accumulated_deliveries(accumulated_files, test_governing_mutations)
 
         # Hit turn cap with no accumulated files — try last assistant content for legacy parse
         for m in reversed(messages):
@@ -687,6 +777,50 @@ Return ONLY the JSON array, no other text.
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_string",
+                    "description": "Search codebase text files for a query string or pattern",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "String or pattern to search for"},
+                            "directory": {"type": "string", "description": "Directory relative to project root", "default": "."},
+                        },
+                        "required": ["query"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_symbol",
+                    "description": "Search codebase for symbol definitions (class, def, function, struct, fn, type, const)",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Symbol name to locate"},
+                            "directory": {"type": "string", "description": "Directory relative to project root", "default": "."},
+                        },
+                        "required": ["name"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "run_tests",
+                    "description": "Run the project's declared test runner (pytest, npm, cargo) to observe test output before submitting edits",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "test_path": {"type": "string", "description": "Path to test file or directory (relative to project root)", "default": ""},
+                            "command_type": {"type": "string", "enum": ["pytest", "npm", "cargo"], "default": "pytest", "description": "Test command type"},
+                        },
+                    },
+                },
+            },
         ]
 
     @staticmethod
@@ -751,10 +885,69 @@ Return ONLY the JSON array, no other text.
                 return workspace.read_file_lines(args["path"], args["start"], args["end"])
             elif name == "list_files":
                 return "\n".join(workspace.list_files(args.get("directory", ".")))
+            elif name == "search_string":
+                query = args.get("query", "")
+                directory = args.get("directory", ".")
+                if hasattr(workspace, "search_string"):
+                    return workspace.search_string(query, directory)
+                return f"search_string unavailable on workspace: {workspace}"
+            elif name == "search_symbol":
+                symbol_name = args.get("name", "")
+                directory = args.get("directory", ".")
+                if hasattr(workspace, "search_symbol"):
+                    return workspace.search_symbol(symbol_name, directory)
+                return f"search_symbol unavailable on workspace: {workspace}"
             else:
                 return f"Unknown tool: {name}"
         except Exception as e:
             return f"Tool error: {e}"
+
+    def _execute_coder_run_tests(
+        self, test_path: str, command_type: str, workspace: Any, turn_index: int
+    ) -> str:
+        """Execute coder-facing test run (ADR 040 Point 1, 2, 4, 8, 10)."""
+        project_root = getattr(workspace, "project_root", None)
+        if not project_root:
+            return "Test runner unavailable: workspace project root not found."
+
+        try:
+            from snodo.tools.shell import ShellMCP
+            shell = ShellMCP(str(project_root))
+            res = shell.run_tests_raw(test_path=test_path, command_type=command_type, timeout=120)
+        except Exception as e:
+            return f"Test execution failed to launch: {e}"
+
+        self._emit_audit_event(
+            "coder_test_run",
+            {
+                "turn_index": turn_index,
+                "test_path": test_path,
+                "command_type": command_type,
+                "exit_code": res.get("exit_code", -1),
+                "job_id": self._job_id,
+                "task_id": self._task_id,
+            },
+        )
+
+        exit_code = res.get("exit_code", -1)
+        stdout = res.get("stdout", "")
+        stderr = res.get("stderr", "")
+
+        return (
+            f"Test Execution Result (exit code: {exit_code}):\n"
+            f"--- STDOUT ---\n{stdout}\n"
+            f"--- STDERR ---\n{stderr}"
+        )
+
+    def _emit_audit_event(self, event_type: str, data: Dict[str, Any]) -> None:
+        """Emit an audit event if audit_log is available."""
+        try:
+            from snodo.infrastructure.audit import get_audit_log
+            audit_log = get_audit_log()
+            if audit_log and hasattr(audit_log, "append_event"):
+                audit_log.append_event(event_type, data)
+        except Exception as e:
+            _logger.warning("Audit event logging failed: %s", e)
 
     def _emit_turn_telemetry(
         self,
@@ -828,7 +1021,8 @@ Return ONLY the JSON array, no other text.
                 action=action,
             ))
 
-        return CodeArtifact(files=files)
+        metadata = getattr(self, "_last_artifact_metadata", {}) or {}
+        return CodeArtifact(files=files, metadata=metadata)
 
     @staticmethod
     def _extract_json(response: str):
