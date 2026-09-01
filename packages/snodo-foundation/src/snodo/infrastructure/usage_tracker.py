@@ -86,58 +86,81 @@ class UsageTracker(CustomLogger):
 
         self._calls.append(record)
 
-        if job_id != "unknown":
+        if job_id != "unknown" and job_id.startswith("j_"):
             try:
                 _persist_usage(job_id, record)
             except Exception as e:
                 _logger.warning("Failed to persist usage for job %s: %s", job_id, e)
+        if task_id != "unknown" and task_id.startswith("task_"):
+            try:
+                _persist_task_usage(task_id, record)
+            except Exception as e:
+                _logger.warning("Failed to persist usage for task %s: %s", task_id, e)
 
 
 def _persist_usage(job_id: str, record: dict) -> None:
     """Append a usage record to the job's state.json usage list."""
-    project_root = _find_project_root(job_id)
+    project_root = _find_project_root()
     if not project_root:
         return
     jobs_dir = Path(project_root) / ".snodo" / "jobs"
     job_dir = jobs_dir / job_id
     if not job_dir.is_dir():
         return
-    state_path = job_dir / "state.json"
+    _append_usage(job_dir, record)
+
+
+def _persist_task_usage(task_id: str, record: dict) -> None:
+    """Append a usage record to the task's state.json usage list."""
+    project_root = _find_project_root()
+    if not project_root:
+        return
+    tasks_dir = Path(project_root) / ".snodo" / "tasks"
+    task_dir = tasks_dir / task_id
+    task_dir.mkdir(parents=True, exist_ok=True)
+    _append_usage(task_dir, record, task_id=task_id)
+
+
+def _append_usage(target_dir: Path, record: dict, task_id: str = "") -> None:
+    state_path = target_dir / "state.json"
     state = {}
     if state_path.exists():
         try:
             with open(state_path) as f:
                 state = json.load(f)
         except Exception as e:
-            _logger.warning("Failed to read job state for usage tracking: %s", e)
+            _logger.warning("Failed to read state for usage tracking: %s", e)
+    if not isinstance(state, dict):
+        state = {}
     usage_list = state.get("usage", [])
     if not isinstance(usage_list, list):
         usage_list = []
     usage_list.append(record)
     state["usage"] = usage_list
-    tmp = job_dir / "state.json.tmp"
+    if task_id and "task_id" not in state:
+        state["task_id"] = task_id
+    tmp = target_dir / "state.json.tmp"
     with open(tmp, "w") as f:
         json.dump(state, f, indent=2)
-    import os
     os.replace(str(tmp), str(state_path))
 
 
-def _find_project_root(job_id: str) -> str | None:
-    """Resolve project root for *job_id*.
+def _find_project_root(job_id: str = "") -> str | None:
+    """Resolve project root.
 
     Priority:
       1. ``SNODO_PROJECT_ROOT`` env var (set by wrapper.py for bg jobs)
-      2. Walk up from cwd (fallback for inline runs)
+      2. Walk up from cwd via resolve_project_root()
     """
     env_root = os.environ.get("SNODO_PROJECT_ROOT")
     if env_root:
-        candidate = Path(env_root) / ".snodo" / "jobs" / job_id
-        if candidate.is_dir():
-            return env_root
-    from pathlib import Path as _Path
-    d = _Path.cwd()
-    for parent in [d] + list(d.parents):
-        job_dir = parent / ".snodo" / "jobs" / job_id
-        if job_dir.is_dir():
-            return str(parent)
-    return None
+        return env_root
+    try:
+        from snodo.paths import resolve_project_root
+        return resolve_project_root()
+    except Exception:
+        d = Path.cwd()
+        for parent in [d] + list(d.parents):
+            if (parent / ".snodo").is_dir():
+                return str(parent)
+        return None

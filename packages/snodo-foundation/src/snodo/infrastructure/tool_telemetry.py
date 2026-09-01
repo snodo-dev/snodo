@@ -43,54 +43,80 @@ def canonical_target_path(path: str) -> str:
         return p
 
 
-def persist_tool_telemetry(job_id: str, record: dict) -> None:
-    """Append one per-turn telemetry record to the job's state.json.
+def persist_tool_telemetry(target_id: str, record: dict) -> None:
+    """Append one per-turn telemetry record to the job or task's state.json.
 
-    No-op when *job_id* is empty/unknown (inline runs without a job) or the
-    job directory cannot be resolved — telemetry must never crash the loop.
+    No-op when *target_id* is empty/unknown and no *task_ref* is present, or the
+    project root cannot be resolved — telemetry must never crash the loop.
     """
-    if not job_id or job_id == "unknown":
+    if not record or not isinstance(record, dict):
         return
-    project_root = _find_project_root(job_id)
+
+    job_id = target_id if target_id and target_id.startswith("j_") else None
+    task_id = None
+    if target_id and target_id.startswith("task_"):
+        task_id = target_id
+    elif record.get("task_ref") and record.get("task_ref") != "unknown" and str(record.get("task_ref")).startswith("task_"):
+        task_id = str(record["task_ref"])
+
+    if not job_id and not task_id:
+        return
+
+    project_root = _find_project_root()
     if not project_root:
         return
-    job_dir = Path(project_root) / ".snodo" / "jobs" / job_id
-    if not job_dir.is_dir():
-        return
-    state_path = job_dir / "state.json"
-    state = {}
-    if state_path.exists():
-        try:
-            with open(state_path) as f:
-                state = json.load(f)
-        except Exception as e:
-            _logger.warning("Failed to read job state for tool telemetry: %s", e)
-    telemetry = state.get("tool_telemetry", [])
-    if not isinstance(telemetry, list):
-        telemetry = []
-    telemetry.append(record)
-    state["tool_telemetry"] = telemetry
-    tmp = job_dir / "state.json.tmp"
-    with open(tmp, "w") as f:
-        json.dump(state, f, indent=2)
-    os.replace(str(tmp), str(state_path))
+
+    if job_id:
+        _append_telemetry(Path(project_root) / ".snodo" / "jobs" / job_id, record)
+    if task_id:
+        _append_telemetry(Path(project_root) / ".snodo" / "tasks" / task_id, record)
 
 
-def _find_project_root(job_id: str) -> str | None:
-    """Resolve project root for *job_id*.
+def _append_telemetry(target_dir: Path, record: dict) -> None:
+    """Safely append a telemetry record to target_dir/state.json."""
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        state_path = target_dir / "state.json"
+        state = {}
+        if state_path.exists():
+            try:
+                with open(state_path) as f:
+                    state = json.load(f)
+            except Exception as e:
+                _logger.warning("Failed to read state for tool telemetry: %s", e)
+        if not isinstance(state, dict):
+            state = {}
+        telemetry = state.get("tool_telemetry", [])
+        if not isinstance(telemetry, list):
+            telemetry = []
+        telemetry.append(record)
+        state["tool_telemetry"] = telemetry
+        if "task_id" not in state and record.get("task_ref") and str(record["task_ref"]).startswith("task_"):
+            state["task_id"] = str(record["task_ref"])
+        tmp = target_dir / "state.json.tmp"
+        with open(tmp, "w") as f:
+            json.dump(state, f, indent=2)
+        os.replace(str(tmp), str(state_path))
+    except Exception as e:
+        _logger.warning("Failed to append tool telemetry to %s: %s", target_dir, e)
+
+
+def _find_project_root(job_id: str = "", task_id: str = "") -> str | None:
+    """Resolve project root.
 
     Priority:
       1. ``SNODO_PROJECT_ROOT`` env var (set by wrapper.py for bg jobs)
-      2. Walk up from cwd (fallback for inline runs)
+      2. Walk up from cwd via resolve_project_root()
     """
     env_root = os.environ.get("SNODO_PROJECT_ROOT")
     if env_root:
-        candidate = Path(env_root) / ".snodo" / "jobs" / job_id
-        if candidate.is_dir():
-            return env_root
-    d = Path.cwd()
-    for parent in [d] + list(d.parents):
-        job_dir = parent / ".snodo" / "jobs" / job_id
-        if job_dir.is_dir():
-            return str(parent)
-    return None
+        return env_root
+    try:
+        from snodo.paths import resolve_project_root
+        return resolve_project_root()
+    except Exception:
+        d = Path.cwd()
+        for parent in [d] + list(d.parents):
+            if (parent / ".snodo").is_dir():
+                return str(parent)
+        return None
