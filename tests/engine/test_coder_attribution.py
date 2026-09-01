@@ -93,7 +93,7 @@ class TestCoderInHaltPayload:
         payload = builder._build_halt_payload(state)
 
         assert payload["coder"] == "mock"
-        assert payload["coder_model"] == "claude-sonnet-4-20250514"
+        assert payload["coder_model"] is None
         assert payload["judging_model"] == "mock-model"
 
     def test_coder_differs_between_two_coders(self):
@@ -159,8 +159,72 @@ class TestCoderInAuditTrail:
         event_type, data = audit.append_event.call_args[0]
         assert event_type == "dispatch"
         assert data["coder"] == "mock"
-        assert data["coder_model"] == "claude-sonnet-4-20250514"
+        assert data["coder_model"] is None
         assert data["judging_model"] == "mock-model"
+
+
+class TestMockRecordsNoCoderModel:
+    """The mock coder makes no LLM call, so it records coder_model: null.
+
+    MockAdapter has no ``_bare_model`` of its own, but the ``-m`` value is the
+    judging model: the mock never forwards it, so attributing it to the coder
+    would report a model the coder never used. Both the halt payload and the
+    dispatch audit event must record null (Fixes #170).
+    """
+
+    def test_mock_halt_payload_records_no_coder_model(self):
+        from snodo.coders import MockAdapter
+        builder, _, _ = _make_builder_with_session(coder=MockAdapter())
+        builder._default_model = "mock-default"
+        state = _make_loop_state()
+        state.is_complete = False
+        state.is_blocked = True
+        state.halt_type = "constraint"
+        state.constraint_violations = ["v1"]
+
+        payload = builder._build_halt_payload(state)
+
+        assert payload["coder"] == "mock"
+        assert payload["coder_model"] is None
+        assert payload["judging_model"] == "mock-default"
+
+    def test_mock_dispatch_audit_records_no_coder_model(self):
+        from snodo.coders import MockAdapter
+        builder, _, _ = _make_builder_with_session(coder=MockAdapter())
+        builder._default_model = "mock-default"
+        audit = MagicMock()
+        builder._audit_log = audit
+        builder._session_id = "sess-1"
+
+        state = _make_loop_state()
+        state.validation_token = None
+        state.artifacts = ["src/a.py"]
+
+        builder._execute_node({
+            "task": {"id": state.task.id, "spec": state.task.spec},
+            "current_mode": state.current_mode,
+            "iteration": state.iteration,
+            "stage": "execute",
+            "validation_results": [],
+            "validation_token": None,
+            "artifacts": list(state.artifacts),
+            "constraints_passed": True,
+            "constraint_violations": [],
+            "policy_decision": None,
+            "is_complete": state.is_complete,
+            "is_blocked": state.is_blocked,
+            "metadata": {},
+        })
+
+        dispatch = None
+        for call in audit.append_event.call_args_list:
+            if call.args and call.args[0] == "dispatch":
+                dispatch = call.args[1]
+                break
+        assert dispatch is not None
+        assert dispatch["coder"] == "mock"
+        assert dispatch["coder_model"] is None
+        assert dispatch["judging_model"] == "mock-default"
 
 
 # ---------------------------------------------------------------------------

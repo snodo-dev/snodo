@@ -144,6 +144,17 @@ class MockAdapter(CoderAdapter):
         self.last_spec: Optional[TaskSpec] = None
         self._completion_fn = mock_completion_fn
 
+    def _bare_model(self) -> str:
+        """Return the model the coder used to make LLM calls, or "" if none.
+
+        The mock makes no LLM call at all, so there is never a model to
+        attribute to it: the ``-m`` value is the judging model, which the
+        mock never forwards. Returning "" lets the halt payload and the
+        audit trail report ``coder_model: null`` for the mock path, the
+        same as an external CLI coder whose model was not namespaced.
+        """
+        return ""
+
     def implement(self, spec: TaskSpec) -> CodeArtifact:
         self.call_count += 1
         self.last_spec = spec
