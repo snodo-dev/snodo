@@ -11,6 +11,44 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.7.1] — 2026-08-31
+
+A hardening release: no behaviour change to the protocol engine. The supply
+chain, the release pipeline and the docs build all gained gates, and the
+documentation caught up with the coder work shipped in 0.7.0.
+
+### Added
+
+- Security gates in CI: CodeQL, OpenSSF Scorecard, `pip-audit` and `zizmor`,
+  plus PEP 740 build attestations on published artifacts. (Fixes #162)
+- Coverage is measured and uploaded to Codecov, with the gate raised to 75%
+  (measured: 78% over 2,977 tests). (Fixes #160)
+- A `docs` extra, a strict `mkdocs build`, `make docs` / `make docs-serve` /
+  `make deploy-docs` targets, and a `coders.md` page. (Fixes #158)
+- Execution-model diagrams for the three `snodo run` paths (worktree, docker,
+  in-place) and for `snodo plan` waves, embedded in `coders.md`,
+  `authoring-a-plan.md` and the README.
+- The recovery prompt now carries the prior attempt's read-set (paths only), so
+  a retry starts warm instead of re-discovering the same files.
+- Each tag now creates a GitHub Release with the changelog body and the dist
+  artifacts attached.
+- A 7-day Dependabot cooldown, so a freshly published release is not adopted
+  the hour it lands.
+
+### Fixed
+
+- Validator severity is now reported to the progress callback *after* capping,
+  so the terminal and the audit record agree on what a validator returned.
+- README and `coders.md` describe the actual provider surface: Cloudflare
+  Workers AI, Ollama Cloud, local Ollama and llama.cpp, and any
+  OpenAI-compatible endpoint. ADR 035's capability list is scoped to the
+  litellm coder, which is the only one that has those capabilities.
+- Locked dependencies upgraded to clear 52 advisories across 11 packages;
+  `datasets` bumped to 5.0.1 (PYSEC-2026-3716); `mcp` pinned below 2.x, where
+  `FastMCP` was renamed to `MCPServer`.
+
+---
+
 ## [0.7.0] — 2026-08-31
 
 The release that makes the coder swappable. `litellm`, `opencode`,
