@@ -255,6 +255,40 @@ class TestJobStatus:
         out = capsys.readouterr().out
         assert "Job: j_notask" in out
 
+    def test_status_with_error_field(self, mock_manager, capsys):
+        """Status with error field prints Error: <msg>."""
+        mock_manager.get_status.return_value = {
+            "id": "j_err01",
+            "status": "failed",
+            "exit_code": 1,
+            "error": "Worktree creation failed: no commits",
+            "task": {},
+        }
+
+        result = _job_status(mock_manager, "j_err01")
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Status: failed" in out
+        assert "Error: Worktree creation failed: no commits" in out
+
+    def test_status_failed_surfaces_stderr(self, mock_manager, capsys):
+        """Failed status without error field extracts and prints stderr output."""
+        mock_manager.get_status.return_value = {
+            "id": "j_err02",
+            "status": "failed",
+            "exit_code": 1,
+            "task": {},
+        }
+        mock_manager.get_logs.return_value = "Traceback (most recent call last):\nValueError: bad config\n"
+
+        result = _job_status(mock_manager, "j_err02")
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Error:" in out
+        assert "ValueError: bad config" in out
+
 
 # === _job_logs Tests ===
 
@@ -271,14 +305,48 @@ class TestJobLogs:
         assert "line 2" in out
 
     def test_logs_empty_content(self, mock_manager, capsys):
-        """Empty logs prints a no-output message."""
+        """Empty stdout and stderr logs prints a no-output message."""
         mock_manager.get_logs.return_value = ""
+        mock_manager.get_status.return_value = {"id": "j_log02", "status": "completed"}
 
         result = _job_logs(mock_manager, "j_log02", "stdout", None)
 
         assert result == 0
         out = capsys.readouterr().out
         assert "(no stdout output)" in out
+
+    def test_logs_fallback_to_stderr(self, mock_manager, capsys):
+        """Empty stdout logs falls back to displaying stderr output if present."""
+        def mock_get_logs(job_id, stream="stdout", tail=None):
+            if stream == "stdout":
+                return ""
+            elif stream == "stderr":
+                return "Fatal error during startup\n"
+            return ""
+
+        mock_manager.get_logs.side_effect = mock_get_logs
+
+        result = _job_logs(mock_manager, "j_log_err", "stdout", None)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "(no stdout output — showing stderr)" in out
+        assert "Fatal error during startup" in out
+
+    def test_logs_fallback_to_status_error(self, mock_manager, capsys):
+        """Empty stdout and stderr falls back to displaying error from state.json."""
+        mock_manager.get_logs.return_value = ""
+        mock_manager.get_status.return_value = {
+            "id": "j_log_err2",
+            "status": "failed",
+            "error": "Cannot create worktree",
+        }
+
+        result = _job_logs(mock_manager, "j_log_err2", "stdout", None)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "(no stdout output — error: Cannot create worktree)" in out
 
     def test_logs_none_content(self, mock_manager, capsys):
         """None logs prints a no-output message."""
@@ -466,7 +534,7 @@ class TestJobCommandRouting:
         result = job_command(args)
 
         assert result == 0
-        mock_mgr.get_logs.assert_called_once_with(
+        mock_mgr.get_logs.assert_any_call(
             "j_test03", stream="stdout", tail=None
         )
 

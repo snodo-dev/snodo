@@ -34,6 +34,14 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
     if model:
         cmd.extend(["--model", model])
 
+    coder = task_args.get("coder")
+    if coder:
+        cmd.extend(["--coder", coder])
+
+    mode = task_args.get("mode")
+    if mode:
+        cmd.extend(["--mode", mode])
+
     if task_args.get("mock"):
         cmd.append("--mock")
 
