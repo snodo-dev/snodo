@@ -108,15 +108,18 @@ def _find_project_root(job_id: str = "", task_id: str = "") -> str | None:
       1. ``SNODO_PROJECT_ROOT`` env var (set by wrapper.py for bg jobs)
       2. Walk up from cwd via resolve_project_root()
     """
+    from snodo.project import _is_system_root_or_temp
+
     env_root = os.environ.get("SNODO_PROJECT_ROOT")
     if env_root:
+        if _is_system_root_or_temp(env_root):
+            return None
         return env_root
     try:
         from snodo.paths import resolve_project_root
-        return resolve_project_root()
+        root = resolve_project_root()
+        if root and not _is_system_root_or_temp(root):
+            return root
+        return None
     except Exception:
-        d = Path.cwd()
-        for parent in [d] + list(d.parents):
-            if (parent / ".snodo").is_dir():
-                return str(parent)
         return None

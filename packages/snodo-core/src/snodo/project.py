@@ -83,6 +83,28 @@ def resolve_project_id(project_root: str) -> tuple[str, str]:
     return ("local:" + uuid.uuid4().hex, "local")
 
 
+def _is_system_root_or_temp(path: Path | str) -> bool:
+    """Check if path is a shared system root or temp root.
+
+    Shared roots like ``/``, ``~``, ``/tmp``, ``/var/tmp``, and macOS
+    ``/var/folders/.../T`` must never have a ``.snodo`` created directly
+    under them, as doing so pollutes the machine and intercepts project
+    resolution for all processes.
+    """
+    try:
+        resolved = Path(path).resolve()
+    except Exception:
+        return False
+    if resolved == Path("/").resolve() or resolved == Path.home().resolve():
+        return True
+    p_str = str(resolved).replace("\\", "/")
+    if p_str in ["/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp"]:
+        return True
+    if resolved.name == "T" and ("var/folders" in p_str or "private/var/folders" in p_str):
+        return True
+    return False
+
+
 def get_project_id(project_root: str) -> tuple[str, str]:
     """Retrieve the project ID and scope, utilizing .snodo/project.json cache/override."""
     project_json_path = Path(project_root) / ".snodo" / "project.json"
@@ -105,9 +127,19 @@ def get_project_id(project_root: str) -> tuple[str, str]:
 
 def cache_project_id(project_root: str, project_id: str, scope: str) -> None:
     """Caches the project ID and scope to .snodo/project.json."""
-    snodo_dir = Path(project_root) / ".snodo"
+    root_path = Path(project_root)
+    if _is_system_root_or_temp(root_path):
+        _logger.warning("Refusing to cache project ID in system root: %s", project_root)
+        return
+
+    snodo_dir = root_path / ".snodo"
     project_json_path = snodo_dir / "project.json"
     try:
+        if not snodo_dir.exists():
+            has_git = (root_path / ".git").exists()
+            has_protocol = (root_path / "protocol.yml").exists() or (snodo_dir / "protocol.yml").exists()
+            if not has_git and not has_protocol:
+                _logger.warning("Caching project ID created .snodo in non-project directory: %s", project_root)
         snodo_dir.mkdir(parents=True, exist_ok=True)
         data = {}
         if project_json_path.exists():
