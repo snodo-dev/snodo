@@ -6,7 +6,7 @@ FILE: snodo/cli/commands/task_cmd.py
 import logging
 import sys
 from types import SimpleNamespace
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 
@@ -87,13 +87,27 @@ def task_report(
 
 
 
-def task_list_command(args) -> int:
-    """List all task branches in the current project with status."""
-    project_root = resolve_project_root()
-    if project_root is None:
-        print("Not inside a snodo project.", file=sys.stderr)
-        return 1
+def _parse_timestamp(ts_val: Any) -> Any:
+    from datetime import datetime, timezone
+    if isinstance(ts_val, datetime):
+        if ts_val.tzinfo is None:
+            return ts_val.replace(tzinfo=timezone.utc)
+        return ts_val
+    if isinstance(ts_val, str) and ts_val:
+        try:
+            s = ts_val.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except (ValueError, TypeError):
+            return datetime.now(timezone.utc)
+    return None
 
+
+def _get_all_task_branches(project_root: str) -> dict:
+    """Collect all task branches and task records from session state, audit log, and git."""
+    from datetime import datetime, timezone
     from snodo.infrastructure.state import read_state
     from snodo.infrastructure.session import SessionManager
 
@@ -101,26 +115,185 @@ def task_list_command(args) -> int:
     mode = state.current_mode
 
     task_failures: dict = {}
+    halts: dict = {}
+    classifications: dict = {}
+    session_ts = None
+    session = None
 
     if mode:
         mgr = SessionManager()
         session = mgr.get_active_session(mode, project_root)
         if session:
-            task_failures = session.checkpoint.decisions.get("task_failure", {})
-            if not isinstance(task_failures, dict):
-                task_failures = {}
+            session_ts = _parse_timestamp(getattr(session, "last_updated", None))
+            decisions = session.checkpoint.decisions or {}
+            tf = decisions.get("task_failure", {})
+            if isinstance(tf, dict):
+                task_failures = tf
+            h = decisions.get("halt", {})
+            if isinstance(h, dict):
+                halts = h
+            c = decisions.get("classification", {})
+            if isinstance(c, dict):
+                classifications = c
 
-    if not task_failures:
+    merged_tasks = set()
+    audit_timestamps: dict = {}
+    try:
+        from snodo.infrastructure.audit import get_audit_log
+        audit_log = get_audit_log()
+        events = audit_log.read_events()
+        for ev in events:
+            data = ev.payload or {}
+            op = data.get("op") or ev.event_type
+            task_ref = data.get("task_ref") or data.get("task_id") or data.get("task")
+            ts = _parse_timestamp(data.get("timestamp") or getattr(ev, "timestamp", None))
+            if task_ref:
+                if ts and task_ref not in audit_timestamps:
+                    audit_timestamps[task_ref] = ts
+                if op == "task_merged":
+                    merged_tasks.add(task_ref)
+                    b_name = data.get("branch")
+                    if b_name:
+                        merged_tasks.add(b_name)
+    except Exception as e:
+        _logger.debug("Could not inspect audit log: %s", e)
+
+    git_task_branches: dict = {}
+    git_available = False
+    try:
+        from snodo.tools.git import GitMCP
+        git = GitMCP(project_root)
+        git_available = True
+        for head in git.repo.heads:
+            if head.name.startswith("task/"):
+                branch_suffix = head.name[5:]
+                task_id = branch_suffix.split("/")[0] if "/" in branch_suffix else branch_suffix
+                try:
+                    commit_ts = datetime.fromtimestamp(head.commit.committed_date, tz=timezone.utc)
+                except Exception:
+                    commit_ts = None
+                git_task_branches[task_id] = {
+                    "name": head.name,
+                    "commit_date": commit_ts,
+                }
+    except Exception as e:
+        _logger.debug("Could not inspect git task branches: %s", e)
+
+    all_task_ids = (
+        set(task_failures.keys())
+        | set(halts.keys())
+        | set(classifications.keys())
+        | set(git_task_branches.keys())
+        | {t for t in merged_tasks if isinstance(t, str) and not t.startswith("task/")}
+    )
+    tasks = {}
+
+    for tid in sorted(all_task_ids):
+        failure_entry = task_failures.get(tid) if isinstance(task_failures.get(tid), dict) else None
+        halt_entry = halts.get(tid) if isinstance(halts.get(tid), dict) else None
+        class_entry = classifications.get(tid) if isinstance(classifications.get(tid), dict) else None
+        git_info = git_task_branches.get(tid)
+
+        has_git = True if git_info else (False if git_available else None)
+        if git_info:
+            branch = git_info["name"]
+        elif failure_entry and failure_entry.get("branch"):
+            branch = failure_entry["branch"]
+        else:
+            branch = f"task/{tid}" if (halt_entry or class_entry or tid in merged_tasks) else "—"
+
+        is_merged = (tid in merged_tasks) or (branch in merged_tasks)
+
+        attempt = 1
+        if failure_entry and "attempt" in failure_entry:
+            attempt = failure_entry["attempt"]
+        elif halt_entry and "attempt" in halt_entry:
+            attempt = halt_entry.get("attempt", 1)
+
+        if is_merged:
+            status = "merged"
+        elif failure_entry:
+            status = "failed"
+        elif halt_entry:
+            halt_status = halt_entry.get("status")
+            halt_type = halt_entry.get("halt_type")
+            final_dec = halt_entry.get("final_decision")
+            blocked_types = (
+                "blocker", "escalate", "validator_error", "internal_error",
+                "recovery_exhausted", "execution_error", "wf3", "constraint",
+                "head_not_moved", "max_iterations",
+            )
+            if (
+                halt_status == "blocked"
+                or halt_type in blocked_types
+                or final_dec in ("blocker", "escalate", "validator_error", "internal_error")
+            ):
+                status = "failed"
+            elif halt_status == "completed" or halt_type == "completed" or final_dec == "completed":
+                status = "completed"
+            else:
+                status = "completed" if has_git is not True else "in_progress"
+        elif has_git is True:
+            status = "in_progress"
+        else:
+            status = "completed"
+
+        ts = None
+        if failure_entry and failure_entry.get("timestamp"):
+            ts = _parse_timestamp(failure_entry.get("timestamp"))
+        if not ts and halt_entry and halt_entry.get("timestamp"):
+            ts = _parse_timestamp(halt_entry.get("timestamp"))
+        if not ts:
+            ts = audit_timestamps.get(tid) or audit_timestamps.get(branch)
+        if not ts and git_info:
+            ts = git_info.get("commit_date")
+        if not ts and session_ts:
+            ts = session_ts
+        if not ts:
+            ts = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+        spec = None
+        if failure_entry and failure_entry.get("spec"):
+            spec = failure_entry["spec"]
+        elif halt_entry and halt_entry.get("task_spec"):
+            spec = halt_entry["task_spec"]
+        elif class_entry and class_entry.get("task_spec"):
+            spec = class_entry["task_spec"]
+
+        tasks[tid] = {
+            "task_id": tid,
+            "branch": branch,
+            "attempt": attempt,
+            "status": status,
+            "timestamp": ts,
+            "has_git_branch": has_git is True,
+            "has_failure_context": failure_entry is not None,
+            "spec": spec,
+        }
+
+    return tasks
+
+
+def task_list_command(args) -> int:
+    """List all task branches in the current project with status."""
+    project_root = resolve_project_root()
+    if project_root is None:
+        print("Not inside a snodo project.", file=sys.stderr)
+        return 1
+
+    tasks = _get_all_task_branches(project_root)
+
+    if not tasks:
         print("No task branches in current session.")
         return 0
 
     print(f"{'TASK ID':<14} {'BRANCH':<50} {'ATTEMPT':<8} {'STATUS'}")
     print("-" * 86)
 
-    for tid, ctx in sorted(task_failures.items()):
-        branch = ctx.get("branch", "—")
-        attempt = ctx.get("attempt", 0)
-        status = "failed"
+    for tid, info in sorted(tasks.items()):
+        branch = info["branch"]
+        attempt = info["attempt"]
+        status = info["status"]
         print(f" {tid:<14} {branch:<50} {attempt:<8} {status}")
         print(f"   inspect: snodo task show {tid}")
 
@@ -321,35 +494,20 @@ def task_prune_command(args) -> int:
         print("Not inside a snodo project.", file=sys.stderr)
         return 1
 
-    from snodo.infrastructure.state import read_state
-    from snodo.infrastructure.session import SessionManager
+    tasks = _get_all_task_branches(project_root)
 
-    state = read_state(project_root)
-    mode = state.current_mode
-    task_failures: dict = {}
-
-    if mode:
-        mgr = SessionManager()
-        session = mgr.get_active_session(mode, project_root)
-        if session:
-            task_failures = session.checkpoint.decisions.get("task_failure", {})
-            if not isinstance(task_failures, dict):
-                task_failures = {}
-
-    if not task_failures:
+    if not tasks:
         print("No task branches to prune.")
         return 0
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
     stale = []
-    for tid, ctx in sorted(task_failures.items()):
-        ts_str = ctx.get("timestamp", "")
-        try:
-            ts = datetime.fromisoformat(ts_str)
-        except (ValueError, TypeError):
-            ts = datetime.now(timezone.utc)
+    for tid, info in sorted(tasks.items()):
+        if not info["has_git_branch"] and not info.get("has_failure_context"):
+            continue
+        ts = info["timestamp"]
         if ts < cutoff:
-            stale.append((tid, ctx.get("branch", ""), ts))
+            stale.append((tid, info["branch"], ts, info["has_git_branch"], info.get("has_failure_context", False)))
 
     if not stale:
         print(f"No task branches older than {stale_days} days.")
@@ -357,7 +515,7 @@ def task_prune_command(args) -> int:
 
     print(f"Found {len(stale)} stale task branch(es) (> {stale_days} days):")
     print()
-    for tid, branch, ts in stale:
+    for tid, branch, ts, _, _ in stale:
         print(f"  {tid}  {branch}  ({ts.strftime('%Y-%m-%d')})")
     print()
 
@@ -373,16 +531,39 @@ def task_prune_command(args) -> int:
     try:
         from snodo.tools.git import GitMCP
         from snodo.infrastructure.worktree import remove_worktree
+        from snodo.infrastructure.state import read_state
+        from snodo.infrastructure.session import SessionManager
+
         git = GitMCP(project_root)
+
+        state = read_state(project_root)
+        mode = state.current_mode
+        session = None
+        mgr = None
+        if mode:
+            mgr = SessionManager()
+            session = mgr.get_active_session(mode, project_root)
+
         deleted = 0
-        for tid, branch, _ in stale:
-            branch_prefix = f"task/{tid}"
-            for head in git.repo.heads:
-                if head.name.startswith(branch_prefix):
-                    git.repo.git.branch("-D", head.name)
-                    deleted += 1
-                    break
+        for tid, branch, _, has_git, has_failure in stale:
+            if git:
+                branch_prefix = f"task/{tid}"
+                for head in git.repo.heads:
+                    if head.name == branch or head.name.startswith(branch_prefix):
+                        git.repo.git.branch("-D", head.name)
+                        deleted += 1
+                        break
             remove_worktree(project_root, tid)
+
+            if session and mgr and has_failure:
+                task_failures = session.checkpoint.decisions.get("task_failure", {})
+                if isinstance(task_failures, dict) and tid in task_failures:
+                    del task_failures[tid]
+                    try:
+                        mgr.update_decision(session.session_id, "task_failure", task_failures)
+                    except Exception as e:
+                        _logger.warning("Could not clear failure context for task %s during prune: %s", tid, e)
+
         print(f"Deleted {deleted} stale branch(es).")
     except Exception as e:
         print(f"Error pruning branches: {e}", file=sys.stderr)
