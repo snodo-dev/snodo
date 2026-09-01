@@ -30,34 +30,41 @@ class ProviderConfig(BaseModel):
     base_url: str = ""
     litellm_provider: str = ""
     extra_headers: Dict[str, str] = Field(default_factory=dict)
+    probe_model: str = ""
 
 
 DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
     "anthropic": ProviderConfig(
         api_key_env="ANTHROPIC_API_KEY",
         models_endpoint="https://api.anthropic.com/v1/models",
+        probe_model="claude-3-haiku-20240307",
     ),
     "openai": ProviderConfig(
         api_key_env="OPENAI_API_KEY",
         models_endpoint="https://api.openai.com/v1/models",
+        probe_model="gpt-4o-mini",
     ),
     "openrouter": ProviderConfig(
         api_key_env="OPENROUTER_API_KEY",
         models_endpoint="https://openrouter.ai/api/v1/models",
+        probe_model="openai/gpt-4o-mini",
     ),
     "google": ProviderConfig(
         api_key_env="GEMINI_API_KEY",
         models_endpoint="https://generativelanguage.googleapis.com/v1beta/models",
+        probe_model="gemini/gemini-2.0-flash",
     ),
     "cloudflare": ProviderConfig(
         api_key_env="CLOUDFLARE_API_KEY",
         account_id_env="CLOUDFLARE_ACCOUNT_ID",
         models_endpoint="https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/models",
         extra_headers={"x-session-affinity": "{task_id}"},
+        probe_model="@cf/meta/llama-3.1-8b-instruct",
     ),
     "deepseek": ProviderConfig(
         api_key_env="DEEPSEEK_API_KEY",
         models_endpoint="https://api.deepseek.com/models",
+        probe_model="deepseek/deepseek-chat",
     ),
 }
 
@@ -439,11 +446,11 @@ class ConfigManager:
         engine[key] = value
         self.save(config)
 
-    def test_keys(self) -> Dict[str, bool]:
+    def test_keys(self) -> Dict[str, str]:
         """Test all configured API keys via liteLLM.
 
         Returns:
-            Dict of provider -> success boolean
+            Dict of provider -> result status ("valid", "invalid", "untestable")
         """
         results = {}
         providers = self.get_providers()
@@ -456,56 +463,73 @@ class ConfigManager:
 
         return results
 
-    def _test_single_key(self, provider: str, key: str, pc: Optional[ProviderConfig] = None) -> bool:
+    def _test_single_key(self, provider: str, key: str, pc: Optional[ProviderConfig] = None) -> str:
         """Test a single API key by making a minimal LLM call.
 
         Args:
             provider: Provider name
             key: API key to test
-            pc: ProviderConfig with api_key_env
+            pc: ProviderConfig with api_key_env and probe_model
 
         Returns:
-            True if key is valid
+            "valid", "invalid", or "untestable"
         """
+        if pc is None:
+            pc = self.get_providers().get(provider) or DEFAULT_PROVIDER_CATALOG.get(provider)
+
+        if pc is None or not pc.probe_model:
+            return "untestable"
+
+        model = pc.probe_model
+
+        env_var = pc.api_key_env
+        if not env_var and not pc.litellm_provider:
+            return "untestable"
+
         try:
             from litellm import completion
+        except (ImportError, Exception):
+            return "untestable"
 
-            # Map provider to a cheap test model
-            test_models = {
-                "openai": "gpt-4o-mini",
-                "anthropic": "claude-sonnet-4-20250514",
-                "google": "gemini/gemini-2.0-flash-exp",
+        target_env_vars = []
+        if env_var:
+            target_env_vars.append((env_var, key))
+        if pc.litellm_provider:
+            target_pc = DEFAULT_PROVIDER_CATALOG.get(pc.litellm_provider)
+            if target_pc and target_pc.api_key_env:
+                target_env_vars.append((target_pc.api_key_env, key))
+        if pc.account_id_env and pc.account_id:
+            target_env_vars.append((pc.account_id_env, pc.account_id))
+
+        saved_env = {}
+        for ev, val in target_env_vars:
+            saved_env[ev] = os.environ.get(ev)
+            os.environ[ev] = val
+
+        try:
+            kwargs: dict[str, Any] = {
+                "model": ConfigManager.resolve_litellm_model(model),
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1,
             }
+            api_base = ConfigManager.resolve_api_base(model) or pc.base_url
+            if api_base:
+                kwargs["api_base"] = api_base
+            extra_headers = ConfigManager.resolve_extra_headers(model) or (pc.extra_headers if pc.extra_headers else None)
+            if extra_headers:
+                kwargs["extra_headers"] = extra_headers
 
-            model = test_models.get(provider)
-            if not model:
-                return False
-
-            if pc is not None and pc.api_key_env:
-                env_var = pc.api_key_env
-            else:
-                # Fallback for backward-compat direct calls without ProviderConfig
-                env_var = DEFAULT_PROVIDER_CATALOG.get(provider, ProviderConfig()).api_key_env
-            if not env_var:
-                return False
-
-            old_val = os.environ.get(env_var)
-            try:
-                os.environ[env_var] = key
-                completion(
-                    model=model,
-                    messages=[{"role": "user", "content": "hi"}],
-                    max_tokens=1,
-                )
-                return True
-            finally:
-                if old_val is not None:
-                    os.environ[env_var] = old_val
-                elif env_var in os.environ:
-                    del os.environ[env_var]
-
+            completion(**kwargs)
+            return "valid"
         except Exception:
-            return False
+            return "invalid"
+        finally:
+            for ev, _ in target_env_vars:
+                old = saved_env.get(ev)
+                if old is not None:
+                    os.environ[ev] = old
+                elif ev in os.environ:
+                    del os.environ[ev]
 
     @staticmethod
     def mask_key(key: str) -> str:

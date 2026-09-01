@@ -159,13 +159,16 @@ def _config_test(mgr: ConfigManager) -> int:
 
     print("Testing API keys...")
     results = mgr.test_keys()
-    all_ok = True
-    for provider, ok in results.items():
-        status = "✓ valid" if ok else "✗ invalid"
-        print(f"  {provider}: {status}")
-        if not ok:
-            all_ok = False
-    return 0 if all_ok else 1
+    has_invalid = False
+    for provider, status in results.items():
+        if status == "valid":
+            print(f"  {provider}: ✓ valid")
+        elif status == "untestable":
+            print(f"  {provider}: ? untestable")
+        else:
+            print(f"  {provider}: ✗ invalid")
+            has_invalid = True
+    return 1 if has_invalid else 0
 
 
 def _config_set(mgr: ConfigManager, key: str, value: str) -> int:
