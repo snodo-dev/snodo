@@ -14,6 +14,7 @@ from snodo.infrastructure.session import SessionManager
 from snodo.infrastructure.state import ProjectState, write_state
 
 from snodo.cli.commands.task_cmd import (
+    _get_all_task_branches,
     _merge_identity,
     _task_callback,
     task_abandon,
@@ -369,10 +370,17 @@ def test_task_list_shows_all_tasks_and_honest_statuses(tmp_path, monkeypatch, ca
     assert res == 0
     out = capsys.readouterr().out
 
-    assert "t_blocked" in out and "failed" in out
-    assert "t_merged" in out and "merged" in out
-    assert "t_completed" in out and "completed" in out
-    assert "t_in_progress" in out and "in_progress" in out
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
+    task_statuses = {}
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 4 and parts[0].startswith("t_"):
+            task_statuses[parts[0]] = parts[3]
+
+    assert task_statuses.get("t_blocked") == "failed"
+    assert task_statuses.get("t_merged") == "merged"
+    assert task_statuses.get("t_completed") == "completed"
+    assert task_statuses.get("t_in_progress") == "in_progress"
 
 
 # ============================================================================
@@ -845,3 +853,43 @@ def test_task_prune_untimestamped_halt_record_pruned(tmp_path, monkeypatch, caps
     out = capsys.readouterr().out
     assert "Found 1 stale task branch" in out
     assert "t_old" in out
+
+
+def test_dispatched_task_status_is_in_progress(tmp_path, monkeypatch):
+    """A task known only from classification (dispatched, no halt record) reports in_progress."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "classification", {
+        "t_dispatched": {
+            "flow_type": "feature",
+            "task_spec": "some work",
+        }
+    })
+
+    tasks = _get_all_task_branches(str(tmp_path))
+    assert "t_dispatched" in tasks
+    assert tasks["t_dispatched"]["status"] == "in_progress"
+
+
+def test_untimestamped_task_fallback_timestamp_not_unconditionally_stale(tmp_path, monkeypatch, capsys):
+    """An untimestamped task record without session timestamp falls back to now() and is not unconditionally stale."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "classification", {
+        "t_recent": {
+            "flow_type": "feature",
+            "task_spec": "recent work",
+        }
+    })
+
+    # Clear any session timestamps to test fallback
+    session.updated_at = ""
+    session.created_at = ""
+    monkeypatch.setattr(mgr, "get_active_session", lambda m, p: session)
+
+    task_prune_command(SimpleNamespace(stale_days=7))
+    out = capsys.readouterr().out
+    assert "No task branches older than 7 days." in out or "No task branches to prune." in out
+
