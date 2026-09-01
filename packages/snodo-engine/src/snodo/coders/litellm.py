@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
-from snodo.coders.base import CoderAdapter, LLMCallError, ParseError
+from snodo.coders.base import CoderAdapter, LLMCallError, ParseError, TurnBudgetExhausted
 from snodo.engine.progress import format_elapsed, format_tool_call_summary
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.infrastructure.usage_tracker import UsageTracker
@@ -528,12 +528,20 @@ Return ONLY the JSON array, no other text.
                     msg.content, turn, finish_reason,
                 )
             break
+        else:
+            # The loop completed every allowed turn without returning: the
+            # coder exhausted its turn budget. This is a bounded, anticipated
+            # outcome with its own identity — never a crash, never a parse
+            # failure — so it must not be laundered into ``internal_error``.
+            if accumulated_files:
+                return self._finalize_accumulated_deliveries(
+                    accumulated_files, test_governing_mutations,
+                )
+            self._raise_turn_budget_exhausted(finish_reason)
 
-        # Loop finished (max_tool_turns reached) — deliver accumulated files if any
-        if accumulated_files:
-            return self._finalize_accumulated_deliveries(accumulated_files, test_governing_mutations)
-
-        # Hit turn cap with no accumulated files — try last assistant content for legacy parse
+        # Early break (a content-less response with no tool calls), not turn
+        # exhaustion. Try the last assistant content for a legacy free-text
+        # delivery, then fail loudly.
         for m in reversed(messages):
             if m.get("role") == "assistant" and m.get("content"):
                 return self._try_parse_or_fail(
@@ -567,6 +575,20 @@ Return ONLY the JSON array, no other text.
             f"Model: {self.model}, turns used: {turns_used + 1}, "
             f"finish_reason: {finish_reason}, "
             f"content preview: {preview}"
+        )
+
+    def _raise_turn_budget_exhausted(self, finish_reason: Optional[str]) -> None:
+        """Raise the distinct turn-budget outcome when the coder runs out of turns.
+
+        The coder used every allowed tool turn without calling ``submit_files``.
+        This is not a crash and not an unparseable response; it is a bounded,
+        anticipated outcome the engine reports under its own halt outcome.
+        """
+        raise TurnBudgetExhausted(
+            "Coder exhausted its turn budget "
+            f"({self.max_tool_turns} turns) without submitting files via "
+            "submit_files. Model: "
+            f"{self.model}, finish_reason: {finish_reason}."
         )
 
     _SUBMIT_FILES_DEF = {

@@ -35,6 +35,16 @@ class ParseError(AdapterError):
     """Failed to parse LLM output."""
 
 
+class TurnBudgetExhausted(AdapterError):
+    """The coder consumed its full turn budget without submitting files.
+
+    A bounded, anticipated outcome, not a crash: the coder ran out of turns
+    before calling ``submit_files`` with a deliverable file set. Distinct from
+    :class:`ParseError` (an unparseable response) so the engine can report it
+    under its own halt outcome instead of masking it as ``internal_error``.
+    """
+
+
 class SnodoMutationError(AdapterError):
     """An in-place-writing coder modified protected .snodo/ state.
 
