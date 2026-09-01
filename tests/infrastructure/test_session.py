@@ -369,6 +369,121 @@ class TestPruneStale:
         assert count == 0
 
 
+# ========== AUDITED-BUT-MISSING (cross-home divergence) ==========
+
+class TestAuditedButMissing:
+    """A session id can appear in the project audit log with no file under a
+    given snodo home's session store: the audit log is project-scoped (never
+    redirected by SNODO_HOME) while session files are home-scoped."""
+
+    def _write_project_audit(self, project_root: Path, session_ids: list) -> None:
+        """Write a minimal, valid audit log citing the given session ids."""
+        from snodo.infrastructure.audit import AuditLog
+
+        audit = AuditLog(str(Path(project_root) / ".snodo" / "audit.log"))
+        for sid in session_ids:
+            audit.append_event("session_started", {
+                "op": "session_started",
+                "session_id": sid,
+                "mode": "producer",
+                "project_root": str(project_root),
+            })
+
+    def _project(self, tmp_path) -> Path:
+        p = tmp_path / "proj"
+        (p / ".snodo").mkdir(parents=True)
+        return p
+
+    def test_is_audited_but_missing_true_when_file_absent(
+        self, mgr, tmp_path,
+    ):
+        project = self._project(tmp_path)
+        self._write_project_audit(project, ["sess_20260101_prod_a1b2c3"])
+        assert mgr.is_audited_but_missing("sess_20260101_prod_a1b2c3", str(project))
+
+    def test_is_audited_but_missing_false_when_file_present(
+        self, mgr, sessions_dir, tmp_path,
+    ):
+        project = self._project(tmp_path)
+        # Session exists in this store.
+        created = mgr.create_session("producer", str(project))
+        self._write_project_audit(project, [created.session_id])
+        assert not mgr.is_audited_but_missing(created.session_id, str(project))
+
+    def test_is_audited_but_missing_false_for_unknown_id(
+        self, mgr, tmp_path,
+    ):
+        project = self._project(tmp_path)
+        self._write_project_audit(project, ["sess_20260101_prod_a1b2c3"])
+        assert not mgr.is_audited_but_missing("sess_99999999_prod_zzzzzz", str(project))
+
+    def test_is_audited_but_missing_false_no_audit_log(self, mgr, tmp_path):
+        project = tmp_path / "proj"
+        project.mkdir()
+        assert not mgr.is_audited_but_missing("sess_x", str(project))
+
+    def test_audited_missing_ids_lists_only_absent(
+        self, mgr, sessions_dir, tmp_path,
+    ):
+        project = self._project(tmp_path)
+        present = mgr.create_session("producer", str(project))
+        self._write_project_audit(project, [present.session_id, "sess_20260101_prod_a1b2c3"])
+        missing = mgr.audited_missing_ids(str(project))
+        assert missing == ["sess_20260101_prod_a1b2c3"]
+
+    def test_audited_missing_ids_emits_audit_event(
+        self, mgr_with_audit, audit_log, sessions_dir, tmp_path,
+    ):
+        project = self._project(tmp_path)
+        self._write_project_audit(project, ["sess_20260101_prod_a1b2c3"])
+        audit_log.reset_mock()
+        mgr_with_audit.audited_missing_ids(str(project))
+        assert any(
+            c[0][0] == "session_audited_but_missing"
+            for c in audit_log.append_event.call_args_list
+        )
+
+    def test_audited_ids_scoped_to_other_event_types(
+        self, mgr, tmp_path,
+    ):
+        """An audited id without a session_started line is still detected."""
+        project = self._project(tmp_path)
+        # No session_started; only a dispatch event carrying the id.
+        from snodo.infrastructure.audit import AuditLog
+        audit = AuditLog(str(project / ".snodo" / "audit.log"))
+        audit.append_event("dispatch", {
+            "op": "dispatch",
+            "session_id": "sess_20260101_prod_d1e2f3",
+        })
+        assert mgr.is_audited_but_missing("sess_20260101_prod_d1e2f3", str(project))
+
+    def test_get_active_session_warns_on_audited_missing_pointer(
+        self, mgr, tmp_path, caplog,
+    ):
+        """A stale active pointer that the audit chain asserts existed must
+        surface as a divergence instead of silently auto-adopting another
+        session."""
+        from snodo.infrastructure.state import read_state, write_state
+
+        project = self._project(tmp_path)
+        other = mgr.create_session("producer", str(project))
+        self._write_project_audit(project, ["sess_20260101_prod_a1b2c3"])
+        state = read_state(str(project))
+        state.active_session["producer"] = "sess_20260101_prod_a1b2c3"
+        write_state(str(project), state)
+
+        with caplog.at_level("WARNING"):
+            found = mgr.get_active_session("producer", str(project))
+
+        assert found is not None
+        assert found.session_id == other.session_id  # auto-adopt still works
+        assert any(
+            "Active session pointer" in r.message
+            and "audit log" in r.message
+            for r in caplog.records
+        )
+
+
 # ========== AUDIT LOG ==========
 
 class TestAuditLog:

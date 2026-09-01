@@ -67,6 +67,20 @@ did the work.
 
 ### Fixed
 
+- A session id cited by the project audit log is no longer silently invisible
+  to session readers. The audit log is a property of the PROJECT (never
+  redirected by `SNODO_HOME`), while session files are stored under the snodo
+  home; a session created under one home is therefore audited into the shared
+  `audit.log` but absent from every other home's session store — `snodo session
+  show/list`, `snodo task show`, and `snodo cloud sync --session` all reported
+  a bare "Session not found", and the active-session pointer silently
+  auto-adopted a *different* session. Those readers now detect the divergence:
+  `session show`/`cloud sync --session` name the audited-but-missing id and the
+  store it is absent from, `session list` lists audited ids with no file, and
+  `get_active_session` warns (and audits `session_pointer_audited_but_missing`)
+  before falling back to auto-adoption, instead of attributing tasks to a
+  session that never ran them.
+
 - A run now records which coder produced the work. `snodo run` previously
   printed "Coder: real LLM" for every non-mock coder, and neither the halt
   payload nor the audit trail carried a coder field — a run under litellm,
