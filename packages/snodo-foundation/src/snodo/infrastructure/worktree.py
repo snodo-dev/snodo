@@ -338,6 +338,6 @@ def list_worktrees(project_root: str) -> list:
     d = worktree_dir(project_root)
     if not d.is_dir():
         return []
-    entries = [p for p in d.iterdir() if p.is_dir()]
+    entries = [p for p in d.iterdir() if p.is_dir() and not p.name.startswith(".")]
     entries.sort(key=lambda p: p.stat().st_mtime)
     return [p.name for p in entries]
