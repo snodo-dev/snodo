@@ -124,7 +124,11 @@ def _get_all_task_branches(project_root: str) -> dict:
         mgr = SessionManager()
         session = mgr.get_active_session(mode, project_root)
         if session:
-            session_ts = _parse_timestamp(getattr(session, "last_updated", None))
+            session_ts = _parse_timestamp(
+                getattr(session, "updated_at", None)
+                or getattr(session, "created_at", None)
+                or getattr(session, "last_updated", None)
+            )
             decisions = session.checkpoint.decisions or {}
             tf = decisions.get("task_failure", {})
             if isinstance(tf, dict):
@@ -141,9 +145,9 @@ def _get_all_task_branches(project_root: str) -> dict:
     try:
         from snodo.infrastructure.audit import get_audit_log
         audit_log = get_audit_log()
-        events = audit_log.read_events()
+        events = audit_log.get_history() if audit_log else []
         for ev in events:
-            data = ev.payload or {}
+            data = ev.data or {}
             op = data.get("op") or ev.event_type
             task_ref = data.get("task_ref") or data.get("task_id") or data.get("task")
             ts = _parse_timestamp(data.get("timestamp") or getattr(ev, "timestamp", None))
@@ -156,7 +160,7 @@ def _get_all_task_branches(project_root: str) -> dict:
                     if b_name:
                         merged_tasks.add(b_name)
     except Exception as e:
-        _logger.debug("Could not inspect audit log: %s", e)
+        _logger.warning("Could not inspect audit log: %s", e)
 
     git_task_branches: dict = {}
     git_available = False
@@ -177,7 +181,7 @@ def _get_all_task_branches(project_root: str) -> dict:
                     "commit_date": commit_ts,
                 }
     except Exception as e:
-        _logger.debug("Could not inspect git task branches: %s", e)
+        _logger.warning("Could not inspect git task branches: %s", e)
 
     all_task_ids = (
         set(task_failures.keys())
@@ -236,7 +240,7 @@ def _get_all_task_branches(project_root: str) -> dict:
         elif has_git is True:
             status = "in_progress"
         else:
-            status = "completed"
+            status = "in_progress"
 
         ts = None
         if failure_entry and failure_entry.get("timestamp"):
@@ -250,7 +254,7 @@ def _get_all_task_branches(project_root: str) -> dict:
         if not ts and session_ts:
             ts = session_ts
         if not ts:
-            ts = datetime(1970, 1, 1, tzinfo=timezone.utc)
+            ts = datetime.now(timezone.utc)
 
         spec = None
         if failure_entry and failure_entry.get("spec"):
