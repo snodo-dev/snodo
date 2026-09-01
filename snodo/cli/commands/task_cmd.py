@@ -750,7 +750,10 @@ def task_report_command(args) -> int:
     reviewed_count = accepted_count + amended_count + discarded_count
     unreviewed_count = max(0, total_merged - reviewed_count)
 
-    rate_pct = (accepted_count / reviewed_count * 100.0) if reviewed_count > 0 else 0.0
+    # An empty denominator is not a rate of zero: it means no data. Represent
+    # it as None so the human and JSON outputs agree on "no rate" (n/a / null)
+    # rather than asserting a misleading 0% acceptance.
+    rate_pct = (accepted_count / reviewed_count * 100.0) if reviewed_count > 0 else None
 
     if json_out:
         from snodo.cli.json_output import emit_json, schema_name
@@ -765,22 +768,24 @@ def task_report_command(args) -> int:
             "amended": amended_count,
             "discarded": discarded_count,
             "unreviewed": unreviewed_count,
-            "acceptance_rate_pct": round(rate_pct, 1),
+            "acceptance_rate_pct": round(rate_pct, 1) if rate_pct is not None else None,
         })
 
     print(f"Human Review Acceptance Rate (Last {days} days)")
     print("-" * 45)
     print(f"Completed tasks (task_complete): {total_completed}")
     print(f"Merged units (task_merged):      {total_merged}")
-    rev_pct = (reviewed_count / total_merged * 100.0) if total_merged > 0 else 0.0
-    print(f"Reviewed tasks:            {reviewed_count} ({rev_pct:.1f}%)")
+    rev_pct = (reviewed_count / total_merged * 100.0) if total_merged > 0 else None
+    rev_pct_str = f"{rev_pct:.1f}%" if rev_pct is not None else "n/a"
+    rate_pct_str = f"{rate_pct:.1f}%" if rate_pct is not None else "n/a"
+    print(f"Reviewed tasks:            {reviewed_count} ({rev_pct_str})")
     print(f"  - Accepted unchanged:    {accepted_count}")
     print(f"  - Amended by operator:   {amended_count}")
     print(f"  - Discarded / reverted:  {discarded_count}")
     if unreviewed_count > 0:
         print(f"  - Unreviewed:            {unreviewed_count}")
     print()
-    print(f"Unchanged Acceptance Rate: {rate_pct:.1f}% ({accepted_count}/{reviewed_count} reviewed tasks accepted unchanged)")
+    print(f"Unchanged Acceptance Rate: {rate_pct_str} ({accepted_count}/{reviewed_count} reviewed tasks accepted unchanged)")
     return 0
 
 

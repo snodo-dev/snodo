@@ -171,6 +171,67 @@ def test_task_report_unreviewed_merge_never_counts_as_accepted(tmp_path, monkeyp
     assert data["acceptance_rate_pct"] == 100.0
 
 
+def test_task_report_no_reviews_human_shows_na_not_zero(tmp_path, monkeypatch, capsys):
+    """A window with merged units but no reviews reports no acceptance rate
+    (n/a), not a misleading 0.0% — zero reviews is not zero acceptance."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    audit_log = AuditLog(str(tmp_path / "audit.log"))
+    monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
+
+    # Completed and merged, but nothing reviewed.
+    audit_log.append_event("task_complete", {"op": "task_complete", "task_ref": "t1"})
+    audit_log.append_event("task_complete", {"op": "task_complete", "task_ref": "t2"})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t1", "merge_sha": "a" * 40})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t2", "merge_sha": "b" * 40})
+
+    args = SimpleNamespace(days=30, json=False)
+    res = task_report_command(args)
+    assert res == 0
+
+    out = capsys.readouterr().out
+    assert "Unchanged Acceptance Rate: n/a" in out
+    assert "Unchanged Acceptance Rate: 0.0%" not in out
+    # The underlying counts are still reported; only the rate is suppressed.
+    assert "Completed tasks (task_complete): 2" in out
+    assert "Merged units (task_merged):      2" in out
+
+
+def test_task_report_no_reviews_json_rate_is_null(tmp_path, monkeypatch, capsys):
+    """The --json output agrees with the human one: no reviews means the
+    acceptance rate is null, not 0.0."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    audit_log = AuditLog(str(tmp_path / "audit.log"))
+    monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
+
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t1", "merge_sha": "a" * 40})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t2", "merge_sha": "b" * 40})
+
+    args = SimpleNamespace(days=30, json=True)
+    res = task_report_command(args)
+    assert res == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["total_reviewed"] == 0
+    assert data["acceptance_rate_pct"] is None
+
+
+def test_task_report_empty_window_no_percentages(tmp_path, monkeypatch, capsys):
+    """A window with nothing merged has no denominator for either rate: both
+    the reviewed percentage and the acceptance rate show n/a, never 0.0%."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    audit_log = AuditLog(str(tmp_path / "audit.log"))
+    monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
+
+    args = SimpleNamespace(days=30, json=False)
+    res = task_report_command(args)
+    assert res == 0
+
+    out = capsys.readouterr().out
+    assert "Reviewed tasks:            0 (n/a)" in out
+    assert "Unchanged Acceptance Rate: n/a" in out
+    assert "0.0%" not in out
+
+
 # ============================================================================
 # task review --pending tests (Fixes #120)
 # ============================================================================
