@@ -60,6 +60,24 @@ class AuditEvent:
     event_hash: str
 
 
+@dataclass(frozen=True)
+class ChainStatus:
+    """Outcome of :meth:`AuditLog.verify_chain_detailed`.
+
+    ``valid`` mirrors the boolean contract of :meth:`AuditLog.verify_chain`.
+    ``reason`` is a stable machine-readable code and ``detail`` a human sentence
+    naming *where* the chain broke and why — the ``verify_chain`` bool can fail
+    but cannot tell an operator what happened, which is inadequate for the
+    system's central integrity claim. ``sequence`` is the offending event index
+    when one is known. All are empty/``None`` on a valid chain.
+    """
+    valid: bool
+    event_count: int
+    reason: str = ""
+    detail: str = ""
+    sequence: Optional[int] = None
+
+
 class AuditLog:
     """Append-only event logger with cryptographic hash chain.
 
@@ -179,22 +197,50 @@ class AuditLog:
         Returns:
             True if chain is valid, False if tampered or file/memory diverge
         """
-        if not self._load_ok:
-            return False
+        return self.verify_chain_detailed().valid
 
-        if not self.events:
-            return True
+    def verify_chain_detailed(self) -> ChainStatus:
+        """Verify the hash chain and report *where* it broke, not just that it did.
+
+        Same checks and the same verdict as :meth:`verify_chain` (which now
+        delegates here — one implementation, no divergence), but returns a
+        :class:`ChainStatus` naming the first offending check so an operator
+        told "the chain is invalid" can also see the reason and position.
+        """
+        if not self._load_ok:
+            return ChainStatus(
+                False, len(self.events), "load_incomplete",
+                "The audit log did not load cleanly (a truncated or interrupted "
+                "load); refusing to certify a record that cannot be trusted.",
+            )
+
+        count = len(self.events)
+        if count == 0:
+            return ChainStatus(True, 0)
 
         if self.events[0].previous_hash != "0" * 64:
-            return False
+            return ChainStatus(
+                False, count, "genesis_hash",
+                "The first event's previous_hash is not the genesis sentinel; the "
+                "start of the chain has been altered.", sequence=0,
+            )
 
         for i, event in enumerate(self.events):
             if event.sequence != i:
-                return False
+                return ChainStatus(
+                    False, count, "sequence_gap",
+                    f"Event at position {i} carries sequence {event.sequence}; "
+                    f"expected {i} — an event was inserted or removed.",
+                    sequence=event.sequence,
+                )
 
-            if i > 0:
-                if event.previous_hash != self.events[i - 1].event_hash:
-                    return False
+            if i > 0 and event.previous_hash != self.events[i - 1].event_hash:
+                return ChainStatus(
+                    False, count, "link_break",
+                    f"Event {i} does not chain to event {i - 1} — its "
+                    f"previous_hash does not match the prior event's hash.",
+                    sequence=event.sequence,
+                )
 
             expected_hash = self._compute_hash(
                 event.sequence,
@@ -205,42 +251,80 @@ class AuditLog:
                 event.project_id,
             )
             if event.event_hash != expected_hash:
-                return False
+                return ChainStatus(
+                    False, count, "event_hash_mismatch",
+                    f"Event {i}'s hash does not match its contents — the event "
+                    f"was modified after it was written.",
+                    sequence=event.sequence,
+                )
 
-        if not self._file_matches_memory():
-            return False
+        file_status = self._compare_file_to_memory()
+        if not file_status.valid:
+            return ChainStatus(
+                False, count, file_status.reason, file_status.detail,
+                file_status.sequence,
+            )
 
-        return True
+        return ChainStatus(True, count)
 
     def _file_matches_memory(self) -> bool:
-        """Return True if the on-disk log contains exactly the loaded events.
+        """Return True if the on-disk log contains exactly the loaded events."""
+        return self._compare_file_to_memory().valid
+
+    def _compare_file_to_memory(self) -> ChainStatus:
+        """Compare the on-disk log to the in-memory chain, reporting the first gap.
 
         Re-reads the file and compares each line's event hash against the
         in-memory chain. Detects events on disk that are not represented in
         memory (e.g. after a truncated load) as well as a file that has been
         truncated or altered since load.
         """
+        count = len(self.events)
         if not self.log_path.exists():
-            return len(self.events) == 0
+            if count == 0:
+                return ChainStatus(True, 0)
+            return ChainStatus(
+                False, count, "file_missing",
+                "The audit log file is gone but events are loaded in memory — "
+                "the in-memory record has no backing on disk.",
+            )
 
         try:
             with open(self.log_path) as f:
                 lines = [line for line in f if line.strip()]
-        except OSError:
-            return False
+        except OSError as err:
+            return ChainStatus(
+                False, count, "file_unreadable",
+                f"Could not read the audit log: {err}",
+            )
 
-        if len(lines) != len(self.events):
-            return False
+        if len(lines) != count:
+            return ChainStatus(
+                False, count, "file_length_mismatch",
+                f"The audit log holds {len(lines)} event(s) but {count} were "
+                f"loaded — the record on disk does not match what was verified "
+                f"(truncated or extended since load).",
+                sequence=min(len(lines), count),
+            )
 
         for i, line in enumerate(lines):
             try:
                 event_dict = json.loads(line)
             except json.JSONDecodeError:
-                return False
+                return ChainStatus(
+                    False, count, "file_malformed",
+                    f"Line {i + 1} of the audit log is not valid JSON.",
+                    sequence=i,
+                )
             if event_dict.get("event_hash") != self.events[i].event_hash:
-                return False
+                return ChainStatus(
+                    False, count, "file_hash_mismatch",
+                    f"Line {i + 1} of the audit log does not match the loaded "
+                    f"chain at that position.",
+                    sequence=i,
+                )
 
-        return True
+        return ChainStatus(True, count)
 
     def _compute_hash(
         self,
