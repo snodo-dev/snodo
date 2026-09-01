@@ -428,13 +428,31 @@ def _plan_add_wave(planner, args) -> int:
         plan_data = yaml.safe_load(f) or {}
     waves = plan_data.setdefault("waves", [])
 
-    existing_ids = {w.get("id") for w in waves}
-    if wave_num in existing_ids:
-        print(f"Error: wave {wave_num} already exists in plan {plan}", file=sys.stderr)
-        return 1
+    existing = {w.get("id"): w for w in waves}
+
+    # `plan create` scaffolds wave 1, so `add-wave 1` is the natural next
+    # command — not a failure. Adding a wave that already exists is idempotent:
+    # it succeeds without duplicating, and updates dependencies only when asked.
+    if wave_num in existing:
+        for dep in deps:
+            if dep == wave_num or dep not in existing:
+                print(
+                    f"Error: wave {wave_num} depends on wave {dep}, which does not exist "
+                    f"in plan {plan}",
+                    file=sys.stderr,
+                )
+                return 1
+        if depends_on:
+            existing[wave_num]["depends_on"] = deps
+            with open(plan_file, "w") as f:
+                yaml.dump(plan_data, f, default_flow_style=False)
+            print(f"Wave {wave_num} already exists in plan {plan}; dependencies updated")
+        else:
+            print(f"Wave {wave_num} already exists in plan {plan} (nothing to add)")
+        return 0
 
     for dep in deps:
-        if dep not in existing_ids:
+        if dep == wave_num or dep not in existing:
             print(
                 f"Error: wave {wave_num} depends on wave {dep}, which does not exist "
                 f"in plan {plan}",
