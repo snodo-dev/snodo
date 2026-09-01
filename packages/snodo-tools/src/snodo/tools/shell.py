@@ -88,7 +88,44 @@ class ShellMCP:
             )
         
         return self.ALLOWED_COMMANDS[command_type].copy()
-    
+
+    DISALLOWED_FLAGS = {
+        "-p", "-c", "-o", "--override-ini", "--import-mode", "--deselect", "--rootdir"
+    }
+
+    def _validate_test_path(self, test_path: str) -> str:
+        """Validate that test_path does not start with '-' and resolves inside project_root."""
+        clean_path = (test_path or "").strip()
+        if clean_path.startswith("-"):
+            raise ValueError(f"test_path cannot start with '-': '{test_path}'")
+
+        if not clean_path or clean_path == ".":
+            return "."
+
+        resolved = (self.project_root / clean_path).resolve()
+        try:
+            rel = resolved.relative_to(self.project_root)
+        except ValueError as e:
+            raise ValueError(f"test_path escapes project root: '{test_path}'") from e
+
+        if ".git" in rel.parts or ".snodo" in rel.parts:
+            raise ValueError(f"test_path cannot access protected directory: '{test_path}'")
+
+        return str(rel)
+
+    def _validate_extra_args(self, extra_args: Optional[List[str]]) -> List[str]:
+        """Validate extra_args against disallowed flag overrides."""
+        if not extra_args:
+            return []
+        validated = []
+        for arg in extra_args:
+            arg_str = str(arg).strip()
+            flag_part = arg_str.split("=")[0]
+            if flag_part in self.DISALLOWED_FLAGS:
+                raise ValueError(f"Disallowed flag in extra_args: '{arg_str}'")
+            validated.append(arg_str)
+        return validated
+
     def run_tests(
         self,
         test_path: str,
@@ -107,15 +144,19 @@ class ShellMCP:
             
         Raises:
             CommandNotAllowedError: If command not in whitelist
+            ValueError: If test_path or extra_args fail validation
             ShellError: If test execution fails unexpectedly
         """
-        # Validate command
+        # Validate command, path, and extra_args
         command = self._validate_command(command_type)
+        validated_path = self._validate_test_path(test_path)
+        safe_extra_args = self._validate_extra_args(extra_args)
         
         # Build full command
-        if extra_args:
-            command.extend(extra_args)
-        command.append(test_path)
+        if safe_extra_args:
+            command.extend(safe_extra_args)
+        if validated_path and validated_path != ".":
+            command.append(validated_path)
         
         # Execute tests
         try:
@@ -141,6 +182,53 @@ class ShellMCP:
         
         # Parse output and convert to ValidatorResult
         return self.parse_output(result.returncode, result.stdout, result.stderr)
+
+    def run_tests_raw(
+        self,
+        test_path: str = "",
+        command_type: str = "pytest",
+        timeout: int = 120,
+    ) -> dict:
+        """Run tests and return raw execution result (exit_code, stdout, stderr).
+
+        Coder-facing surface: accepts no extra_args, resolves test_path under project root.
+        """
+        try:
+            validated_path = self._validate_test_path(test_path)
+            command = self._validate_command(command_type)
+            if validated_path and validated_path != ".":
+                command.append(validated_path)
+
+            result = subprocess.run(  # noqa: S603
+                command,
+                cwd=str(self.project_root),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            return {
+                "exit_code": result.returncode,
+                "stdout": result.stdout[:50000] if result.stdout else "",
+                "stderr": result.stderr[:50000] if result.stderr else "",
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "exit_code": 124,
+                "stdout": "",
+                "stderr": f"Tests timed out after {timeout} seconds",
+            }
+        except FileNotFoundError:
+            return {
+                "exit_code": 127,
+                "stdout": "",
+                "stderr": f"Test command '{command_type}' not found.",
+            }
+        except Exception as e:
+            return {
+                "exit_code": 1,
+                "stdout": "",
+                "stderr": f"Test execution failed: {e}",
+            }
     
     def parse_output(
         self,
