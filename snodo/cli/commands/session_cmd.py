@@ -58,9 +58,14 @@ def session_delete(session_id: str = typer.Argument(..., help="Session ID")):
 
 
 @app.command("prune")
-def session_prune():
+def session_prune(
+    days: Optional[int] = typer.Option(
+        None, "--days",
+        help="Prune sessions older than N days (default: engine max_session_age_days)",
+    ),
+):
     """Remove stale sessions."""
-    args = SimpleNamespace(session_action="prune")
+    args = SimpleNamespace(session_action="prune", days=days)
     return session_command(args)
 
 
@@ -228,7 +233,9 @@ def _session_prune(mgr: SessionManager, args) -> int:
     """Prune stale sessions."""
     from snodo.config import ConfigManager
     config_mgr = ConfigManager()
-    max_age = config_mgr.get_engine_value("max_session_age_days", 30)
+    max_age = getattr(args, "days", None)
+    if max_age is None:
+        max_age = config_mgr.get_engine_value("max_session_age_days", 30)
 
     count = mgr.prune_stale(max_age_days=max_age)
     print(f"Pruned {count} stale session(s) (max age: {max_age} days)")

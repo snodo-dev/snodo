@@ -797,6 +797,26 @@ def test_typer_app_command_wrappers(tmp_path, monkeypatch):
     assert task_report(days=30, json=True) == 1
 
 
+def test_task_prune_days_flag_with_stale_days_alias(monkeypatch):
+    """`task prune --days N` is canonical and `--stale-days N` remains a working
+    alias; both reach the command with the same threshold (Fixes #192)."""
+    from typer.testing import CliRunner
+
+    from snodo.cli.commands import task_cmd
+
+    captured = {}
+    monkeypatch.setattr(
+        task_cmd, "task_prune_command",
+        lambda args: captured.update(stale_days=getattr(args, "stale_days")) or 0,
+    )
+    runner = CliRunner()
+    assert runner.invoke(task_cmd.app, ["prune", "--days", "3"]).exit_code == 0
+    assert captured["stale_days"] == 3
+
+    assert runner.invoke(task_cmd.app, ["prune", "--stale-days", "5"]).exit_code == 0
+    assert captured["stale_days"] == 5
+
+
 def test_task_list_git_exception_does_not_convert_completed_to_merged(tmp_path, monkeypatch, capsys):
     """Git inspection exceptions leave completed tasks as 'completed', not guessed 'merged'."""
     monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))

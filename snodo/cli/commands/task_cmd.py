@@ -55,10 +55,12 @@ def task_abandon(
 
 @app.command(name="prune")
 def task_prune(
-    stale_days: int = typer.Option(7, "--stale-days", help="Days without activity before pruning"),
+    days: int = typer.Option(
+        7, "--days", "--stale-days", help="Days without activity before pruning",
+    ),
 ):
     """List and delete stale task branches."""
-    return task_prune_command(SimpleNamespace(stale_days=stale_days))
+    return task_prune_command(SimpleNamespace(stale_days=days))
 
 
 @app.command(name="review")
