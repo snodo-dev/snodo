@@ -180,7 +180,27 @@ class SessionManager:
             try:
                 session = self.load_session(pointer)
             except FileNotFoundError:
-                pass  # stale pointer — fall through to auto-adopt
+                # An audited-but-missing ACTIVE pointer is a divergence (the
+                # audit chain asserts this session ran under a different home).
+                # Surface it instead of silently auto-adopting a session that
+                # may not have been the one this project's runs actually used.
+                if self.is_audited_but_missing(pointer, project_root):
+                    _logger.warning(
+                        "Active session pointer %s for mode=%s project=%s is "
+                        "cited by the audit log but has no file under %s — it "
+                        "was created under a different SNODO_HOME. Continuing "
+                        "with auto-adoption, which may select a different "
+                        "session than the one that actually ran.",
+                        pointer, mode, project_root, self.sessions_dir,
+                    )
+                    self._audit("session_pointer_audited_but_missing", {
+                        "op": "session_pointer_audited_but_missing",
+                        "session_id": pointer,
+                        "mode": mode,
+                        "project_root": project_root,
+                        "sessions_dir": str(self.sessions_dir),
+                    })
+                # stale pointer — fall through to auto-adopt
             except _CORRUPT_SESSION_EXCEPTIONS as exc:
                 raise SessionError(
                     f"Active session {pointer} for mode={mode} "
@@ -354,6 +374,126 @@ class SessionManager:
                 "Could not write active-session pointer for %s/%s: %s",
                 project_root, mode, e,
             )
+
+    def audited_session_ids(
+        self,
+        project_root: str,
+    ) -> tuple:
+        """Return (present, missing) session-file paths/id sets vs the audit log.
+
+        The audit log is a property of the PROJECT (``<project_root>/.snodo/
+        audit.log``, never redirected by SNODO_HOME — Fixes #111), while session
+        files are stored under THIS manager's sessions_dir (home-scoped). A
+        session id can therefore appear in the audit log with no file under this
+        store when it was created under a different snodo home. This method makes
+        that divergence a detectable condition instead of a silent one: the audit
+        chain says the run happened, and the caller can learn the id exists but
+        its file is not here.
+
+        The ids come from ``session_started`` / ``session_resumed`` events and
+        from any other event carrying a ``session_id`` in its data, so an id is
+        never hidden just because its ``session_started`` line is absent.
+
+        The audit log is scanned raw (line by line) rather than re-validated
+        through the AuditLog loader; the caller only needs the set of audited
+        ids, not a full chain verification on every invocation.
+
+        Returns:
+            ``(present, missing)`` where ``present`` is the list of existing
+            session file paths cited by the audit log and ``missing`` the list
+            of audited session ids with no file under this store.
+        """
+        audit_path = Path(project_root) / ".snodo" / "audit.log"
+        if not audit_path.exists():
+            return [], []
+
+        ids: set = set()
+        try:
+            with open(audit_path) as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(event, dict):
+                        data = event.get("data") or {}
+                        sid = data.get("session_id")
+                        if isinstance(sid, str) and sid:
+                            ids.add(sid)
+        except OSError:
+            return [], []
+
+        present: List[Path] = []
+        missing: List[str] = []
+        for sid in sorted(ids):
+            path = self.sessions_dir / f"{sid}.json"
+            if path.exists():
+                present.append(path)
+            else:
+                missing.append(sid)
+
+        if missing:
+            _logger.warning(
+                "Audit log %s cites %d session id(s) with no file under %s: %s",
+                audit_path, len(missing), self.sessions_dir, ", ".join(missing),
+            )
+            self._audit("session_audited_but_missing", {
+                "op": "session_audited_but_missing",
+                "project_root": project_root,
+                "sessions_dir": str(self.sessions_dir),
+                "session_ids": missing,
+            })
+        return present, missing
+
+    def audited_missing_ids(self, project_root: str) -> List[str]:
+        """Return audited session ids with no file under this store.
+
+        Convenience wrapper over ``audited_session_ids`` returning just the
+        missing ids (see that method for why this can happen).
+        """
+        _, missing = self.audited_session_ids(project_root)
+        return missing
+
+    def is_audited_but_missing(
+        self,
+        session_id: str,
+        project_root: str,
+    ) -> bool:
+        """Return True when *session_id* is cited by the audit log but absent here.
+
+        Use in the single-shot "Session not found" path (``snodo session show``,
+        ``snodo task show``, ``snodo cloud sync --session``): turn a bare
+        "Session not found" into a diagnosable divergence when the audit chain
+        contradictorily asserts the session existed.
+
+        The audit log is scanned raw (line by line) rather than loaded through
+        the AuditLog validator, which would re-verify the whole chain on a
+        per-lookup path.
+        """
+        audit_path = Path(project_root) / ".snodo" / "audit.log"
+        if not audit_path.exists():
+            return False
+        try:
+            with open(audit_path) as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(event, dict):
+                        continue
+                    data = event.get("data") or {}
+                    if data.get("session_id") == session_id:
+                        return not (
+                            self.sessions_dir / f"{session_id}.json"
+                        ).exists()
+        except OSError:
+            return False
+        return False
 
     def delete_session(self, session_id: str) -> None:
         """Delete a session file.  Clears the active pointer if deleted."""

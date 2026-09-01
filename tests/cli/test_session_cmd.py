@@ -91,6 +91,33 @@ class TestSessionShow:
         assert result == 1
         assert "not found" in capsys.readouterr().err
 
+    def test_show_audited_but_missing(self, mgr, tmp_path, capsys):
+        """A session id the audit log cites but this store lacks is surfaced as
+        a cross-home divergence, not a bare 'Session not found'."""
+        from snodo.infrastructure.audit import AuditLog
+
+        project = tmp_path / "proj"
+        (project / ".snodo").mkdir(parents=True)
+        audit = AuditLog(str(project / ".snodo" / "audit.log"))
+        audit.append_event("session_started", {
+            "op": "session_started",
+            "session_id": "sess_20260101_prod_a1b2c3",
+            "mode": "producer",
+            "project_root": str(project),
+        })
+
+        args = SimpleNamespace(
+            session_action="show", session_id="sess_20260101_prod_a1b2c3",
+            sessions_dir=mgr.sessions_dir,
+        )
+        with patch("snodo.infrastructure.paths.require_project_root",
+                   return_value=str(project)):
+            result = session_command(args)
+        assert result == 1
+        err = capsys.readouterr().err
+        assert "audit" in err
+        assert "SNODO_HOME" in err
+
     def test_show_details(self, mgr, capsys):
         session = mgr.create_session("producer", PROJECT_ROOT)
         args = SimpleNamespace(
