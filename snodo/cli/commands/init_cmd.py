@@ -362,11 +362,19 @@ def init_command(args) -> int:
     """Initialize Snodo project structure."""
     from snodo.infrastructure.paths import resolve_project_root
 
-    # Hard-block: refuse to initialise at or inside the home directory
+    # Hard-block: refuse to initialise at home directory or system roots
     from pathlib import Path as _Path
-    if _Path.cwd().resolve() == _Path.home():
+    from snodo.project import _is_system_root_or_temp
+    if _Path.cwd().resolve() == _Path.home().resolve():
         print(
             "Error: Cannot initialise a Snodo project at your home directory. "
+            "Create a project directory first.",
+            file=sys.stderr,
+        )
+        return 1
+    if _is_system_root_or_temp(_Path.cwd()):
+        print(
+            "Error: Cannot initialise a Snodo project at system root directory. "
             "Create a project directory first.",
             file=sys.stderr,
         )
