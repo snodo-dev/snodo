@@ -201,6 +201,26 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
         try:
             session = session_mgr.load_session(session_id)
         except FileNotFoundError:
+            # An audited-but-missing session id is evidence the audit log (a
+            # property of the project) and the session store (a property of the
+            # snodo home) have diverged — e.g. the session was created under a
+            # different SNODO_HOME. Say so, or the operator cannot sync a
+            # session the audit chain says ran.
+            audited = session_mgr.is_audited_but_missing(
+                session_id, project_root,
+            )
+            if audited:
+                print(
+                    f"Error: Session {session_id} is cited by the audit log but "
+                    f"has no file under {session_mgr.sessions_dir}.",
+                    file=sys.stderr,
+                )
+                print(
+                    "  It was likely created under a different SNODO_HOME, so "
+                    "its events cannot be synced from this store.",
+                    file=sys.stderr,
+                )
+                return 1
             print(f"Error: Session not found: {session_id}", file=sys.stderr)
             return 1
         sessions_to_sync = [session]
