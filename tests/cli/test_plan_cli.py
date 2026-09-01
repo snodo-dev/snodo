@@ -334,17 +334,41 @@ def test_plan_add_wave_refuses_non_integer_id(plan_env, capsys):
     assert "wave id 'abc' is not an integer" in err
 
 
-def test_plan_add_wave_refuses_duplicate_id(plan_env, capsys):
-    """add-wave refuses a duplicate wave id."""
+def test_plan_add_wave_existing_is_idempotent(plan_env, capsys):
+    """Adding wave 1 after `plan create` (which scaffolds wave 1) is the natural
+    next command and must not error — it is an idempotent no-op (Fixes #192)."""
     _create_plan(plan_env, "p1")  # scaffolds wave 1
 
     result = plan_command(SimpleNamespace(
         plan_action="add-wave", plan="p1", id="1", depends_on=None,
     ))
 
-    assert result == 1
-    err = capsys.readouterr().err
-    assert "wave 1 already exists" in err
+    assert result == 0
+    out = capsys.readouterr().out
+    assert "already exists" in out
+
+    plan_file = plan_env / ".snodo" / "plans" / "p1" / "plan.yml"
+    data = yaml.safe_load(plan_file.read_text())
+    # The wave was not duplicated.
+    assert [w["id"] for w in data["waves"]] == [1]
+
+
+def test_plan_add_wave_existing_updates_dependencies(plan_env, capsys):
+    """add-wave on an existing wave with --depends-on updates its dependencies
+    rather than erroring."""
+    _create_plan(plan_env, "p1")  # scaffolds wave 1
+    assert plan_command(SimpleNamespace(
+        plan_action="add-wave", plan="p1", id="2", depends_on=None)) == 0
+
+    result = plan_command(SimpleNamespace(
+        plan_action="add-wave", plan="p1", id="1", depends_on="2",
+    ))
+    assert result == 0
+
+    plan_file = plan_env / ".snodo" / "plans" / "p1" / "plan.yml"
+    data = yaml.safe_load(plan_file.read_text())
+    w1 = next(w for w in data["waves"] if w["id"] == 1)
+    assert w1["depends_on"] == [2]
 
 
 def test_plan_add_wave_refuses_unknown_dependency(plan_env, capsys):
