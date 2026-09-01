@@ -55,10 +55,22 @@ def resolve_project_root(start: Optional[str] = None) -> Optional[str]:
             return str(candidate)
 
     home = Path.home()
+    snodo_home = resolve_home()
+    sys_temps = {Path("/tmp").resolve(), Path("/var/tmp").resolve()}
+    tmpdir_env = os.environ.get("TMPDIR")
+    if tmpdir_env:
+        sys_temps.add(Path(tmpdir_env).resolve())
+
     directory = Path(start).resolve() if start else Path.cwd()
     for parent in [directory] + list(directory.parents):
-        if parent == home:
-            continue  # ~/.snodo is global config, not a project marker
+        if (
+            parent == home
+            or parent == snodo_home
+            or (parent / ".snodo") == snodo_home
+            or parent in sys_temps
+            or (parent.name == "T" and "var/folders" in str(parent).replace("\\", "/"))
+        ):
+            continue  # ~/.snodo and /tmp are not project markers
         if (parent / ".snodo").is_dir():
             return str(parent)
 

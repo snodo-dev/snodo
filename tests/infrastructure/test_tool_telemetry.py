@@ -74,6 +74,23 @@ class TestToolTelemetrySink:
         assert records[0]["turn_index"] == 1
         assert records[1]["tool"] == "submit_files"
 
+    def test_persist_appends_to_task_state(self, tmp_path, monkeypatch):
+        from snodo.infrastructure.tool_telemetry import persist_tool_telemetry
+
+        project_root = str(tmp_path)
+        task_id = "task_foreground_01"
+        monkeypatch.setenv("SNODO_PROJECT_ROOT", project_root)
+
+        persist_tool_telemetry("unknown", {"task_ref": task_id, "turn_index": 1, "tool": "read_files"})
+        persist_tool_telemetry(task_id, {"turn_index": 2, "tool": "submit_files"})
+
+        task_state_path = tmp_path / ".snodo" / "tasks" / task_id / "state.json"
+        assert task_state_path.exists()
+        data = json.loads(task_state_path.read_text())
+        assert len(data.get("tool_telemetry", [])) == 2
+        assert data["tool_telemetry"][0]["tool"] == "read_files"
+        assert data["tool_telemetry"][1]["tool"] == "submit_files"
+
     def test_unknown_job_is_noop(self, tmp_path, monkeypatch):
         from snodo.infrastructure.tool_telemetry import persist_tool_telemetry
 

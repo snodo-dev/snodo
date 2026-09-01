@@ -6,6 +6,7 @@ FILE: snodo/cli/commands/logs_cmd.py
 import logging
 import sys
 import time
+from pathlib import Path
 from types import SimpleNamespace
 import typer
 
@@ -41,15 +42,55 @@ def logs_command(args) -> int:
         return _show_recon(project_root, composite_id)
     if composite_id.startswith("j_"):
         return _show_job(project_root, composite_id, args)
+    if composite_id.startswith("task_"):
+        return _show_task_logs(project_root, composite_id, args)
 
-    # Try job first, then recon
+    # Try job first, then recon, then task
     if _job_exists(project_root, composite_id):
         return _show_job(project_root, composite_id, args)
     if _recon_exists(project_root, composite_id):
         return _show_recon(project_root, composite_id)
+    if (Path(project_root) / ".snodo" / "tasks" / composite_id).is_dir():
+        return _show_task_logs(project_root, composite_id, args)
 
     print(f"Error: {composite_id!r} not found as a job or recon ID.",
           file=sys.stderr)
+    return 1
+
+
+def _show_task_logs(project_root: str, task_id: str, args) -> int:
+    """Show output for a task. If background jobs exist, show job logs; otherwise guide user."""
+    from pathlib import Path
+    import json
+
+    jobs_dir = Path(project_root) / ".snodo" / "jobs"
+    matching_jobs = []
+    if jobs_dir.is_dir():
+        for entry in sorted(jobs_dir.iterdir()):
+            if not entry.is_dir() or not entry.name.startswith("j_"):
+                continue
+            task_json = entry / "task.json"
+            if not task_json.exists():
+                continue
+            try:
+                td = json.loads(task_json.read_text())
+                if td.get("task_id") == task_id or td.get("description", "").startswith(task_id):
+                    matching_jobs.append(entry.name)
+            except Exception:
+                continue
+
+    if matching_jobs:
+        latest_job = matching_jobs[-1]
+        return _show_job(project_root, latest_job, args)
+
+    task_dir = Path(project_root) / ".snodo" / "tasks" / task_id
+    if task_dir.is_dir():
+        print(f"Task {task_id} was executed in the foreground (console output streamed directly during execution).", file=sys.stderr)
+        print(f"  Use 'snodo meta {task_id}' to inspect turn telemetry, token usage, and costs.", file=sys.stderr)
+        print(f"  Use 'snodo task show {task_id}' to inspect failure/halt records.", file=sys.stderr)
+        return 0
+
+    print(f"Error: {task_id!r} not found as a task, job, or recon ID.", file=sys.stderr)
     return 1
 
 
