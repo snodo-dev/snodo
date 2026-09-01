@@ -138,6 +138,61 @@ def test_mock_adapter_defaults():
     assert len(result.files) == 2
     assert "def hello()" in result.files[0].content
     assert "def test_hello()" in result.files[1].content
+    # The test file must import hello — without this the quality validator
+    # raises NameError and a fresh snodo run ends in a blocker (#185).
+    assert "from src.hello import hello" in result.files[1].content
+
+
+def test_mock_adapter_output_passes_pytest(tmp_path):
+    """MockAdapter's default output passes pytest — Fixes #185.
+
+    The mock exists to exercise the engine loop deterministically.  Its
+    default files must therefore satisfy the quality validator (pytest) that
+    judges them.  This test writes the mock files into a temp directory and
+    runs pytest to confirm they pass, closing the loop between mock output
+    and the validators.
+
+    Scope note — JS / language-awareness (out of scope for #185):
+        The mock unconditionally emits Python files even in a JavaScript
+        project.  In that case ``npm test`` ignores ``src/hello.py`` and
+        ``tests/test_hello.py``, so the quality validator returns a spurious
+        pass rather than a blocker.  That is a silent false-positive, not an
+        immediate user-visible breakage.  Making the mock language-aware
+        requires reliable population of ``TaskSpec.project_context["language"]``
+        at dispatch time — a separate, non-trivial engine change.  It is
+        tracked in its own issue and is explicitly not addressed here; this
+        test only covers the Python/pytest path that was broken.
+    """
+    import subprocess
+    import sys
+    from snodo.coders import MockAdapter
+
+    adapter = MockAdapter()
+    spec = TaskSpec(description="hello world", constraints=[])
+    artifact = adapter.implement(spec)
+
+    # Write mock files into tmp_path
+    for fa in artifact.files:
+        dest = tmp_path / fa.path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(fa.content)
+
+    # Add a minimal __init__.py so 'src' is importable as a package from
+    # tests/test_hello.py's ``from src.hello import hello``.
+    (tmp_path / "src" / "__init__.py").write_text("")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", str(tmp_path / "tests"), "-q", "--tb=short"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, (
+        f"MockAdapter's default output failed pytest (Fixes #185).\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
 
 
 def test_mock_adapter_tracks_calls():
