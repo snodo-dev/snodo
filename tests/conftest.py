@@ -251,3 +251,28 @@ def _reset_global_mock_mode():
     set_mock_mode(False)
     yield
     set_mock_mode(False)
+
+
+_SYSTEM_TMP_ROOTS = [
+    Path(os.environ.get("TMPDIR", "/tmp")).resolve(),
+    Path("/tmp").resolve(),
+    Path("/var/tmp").resolve(),
+]
+
+
+def pytest_sessionstart(session):
+    for root in _SYSTEM_TMP_ROOTS:
+        target = root / ".snodo"
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        elif target.is_file():
+            target.unlink(missing_ok=True)
+
+
+def pytest_runtest_teardown(item, nextitem):
+    for root in _SYSTEM_TMP_ROOTS:
+        target = root / ".snodo"
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+            raise RuntimeError(f"TEST LEAKED .snodo TO {root}: {item.nodeid}")
+

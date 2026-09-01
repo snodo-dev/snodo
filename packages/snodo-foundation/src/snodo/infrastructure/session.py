@@ -532,7 +532,14 @@ class SessionManager:
         Returns:
             List of matching SessionState objects
         """
-        pid = get_project_id(project_root)[0] if project_root else None
+        if project_root:
+            if (Path(project_root) / ".snodo").is_dir():
+                pid = get_project_id(project_root)[0]
+            else:
+                from snodo.project import resolve_project_id
+                pid = resolve_project_id(project_root)[0]
+        else:
+            pid = None
         results: List[SessionState] = []
         for session_file in sorted(self.sessions_dir.glob("*.json")):
             try:

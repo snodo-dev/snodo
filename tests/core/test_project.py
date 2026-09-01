@@ -102,3 +102,47 @@ def test_cache_project_id():
         assert data["id"] == "custom-id"
         assert data["project.id"] == "custom-id"
         assert data["scope"] == "remote"
+
+
+def test_is_system_root_or_temp():
+    """Verify system root and shared temp detection."""
+    from snodo.project import _is_system_root_or_temp
+
+    assert _is_system_root_or_temp(Path("/")) is True
+    assert _is_system_root_or_temp(Path.home()) is True
+    assert _is_system_root_or_temp(Path("/tmp")) is True
+    assert _is_system_root_or_temp(Path("/var/tmp")) is True
+    assert _is_system_root_or_temp(Path("/var/folders/2v/xyz/T")) is True
+    assert _is_system_root_or_temp(Path("/private/var/folders/2v/xyz/T")) is True
+
+    # Subdirectories are not system roots
+    with tempfile.TemporaryDirectory() as tmpdir:
+        assert _is_system_root_or_temp(Path(tmpdir)) is False
+        assert _is_system_root_or_temp(Path(tmpdir) / "sub") is False
+
+
+def test_cache_project_id_refuses_system_roots(caplog):
+    """Verify cache_project_id does not write .snodo directly in system root directories."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        cache_project_id("/tmp", "test-tmp-id", "local")
+        assert not (Path("/tmp") / ".snodo").exists()
+        assert "Refusing to cache project ID in system root" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        cache_project_id(str(Path.home()), "test-home-id", "local")
+        # Ensure ~/.snodo/project.json was not created if ~/.snodo wasn't already a project
+        assert "Refusing to cache project ID in system root" in caplog.text
+
+
+def test_cache_project_id_warns_on_non_project_dir(caplog):
+    """Verify cache_project_id logs a warning when creating .snodo in a directory with no project markers."""
+    import logging
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with caplog.at_level(logging.WARNING):
+            cache_project_id(tmpdir, "test-id", "local")
+            assert "created .snodo in non-project directory" in caplog.text
+
