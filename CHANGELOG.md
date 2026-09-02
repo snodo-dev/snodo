@@ -11,6 +11,21 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A coder backend that fails to run is no longer reported as an internal
+  engine error. The executor used to wrap every exception from
+  `coder.implement()` into `ExecutionError`, and the execute node reported
+  `ExecutionError` as `internal_error` — so an operator's configuration
+  mistake (a model string the coder's CLI rejects, a binary missing from
+  PATH, an LLM call that errored) halted with `halt_type: internal_error`
+  and a hint telling them to inspect engine logs, while the reason field
+  already held the exact answer. `AdapterError` (the base of `LLMCallError`
+  and `ParseError`) now propagates unchanged and halts under the raw
+  `execution_error` (canonical `blocker`) with a config fix target — "Fix
+  the coder configuration — the model string, the coder backend (--coder),
+  or the tool's install — then re-run" — and recovery does not spawn against
+  it. Engine-level `ExecutionError` (no file operations, an unexpected
+  adapter bug) remains `internal_error`. (Fixes #195)
+
 - The ADR 040 search tools no longer consume runs. The `search_string` /
   `search_symbol` schemas and prompt text now say explicitly that the first
   parameter is the text or identifier to find and that folders belong in
