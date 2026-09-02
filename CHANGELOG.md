@@ -11,6 +11,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The default audit log now resolves against the project root, not the process
+  cwd. A task running from its worktree (background jobs spawn the CLI with
+  `cwd` set to the task worktree) used to point the default
+  `.snodo/audit.log` at a throwaway log inside the worktree — the branch under
+  judgement — so the audit trail, and the merge gate reading its
+  `verification_executed` history in `_merge_on_success`, witnessed a
+  worktree-local chain instead of the project's. The default now resolves via
+  `resolve_project_root()` (honoring `SNODO_PROJECT_ROOT` set by the job
+  wrapper, and otherwise walking up from the cwd), falling back to the
+  historical cwd-relative path only when no project root is resolvable. The
+  audit log remains a property of the project, never redirected by
+  `SNODO_HOME`. (Fixes #73)
+
 - A coder backend that fails to run is no longer reported as an internal
   engine error. The executor used to wrap every exception from
   `coder.implement()` into `ExecutionError`, and the execute node reported
