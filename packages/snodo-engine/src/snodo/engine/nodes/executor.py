@@ -5,7 +5,7 @@ FILE: snodo/engine/nodes/executor.py
 
 from typing import Dict, Any, List, Optional, Union
 from snodo.core.interfaces import Task, TaskSpec, ExecutionError
-from snodo.coders.base import SnodoMutationError, TurnBudgetExhausted
+from snodo.coders.base import AdapterError, SnodoMutationError, TurnBudgetExhausted
 from snodo.infrastructure.tokens import ValidationToken
 from snodo.coders import LiteLLMAdapter, MockAdapter
 from snodo.tools.workspace import WorkspaceMCP
@@ -149,6 +149,15 @@ class ExecutorMixin:
             # The coder ran out of turns without submitting — a bounded,
             # anticipated outcome. Propagate unchanged so the engine reports it
             # under its own halt outcome instead of as a generic execution fault.
+            raise
+        except AdapterError:
+            # The coder backend itself failed: a binary missing from PATH, a
+            # CLI that rejected the arguments, an LLM call that errored, output
+            # that could not be parsed. These are operator-fixable coder faults
+            # (the model string, the backend, the install), not engine faults —
+            # so they propagate unchanged and the engine reports them under the
+            # ``execution_error`` halt instead of laundering them into
+            # ``internal_error`` (Fixes #195).
             raise
         except ExecutionError:
             raise

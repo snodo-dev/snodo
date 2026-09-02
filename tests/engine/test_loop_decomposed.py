@@ -192,7 +192,7 @@ def test_build_halt_payload_final_decision_equals_halt_type(sample_protocol, sam
         ("wf3", "blocker"),
         ("max_iterations", "blocker"),
         ("turn_budget_exhausted", "blocker"),
-        ("execution_error", "internal_error"),
+        ("execution_error", "blocker"),
         ("recovery_exhausted", "blocker"),
     ]
     for raw, canonical in cases:

@@ -101,7 +101,13 @@ Halt outcomes are canonical across both paths — `escalate`, `blocker`,
 `validator_error`, `internal_error` — with `halt_type == final_decision`. Only
 `escalate` is resolvable by a human decision; a `blocker` is resolved by changing
 the code or the spec (INV3), and `validator_error` / `internal_error` are
-operational faults, not authorisation problems.
+operational faults, not authorisation problems. A coder backend failure — a
+binary missing from PATH, a CLI that rejected the arguments (e.g. a model
+string the tool does not accept), an LLM call that errored — is an
+operator-fixable coder fault, not an engine fault: it halts under the raw
+`execution_error` (canonical `blocker`) with a config fix target, so the
+operator is told to fix the coder configuration rather than inspect engine
+logs (Fixes #195).
 
 ## Mode model + infrastructure boundary
 

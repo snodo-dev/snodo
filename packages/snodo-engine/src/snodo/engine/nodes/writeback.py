@@ -38,7 +38,7 @@ _CANONICAL_HALT = {
     "wf3": "blocker",
     "max_iterations": "blocker",
     "turn_budget_exhausted": "blocker",
-    "execution_error": "internal_error",
+    "execution_error": "blocker",
     "recovery_exhausted": "blocker",
     "recovery_stalled": "blocker",
     "head_not_moved": "blocker",
@@ -63,6 +63,10 @@ _BLOCKER_FIX_TARGETS = {
         "Edit the protocol — .snodo/protocol.yml is a legitimate place to "
         "change a criterion or a tool grant"
     ),
+    "config": (
+        "Fix the coder configuration — the model string, the coder backend "
+        "(--coder), or the tool's install — then re-run"
+    ),
 }
 
 
@@ -86,6 +90,12 @@ def _blocker_fix_targets(
     halt_type = halt_type or ""
     if halt_type in ("constraint", "wf3"):
         return ["policy"]
+    if halt_type == "execution_error":
+        # The coder backend itself failed — a binary missing from PATH, a CLI
+        # that rejected the arguments (e.g. a model string the tool does not
+        # accept), an LLM call that errored. The operator fixes the coder
+        # configuration, not the code, the spec, or the protocol (Fixes #195).
+        return ["config"]
     if halt_type in ("max_iterations", "turn_budget_exhausted", "recovery_exhausted", "recovery_stalled"):
         return ["spec", "policy"]
     if halt_type == "head_not_moved":
