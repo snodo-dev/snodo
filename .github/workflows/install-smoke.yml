@@ -1,0 +1,120 @@
+name: Install smoke
+
+# Proves the PUBLISHED package works: installs snodo from PyPI, creates a
+# project, and runs a task end to end with the mock coder.
+#
+# This workflow deliberately does NOT check out the repository. Every other
+# gate in CI runs against the working tree, which is exactly why none of them
+# noticed that snodo 0.7.0, 0.7.1 and 0.7.2 shipped depending on five packages
+# that did not exist on PyPI: the tree resolves them from the uv workspace. The
+# only way to catch that class of failure is to install the artifact the way a
+# stranger would, from an empty machine, and use it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to test (blank = latest on PyPI)"
+        required: false
+        default: ""
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install snodo from PyPI
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          SPEC="snodo"
+          if [ -n "${REQUESTED}" ]; then SPEC="snodo==${REQUESTED}"; fi
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --upgrade pip
+          # A release-triggered run can outrun the PyPI CDN, so retry briefly
+          # before believing the index. A genuine dependency failure still
+          # fails here, it just fails three times first.
+          for attempt in 1 2 3; do
+            if "$RUNNER_TEMP/venv/bin/pip" install --no-cache-dir "$SPEC"; then
+              exit 0
+            fi
+            echo "install attempt $attempt failed; waiting for the index"
+            sleep 20
+          done
+          echo "::error::pip install $SPEC failed after 3 attempts"
+          exit 1
+
+      - name: Report installed version
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/venv/bin/snodo" --version
+          if [ -n "${{ inputs.version }}" ]; then
+            "$RUNNER_TEMP/venv/bin/snodo" --version | grep -qF "${{ inputs.version }}" \
+              || { echo "::error::installed version is not ${{ inputs.version }}"; exit 1; }
+          fi
+
+      - name: Create a project
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/proj"
+          cd "$RUNNER_TEMP/proj"
+          # The default branch must be main: task isolation creates a worktree
+          # off it, and `git worktree add ... main` fails outright on master.
+          git init -q -b main
+          git config user.email "smoke@snodo.dev"
+          git config user.name "snodo install smoke"
+          echo "# install smoke" > README.md
+          git add -A
+          git commit -qm "init"
+          # SNODO_HOME redirects the whole snodo home, so this run touches no
+          # state belonging to anything else on the runner.
+          # test_command is `true`: the quality validator executes it for real
+          # even under --mock, and this project has no test suite of its own.
+          SNODO_HOME="$RUNNER_TEMP/home" "$RUNNER_TEMP/venv/bin/snodo" init \
+            --template solo --yes --no-input --test-command "true"
+          test -f .snodo/protocol.yml || { echo "::error::init did not write .snodo/protocol.yml"; exit 1; }
+
+      - name: Run a task with the mock coder
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/proj"
+          SNODO_HOME="$RUNNER_TEMP/home" "$RUNNER_TEMP/venv/bin/snodo" run \
+            "add a hello world function" --mock
+
+      - name: Assert the task actually landed
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/proj"
+          git log --oneline | head -5
+          for f in src/hello.py tests/test_hello.py; do
+            git ls-files --error-unmatch "$f" >/dev/null 2>&1 \
+              || { echo "::error::$f was not committed to main"; exit 1; }
+          done
+          python - <<'PY'
+          import json, sys
+          types = [json.loads(l)["event_type"] for l in open(".snodo/audit.log")]
+          for required in ("task_complete", "task_merged"):
+              if required not in types:
+                  print(f"::error::no {required} event in the audit log; saw {sorted(set(types))}")
+                  sys.exit(1)
+          print("audit log records:", ", ".join(sorted(set(types))))
+          PY
+
+      - name: Show what the run recorded
+        if: always()
+        run: |
+          cd "$RUNNER_TEMP/proj" || exit 0
+          SNODO_HOME="$RUNNER_TEMP/home" "$RUNNER_TEMP/venv/bin/snodo" task list || true
