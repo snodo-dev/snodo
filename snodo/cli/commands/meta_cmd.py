@@ -91,12 +91,18 @@ def _summarize_tokens(records: list) -> Tuple[int, int, int]:
     return prompt, completion, prompt + completion
 
 
-def _tool_telemetry_metrics(records: list) -> Dict[str, Any]:
+def _tool_telemetry_metrics(records: list, drops: Optional[list] = None) -> Dict[str, Any]:
     """Compute structured dictionary of per-turn tool-loop telemetry metrics."""
-    if not records:
+    drops = drops or []
+    if not records and not drops:
         return {}
 
     metrics: Dict[str, Any] = {}
+    if drops:
+        metrics["dropped_records"] = {
+            "count": len(drops),
+            "reasons": [d.get("reason", "unknown") for d in drops],
+        }
 
     coder_turns = [r for r in records if r.get("role") == "coder"]
     if coder_turns:
@@ -162,12 +168,24 @@ def _tool_telemetry_metrics(records: list) -> Dict[str, Any]:
     return metrics
 
 
-def _tool_telemetry_summary(records: list) -> List[str]:
+def _tool_telemetry_summary(records: list, drops: Optional[list] = None) -> List[str]:
     """Summarize per-turn tool-loop telemetry for human display."""
-    if not records:
+    drops = drops or []
+    if not records and not drops:
         return []
 
     lines = []
+    if not records and drops:
+        reason_counts: Dict[str, int] = {}
+        for d in drops:
+            r = d.get("reason", "unknown")
+            reason_counts[r] = reason_counts.get(r, 0) + 1
+        parts = [f"{cnt} {r}" for r, cnt in reason_counts.items()]
+        lines.append(f"  (no turns recorded; {len(drops)} dropped: {', '.join(parts)})")
+        return lines
+
+    if drops:
+        lines.append(f"  Note: {len(drops)} record(s) dropped")
     coder_turns = [r for r in records if r.get("role") == "coder"]
     if coder_turns:
         total = len(coder_turns)
@@ -299,12 +317,24 @@ def _meta_job(project_root: str, job_id: str, json_out: bool = False) -> int:
     task = _read_json(job_dir / "task.json")
     usage = state.get("usage", [])
     telemetry = state.get("tool_telemetry", [])
+    drops = state.get("tool_telemetry_drops", [])
     halt = state.get("halt", {})
 
     if not isinstance(usage, list):
         usage = []
     if not isinstance(telemetry, list):
         telemetry = []
+    if not isinstance(drops, list):
+        drops = []
+
+    global_drops_file = Path(project_root) / ".snodo" / "telemetry_drops.json"
+    if global_drops_file.exists():
+        global_drops_data = _read_json(global_drops_file)
+        g_drops = global_drops_data.get("drops", [])
+        if isinstance(g_drops, list):
+            for d in g_drops:
+                if d.get("target_id") == job_id and d not in drops:
+                    drops.append(d)
 
     status = state.get("status", "unknown")
     created = state.get("created_at", 0)
@@ -349,7 +379,7 @@ def _meta_job(project_root: str, job_id: str, json_out: bool = False) -> int:
                 for role, p, c in role_rows
             ],
             "tool_telemetry": telemetry,
-            "tool_telemetry_summary": _tool_telemetry_metrics(telemetry),
+            "tool_telemetry_summary": _tool_telemetry_metrics(telemetry, drops),
             "highlight": hl,
         }
         return emit_json(payload)
@@ -364,7 +394,7 @@ def _meta_job(project_root: str, job_id: str, json_out: bool = False) -> int:
     if role_rows:
         parts = [f"{role} {_fmt_tokens(p + c)}" for role, p, c in role_rows]
         print(f"  By role: {' | '.join(parts)}")
-    telemetry_lines = _tool_telemetry_summary(telemetry)
+    telemetry_lines = _tool_telemetry_summary(telemetry, drops)
     if telemetry_lines:
         print("  Tool-loop telemetry:")
         for line in telemetry_lines:
@@ -411,6 +441,10 @@ def _meta_task(project_root: str, task_id: str, force: bool = False, json_out: b
     if isinstance(task_state.get("tool_telemetry"), list):
         all_telemetry.extend(task_state["tool_telemetry"])
 
+    all_drops: List[dict] = []
+    if isinstance(task_state.get("tool_telemetry_drops"), list):
+        all_drops.extend(task_state["tool_telemetry_drops"])
+
     job_lines = []
     earliest_start = float("inf")
     latest_end = 0.0
@@ -436,6 +470,12 @@ def _meta_task(project_root: str, task_id: str, force: bool = False, json_out: b
         if isinstance(telemetry, list):
             all_telemetry.extend(telemetry)
 
+        drops = state.get("tool_telemetry_drops", [])
+        if isinstance(drops, list):
+            for d in drops:
+                if d not in all_drops:
+                    all_drops.append(d)
+
         s = state.get("started_at") or state.get("created_at", 0)
         e = state.get("completed_at", 0)
         if s and s < earliest_start:
@@ -451,6 +491,22 @@ def _meta_task(project_root: str, task_id: str, force: bool = False, json_out: b
         j_cost, _, _ = _summarize_cost(usage if isinstance(usage, list) else [])
         hl = _highlight(halt, j_tot, j_cost)
         job_lines.append(f"    {jid}  {hl}")
+
+    global_drops_file = Path(project_root) / ".snodo" / "telemetry_drops.json"
+    if global_drops_file.exists():
+        global_drops_data = _read_json(global_drops_file)
+        g_drops = global_drops_data.get("drops", [])
+        if isinstance(g_drops, list):
+            for d in g_drops:
+                target = d.get("target_id", "")
+                rec = d.get("record")
+                t_ref = rec.get("task_ref") if isinstance(rec, dict) else None
+                if target == task_id or t_ref == task_id:
+                    if d not in all_drops:
+                        all_drops.append(d)
+                elif not all_telemetry and not all_drops and target == "unknown" and not t_ref:
+                    if d not in all_drops:
+                        all_drops.append(d)
 
     prompt_tok, comp_tok, total_tok = _summarize_tokens(all_usage)
     cost_str, total_cost, _ = _summarize_cost(all_usage)
@@ -495,7 +551,7 @@ def _meta_task(project_root: str, task_id: str, force: bool = False, json_out: b
                 for role, p, c in role_rows
             ],
             "tool_telemetry": all_telemetry,
-            "tool_telemetry_summary": _tool_telemetry_metrics(all_telemetry),
+            "tool_telemetry_summary": _tool_telemetry_metrics(all_telemetry, all_drops),
             "highlight": hl,
             "jobs": matching,
         }
@@ -513,7 +569,7 @@ def _meta_task(project_root: str, task_id: str, force: bool = False, json_out: b
     if role_rows:
         parts = [f"{role} {_fmt_tokens(p + c)}" for role, p, c in role_rows]
         print(f"  By role: {' | '.join(parts)}")
-    telemetry_lines = _tool_telemetry_summary(all_telemetry)
+    telemetry_lines = _tool_telemetry_summary(all_telemetry, all_drops)
     if telemetry_lines:
         print("  Tool-loop telemetry:")
         for line in telemetry_lines:

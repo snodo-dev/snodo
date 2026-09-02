@@ -100,6 +100,8 @@ class TestToolTelemetrySink:
 
     def test_record_with_no_resolvable_id_discarded_and_discoverable(self, tmp_path, monkeypatch, caplog):
         import logging
+        from types import SimpleNamespace
+        from snodo.cli.commands.meta_cmd import meta_command
         from snodo.infrastructure.tool_telemetry import (
             get_dropped_telemetry_count,
             get_dropped_telemetry_records,
@@ -109,11 +111,13 @@ class TestToolTelemetrySink:
 
         reset_dropped_telemetry()
         monkeypatch.setenv("SNODO_PROJECT_ROOT", str(tmp_path))
+        monkeypatch.setattr("snodo.cli.commands.meta_cmd.resolve_project_root", lambda: str(tmp_path))
 
         with caplog.at_level(logging.DEBUG):
             # No resolvable job_id ("unknown" does not start with j_) and no valid task_id
             persist_tool_telemetry("unknown", {"turn_index": 1, "tool": "read_files"})
 
+        # In-process observability
         assert get_dropped_telemetry_count() == 1
         dropped = get_dropped_telemetry_records()
         assert len(dropped) == 1
@@ -122,9 +126,30 @@ class TestToolTelemetrySink:
         assert dropped[0]["record"] == {"turn_index": 1, "tool": "read_files"}
         assert any("Dropped tool telemetry record (no_target_id)" in r.message for r in caplog.records)
 
-        # Confirm no files were written to disk
+        # Durable observability in .snodo/telemetry_drops.json
+        drops_file = tmp_path / ".snodo" / "telemetry_drops.json"
+        assert drops_file.exists()
+        persisted_drops = json.loads(drops_file.read_text())
+        assert len(persisted_drops.get("drops", [])) == 1
+        assert persisted_drops["drops"][0]["reason"] == "no_target_id"
+
+        # Confirm no job or task folders were created
         assert not (tmp_path / ".snodo" / "jobs").exists()
         assert not (tmp_path / ".snodo" / "tasks").exists()
+
+        # Observable via meta when inspecting an empty task run
+        task_dir = tmp_path / ".snodo" / "tasks" / "task_empty_run"
+        task_dir.mkdir(parents=True)
+        (task_dir / "state.json").write_text(json.dumps({"task_id": "task_empty_run", "status": "completed"}))
+
+        import io
+        import contextlib
+        stdout_buf = io.StringIO()
+        with contextlib.redirect_stdout(stdout_buf):
+            meta_command(SimpleNamespace(composite_id="task_empty_run", json=False))
+        out = stdout_buf.getvalue()
+        assert "Tool-loop telemetry:" in out
+        assert "no turns recorded; 1 dropped: 1 no_target_id" in out
 
     def test_foreground_task_telemetry_readable_through_meta(self, tmp_path, monkeypatch, capsys):
         from types import SimpleNamespace
