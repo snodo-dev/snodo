@@ -13,7 +13,6 @@ their runs have no per-turn telemetry — an acknowledged consequence of ADR
 034's experimental status.
 """
 
-import json
 import logging
 import os
 from pathlib import Path
@@ -80,55 +79,34 @@ def _append_telemetry(target_dir: Path, record: dict) -> None:
     """Safely append a telemetry record to target_dir/state.json."""
     try:
         from snodo.project import _is_system_root_or_temp
+        from snodo.infrastructure.state import atomic_update_json
 
         if _is_system_root_or_temp(target_dir.parent.parent):
             return
 
-        target_dir.mkdir(parents=True, exist_ok=True)
-        state_path = target_dir / "state.json"
-        state = {}
-        if state_path.exists():
-            try:
-                with open(state_path) as f:
-                    state = json.load(f)
-            except Exception as e:
-                _logger.warning("Failed to read state for tool telemetry: %s", e)
-        if not isinstance(state, dict):
-            state = {}
-        telemetry = state.get("tool_telemetry", [])
-        if not isinstance(telemetry, list):
-            telemetry = []
-        telemetry.append(record)
-        state["tool_telemetry"] = telemetry
-        if "task_id" not in state and record.get("task_ref") and str(record["task_ref"]).startswith("task_"):
-            state["task_id"] = str(record["task_ref"])
-        tmp = target_dir / "state.json.tmp"
-        with open(tmp, "w") as f:
-            json.dump(state, f, indent=2)
-        os.replace(str(tmp), str(state_path))
+        def _update(state: dict) -> None:
+            telemetry = state.get("tool_telemetry", [])
+            if not isinstance(telemetry, list):
+                telemetry = []
+            telemetry.append(record)
+            state["tool_telemetry"] = telemetry
+            if "task_id" not in state and record.get("task_ref") and str(record["task_ref"]).startswith("task_"):
+                state["task_id"] = str(record["task_ref"])
+
+        atomic_update_json(target_dir, "state.json", _update)
     except Exception as e:
-        _logger.warning("Failed to append tool telemetry to %s: %s", target_dir, e)
+        _logger.debug("Failed to append tool telemetry to %s: %s", target_dir, e)
 
 
 def _find_project_root(job_id: str = "", task_id: str = "") -> str | None:
     """Resolve project root.
 
-    Priority:
-      1. ``SNODO_PROJECT_ROOT`` env var (set by wrapper.py for bg jobs)
-      2. Walk up from cwd via resolve_project_root()
+    Only uses explicit SNODO_PROJECT_ROOT environment variable (set for jobs and task runs).
+    Telemetry must NEVER walk up the filesystem to guess a root.
     """
-    from snodo.project import _is_system_root_or_temp
-
     env_root = os.environ.get("SNODO_PROJECT_ROOT")
     if env_root:
-        if _is_system_root_or_temp(env_root):
-            return None
-        return env_root
-    try:
-        from snodo.paths import resolve_project_root
-        root = resolve_project_root()
-        if root and not _is_system_root_or_temp(root):
-            return root
-        return None
-    except Exception:
-        return None
+        from snodo.project import _is_system_root_or_temp
+        if not _is_system_root_or_temp(env_root):
+            return env_root
+    return None
