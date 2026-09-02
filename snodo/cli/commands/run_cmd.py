@@ -985,14 +985,13 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
     if outcome == "merged":
         if audit_log:
             authoritative_spec = getattr(task, "root_spec", None) or getattr(task, "spec", "")
-            from snodo.cli.commands.task_cmd import _unwrap_spec
             audit_log.append_event("task_merged", {
                 "op": "task_merged",
                 "task_ref": task.id,
                 "branch": branch,
                 "merge_sha": merge_head_sha(project_root),
                 "session_id": session_id,
-                "spec": _unwrap_spec(authoritative_spec),
+                "spec": authoritative_spec,
             })
         print(f"✓ Merged {branch} into the base branch")
         return result, False, branch
