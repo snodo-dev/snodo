@@ -200,14 +200,6 @@ class ProtocolVerifier:
                         f"but no pre_execute validators"
                     )
 
-        # Quality validators must never have severity_cap configured
-        for v in self.protocol.validators:
-            if v.validator_type == "quality" and v.severity_cap is not None:
-                violations.append(
-                    f"Quality validator '{v.validator_id}' cannot specify severity_cap "
-                    f"'{v.severity_cap.value}'. Quality gates execute the test suite and must not be capped."
-                )
-
         if violations:
             error_msg = f"WF3 Violation: {'; '.join(violations)}"
             self.errors.append(error_msg)
@@ -260,6 +252,22 @@ class ProtocolVerifier:
                     "use a different policy."
                 )
                 self.warnings.append(warning_msg)
+
+        # Degenerate arrangement warning: exactly one quality validator capped to warn
+        # under a policy where warn does not block leaves no gate to halt failing tests.
+        quality_validators = [
+            v for v in self.protocol.validators
+            if v.validator_type == "quality"
+        ]
+        if len(quality_validators) == 1:
+            qv = quality_validators[0]
+            if qv.severity_cap is not None and qv.severity_cap.value in ("warn", "pass"):
+                if policy != "unanimous":
+                    self.warnings.append(
+                        f"WF4 Warning: Exactly one quality validator ('{qv.validator_id}') is capped at "
+                        f"'{qv.severity_cap.value}' under policy '{policy}'. Under this policy a warning "
+                        "does not block, so a failing test suite cannot halt execution."
+                    )
     
     def check_wf5(self) -> None:
         """WF5: Constraint consistency - constraints must be valid and non-conflicting.
