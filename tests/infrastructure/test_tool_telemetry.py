@@ -98,6 +98,96 @@ class TestToolTelemetrySink:
         # Must not raise.
         persist_tool_telemetry("unknown", {"turn_index": 1})
 
+    def test_unconfigured_project_root_is_silent_noop(self, monkeypatch):
+        from snodo.infrastructure.tool_telemetry import persist_tool_telemetry
+        from snodo.infrastructure.usage_tracker import UsageTracker
+
+        monkeypatch.delenv("SNODO_PROJECT_ROOT", raising=False)
+        monkeypatch.delenv("SNODO_JOB_ID", raising=False)
+
+        # Must not create .snodo anywhere or raise
+        persist_tool_telemetry("task_123", {"turn_index": 1, "tool": "read_files"})
+
+        tracker = UsageTracker()
+        tracker.log_success_event(
+            {"metadata": {"task_id": "task_123"}},
+            MagicMock(usage=MagicMock(prompt_tokens=10, completion_tokens=10)),
+            0,
+            1,
+        )
+
+    def test_usage_tracker_handles_timedelta(self, tmp_path, monkeypatch):
+        import datetime
+        from snodo.infrastructure.usage_tracker import UsageTracker
+
+        project_root = str(tmp_path)
+        task_id = "task_timedelta_test"
+        monkeypatch.setenv("SNODO_PROJECT_ROOT", project_root)
+
+        tracker = UsageTracker()
+        start = datetime.datetime(2026, 9, 1, 12, 0, 0)
+        end = datetime.datetime(2026, 9, 1, 12, 0, 2, 500000)  # 2.5s timedelta
+
+        resp = MagicMock()
+        resp.usage.prompt_tokens = 20
+        resp.usage.completion_tokens = 30
+
+        tracker.log_success_event(
+            {"metadata": {"task_id": task_id}, "model": "test-model"},
+            resp,
+            start,
+            end,
+        )
+
+        task_state_path = tmp_path / ".snodo" / "tasks" / task_id / "state.json"
+        assert task_state_path.exists()
+        data = json.loads(task_state_path.read_text())
+        assert len(data.get("usage", [])) == 1
+        assert data["usage"][0]["duration_ms"] == 2500.0
+
+    def test_concurrent_telemetry_and_usage_writes(self, tmp_path, monkeypatch):
+        import concurrent.futures
+        import datetime
+        from snodo.infrastructure.tool_telemetry import persist_tool_telemetry
+        from snodo.infrastructure.usage_tracker import UsageTracker
+
+        project_root = str(tmp_path)
+        task_id = "task_concurrent_test"
+        monkeypatch.setenv("SNODO_PROJECT_ROOT", project_root)
+
+        tracker = UsageTracker()
+
+        def _write_telemetry(idx):
+            persist_tool_telemetry(
+                task_id,
+                {"turn_index": idx, "tool": f"tool_{idx}", "task_ref": task_id},
+            )
+
+        def _write_usage(idx):
+            resp = MagicMock()
+            resp.usage.prompt_tokens = idx
+            resp.usage.completion_tokens = idx
+            tracker.log_success_event(
+                {"metadata": {"task_id": task_id}, "model": "test-model"},
+                resp,
+                datetime.datetime.now(),
+                datetime.datetime.now() + datetime.timedelta(seconds=1),
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            futs = []
+            for i in range(20):
+                futs.append(executor.submit(_write_telemetry, i))
+                futs.append(executor.submit(_write_usage, i))
+            for f in futs:
+                f.result()
+
+        task_state_path = tmp_path / ".snodo" / "tasks" / task_id / "state.json"
+        assert task_state_path.exists()
+        data = json.loads(task_state_path.read_text())
+        assert len(data.get("tool_telemetry", [])) == 20
+        assert len(data.get("usage", [])) == 20
+
 
 class TestCoderTelemetry:
     def test_coder_emits_per_turn_records(self, tmp_path, monkeypatch):
