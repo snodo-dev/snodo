@@ -165,3 +165,79 @@ def _find_project_root(job_id: str = "") -> str | None:
         if not _is_system_root_or_temp(env_root):
             return env_root
     return None
+
+
+def record_inplace_coder_run(
+    *,
+    coder: str,
+    model: str,
+    elapsed_ms: float,
+    job_id: str = "",
+    task_id: str = "",
+) -> None:
+    """Emit a coder attribution record for an in-place CLI coder run.
+
+    In-place coders (agy, opencode-cli, opencode container) make no litellm
+    calls, so the UsageTracker callback never fires for them.  Without this
+    function a completed run is indistinguishable in state.json from a run
+    that genuinely cost nothing.
+
+    What is measured (and labelled as such):
+    - ``elapsed_ms``: wall-clock duration of the subprocess / HTTP session
+    - ``model``: the model string the CLI was asked to use (may be ``""`` when
+      the operator did not specify one — the tool then uses its own default)
+
+    What is NOT recorded:
+    - ``cost``: None — unknown; providers are not queried
+    - ``prompt_tokens`` / ``completion_tokens``: None — the CLI does not expose
+      them in a stable, version-independent way
+
+    The ``"source": "inplace_coder"`` field distinguishes this record from a
+    litellm-originated one.  The ``"measured"`` list declares which fields were
+    directly observed (as opposed to estimated or derived) so consumers can
+    filter with confidence.  References issue #69.
+
+    This function never raises; attribution must not crash the engine loop.
+    """
+    record: dict = {
+        "timestamp": time.time(),
+        "source": "inplace_coder",
+        "coder": coder,
+        "role": "coder",
+        "model": model,
+        "elapsed_ms": elapsed_ms,
+        "duration_ms": elapsed_ms,
+        # cost and tokens are not available for external CLI coders
+        "cost": None,
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+        # Explicit declaration: only what is in this list was directly observed.
+        "measured": ["elapsed_ms"] + (["model"] if model else []),
+    }
+
+    # Resolve job / task ids: prefer explicit arguments, fall back to env vars.
+    resolved_job_id = job_id or os.environ.get("SNODO_JOB_ID") or ""
+    resolved_task_id = task_id or os.environ.get("SNODO_TASK_ID") or ""
+
+
+    if resolved_job_id.startswith("j_"):
+        record["job_id"] = resolved_job_id
+        try:
+            _persist_usage(resolved_job_id, record)
+        except Exception as e:
+            _logger.debug(
+                "record_inplace_coder_run: failed to persist for job %s: %s",
+                resolved_job_id, e,
+            )
+
+    if resolved_task_id.startswith("task_"):
+        record["task_id"] = resolved_task_id
+        try:
+            _persist_task_usage(resolved_task_id, record)
+        except Exception as e:
+            _logger.debug(
+                "record_inplace_coder_run: failed to persist for task %s: %s",
+                resolved_task_id, e,
+            )
+

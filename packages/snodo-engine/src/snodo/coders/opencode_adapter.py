@@ -41,6 +41,7 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
     being filtered out of the artifact report (Fixes #52, ADR 027).
     """
 
+    coder_name: str = "opencode"
     skip_engine_commit: bool = True
     skip_workspace_write: bool = True
 

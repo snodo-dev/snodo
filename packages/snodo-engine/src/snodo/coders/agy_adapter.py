@@ -17,6 +17,7 @@ from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
 class AGYAdapter(SubprocessCoderAdapter):
     """Coder adapter backed by Antigravity CLI (agy)."""
 
+    coder_name: str = "agy"
     binary: str = "agy"
     model_prefix: str = "agy/"
     install_hint: str = (
