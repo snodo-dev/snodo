@@ -298,7 +298,7 @@ def test_pending_json_shape_stable(tmp_path, monkeypatch, capsys):
     assert row["task_id"] == "t1"
     assert row["branch"] == "task/t1"
     assert row["merge_timestamp"] == "2026-01-01T00:00:00+00:00"
-    assert row["spec_excerpt"] == ""
+    assert row["spec_excerpt"] == "(unrecoverable description)"
 
 
 def test_pending_empty_case(tmp_path, monkeypatch, capsys):
@@ -377,3 +377,95 @@ def test_pending_spec_excerpt_from_session_halt(tmp_path, monkeypatch, capsys):
     assert res == 0
     data = json.loads(capsys.readouterr().out)
     assert data["pending"][0]["spec_excerpt"] == "Implement a login endpoint with tests and documentation"
+
+
+def test_pending_unwraps_retry_wrapped_spec(tmp_path, monkeypatch, capsys):
+    """--pending unwraps retry/recovery scaffolding to extract original request (Fixes #149)."""
+    from pathlib import Path
+
+    from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.state import ProjectState, write_state
+
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    audit_log = AuditLog(str(tmp_path / "audit.log"))
+    monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
+
+    sessions_dir = Path(tmp_path) / ".snodo" / "sessions"
+    mgr = SessionManager(audit_log=audit_log, sessions_dir=sessions_dir)
+    session = mgr.create_session("dev", str(tmp_path))
+    write_state(str(tmp_path), ProjectState(current_mode="dev", active_session={"dev": session.session_id}))
+    monkeypatch.setattr("snodo.infrastructure.session.SessionManager", lambda *a, **kw: mgr)
+
+    wrapped_spec = (
+        "The task is the INTENT below. Implement it.\n\n"
+        "INTENT (unchanged from the original task):\n"
+        "Implement OAuth2 refresh token rotation\n\n"
+        "CONSTRAINTS:\n"
+        "- Implement exactly the intent above. Do not expand the task beyond it.\n"
+        "- The failures below are diagnostic evidence..."
+    )
+    mgr.update_decision(session.session_id, "halt", {
+        "t_retry": {"task_spec": wrapped_spec},
+    })
+
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t_retry", "merge_sha": "f" * 40})
+
+    res = task_review_pending_command(_pending_args(json=True))
+    assert res == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["pending"][0]["spec_excerpt"] == "Implement OAuth2 refresh token rotation"
+
+
+def test_pending_rotated_session_and_unrecoverable_vs_empty_distinction(tmp_path, monkeypatch, capsys):
+    """--pending recovers spec from rotated session and distinguishes unrecoverable vs empty descriptions (Fixes #149)."""
+    from pathlib import Path
+
+    from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.state import ProjectState, write_state
+
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    audit_log = AuditLog(str(tmp_path / "audit.log"))
+    monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
+
+    sessions_dir = Path(tmp_path) / ".snodo" / "sessions"
+    mgr = SessionManager(audit_log=audit_log, sessions_dir=sessions_dir)
+
+    # 1. An old rotated session that is no longer active
+    old_session = mgr.create_session("dev", str(tmp_path))
+    mgr.update_decision(old_session.session_id, "halt", {
+        "t_old": {"task_spec": "Original request from old session"},
+    })
+    # Also an empty description task in old session
+    mgr.update_decision(old_session.session_id, "task_failure", {
+        "t_empty": {"spec": ""},
+    })
+
+    # 2. A new active session with no decisions recorded
+    new_session = mgr.create_session("dev", str(tmp_path))
+    write_state(str(tmp_path), ProjectState(current_mode="dev", active_session={"dev": new_session.session_id}))
+    monkeypatch.setattr("snodo.infrastructure.session.SessionManager", lambda *a, **kw: mgr)
+
+    # 3. Merged units:
+    # - t_old: in rotated session (not active session)
+    # - t_empty: explicitly empty spec ("")
+    # - t_unrecoverable: completely absent from all sessions, task dirs, and audit events
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t_old", "merge_sha": "1" * 40, "timestamp": "2026-01-03T00:00:00+00:00"})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t_empty", "merge_sha": "2" * 40, "timestamp": "2026-01-02T00:00:00+00:00"})
+    audit_log.append_event("task_merged", {"op": "task_merged", "task_ref": "t_unrecoverable", "merge_sha": "3" * 40, "timestamp": "2026-01-01T00:00:00+00:00"})
+
+    # Check human readable output
+    res = task_review_pending_command(_pending_args(json=False))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "Original request from old session" in out
+    assert "(empty)" in out
+    assert "(unrecoverable description)" in out
+
+    # Check JSON output
+    res_json = task_review_pending_command(_pending_args(json=True))
+    assert res_json == 0
+    data = json.loads(capsys.readouterr().out)
+    pending_by_id = {row["task_id"]: row for row in data["pending"]}
+    assert pending_by_id["t_old"]["spec_excerpt"] == "Original request from old session"
+    assert pending_by_id["t_empty"]["spec_excerpt"] == "(empty)"
+    assert pending_by_id["t_unrecoverable"]["spec_excerpt"] == "(unrecoverable description)"
