@@ -29,13 +29,13 @@ def base_protocol():
                 mode_id="producer",
                 name="Producer",
                 tools=["edit"],
-                validators=["quality"],
+                validators=["acceptance"],
             )
         ],
         validators=[
             Validator(
-                validator_id="quality",
-                validator_type="quality",
+                validator_id="acceptance",
+                validator_type="acceptance",
                 evaluation_phase="post_execute",
                 criteria=["check outputs"],
                 severity_cap="warn",
