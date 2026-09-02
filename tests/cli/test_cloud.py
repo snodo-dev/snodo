@@ -377,7 +377,7 @@ class TestCloudSyncDispatcher:
         assert captured_body["session_id"] == "sess_pid_test"
         assert captured_body["project_path"] == "/home/user/code/my-awesome-project"
         assert captured_body["display_name"] == "my-awesome-project"
-        assert captured_body["project_name"] == "my-awesome-project"
+        assert "project_name" not in captured_body
         assert len(captured_body["events"]) == 2
         for ev_payload in captured_body["events"]:
             assert ev_payload["project_id"] == "github.com/snodo-dev/test-repo"

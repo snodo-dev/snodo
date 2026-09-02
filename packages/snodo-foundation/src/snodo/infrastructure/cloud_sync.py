@@ -295,7 +295,6 @@ class CloudSyncDispatcher:
         body = json.dumps({
             "session_id": session_id,
             "project_path": project_root,
-            "project_name": display_name,
             "display_name": display_name,
             "events": payload_events,
         }).encode()
