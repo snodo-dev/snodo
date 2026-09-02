@@ -11,9 +11,12 @@ import os
 import shutil
 import subprocess
 import tempfile
+import warnings
 from pathlib import Path
 
 import pytest
+
+from tests.verification_gate import build_notice
 
 TEST_SECRET = "test-secret-key-that-is-at-least-32-bytes!!"
 
@@ -278,6 +281,7 @@ def _get_system_tmp_roots() -> set[Path]:
 
 
 def pytest_sessionstart(session):
+    _E2E_DESELECTED[0] = 0
     for root in _get_system_tmp_roots():
         target = root / ".snodo"
         if target.is_dir():
@@ -353,4 +357,71 @@ def _guard_no_env_leak(request):
             "explicitly (Fixes #200).",
             pytrace=False,
         )
+
+
+# --- Reduced-gate announcement (Refs #87) -----------------------------------
+#
+# The documented local command runs with pyproject's addopts, which deselect the
+# e2e marker, while CI clears the filter and adds coverage. That divergence was
+# silent: a contributor could pass the reduced local run and be surprised by a
+# CI failure it cannot see. These hooks make the reduction announce itself on the
+# same screen — see tests/verification_gate.py for the source of truth.
+
+
+# Count of e2e-marked items deselected in this process. Reset at collection
+# start so a reused process reports a per-session number, not a running total.
+_E2E_DESELECTED: list[int] = [0]
+
+
+def _e2e_excluded_by_markexpr(config: pytest.Config) -> bool:
+    """True when the effective marker filter excludes the e2e suite.
+
+    Evaluated against a hypothetical item carrying only the e2e marker, so it is
+    reason-accurate: a ``-k`` run that happens to drop e2e tests does not read as
+    "e2e deselected by the marker filter", and ``-m e2e`` (which selects e2e) does
+    not either. Falls back to a literal match on the documented reduction if the
+    pinned pytest internals are unavailable.
+    """
+    markexpr = (config.getoption("markexpr", default="") or "").strip()
+    if not markexpr:
+        return False
+    try:
+        from _pytest.mark import Mark, MarkMatcher, _parse_expression
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            expr = _parse_expression(markexpr, "invalid marker expression")
+            e2e_only = Mark(name="e2e", args=(), kwargs={})
+            return not expr.evaluate(MarkMatcher.from_markers([e2e_only]))
+    except Exception:
+        return markexpr == "not e2e"
+
+
+def pytest_deselected(items: list) -> None:
+    for item in items:
+        if item.get_closest_marker("e2e") is not None:
+            _E2E_DESELECTED[0] += 1
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+    """Announce the reduced local gate so a passing local run cannot be mistaken
+    for the CI gate (Refs #87).
+
+    Fires only when the effective marker filter excluded e2e — so it prints for
+    the documented ``pytest tests/`` local command, and stays silent for CI's
+    ``-m ""`` full run and for ``-m e2e``.
+    """
+    if not _e2e_excluded_by_markexpr(config):
+        return
+    count = _E2E_DESELECTED[0] or None
+    if count is None:
+        # Under xdist the deselection happened in workers, so this controller
+        # has no marker-level count. For the documented reduction every
+        # deselected item is an e2e test, so the aggregated count is exact.
+        deselected = terminalreporter.stats.get("deselected") or []
+        markexpr = (config.getoption("markexpr", default="") or "").strip()
+        if markexpr == "not e2e" and deselected:
+            count = len(deselected)
+    for line in build_notice(count).splitlines():
+        terminalreporter.write_line(line)
 
