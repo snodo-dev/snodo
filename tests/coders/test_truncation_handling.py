@@ -3,7 +3,8 @@
 FILE: tests/coders/test_truncation_handling.py
 
 Verifies:
-- Truncation produces internal_error outcome, zero artifacts, and skipped post-validation.
+- Truncation produces the execution_error halt (canonical blocker), zero
+  artifacts, and skipped post-validation.
 - The halt payload reason names the max_tokens ceiling and states task is too large.
 - Generated token/char counts are reported in the failure reason.
 - A complete (non-truncated) response is unaffected.
@@ -86,10 +87,10 @@ def _make_mock_response(content="Preamble text...", finish_reason="max_tokens", 
 
 
 class TestTruncationExecutionFailure:
-    """Issue #39: Truncation is an execution failure with outcome internal_error."""
+    """Issue #39: Truncation is a coder execution fault with outcome execution_error."""
 
-    def test_truncated_response_produces_internal_error(self, solo_protocol, git_fixture_repo):
-        """Truncated response -> internal_error, zero artifacts, skipped post-validation."""
+    def test_truncated_response_produces_execution_error(self, solo_protocol, git_fixture_repo):
+        """Truncated response -> execution_error (canonical blocker), zero artifacts, skipped post-validation."""
         adapter = LiteLLMAdapter(model="gpt-4o", max_tokens=16000)
         adapter._completion_fn = MagicMock(return_value=_make_mock_response(
             content="I am starting to write the preamble...",
@@ -111,14 +112,17 @@ class TestTruncationExecutionFailure:
         task = Task(id="task_trunc", spec="Huge task")
         _final_state, tree = run_to_closure(graph, task, mode="producer")
 
-        assert tree.outcome == "internal_error"
+        # A coder fault (unparseable output), not an engine fault: raw halt
+        # execution_error, canonical blocker (Fixes #195).
+        assert tree.outcome == "execution_error"
+        assert tree.outcome != "internal_error"
         payload = tree.halt_payload
         assert payload is not None
 
         assert payload["status"] == "blocked"
-        assert payload["halt_type"] == "internal_error"
-        assert payload["final_decision"] == "internal_error"
-        assert payload["raw_halt_type"] == "internal_error"
+        assert payload["halt_type"] == "blocker"
+        assert payload["final_decision"] == "blocker"
+        assert payload["raw_halt_type"] == "blocker"
         assert payload["artifacts_count"] == 0
 
         # Post-validation was skipped
