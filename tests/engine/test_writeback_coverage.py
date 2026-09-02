@@ -157,6 +157,7 @@ class TestAutoWriteFailureContext:
         entry = failures["t1"]
         assert entry["attempt"] == 1
         assert entry["spec"] == "do something"
+        assert entry["original_spec"] == "do something"
         assert len(entry["failed_validators"]) == 1
         assert entry["files_changed"] == ["src/main.py"]
 

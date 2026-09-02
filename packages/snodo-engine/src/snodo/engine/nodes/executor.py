@@ -37,7 +37,8 @@ class ExecutorMixin:
     def _ensure_task_branch(self, git_mcp: Optional[Any], task: Task) -> None:
         """Ensure task branch is created and checked out for isolation."""
         if git_mcp and not self._worktree_path and not self._worktree_degraded:
-            branch_name = _task_branch_name(task.id, task.spec)
+            spec_for_branch = getattr(task, "root_spec", None) or task.spec
+            branch_name = _task_branch_name(task.id, spec_for_branch)
             if _branch_exists(git_mcp, branch_name):
                 git_mcp.checkout_branch(branch_name)
             else:

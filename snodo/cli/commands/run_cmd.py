@@ -421,8 +421,10 @@ def _failure_from_halt_record(session, task_id: str) -> Optional[dict]:
 
     return {
         "spec": spec,
+        "original_spec": spec,
         "branch": _task_branch_name(task_id, spec),
         "attempt": 1,
+        "phase": record.get("phase", "post_execute"),
         "failed_validators": failed_validators,
         "files_changed": [],
     }
@@ -477,38 +479,52 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
         )
 
     # Build augmented prompt
-    original_spec = failure.get("spec", "")
+    original_spec = failure.get("original_spec") or failure.get("spec", "")
     revised_spec = args.description
+    authoritative_spec = revised_spec or original_spec
 
     failed_validators = failure.get("failed_validators", [])
     validator_details = "\n".join(
         f"  {v['validator_id']}: {v['justification']}"
         for v in failed_validators
     )
-    files_changed = ", ".join(failure.get("files_changed", []))
-
-    if revised_spec:
-        augmented = (
-            f"Original spec: {original_spec}\n\n"
-            f"Revised spec (replaces original): {revised_spec}\n\n"
-            f"Previous attempt {attempt} failed post-validation:\n"
-            f"{validator_details}\n\n"
-            f"Files changed in previous attempt: {files_changed}\n\n"
-            f"Fix the issues above."
-        )
+    raw_files = failure.get("files_changed", [])
+    if isinstance(raw_files, list):
+        files_changed = ", ".join(f for f in raw_files if isinstance(f, str) and f.strip())
     else:
-        augmented = (
-            f"Original spec: {original_spec}\n\n"
-            f"Previous attempt {attempt} failed post-validation:\n"
-            f"{validator_details}\n\n"
-            f"Files changed in previous attempt: {files_changed}\n\n"
-            f"Fix the issues above."
-        )
+        files_changed = ""
+
+    phase = failure.get("phase", "post_execute")
+    if phase == "pre_execute":
+        phase_label = "pre-validation"
+    elif phase == "execute":
+        phase_label = "at execute"
+    else:
+        phase_label = "post-validation"
+
+    prompt_parts = []
+    if revised_spec:
+        prompt_parts.append(f"Original spec: {original_spec}")
+        prompt_parts.append(f"Revised spec (replaces original): {revised_spec}")
+    else:
+        prompt_parts.append(f"Original spec: {original_spec}")
+
+    if validator_details:
+        prompt_parts.append(f"Previous attempt {attempt} failed {phase_label}:\n{validator_details}")
+    else:
+        prompt_parts.append(f"Previous attempt {attempt} failed {phase_label}.")
+
+    if files_changed:
+        prompt_parts.append(f"Files changed in previous attempt: {files_changed}")
+
+    prompt_parts.append("Fix the issues above.")
+
+    augmented = "\n\n".join(prompt_parts)
 
     mgr = ConfigManager()
     model = args.model or mgr.get_model()
 
-    task = Task(id=task_id, spec=augmented)
+    task = Task(id=task_id, spec=augmented, root_spec=authoritative_spec)
     print(f"Retrying task {task_id} (attempt {attempt + 1}/{max_retries})")
     print()
 
@@ -645,7 +661,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         # not halt, because specs legitimately name paths that are meant to be
         # created, and only the operator can tell the two apart.
         from snodo.infrastructure.worktree import check_spec_paths_exist
-        missing = check_spec_paths_exist(project_root, task.spec, worktree=worktree_path_val)
+        spec_for_paths = getattr(task, "root_spec", None) or task.spec
+        missing = check_spec_paths_exist(project_root, spec_for_paths, worktree=worktree_path_val)
         if missing:
             print(
                 "  Warning: the task spec cites paths that do not exist in the "
@@ -690,7 +707,14 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         "id": task.id,
         "spec": task.spec,
         "parent_task_ref": task.parent_task_ref,
-        "depth": task.depth,
+        "root_task_ref": getattr(task, "root_task_ref", None),
+        "root_spec": getattr(task, "root_spec", None),
+        "prior_failures": getattr(task, "prior_failures", []) or [],
+        "attempt_provenance": getattr(task, "attempt_provenance", []) or [],
+        "attempt_reads": getattr(task, "attempt_reads", []) or [],
+        "depth": getattr(task, "depth", 0) or 0,
+        "flow_type": getattr(task, "flow_type", None),
+        "wave_id": getattr(task, "wave_id", None),
     }
 
     preserve_worktree = False
@@ -796,7 +820,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 def _print_worktree_retained(project_root, task, worktree_path_val) -> None:
     """Tell the user where the retained worktree is and how to inspect/remove it."""
     from snodo.infrastructure.worktree import task_branch_name
-    branch = task_branch_name(task.id, task.spec)
+    spec_for_branch = getattr(task, "root_spec", None) or task.spec
+    branch = task_branch_name(task.id, spec_for_branch)
     print()
     print(f"Worktree preserved for inspection: {worktree_path_val}")
     print(f"  Branch: {branch}")
@@ -857,7 +882,8 @@ def _report_unmerged_branch(project_root, task, protocol, mode, closure_tree,
 
     from snodo.infrastructure.worktree import task_branch_name
 
-    branch = task_branch_name(task.id, task.spec)
+    spec_for_branch = getattr(task, "root_spec", None) or task.spec
+    branch = task_branch_name(task.id, spec_for_branch)
     print("⚠ Task resolved but its work was NOT merged to the base branch.", file=sys.stderr)
     print(f"  Reason: {reason}", file=sys.stderr)
     if worktree_degraded or not worktree_path_val:
@@ -894,7 +920,8 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
     from snodo.infrastructure.worktree import task_branch_name, merge_task_branch, merge_head_sha
     from snodo.tools.git import GitError
 
-    branch = task_branch_name(task.id, task.spec)
+    spec_for_branch = getattr(task, "root_spec", None) or task.spec
+    branch = task_branch_name(task.id, spec_for_branch)
     if audit_log:
         history = audit_log.get_history("verification_executed")
         has_pass = any(
