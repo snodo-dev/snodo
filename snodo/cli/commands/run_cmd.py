@@ -531,6 +531,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
     from snodo.infrastructure.paths import require_project_root
     project_root = require_project_root()
+    old_project_root = os.environ.get("SNODO_PROJECT_ROOT")
+    os.environ["SNODO_PROJECT_ROOT"] = str(project_root)
     _record_task_start(project_root, task.id, task.spec)
     audit_log = getattr(args, "audit_log", None)
     session_manager = getattr(args, "session_manager", None)
@@ -784,6 +786,11 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                 sync_if_enabled(session_id, project_root, audit_log)
             except Exception as e:
                 _logger.warning("Cloud sync hook failed: %s", e)
+
+        if old_project_root is not None:
+            os.environ["SNODO_PROJECT_ROOT"] = old_project_root
+        else:
+            os.environ.pop("SNODO_PROJECT_ROOT", None)
 
 
 def _print_worktree_retained(project_root, task, worktree_path_val) -> None:
@@ -1261,26 +1268,19 @@ def _find_terminal_halt_payload(tree, final_state: dict) -> Optional[dict]:
 def _record_task_start(project_root: str, task_id: str, spec: str) -> None:
     """Record initial task metadata under .snodo/tasks/<task_id>/state.json."""
     try:
+        from snodo.infrastructure.state import atomic_update_json
+
         task_dir = Path(project_root) / ".snodo" / "tasks" / task_id
-        task_dir.mkdir(parents=True, exist_ok=True)
-        state_path = task_dir / "state.json"
-        state = {}
-        if state_path.exists():
-            try:
-                state = json.loads(state_path.read_text())
-            except Exception:
-                state = {}
-        if not isinstance(state, dict):
-            state = {}
-        state["task_id"] = task_id
-        state["description"] = spec
-        if "created_at" not in state:
-            state["created_at"] = time.time()
-        state["started_at"] = time.time()
-        state["status"] = "running"
-        tmp = task_dir / "state.json.tmp"
-        tmp.write_text(json.dumps(state, indent=2) + "\n")
-        os.replace(str(tmp), str(state_path))
+
+        def _update(state: dict) -> None:
+            state["task_id"] = task_id
+            state["description"] = spec
+            if "created_at" not in state:
+                state["created_at"] = time.time()
+            state["started_at"] = time.time()
+            state["status"] = "running"
+
+        atomic_update_json(task_dir, "state.json", _update)
     except Exception as e:
         _logger.debug("Could not record task start: %s", e)
 
@@ -1293,25 +1293,18 @@ def _record_task_completion(
 ) -> None:
     """Record final task completion and halt payload under .snodo/tasks/<task_id>/state.json."""
     try:
+        from snodo.infrastructure.state import atomic_update_json
+
         task_dir = Path(project_root) / ".snodo" / "tasks" / task_id
-        task_dir.mkdir(parents=True, exist_ok=True)
-        state_path = task_dir / "state.json"
-        state = {}
-        if state_path.exists():
-            try:
-                state = json.loads(state_path.read_text())
-            except Exception:
-                state = {}
-        if not isinstance(state, dict):
-            state = {}
-        state["task_id"] = task_id
-        state["completed_at"] = time.time()
-        state["status"] = status
-        if halt_payload:
-            state["halt"] = halt_payload
-        tmp = task_dir / "state.json.tmp"
-        tmp.write_text(json.dumps(state, indent=2) + "\n")
-        os.replace(str(tmp), str(state_path))
+
+        def _update(state: dict) -> None:
+            state["task_id"] = task_id
+            state["completed_at"] = time.time()
+            state["status"] = status
+            if halt_payload:
+                state["halt"] = halt_payload
+
+        atomic_update_json(task_dir, "state.json", _update)
     except Exception as e:
         _logger.debug("Could not record task completion: %s", e)
 

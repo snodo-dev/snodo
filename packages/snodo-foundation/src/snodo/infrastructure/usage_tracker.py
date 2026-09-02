@@ -7,7 +7,6 @@ Captures per-call token usage, cost, timing, and correlation
 Persists records to job state.json keyed by job_id.
 """
 
-import json
 import logging
 import os
 import time
@@ -71,6 +70,18 @@ class UsageTracker(CustomLogger):
         role = meta.get("role", "unknown")
         model = kwargs.get("model", "unknown") if isinstance(kwargs, dict) else "unknown"
 
+        # Handle duration_ms safely without assuming float or int
+        duration_ms = 0.0
+        try:
+            if hasattr(end_time, "__sub__") and hasattr(start_time, "__sub__"):
+                diff = end_time - start_time
+                if hasattr(diff, "total_seconds"):
+                    duration_ms = round(diff.total_seconds() * 1000, 2)
+                elif isinstance(diff, (int, float)):
+                    duration_ms = round(float(diff) * 1000, 2)
+        except Exception:
+            duration_ms = 0.0
+
         record = {
             "timestamp": time.time(),
             "model": model,
@@ -78,7 +89,7 @@ class UsageTracker(CustomLogger):
             "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens,
             "cost": cost,
-            "duration_ms": (end_time - start_time) * 1000,
+            "duration_ms": duration_ms,
             "job_id": job_id,
             "task_id": task_id,
             "role": role,
@@ -90,12 +101,12 @@ class UsageTracker(CustomLogger):
             try:
                 _persist_usage(job_id, record)
             except Exception as e:
-                _logger.warning("Failed to persist usage for job %s: %s", job_id, e)
+                _logger.debug("Failed to persist usage for job %s: %s", job_id, e)
         if task_id != "unknown" and task_id.startswith("task_"):
             try:
                 _persist_task_usage(task_id, record)
             except Exception as e:
-                _logger.warning("Failed to persist usage for task %s: %s", task_id, e)
+                _logger.debug("Failed to persist usage for task %s: %s", task_id, e)
 
 
 def _persist_usage(job_id: str, record: dict) -> None:
@@ -120,53 +131,37 @@ def _persist_task_usage(task_id: str, record: dict) -> None:
         return
     tasks_dir = Path(project_root) / ".snodo" / "tasks"
     task_dir = tasks_dir / task_id
-    task_dir.mkdir(parents=True, exist_ok=True)
     _append_usage(task_dir, record, task_id=task_id)
 
 
 def _append_usage(target_dir: Path, record: dict, task_id: str = "") -> None:
-    state_path = target_dir / "state.json"
-    state = {}
-    if state_path.exists():
-        try:
-            with open(state_path) as f:
-                state = json.load(f)
-        except Exception as e:
-            _logger.warning("Failed to read state for usage tracking: %s", e)
-    if not isinstance(state, dict):
-        state = {}
-    usage_list = state.get("usage", [])
-    if not isinstance(usage_list, list):
-        usage_list = []
-    usage_list.append(record)
-    state["usage"] = usage_list
-    if task_id and "task_id" not in state:
-        state["task_id"] = task_id
-    tmp = target_dir / "state.json.tmp"
-    with open(tmp, "w") as f:
-        json.dump(state, f, indent=2)
-    os.replace(str(tmp), str(state_path))
+    """Safely append a usage record to target_dir/state.json."""
+    try:
+        from snodo.infrastructure.state import atomic_update_json
+
+        def _update(state: dict) -> None:
+            usage_list = state.get("usage", [])
+            if not isinstance(usage_list, list):
+                usage_list = []
+            usage_list.append(record)
+            state["usage"] = usage_list
+            if task_id and "task_id" not in state:
+                state["task_id"] = task_id
+
+        atomic_update_json(target_dir, "state.json", _update)
+    except Exception as e:
+        _logger.debug("Failed to append usage tracking to %s: %s", target_dir, e)
 
 
 def _find_project_root(job_id: str = "") -> str | None:
     """Resolve project root.
 
-    Priority:
-      1. ``SNODO_PROJECT_ROOT`` env var (set by wrapper.py for bg jobs)
-      2. Walk up from cwd via resolve_project_root()
+    Only uses explicit SNODO_PROJECT_ROOT environment variable (set for jobs and task runs).
+    Usage tracking must NEVER walk up the filesystem to guess a root.
     """
-    from snodo.project import _is_system_root_or_temp
-
     env_root = os.environ.get("SNODO_PROJECT_ROOT")
     if env_root:
-        if _is_system_root_or_temp(env_root):
-            return None
-        return env_root
-    try:
-        from snodo.paths import resolve_project_root
-        root = resolve_project_root()
-        if root and not _is_system_root_or_temp(root):
-            return root
-        return None
-    except Exception:
-        return None
+        from snodo.project import _is_system_root_or_temp
+        if not _is_system_root_or_temp(env_root):
+            return env_root
+    return None
