@@ -4,7 +4,12 @@
 
 | Version | Supported |
 |---|---|
-| 0.1.x | ✅ |
+| 0.7.x | ✅ |
+| < 0.7 | ❌ |
+
+snodo is pre-1.0 and ships frequent patch releases. Only the latest
+minor series receives security fixes; upgrade to the current release
+rather than expecting a backport.
 
 ## Reporting a vulnerability
 
