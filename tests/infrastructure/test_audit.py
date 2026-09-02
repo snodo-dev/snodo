@@ -495,6 +495,51 @@ def test_audit_log_resolves_to_project_root_despite_snodo_home(tmp_path, monkeyp
         reset_global_audit_log()
 
 
+def test_audit_log_resolves_to_project_root_from_worktree_cwd(tmp_path, monkeypatch):
+    """Executing from a task worktree must not point the audit log at the worktree.
+
+    A background job runs the CLI with ``cwd`` set to the task worktree (the
+    branch under judgement) and ``SNODO_PROJECT_ROOT`` set to the real project
+    by the job wrapper. The default ``.snodo/audit.log`` used to resolve
+    against the cwd, so the attestation — and the merge gate's
+    ``verification_executed`` history that reads it — landed in a throwaway log
+    inside the worktree instead of the project's chain (Fixes #73).
+    """
+    from snodo.infrastructure.audit import reset_global_audit_log
+
+    project_root = tmp_path / "project"
+    worktree = tmp_path / "worktree"
+    (project_root / ".snodo").mkdir(parents=True)
+    worktree.mkdir()
+
+    # The autouse isolate_snodo_home fixture sets SNODO_AUDIT_LOG to keep unit
+    # tests off the suite repo; this canary tests the DEFAULT resolution, so
+    # the override must be cleared.
+    monkeypatch.delenv("SNODO_AUDIT_LOG", raising=False)
+    # The job wrapper exports SNODO_PROJECT_ROOT so the child resolves the real
+    # project even though its cwd is the worktree.
+    monkeypatch.setenv("SNODO_PROJECT_ROOT", str(project_root))
+    monkeypatch.chdir(worktree)
+    reset_global_audit_log()
+    try:
+        log = get_audit_log()
+        assert Path(log.log_path).resolve() == (project_root / ".snodo" / "audit.log").resolve(), (
+            f"audit log resolved to {log.log_path} — running from a task "
+            "worktree must resolve the PROJECT's audit log, never a throwaway "
+            "log inside the worktree"
+        )
+
+        # Appends land in the project's chain, not in a worktree-local file.
+        log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "outcome": "pass",
+        })
+        assert (project_root / ".snodo" / "audit.log").exists()
+        assert not (worktree / ".snodo" / "audit.log").exists()
+    finally:
+        reset_global_audit_log()
+
+
 def test_log_event_convenience_function():
     """Test log_event convenience function."""
     with tempfile.TemporaryDirectory() as tmpdir:

@@ -10,6 +10,7 @@ never from process-local memory (Fixes #114).
 
 import hashlib
 import json
+import logging
 import threading
 import time
 from datetime import datetime, UTC
@@ -25,6 +26,8 @@ except ImportError:  # pragma: no cover - non-POSIX platform
 
 
 from snodo.core.interfaces import AuditError
+
+_logger = logging.getLogger(__name__)
 
 
 _RECOVERY_GUIDANCE = (
@@ -551,9 +554,13 @@ def get_audit_log(log_path: Optional[str] = None, project_id: str = "") -> Audit
     """Get global audit log instance.
 
     Args:
-        log_path: Path to audit log file (defaults to ``.snodo/audit.log``,
-            resolved against the project root — the audit log is a property
-            of the PROJECT, not the user, so SNODO_HOME does not redirect it).
+        log_path: Path to audit log file (defaults to ``.snodo/audit.log``
+            resolved against the PROJECT ROOT, not the cwd — the audit log is
+            an attestation that must survive an execution, and executing from a
+            task worktree whose ``cwd`` is the worktree must not point the
+            attestation at the worktree's throwaway copy (Fixes #73). It is a
+            property of the PROJECT, not the user, so SNODO_HOME does not
+            redirect it.)
             ``SNODO_AUDIT_LOG`` overrides the default for test isolation only.
         project_id: Optional project identifier
     """
@@ -564,9 +571,32 @@ def get_audit_log(log_path: Optional[str] = None, project_id: str = "") -> Audit
             if override:
                 log_path = override
             else:
-                log_path = ".snodo/audit.log"
+                log_path = _resolve_default_audit_path()
         _global_audit_log = AuditLog(log_path, project_id=project_id)
     return _global_audit_log
+
+
+def _resolve_default_audit_path() -> str:
+    """Resolve the default ``.snodo/audit.log`` against the project root.
+
+    The default path must name the PROJECT's audit chain even when the process
+    runs from a task worktree (background jobs spawn the CLI with ``cwd`` set
+    to the worktree, and the branch under judgement — plus the merge gate that
+    reads its ``verification_executed`` history — lives in the project, not the
+    worktree). ``resolve_project_root`` honors ``SNODO_PROJECT_ROOT`` (set by
+    the job wrapper) and otherwise walks up from the cwd, so this resolves to
+    the real project in both the inline and background paths. Falls back to a
+    cwd-relative ``.snodo/audit.log`` when no project root is resolvable,
+    preserving the historical behaviour outside a project tree.
+    """
+    try:
+        from snodo.paths import resolve_project_root
+        root = resolve_project_root()
+        if root:
+            return str(Path(root) / ".snodo" / "audit.log")
+    except Exception as e:  # noqa: BLE001 — resolution failure must never break the log default
+        _logger.debug("Could not resolve project root for the default audit log: %s", e)
+    return ".snodo/audit.log"
 
 
 def log_event(event_type: str, data: Dict[str, Any]) -> AuditEvent:
