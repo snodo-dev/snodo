@@ -462,6 +462,57 @@ def test_get_audit_log_singleton():
         assert log1 is log2
 
 
+def test_get_audit_log_resolves_default_project_id(tmp_path, monkeypatch):
+    """get_audit_log() without explicit project_id resolves canonical project ID from project root."""
+    from snodo.infrastructure.audit import get_audit_log, reset_global_audit_log
+
+    project_root = tmp_path / "my_project"
+    project_root.mkdir()
+    (project_root / ".snodo").mkdir()
+    (project_root / ".snodo" / "project.json").write_text(
+        json.dumps({"id": "github.com/org/my-project", "project.id": "github.com/org/my-project", "scope": "remote"})
+    )
+
+    monkeypatch.setenv("SNODO_PROJECT_ROOT", str(project_root))
+    monkeypatch.setenv("SNODO_AUDIT_LOG", str(project_root / ".snodo" / "audit.log"))
+    reset_global_audit_log()
+    try:
+        log = get_audit_log()
+        assert log._project_id == "github.com/org/my-project"
+
+        event = log.append_event("human_review_recorded", {"task_id": "task_1", "verdict": "accepted"})
+        assert event.project_id == "github.com/org/my-project"
+    finally:
+        reset_global_audit_log()
+
+
+def test_get_audit_log_singleton_project_id_hazard_resolved(tmp_path, monkeypatch):
+    """An initial get_audit_log() call from a utility command updates if a later caller passes project_id."""
+    from snodo.infrastructure.audit import get_audit_log, reset_global_audit_log
+
+    project_root = tmp_path / "utility_first_project"
+    project_root.mkdir()
+    (project_root / ".snodo").mkdir()
+
+    monkeypatch.setenv("SNODO_PROJECT_ROOT", str(project_root))
+    monkeypatch.setenv("SNODO_AUDIT_LOG", str(project_root / ".snodo" / "audit.log"))
+    reset_global_audit_log()
+    try:
+        # 1. Utility command calls get_audit_log() with no project_id (e.g. task review or cloud status)
+        log1 = get_audit_log()
+        assert log1._project_id != ""  # Auto-resolved default
+
+        # 2. Later, run_cmd or job_cmd calls get_audit_log(project_id="explicit_pid")
+        log2 = get_audit_log(project_id="github.com/org/explicit-project")
+        assert log2 is log1
+        assert log2._project_id == "github.com/org/explicit-project"
+
+        event = log2.append_event("task_started", {"task_id": "task_100"})
+        assert event.project_id == "github.com/org/explicit-project"
+    finally:
+        reset_global_audit_log()
+
+
 def test_audit_log_resolves_to_project_root_despite_snodo_home(tmp_path, monkeypatch):
     """The audit log is a property of the PROJECT, not the user.
 

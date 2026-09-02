@@ -113,6 +113,8 @@ class AuditLog:
             project_id: Optional project identifier
         """
         self.log_path = Path(log_path)
+        if not project_id:
+            project_id = _resolve_default_project_id()
         self._project_id = project_id
         self.events: List[AuditEvent] = []
         self._lock = threading.Lock()
@@ -148,6 +150,8 @@ class AuditLog:
                     f"Refusing to append to audit log {self.log_path}: the log "
                     f"did not load cleanly. {_RECOVERY_GUIDANCE}"
                 )
+            if not self._project_id:
+                self._project_id = _resolve_default_project_id()
             with self._exclusive_file_lock():
                 # Derive the true sequence from the file, not from memory: a
                 # concurrent process may have appended since this instance
@@ -572,8 +576,34 @@ def get_audit_log(log_path: Optional[str] = None, project_id: str = "") -> Audit
                 log_path = override
             else:
                 log_path = _resolve_default_audit_path()
+        if not project_id:
+            project_id = _resolve_default_project_id()
         _global_audit_log = AuditLog(log_path, project_id=project_id)
+    else:
+        if project_id and _global_audit_log._project_id != project_id:
+            _global_audit_log._project_id = project_id
+        elif not _global_audit_log._project_id:
+            _global_audit_log._project_id = _resolve_default_project_id()
     return _global_audit_log
+
+
+def _resolve_default_project_id() -> str:
+    """Resolve the default project ID against the project root.
+
+    Resolves canonical project identity (ADR 012) using get_project_id when
+    inside a project directory. Falls back to empty string when not inside a
+    project.
+    """
+    try:
+        from snodo.paths import resolve_project_root
+        root = resolve_project_root()
+        if root:
+            from snodo.project import get_project_id
+            pid, _ = get_project_id(root)
+            return pid or ""
+    except Exception as e:  # noqa: BLE001 — resolution failure must never break the log default
+        _logger.debug("Could not resolve default project_id for audit log: %s", e)
+    return ""
 
 
 def _resolve_default_audit_path() -> str:
