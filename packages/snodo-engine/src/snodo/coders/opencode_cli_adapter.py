@@ -13,6 +13,7 @@ from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
 class OpenCodeCLIAdapter(SubprocessCoderAdapter):
     """Coder adapter backed by the host ``opencode run`` CLI."""
 
+    coder_name: str = "opencode-cli"
     binary: str = "opencode"
     model_prefix: str = "opencode-cli/"
     install_hint: str = (

@@ -8,6 +8,7 @@ directly (opencode and similar) instead of through WorkspaceMCP.
 """
 
 import logging
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -113,7 +114,9 @@ class InPlaceCoderAdapter(Coder, ABC):
         # This distinguishes "coder committed its work" from "coder did nothing"
         # and handles multiple commits by the coder (ADR 035, #199).
         self._head_before_run = self._record_head_before_run()
+        t0 = time.perf_counter()
         artifact = self._implement_in_place(spec)
+        elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
         changed = self._changed_snodo_paths(before)
         if changed:
             raise SnodoMutationError(sorted(changed))
@@ -123,6 +126,34 @@ class InPlaceCoderAdapter(Coder, ABC):
         # the base class, so no in-place adapter can drift (the same property
         # that made the .snodo/ guard hold automatically).
         self._commit_changes()
+
+        # Record attribution for in-place coder runs (Fixes #69).
+        # In-place coders make no litellm calls, so without this attribution
+        # record, runs are indistinguishable in state.json from zero-cost runs.
+        coder_name = getattr(self, "coder_name", "") or getattr(self, "binary", "") or self.__class__.__name__.lower().replace("adapter", "")
+        if coder_name == "opencode" and getattr(self, "model_prefix", "") == "opencode-cli/":
+            coder_name = "opencode-cli"
+        model_str = getattr(self, "model", "") or ""
+
+        if artifact and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
+            artifact.metadata["elapsed_ms"] = elapsed_ms
+            artifact.metadata["coder"] = coder_name
+            artifact.metadata["model"] = model_str
+
+        try:
+            from snodo.infrastructure.usage_tracker import record_inplace_coder_run
+            job_id = spec.project_context.get("job_id", "") if spec and spec.project_context else ""
+            task_id = spec.project_context.get("task_id", "") if spec and spec.project_context else ""
+            record_inplace_coder_run(
+                coder=coder_name,
+                model=model_str,
+                elapsed_ms=elapsed_ms,
+                job_id=job_id,
+                task_id=task_id,
+            )
+        except Exception as e:
+            _logger.debug("Failed to record inplace coder run: %s", e)
+
         return artifact
 
     def _record_head_before_run(self) -> Optional[str]:
