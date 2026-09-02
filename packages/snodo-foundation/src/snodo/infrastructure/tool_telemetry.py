@@ -19,6 +19,46 @@ from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
+_MAX_DROPPED_RECORDS = 100
+_dropped_count: int = 0
+_dropped_records: list[dict] = []
+
+
+def get_dropped_telemetry_count() -> int:
+    """Return the total count of tool telemetry records dropped in this process."""
+    return _dropped_count
+
+
+def get_dropped_telemetry_records() -> list[dict]:
+    """Return copies of dropped telemetry records metadata in this process."""
+    return list(_dropped_records)
+
+
+def reset_dropped_telemetry() -> None:
+    """Reset the dropped telemetry tracking counters and records."""
+    global _dropped_count
+    _dropped_count = 0
+    _dropped_records.clear()
+
+
+def _record_drop(reason: str, target_id: str, record: dict | None, detail: str = "") -> None:
+    """Record a telemetry drop event for diagnostics without interrupting execution."""
+    global _dropped_count
+    _dropped_count += 1
+    if len(_dropped_records) < _MAX_DROPPED_RECORDS:
+        _dropped_records.append({
+            "reason": reason,
+            "target_id": target_id,
+            "record": record,
+            "detail": detail,
+        })
+    _logger.debug(
+        "Dropped tool telemetry record (%s): target_id=%r, detail=%s",
+        reason,
+        target_id,
+        detail,
+    )
+
 
 def canonical_target_path(path: str) -> str:
     """Return a workspace-relative, canonical form of *path*.
@@ -49,6 +89,7 @@ def persist_tool_telemetry(target_id: str, record: dict) -> None:
     project root cannot be resolved — telemetry must never crash the loop.
     """
     if not record or not isinstance(record, dict):
+        _record_drop("invalid_record", target_id, record, "Record is empty or not a dict")
         return
 
     job_id = target_id if target_id and target_id.startswith("j_") else None
@@ -59,14 +100,17 @@ def persist_tool_telemetry(target_id: str, record: dict) -> None:
         task_id = str(record["task_ref"])
 
     if not job_id and not task_id:
+        _record_drop("no_target_id", target_id, record, "No resolvable job_id or task_id")
         return
 
     project_root = _find_project_root()
     if not project_root:
+        _record_drop("no_project_root", target_id, record, "Project root could not be resolved")
         return
 
     from snodo.project import _is_system_root_or_temp
     if _is_system_root_or_temp(project_root):
+        _record_drop("system_root_or_temp", target_id, record, f"Project root {project_root} is system or temp")
         return
 
     if job_id:
@@ -82,6 +126,7 @@ def _append_telemetry(target_dir: Path, record: dict) -> None:
         from snodo.infrastructure.state import atomic_update_json
 
         if _is_system_root_or_temp(target_dir.parent.parent):
+            _record_drop("target_in_system_or_temp", str(target_dir), record, "Target directory parent is system or temp")
             return
 
         def _update(state: dict) -> None:
@@ -96,6 +141,7 @@ def _append_telemetry(target_dir: Path, record: dict) -> None:
         atomic_update_json(target_dir, "state.json", _update)
     except Exception as e:
         _logger.debug("Failed to append tool telemetry to %s: %s", target_dir, e)
+        _record_drop("append_exception", str(target_dir), record, str(e))
 
 
 def _find_project_root(job_id: str = "", task_id: str = "") -> str | None:
