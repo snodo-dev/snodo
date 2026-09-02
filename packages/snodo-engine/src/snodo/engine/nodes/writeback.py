@@ -239,7 +239,30 @@ class WritebackMixin:
         existing = failures.get(task_id, {}) if isinstance(failures.get(task_id), dict) else {}
         attempt = existing.get("attempt", 0) + 1
 
-        branch_name = _task_branch_name(task_id, loop_state.task.spec)
+        # Preserve the root/original spec across retries so the retry prompt and
+        # task metadata never wrap or accumulate previous prompt wrappers.
+        # Check task.root_spec first, then existing failure context, then loop_state.
+        raw_spec = loop_state.task.spec
+        original_spec = (
+            getattr(loop_state.task, "root_spec", None)
+            or existing.get("original_spec")
+            or existing.get("spec")
+            or raw_spec
+        )
+
+        branch_name = _task_branch_name(task_id, original_spec)
+
+        # Derive failure phase
+        meta = getattr(loop_state, "metadata", {}) or {}
+        pv = meta.get("post_validation")
+        if pv is None:
+            phase = "pre_execute"
+        elif isinstance(pv, dict) and pv.get("outcome") == "skipped":
+            phase = "execute"
+        else:
+            phase = "post_execute"
+        if getattr(loop_state, "halt_type", None) == "escalated":
+            phase = loop_state.pending_disagreement.get("phase", phase) if loop_state.pending_disagreement else phase
 
         failed_validators = [
             {
@@ -261,9 +284,11 @@ class WritebackMixin:
             ]
 
         failures[task_id] = {
-            "spec": loop_state.task.spec,
+            "spec": original_spec,
+            "original_spec": original_spec,
             "branch": branch_name,
             "attempt": attempt,
+            "phase": phase,
             "failed_validators": failed_validators,
             "files_changed": list(loop_state.artifacts),
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -420,6 +445,9 @@ class WritebackMixin:
 
         judging_model = getattr(self, "_default_model", None)
 
+        # Prefer original / root spec for task_spec in the halt payload
+        authoritative_spec = getattr(loop_state.task, "root_spec", None) or loop_state.task.spec
+
         payload = {
             "status": "blocked" if loop_state.is_blocked else "completed",
             "halt_type": halt,
@@ -427,7 +455,7 @@ class WritebackMixin:
             "raw_halt_type": halt,
             "reason": blocker_reason,
             "task_id": loop_state.task.id,
-            "task_spec": loop_state.task.spec,
+            "task_spec": authoritative_spec,
             "iteration": loop_state.iteration,
             "current_mode": loop_state.current_mode,
             "phase": phase,
