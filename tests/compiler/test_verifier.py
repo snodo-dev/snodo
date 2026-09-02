@@ -360,25 +360,34 @@ def test_wf3_invalid_initial_mode_fails():
         verifier.check_wf3()
 
 
-def test_wf3_quality_with_severity_cap_fails():
-    """Quality validator with severity_cap fails WF3."""
-    from unittest.mock import MagicMock
+def test_wf4_degenerate_single_capped_quality_validator_warns():
+    """Single capped quality validator under non-unanimous policy emits a WF4 warning but passes."""
     from snodo.compiler.models import Severity
 
-    v = MagicMock()
-    v.validator_id = "quality"
-    v.validator_type = "quality"
-    v.severity_cap = Severity.WARN
-    v.evaluation_phase = "post_execute"
+    protocol = Protocol(
+        protocol_id="test",
+        name="Test",
+        modes=[Mode(mode_id="m1", name="Mode", tools=[], validators=["quality", "v2"])],
+        validators=[
+            Validator(
+                validator_id="quality",
+                validator_type="quality",
+                evaluation_phase="post_execute",
+                severity_cap=Severity.WARN,
+            ),
+            Validator(
+                validator_id="v2",
+                validator_type="architecture",
+                evaluation_phase="pre_execute",
+            ),
+        ],
+        initial_mode="m1",
+        disagreement_policy=DisagreementPolicy.MAJORITY,
+    )
 
-    protocol = MagicMock()
-    protocol.modes = [MagicMock(mode_id="m1", tools=[], validators=["quality"])]
-    protocol.validators = [v]
-    protocol.initial_mode = "m1"
-
-    verifier = ProtocolVerifier(protocol)
-    with pytest.raises(WF3Violation, match="Quality validator 'quality' cannot specify severity_cap"):
-        verifier.check_wf3()
+    result = verify_protocol(protocol)
+    assert result.passed is True
+    assert any("failing test suite cannot halt" in w for w in result.warnings)
 
 
 # ========== WF4: POLICY COMPLETENESS TESTS ==========

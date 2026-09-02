@@ -868,8 +868,9 @@ class TestQualityDispatch:
         assert not (tmp_path / ".snodo" / "audit.log").exists()
         assert not (tmp_path / ".snodo").exists()
 
-    def test_quality_validator_failure_is_never_downgraded(self, project_dir):
-        """A failing test suite from QualityValidator must always remain a blocker."""
+    def test_quality_validator_with_severity_cap_downgrades_to_warn(self, project_dir):
+        """QualityValidator with severity_cap=warn downgrades failure to warn (§4.1)."""
+        from snodo.compiler.models import Severity
         from snodo.validators.runner import run_validators
         from snodo.core.interfaces import Task
 
@@ -877,6 +878,7 @@ class TestQualityDispatch:
             validator_id="quality",
             validator_type="quality",
             evaluation_phase="post_execute",
+            severity_cap=Severity.WARN,
             tooling={"test_command": "exit 2"},
         )
         protocol = MagicMock()
@@ -892,10 +894,10 @@ class TestQualityDispatch:
             completion_fn=None,
             validator_config=MagicMock(max_tokens=1500, max_tool_turns=6),
             current_mode="producer",
-            workspace_mcp=MagicMock(workspace_root=str(project_dir)),
+            workspace_mcp=MagicMock(project_root=str(project_dir)),
         )
 
         assert len(results) == 1
-        assert results[0].severity == "blocker"
-        assert "quality" not in cap_originals
+        assert results[0].severity == "warn"
+        assert cap_originals.get("quality") == "blocker"
 
