@@ -145,24 +145,13 @@ def test_mock_adapter_defaults():
 
 
 def test_mock_adapter_output_passes_pytest(tmp_path):
-    """MockAdapter's default output passes pytest — Fixes #185.
+    """MockAdapter's default Python output passes pytest — pins #185.
 
-    The mock exists to exercise the engine loop deterministically.  Its
-    default files must therefore satisfy the quality validator (pytest) that
-    judges them.  This test writes the mock files into a temp directory and
-    runs pytest to confirm they pass, closing the loop between mock output
-    and the validators.
-
-    Scope note — JS / language-awareness (out of scope for #185):
-        The mock unconditionally emits Python files even in a JavaScript
-        project.  In that case ``npm test`` ignores ``src/hello.py`` and
-        ``tests/test_hello.py``, so the quality validator returns a spurious
-        pass rather than a blocker.  That is a silent false-positive, not an
-        immediate user-visible breakage.  Making the mock language-aware
-        requires reliable population of ``TaskSpec.project_context["language"]``
-        at dispatch time — a separate, non-trivial engine change.  It is
-        tracked in its own issue and is explicitly not addressed here; this
-        test only covers the Python/pytest path that was broken.
+    The mock's default files (emitted when no language is declared in
+    project_context, or when language == 'python') must satisfy pytest.
+    This test writes the mock files into a temp directory and runs pytest
+    to confirm they pass, closing the loop between mock output and the
+    validators.
     """
     import subprocess
     import sys
@@ -193,6 +182,122 @@ def test_mock_adapter_output_passes_pytest(tmp_path):
         f"MockAdapter's default output failed pytest (Fixes #185).\n"
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
+    )
+
+
+def test_mock_adapter_javascript_project_emits_js_files():
+    """MockAdapter emits JS fixtures when project_context says javascript — Fixes #187.
+
+    A run on a JavaScript project must not produce Python files that npm test
+    ignores and then read as a validated pass. When project_context["language"]
+    is "javascript", the mock must emit .js files so the quality gate has
+    something meaningful to judge.
+    """
+    from snodo.coders import MockAdapter
+
+    adapter = MockAdapter()
+    spec = TaskSpec(
+        description="hello world",
+        constraints=[],
+        project_context={"language": "javascript"},
+    )
+    artifact = adapter.implement(spec)
+
+    paths = [f.path for f in artifact.files]
+    # Must emit JS, not Python
+    assert any(p.endswith(".js") for p in paths), (
+        f"Expected .js files for a JS project, got: {paths}"
+    )
+    assert not any(p.endswith(".py") for p in paths), (
+        f"Got Python files for a JS project: {paths}"
+    )
+
+
+def test_mock_adapter_javascript_project_does_not_silently_pass_pytest():
+    """A JS-project mock run is not a pass earned by Python files — Fixes #187.
+
+    The old behaviour: mock emits src/hello.py + tests/test_hello.py even in a
+    JS project; npm test ignores them; the quality gate returns a spurious pass.
+
+    This test asserts that the JS-project artifact contains no Python test files
+    at all, so there is nothing for pytest to collect and pass.  The gate on a
+    real JS project would run npm test (or equivalent) against the emitted .js
+    files — a pass there would be meaningful; a pass from ignored .py files is not.
+    """
+    from snodo.coders import MockAdapter
+
+    adapter = MockAdapter()
+    spec = TaskSpec(
+        description="add a greeting function",
+        constraints=[],
+        project_context={"language": "javascript"},
+    )
+    artifact = adapter.implement(spec)
+
+    # No .py files — npm test cannot silently pass on files it ignores
+    py_files = [f.path for f in artifact.files if f.path.endswith(".py")]
+    assert py_files == [], (
+        f"Mock emitted Python files into a JS project — these would be silently "
+        f"ignored by npm test and produce a spurious pass: {py_files}"
+    )
+
+
+def test_mock_adapter_typescript_project_emits_js_files():
+    """MockAdapter emits JS fixtures for typescript projects — Fixes #187."""
+    from snodo.coders import MockAdapter
+
+    adapter = MockAdapter()
+    spec = TaskSpec(
+        description="hello world",
+        constraints=[],
+        project_context={"language": "typescript"},
+    )
+    artifact = adapter.implement(spec)
+
+    paths = [f.path for f in artifact.files]
+    assert any(p.endswith(".js") for p in paths), (
+        f"Expected .js files for a TypeScript project, got: {paths}"
+    )
+    assert not any(p.endswith(".py") for p in paths), (
+        f"Got Python files for a TypeScript project: {paths}"
+    )
+
+
+def test_mock_adapter_python_language_context_unchanged():
+    """MockAdapter emits Python fixtures when project_context says python — pins #185."""
+    from snodo.coders import MockAdapter
+
+    adapter = MockAdapter()
+    spec = TaskSpec(
+        description="hello world",
+        constraints=[],
+        project_context={"language": "python"},
+    )
+    artifact = adapter.implement(spec)
+
+    paths = [f.path for f in artifact.files]
+    assert any(p.endswith(".py") for p in paths), (
+        f"Expected .py files for a Python project, got: {paths}"
+    )
+    assert "def hello()" in artifact.files[0].content
+    assert "from src.hello import hello" in artifact.files[1].content
+
+
+def test_mock_adapter_unknown_language_falls_back_to_python():
+    """MockAdapter falls back to Python files when language is unknown — pins #185."""
+    from snodo.coders import MockAdapter
+
+    adapter = MockAdapter()
+    spec = TaskSpec(
+        description="hello world",
+        constraints=[],
+        project_context={"language": "unknown"},
+    )
+    artifact = adapter.implement(spec)
+
+    paths = [f.path for f in artifact.files]
+    assert any(p.endswith(".py") for p in paths), (
+        f"Expected Python fallback for unknown language, got: {paths}"
     )
 
 
