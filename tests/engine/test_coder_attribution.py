@@ -287,3 +287,34 @@ class TestClearPendingDecisions:
                 value = c.args[2]
                 assert "t1" not in value
                 assert "t2" in value
+
+
+# ---------------------------------------------------------------------------
+# judging_model vs coder_model attribution (Fixes #196, ADR 039)
+# ---------------------------------------------------------------------------
+
+class TestJudgingModelVsCoderModelAttribution:
+    """Validation judging model is resolved from config, independent of coder model."""
+
+    def test_judging_model_uses_resolved_validator_model(self, monkeypatch):
+        from unittest.mock import patch
+        from snodo.coders import get_coder
+
+        protocol = _make_protocol()
+        coder = get_coder("agy", model="gemini-3.7-flash-medium")
+
+        with patch("snodo.config.ConfigManager.load", return_value={"llm": {"validator": {"model": "deepseek/deepseek-v4-flash"}}}):
+            builder = GraphBuilder(protocol, coder=coder)
+
+        assert builder._validator_model == "deepseek/deepseek-v4-flash"
+
+        state = _make_loop_state()
+        state.is_blocked = True
+        state.halt_type = "constraint"
+        state.constraint_violations = ["v1"]
+
+        payload = builder._build_halt_payload(state)
+        assert payload["coder"] == "agy"
+        assert payload["coder_model"] is None
+        assert payload["judging_model"] == "deepseek/deepseek-v4-flash"
+

@@ -586,10 +586,9 @@ class WritebackMixin:
                               getattr(fresh_coder, "completion_fn", None)
         self._default_model = new_model
 
-        # Keep the validator runner in sync
+        # Keep the validator runner completion function in sync
         if self._completion_fn is not None:
             self._validator_runner._completion_fn = self._completion_fn
-        self._validator_runner._default_model = self._default_model
 
         self._audit("coder_respawned", {
             "op": "coder_respawned",
