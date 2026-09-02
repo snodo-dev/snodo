@@ -215,6 +215,8 @@ def test_inplace_adapter_git_add_failure_names_cause_in_halt_payload(
     git_mcp = GitMCP(temp_workspace)
 
     class DummyInPlaceCoder(InPlaceCoderAdapter):
+        coder_name = "dummy"
+
         def __init__(self, workspace):
             self._workspace = Path(workspace)
 
@@ -271,6 +273,8 @@ def test_inplace_adapter_cannot_open_repo_names_cause_in_halt_payload(
     git_mcp = GitMCP(temp_workspace)
 
     class DummyInPlaceCoder(InPlaceCoderAdapter):
+        coder_name = "dummy"
+
         def __init__(self, workspace):
             self._workspace = Path(workspace)
 
@@ -321,6 +325,8 @@ def test_inplace_adapter_nothing_staged_names_cause_in_halt_payload(
     git_mcp = GitMCP(temp_workspace)
 
     class DummyInPlaceCoder(InPlaceCoderAdapter):
+        coder_name = "dummy"
+
         def __init__(self, workspace):
             self._workspace = Path(workspace)
 

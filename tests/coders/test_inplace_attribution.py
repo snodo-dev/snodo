@@ -72,7 +72,7 @@ class TestInPlaceCoderAttribution:
         # Artifact metadata includes measured metrics
         assert artifact.metadata["coder"] == "agy"
         assert artifact.metadata["model"] == "agy/gemini-3.7-flash"
-        assert artifact.metadata["elapsed_ms"] >= 0.0
+        assert artifact.metadata["duration_ms"] >= 0.0
 
         # Persisted state.json usage contains the attribution record
         state_path = project_root / ".snodo" / "jobs" / job_id / "state.json"
@@ -86,16 +86,18 @@ class TestInPlaceCoderAttribution:
         assert record["coder"] == "agy"
         assert record["model"] == "agy/gemini-3.7-flash"
         assert record["role"] == "coder"
-        assert isinstance(record["elapsed_ms"], float)
-        assert record["elapsed_ms"] >= 0.0
+        assert isinstance(record["duration_ms"], float)
+        assert record["duration_ms"] >= 0.0
         # Cost and tokens are explicitly None (unmeasured), NOT 0.0 or 0
         assert record["cost"] is None
         assert record["prompt_tokens"] is None
         assert record["completion_tokens"] is None
         assert record["total_tokens"] is None
         # Explicit declaration of what was directly observed
-        assert "elapsed_ms" in record["measured"]
+        assert "duration_ms" in record["measured"]
         assert "model" in record["measured"]
+        # Duplicate elapsed_ms field must not exist
+        assert "elapsed_ms" not in record
 
     def test_opencode_cli_run_leaves_attribution_record(self, temp_workspace: Path, monkeypatch):
         """In-place OpenCode CLI run records coder_name 'opencode-cli'."""
@@ -129,6 +131,22 @@ class TestInPlaceCoderAttribution:
         assert record["coder"] == "opencode-cli"
         assert record["model"] == "opencode-cli/claude-3-5-sonnet"
         assert record["cost"] is None
+        assert "duration_ms" in record["measured"]
+
+    def test_missing_coder_name_fails_visibly(self, temp_workspace: Path):
+        """InPlaceCoderAdapter subclass without declared coder_name raises AttributeError."""
+        from snodo.coders.base import InPlaceCoderAdapter
+        from snodo.core.interfaces import CodeArtifact
+
+        class _UndeclaredCoder(InPlaceCoderAdapter):
+            _workspace = temp_workspace
+
+            def _implement_in_place(self, spec):
+                return CodeArtifact(files=[])
+
+        adapter = _UndeclaredCoder()
+        with pytest.raises(AttributeError, match="does not declare coder_name"):
+            adapter.implement(TaskSpec(description="t", constraints=[]))
 
     def test_record_inplace_coder_run_direct(self, tmp_path: Path, monkeypatch):
         """Direct call to record_inplace_coder_run safely persists records."""
@@ -143,7 +161,7 @@ class TestInPlaceCoderAttribution:
         record_inplace_coder_run(
             coder="custom-coder",
             model="",
-            elapsed_ms=123.45,
+            duration_ms=123.45,
             job_id=job_id,
             task_id=task_id,
         )
@@ -153,9 +171,11 @@ class TestInPlaceCoderAttribution:
         rec = job_state["usage"][0]
         assert rec["coder"] == "custom-coder"
         assert rec["model"] == ""
-        assert rec["measured"] == ["elapsed_ms"]  # model omitted when empty
-        assert rec["elapsed_ms"] == 123.45
+        assert rec["measured"] == ["duration_ms"]  # model omitted when empty
+        assert rec["duration_ms"] == 123.45
         assert rec["cost"] is None
+        assert "elapsed_ms" not in rec
+
 
 
 class TestLiteLLMAccountingPinned:

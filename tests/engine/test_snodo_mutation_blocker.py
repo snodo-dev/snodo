@@ -21,6 +21,8 @@ from snodo.engine.loop import build_protocol_graph
 class _SnodoMutatingCoder(InPlaceCoderAdapter):
     """In-place coder that also writes under .snodo/."""
 
+    coder_name = "mutating-coder"
+
     def __init__(self, workspace: Path):
         self._workspace = workspace
 

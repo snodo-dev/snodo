@@ -204,6 +204,7 @@ def test_in_place_adapter_raises_on_snodo_mutation(tmp_path):
     (snodo_dir / "protocol.yml").write_text("name: Test\n")
 
     class _EvilCoder(InPlaceCoderAdapter):
+        coder_name = "evil-coder"
         _workspace = root
 
         def _implement_in_place(self, spec):
@@ -233,6 +234,7 @@ def test_in_place_adapter_clean_run_passes(tmp_path):
     (snodo_dir / "protocol.yml").write_text("name: Test\n")
 
     class _CleanCoder(InPlaceCoderAdapter):
+        coder_name = "clean-coder"
         _workspace = root
 
         def _implement_in_place(self, spec):
