@@ -1,13 +1,21 @@
 """Mock coder adapter for testing.
 
-FILE: snodo/coders/mock.py (Fixes #12, #185)
+FILE: snodo/coders/mock.py (Fixes #12, #185, #187)
 
 Returns deterministic outputs without making LLM calls.
 
 The mock exists to exercise the engine loop deterministically.  Its output
 must therefore satisfy every validator that judges it — including the quality
-validator (pytest).  The default fixture files are kept in sync with each
-other so they always pass their own tests.
+validator (pytest for Python, npm test for JavaScript).
+
+Language selection is driven by ``TaskSpec.project_context["language"]``:
+- ``javascript`` or ``typescript`` → ``src/hello.js`` + ``src/hello.test.js``
+  (uses Node's built-in ``node:test`` module; no npm install needed)
+- anything else (``python``, ``unknown``, or unset) → ``src/hello.py`` +
+  ``tests/test_hello.py`` (the original Python fixture, fixed in #185)
+
+Do not change the Python fixture paths or content: they are relied on by
+hundreds of tests in the suite.
 """
 
 import json
@@ -164,8 +172,32 @@ class MockAdapter(CoderAdapter):
         self.call_count += 1
         self.last_spec = spec
 
+        language = spec.project_context.get("language", "").lower()
+        if language in ("javascript", "typescript"):
+            files = [
+                FileArtifact(
+                    path="src/hello.js",
+                    content="function hello() { return 'world'; }\nmodule.exports = { hello };\n",
+                ),
+                FileArtifact(
+                    path="src/hello.test.js",
+                    content=(
+                        "const { test } = require('node:test');\n"
+                        "const assert = require('node:assert');\n"
+                        "const { hello } = require('./hello.js');\n"
+                        "\n"
+                        "test('hello returns world', () => {\n"
+                        "  assert.strictEqual(hello(), 'world');\n"
+                        "});\n"
+                    ),
+                ),
+            ]
+        else:
+            files = self.mock_files
+
         valid_files = [
-            f for f in self.mock_files
+            f for f in files
             if not (Path(f.path).parts and Path(f.path).parts[0] == ".snodo")
         ]
         return CodeArtifact(files=valid_files)
+
