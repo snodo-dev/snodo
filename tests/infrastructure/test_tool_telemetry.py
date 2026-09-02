@@ -98,6 +98,109 @@ class TestToolTelemetrySink:
         # Must not raise.
         persist_tool_telemetry("unknown", {"turn_index": 1})
 
+    def test_record_with_no_resolvable_id_discarded_and_discoverable(self, tmp_path, monkeypatch, caplog):
+        import logging
+        from snodo.infrastructure.tool_telemetry import (
+            get_dropped_telemetry_count,
+            get_dropped_telemetry_records,
+            persist_tool_telemetry,
+            reset_dropped_telemetry,
+        )
+
+        reset_dropped_telemetry()
+        monkeypatch.setenv("SNODO_PROJECT_ROOT", str(tmp_path))
+
+        with caplog.at_level(logging.DEBUG):
+            # No resolvable job_id ("unknown" does not start with j_) and no valid task_id
+            persist_tool_telemetry("unknown", {"turn_index": 1, "tool": "read_files"})
+
+        assert get_dropped_telemetry_count() == 1
+        dropped = get_dropped_telemetry_records()
+        assert len(dropped) == 1
+        assert dropped[0]["reason"] == "no_target_id"
+        assert dropped[0]["target_id"] == "unknown"
+        assert dropped[0]["record"] == {"turn_index": 1, "tool": "read_files"}
+        assert any("Dropped tool telemetry record (no_target_id)" in r.message for r in caplog.records)
+
+        # Confirm no files were written to disk
+        assert not (tmp_path / ".snodo" / "jobs").exists()
+        assert not (tmp_path / ".snodo" / "tasks").exists()
+
+    def test_foreground_task_telemetry_readable_through_meta(self, tmp_path, monkeypatch, capsys):
+        from types import SimpleNamespace
+        from snodo.cli.commands.meta_cmd import meta_command
+        from snodo.infrastructure.tool_telemetry import persist_tool_telemetry
+
+        project_root = str(tmp_path)
+        task_id = "task_foreground_meta_pinned"
+        monkeypatch.setenv("SNODO_PROJECT_ROOT", project_root)
+        monkeypatch.setattr("snodo.cli.commands.meta_cmd.resolve_project_root", lambda: project_root)
+
+        # Simulate per-turn telemetry emitted during foreground task run
+        persist_tool_telemetry(
+            task_id,
+            {
+                "task_ref": task_id,
+                "role": "coder",
+                "depth": 0,
+                "attempt": 1,
+                "turn_index": 1,
+                "tool": "read_files",
+                "target_path": "src/module.py",
+                "read_hit": False,
+                "tokens_in": 120,
+                "tokens_out": 40,
+                "elapsed_ms": 100.0,
+                "submit_bytes": 0,
+            },
+        )
+        persist_tool_telemetry(
+            "unknown",
+            {
+                "task_ref": task_id,
+                "role": "coder",
+                "depth": 0,
+                "attempt": 1,
+                "turn_index": 2,
+                "tool": "submit_files",
+                "target_path": "",
+                "read_hit": False,
+                "tokens_in": 150,
+                "tokens_out": 60,
+                "elapsed_ms": 250.0,
+                "submit_bytes": 1024,
+            },
+        )
+
+        # Verify state file was created
+        state_file = tmp_path / ".snodo" / "tasks" / task_id / "state.json"
+        assert state_file.exists()
+
+        # 1. Read back via snodo meta <task_id> (human display)
+        capsys.readouterr()  # clear buffer
+        rc = meta_command(SimpleNamespace(composite_id=task_id, json=False))
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert f"Task {task_id}" in out
+        assert "Tool-loop telemetry:" in out
+        assert "Orientation: 1/2 turns before first submit (50% of coder turns)" in out
+        assert "Path miss rate: 1/1 reads were misses (100%)" in out
+        assert "Submit size: 1 submit(s), median 1024 bytes, max 1024 bytes" in out
+
+        # 2. Read back via snodo meta <task_id> --json
+        rc_json = meta_command(SimpleNamespace(composite_id=task_id, json=True))
+        assert rc_json == 0
+        json_out = json.loads(capsys.readouterr().out)
+        assert json_out["ok"] is True
+        assert json_out["id"] == task_id
+        assert json_out["type"] == "task"
+        assert len(json_out["tool_telemetry"]) == 2
+        assert json_out["tool_telemetry"][0]["tool"] == "read_files"
+        assert json_out["tool_telemetry"][1]["tool"] == "submit_files"
+        assert json_out["tool_telemetry_summary"]["orientation"]["turns_before_first_submit"] == 1
+        assert json_out["tool_telemetry_summary"]["path_miss_rate"]["misses"] == 1
+        assert json_out["tool_telemetry_summary"]["submit_size"]["median_bytes"] == 1024
+
     def test_unconfigured_project_root_is_silent_noop(self, monkeypatch):
         from snodo.infrastructure.tool_telemetry import persist_tool_telemetry
         from snodo.infrastructure.usage_tracker import UsageTracker
