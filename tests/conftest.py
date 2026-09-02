@@ -305,3 +305,52 @@ def _guard_no_temp_snodo_leak(request):
             shutil.rmtree(target, ignore_errors=True)
             pytest.fail(f"TEST LEAKED .snodo TO {root}: {request.node.nodeid}", pytrace=False)
 
+
+@pytest.fixture(autouse=True)
+def _guard_no_env_leak(request):
+    """Fail a test that mutates os.environ without undoing it.
+
+    ``provider_env`` and friends write to ``os.environ`` directly rather than
+    through ``monkeypatch``, so nothing restores them and the change survives
+    into every later test in the same process — a third instance of today's
+    global-state leaks (repo mutation, stray ``.snodo``, and now env vars). The
+    env vars simply were not covered by the existing guards.
+
+    This mirrors them. It is a no-dependency autouse fixture, so pytest sets it
+    up before the ``monkeypatch``-backed isolation fixtures and tears it down
+    after they have undone their own ``setenv``/``delenv`` changes. The
+    environment at teardown is therefore the baseline plus only what no fixture
+    cleaned up — i.e. genuine leaks. Those are reverted (so one leak cannot
+    poison the rest of the run) and reported against the offending test.
+
+    A handful of names are exempt: pytest's own per-phase bookkeeping, and
+    process-wide defaults that third-party libraries set lazily on first import
+    (tiktoken's ``TIKTOKEN_CACHE_DIR``). These are left set rather than
+    scrubbed, so they become part of the ambient baseline and are not flagged on
+    later tests — unlike a per-test leak, which is reverted and fails.
+    """
+    baseline = dict(os.environ)
+    yield
+    exempt = {"PYTEST_CURRENT_TEST", "TIKTOKEN_CACHE_DIR"}
+    added = sorted(set(os.environ) - set(baseline) - exempt)
+    removed = sorted(set(baseline) - set(os.environ) - exempt)
+    changed = sorted(
+        k for k in (set(os.environ) & set(baseline)) - exempt if os.environ[k] != baseline[k]
+    )
+    if added or removed or changed:
+        # Revert only the leaked keys, so exempt/ambient vars are untouched.
+        for key in added:
+            os.environ.pop(key, None)
+        for key in removed:
+            os.environ[key] = baseline[key]
+        for key in changed:
+            os.environ[key] = baseline[key]
+        pytest.fail(
+            "TEST LEAKED environment variables: mutated os.environ without "
+            f"undoing it — added={added} removed={removed} changed={changed} in "
+            f"{request.node.nodeid}. Write env through monkeypatch.setenv/delenv "
+            "(restored automatically), or snapshot and restore os.environ "
+            "explicitly (Fixes #200).",
+            pytrace=False,
+        )
+

@@ -738,6 +738,12 @@ class TestProviderCredentialPreflight:
         """A run with a key stored in config proceeds unchanged."""
         from snodo.cli.commands.run_cmd import run_command
 
+        # The credential comes from config; run_command injects it into
+        # os.environ via provider_env, which leaves it set. Use a throwaway
+        # environ copy so that injection cannot leak into later tests, and
+        # delenv (raising=False) records nothing when the key is already absent,
+        # so it cannot serve as the undo (Fixes #200).
+        monkeypatch.setattr(os, "environ", os.environ.copy())
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         with patch("snodo.config.ConfigManager.get_key_for_model",
                    return_value="sk-config-key"):
