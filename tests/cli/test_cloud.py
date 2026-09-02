@@ -343,6 +343,46 @@ class TestCloudSyncDispatcher:
         assert mock_sleep.call_count == 5
         assert mock_post.call_count == 6  # _MAX_RETRIES + 1
 
+    def test_post_batch_carries_project_id_and_display_name(self):
+        """Transmitted cloud sync payload carries event.project_id and envelope display_name."""
+        from unittest.mock import patch, MagicMock
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
+
+        dispatcher = CloudSyncDispatcher()
+        events = self._make_events(2)
+        for ev in events:
+            ev.project_id = "github.com/snodo-dev/test-repo"
+
+        captured_body = None
+
+        def fake_post(url, content, headers, timeout):
+            nonlocal captured_body
+            captured_body = json.loads(content.decode())
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.text = "ok"
+            return resp
+
+        with patch("httpx.post", side_effect=fake_post):
+            outcome, reason, status = dispatcher._post_batch(
+                "sess_pid_test",
+                "/home/user/code/my-awesome-project",
+                events,
+                "sndo_live_xxx",
+                "https://api.example.com",
+            )
+
+        assert outcome == "delivered"
+        assert captured_body is not None
+        assert captured_body["session_id"] == "sess_pid_test"
+        assert captured_body["project_path"] == "/home/user/code/my-awesome-project"
+        assert captured_body["display_name"] == "my-awesome-project"
+        assert captured_body["project_name"] == "my-awesome-project"
+        assert len(captured_body["events"]) == 2
+        for ev_payload in captured_body["events"]:
+            assert ev_payload["project_id"] == "github.com/snodo-dev/test-repo"
+            assert ev_payload["event_type"] == "tool_call"
+
     def test_network_error_never_raises(self):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
 

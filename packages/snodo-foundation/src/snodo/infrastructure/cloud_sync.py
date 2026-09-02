@@ -279,18 +279,24 @@ class CloudSyncDispatcher:
 
         payload_events = []
         for ev in batch:
+            pid = getattr(ev, "project_id", "")
+            project_id_str = pid if isinstance(pid, str) else ""
             payload_events.append({
                 "sequence": ev.sequence,
                 "timestamp": ev.timestamp,
                 "event_type": ev.event_type,
+                "project_id": project_id_str,
                 "data": ev.data,
                 "previous_hash": ev.previous_hash,
                 "event_hash": ev.event_hash,
             })
 
+        display_name = Path(project_root).name if project_root else ""
         body = json.dumps({
             "session_id": session_id,
             "project_path": project_root,
+            "project_name": display_name,
+            "display_name": display_name,
             "events": payload_events,
         }).encode()
 
