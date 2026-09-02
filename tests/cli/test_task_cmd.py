@@ -817,8 +817,8 @@ def test_task_prune_days_flag_with_stale_days_alias(monkeypatch):
     assert captured["stale_days"] == 5
 
 
-def test_task_list_git_exception_does_not_convert_completed_to_merged(tmp_path, monkeypatch, capsys):
-    """Git inspection exceptions leave completed tasks as 'completed', not guessed 'merged'."""
+def test_task_list_git_exception_reports_unknown_not_completed(tmp_path, monkeypatch, capsys):
+    """When git inspection fails, affected tasks without decisive audit/failure records report unknown, not completed."""
     monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
     mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
 
@@ -838,7 +838,8 @@ def test_task_list_git_exception_does_not_convert_completed_to_merged(tmp_path, 
     assert res == 0
     out = capsys.readouterr().out
     assert "t1" in out
-    assert "completed" in out
+    assert "unknown" in out
+    assert "completed" not in out
     assert "merged" not in out
 
 
@@ -893,8 +894,8 @@ def test_dispatched_task_status_is_in_progress(tmp_path, monkeypatch):
     assert tasks["t_dispatched"]["status"] == "in_progress"
 
 
-def test_untimestamped_task_fallback_timestamp_not_unconditionally_stale(tmp_path, monkeypatch, capsys):
-    """An untimestamped task record without session timestamp falls back to now() and is not unconditionally stale."""
+def test_untimestamped_task_skipped_during_prune(tmp_path, monkeypatch, capsys):
+    """An untimestamped task record without session timestamp has an unknown age and is skipped during prune rather than deleted."""
     monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
     mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
 
@@ -905,12 +906,72 @@ def test_untimestamped_task_fallback_timestamp_not_unconditionally_stale(tmp_pat
         }
     })
 
-    # Clear any session timestamps to test fallback
-    session.updated_at = ""
-    session.created_at = ""
-    monkeypatch.setattr(mgr, "get_active_session", lambda m, p: session)
+    # Reload and clear any session timestamps to test fallback
+    loaded = mgr.load_session(session.session_id)
+    loaded.updated_at = ""
+    loaded.created_at = ""
+    loaded.last_updated = ""
+    mgr._save_session(loaded)
+
+    tasks = _get_all_task_branches(str(tmp_path))
+    assert "t_recent" in tasks
+    assert tasks["t_recent"]["timestamp"] is None
 
     task_prune_command(SimpleNamespace(stale_days=7))
     out = capsys.readouterr().out
     assert "No task branches older than 7 days." in out or "No task branches to prune." in out
+
+
+def test_task_list_audit_log_unreadable_reports_unknown_not_confident_status(tmp_path, monkeypatch, capsys):
+    """When the audit log is unreadable, a completed task without definitive proof is reported as unknown, not confident completed/merged."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "halt", {
+        "t_candidate": {
+            "status": "completed",
+            "halt_type": "completed",
+            "final_decision": "completed",
+            "task_id": "t_candidate",
+            "phase": "complete",
+        }
+    })
+
+    # Force audit log inspection to fail
+    monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", MagicMock(side_effect=RuntimeError("corrupt audit log")))
+
+    res = task_list_command(SimpleNamespace())
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "t_candidate" in out
+    assert "unknown" in out
+    assert "completed" not in out
+    assert "merged" not in out
+
+
+def test_task_prune_skips_untimestamped_tasks_with_message(tmp_path, monkeypatch, capsys):
+    """Pruning a branch with unknown timestamp skips it and prints a message."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    # Task with failure context (so it's a prune candidate) but NO timestamp anywhere
+    mgr.update_decision(session.session_id, "task_failure", {
+        "t_no_ts": {
+            "branch": "task/t_no_ts",
+            "attempt": 1,
+        }
+    })
+
+    # Reload and clear session timestamps
+    loaded = mgr.load_session(session.session_id)
+    loaded.updated_at = ""
+    loaded.created_at = ""
+    loaded.last_updated = ""
+    mgr._save_session(loaded)
+
+    res = task_prune_command(SimpleNamespace(stale_days=7))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "Skipped 1 task(s) with unknown timestamp." in out
+    assert "No task branches older than 7 days." in out
 
