@@ -49,26 +49,20 @@ def resolve_project_root(start: Optional[str] = None) -> Optional[str]:
     ``~/.snodo/`` (global config directory) is explicitly excluded
     from project-marker detection.
     """
+    from snodo.project import _is_system_root_or_temp
+
     if not start and "SNODO_PROJECT_ROOT" in os.environ:
         candidate = Path(os.environ["SNODO_PROJECT_ROOT"]).resolve()
-        if (candidate / ".snodo").is_dir():
+        if not _is_system_root_or_temp(candidate) and (candidate / ".snodo").is_dir():
             return str(candidate)
 
-    home = Path.home()
     snodo_home = resolve_home()
-    sys_temps = {Path("/tmp").resolve(), Path("/var/tmp").resolve()}
-    tmpdir_env = os.environ.get("TMPDIR")
-    if tmpdir_env:
-        sys_temps.add(Path(tmpdir_env).resolve())
-
     directory = Path(start).resolve() if start else Path.cwd()
     for parent in [directory] + list(directory.parents):
         if (
-            parent == home
-            or parent == snodo_home
+            parent == snodo_home
             or (parent / ".snodo") == snodo_home
-            or parent in sys_temps
-            or (parent.name == "T" and "var/folders" in str(parent).replace("\\", "/"))
+            or _is_system_root_or_temp(parent)
         ):
             continue  # ~/.snodo and /tmp are not project markers
         if (parent / ".snodo").is_dir():
@@ -76,7 +70,7 @@ def resolve_project_root(start: Optional[str] = None) -> Optional[str]:
 
     if "SNODO_PROJECT_ROOT" in os.environ:
         candidate = Path(os.environ["SNODO_PROJECT_ROOT"]).resolve()
-        if (candidate / ".snodo").is_dir():
+        if not _is_system_root_or_temp(candidate) and (candidate / ".snodo").is_dir():
             return str(candidate)
 
     return None

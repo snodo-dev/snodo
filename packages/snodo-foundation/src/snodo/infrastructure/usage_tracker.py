@@ -115,6 +115,9 @@ def _persist_task_usage(task_id: str, record: dict) -> None:
     project_root = _find_project_root()
     if not project_root:
         return
+    from snodo.project import _is_system_root_or_temp
+    if _is_system_root_or_temp(project_root):
+        return
     tasks_dir = Path(project_root) / ".snodo" / "tasks"
     task_dir = tasks_dir / task_id
     task_dir.mkdir(parents=True, exist_ok=True)
