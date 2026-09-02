@@ -46,15 +46,24 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         self.temperature = temperature
 
         if workspace is not None:
-            self._workspace = workspace
+            self._workspace = Path(workspace)
         elif workspace_mcp is not None:
             from snodo.tools.workspace import WorkspaceMCP
             if isinstance(workspace_mcp, WorkspaceMCP):
-                self._workspace = workspace_mcp.project_root
+                self._workspace = Path(workspace_mcp.project_root)
+            elif hasattr(workspace_mcp, "project_root") and workspace_mcp.project_root is not None:
+                self._workspace = Path(workspace_mcp.project_root)
             else:
-                self._workspace = Path.cwd()
+                raise ValueError(
+                    f"{self.__class__.__name__} requires an explicit workspace or a valid "
+                    f"WorkspaceMCP with project_root; received invalid workspace_mcp: {workspace_mcp!r}. "
+                    "Inferring a containment boundary from Path.cwd() is prohibited (ADR 024/025)."
+                )
         else:
-            self._workspace = Path.cwd()
+            raise ValueError(
+                f"{self.__class__.__name__} requires an explicit workspace or workspace_mcp; "
+                "none was provided. Inferring a containment boundary from Path.cwd() is prohibited (ADR 024/025)."
+            )
 
     def _bare_model(self) -> str:
         """Return the model to pass to the CLI, or "" to let it choose.
@@ -97,6 +106,11 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         project_root = str(self._workspace)
         bare_model = self._bare_model()
         argv = self._build_argv(prompt, project_root, bare_model)
+
+        _logger.info(
+            "%s: executing with containment boundary at %s",
+            self.binary, project_root,
+        )
 
         try:
             # noqa carried over from opencode_cli_adapter when this call moved
