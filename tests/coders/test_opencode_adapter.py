@@ -186,6 +186,92 @@ class TestGitReadback:
         entries = adapter._read_changes_from_disk()
         assert any(e["file"] == "staged.py" for e in entries)
 
+    def test_committed_changes_are_detected_when_no_unstaged(self, git_workspace):
+        """When an external coder (agy/opencode) commits its own changes,
+        _read_changes_from_disk falls back to reading HEAD_before..HEAD."""
+        # Record HEAD before coder runs
+        adapter = OpenCodeAdapter(model="opencode/test", workspace=git_workspace)
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(git_workspace), check=True, capture_output=True, text=True,
+        )
+        adapter._head_before_run = result.stdout.strip()
+
+        # Simulate an external coder committing changes directly
+        new_file = git_workspace / "coder_added.py"
+        new_file.write_text("# coder added this")
+        subprocess.run(
+            ["git", "add", "coder_added.py"],
+            cwd=str(git_workspace), check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "coder: apply changes"],
+            cwd=str(git_workspace), check=True, capture_output=True,
+        )
+        # Now working tree is clean (everything committed)
+        entries = adapter._read_changes_from_disk()
+        # Should detect the committed change via HEAD_before..HEAD fallback
+        assert any(e["file"] == "coder_added.py" for e in entries)
+
+    def test_only_committed_changes_detected_when_working_tree_clean(self, git_workspace):
+        """When working tree is clean but HEAD moved (external coder committed),
+        the fallback to HEAD_before..HEAD should detect the changes."""
+        # Record the initial HEAD
+        adapter = OpenCodeAdapter(model="opencode/test", workspace=git_workspace)
+        # Simulate recording HEAD before coder run
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(git_workspace), check=True, capture_output=True, text=True,
+        )
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(git_workspace), check=True, capture_output=True, text=True,
+        )
+        adapter._head_before_run = result.stdout.strip()
+
+        # Now coder commits changes
+        committed_file = git_workspace / "committed.py"
+        committed_file.write_text("# committed by coder")
+        subprocess.run(
+            ["git", "add", "committed.py"],
+            cwd=str(git_workspace), check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "coder: apply changes"],
+            cwd=str(git_workspace), check=True, capture_output=True,
+        )
+        # Working tree is now clean - all changes are committed
+        entries = adapter._read_changes_from_disk()
+        paths = [e["file"] for e in entries]
+        assert "committed.py" in paths
+
+    def test_no_false_positive_when_coder_commits_nothing(self, git_workspace):
+        """When the coder does nothing and HEAD doesn't move,
+        _read_changes_from_disk returns empty (not main's last commit)."""
+        # First make a commit on main (simulating prior work)
+        main_file = git_workspace / "main_work.py"
+        main_file.write_text("# main work")
+        subprocess.run(
+            ["git", "add", "main_work.py"],
+            cwd=str(git_workspace), check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "feat: main work"],
+            cwd=str(git_workspace), check=True, capture_output=True,
+        )
+        # Record HEAD before "coder run"
+        adapter = OpenCodeAdapter(model="opencode/test", workspace=git_workspace)
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(git_workspace), check=True, capture_output=True, text=True,
+        )
+        adapter._head_before_run = result.stdout.strip()
+
+        # Coder does nothing - HEAD stays the same
+        entries = adapter._read_changes_from_disk()
+        # Should be empty, NOT report main_work.py as coder's work
+        assert entries == []
+
 
 # ========== DIFF-TO-ARTIFACT ==========
 
