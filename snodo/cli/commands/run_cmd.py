@@ -922,23 +922,46 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
 
     spec_for_branch = getattr(task, "root_spec", None) or task.spec
     branch = task_branch_name(task.id, spec_for_branch)
+
+    # Resolve target commit on the branch to be merged
+    target_commit = ""
+    try:
+        from git import Repo
+        repo = Repo(str(Path(project_root)), search_parent_directories=True)
+        target_commit = repo.commit(branch).hexsha
+    except Exception as e:
+        _logger.debug("Could not resolve commit for branch %s: %s", branch, e)
+
     if audit_log:
         history = audit_log.get_history("verification_executed")
-        has_pass = any(
-            e.data.get("outcome") == "pass"
-            for e in history
-        )
-        if not has_pass:
-            print(f"✗ Refused merge for {branch}: no passing verification_executed event in audit trail.", file=sys.stderr)
+        matching_passes = [
+            e for e in history
+            if e.data.get("outcome") == "pass"
+            and (e.data.get("task_ref") == task.id or (getattr(task, "root_task_ref", None) and e.data.get("task_ref") == task.root_task_ref))
+            and target_commit
+            and (
+                e.data.get("commit") == target_commit
+                or (e.data.get("commit") and (target_commit.startswith(e.data.get("commit")) or e.data.get("commit").startswith(target_commit)))
+            )
+        ]
+        if not matching_passes:
+            commit_display = target_commit[:7] if target_commit else "unknown"
+            print(f"✗ Refused merge for {branch}: no passing verification_executed event for task {task.id} at commit {commit_display}.", file=sys.stderr)
             print("  An unverified merge is forbidden. Worktree and branch left intact.", file=sys.stderr)
             audit_log.append_event("unverified_merge_blocked", {
                 "op": "unverified_merge_blocked",
                 "task_ref": task.id,
                 "branch": branch,
-                "reason": "No passing verification_executed event recorded in audit trail.",
+                "target_commit": target_commit,
+                "reason": f"No passing verification_executed event recorded for task {task.id} at commit {commit_display}.",
                 "session_id": session_id,
             })
             return 1, True, None
+
+        accepted_event = matching_passes[-1]
+        commit_display = target_commit[:7] if target_commit else "unknown"
+        cmd = accepted_event.data.get("command", "")
+        print(f"✓ Verified merge for {branch}: task {task.id} verified at commit {commit_display} ({cmd}).", file=sys.stderr)
 
     try:
         res = merge_task_branch(project_root, branch)
