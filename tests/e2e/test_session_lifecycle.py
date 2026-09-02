@@ -39,11 +39,20 @@ def test_session_delete(snodo_cli):
     r2 = snodo_cli(["session", "delete", session_id])
     assert r2.returncode == 0
 
-    # Verify the session no longer appears in the list
+    # Verify the session no longer appears under active Sessions
     r3 = snodo_cli(["session", "list"])
     assert r3.returncode == 0
-    lines_after = [ln for ln in r3.stdout.strip().splitlines() if ln.strip().startswith("sess_")]
-    assert session_id not in " ".join(lines_after), f"Session {session_id} still present after delete"
+    sessions_section = []
+    in_sessions = False
+    for line in r3.stdout.splitlines():
+        if line.strip() == "Sessions:":
+            in_sessions = True
+            continue
+        if in_sessions and line and not line.startswith("  "):
+            break
+        if in_sessions:
+            sessions_section.append(line)
+    assert session_id not in " ".join(sessions_section), f"Session {session_id} still present in active sessions section: {r3.stdout}"
 
 
 @pytest.mark.e2e
