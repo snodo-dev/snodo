@@ -133,7 +133,7 @@ def protocols(draw) -> Protocol:
     for vid in set(v_ids):
         vtype = draw(validator_types)
         phase = draw(evaluation_phases)
-        cap = None if vtype == "quality" else draw(st.one_of(st.none(), st.just(Severity.WARN)))
+        cap = draw(st.one_of(st.none(), st.just(Severity.WARN)))
         validators.append(Validator(
             validator_id=vid, validator_type=vtype,
             evaluation_phase=phase, severity_cap=cap,

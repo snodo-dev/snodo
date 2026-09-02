@@ -398,14 +398,14 @@ def test_validator_default_severity_cap():
     assert v.severity_cap is None
 
 
-def test_quality_validator_rejects_severity_cap():
-    """Quality validator cannot specify severity_cap."""
-    with pytest.raises(ValueError, match="cannot specify a severity_cap"):
-        Validator(
-            validator_id="quality",
-            validator_type="quality",
-            severity_cap=Severity.WARN,
-        )
+def test_quality_validator_allows_severity_cap():
+    """Quality validator can specify severity_cap (§4.1 expressiveness)."""
+    v = Validator(
+        validator_id="quality",
+        validator_type="quality",
+        severity_cap=Severity.WARN,
+    )
+    assert v.severity_cap == Severity.WARN
 
 
 def test_protocol_default_version():

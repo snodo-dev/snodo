@@ -6,7 +6,7 @@ All models are immutable and include validation logic.
 
 from enum import Enum
 from typing import List, Optional, Dict, Any, Set
-from pydantic import BaseModel, Field, field_validator, field_serializer, model_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, field_serializer, ConfigDict
 
 
 class ExecutionConfig(BaseModel):
@@ -201,16 +201,6 @@ class Validator(BaseModel):
                     f"Validators may never use write/exec/mutating tools."
                 )
         return v
-
-    @model_validator(mode='after')
-    def validate_quality_has_no_severity_cap(self) -> 'Validator':
-        if self.validator_type == "quality" and self.severity_cap is not None:
-            raise ValueError(
-                f"Validator '{self.validator_id}' of type 'quality' cannot specify a severity_cap. "
-                "Quality validators execute the repository test suite; failing tests are hard blockers "
-                "and must never be capped to warnings."
-            )
-        return self
 
 
 class Role(BaseModel):
