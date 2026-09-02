@@ -80,6 +80,12 @@ def test_provider_env_binds_resolved_provider_credential_env_var(monkeypatch):
     }
     monkeypatch.setattr(ConfigManager, "get_providers", lambda self: custom_providers)
 
+    # provider_env deliberately leaves the keys set once the block exits (see
+    # config.provider_env). Swap os.environ for a throwaway copy so the writes
+    # stay inside this test instead of leaking OPENAI_API_KEY / OLLAMA_API_KEY
+    # into every later test in the process (Fixes #200).
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+
     model = "ollama/llama3"
     with provider_env(model):
         assert os.environ.get("OLLAMA_API_KEY") == "ollama-secret-token"

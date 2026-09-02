@@ -841,6 +841,15 @@ class TestDeriveProjectRoot:
 class TestServePortAndProxy:
     """Test port passthrough and FORWARDED_ALLOW_IPS in _run_server."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_environ(self, monkeypatch):
+        """_run_server writes FORWARDED_ALLOW_IPS into os.environ and leaves it
+        set; swap in a throwaway copy so the write cannot leak into later tests
+        (Fixes #200)."""
+        import os
+
+        monkeypatch.setattr(os, "environ", os.environ.copy())
+
     def test_port_passed_to_fastmcp_settings(self):
         """Port arg is set on mcp.settings.port before run."""
         from types import SimpleNamespace
