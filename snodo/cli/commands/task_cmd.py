@@ -103,7 +103,7 @@ def _parse_timestamp(ts_val: Any) -> Any:
                 dt = dt.replace(tzinfo=timezone.utc)
             return dt
         except (ValueError, TypeError):
-            return datetime.now(timezone.utc)
+            return None
     return None
 
 
@@ -144,10 +144,12 @@ def _get_all_task_branches(project_root: str) -> dict:
 
     merged_tasks = set()
     audit_timestamps: dict = {}
+    audit_available = False
     try:
         from snodo.infrastructure.audit import get_audit_log
         audit_log = get_audit_log()
         events = audit_log.get_history() if audit_log else []
+        audit_available = True
         for ev in events:
             data = ev.data or {}
             op = data.get("op") or ev.event_type
@@ -236,11 +238,23 @@ def _get_all_task_branches(project_root: str) -> dict:
             ):
                 status = "failed"
             elif halt_status == "completed" or halt_type == "completed" or final_dec == "completed":
-                status = "completed"
+                if not audit_available:
+                    status = "unknown"
+                elif has_git is None:
+                    status = "unknown"
+                else:
+                    status = "completed"
             else:
-                status = "completed" if has_git is not True else "in_progress"
+                if has_git is None:
+                    status = "unknown"
+                elif has_git is True:
+                    status = "in_progress"
+                else:
+                    status = "completed" if audit_available else "unknown"
         elif has_git is True:
             status = "in_progress"
+        elif has_git is None and not audit_available:
+            status = "unknown"
         else:
             status = "in_progress"
 
@@ -255,8 +269,6 @@ def _get_all_task_branches(project_root: str) -> dict:
             ts = git_info.get("commit_date")
         if not ts and session_ts:
             ts = session_ts
-        if not ts:
-            ts = datetime.now(timezone.utc)
 
         spec = None
         if failure_entry and failure_entry.get("spec"):
@@ -508,12 +520,19 @@ def task_prune_command(args) -> int:
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
     stale = []
+    skipped_untimestamped = 0
     for tid, info in sorted(tasks.items()):
         if not info["has_git_branch"] and not info.get("has_failure_context"):
             continue
         ts = info["timestamp"]
+        if ts is None:
+            skipped_untimestamped += 1
+            continue
         if ts < cutoff:
             stale.append((tid, info["branch"], ts, info["has_git_branch"], info.get("has_failure_context", False)))
+
+    if skipped_untimestamped > 0:
+        print(f"Skipped {skipped_untimestamped} task(s) with unknown timestamp.")
 
     if not stale:
         print(f"No task branches older than {stale_days} days.")
