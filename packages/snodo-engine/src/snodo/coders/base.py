@@ -92,6 +92,7 @@ class InPlaceCoderAdapter(Coder, ABC):
 
     _workspace: Path
     last_commit_reason: Optional[str] = None
+    _head_before_run: Optional[str] = None
 
     def implement(self, spec: TaskSpec) -> CodeArtifact:
         """Run the coder, then refuse any .snodo/ mutation it made.
@@ -103,6 +104,10 @@ class InPlaceCoderAdapter(Coder, ABC):
         """
         self.last_commit_reason = None
         before = self._snapshot_snodo()
+        # Record HEAD before dispatch so we can diff against it afterwards.
+        # This distinguishes "coder committed its work" from "coder did nothing"
+        # and handles multiple commits by the coder (ADR 035, #199).
+        self._head_before_run = self._record_head_before_run()
         artifact = self._implement_in_place(spec)
         changed = self._changed_snodo_paths(before)
         if changed:
@@ -114,6 +119,19 @@ class InPlaceCoderAdapter(Coder, ABC):
         # that made the .snodo/ guard hold automatically).
         self._commit_changes()
         return artifact
+
+    def _record_head_before_run(self) -> Optional[str]:
+        """Record the current HEAD sha before running the coder.
+
+        Returns the commit sha or None if the repo cannot be opened.
+        """
+        from git import Repo, GitCommandError
+
+        try:
+            repo = Repo(str(self._workspace), search_parent_directories=True)
+            return repo.head.commit.hexsha
+        except (GitCommandError, Exception):
+            return None
 
     @abstractmethod
     def _implement_in_place(self, spec: TaskSpec) -> CodeArtifact:
@@ -127,6 +145,14 @@ class InPlaceCoderAdapter(Coder, ABC):
         the returned CodeArtifact and the committed review channel. Returns
         entries in the same ``{file, status}`` format ``_diff_to_artifact``
         expects.
+
+        For external CLI coders that commit their own changes (e.g. agy with
+        ``--dangerously-skip-permissions``, opencode run), the working tree
+        may already be committed when this runs. If so, diff against the
+        recorded HEAD sha from before the coder ran (``self._head_before_run``).
+        This correctly handles: (a) coder committed its work, (b) coder made
+        several commits, (c) coder did nothing (empty diff, not a false positive
+        from main's last commit).
         """
         from git import Repo, GitCommandError
 
@@ -157,6 +183,29 @@ class InPlaceCoderAdapter(Coder, ABC):
             # Untracked files (new files the coder created)
             for path in repo.untracked_files:
                 changed[path] = "added"
+
+            # If no unstaged/staged/untracked changes found, check if the
+            # coder already committed (external CLI coders like agy or
+            # opencode run with --dangerously-skip-permissions). Diff against
+            # the recorded HEAD sha from before the coder ran to capture all
+            # commits the coder made, and avoid false positives when the coder
+            # did nothing.
+            if not changed and self._head_before_run:
+                try:
+                    base_commit = repo.commit(self._head_before_run)
+                    head_commit = repo.head.commit
+                    # If HEAD moved since before the run, diff base..HEAD
+                    if base_commit.hexsha != head_commit.hexsha:
+                        for d in base_commit.diff(head_commit):
+                            path = d.b_path or d.a_path
+                            if path and path not in changed:
+                                if d.change_type == "D":
+                                    changed[path] = "deleted"
+                                else:
+                                    changed[path] = d.change_type
+                except (GitCommandError, ValueError):
+                    # Commit lookup or diff failed - that's OK
+                    pass
 
         except Exception as exc:
             _logger.warning("git readback: diff failed: %s", exc)
