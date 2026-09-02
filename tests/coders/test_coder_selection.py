@@ -7,6 +7,7 @@ Covers:
 4. Absence of deleted `create_coder` factory function across the codebase.
 """
 
+from pathlib import Path
 from unittest.mock import patch
 import pytest
 
@@ -51,7 +52,7 @@ def test_same_protocol_runs_under_two_coders_with_identical_validator_model():
     model = "gpt-4o"
 
     coder1 = get_coder(resolve_coder_name(model=model, cli_coder="litellm"), model=model)
-    coder2 = get_coder(resolve_coder_name(model=model, cli_coder="opencode-cli"), model=model)
+    coder2 = get_coder(resolve_coder_name(model=model, cli_coder="opencode-cli"), model=model, workspace=Path("/tmp"))
 
     with patch("snodo.config.ConfigManager.load", return_value={"model": model}):
         builder1 = GraphBuilder(protocol=protocol, coder=coder1)

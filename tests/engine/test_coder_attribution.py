@@ -7,6 +7,7 @@
 - a task that halts still records one.
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from snodo.compiler.models import Mode, Protocol, Validator
@@ -301,7 +302,7 @@ class TestJudgingModelVsCoderModelAttribution:
         from snodo.coders import get_coder
 
         protocol = _make_protocol()
-        coder = get_coder("agy", model="gemini-3.7-flash-medium")
+        coder = get_coder("agy", model="gemini-3.7-flash-medium", workspace=Path("/tmp"))
 
         with patch("snodo.config.ConfigManager.load", return_value={"llm": {"validator": {"model": "deepseek/deepseek-v4-flash"}}}):
             builder = GraphBuilder(protocol, coder=coder)

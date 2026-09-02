@@ -363,8 +363,7 @@ def test_opencode_cli_diff_to_artifact_unreadable_file_distinguishable(temp_work
     """Unreadable files in _diff_to_artifact produce <unreadable: ...> instead of empty string."""
     from snodo.coders.opencode_cli_adapter import OpenCodeCLIAdapter
 
-    adapter = OpenCodeCLIAdapter()
-    adapter._workspace = Path(temp_workspace)
+    adapter = OpenCodeCLIAdapter(workspace=Path(temp_workspace))
 
     # Reference a non-existent file path
     artifact = adapter._diff_to_artifact([{"file": "non_existent_file.py", "status": "modified"}])

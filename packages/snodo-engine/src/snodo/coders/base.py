@@ -94,6 +94,11 @@ class InPlaceCoderAdapter(Coder, ABC):
     last_commit_reason: Optional[str] = None
     _head_before_run: Optional[str] = None
 
+    @property
+    def workspace(self) -> Path:
+        """The granted containment boundary (workspace or task worktree) for in-place execution."""
+        return self._workspace
+
     def implement(self, spec: TaskSpec) -> CodeArtifact:
         """Run the coder, then refuse any .snodo/ mutation it made.
 

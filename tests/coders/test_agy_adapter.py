@@ -96,7 +96,7 @@ def test_agy_nonzero_exit_surfaces_stderr(temp_workspace: Path):
     assert "Error: invalid model specified" in msg
 
 
-def test_coder_selection_and_validator_model_unaffected():
+def test_coder_selection_and_validator_model_unaffected(temp_workspace: Path):
     """--coder agy selects AGYAdapter while validator model is unaffected."""
     protocol = Protocol(
         protocol_id="test",
@@ -111,7 +111,7 @@ def test_coder_selection_and_validator_model_unaffected():
     coder_name = resolve_coder_name(model="gpt-4o", cli_coder="agy")
     assert coder_name == "agy"
 
-    coder = get_coder(coder_name, model="gpt-4o")
+    coder = get_coder(coder_name, model="gpt-4o", workspace=temp_workspace)
     assert isinstance(coder, AGYAdapter)
 
     with mock.patch("snodo.config.ConfigManager.load", return_value={"model": "gpt-4o"}):
@@ -119,6 +119,46 @@ def test_coder_selection_and_validator_model_unaffected():
         # Validator model remains gpt-4o (unaffected by choice of agy coder)
         assert builder._validator_runner._default_model == "gpt-4o"
         assert getattr(coder, "model") == "gpt-4o"
+
+
+def test_agy_adapter_refuses_when_no_workspace_or_workspace_mcp():
+    """Constructing AGYAdapter without workspace or workspace_mcp raises ValueError."""
+    with pytest.raises(ValueError, match="requires an explicit workspace or workspace_mcp"):
+        AGYAdapter()
+
+
+def test_agy_adapter_refuses_when_invalid_workspace_mcp():
+    """Constructing AGYAdapter with invalid workspace_mcp raises ValueError."""
+    with pytest.raises(ValueError, match="requires an explicit workspace or a valid WorkspaceMCP"):
+        AGYAdapter(workspace_mcp="not_a_valid_mcp")
+
+
+def test_agy_adapter_task_worktree_granted_to_cli_distinct_from_cwd(tmp_path: Path):
+    """When task worktree differs from Path.cwd(), the granted dir and cwd for CLI is the worktree."""
+    worktree = tmp_path / "task_worktree"
+    worktree.mkdir()
+    adapter = AGYAdapter(workspace=worktree)
+    assert adapter.workspace == worktree
+
+    executed_kwargs = {}
+    executed_argv = []
+
+    def fake_run(argv, **kwargs):
+        nonlocal executed_argv, executed_kwargs
+        executed_argv = argv
+        executed_kwargs = kwargs
+        (worktree / "feature.py").write_text("def x(): pass\n")
+        return SimpleNamespace(returncode=0, stdout="Success", stderr="")
+
+    spec = TaskSpec(description="Implement feature X", constraints=[])
+    with mock.patch("subprocess.run", side_effect=fake_run):
+        adapter.implement(spec)
+
+    assert executed_kwargs["cwd"] == str(worktree)
+    assert executed_kwargs["cwd"] != str(Path.cwd())
+    dir_idx = executed_argv.index("--add-dir")
+    assert executed_argv[dir_idx + 1] == str(worktree)
+    assert executed_argv[dir_idx + 1] != str(Path.cwd())
 
 
 def test_snodo_mutation_raises_error(temp_workspace: Path):

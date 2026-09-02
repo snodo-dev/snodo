@@ -322,6 +322,7 @@ def test_declared_capabilities_are_present_on_every_adapter(name):
     means the engine would silently skip the adapter, which is the exact
     divergence this interface exists to make observable.
     """
+    ws_mcp = WorkspaceMCP(".")
     for expected in (
         "workspace_mcp",
         "progress_callback",
@@ -331,7 +332,7 @@ def test_declared_capabilities_are_present_on_every_adapter(name):
         "skip_workspace_write",
         "skip_engine_commit",
     ):
-        assert hasattr(CODER_REGISTRY[name](), expected), (
+        assert hasattr(CODER_REGISTRY[name](workspace_mcp=ws_mcp), expected), (
             f"{name} lacks declared coder capability '{expected}'. The engine "
             "assigns these unconditionally; a missing attribute silently "
             "disconnects the capability (docs/architecture/coder-adapter-"

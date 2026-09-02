@@ -24,11 +24,17 @@ from snodo.tools.workspace import WorkspaceMCP
 # ========== WORKSPACE PARAM RESOLUTION ==========
 
 class TestWorkspaceResolution:
-    """OpenCodeCLIAdapter accepts workspace from multiple sources."""
+    """OpenCodeCLIAdapter accepts workspace from multiple sources and refuses missing/invalid."""
 
-    def test_defaults_to_cwd(self):
-        adapter = OpenCodeCLIAdapter(model="opencode-cli/test")
-        assert adapter._workspace == Path.cwd()
+    def test_refuses_when_no_workspace_or_workspace_mcp(self):
+        """Constructing without workspace or workspace_mcp refuses loudly with ValueError."""
+        with pytest.raises(ValueError, match="requires an explicit workspace or workspace_mcp"):
+            OpenCodeCLIAdapter(model="opencode-cli/test")
+
+    def test_refuses_when_invalid_workspace_mcp_object(self):
+        """Constructing with workspace_mcp lacking project_root refuses loudly with ValueError."""
+        with pytest.raises(ValueError, match="requires an explicit workspace or a valid WorkspaceMCP"):
+            OpenCodeCLIAdapter(model="opencode-cli/test", workspace_mcp=object())
 
     def test_workspace_param_takes_priority(self):
         adapter = OpenCodeCLIAdapter(
@@ -36,6 +42,7 @@ class TestWorkspaceResolution:
             workspace=Path("/custom/workspace"),
         )
         assert adapter._workspace == Path("/custom/workspace")
+        assert adapter.workspace == Path("/custom/workspace")
 
     def test_workspace_mcp_with_project_root(self):
         workspace_mcp = Mock(spec=WorkspaceMCP)
@@ -45,6 +52,7 @@ class TestWorkspaceResolution:
             workspace_mcp=workspace_mcp,
         )
         assert adapter._workspace == Path("/mcp/root")
+        assert adapter.workspace == Path("/mcp/root")
 
     def test_workspace_overrides_workspace_mcp(self):
         workspace_mcp = Mock(spec=WorkspaceMCP)
@@ -55,6 +63,34 @@ class TestWorkspaceResolution:
             workspace_mcp=workspace_mcp,
         )
         assert adapter._workspace == Path("/explicit")
+        assert adapter.workspace == Path("/explicit")
+
+    def test_task_worktree_granted_to_cli_distinct_from_cwd(self, tmp_path):
+        """When task worktree differs from Path.cwd(), the granted dir and cwd for CLI is the worktree."""
+        worktree = tmp_path / "task_worktree"
+        worktree.mkdir()
+        adapter = OpenCodeCLIAdapter(model="opencode-cli/test", workspace=worktree)
+        assert adapter.workspace == worktree
+
+        executed_kwargs = {}
+        executed_argv = []
+
+        def fake_run(argv, **kwargs):
+            nonlocal executed_argv, executed_kwargs
+            executed_argv = argv
+            executed_kwargs = kwargs
+            (worktree / "output.txt").write_text("done")
+            return Mock(returncode=0, stdout="Success", stderr="")
+
+        spec = TaskSpec(description="test task", constraints=[])
+        with patch("subprocess.run", side_effect=fake_run):
+            adapter.implement(spec)
+
+        assert executed_kwargs["cwd"] == str(worktree)
+        assert executed_kwargs["cwd"] != str(Path.cwd())
+        dir_idx = executed_argv.index("--dir")
+        assert executed_argv[dir_idx + 1] == str(worktree)
+        assert executed_argv[dir_idx + 1] != str(Path.cwd())
 
 
 # ========== BARE MODEL ==========
@@ -63,7 +99,7 @@ class TestBareModel:
     """_bare_model strips this adapter's prefix, and drops anything else."""
 
     def test_strips_prefix(self):
-        adapter = OpenCodeCLIAdapter(model="opencode-cli/deepseek/deepseek-chat")
+        adapter = OpenCodeCLIAdapter(model="opencode-cli/deepseek/deepseek-chat", workspace=Path("/dummy"))
         assert adapter._bare_model() == "deepseek/deepseek-chat"
 
     def test_model_outside_this_namespace_is_dropped(self):
@@ -76,7 +112,7 @@ class TestBareModel:
         the CLI falls back to its own default. This test previously asserted
         the passthrough that caused that.
         """
-        adapter = OpenCodeCLIAdapter(model="deepseek/deepseek-chat")
+        adapter = OpenCodeCLIAdapter(model="deepseek/deepseek-chat", workspace=Path("/dummy"))
         assert adapter._bare_model() == ""
 
 
@@ -267,6 +303,7 @@ class TestRegistration:
 
     def test_get_coder_opencode_cli(self):
         from snodo.coders import get_coder
-        coder = get_coder("opencode-cli", model="opencode-cli/deepseek/deepseek-chat")
+        coder = get_coder("opencode-cli", model="opencode-cli/deepseek/deepseek-chat", workspace=Path("/tmp"))
         assert isinstance(coder, OpenCodeCLIAdapter)
         assert coder.model == "opencode-cli/deepseek/deepseek-chat"
+        assert coder.workspace == Path("/tmp")
