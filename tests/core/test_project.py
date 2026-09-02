@@ -104,8 +104,8 @@ def test_cache_project_id():
         assert data["scope"] == "remote"
 
 
-def test_is_system_root_or_temp():
-    """Verify system root and shared temp detection."""
+def test_is_system_root_or_temp(monkeypatch):
+    """Verify system root and shared temp detection including dynamic runtime TMPDIR."""
     from snodo.project import _is_system_root_or_temp
 
     assert _is_system_root_or_temp(Path("/")) is True
@@ -115,10 +115,12 @@ def test_is_system_root_or_temp():
     assert _is_system_root_or_temp(Path("/var/folders/2v/xyz/T")) is True
     assert _is_system_root_or_temp(Path("/private/var/folders/2v/xyz/T")) is True
 
-    # Subdirectories are not system roots
-    with tempfile.TemporaryDirectory() as tmpdir:
-        assert _is_system_root_or_temp(Path(tmpdir)) is False
-        assert _is_system_root_or_temp(Path(tmpdir) / "sub") is False
+    # Test dynamic runtime TMPDIR (e.g. /tmp/snodo-b-XXXX)
+    with tempfile.TemporaryDirectory() as custom_tmp:
+        monkeypatch.setenv("TMPDIR", custom_tmp)
+        assert _is_system_root_or_temp(Path(custom_tmp)) is True
+        # Child project directories inside custom TMPDIR are NOT system roots
+        assert _is_system_root_or_temp(Path(custom_tmp) / "my_project") is False
 
 
 def test_cache_project_id_refuses_system_roots(caplog):
@@ -145,4 +147,20 @@ def test_cache_project_id_warns_on_non_project_dir(caplog):
         with caplog.at_level(logging.WARNING):
             cache_project_id(tmpdir, "test-id", "local")
             assert "created .snodo in non-project directory" in caplog.text
+
+
+def test_tool_telemetry_does_not_create_snodo_in_uninitialized_dir():
+    """Verify persist_tool_telemetry does not create .snodo in directories without .snodo."""
+    from snodo.infrastructure.tool_telemetry import persist_tool_telemetry
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        import os
+        orig_cwd = os.getcwd()
+        try:
+            os.chdir(tmpdir)
+            persist_tool_telemetry("task_test_001", {"turn_index": 1, "tool": "test"})
+            assert not (Path(tmpdir) / ".snodo").exists()
+        finally:
+            os.chdir(orig_cwd)
+
 

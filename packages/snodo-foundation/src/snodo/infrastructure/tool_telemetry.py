@@ -66,6 +66,10 @@ def persist_tool_telemetry(target_id: str, record: dict) -> None:
     if not project_root:
         return
 
+    from snodo.project import _is_system_root_or_temp
+    if _is_system_root_or_temp(project_root):
+        return
+
     if job_id:
         _append_telemetry(Path(project_root) / ".snodo" / "jobs" / job_id, record)
     if task_id:
@@ -75,6 +79,11 @@ def persist_tool_telemetry(target_id: str, record: dict) -> None:
 def _append_telemetry(target_dir: Path, record: dict) -> None:
     """Safely append a telemetry record to target_dir/state.json."""
     try:
+        from snodo.project import _is_system_root_or_temp
+
+        if _is_system_root_or_temp(target_dir.parent.parent):
+            return
+
         target_dir.mkdir(parents=True, exist_ok=True)
         state_path = target_dir / "state.json"
         state = {}
