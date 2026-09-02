@@ -862,9 +862,40 @@ class TestQualityDispatch:
             # one from cwd.
         )
 
-        res = qv.evaluate(ctx)
-        assert res.severity == "pass"
+        assert qv.evaluate(ctx).severity == "pass"
 
         # No audit file may appear at the cwd-relative default path.
         assert not (tmp_path / ".snodo" / "audit.log").exists()
         assert not (tmp_path / ".snodo").exists()
+
+    def test_quality_validator_failure_is_never_downgraded(self, project_dir):
+        """A failing test suite from QualityValidator must always remain a blocker."""
+        from snodo.validators.runner import run_validators
+        from snodo.core.interfaces import Task
+
+        spec = Validator(
+            validator_id="quality",
+            validator_type="quality",
+            evaluation_phase="post_execute",
+            tooling={"test_command": "exit 2"},
+        )
+        protocol = MagicMock()
+        protocol.get_mode.return_value = MagicMock(
+            name="producer", tools=[], transitions={}, validators=["quality"]
+        )
+
+        results, cap_originals = run_validators(
+            protocol=protocol,
+            validators=[spec],
+            task=Task(id="t1", spec="test"),
+            phase="post_execute",
+            completion_fn=None,
+            validator_config=MagicMock(max_tokens=1500, max_tool_turns=6),
+            current_mode="producer",
+            workspace_mcp=MagicMock(workspace_root=str(project_dir)),
+        )
+
+        assert len(results) == 1
+        assert results[0].severity == "blocker"
+        assert "quality" not in cap_originals
+

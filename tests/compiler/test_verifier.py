@@ -360,6 +360,27 @@ def test_wf3_invalid_initial_mode_fails():
         verifier.check_wf3()
 
 
+def test_wf3_quality_with_severity_cap_fails():
+    """Quality validator with severity_cap fails WF3."""
+    from unittest.mock import MagicMock
+    from snodo.compiler.models import Severity
+
+    v = MagicMock()
+    v.validator_id = "quality"
+    v.validator_type = "quality"
+    v.severity_cap = Severity.WARN
+    v.evaluation_phase = "post_execute"
+
+    protocol = MagicMock()
+    protocol.modes = [MagicMock(mode_id="m1", tools=[], validators=["quality"])]
+    protocol.validators = [v]
+    protocol.initial_mode = "m1"
+
+    verifier = ProtocolVerifier(protocol)
+    with pytest.raises(WF3Violation, match="Quality validator 'quality' cannot specify severity_cap"):
+        verifier.check_wf3()
+
+
 # ========== WF4: POLICY COMPLETENESS TESTS ==========
 
 def test_wf4_unanimous_with_one_validator_passes():

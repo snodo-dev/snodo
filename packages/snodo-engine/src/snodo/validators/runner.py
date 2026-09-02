@@ -322,6 +322,7 @@ def run_validators(
                         audit_log.append_event("severity_cap_applied", _cap_data)
                 elif (
                     v_obj is not None
+                    and v_obj.validator_type != "quality"
                     and v_obj.severity_cap is not None
                     and not getattr(result, "error", False)
                 ):
