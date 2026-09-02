@@ -1341,14 +1341,18 @@ class TestUnverifiedMergeBlocked:
         subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
 
         audit_log = AuditLog(str(repo / "audit.log"))
+        target_commit = subprocess_run(
+            ["git", "rev-parse", branch], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
         # Record passing verification event
         audit_log.append_event("verification_executed", {
             "op": "verification_executed",
             "command": "pytest",
-            "commit": "abc1234",
+            "commit": target_commit,
             "returncode": 0,
             "outcome": "pass",
             "validator_id": "quality",
+            "task_ref": task.id,
         })
 
         res, preserve, merged = _merge_on_success(str(repo), task, 0, "sess_1", audit_log)
@@ -1356,6 +1360,114 @@ class TestUnverifiedMergeBlocked:
         assert preserve is False
         assert merged == branch
         assert (repo / "file.txt").exists()
+
+    def test_merge_refused_when_verification_is_for_different_task_and_commit(self, tmp_path):
+        """A passing verification for a different task and commit does not satisfy the merge gate (Fixes #76)."""
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+
+        from snodo.cli.commands.run_cmd import _merge_on_success
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        task_being_merged = Task(id="task_current", spec="current task")
+        branch = task_branch_name(task_being_merged.id, task_being_merged.spec)
+        subprocess_run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "feature.txt").write_text("current feature\n")
+        subprocess_run(["git", "add", "feature.txt"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "current commit"], cwd=repo, check=True)
+        current_commit = subprocess_run(
+            ["git", "rev-parse", branch], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+        audit_log = AuditLog(str(repo / "audit.log"))
+        # Audit log contains a passing event for a DIFFERENT task and an OLD/DIFFERENT commit
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "command": "pytest",
+            "commit": "different_commit_sha_1234567890abcdef",
+            "returncode": 0,
+            "outcome": "pass",
+            "validator_id": "quality",
+            "task_ref": "task_different",
+        })
+
+        res, preserve, merged = _merge_on_success(str(repo), task_being_merged, 0, "sess_1", audit_log)
+        assert res == 1
+        assert preserve is True
+        assert merged is None
+        assert not (repo / "feature.txt").exists()
+
+        events = audit_log.get_history("unverified_merge_blocked")
+        assert len(events) == 1
+        assert events[0].data["task_ref"] == "task_current"
+        assert events[0].data["target_commit"] == current_commit
+
+    def test_merge_accept_and_refuse_paths_name_evidence(self, tmp_path, capsys):
+        """Accept and refuse paths each name the evidence (task, commit, command) they relied on (Fixes #76)."""
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+
+        from snodo.cli.commands.run_cmd import _merge_on_success
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        task = Task(id="task_audit_evidence", spec="test evidence reporting")
+        branch = task_branch_name(task.id, task.spec)
+        subprocess_run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "code.py").write_text("pass\n")
+        subprocess_run(["git", "add", "code.py"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "add code"], cwd=repo, check=True)
+        branch_commit = subprocess_run(
+            ["git", "rev-parse", branch], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+        audit_log = AuditLog(str(repo / "audit.log"))
+
+        # Refusal path: no matching evidence
+        res_refuse, _, _ = _merge_on_success(str(repo), task, 0, "sess_1", audit_log)
+        assert res_refuse == 1
+        err_refusal = capsys.readouterr().err
+        assert "Refused merge for" in err_refusal
+        assert "task_audit_evidence" in err_refusal
+        assert branch_commit[:7] in err_refusal
+
+        # Accept path: record matching passing evidence
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "command": "pytest -q tests/test_code.py",
+            "commit": branch_commit,
+            "returncode": 0,
+            "outcome": "pass",
+            "validator_id": "quality",
+            "task_ref": task.id,
+        })
+        res_accept, _, merged = _merge_on_success(str(repo), task, 0, "sess_1", audit_log)
+        assert res_accept == 0
+        assert merged == branch
+        err_accept = capsys.readouterr().err
+        assert "Verified merge for" in err_accept
+        assert "task_audit_evidence" in err_accept
+        assert branch_commit[:7] in err_accept
+        assert "pytest -q tests/test_code.py" in err_accept
 
 
 class TestForegroundTelemetryPersistence:
