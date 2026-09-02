@@ -9,6 +9,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The reduced local test gate now announces itself. `uv run pytest tests/` runs
+  with `addopts = "-m 'not e2e'"`, so it skips the e2e suite (~124 tests) while
+  CI clears the filter and adds a coverage floor and the patch-coverage check.
+  The two commands looked alike and were not the same gate: a clean local run was
+  repeatedly followed by a CI failure the local command could not see. A passing
+  reduced run now prints a notice on the same screen naming what was skipped and
+  the command that matches the gate CI applies. A guard test
+  (`tests/test_verification_gate.py`) fails if pyproject, `ci.yml` and
+  `CONTRIBUTING.md` drift apart again without that difference being stated, and
+  the fast loop is unchanged (e2e still deselected by default). (Refs #87)
+
 ### Fixed
 
 - The default audit log now resolves against the project root, not the process

@@ -61,11 +61,38 @@ snodo run "implement hello world" --mock   # deterministic, no API calls
 
 ## Testing and checks
 
-All of these must pass before you push:
+There are **two gates, and they are not the same**. Read the one you ran.
+
+### Local (fast) gate — reduced, does not decide
 
 ```bash
-uv run pytest tests/          # unit + integration (e2e deselected by default)
-uv run pytest tests/ -m ""    # everything, including e2e (~2 min)
+uv run pytest tests/          # ~47s — unit + integration; e2e DESELECTED
+```
+
+`pyproject.toml` sets `addopts = "-m 'not e2e'"`, so this command **skips the
+e2e suite** (about 124 tests) for a fast loop. It is the quick check, **not** the
+gate that decides. It announces the reduction on the same screen and prints the
+full command: a green run here does **not** mean CI is green, because the reduced
+command cannot see the e2e class of failure at all.
+
+### The gate CI runs — this is what decides
+
+CI clears the marker filter and adds two checks the local gate never runs:
+
+```bash
+uv run pytest tests/ -m "" -n auto --tb=short --timeout=60 \
+  --cov --cov-report=term-missing --cov-fail-under=75
+uv run python scripts/enforce_patch_coverage.py
+```
+
+That is the whole suite (e2e included) plus a **75% total-coverage floor** and an
+**80% patch-coverage check**. Run it before pushing — do not stop at the fast
+gate. This is also exactly what every task ticket's verification line refers to
+when it points at the full suite.
+
+### Always-pass checks (local and CI)
+
+```bash
 uv run ruff check .           # lint
 uv run lint-imports           # architecture layering contract
 ```
@@ -107,10 +134,15 @@ hostile third-party code are out of scope.
 
 ## Coverage reporting
 
-Code coverage is measured in CI and published live to [Codecov](https://codecov.io/gh/snodo-dev/snodo). CI enforces a minimum 75% total repo coverage gate (`--cov-fail-under=75`). Run coverage locally with:
+Coverage is part of the CI gate above, not the local fast gate. CI enforces a
+**75% total repo coverage floor** (`--cov-fail-under=75`) and an **80% patch
+coverage** floor (`scripts/enforce_patch_coverage.py`), and publishes live to
+[Codecov](https://codecov.io/gh/snodo-dev/snodo). Reproduce both locally with the
+full-gate command from [Testing and checks](#testing-and-checks):
 
 ```bash
-uv run pytest tests/ -m "" --cov --cov-report=term-missing
+uv run pytest tests/ -m "" -n auto --cov --cov-report=term-missing --cov-fail-under=75
+uv run python scripts/enforce_patch_coverage.py
 ```
 
 ## Code of conduct
