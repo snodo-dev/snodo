@@ -572,7 +572,15 @@ class TestProgressOutput:
 
 
 class TestExecutionFailureReporting:
-    """A failed execution is internal_error, never validated, never called a blocker."""
+    """A failed execution is a nameable halt, never validated, never called a blocker.
+
+    The coder backend failing (``AdapterError`` — a binary missing from PATH, a
+    CLI that rejected the arguments, an LLM call that errored) is an
+    operator-fixable coder fault: it halts under the raw ``execution_error``
+    (canonical ``blocker``) with a config fix target. An engine-level
+    ``ExecutionError`` (no file operations, an unexpected adapter bug) remains
+    ``internal_error`` (Fixes #195).
+    """
 
     def _protocol(self):
         return Protocol(
@@ -644,6 +652,39 @@ class TestExecutionFailureReporting:
         # The failure reason reaches the top-level reason.
         assert payload["reason"] is not None
         assert "coder produced nothing" in payload["reason"]
+        # Post-validation was skipped, not passed.
+        assert payload["post_validation"]["outcome"] == "skipped"
+
+    def test_adapter_failure_is_execution_error_not_internal_error(self):
+        """A coder backend failure (AdapterError) is a config-fixable blocker,
+        not an internal engine error (Fixes #195)."""
+        from snodo.coders.base import LLMCallError
+
+        def failing_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
+            raise LLMCallError(
+                'agy run failed (rc=1): Error: invalid model selection '
+                '(--model "gemini-3.7-flash")'
+            )
+
+        builder = self._builder(failing_executor)
+        result = builder.build_graph().compile().invoke(self._state())
+
+        assert result["is_blocked"] is True
+        # Raw halt names the coder fault; canonical outcome is a blocker.
+        assert result["halt_type"] == "execution_error"
+
+        payload = result["metadata"]["halt_payload"]
+        assert payload["raw_halt_type"] == "blocker"
+        assert payload["halt_type"] == "blocker"
+        assert payload["final_decision"] == "blocker"
+        assert payload["status"] == "blocked"
+        # The exact coder error reaches the top-level reason.
+        assert payload["reason"] is not None
+        assert "invalid model selection" in payload["reason"]
+        # The hint tells the operator to fix the coder configuration, not to
+        # inspect engine logs.
+        assert "coder configuration" in payload["hint"]
+        assert "internal" not in payload["hint"]
         # Post-validation was skipped, not passed.
         assert payload["post_validation"]["outcome"] == "skipped"
 
