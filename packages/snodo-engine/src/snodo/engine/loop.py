@@ -393,15 +393,15 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                    getattr(self.coder, "completion_fn", None)
 
         self._completion_fn = _base_fn
-        self._default_model = getattr(self.coder, "model", DEFAULT_MODEL)
+        coder_model_fallback = getattr(self.coder, "model", DEFAULT_MODEL)
 
         from litellm import completion as litellm_completion
         from snodo.config import ConfigManager, provider_env
 
         config = ConfigManager().load()
 
-        validator_model = _resolve_model_for_role(config, "validator", self._default_model)
-        classifier_model = _resolve_model_for_role(config, "classifier", self._default_model)
+        validator_model = _resolve_model_for_role(config, "validator", coder_model_fallback)
+        classifier_model = _resolve_model_for_role(config, "classifier", coder_model_fallback)
 
         if is_mock_mode_active() or isinstance(self.coder, MockAdapter):
             from snodo.coders.mock import mock_completion_fn
@@ -421,6 +421,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         # binds the completion function (model + api_base) and is passed to the
         # classification call, so the two can never disagree (ADR 020).
         self._classifier_model = classifier_model
+        self._validator_model = validator_model
+        self._default_model = validator_model
         self._validator_runner = ValidatorRunner(
             protocol=self.protocol,
             completion_fn=validator_completion_fn,

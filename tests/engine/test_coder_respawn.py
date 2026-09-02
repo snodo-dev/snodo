@@ -87,9 +87,8 @@ class TestCoderRespawn:
 
         assert builder.coder.model == "gemini/gemini-2.0-flash-exp"
         assert builder._completion_fn is not None
-        assert builder._default_model == "gemini/gemini-2.0-flash-exp"
-        # Validator runner should be in sync
-        assert builder._validator_runner._default_model == "gemini/gemini-2.0-flash-exp"
+        # Validator runner default model remains independent of coder (ADR 039)
+        assert builder._validator_runner._default_model == "claude-sonnet-4-20250514"
         assert builder._validator_runner._completion_fn is not None
 
     def test_tampered_override_not_applied(self):
