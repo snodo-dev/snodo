@@ -5,6 +5,7 @@ FILE: snodo/cli/commands/task_cmd.py
 
 import logging
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Optional
 
@@ -810,10 +811,49 @@ def task_report_command(args) -> int:
     return 0
 
 
-def _spec_excerpt(spec: str, max_chars: int = 80) -> str:
-    """Return a one-line excerpt of *spec* for the pending list."""
+def _unwrap_spec(spec: str) -> str:
+    """Unwrap engine scaffolding or retry/recovery wrappers to recover the original request."""
     if not spec:
         return ""
+    # 1. Recovery spec wrapper (from _build_recovery_spec)
+    intent_marker = "INTENT (unchanged from the original task):"
+    if intent_marker in spec:
+        after_marker = spec.split(intent_marker, 1)[1]
+        for marker in ("\n\nCONSTRAINTS:", "\nCONSTRAINTS:"):
+            if marker in after_marker:
+                after_marker = after_marker.split(marker, 1)[0]
+        extracted = after_marker.strip()
+        if extracted:
+            return _unwrap_spec(extracted)
+
+    # 2. Retry prompt wrapper (from snodo run --retry)
+    if "Revised spec (replaces original):" in spec:
+        after_revised = spec.split("Revised spec (replaces original):", 1)[1]
+        for marker in ("\n\nPrevious attempt", "\nPrevious attempt", "\n\nFiles changed", "\n\nFix the issues"):
+            if marker in after_revised:
+                after_revised = after_revised.split(marker, 1)[0]
+        extracted = after_revised.strip()
+        if extracted:
+            return _unwrap_spec(extracted)
+
+    if spec.startswith("Original spec:"):
+        after_orig = spec[len("Original spec:"):].strip()
+        for marker in ("\n\nPrevious attempt", "\nPrevious attempt", "\n\nRevised spec", "\n\nFiles changed", "\n\nFix the issues"):
+            if marker in after_orig:
+                after_orig = after_orig.split(marker, 1)[0]
+        extracted = after_orig.strip()
+        if extracted:
+            return _unwrap_spec(extracted)
+
+    return spec.strip()
+
+
+def _spec_excerpt(spec: Optional[str], max_chars: int = 80) -> str:
+    """Return a one-line excerpt of *spec* for the pending list."""
+    if spec is None:
+        return "(unrecoverable description)"
+    if not spec:
+        return "(empty)"
     one_line = " ".join(spec.split())
     if len(one_line) <= max_chars:
         return one_line
@@ -823,9 +863,9 @@ def _spec_excerpt(spec: str, max_chars: int = 80) -> str:
 def task_review_pending_command(args) -> int:
     """List every merged unit with no review record, newest first.
 
-    Read-only: reads the audit log (task_merged / human_review_recorded) and
-    the session halt payloads for the spec excerpt. Never creates, mutates or
-    clears any review record.
+    Read-only: reads the audit log (task_merged / human_review_recorded), task
+    state records, and session checkpoints for the spec excerpt. Never creates,
+    mutates or clears any review record.
     """
     from datetime import datetime
 
@@ -844,9 +884,9 @@ def task_review_pending_command(args) -> int:
     audit_log = get_audit_log()
     events = audit_log.events if audit_log else []
 
-    # Merge identity -> (task_ref, branch, merge timestamp). The merge commit
-    # SHA is the identity (Fixes #101); the branch name is a human label that
-    # repeats across merges and must not be used as an identity.
+    # Merge identity -> (task_ref, branch, merge timestamp, event_data).
+    # The merge commit SHA is the identity (Fixes #101); the branch name is a
+    # human label that repeats across merges and must not be used as an identity.
     merged: dict = {}
     for ev in events:
         data = ev.data or {}
@@ -865,6 +905,7 @@ def task_review_pending_command(args) -> int:
             "task_ref": data.get("task_ref") or data.get("task_id") or identity,
             "branch": data.get("branch", ""),
             "merge_ts": ts,
+            "event_data": data,
         }
 
     # Reviewed identities: any human_review_recorded with a verdict.
@@ -878,37 +919,116 @@ def task_review_pending_command(args) -> int:
         if identity and data.get("verdict"):
             reviewed.add(identity)
 
-    # Spec excerpt from the session halt payloads (checkpoint.decisions.halt).
+    # Spec excerpts recovered from (in priority):
+    # 1. task_merged audit event payload itself
+    # 2. .snodo/tasks/<task_ref>/state.json
+    # 3. Active session and all saved session files for the project
     specs: dict = {}
+
+    # Source 1: Check task_merged events directly
+    for identity, info in merged.items():
+        event_data = info.get("event_data") or {}
+        raw_spec = event_data.get("spec") or event_data.get("root_spec") or event_data.get("task_spec")
+        if raw_spec is not None:
+            unwrapped = _unwrap_spec(raw_spec)
+            specs[identity] = unwrapped
+            specs[info["task_ref"]] = unwrapped
+
+    # Source 2: Check .snodo/tasks/<task_ref>/state.json
+    for identity, info in merged.items():
+        task_ref = info["task_ref"]
+        if identity in specs or task_ref in specs:
+            continue
+        task_file = Path(project_root) / ".snodo" / "tasks" / task_ref / "state.json"
+        if task_file.is_file():
+            try:
+                import json
+                task_data = json.loads(task_file.read_text())
+                raw_spec = (
+                    task_data.get("root_spec")
+                    or task_data.get("description")
+                    or task_data.get("spec")
+                    or (task_data.get("halt", {}) or {}).get("task_spec")
+                )
+                if raw_spec is not None:
+                    unwrapped = _unwrap_spec(raw_spec)
+                    specs[identity] = unwrapped
+                    specs[task_ref] = unwrapped
+            except Exception as e:
+                _logger.debug("Could not read task state file %s: %s", task_file, e)
+
+    # Source 3: Check active session + all saved session files for this project
     try:
         from snodo.infrastructure.state import read_state
         from snodo.infrastructure.session import SessionManager
 
+        mgr = SessionManager()
         state = read_state(project_root)
         mode = state.current_mode
+
+        # First check active session if available
         if mode:
-            mgr = SessionManager()
-            session = mgr.get_active_session(mode, project_root)
-            if session:
-                halt = session.checkpoint.decisions.get("halt", {})
-                if isinstance(halt, dict):
-                    for tid, payload in halt.items():
-                        if isinstance(payload, dict) and payload.get("task_spec"):
-                            specs[tid] = payload["task_spec"]
+            active_session = mgr.get_active_session(mode, project_root)
+            if active_session and getattr(active_session, "checkpoint", None):
+                decisions = active_session.checkpoint.decisions or {}
+                halt = decisions.get("halt", {})
+                failure = decisions.get("task_failure", {})
+                classification = decisions.get("classification", {})
+                for tid in set(halt.keys()) | set(failure.keys()) | set(classification.keys()):
+                    if tid in specs:
+                        continue
+                    h_entry = halt.get(tid) if isinstance(halt, dict) else None
+                    f_entry = failure.get(tid) if isinstance(failure, dict) else None
+                    c_entry = classification.get(tid) if isinstance(classification, dict) else None
+                    raw_spec = None
+                    if isinstance(f_entry, dict):
+                        raw_spec = f_entry.get("original_spec") or f_entry.get("spec")
+                    if raw_spec is None and isinstance(h_entry, dict):
+                        raw_spec = h_entry.get("root_spec") or h_entry.get("task_spec")
+                    if raw_spec is None and isinstance(c_entry, dict):
+                        raw_spec = c_entry.get("root_spec") or c_entry.get("task_spec")
+                    if raw_spec is not None:
+                        specs[tid] = _unwrap_spec(raw_spec)
+
+        # Then check all other sessions in the project
+        all_sessions = mgr.list_sessions(project_root=project_root)
+        for session in all_sessions:
+            if not getattr(session, "checkpoint", None):
+                continue
+            decisions = session.checkpoint.decisions or {}
+            halt = decisions.get("halt", {})
+            failure = decisions.get("task_failure", {})
+            classification = decisions.get("classification", {})
+            for tid in set(halt.keys()) | set(failure.keys()) | set(classification.keys()):
+                if tid in specs:
+                    continue
+                h_entry = halt.get(tid) if isinstance(halt, dict) else None
+                f_entry = failure.get(tid) if isinstance(failure, dict) else None
+                c_entry = classification.get(tid) if isinstance(classification, dict) else None
+                raw_spec = None
+                if isinstance(f_entry, dict):
+                    raw_spec = f_entry.get("original_spec") or f_entry.get("spec")
+                if raw_spec is None and isinstance(h_entry, dict):
+                    raw_spec = h_entry.get("root_spec") or h_entry.get("task_spec")
+                if raw_spec is None and isinstance(c_entry, dict):
+                    raw_spec = c_entry.get("root_spec") or c_entry.get("task_spec")
+                if raw_spec is not None:
+                    specs[tid] = _unwrap_spec(raw_spec)
     except Exception as e:
-        _logger.debug("Could not read session halt payloads for spec excerpts: %s", e)
+        _logger.debug("Could not read sessions for spec excerpts: %s", e)
 
     pending = []
     for identity, info in merged.items():
         if identity in reviewed:
             continue
         task_ref = info["task_ref"]
+        raw_spec = specs.get(identity) if identity in specs else specs.get(task_ref)
         pending.append({
             "unit_id": identity,
             "task_id": task_ref,
             "branch": info["branch"],
             "merge_timestamp": info["merge_ts"].isoformat() if info["merge_ts"] else "",
-            "spec_excerpt": _spec_excerpt(specs.get(task_ref, "")),
+            "spec_excerpt": _spec_excerpt(raw_spec),
         })
 
     # Newest first; units without a parseable timestamp sort last.
