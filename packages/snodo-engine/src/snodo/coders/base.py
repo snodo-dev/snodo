@@ -90,6 +90,8 @@ class InPlaceCoderAdapter(Coder, ABC):
     skip_workspace_write: bool = True
     #: The coder commits its own changes; the engine does not stage them.
     skip_engine_commit: bool = True
+    #: Canonical coder identifier (e.g. "agy", "opencode-cli", "opencode").
+    coder_name: str
 
     _workspace: Path
     last_commit_reason: Optional[str] = None
@@ -116,7 +118,7 @@ class InPlaceCoderAdapter(Coder, ABC):
         self._head_before_run = self._record_head_before_run()
         t0 = time.perf_counter()
         artifact = self._implement_in_place(spec)
-        elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+        duration_ms = round((time.perf_counter() - t0) * 1000, 2)
         changed = self._changed_snodo_paths(before)
         if changed:
             raise SnodoMutationError(sorted(changed))
@@ -130,13 +132,16 @@ class InPlaceCoderAdapter(Coder, ABC):
         # Record attribution for in-place coder runs (Fixes #69).
         # In-place coders make no litellm calls, so without this attribution
         # record, runs are indistinguishable in state.json from zero-cost runs.
-        coder_name = getattr(self, "coder_name", "") or getattr(self, "binary", "") or self.__class__.__name__.lower().replace("adapter", "")
-        if coder_name == "opencode" and getattr(self, "model_prefix", "") == "opencode-cli/":
-            coder_name = "opencode-cli"
+        coder_name = getattr(self, "coder_name", None)
+        if not coder_name:
+            raise AttributeError(
+                f"{self.__class__.__name__} does not declare coder_name. "
+                "InPlaceCoderAdapter subclasses must explicitly declare coder_name."
+            )
         model_str = getattr(self, "model", "") or ""
 
         if artifact and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
-            artifact.metadata["elapsed_ms"] = elapsed_ms
+            artifact.metadata["duration_ms"] = duration_ms
             artifact.metadata["coder"] = coder_name
             artifact.metadata["model"] = model_str
 
@@ -147,7 +152,7 @@ class InPlaceCoderAdapter(Coder, ABC):
             record_inplace_coder_run(
                 coder=coder_name,
                 model=model_str,
-                elapsed_ms=elapsed_ms,
+                duration_ms=duration_ms,
                 job_id=job_id,
                 task_id=task_id,
             )

@@ -171,7 +171,7 @@ def record_inplace_coder_run(
     *,
     coder: str,
     model: str,
-    elapsed_ms: float,
+    duration_ms: float,
     job_id: str = "",
     task_id: str = "",
 ) -> None:
@@ -183,7 +183,7 @@ def record_inplace_coder_run(
     that genuinely cost nothing.
 
     What is measured (and labelled as such):
-    - ``elapsed_ms``: wall-clock duration of the subprocess / HTTP session
+    - ``duration_ms``: wall-clock duration of the subprocess / HTTP session
     - ``model``: the model string the CLI was asked to use (may be ``""`` when
       the operator did not specify one — the tool then uses its own default)
 
@@ -205,21 +205,19 @@ def record_inplace_coder_run(
         "coder": coder,
         "role": "coder",
         "model": model,
-        "elapsed_ms": elapsed_ms,
-        "duration_ms": elapsed_ms,
+        "duration_ms": duration_ms,
         # cost and tokens are not available for external CLI coders
         "cost": None,
         "prompt_tokens": None,
         "completion_tokens": None,
         "total_tokens": None,
         # Explicit declaration: only what is in this list was directly observed.
-        "measured": ["elapsed_ms"] + (["model"] if model else []),
+        "measured": ["duration_ms"] + (["model"] if model else []),
     }
 
-    # Resolve job / task ids: prefer explicit arguments, fall back to env vars.
+    # Resolve job / task ids: prefer explicit arguments, fall back to job env var.
     resolved_job_id = job_id or os.environ.get("SNODO_JOB_ID") or ""
-    resolved_task_id = task_id or os.environ.get("SNODO_TASK_ID") or ""
-
+    resolved_task_id = task_id or ""
 
     if resolved_job_id.startswith("j_"):
         record["job_id"] = resolved_job_id
@@ -240,4 +238,5 @@ def record_inplace_coder_run(
                 "record_inplace_coder_run: failed to persist for task %s: %s",
                 resolved_task_id, e,
             )
+
 
