@@ -200,6 +200,14 @@ class ProtocolVerifier:
                         f"but no pre_execute validators"
                     )
 
+        # Quality validators must never have severity_cap configured
+        for v in self.protocol.validators:
+            if v.validator_type == "quality" and v.severity_cap is not None:
+                violations.append(
+                    f"Quality validator '{v.validator_id}' cannot specify severity_cap "
+                    f"'{v.severity_cap.value}'. Quality gates execute the test suite and must not be capped."
+                )
+
         if violations:
             error_msg = f"WF3 Violation: {'; '.join(violations)}"
             self.errors.append(error_msg)
