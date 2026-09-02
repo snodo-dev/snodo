@@ -46,6 +46,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
   exhaustions). It now surfaces as a distinct `TurnBudgetExhausted` exception
   mapped to the raw halt `turn_budget_exhausted` (canonical `blocker`, fix
   targets spec/policy), and recovery does not spawn for it. (Fixes #191)
+
+- Task retry (`snodo run --retry <task_id>`) now constructs a clean prompt per
+  attempt instead of recursively wrapping previous prompt blobs. `original_spec`
+  is preserved across retries in session `task_failure` and `root_spec` is
+  threaded to the Task so task branch slugs, path-existence pre-flight checks,
+  and halt payloads use the authoritative spec rather than nested prompt text.
+  The prompt construction now names the actual failure phase (`pre-validation`,
+  `at execute`, `post-validation`), omits the `Files changed` line when empty,
+  and only includes the latest attempt's failure context. (Fixes #197)
 - `snodo plan run` now exposes the full shared execution surface of `snodo run`
   — `--coder`, `--mock`, `--mode`, `--verbose`, `--no-isolation` and
   `--retain-worktree` were declared only on `snodo run`, so a plan — the
