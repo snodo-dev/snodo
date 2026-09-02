@@ -408,6 +408,7 @@ class SessionManager:
             return [], []
 
         ids: set = set()
+        deleted_ids: set = set()
         try:
             with open(audit_path) as f:
                 for line in f:
@@ -421,13 +422,18 @@ class SessionManager:
                         data = event.get("data") or {}
                         sid = data.get("session_id")
                         if isinstance(sid, str) and sid:
-                            ids.add(sid)
+                            if event.get("event") == "session_deleted" or data.get("op") == "session_deleted":
+                                deleted_ids.add(sid)
+                            else:
+                                ids.add(sid)
         except OSError:
             return [], []
 
+        candidate_ids = ids - deleted_ids
+
         present: List[Path] = []
         missing: List[str] = []
-        for sid in sorted(ids):
+        for sid in sorted(candidate_ids):
             path = self.sessions_dir / f"{sid}.json"
             if path.exists():
                 present.append(path)
@@ -475,6 +481,8 @@ class SessionManager:
         audit_path = Path(project_root) / ".snodo" / "audit.log"
         if not audit_path.exists():
             return False
+        cited = False
+        deleted = False
         try:
             with open(audit_path) as f:
                 for line in f:
@@ -488,11 +496,16 @@ class SessionManager:
                         continue
                     data = event.get("data") or {}
                     if data.get("session_id") == session_id:
-                        return not (
-                            self.sessions_dir / f"{session_id}.json"
-                        ).exists()
+                        if event.get("event") == "session_deleted" or data.get("op") == "session_deleted":
+                            deleted = True
+                        else:
+                            cited = True
         except OSError:
             return False
+        if deleted:
+            return False
+        if cited:
+            return not (self.sessions_dir / f"{session_id}.json").exists()
         return False
 
     def delete_session(self, session_id: str) -> None:
@@ -500,10 +513,23 @@ class SessionManager:
         from snodo.infrastructure.state import read_state, write_state
 
         session = self.load_session(session_id)  # Validate exists
-        self._audit("session_deleted", {
-            "op": "session_deleted",
-            "session_id": session_id,
-        })
+        if self._audit_log is not None:
+            self._audit_log.append_event("session_deleted", {
+                "op": "session_deleted",
+                "session_id": session_id,
+            })
+        elif session.project_root:
+            from snodo.infrastructure.audit import get_audit_log
+            audit_path = Path(session.project_root) / ".snodo" / "audit.log"
+            if audit_path.parent.is_dir():
+                try:
+                    alog = get_audit_log(str(audit_path), project_id=session.project_id)
+                    alog.append_event("session_deleted", {
+                        "op": "session_deleted",
+                        "session_id": session_id,
+                    })
+                except Exception as exc:
+                    _logger.debug("Could not record session_deleted event: %s", exc)
         (self.sessions_dir / f"{session_id}.json").unlink(missing_ok=True)
 
         # Clear active pointer if this was the active session
@@ -599,22 +625,35 @@ class SessionManager:
             if session.session_id in active_ids:
                 continue
 
+            def _audit_deleted(s: SessionState) -> None:
+                if self._audit_log is not None:
+                    self._audit_log.append_event("session_deleted", {
+                        "op": "session_deleted",
+                        "session_id": s.session_id,
+                    })
+                elif s.project_root:
+                    from snodo.infrastructure.audit import get_audit_log
+                    audit_path = Path(s.project_root) / ".snodo" / "audit.log"
+                    if audit_path.parent.is_dir():
+                        try:
+                            alog = get_audit_log(str(audit_path), project_id=s.project_id)
+                            alog.append_event("session_deleted", {
+                                "op": "session_deleted",
+                                "session_id": s.session_id,
+                            })
+                        except Exception as exc:
+                            _logger.debug("Could not record session_deleted event: %s", exc)
+
             try:
                 updated = datetime.fromisoformat(session.updated_at)
             except (ValueError, TypeError):
-                self._audit("session_deleted", {
-                    "op": "session_deleted",
-                    "session_id": session.session_id,
-                })
+                _audit_deleted(session)
                 session_file.unlink(missing_ok=True)
                 pruned += 1
                 continue
 
             if updated < cutoff:
-                self._audit("session_deleted", {
-                    "op": "session_deleted",
-                    "session_id": session.session_id,
-                })
+                _audit_deleted(session)
                 session_file.unlink(missing_ok=True)
                 pruned += 1
         return pruned

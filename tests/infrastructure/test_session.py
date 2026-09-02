@@ -457,6 +457,49 @@ class TestAuditedButMissing:
         })
         assert mgr.is_audited_but_missing("sess_20260101_prod_d1e2f3", str(project))
 
+    def test_audited_missing_ids_excludes_deleted_sessions(
+        self, mgr, sessions_dir, tmp_path,
+    ):
+        project = self._project(tmp_path)
+        from snodo.infrastructure.audit import AuditLog
+        audit = AuditLog(str(project / ".snodo" / "audit.log"))
+        audit.append_event("session_started", {
+            "op": "session_started",
+            "session_id": "sess_del_1",
+            "mode": "producer",
+            "project_root": str(project),
+        })
+        audit.append_event("session_deleted", {
+            "op": "session_deleted",
+            "session_id": "sess_del_1",
+        })
+        audit.append_event("session_started", {
+            "op": "session_started",
+            "session_id": "sess_missing_2",
+            "mode": "producer",
+            "project_root": str(project),
+        })
+        missing = mgr.audited_missing_ids(str(project))
+        assert missing == ["sess_missing_2"]
+
+    def test_is_audited_but_missing_false_when_session_deleted(
+        self, mgr, tmp_path,
+    ):
+        project = self._project(tmp_path)
+        from snodo.infrastructure.audit import AuditLog
+        audit = AuditLog(str(project / ".snodo" / "audit.log"))
+        audit.append_event("session_started", {
+            "op": "session_started",
+            "session_id": "sess_del_1",
+            "mode": "producer",
+            "project_root": str(project),
+        })
+        audit.append_event("session_deleted", {
+            "op": "session_deleted",
+            "session_id": "sess_del_1",
+        })
+        assert not mgr.is_audited_but_missing("sess_del_1", str(project))
+
     def test_get_active_session_warns_on_audited_missing_pointer(
         self, mgr, tmp_path, caplog,
     ):
@@ -529,6 +572,25 @@ class TestAuditLog:
         mgr = SessionManager(sessions_dir=sessions_dir)
         session = mgr.create_session("producer", project_root)
         mgr.delete_session(session.session_id)  # should not raise
+
+    def test_delete_session_writes_to_project_audit_log_when_not_injected(
+        self, sessions_dir, tmp_path,
+    ):
+        """When audit_log is None, delete_session still records to project's audit log."""
+        project = tmp_path / "proj"
+        (project / ".snodo").mkdir(parents=True)
+        mgr = SessionManager(sessions_dir=sessions_dir)
+        session = mgr.create_session("producer", str(project))
+
+        mgr.delete_session(session.session_id)
+
+        from snodo.infrastructure.audit import AuditLog
+        audit = AuditLog(str(project / ".snodo" / "audit.log"))
+        assert any(
+            e.event_type == "session_deleted"
+            and (e.data or {}).get("session_id") == session.session_id
+            for e in audit.events
+        )
 
     def test_prune_audits(self, mgr_with_audit, audit_log, sessions_dir, project_root):
         from snodo.infrastructure.state import read_state, write_state
