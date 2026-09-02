@@ -9,7 +9,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.7.2] — 2026-09-02
+
 ### Added
+
+- In-place coder runs now leave an attribution record. agy, the opencode CLI
+  and the opencode container make no litellm calls, so the usage callback never
+  fired for them and a completed run was indistinguishable in `state.json` from
+  one that genuinely cost nothing. Runs now record wall-clock duration and the
+  model the tool was asked to use, with `cost` and token counts explicitly
+  `None` rather than zero, and a `measured` list declaring which fields were
+  directly observed. (Fixes #69)
 
 - The reduced local test gate now announces itself. `uv run pytest tests/` runs
   with `addopts = "-m 'not e2e'"`, so it skips the e2e suite (~124 tests) while
@@ -23,6 +35,61 @@ snodo uses [Semantic Versioning](https://semver.org/).
   the fast loop is unchanged (e2e still deselected by default). (Refs #87)
 
 ### Fixed
+
+- An in-place coder can no longer infer its own containment boundary.
+  `SubprocessCoderAdapter` fell back to `Path.cwd()` when no workspace was
+  passed, or when the workspace MCP was not the expected type — silently, twice
+  — and that value became the directory granted to the external CLI and the
+  subprocess cwd. A run whose cwd was the main checkout was therefore contained
+  to the main checkout, which is how work landed outside its task worktree. The
+  boundary must now be stated by the caller; an unstated one is refused at
+  construction. (Fixes #201)
+
+- `snodo task list` no longer reports a status or a timestamp it could not
+  establish. Failed git inspection was resolved by reporting tasks as
+  completed, an unreadable audit log left merged tasks reported under some
+  other status, and an unknown timestamp was replaced with `now()` — which made
+  such tasks permanently unprunable and displayed a moment that never happened.
+  Unestablished statuses now read as unknown, and `snodo task prune` skips
+  untimestamped tasks with a count instead of acting on an invented date.
+  (Fixes #179)
+
+- The mock coder no longer produces a passing gate for projects it knows
+  nothing about. It emitted Python fixtures unconditionally, so in a JavaScript
+  project the test runner found nothing to fail and the quality gate returned a
+  pass. The mock is reachable from the CLI, so this was a green gate an
+  operator could see, not only a test-suite wart. Fixtures now follow the
+  project's declared language; the Python case is unchanged. (Fixes #187)
+
+- The merge gate now checks the provenance of the verification it relies on.
+  It accepted any `verification_executed` event in the project's audit log with
+  a passing outcome, ignoring the `task_ref` and `commit` the event already
+  records — so a pass belonging to a different task at a different commit
+  satisfied the gate. Evidence must now match the task and the commit being
+  merged, and both the accepting and refusing paths name the evidence they
+  relied on. (Fixes #76)
+
+- Discarded turn telemetry is no longer invisible. Records were dropped
+  silently in five places, so an empty telemetry section could not be told
+  apart from a run that produced no turns. Drops are now persisted where a
+  project root resolves and surfaced with their reason in `snodo meta`; when
+  the project root itself is what could not be resolved there is nowhere
+  durable to write, and the drop stays in process. (Fixes #180)
+
+- `snodo task review --pending` now shows the operator's original request.
+  Excerpts were read only from the active session's halt payloads, so units
+  merged in any earlier session — the ordinary case for this command — showed
+  blank, and units that had gone through recovery or retry showed engine
+  scaffolding instead of the request. The spec is now recovered from durable
+  records, retry and recovery wrappers are unwrapped at display time, and an
+  unrecoverable description is distinguished from an empty one. The
+  `task_merged` event now records the authoritative spec raw, since the audit
+  log is append-only attestation and must not carry a parsed value. (Fixes #149)
+
+- The test suite no longer leaks environment variables between tests. A
+  provider-credential test wrote `OPENAI_API_KEY` into the real environment and
+  later tests inherited it; a guard now reverts and fails on any environment
+  change a test leaves behind, and caught five further leaks on introduction.
 
 - The default audit log now resolves against the project root, not the process
   cwd. A task running from its worktree (background jobs spawn the CLI with

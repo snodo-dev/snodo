@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snodo-core"
-version = "0.7.1"
+version = "0.7.2"
 description = "Snodo kernel — core abstractions, config, paths, predicates, sandbox"
 requires-python = ">=3.12"
 license = "Apache-2.0"
