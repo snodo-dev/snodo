@@ -133,20 +133,50 @@ class TestInPlaceCoderAttribution:
         assert record["cost"] is None
         assert "duration_ms" in record["measured"]
 
-    def test_missing_coder_name_fails_visibly(self, temp_workspace: Path):
-        """InPlaceCoderAdapter subclass without declared coder_name raises AttributeError."""
+    def test_missing_coder_name_is_caught_by_conformance_test_not_run_time(self, temp_workspace: Path):
+        """A subclass that forgets coder_name does not crash a committed run;
+        the conformance test catches the omission at test time (Refs #206)."""
         from snodo.coders.base import InPlaceCoderAdapter
+        from snodo.coders import CODER_REGISTRY
         from snodo.core.interfaces import CodeArtifact
+        from tests.coders.test_adapter_conformance import (
+            test_declared_capabilities_are_present_on_every_adapter,
+        )
 
         class _UndeclaredCoder(InPlaceCoderAdapter):
+            # Deliberately omits coder_name — the mistake the check guards.
             _workspace = temp_workspace
 
+            def __init__(self, **kwargs):
+                pass
+
             def _implement_in_place(self, spec):
+                (temp_workspace / "feature_a.py").write_text("def a(): pass\n")
                 return CodeArtifact(files=[])
 
+        # Run time: attribution is best-effort and must never break the run,
+        # even though the coder already committed. implement() returns cleanly.
+        (temp_workspace / "README.md").write_text("# touched\n")
         adapter = _UndeclaredCoder()
-        with pytest.raises(AttributeError, match="does not declare coder_name"):
-            adapter.implement(TaskSpec(description="t", constraints=[]))
+        artifact = adapter.implement(TaskSpec(description="t", constraints=[]))
+        assert artifact is not None
+        assert "coder" not in artifact.metadata
+        # The committed run survived: the change is on HEAD, not rolled back.
+        import subprocess
+        head = subprocess.run(
+            ["git", "show", "--stat", "--oneline"], cwd=temp_workspace,
+            capture_output=True, text=True,
+        ).stdout
+        assert "feature_a.py" in head
+
+        # Test time: registering the same omission is caught by the conformance
+        # gate rather than surfacing at run time.
+        CODER_REGISTRY["_undeclared_coder"] = _UndeclaredCoder
+        try:
+            with pytest.raises(AssertionError, match="coder_name"):
+                test_declared_capabilities_are_present_on_every_adapter("_undeclared_coder")
+        finally:
+            del CODER_REGISTRY["_undeclared_coder"]
 
     def test_record_inplace_coder_run_direct(self, tmp_path: Path, monkeypatch):
         """Direct call to record_inplace_coder_run safely persists records."""
