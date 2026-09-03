@@ -153,6 +153,10 @@ class MockAdapter(CoderAdapter):
             FileArtifact(path="src/hello.py", content="def hello():\n    return 'world'\n"),
             FileArtifact(path="tests/test_hello.py", content="from src.hello import hello\n\n\ndef test_hello():\n    assert hello() == 'world'\n"),
         ]
+        # Whether the caller explicitly supplied mock_files. When they did, that
+        # instruction wins over the declared-language inference below: inference
+        # must never silently override an explicit caller instruction (Refs #206).
+        self._mock_files_explicit = mock_files is not None
         self.call_count = 0
         self.last_spec: Optional[TaskSpec] = None
         self._completion_fn = mock_completion_fn
@@ -173,7 +177,7 @@ class MockAdapter(CoderAdapter):
         self.last_spec = spec
 
         language = spec.project_context.get("language", "").lower()
-        if language in ("javascript", "typescript"):
+        if not self._mock_files_explicit and language in ("javascript", "typescript"):
             files = [
                 FileArtifact(
                     path="src/hello.js",

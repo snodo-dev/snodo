@@ -263,6 +263,35 @@ def test_mock_adapter_typescript_project_emits_js_files():
     )
 
 
+def test_mock_adapter_explicit_mock_files_win_over_language_fixture():
+    """An explicitly supplied mock_files wins over the JS/Ts built-in fixture (Refs #206).
+
+    Language inference must never override an explicit caller instruction — the
+    same defect the containment fix removed from the subprocess adapter. A caller
+    who passes mock_files gets exactly those files even in a JS project.
+    """
+    from snodo.coders import MockAdapter
+
+    explicit = [
+        FileArtifact(path="src/custom.py", content="def custom(): return 1\n"),
+    ]
+    adapter = MockAdapter(mock_files=explicit)
+    spec = TaskSpec(
+        description="explicit",
+        constraints=[],
+        project_context={"language": "javascript"},
+    )
+    artifact = adapter.implement(spec)
+
+    paths = [f.path for f in artifact.files]
+    assert paths == ["src/custom.py"], (
+        f"Explicit mock_files must win over the JS fixture, got: {paths}"
+    )
+
+    # Without explicit files, the JS inference still applies (no regression).
+    inferred = MockAdapter().implement(spec)
+    assert any(f.path.endswith(".js") for f in inferred.files)
+
 def test_mock_adapter_python_language_context_unchanged():
     """MockAdapter emits Python fixtures when project_context says python — pins #185."""
     from snodo.coders import MockAdapter
