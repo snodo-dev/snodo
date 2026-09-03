@@ -1412,6 +1412,25 @@ class TestUnverifiedMergeBlocked:
         assert events[0].data["task_ref"] == "task_current"
         assert events[0].data["target_commit"] == current_commit
 
+    def test_commit_prefix_that_is_not_the_merge_target_is_refused(self, tmp_path):
+        """A stored commit that only matches the target via the reverse prefix
+        direction (stored is longer, target is its prefix) must be refused
+        (Refs #206)."""
+        from snodo.cli.commands.run_cmd import _verified_commit_matches_merge_target
+
+        target = "a" * 40  # a full 40-hex merge target
+        # A genuine abbreviation of the target still evidences it.
+        assert _verified_commit_matches_merge_target(target[:7], target)
+        assert _verified_commit_matches_merge_target(target, target)
+        # A value that merely has the target as ITS prefix (i.e. a longer,
+        # different commit) must not satisfy the gate.
+        assert not _verified_commit_matches_merge_target(target + "b", target)
+        # A short prefix belonging to an unrelated commit is refused too.
+        assert not _verified_commit_matches_merge_target("abcdef1", target)
+        # Empty/None stored commit is never a match.
+        assert not _verified_commit_matches_merge_target("", target)
+        assert not _verified_commit_matches_merge_target(None, target)
+
     def test_merge_accept_and_refuse_paths_name_evidence(self, tmp_path, capsys):
         """Accept and refuse paths each name the evidence (task, commit, command) they relied on (Fixes #76)."""
         from snodo.core.interfaces import Task
