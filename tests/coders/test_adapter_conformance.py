@@ -323,7 +323,7 @@ def test_declared_capabilities_are_present_on_every_adapter(name):
     divergence this interface exists to make observable.
     """
     ws_mcp = WorkspaceMCP(".")
-    for expected in (
+    expected = [
         "workspace_mcp",
         "progress_callback",
         "_job_id",
@@ -331,9 +331,17 @@ def test_declared_capabilities_are_present_on_every_adapter(name):
         "model",
         "skip_workspace_write",
         "skip_engine_commit",
-    ):
-        assert hasattr(CODER_REGISTRY[name](workspace_mcp=ws_mcp), expected), (
-            f"{name} lacks declared coder capability '{expected}'. The engine "
+    ]
+    # coder_name is part of the declared capability only for in-place adapters:
+    # attribution for their runs (which make no litellm calls) relies on it, and
+    # the base class no longer raises at run time to avoid breaking a completed,
+    # committed run (Refs #206). Catch the omission here instead.
+    from snodo.coders.base import InPlaceCoderAdapter
+    if issubclass(CODER_REGISTRY[name], InPlaceCoderAdapter):
+        expected.append("coder_name")
+    for attr in expected:
+        assert hasattr(CODER_REGISTRY[name](workspace_mcp=ws_mcp), attr), (
+            f"{name} lacks declared coder capability '{attr}'. The engine "
             "assigns these unconditionally; a missing attribute silently "
             "disconnects the capability (docs/architecture/coder-adapter-"
             "contract.md §3.1, #68)."

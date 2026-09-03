@@ -132,30 +132,33 @@ class InPlaceCoderAdapter(Coder, ABC):
         # Record attribution for in-place coder runs (Fixes #69).
         # In-place coders make no litellm calls, so without this attribution
         # record, runs are indistinguishable in state.json from zero-cost runs.
+        #
+        # Attribution is best-effort and must never break a run: by this point
+        # the coder's work is already committed. A subclass that forgets to
+        # declare coder_name is caught at test time by
+        # test_declared_capabilities_are_present_on_every_adapter, not here at
+        # the risk of turning a completed, committed run into a crash.
         coder_name = getattr(self, "coder_name", None)
-        if not coder_name:
-            raise AttributeError(
-                f"{self.__class__.__name__} does not declare coder_name. "
-                "InPlaceCoderAdapter subclasses must explicitly declare coder_name."
-            )
         model_str = getattr(self, "model", "") or ""
 
         if artifact and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
             artifact.metadata["duration_ms"] = duration_ms
-            artifact.metadata["coder"] = coder_name
+            if coder_name:
+                artifact.metadata["coder"] = coder_name
             artifact.metadata["model"] = model_str
 
         try:
-            from snodo.infrastructure.usage_tracker import record_inplace_coder_run
-            job_id = spec.project_context.get("job_id", "") if spec and spec.project_context else ""
-            task_id = spec.project_context.get("task_id", "") if spec and spec.project_context else ""
-            record_inplace_coder_run(
-                coder=coder_name,
-                model=model_str,
-                duration_ms=duration_ms,
-                job_id=job_id,
-                task_id=task_id,
-            )
+            if coder_name:
+                from snodo.infrastructure.usage_tracker import record_inplace_coder_run
+                job_id = spec.project_context.get("job_id", "") if spec and spec.project_context else ""
+                task_id = spec.project_context.get("task_id", "") if spec and spec.project_context else ""
+                record_inplace_coder_run(
+                    coder=coder_name,
+                    model=model_str,
+                    duration_ms=duration_ms,
+                    job_id=job_id,
+                    task_id=task_id,
+                )
         except Exception as e:
             _logger.debug("Failed to record inplace coder run: %s", e)
 
