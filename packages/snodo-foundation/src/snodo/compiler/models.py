@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field, field_validator, field_serializer, Config
 class ExecutionConfig(BaseModel):
     """Branch execution configuration for task isolation."""
 
+    model_config = ConfigDict(frozen=True)
+
     max_retries: int = Field(default=3, ge=0, le=10)
     branch_ttl_days: int = Field(default=7, ge=1, le=30)
     branch_prefix: str = Field(default="task")
@@ -232,10 +234,11 @@ class Mode(BaseModel):
     Transitions ARE read by ProtocolAdherenceValidator to provide
     mode-profile context to the LLM.
     """
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     mode_id: str = Field(..., description="Unique mode identifier")
     name: str = Field(..., description="Human-readable mode name")
+    description: Optional[str] = Field(default=None, description="Human-readable mode description")
     tools: List[str] = Field(default_factory=list, description="Available tools in this mode")
     transitions: Dict[str, str] = Field(default_factory=dict, description="Declarative event → target mode mappings (not engine-executed)")
     validators: List[str] = Field(default_factory=list, description="Active validator IDs")
@@ -256,6 +259,14 @@ class Mode(BaseModel):
         description=(
             "Override the protocol-level max_recovery_depth for this mode. None = inherit "
             "the protocol's execution.max_recovery_depth setting."
+        ),
+    )
+    concurrency: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Override the protocol-level concurrency ceiling for this mode. None = inherit "
+            "the protocol's execution.concurrency setting (default 1)."
         ),
     )
     
@@ -391,6 +402,23 @@ class Protocol(BaseModel):
         ``execution.max_recovery_depth``; otherwise the protocol setting applies.
         """
         return int(self.resolve_mode_setting(mode_id, "max_recovery_depth"))
+
+    def concurrency_for(self, mode_id: str) -> int:
+        """Resolve maximum concurrency ceiling for *mode_id*.
+
+        The mode's ``concurrency`` (if set) overrides the default (1);
+        ``mode.coder_config['concurrency']`` is also checked as a fallback.
+        """
+        mode = self.get_mode(mode_id)
+        if mode is not None:
+            if mode.concurrency is not None:
+                return mode.concurrency
+            if isinstance(mode.coder_config, dict) and "concurrency" in mode.coder_config:
+                try:
+                    return int(mode.coder_config["concurrency"])
+                except (ValueError, TypeError):
+                    pass
+        return 1
     
     def get_validator(self, validator_id: str) -> Optional[Validator]:
         """Retrieve a validator by ID."""

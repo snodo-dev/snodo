@@ -497,3 +497,311 @@ def test_completed_task_still_skipped(plan_project_env, capsys):
     status = planner.get_status(plan_name)
     assert status["tasks"]["task_1_1"]["status"] == "completed"
     assert status["tasks"]["task_2_1"]["status"] == "completed"
+
+
+# ---------------------------------------------------------------------------
+# Concurrency and Wave Independence Tests
+# ---------------------------------------------------------------------------
+
+def _create_multi_task_wave_plan(planner: PlannerMCP, name: str = "parallel_plan"):
+    import json
+    import yaml
+
+    plan_dir = planner.plans_dir / name
+    plan_dir.mkdir(parents=True, exist_ok=True)
+
+    plan_data = {
+        "name": name,
+        "intent": "Build parallel tasks",
+        "waves": [
+            {
+                "id": "1",
+                "tasks": ["task_1_a", "task_1_b"],
+                "depends_on": [],
+            },
+        ],
+    }
+    status_data = {
+        "plan_name": name,
+        "tasks": {
+            "task_1_a": {"status": "pending"},
+            "task_1_b": {"status": "pending"},
+        },
+    }
+
+    (plan_dir / "plan.yml").write_text(yaml.dump(plan_data))
+    (plan_dir / "status.json").write_text(json.dumps(status_data, indent=2))
+
+    wave1_dir = plan_dir / "wave_1"
+    wave1_dir.mkdir(parents=True, exist_ok=True)
+    (wave1_dir / "task_1_a_task.md").write_text("Spec for task 1.a")
+    (wave1_dir / "task_1_b_task.md").write_text("Spec for task 1.b")
+
+    return name, plan_data, status_data
+
+
+def test_concurrent_wave_tasks_run_in_parallel_and_both_merge(plan_project_env):
+    """A wave with two independent tasks under a limit of two runs them concurrently and both complete."""
+    import threading
+    import time
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "concurrent_plan")
+
+    protocol_content = """
+protocol_id: "concurrent_p"
+name: "Concurrent Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+    concurrency: 2
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (plan_project_env / ".snodo" / "protocol.yml").write_text(protocol_content)
+
+    args = _make_plan_args(plan_name)
+
+    lock = threading.Lock()
+    active = 0
+    max_active = 0
+    completed = []
+
+    def mock_execute_task(a, protocol, task, model):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            if active > max_active:
+                max_active = active
+        time.sleep(0.05)
+        with lock:
+            active -= 1
+            completed.append(task.id)
+        return 0
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+            result = _run_plan(args)
+
+    assert result == 0
+    assert max_active == 2
+    assert sorted(completed) == ["task_1_a", "task_1_b"]
+
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_a"]["status"] == "completed"
+    assert status["tasks"]["task_1_b"]["status"] == "completed"
+
+
+def test_sequential_wave_tasks_under_limit_one(plan_project_env):
+    """A limit of one preserves sequential execution."""
+    import threading
+    import time
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "seq_plan")
+
+    args = _make_plan_args(plan_name)
+
+    lock = threading.Lock()
+    active = 0
+    max_active = 0
+    completed = []
+
+    def mock_execute_task(a, protocol, task, model):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            if active > max_active:
+                max_active = active
+        time.sleep(0.02)
+        with lock:
+            active -= 1
+            completed.append(task.id)
+        return 0
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=1))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+            result = _run_plan(args)
+
+    assert result == 0
+    assert max_active == 1
+    assert completed == ["task_1_a", "task_1_b"]
+
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_a"]["status"] == "completed"
+    assert status["tasks"]["task_1_b"]["status"] == "completed"
+
+
+def test_lower_of_mode_ceiling_and_config_capacity_wins(plan_project_env):
+    """The effective concurrency limit is the smaller of mode ceiling and config capacity."""
+    import threading
+    import time
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+
+    # 1. Mode ceiling = 1, Config capacity = 3 -> effective = 1
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "lower_limit_1")
+    args = _make_plan_args(plan_name)
+
+    lock = threading.Lock()
+    max_active = 0
+    active = 0
+
+    def mock_execute_task(a, protocol, task, model):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            if active > max_active:
+                max_active = active
+        time.sleep(0.02)
+        with lock:
+            active -= 1
+        return 0
+
+    cfg_3 = LlmConfig(coder=CoderConfig(concurrency=3))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=cfg_3):
+        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+            result = _run_plan(args)
+    assert result == 0
+    assert max_active == 1
+
+    # 2. Mode ceiling = 3, Config capacity = 1 -> effective = 1
+    protocol_content = """
+protocol_id: "ceil_3_p"
+name: "Ceiling 3 Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+    concurrency: 3
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (plan_project_env / ".snodo" / "protocol.yml").write_text(protocol_content)
+
+    plan_name2, _, _ = _create_multi_task_wave_plan(planner, "lower_limit_2")
+    args2 = _make_plan_args(plan_name2)
+
+    max_active = 0
+    active = 0
+    cfg_1 = LlmConfig(coder=CoderConfig(concurrency=1))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=cfg_1):
+        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+            result = _run_plan(args2)
+    assert result == 0
+    assert max_active == 1
+
+    # 3. Mode ceiling = 3, Config capacity = 2 -> effective = 2
+    plan_name3, _, _ = _create_multi_task_wave_plan(planner, "lower_limit_3")
+    args3 = _make_plan_args(plan_name3)
+
+    max_active = 0
+    active = 0
+    cfg_2 = LlmConfig(coder=CoderConfig(concurrency=2))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=cfg_2):
+        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+            result = _run_plan(args3)
+    assert result == 0
+    assert max_active == 2
+
+
+def test_failing_task_does_not_prevent_siblings_from_completing(plan_project_env):
+    """A failing task in a wave fails alone and does not prevent its siblings from completing."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "fail_plan")
+
+    protocol_content = """
+protocol_id: "fail_p"
+name: "Fail Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+    concurrency: 2
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (plan_project_env / ".snodo" / "protocol.yml").write_text(protocol_content)
+
+    args = _make_plan_args(plan_name)
+
+    def mock_execute_task(a, protocol, task, model):
+        if task.id == "task_1_a":
+            return 1  # task 1.a fails
+        return 0  # task 1.b succeeds
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+            result = _run_plan(args)
+
+    assert result == 1  # Plan reports failure because task_1_a failed
+
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_a"]["status"] == "blocked"
+    # Sibling task_1_b ran and completed successfully!
+    assert status["tasks"]["task_1_b"]["status"] == "completed"
+
+
+def test_interactive_refuses_concurrency_loudly(plan_project_env, capsys):
+    """--interactive is incompatible with concurrency > 1 and must be refused loudly."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "interactive_plan")
+
+    protocol_content = """
+protocol_id: "interactive_p"
+name: "Interactive Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+    concurrency: 2
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (plan_project_env / ".snodo" / "protocol.yml").write_text(protocol_content)
+
+    args = _make_plan_args(plan_name, interactive=True)
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        result = _run_plan(args)
+
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "incompatible with concurrent wave execution" in err
+

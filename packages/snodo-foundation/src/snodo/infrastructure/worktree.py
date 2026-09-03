@@ -322,13 +322,17 @@ def merge_task_branch(project_root: str, branch: str) -> Tuple[str, List[str]]:
         GitError: on any other git failure.
     """
     from snodo.tools.git import GitMCP, MergeConflictError
+    from filelock import FileLock
 
-    git = GitMCP(project_root)
-    try:
-        git.merge_branch(branch)
-        return "merged", []
-    except MergeConflictError as e:
-        return "conflict", getattr(e, "conflicting_paths", [])
+    lock_path = Path(project_root) / ".snodo" / ".merge.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(lock_path)):
+        git = GitMCP(project_root)
+        try:
+            git.merge_branch(branch)
+            return "merged", []
+        except MergeConflictError as e:
+            return "conflict", getattr(e, "conflicting_paths", [])
 
 
 def delete_task_branch(project_root: str, branch: str) -> None:

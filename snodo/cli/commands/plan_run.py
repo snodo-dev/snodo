@@ -195,8 +195,8 @@ def _should_skip_task(task_id, tasks_status, interactive) -> bool:
 
 
 def _execute_waves(waves, planner, args, protocol, model,
-                   all_waves, interactive) -> bool:
-    """Execute waves in order, respecting dependencies.
+                   all_waves, interactive, effective_concurrency: int = 1) -> bool:
+    """Execute waves in order, respecting dependencies and concurrency limits.
 
     Returns:
         True if any task failed or wave was blocked, False if all succeeded.
@@ -217,11 +217,42 @@ def _execute_waves(waves, planner, args, protocol, model,
             continue
 
         print(f"Wave {wave_id}:")
+        tasks_to_run = []
         for task_id in wave.get("tasks", []):
             if _should_skip_task(task_id, tasks_status, interactive):
                 continue
-            if not _execute_wave_task(planner, args, protocol, model, wave_id, task_id):
-                return True  # failed
+            tasks_to_run.append(task_id)
+
+        if not tasks_to_run:
+            continue
+
+        wave_failed = False
+        if effective_concurrency <= 1 or len(tasks_to_run) <= 1:
+            for task_id in tasks_to_run:
+                if not _execute_wave_task(planner, args, protocol, model, wave_id, task_id):
+                    wave_failed = True
+        else:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            with ThreadPoolExecutor(max_workers=effective_concurrency) as executor:
+                future_to_task = {
+                    executor.submit(
+                        _execute_wave_task, planner, args, protocol, model, wave_id, task_id
+                    ): task_id
+                    for task_id in tasks_to_run
+                }
+                for future in as_completed(future_to_task):
+                    task_id = future_to_task[future]
+                    try:
+                        success = future.result()
+                        if not success:
+                            wave_failed = True
+                    except Exception as e:
+                        print(f"  [{task_id}] EXCEPTION: {e}", file=sys.stderr)
+                        wave_failed = True
+
+        if wave_failed:
+            has_failed_or_blocked = True
 
     return has_failed_or_blocked
 
@@ -285,10 +316,29 @@ def _run_plan(args) -> int:
         if waves is None:
             return 1
 
-        interactive = getattr(args, "interactive", False)
+        from snodo.infrastructure.state import read_state
+        from snodo.infrastructure.config import load_llm_config
 
-        failed = _execute_waves(waves, planner, args, protocol, model,
-                                all_waves, interactive)
+        state = read_state(project_root)
+        active_mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
+
+        mode_ceiling = protocol.concurrency_for(active_mode) if hasattr(protocol, "concurrency_for") else 1
+        llm_cfg = load_llm_config()
+        operator_capacity = getattr(llm_cfg.coder, "concurrency", 1)
+        effective_concurrency = max(1, min(int(mode_ceiling), int(operator_capacity)))
+
+        interactive = getattr(args, "interactive", False)
+        if interactive and effective_concurrency > 1:
+            print(
+                f"Error: --interactive is incompatible with concurrent wave execution (concurrency={effective_concurrency}).",
+                file=sys.stderr,
+            )
+            return 1
+
+        failed = _execute_waves(
+            waves, planner, args, protocol, model,
+            all_waves, interactive, effective_concurrency=effective_concurrency,
+        )
 
         _print_plan_progress(planner, args.plan)
         return 1 if failed else 0
