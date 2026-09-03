@@ -44,6 +44,7 @@ def test_valid_config_is_loaded():
             "  coder:\n"
             "    max_tokens: 8000\n"
             "    max_tool_turns: 10\n"
+            "    timeout_seconds: 300\n"
             "  validator:\n"
             "    max_tokens: 500\n"
             "    max_tool_turns: 3\n"
@@ -51,6 +52,7 @@ def test_valid_config_is_loaded():
         cfg = load_llm_config(config_dir=tmpdir)
         assert cfg.coder.max_tokens == 8000
         assert cfg.coder.max_tool_turns == 10
+        assert cfg.coder.timeout_seconds == 300
         assert cfg.validator.max_tokens == 500
         assert cfg.validator.max_tool_turns == 3
 

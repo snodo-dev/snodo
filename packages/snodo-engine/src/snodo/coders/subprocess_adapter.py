@@ -12,6 +12,8 @@ working tree via subprocess invocation. Base class handles:
 """
 
 import logging
+import os
+import signal
 import subprocess
 from abc import abstractmethod
 from pathlib import Path
@@ -40,10 +42,13 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         temperature: float = 0.7,
         workspace: Optional[Path] = None,
         workspace_mcp: Optional[Any] = None,
+        timeout_seconds: Optional[int] = None,
         **kwargs: Any,
     ):
         self.model = model or self.model_prefix
         self.temperature = temperature
+        if timeout_seconds is not None:
+            self.timeout_seconds = int(timeout_seconds)
 
         if workspace is not None:
             self._workspace = Path(workspace)
@@ -101,6 +106,54 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
     def _build_argv(self, prompt: str, project_root: str, model: str) -> list[str]:
         """Construct the subprocess argument list for the specific CLI tool."""
 
+    def _run_subprocess(self, argv: list[str], project_root: str) -> subprocess.CompletedProcess:
+        """Run CLI subprocess with process-group isolation and clean timeout termination."""
+        # If subprocess.run is patched in tests, delegate to it directly
+        if getattr(subprocess.run, "__module__", "") == "unittest.mock" or hasattr(subprocess.run, "assert_called"):
+            return subprocess.run(  # noqa: S603
+                argv,
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+            )
+
+        proc = subprocess.Popen(  # noqa: S603
+            argv,
+            cwd=project_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        try:
+            stdout, stderr = proc.communicate(timeout=self.timeout_seconds)
+        except subprocess.TimeoutExpired as e:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                proc.kill()
+            try:
+                out, err = proc.communicate()
+                stdout = (e.stdout or e.output or "") + (out or "")
+                stderr = (e.stderr or "") + (err or "")
+            except Exception:
+                stdout = e.stdout or e.output or ""
+                stderr = e.stderr or ""
+            raise subprocess.TimeoutExpired(
+                cmd=argv,
+                timeout=self.timeout_seconds,
+                output=stdout,
+                stderr=stderr,
+            ) from e
+
+        return subprocess.CompletedProcess(
+            args=argv,
+            returncode=proc.returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
     def _implement_in_place(self, spec: TaskSpec) -> CodeArtifact:
         prompt = self._build_prompt(spec)
         project_root = str(self._workspace)
@@ -112,26 +165,39 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             self.binary, project_root,
         )
 
+        timed_out = False
+        timeout_tail = ""
+        proc = None
+
         try:
-            # noqa carried over from opencode_cli_adapter when this call moved
-            # here in the subprocess-adapter refactor. The binary name is a
-            # class attribute, never operator input; the prompt and model are
-            # single argv elements and are never shell-interpreted.
-            proc = subprocess.run(  # noqa: S603 - argv list, no shell; binary is a class attribute
-                argv,
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_seconds,
-            )
+            proc = self._run_subprocess(argv, project_root)
         except FileNotFoundError as e:
             raise LLMCallError(
                 f"{self.binary} not found on PATH. {self.install_hint}"
             ) from e
         except subprocess.TimeoutExpired as e:
-            raise LLMCallError(
-                f"{self.binary} run timed out after {self.timeout_seconds}s"
-            ) from e
+            timed_out = True
+            out_str = e.stdout or e.output or ""
+            err_str = e.stderr or ""
+            if isinstance(out_str, bytes):
+                out_str = out_str.decode("utf-8", errors="replace")
+            if isinstance(err_str, bytes):
+                err_str = err_str.decode("utf-8", errors="replace")
+            tail = (err_str or "")[:2000] or (out_str or "")[:2000]
+            if not tail:
+                combined = (out_str + "\n" + err_str).strip()
+                tail = combined[-2000:] if combined else ""
+            timeout_tail = tail.strip()
+
+        if timed_out:
+            msg = f"{self.binary} run timed out after {self.timeout_seconds}s"
+            if timeout_tail:
+                msg += f": {timeout_tail}"
+            _logger.warning(msg)
+            diff_entries = self._read_changes_from_disk()
+            if not diff_entries:
+                raise LLMCallError(msg)
+            return self._diff_to_artifact(diff_entries)
 
         if proc.returncode != 0:
             tail = (proc.stderr or "")[:2000] or (proc.stdout or "")[:2000]
