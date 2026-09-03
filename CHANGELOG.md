@@ -11,6 +11,84 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.7.3] — 2026-09-02
+
+### Added
+
+- A project's identity now follows the repository. A repository with a git
+  remote takes that remote's normalized URL, so every engineer working from it
+  resolves the same identity on any machine; a repository without one takes a
+  locally generated `local:<uuid>` that is deliberately unreconcilable, because
+  nothing can establish that two local checkouts are the same project. The rule
+  was cited in the code as ADR 012 for months without that record existing, and
+  in its absence the implementation drifted: a cached `local:` identity
+  short-circuited resolution, so a repository that gained a remote never
+  promoted. Promotion is now one-way and immediate, the local uuid stays stable
+  across runs rather than being re-minted, and `scope` is derived from the
+  identity so the two cannot disagree. The decision is now written down.
+  (Fixes #205, Refs #202)
+
+- Cloud sync transmits `scope` alongside `project_id`. Its purpose is to tell a
+  consumer when *not* to reconcile: a `remote` identity is the same project
+  everywhere, a `local` one is a leaf and must never be merged with anything,
+  however many clones report the same display name. (Refs #205)
+
+- The halt audit event now records the canonical outcome and the specific halt
+  type. The four-outcome taxonomy — escalate, blocker, validator_error,
+  internal_error — was the central governance fact snodo produces and appeared
+  in no audit event at all; it existed only in the local structured payload. A
+  reader with the chain alone, which is the only tamper-evident artefact snodo
+  produces, could not tell an escalation from a blocker from an engine fault.
+  `halt_type`, `final_decision` and `raw_halt_type` are now on the event, so
+  the specific type survives alongside the coarse one. (Fixes #204, Refs #203)
+
+### Fixed
+
+- A coder that runs to completion and writes nothing is no longer reported as
+  an engine failure. The executor raised a bare `ExecutionError`, which had no
+  canonical mapping and so resolved to `internal_error`, telling the operator
+  that a validator or the engine had crashed and to inspect the logs — while
+  the coder had in fact exited zero and simply declined to write. It is now a
+  named `no_file_operations` blocker whose hint points at the task spec and the
+  coder configuration rather than at produced code that does not exist. This is
+  the sibling of #195, which gave the same treatment to a coder backend that
+  fails to run. (Fixes #203, Refs #195)
+
+- Attribution can no longer crash a completed run. The check that an in-place
+  adapter declares `coder_name` raised after the coder's work had been
+  committed, so a subclass that omitted it would turn finished work into a
+  crash at the accounting step — the one thing attribution must never do.
+  Enforcement moved to the adapter conformance test, where the omission is
+  caught at test time. (Refs #206)
+
+- The telemetry drop file is bounded. `.snodo/telemetry_drops.json` grew
+  without limit and was rewritten whole on every append, so the scenario where
+  it mattered — a run dropping every record — was exactly the one where the
+  rewrite became quadratic. Telemetry must never harm the run it observes.
+  (Refs #206)
+
+- An explicitly supplied `mock_files` now wins over the language fixture. The
+  mock coder substituted its built-in JavaScript fixture even when the caller
+  had passed files, which is inference overriding a stated instruction — the
+  same defect the containment fix removed from the subprocess adapter. (Refs
+  #206)
+
+- The merge gate's commit comparison is one-directional. It accepted a prefix
+  match in either direction, so a stored abbreviation could in principle match
+  a commit that was not the merge target. A stored value must now be the full
+  SHA or a genuine abbreviation of the target. (Refs #206)
+
+### Changed
+
+- `docs/specs/cloud-sync.md` is now the emit contract rather than the
+  implementation ticket it began as. It describes the payload as it actually
+  is, project identity semantics including why local scope is deliberately
+  unreconcilable, all transmitted event types and their data keys, and the
+  never-transmitted list as stated non-goals. The contract is 0.x and tracks
+  `main`. `SECURITY.md` now names cloud sync egress as a security surface.
+
+---
+
 ## [0.7.2] — 2026-09-02
 
 ### Added
