@@ -14,13 +14,13 @@ snodo-mcp = { workspace = true }
 
 [project]
 name = "snodo"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
-    "snodo-core==0.7.2",
-    "snodo-tools==0.7.2",
-    "snodo-foundation==0.7.2",
-    "snodo-engine==0.7.2",
-    "snodo-mcp==0.7.2",
+    "snodo-core==0.7.3",
+    "snodo-tools==0.7.3",
+    "snodo-foundation==0.7.3",
+    "snodo-engine==0.7.3",
+    "snodo-mcp==0.7.3",
     "pydantic>=2.12.0",
     "pyyaml>=6.0",
     "typer>=0.9.0",
