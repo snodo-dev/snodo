@@ -98,8 +98,12 @@ class TestSessionIdFormat:
 
     def test_no_remote_produces_stable_local_id(self, tmp_path):
         """A project with no git remote gets a stable local:-prefixed id via cache."""
+        from snodo.project import cache_project_id
+
         root = str(tmp_path / "no_remote_project")
         Path(root).mkdir()
+        pid_0, scope_0 = get_project_id(root)
+        cache_project_id(root, pid_0, scope_0)
         pid_1, scope_1 = get_project_id(root)
         pid_2, scope_2 = get_project_id(root)
         assert pid_1 == pid_2

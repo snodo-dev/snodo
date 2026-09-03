@@ -151,11 +151,16 @@ def scope_for_project_id(project_id: str) -> str:
 def get_project_id(project_root: str) -> tuple[str, str]:
     """Retrieve the project ID and scope, following the repository's state.
 
-    A cached ``local:`` identity is re-resolved on every call so that a
-    repository which gains a remote promotes to the remote id. A cached
+    Read-only: establishing an identity for labelling must not change the
+    filesystem. A cached ``local:`` identity is re-resolved on every call so
+    that a repository which gains a remote promotes to the remote id. A cached
     ``remote`` or ``override`` identity is stable and returned as-is:
     promotion is one-way, and an operator-supplied override is never
     second-guessed.
+
+    Persisting the identity is a separate, explicit step (``cache_project_id``)
+    performed by callers that establish identity (``snodo init``) — never as a
+    side effect of reading it.
     """
     project_json_path = Path(project_root) / ".snodo" / "project.json"
     cached_pid: Optional[str] = None
@@ -184,7 +189,6 @@ def get_project_id(project_root: str) -> tuple[str, str]:
     if cached_pid and scope == "local":
         pid = cached_pid
 
-    cache_project_id(project_root, pid, scope)
     return (pid, scope)
 
 

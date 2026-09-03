@@ -64,31 +64,46 @@ def test_resolve_project_id_no_git():
         assert pid1 != pid2
 
 
-def test_get_project_id_caching_and_override():
-    """Verify get_project_id caching behavior and project.json override honors project.id."""
+def test_get_project_id_is_read_only():
+    """Resolving an id for labelling creates no file — it must not change the filesystem."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        # First call resolves and caches
-        pid1, scope1 = get_project_id(tmpdir)
-        assert pid1.startswith("local:")
-        assert scope1 == "local"
+        subprocess.run(["git", "init", "-q"], cwd=tmpdir, check=True)
 
-        # Second call returns cached values (same UUID)
-        pid2, scope2 = get_project_id(tmpdir)
-        assert pid1 == pid2
-        assert scope1 == scope2
+        pid, scope = get_project_id(tmpdir)
+        assert pid.startswith("local:")
+        assert scope == "local"
 
-        # Override project.id in project.json
+        # No .snodo/project.json may be written as a side effect of reading.
+        assert not (Path(tmpdir) / ".snodo" / "project.json").exists()
+
+
+def test_get_project_id_repeated_resolution_performs_no_write():
+    """A repeated resolution of an unchanged identity performs no write."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(["git", "init", "-q"], cwd=tmpdir, check=True)
+
+        # Establish a cached identity explicitly (as init does).
+        cache_project_id(tmpdir, "github.com/org/repo", "remote")
         project_json = Path(tmpdir) / ".snodo" / "project.json"
-        with open(project_json) as f:
-            data = json.load(f)
+        before = project_json.read_bytes()
 
-        data["project.id"] = "override-project-identity"
-        with open(project_json, "w") as f:
-            json.dump(data, f)
+        pid1, scope1 = get_project_id(tmpdir)
+        pid2, scope2 = get_project_id(tmpdir)
 
-        pid3, scope3 = get_project_id(tmpdir)
-        assert pid3 == "override-project-identity"
-        assert scope3 == "local"
+        assert pid1 == pid2 == "github.com/org/repo"
+        assert scope1 == scope2 == "remote"
+        # The cache file is untouched by resolution.
+        assert project_json.read_bytes() == before
+
+
+def test_get_project_id_override_honors_project_id():
+    """get_project_id honors a project.id override from project.json (read-only)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache_project_id(tmpdir, "override-project-identity", "override")
+
+        pid, scope = get_project_id(tmpdir)
+        assert pid == "override-project-identity"
+        assert scope == "override"
 
 
 def test_scope_for_project_id():
@@ -103,10 +118,11 @@ def test_get_project_id_promotes_when_remote_appears():
     with tempfile.TemporaryDirectory() as tmpdir:
         subprocess.run(["git", "init", "-q"], cwd=tmpdir, check=True)
 
-        # First run: no remote -> local id, cached.
+        # Establish a local identity the way init does: resolve, then cache.
         pid1, scope1 = get_project_id(tmpdir)
         assert pid1.startswith("local:")
         assert scope1 == "local"
+        cache_project_id(tmpdir, pid1, scope1)
 
         # A remote appears after initialisation.
         subprocess.run(
@@ -120,7 +136,8 @@ def test_get_project_id_promotes_when_remote_appears():
         assert pid2 == "github.com/myorg/myrepo"
         assert scope2 == "remote"
 
-        # The promotion is persisted.
+        # Persisting the promotion is the caller's explicit step.
+        cache_project_id(tmpdir, pid2, scope2)
         project_json = Path(tmpdir) / ".snodo" / "project.json"
         with open(project_json) as f:
             data = json.load(f)
@@ -129,9 +146,13 @@ def test_get_project_id_promotes_when_remote_appears():
 
 
 def test_get_project_id_keeps_local_id_across_runs():
-    """A remote-less repository keeps its local id across runs (no re-mint)."""
+    """A remote-less repository keeps its cached local id across runs (no re-mint)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         subprocess.run(["git", "init", "-q"], cwd=tmpdir, check=True)
+
+        # Establish the local identity (as init does), then read it back.
+        pid0, scope0 = get_project_id(tmpdir)
+        cache_project_id(tmpdir, pid0, scope0)
 
         pid1, scope1 = get_project_id(tmpdir)
         pid2, scope2 = get_project_id(tmpdir)
@@ -155,6 +176,7 @@ def test_get_project_id_remote_never_demotes():
         pid1, scope1 = get_project_id(tmpdir)
         assert pid1 == "github.com/myorg/myrepo"
         assert scope1 == "remote"
+        cache_project_id(tmpdir, pid1, scope1)
 
         subprocess.run(["git", "remote", "remove", "origin"], cwd=tmpdir, check=True)
 
