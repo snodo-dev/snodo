@@ -93,7 +93,7 @@ commands, absolute working directories and captured test output. "Opaque" is
 not an adequate description of a field that leaves the machine; the table below
 is.
 
-All 21 event types are transmitted.
+All 22 event types are transmitted.
 
 | event_type | data keys |
 |---|---|
@@ -101,6 +101,7 @@ All 21 event types are transmitted.
 | `governance_check` | task_ref, mode, constraints_checked |
 | `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision |
 | `task_classified` | task_ref, flow_type, wave_id, task_summary |
+| `wave_created` | wave_id, feature_description |
 | `task_complete` | task_ref, artifacts, session_id |
 | `task_merged` | task_ref, branch, merge_sha, spec, session_id |
 | `halt` | task_ref, reason, blocker_validators, halt_type, final_decision, raw_halt_type |
@@ -125,6 +126,8 @@ present on events whose call site does not name it.
 `flow_type` and `wave_id` are emitted on `task_classified`. When they are
 absent it is because the classifier failed, not because they are unplumbed —
 the run prints "Classifier failed after N attempts, leaving task unwaved".
+`wave_created` is emitted once when a wave is created, carrying `wave_id` and
+`feature_description`.
 
 ## session_decision_updated
 

@@ -419,6 +419,57 @@ class TestCloudSyncDispatcher:
         assert ev_payload["project_id"] == "local:6bd1d012554546c4b9462bfaaa4183d8"
         assert ev_payload["scope"] == "local"
 
+    def test_post_batch_carries_wave_created_event_and_payload(self):
+        """Transmitted cloud sync payload carries wave_created with wave_id and feature_description."""
+        from unittest.mock import patch, MagicMock
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
+        from snodo.infrastructure.audit import AuditEvent
+
+        dispatcher = CloudSyncDispatcher()
+        ev = AuditEvent(
+            sequence=1,
+            timestamp=1234567.8,
+            event_type="wave_created",
+            data={
+                "op": "wave_created",
+                "wave_id": "w_0001",
+                "feature_description": "User Authentication System",
+                "session_id": "sess_wave_test",
+            },
+            previous_hash="0000000000000000000000000000000000000000000000000000000000000000",
+            event_hash="abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+            project_id="github.com/snodo-dev/test-repo",
+        )
+
+        captured_body = None
+
+        def fake_post(url, content, headers, timeout):
+            nonlocal captured_body
+            captured_body = json.loads(content.decode())
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.text = "ok"
+            return resp
+
+        with patch("httpx.post", side_effect=fake_post):
+            outcome, reason, status = dispatcher._post_batch(
+                "sess_wave_test",
+                "/home/user/code/my-project",
+                [ev],
+                "sndo_live_xxx",
+                "https://api.example.com",
+            )
+
+        assert outcome == "delivered"
+        assert captured_body is not None
+        assert len(captured_body["events"]) == 1
+        payload_ev = captured_body["events"][0]
+        assert payload_ev["event_type"] == "wave_created"
+        assert payload_ev["data"]["wave_id"] == "w_0001"
+        assert payload_ev["data"]["feature_description"] == "User Authentication System"
+        assert "anchor_summaries" not in payload_ev["data"]
+        assert "last_activity" not in payload_ev["data"]
+
     def test_network_error_never_raises(self):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
 

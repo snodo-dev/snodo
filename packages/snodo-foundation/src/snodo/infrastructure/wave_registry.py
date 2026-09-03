@@ -111,7 +111,13 @@ class WaveRegistry:
 
             # No valid classification — leave task unwaved (R3)
             if not wave_id:
-                return {"flow_type": flow_type, "wave_id": None, "task_summary": task_summary}
+                return {
+                    "flow_type": flow_type,
+                    "wave_id": None,
+                    "task_summary": task_summary,
+                    "new_wave": False,
+                    "feature_description": None,
+                }
 
             existing_ids = {w.wave_id for w in waves}
 
@@ -125,6 +131,8 @@ class WaveRegistry:
                         "flow_type": flow_type,
                         "wave_id": wave_id,
                         "task_summary": task_summary,
+                        "new_wave": False,
+                        "feature_description": matched.feature_description,
                     }
 
             # Mint new wave
@@ -143,6 +151,8 @@ class WaveRegistry:
                 "flow_type": flow_type,
                 "wave_id": new_wave.wave_id,
                 "task_summary": task_summary,
+                "new_wave": True,
+                "feature_description": feature_description,
             }
 
     def open_waves(self) -> list[WaveEntry]:

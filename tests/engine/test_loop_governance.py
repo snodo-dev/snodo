@@ -298,3 +298,120 @@ def test_governance_node_delegates_to_single_classify_wave(sample_protocol, samp
     with patch.object(builder, "_classify_wave") as mock_cw:
         builder._governance_node(state)
     mock_cw.assert_called_once()
+
+
+def test_wave_created_audit_event_emitted_on_mint(sample_protocol, sample_task):
+    """When a new wave is created, wave_created is emitted with feature_description."""
+    audit = MagicMock()
+    builder = GraphBuilder(sample_protocol, audit_log=audit)
+    builder._project_root = "/fake/project"
+
+    state = {
+        "task": {"id": sample_task.id, "spec": sample_task.spec},
+        "current_mode": "producer",
+        "iteration": 0,
+        "stage": "governance",
+        "validation_results": [],
+        "validation_token": None,
+        "artifacts": [],
+        "constraints_passed": True,
+        "constraint_violations": [],
+        "policy_decision": None,
+        "is_complete": False,
+        "is_blocked": False,
+        "metadata": {},
+    }
+    with patch(
+        "snodo.infrastructure.wave_registry.WaveRegistry.classify_task",
+        return_value={
+            "flow_type": "feature",
+            "wave_id": "w_0001",
+            "task_summary": "Add login page",
+            "new_wave": True,
+            "feature_description": "User Authentication System",
+        },
+    ):
+        builder._governance_node(state)
+
+    audit.append_event.assert_any_call("wave_created", {
+        "op": "wave_created",
+        "wave_id": "w_0001",
+        "feature_description": "User Authentication System",
+    })
+    audit.append_event.assert_any_call("task_classified", {
+        "op": "task_classified",
+        "task_ref": "task_001",
+        "flow_type": "feature",
+        "wave_id": "w_0001",
+        "task_summary": "Add login page",
+    })
+
+
+def test_wave_created_not_reemitted_for_subsequent_tasks_in_wave(sample_protocol, sample_task):
+    """wave_created is emitted once when minted, not repeated on every task in that wave."""
+    audit = MagicMock()
+    builder = GraphBuilder(sample_protocol, audit_log=audit)
+    builder._project_root = "/fake/project"
+
+    state1 = {
+        "task": {"id": "task_001", "spec": "Spec 1"},
+        "current_mode": "producer",
+        "iteration": 0,
+        "stage": "governance",
+        "validation_results": [],
+        "validation_token": None,
+        "artifacts": [],
+        "constraints_passed": True,
+        "constraint_violations": [],
+        "policy_decision": None,
+        "is_complete": False,
+        "is_blocked": False,
+        "metadata": {},
+    }
+    state2 = {
+        "task": {"id": "task_002", "spec": "Spec 2"},
+        "current_mode": "producer",
+        "iteration": 0,
+        "stage": "governance",
+        "validation_results": [],
+        "validation_token": None,
+        "artifacts": [],
+        "constraints_passed": True,
+        "constraint_violations": [],
+        "policy_decision": None,
+        "is_complete": False,
+        "is_blocked": False,
+        "metadata": {},
+    }
+
+    # Task 1 mints wave w_0001
+    with patch(
+        "snodo.infrastructure.wave_registry.WaveRegistry.classify_task",
+        return_value={
+            "flow_type": "feature",
+            "wave_id": "w_0001",
+            "task_summary": "Add login",
+            "new_wave": True,
+            "feature_description": "User Authentication System",
+        },
+    ):
+        builder._governance_node(state1)
+
+    # Task 2 matches existing wave w_0001
+    with patch(
+        "snodo.infrastructure.wave_registry.WaveRegistry.classify_task",
+        return_value={
+            "flow_type": "feature",
+            "wave_id": "w_0001",
+            "task_summary": "Add logout",
+            "new_wave": False,
+            "feature_description": "User Authentication System",
+        },
+    ):
+        builder._governance_node(state2)
+
+    # Count occurrences of wave_created and task_classified calls
+    event_types = [call[0][0] for call in audit.append_event.call_args_list]
+    assert event_types.count("wave_created") == 1
+    assert event_types.count("task_classified") == 2
+
