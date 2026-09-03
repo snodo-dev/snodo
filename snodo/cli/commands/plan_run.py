@@ -4,6 +4,7 @@ Extracted from cli/commands/run_cmd.py to isolate plan execution logic.
 """
 
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -105,6 +106,27 @@ def _get_completed_waves(waves: list, tasks_status: dict) -> set:
     return completed
 
 
+def _format_duration(seconds: float) -> str:
+    """Format duration in seconds as a human-readable, monotonic wall-clock string."""
+    if seconds < 0:
+        seconds = 0.0
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes = int(seconds // 60)
+    rem = seconds % 60
+    return f"{minutes}m {rem:.1f}s"
+
+
+def _format_time_hhmmss(ts: Optional[float]) -> str:
+    """Format a timestamp as HH:MM:SS."""
+    if not ts:
+        return "N/A"
+    try:
+        return time.strftime("%H:%M:%S", time.localtime(ts))
+    except (TypeError, ValueError, OSError):
+        return "N/A"
+
+
 def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool:
     """Execute a single task within a wave.
 
@@ -141,12 +163,23 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
             project_root = str(planner.project_root)
             session_manager = getattr(args, "session_manager", None)
             print(f"  [{task_id}] resuming as retry (failure context found)")
+            start_mono = time.monotonic()
+            start_wall = time.time()
             result = _retry_task(args, task_id, project_root, session_manager)
+            end_mono = time.monotonic()
+            end_wall = time.time()
+            dur_str = _format_duration(end_mono - start_mono)
+            start_str = _format_time_hhmmss(start_wall)
+            end_str = _format_time_hhmmss(end_wall)
             if result == 0:
                 planner.update_status(args.plan, task_id, "completed")
+                print(f"  [{task_id}] completed in {dur_str} (started {start_str}, finished {end_str})")
                 return True
             planner.update_status(args.plan, task_id, "blocked")
-            print(f"  [{task_id}] FAILED", file=sys.stderr)
+            print(
+                f"  [{task_id}] FAILED in {dur_str} (started {start_str}, finished {end_str})",
+                file=sys.stderr,
+            )
             return False
         # decision == "fresh": no failure context — fall through to fresh run
         print(f"  [{task_id}] no failure context found; running fresh")
@@ -155,14 +188,25 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
 
     task = Task(id=task_id, spec=spec)
     print(f"  [{task_id}] executing...")
+    start_mono = time.monotonic()
+    start_wall = time.time()
     result = _execute_task(args, protocol, task, model)
+    end_mono = time.monotonic()
+    end_wall = time.time()
+    dur_str = _format_duration(end_mono - start_mono)
+    start_str = _format_time_hhmmss(start_wall)
+    end_str = _format_time_hhmmss(end_wall)
 
     if result == 0:
         planner.update_status(args.plan, task_id, "completed")
+        print(f"  [{task_id}] completed in {dur_str} (started {start_str}, finished {end_str})")
         return True
     else:
         planner.update_status(args.plan, task_id, "blocked")
-        print(f"  [{task_id}] FAILED", file=sys.stderr)
+        print(
+            f"  [{task_id}] FAILED in {dur_str} (started {start_str}, finished {end_str})",
+            file=sys.stderr,
+        )
         return False
 
 
@@ -207,7 +251,6 @@ def _execute_wave_tasks_concurrent(
     Returns:
         True if all tasks succeeded, False if any task failed or blocked.
     """
-    import time
     from snodo.jobs import JobManager, JobError, TERMINAL_STATUSES
     from snodo.coders import resolve_coder_name
     from snodo.infrastructure.state import read_state
@@ -228,6 +271,8 @@ def _execute_wave_tasks_concurrent(
 
     wave_failed = False
     active_jobs: dict[str, str] = {}  # job_id -> task_id
+    task_start_mono: dict[str, float] = {}
+    task_start_wall: dict[str, float] = {}
     pending_tasks = list(tasks_to_run)
 
     def _poll_active():
@@ -238,18 +283,41 @@ def _execute_wave_tasks_concurrent(
                 status = st.get("status")
                 if status in TERMINAL_STATUSES:
                     exit_code = st.get("exit_code")
+                    now_mono = time.monotonic()
+                    now_wall = time.time()
+                    t_start_mono = task_start_mono.get(t_id, now_mono)
+                    t_start_wall = st.get("started_at") or task_start_wall.get(t_id, now_wall)
+                    t_end_wall = st.get("completed_at") or now_wall
+                    dur_str = _format_duration(now_mono - t_start_mono)
+                    start_str = _format_time_hhmmss(t_start_wall)
+                    end_str = _format_time_hhmmss(t_end_wall)
+
                     if status == "completed" and exit_code == 0:
                         planner.update_status(args.plan, t_id, "completed")
-                        print(f"  [{t_id}] completed (job {j_id})")
+                        print(f"  [{t_id}] completed (job {j_id}) in {dur_str} (started {start_str}, finished {end_str})")
                     else:
                         planner.update_status(args.plan, t_id, "blocked")
                         err_msg = st.get("error") or "execution failed"
-                        print(f"  [{t_id}] FAILED (job {j_id}): {err_msg}", file=sys.stderr)
+                        print(
+                            f"  [{t_id}] FAILED (job {j_id}) in {dur_str} (started {start_str}, finished {end_str}): {err_msg}",
+                            file=sys.stderr,
+                        )
                         wave_failed = True
                     active_jobs.pop(j_id, None)
             except Exception as e:
+                now_mono = time.monotonic()
+                now_wall = time.time()
+                t_start_mono = task_start_mono.get(t_id, now_mono)
+                t_start_wall = task_start_wall.get(t_id, now_wall)
+                dur_str = _format_duration(now_mono - t_start_mono)
+                start_str = _format_time_hhmmss(t_start_wall)
+                end_str = _format_time_hhmmss(now_wall)
+
                 planner.update_status(args.plan, t_id, "blocked")
-                print(f"  [{t_id}] ERROR checking job {j_id}: {e}", file=sys.stderr)
+                print(
+                    f"  [{t_id}] ERROR checking job {j_id} in {dur_str} (started {start_str}, finished {end_str}): {e}",
+                    file=sys.stderr,
+                )
                 wave_failed = True
                 active_jobs.pop(j_id, None)
 
@@ -297,6 +365,8 @@ def _execute_wave_tasks_concurrent(
             task_args["resume"] = args.resume
 
         try:
+            task_start_mono[task_id] = time.monotonic()
+            task_start_wall[task_id] = time.time()
             job_id = manager.submit(task_args)
             active_jobs[job_id] = task_id
             print(f"  [{task_id}] executing (job {job_id})...")
@@ -349,6 +419,7 @@ def _execute_waves(waves, planner, args, protocol, model,
         if not tasks_to_run:
             continue
 
+        wave_start_mono = time.monotonic()
         if effective_concurrency <= 1 or len(tasks_to_run) <= 1:
             for task_id in tasks_to_run:
                 if not _execute_wave_task(planner, args, protocol, model, wave_id, task_id):
@@ -359,6 +430,10 @@ def _execute_waves(waves, planner, args, protocol, model,
             )
             if not success:
                 has_failed_or_blocked = True
+
+        wave_end_mono = time.monotonic()
+        wave_dur = wave_end_mono - wave_start_mono
+        print(f"Wave {wave_id} total: {_format_duration(wave_dur)}")
 
     return has_failed_or_blocked
 
