@@ -169,6 +169,14 @@ class GovernanceNodeMixin:
                 if result.get("task_summary"):
                     loop_state.metadata["task_summary"] = result["task_summary"]
                 self._auto_write_classification(loop_state)
+                # Emit wave_created once when a wave is minted so consumers can name
+                # the wave by its human-written feature_description.
+                if result.get("new_wave") and result.get("wave_id"):
+                    self._audit("wave_created", {
+                        "op": "wave_created",
+                        "wave_id": result["wave_id"],
+                        "feature_description": result.get("feature_description", ""),
+                    })
                 # The classification must reach the audit trail: cloud_sync ships
                 # audit events only, so a wave_id that lives solely in the session
                 # checkpoint / job state.json never leaves the machine. An unwaved
