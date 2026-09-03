@@ -954,3 +954,150 @@ disagreement_policy: "unanimous"
     assert "incompatible with concurrent wave execution" in err
 
 
+def test_wave_timing_concurrency_overlap_reported(plan_project_env, capsys):
+    """Under concurrency 2, reported wave total is shorter than the sum of task elapsed times."""
+    import re
+    import time
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+    from snodo.jobs import JobManager
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "timing_overlap_plan")
+
+    protocol_content = """
+protocol_id: "concurrent_p"
+name: "Concurrent Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+    concurrency: 2
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (plan_project_env / ".snodo" / "protocol.yml").write_text(protocol_content)
+
+    args = _make_plan_args(plan_name)
+
+    submitted = {}
+
+    def mock_submit(self, task_args):
+        job_id = f"j_time_{task_args['task_id']}"
+        now = time.time()
+        submitted[job_id] = {
+            "task_args": task_args,
+            "created_at": now,
+            "started_at": now,
+        }
+        return job_id
+
+    def mock_get_status(self, job_id):
+        # Sleep a small amount to simulate task runtime
+        time.sleep(0.06)
+        info = submitted[job_id]
+        started = info["started_at"]
+        completed = started + 0.06
+        return {
+            "status": "completed",
+            "exit_code": 0,
+            "started_at": started,
+            "completed_at": completed,
+        }
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch.object(JobManager, "submit", mock_submit):
+            with patch.object(JobManager, "get_status", mock_get_status):
+                result = _run_plan(args)
+
+    assert result == 0
+    out = capsys.readouterr().out
+
+    # Check task lines have timings and timestamps
+    # e.g.: [task_1_a] completed (job j_time_task_1_a) in 0.1s (started 19:22:30, finished 19:22:30)
+    task_a_match = re.search(r"\[task_1_a\] completed \(job \S+\) in (\d+\.\d+)s \(started (\d{2}:\d{2}:\d{2}), finished (\d{2}:\d{2}:\d{2})\)", out)
+    assert task_a_match is not None, f"task_1_a timing line not matched in output:\n{out}"
+
+    task_b_match = re.search(r"\[task_1_b\] completed \(job \S+\) in (\d+\.\d+)s \(started (\d{2}:\d{2}:\d{2}), finished (\d{2}:\d{2}:\d{2})\)", out)
+    assert task_b_match is not None, f"task_1_b timing line not matched in output:\n{out}"
+
+    wave_match = re.search(r"Wave 1 total: (\d+\.\d+)s", out)
+    assert wave_match is not None, f"Wave 1 total not matched in output:\n{out}"
+
+    task_a_elapsed = float(task_a_match.group(1))
+    task_b_elapsed = float(task_b_match.group(1))
+    wave_total = float(wave_match.group(1))
+
+    # Because tasks run in parallel with overlap, wave_total < task_a + task_b
+    assert wave_total < (task_a_elapsed + task_b_elapsed) + 0.05
+
+
+def test_wave_timing_sequential_shape_identical(plan_project_env, capsys):
+    """Under concurrency 1, sequential execution reports identical output shape with timestamps and total."""
+    import re
+    import time
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "timing_seq_plan")
+
+    args = _make_plan_args(plan_name)
+
+    def mock_execute_task(a, protocol, task, model):
+        time.sleep(0.04)
+        return 0
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=1))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+            result = _run_plan(args)
+
+    assert result == 0
+    out = capsys.readouterr().out
+
+    # Check task lines have timings and timestamps in identical shape
+    # e.g.: [task_1_a] completed in 0.0s (started 19:22:30, finished 19:22:30)
+    task_a_match = re.search(r"\[task_1_a\] completed in (\d+\.\d+)s \(started (\d{2}:\d{2}:\d{2}), finished (\d{2}:\d{2}:\d{2})\)", out)
+    assert task_a_match is not None, f"task_1_a timing line not matched in output:\n{out}"
+
+    task_b_match = re.search(r"\[task_1_b\] completed in (\d+\.\d+)s \(started (\d{2}:\d{2}:\d{2}), finished (\d{2}:\d{2}:\d{2})\)", out)
+    assert task_b_match is not None, f"task_1_b timing line not matched in output:\n{out}"
+
+    wave_match = re.search(r"Wave 1 total: (\d+\.\d+)s", out)
+    assert wave_match is not None, f"Wave 1 total not matched in output:\n{out}"
+
+
+def test_wave_timing_failed_task_reported(plan_project_env, capsys):
+    """Failed tasks report execution elapsed time and start/finish timestamps."""
+    import re
+    import time
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "timing_fail_plan")
+
+    args = _make_plan_args(plan_name)
+
+    def mock_execute_task(a, protocol, task, model):
+        time.sleep(0.03)
+        return 1  # Failure
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=1))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+            result = _run_plan(args)
+
+    assert result == 1
+    err = capsys.readouterr().err
+
+    fail_match = re.search(r"\[task_1_a\] FAILED in (\d+\.\d+)s \(started (\d{2}:\d{2}:\d{2}), finished (\d{2}:\d{2}:\d{2})\)", err)
+    assert fail_match is not None, f"Failed task timing not matched in stderr:\n{err}"
+
+
+
