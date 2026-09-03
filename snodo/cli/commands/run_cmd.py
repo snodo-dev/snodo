@@ -909,6 +909,20 @@ def _report_unmerged_branch(project_root, task, protocol, mode, closure_tree,
         })
 
 
+def _verified_commit_matches_merge_target(stored_commit: str, target_commit: str) -> bool:
+    """Whether a verification event's stored commit evidences the merge target.
+
+    Real payloads carry a full SHA, so exact equality is the intended match. A
+    stored value that merely abbreviates the target (a prefix of it) is also
+    accepted. The reverse direction is deliberately NOT accepted: a stored
+    value that has the target as its own prefix could denote a different,
+    longer commit, so it must not satisfy the gate (Refs #206).
+    """
+    if not stored_commit or not target_commit:
+        return False
+    return stored_commit == target_commit or target_commit.startswith(stored_commit)
+
+
 def _merge_on_success(project_root, task, result, session_id, audit_log) -> tuple:
     """Merge the completed task's branch into the base branch.
 
@@ -939,10 +953,7 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
             if e.data.get("outcome") == "pass"
             and (e.data.get("task_ref") == task.id or (getattr(task, "root_task_ref", None) and e.data.get("task_ref") == task.root_task_ref))
             and target_commit
-            and (
-                e.data.get("commit") == target_commit
-                or (e.data.get("commit") and (target_commit.startswith(e.data.get("commit")) or e.data.get("commit").startswith(target_commit)))
-            )
+            and _verified_commit_matches_merge_target(e.data.get("commit"), target_commit)
         ]
         if not matching_passes:
             commit_display = target_commit[:7] if target_commit else "unknown"
