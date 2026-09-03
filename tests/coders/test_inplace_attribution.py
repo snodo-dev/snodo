@@ -62,11 +62,15 @@ class TestInPlaceCoderAttribution:
         adapter = AGYAdapter(model="agy/gemini-3.7-flash", workspace=temp_workspace)
         spec = TaskSpec(description="Implement feature Y", constraints=[])
 
-        def fake_run(argv, **kwargs):
+        def fake_popen(argv, **kwargs):
             (temp_workspace / "feature_y.py").write_text("def y(): return 42\n")
-            return SimpleNamespace(returncode=0, stdout="Success", stderr="")
+            proc = mock.MagicMock()
+            proc.pid = 12345
+            proc.returncode = 0
+            proc.communicate.return_value = ("Success", "")
+            return proc
 
-        with mock.patch("subprocess.run", side_effect=fake_run):
+        with mock.patch("subprocess.Popen", side_effect=fake_popen):
             artifact = adapter.implement(spec)
 
         # Artifact metadata includes measured metrics
@@ -114,11 +118,15 @@ class TestInPlaceCoderAttribution:
             project_context={"task_id": task_id},
         )
 
-        def fake_run(argv, **kwargs):
+        def fake_popen(argv, **kwargs):
             (temp_workspace / "feature_z.py").write_text("def z(): pass\n")
-            return SimpleNamespace(returncode=0, stdout="Success", stderr="")
+            proc = mock.MagicMock()
+            proc.pid = 12345
+            proc.returncode = 0
+            proc.communicate.return_value = ("Success", "")
+            return proc
 
-        with mock.patch("subprocess.run", side_effect=fake_run):
+        with mock.patch("subprocess.Popen", side_effect=fake_popen):
             adapter.implement(spec)
 
         state_path = project_root / ".snodo" / "tasks" / task_id / "state.json"

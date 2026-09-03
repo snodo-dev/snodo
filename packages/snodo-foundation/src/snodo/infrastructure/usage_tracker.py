@@ -11,6 +11,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import Optional
 
 from litellm import CustomLogger
 
@@ -168,14 +169,15 @@ def _find_project_root(job_id: str = "") -> str | None:
 
 
 def record_inplace_coder_run(
-    *,
     coder: str,
     model: str,
     duration_ms: float,
     job_id: str = "",
     task_id: str = "",
+    timed_out: bool = False,
+    timeout_seconds: Optional[int] = None,
 ) -> None:
-    """Emit a coder attribution record for an in-place CLI coder run.
+    """Record a completed in-place coder execution in job/task state.json.
 
     In-place coders (agy, opencode-cli, opencode container) make no litellm
     calls, so the UsageTracker callback never fires for them.  Without this
@@ -212,8 +214,12 @@ def record_inplace_coder_run(
         "completion_tokens": None,
         "total_tokens": None,
         # Explicit declaration: only what is in this list was directly observed.
-        "measured": ["duration_ms"] + (["model"] if model else []),
+        "measured": ["duration_ms"] + (["model"] if model else []) + (["timed_out"] if timed_out else []),
     }
+    if timed_out:
+        record["timed_out"] = True
+        if timeout_seconds is not None:
+            record["timeout_seconds"] = timeout_seconds
 
     # Resolve job / task ids: prefer explicit arguments, fall back to job env var.
     resolved_job_id = job_id or os.environ.get("SNODO_JOB_ID") or ""

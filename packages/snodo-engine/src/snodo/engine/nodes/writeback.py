@@ -481,6 +481,9 @@ class WritebackMixin:
             "blocker_reason": blocker_reason,
             "artifacts_count": len(loop_state.artifacts),
         }
+        if meta.get("timed_out") or getattr(self, "_last_timed_out", False):
+            payload["timed_out"] = True
+            payload["timeout_seconds"] = meta.get("timeout_seconds") or getattr(self, "_last_timeout_seconds", None)
         if commit_reason is not None:
             payload["commit_reason"] = commit_reason
         return payload

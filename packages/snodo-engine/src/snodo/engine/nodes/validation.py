@@ -240,6 +240,17 @@ class ValidationNodeMixin:
                 self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")
                 loop_state.metadata["attempt_written_files"] = list(self._last_execution_writes)
                 loop_state.metadata["attempt_read_files"] = dict(self._last_execution_reads)
+                if getattr(self, "_last_timed_out", False):
+                    loop_state.metadata["timed_out"] = True
+                    loop_state.metadata["timeout_seconds"] = getattr(self, "_last_timeout_seconds", None)
+                    self._audit("coder_timed_out", {
+                        "op": "coder_timed_out",
+                        "task_ref": loop_state.task.id,
+                        "mode": loop_state.current_mode,
+                        "timeout_seconds": getattr(self, "_last_timeout_seconds", None),
+                        "artifacts_count": len(artifacts),
+                        "output_tail": getattr(self, "_last_timeout_tail", ""),
+                    })
             except SnodoMutationError as e:
                 # An in-place-writing coder mutated protected .snodo/ state.
                 # This is a governance violation (INV3-class), not an
@@ -406,7 +417,7 @@ class ValidationNodeMixin:
 
         judging_model = getattr(self, "_default_model", None)
 
-        self._audit("dispatch", {
+        dispatch_audit = {
             "op": "dispatch",
             "task_ref": loop_state.task.id,
             "token_id": loop_state.task.id,
@@ -415,7 +426,11 @@ class ValidationNodeMixin:
             "coder_model": coder_model,
             "judging_model": judging_model,
             "artifacts_count": len(loop_state.artifacts),
-        })
+        }
+        if loop_state.metadata.get("timed_out"):
+            dispatch_audit["timed_out"] = True
+            dispatch_audit["timeout_seconds"] = loop_state.metadata.get("timeout_seconds")
+        self._audit("dispatch", dispatch_audit)
 
         # Track execution in messages for agent memory
         artifact_summary = ", ".join(loop_state.artifacts) if loop_state.artifacts else "none"

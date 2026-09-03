@@ -117,6 +117,9 @@ class ExecutorMixin:
         try:
             code_artifact = coder.implement(spec)
             self._last_commit_reason = getattr(coder, "last_commit_reason", None)
+            self._last_timed_out = getattr(coder, "last_timed_out", False) or getattr(code_artifact, "metadata", {}).get("timed_out", False)
+            self._last_timeout_seconds = getattr(coder, "last_timeout_seconds", None) or getattr(code_artifact, "metadata", {}).get("timeout_seconds", None)
+            self._last_timeout_tail = getattr(coder, "last_timeout_tail", "")
 
             # If workspace available, process file operations
             self._last_execution_writes = [

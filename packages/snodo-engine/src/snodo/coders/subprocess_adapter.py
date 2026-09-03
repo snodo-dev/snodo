@@ -108,16 +108,6 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
 
     def _run_subprocess(self, argv: list[str], project_root: str) -> subprocess.CompletedProcess:
         """Run CLI subprocess with process-group isolation and clean timeout termination."""
-        # If subprocess.run is patched in tests, delegate to it directly
-        if getattr(subprocess.run, "__module__", "") == "unittest.mock" or hasattr(subprocess.run, "assert_called"):
-            return subprocess.run(  # noqa: S603
-                argv,
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_seconds,
-            )
-
         proc = subprocess.Popen(  # noqa: S603
             argv,
             cwd=project_root,
@@ -168,6 +158,9 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         timed_out = False
         timeout_tail = ""
         proc = None
+        self.last_timed_out = False
+        self.last_timeout_seconds = None
+        self.last_timeout_tail = ""
 
         try:
             proc = self._run_subprocess(argv, project_root)
@@ -177,6 +170,8 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             ) from e
         except subprocess.TimeoutExpired as e:
             timed_out = True
+            self.last_timed_out = True
+            self.last_timeout_seconds = self.timeout_seconds
             out_str = e.stdout or e.output or ""
             err_str = e.stderr or ""
             if isinstance(out_str, bytes):
@@ -188,6 +183,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
                 combined = (out_str + "\n" + err_str).strip()
                 tail = combined[-2000:] if combined else ""
             timeout_tail = tail.strip()
+            self.last_timeout_tail = timeout_tail
 
         if timed_out:
             msg = f"{self.binary} run timed out after {self.timeout_seconds}s"
@@ -197,7 +193,11 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             diff_entries = self._read_changes_from_disk()
             if not diff_entries:
                 raise LLMCallError(msg)
-            return self._diff_to_artifact(diff_entries)
+            artifact = self._diff_to_artifact(diff_entries)
+            if artifact and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
+                artifact.metadata["timed_out"] = True
+                artifact.metadata["timeout_seconds"] = self.timeout_seconds
+            return artifact
 
         if proc.returncode != 0:
             tail = (proc.stderr or "")[:2000] or (proc.stdout or "")[:2000]

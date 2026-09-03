@@ -12,7 +12,6 @@ with a config fix target, and recovery must not spawn against it.
 """
 
 import subprocess
-from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -88,15 +87,18 @@ def test_cli_rejects_model_is_execution_error_not_internal_error(git_fixture_rep
     selection``. The reason field already holds the answer; the taxonomy and
     the hint must agree with it (Fixes #195).
     """
-    def fake_run(argv, **kwargs):
-        return SimpleNamespace(
-            returncode=1,
-            stdout="",
-            stderr='Error: invalid model selection (--model "gemini-3.7-flash")',
+    def fake_popen(argv, **kwargs):
+        proc = mock.MagicMock()
+        proc.pid = 12345
+        proc.returncode = 1
+        proc.communicate.return_value = (
+            "",
+            'Error: invalid model selection (--model "gemini-3.7-flash")',
         )
+        return proc
 
     coder = AGYAdapter(model="agy/gemini-3.7-flash", workspace=git_fixture_repo)
-    with mock.patch("subprocess.run", side_effect=fake_run):
+    with mock.patch("subprocess.Popen", side_effect=fake_popen):
         tree = _run_with_coder(coder, git_fixture_repo)
 
     # Raw halt names the coder fault; canonical outcome is a blocker.
@@ -131,7 +133,7 @@ def test_cli_rejects_model_is_execution_error_not_internal_error(git_fixture_rep
 def test_missing_binary_is_execution_error(git_fixture_repo):
     """A coder binary missing from PATH is a config-fixable halt, not an engine error."""
     coder = AGYAdapter(workspace=git_fixture_repo)
-    with mock.patch("subprocess.run", side_effect=FileNotFoundError):
+    with mock.patch("subprocess.Popen", side_effect=FileNotFoundError):
         tree = _run_with_coder(coder, git_fixture_repo)
 
     assert tree.outcome == "execution_error"

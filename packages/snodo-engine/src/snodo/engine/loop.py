@@ -709,7 +709,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         ]
         canonical_halt = _canonical_halt(loop_state.halt_type)
         raw_halt = loop_state.halt_type or canonical_halt
-        self._audit("halt", {
+        halt_audit = {
             "op": "halt",
             "task_ref": loop_state.task.id,
             "reason": "; ".join(loop_state.constraint_violations) or "blocker",
@@ -717,7 +717,11 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             "halt_type": canonical_halt,
             "final_decision": canonical_halt,
             "raw_halt_type": raw_halt,
-        })
+        }
+        if loop_state.metadata.get("timed_out"):
+            halt_audit["timed_out"] = True
+            halt_audit["timeout_seconds"] = loop_state.metadata.get("timeout_seconds")
+        self._audit("halt", halt_audit)
 
         loop_state.stage = LoopStage.BLOCKED
         self._auto_write_halt_payload(loop_state)
@@ -730,11 +734,15 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
 
         self._clear_failure_context(loop_state)
 
-        self._audit("task_complete", {
+        task_complete_audit = {
             "op": "task_complete",
             "task_ref": loop_state.task.id,
             "artifacts": loop_state.artifacts,
-        })
+        }
+        if loop_state.metadata.get("timed_out"):
+            task_complete_audit["timed_out"] = True
+            task_complete_audit["timeout_seconds"] = loop_state.metadata.get("timeout_seconds")
+        self._audit("task_complete", task_complete_audit)
 
         loop_state.messages.append({
             "role": "assistant",

@@ -140,12 +140,17 @@ class InPlaceCoderAdapter(Coder, ABC):
         # the risk of turning a completed, committed run into a crash.
         coder_name = getattr(self, "coder_name", None)
         model_str = getattr(self, "model", "") or ""
+        timed_out = getattr(self, "last_timed_out", False)
+        timeout_seconds = getattr(self, "last_timeout_seconds", None)
 
         if artifact and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
             artifact.metadata["duration_ms"] = duration_ms
             if coder_name:
                 artifact.metadata["coder"] = coder_name
             artifact.metadata["model"] = model_str
+            if timed_out:
+                artifact.metadata["timed_out"] = True
+                artifact.metadata["timeout_seconds"] = timeout_seconds
 
         try:
             if coder_name:
@@ -158,6 +163,8 @@ class InPlaceCoderAdapter(Coder, ABC):
                     duration_ms=duration_ms,
                     job_id=job_id,
                     task_id=task_id,
+                    timed_out=timed_out,
+                    timeout_seconds=timeout_seconds,
                 )
         except Exception as e:
             _logger.debug("Failed to record inplace coder run: %s", e)

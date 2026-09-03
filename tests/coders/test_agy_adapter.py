@@ -12,7 +12,6 @@ PROVES:
 
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 import pytest
 
@@ -37,6 +36,18 @@ def temp_workspace(tmp_path: Path) -> Path:
     return root
 
 
+def _make_fake_popen(returncode=0, stdout="Success", stderr="", side_effect=None):
+    def fake_popen(argv, **kwargs):
+        if side_effect:
+            side_effect(argv, **kwargs)
+        proc = mock.MagicMock()
+        proc.pid = 12345
+        proc.returncode = returncode
+        proc.communicate.return_value = (stdout, stderr)
+        return proc
+    return fake_popen
+
+
 def test_agy_adapter_argv_construction(temp_workspace: Path):
     """AGYAdapter constructs the expected subprocess argv."""
     adapter = AGYAdapter(model="agy/Gemini 3.5 Flash", workspace=temp_workspace)
@@ -44,13 +55,12 @@ def test_agy_adapter_argv_construction(temp_workspace: Path):
 
     executed_argv = []
 
-    def fake_run(argv, **kwargs):
+    def on_run(argv, **kwargs):
         nonlocal executed_argv
         executed_argv = argv
         (temp_workspace / "feature.py").write_text("def x(): pass\n")
-        return SimpleNamespace(returncode=0, stdout="Success", stderr="")
 
-    with mock.patch("subprocess.run", side_effect=fake_run):
+    with mock.patch("subprocess.Popen", side_effect=_make_fake_popen(side_effect=on_run)):
         adapter.implement(spec)
 
     assert executed_argv[0] == "agy"
@@ -70,7 +80,7 @@ def test_agy_binary_missing_raises_actionable_error(temp_workspace: Path):
     adapter = AGYAdapter(workspace=temp_workspace)
     spec = TaskSpec(description="Implement feature X", constraints=[])
 
-    with mock.patch("subprocess.run", side_effect=FileNotFoundError):
+    with mock.patch("subprocess.Popen", side_effect=FileNotFoundError):
         with pytest.raises(LLMCallError) as exc_info:
             adapter.implement(spec)
 
@@ -84,10 +94,7 @@ def test_agy_nonzero_exit_surfaces_stderr(temp_workspace: Path):
     adapter = AGYAdapter(workspace=temp_workspace)
     spec = TaskSpec(description="Implement feature X", constraints=[])
 
-    def fake_run(argv, **kwargs):
-        return SimpleNamespace(returncode=1, stdout="", stderr="Error: invalid model specified")
-
-    with mock.patch("subprocess.run", side_effect=fake_run):
+    with mock.patch("subprocess.Popen", side_effect=_make_fake_popen(returncode=1, stdout="", stderr="Error: invalid model specified")):
         with pytest.raises(LLMCallError) as exc_info:
             adapter.implement(spec)
 
@@ -143,15 +150,14 @@ def test_agy_adapter_task_worktree_granted_to_cli_distinct_from_cwd(tmp_path: Pa
     executed_kwargs = {}
     executed_argv = []
 
-    def fake_run(argv, **kwargs):
+    def on_run(argv, **kwargs):
         nonlocal executed_argv, executed_kwargs
         executed_argv = argv
         executed_kwargs = kwargs
         (worktree / "feature.py").write_text("def x(): pass\n")
-        return SimpleNamespace(returncode=0, stdout="Success", stderr="")
 
     spec = TaskSpec(description="Implement feature X", constraints=[])
-    with mock.patch("subprocess.run", side_effect=fake_run):
+    with mock.patch("subprocess.Popen", side_effect=_make_fake_popen(side_effect=on_run)):
         adapter.implement(spec)
 
     assert executed_kwargs["cwd"] == str(worktree)
@@ -166,13 +172,12 @@ def test_snodo_mutation_raises_error(temp_workspace: Path):
     adapter = AGYAdapter(workspace=temp_workspace)
     spec = TaskSpec(description="Implement feature X", constraints=[])
 
-    def fake_run_mutating_snodo(argv, **kwargs):
+    def on_run(argv, **kwargs):
         snodo_dir = temp_workspace / ".snodo"
         snodo_dir.mkdir(exist_ok=True)
         (snodo_dir / "illegal_edit.txt").write_text("hack")
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    with mock.patch("subprocess.run", side_effect=fake_run_mutating_snodo):
+    with mock.patch("subprocess.Popen", side_effect=_make_fake_popen(side_effect=on_run)):
         with pytest.raises(SnodoMutationError) as exc_info:
             adapter.implement(spec)
 

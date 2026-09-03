@@ -75,15 +75,19 @@ class TestWorkspaceResolution:
         executed_kwargs = {}
         executed_argv = []
 
-        def fake_run(argv, **kwargs):
+        def fake_popen(argv, **kwargs):
             nonlocal executed_argv, executed_kwargs
             executed_argv = argv
             executed_kwargs = kwargs
             (worktree / "output.txt").write_text("done")
-            return Mock(returncode=0, stdout="Success", stderr="")
+            proc = Mock()
+            proc.pid = 12345
+            proc.returncode = 0
+            proc.communicate.return_value = ("Success", "")
+            return proc
 
         spec = TaskSpec(description="test task", constraints=[])
-        with patch("subprocess.run", side_effect=fake_run):
+        with patch("subprocess.Popen", side_effect=fake_popen):
             adapter.implement(spec)
 
         assert executed_kwargs["cwd"] == str(worktree)
@@ -236,15 +240,16 @@ class TestSubprocessInvocation:
         )
         spec = TaskSpec(description="add feature", constraints=[])
 
-        with patch.object(adapter, "_build_prompt", return_value="test prompt"):
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value.returncode = 0
-                mock_run.return_value.stdout = ""
-                mock_run.return_value.stderr = ""
+        mock_proc = Mock()
+        mock_proc.pid = 12345
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = ("", "")
 
+        with patch.object(adapter, "_build_prompt", return_value="test prompt"):
+            with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
                 adapter.implement(spec)
 
-                call_args = mock_run.call_args[0][0]
+                call_args = mock_popen.call_args[0][0]
                 assert call_args[0] == "opencode"
                 assert call_args[1] == "run"
                 assert call_args[2] == "--dir"
@@ -261,7 +266,7 @@ class TestSubprocessInvocation:
         )
         spec = TaskSpec(description="test", constraints=[])
 
-        with patch("subprocess.run", side_effect=FileNotFoundError):
+        with patch("subprocess.Popen", side_effect=FileNotFoundError):
             with pytest.raises(Exception, match="opencode not found"):
                 adapter.implement(spec)
 
@@ -272,11 +277,12 @@ class TestSubprocessInvocation:
         )
         spec = TaskSpec(description="test", constraints=[])
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 1
-            mock_run.return_value.stderr = "something went wrong"
-            mock_run.return_value.stdout = ""
+        mock_proc = Mock()
+        mock_proc.pid = 12345
+        mock_proc.returncode = 1
+        mock_proc.communicate.return_value = ("", "something went wrong")
 
+        with patch("subprocess.Popen", return_value=mock_proc):
             with pytest.raises(Exception, match="opencode run failed"):
                 adapter.implement(spec)
 
