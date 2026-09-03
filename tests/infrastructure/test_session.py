@@ -755,3 +755,56 @@ class TestCorruptSession:
 
         assert [s.session_id for s in result] == [good.session_id]
         assert any("sess_corrupt" in r.message for r in caplog.records)
+
+
+# ========== CONCURRENT WRITERS & STRICT LOCKING ==========
+
+class TestConcurrentSessionUpdates:
+    def test_concurrent_writers_update_different_keys_both_survive(self, mgr, project_root):
+        """Two writers updating different keys of the same session concurrently both survive."""
+        import concurrent.futures
+
+        session = mgr.create_session("producer", project_root)
+        sid = session.session_id
+
+        def writer_1():
+            for i in range(25):
+                mgr.update_decision(sid, "task_failure", {"attempt": i, "status": "failed"})
+
+        def writer_2():
+            for i in range(25):
+                mgr.update_decision(sid, "halt", {"type": "blocker", "iter": i})
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            f1 = executor.submit(writer_1)
+            f2 = executor.submit(writer_2)
+            f1.result()
+            f2.result()
+
+        loaded = mgr.load_session(sid)
+        decisions = loaded.checkpoint.decisions
+        assert "task_failure" in decisions
+        assert "halt" in decisions
+        assert decisions["task_failure"] == {"attempt": 24, "status": "failed"}
+        assert decisions["halt"] == {"type": "blocker", "iter": 24}
+
+    def test_session_write_lock_failure_is_loud(self, mgr, project_root):
+        """A session write that cannot take its lock raises (strict error policy)."""
+        session = mgr.create_session("producer", project_root)
+        sid = session.session_id
+
+        with patch("fcntl.flock", side_effect=OSError("Resource temporarily unavailable")):
+            with pytest.raises(OSError, match="Resource temporarily unavailable"):
+                mgr.update_decision(sid, "key", "val")
+
+            with pytest.raises(OSError, match="Resource temporarily unavailable"):
+                mgr.save_checkpoint(sid)
+
+            with pytest.raises(OSError, match="Resource temporarily unavailable"):
+                mgr.update_memory_summary(sid, "new summary")
+
+            with pytest.raises(OSError, match="Resource temporarily unavailable"):
+                mgr.set_current_task(sid, "task_new")
+
+            with pytest.raises(OSError, match="Resource temporarily unavailable"):
+                mgr._save_session(session)

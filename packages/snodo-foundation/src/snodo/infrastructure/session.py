@@ -9,7 +9,6 @@ excluded - revalidation on resume is required.
 
 import json
 import logging
-import os
 import secrets
 from datetime import datetime, UTC, timedelta
 from typing import Dict, Any, Optional, List
@@ -279,12 +278,24 @@ class SessionManager:
             session_id: Session identifier
             checkpoint: Checkpoint data to save (updates existing if None)
         """
-        session = self.load_session(session_id)
-        if checkpoint is not None:
-            session.checkpoint = checkpoint
-        session.checkpoint.timestamp = datetime.now(UTC).isoformat()
-        session.updated_at = datetime.now(UTC).isoformat()
-        self._save_session(session)
+        session_path = self.sessions_dir / f"{session_id}.json"
+        if not session_path.exists():
+            raise FileNotFoundError(f"No session found: {session_id}")
+
+        from snodo.infrastructure.state import atomic_update_json
+
+        def _updater(data: Dict[str, Any]) -> None:
+            now = datetime.now(UTC).isoformat()
+            if checkpoint is not None:
+                data["checkpoint"] = asdict(checkpoint)
+            else:
+                data.setdefault("checkpoint", {})
+            data["checkpoint"]["timestamp"] = now
+            data["updated_at"] = now
+
+        atomic_update_json(
+            self.sessions_dir, f"{session_id}.json", _updater, strict=True,
+        )
 
     def update_decision(self, session_id: str, key: str, value: Any) -> None:
         """Update a decision in the session checkpoint.
@@ -294,10 +305,23 @@ class SessionManager:
             key: Decision key
             value: Decision value
         """
-        session = self.load_session(session_id)
-        session.checkpoint.decisions[key] = value
-        session.updated_at = datetime.now(UTC).isoformat()
-        self._save_session(session)
+        session_path = self.sessions_dir / f"{session_id}.json"
+        if not session_path.exists():
+            raise FileNotFoundError(f"No session found: {session_id}")
+
+        from snodo.infrastructure.state import atomic_update_json
+
+        def _updater(data: Dict[str, Any]) -> None:
+            checkpoint = data.setdefault("checkpoint", {})
+            decisions = checkpoint.setdefault("decisions", {})
+            decisions[key] = value
+            now = datetime.now(UTC).isoformat()
+            checkpoint["timestamp"] = now
+            data["updated_at"] = now
+
+        atomic_update_json(
+            self.sessions_dir, f"{session_id}.json", _updater, strict=True,
+        )
         self._audit("session_decision_updated", {
             "op": "session_decision_updated",
             "session_id": session_id,
@@ -312,10 +336,22 @@ class SessionManager:
             session_id: Session identifier
             summary: Memory summary text
         """
-        session = self.load_session(session_id)
-        session.checkpoint.memory_summary = summary
-        session.updated_at = datetime.now(UTC).isoformat()
-        self._save_session(session)
+        session_path = self.sessions_dir / f"{session_id}.json"
+        if not session_path.exists():
+            raise FileNotFoundError(f"No session found: {session_id}")
+
+        from snodo.infrastructure.state import atomic_update_json
+
+        def _updater(data: Dict[str, Any]) -> None:
+            checkpoint = data.setdefault("checkpoint", {})
+            checkpoint["memory_summary"] = summary
+            now = datetime.now(UTC).isoformat()
+            checkpoint["timestamp"] = now
+            data["updated_at"] = now
+
+        atomic_update_json(
+            self.sessions_dir, f"{session_id}.json", _updater, strict=True,
+        )
         self._audit("session_memory_updated", {
             "op": "session_memory_updated",
             "session_id": session_id,
@@ -328,15 +364,27 @@ class SessionManager:
             session_id: Session identifier
             task_id: Task identifier (or None to clear)
         """
-        session = self.load_session(session_id)
-        old_task = session.checkpoint.current_task
-        session.checkpoint.current_task = task_id
-        session.updated_at = datetime.now(UTC).isoformat()
-        self._save_session(session)
+        session_path = self.sessions_dir / f"{session_id}.json"
+        if not session_path.exists():
+            raise FileNotFoundError(f"No session found: {session_id}")
+
+        from snodo.infrastructure.state import atomic_update_json
+
+        old_task_holder = [None]
+
+        def _updater(data: Dict[str, Any]) -> None:
+            checkpoint = data.setdefault("checkpoint", {})
+            old_task_holder[0] = checkpoint.get("current_task")
+            checkpoint["current_task"] = task_id
+            data["updated_at"] = datetime.now(UTC).isoformat()
+
+        atomic_update_json(
+            self.sessions_dir, f"{session_id}.json", _updater, strict=True,
+        )
         self._audit("session_task_changed", {
             "op": "session_task_changed",
             "session_id": session_id,
-            "old_task": old_task,
+            "old_task": old_task_holder[0],
             "new_task": task_id,
         })
 
@@ -667,21 +715,21 @@ class SessionManager:
     def _save_session(self, session: SessionState) -> None:
         """Atomically save session state to JSON file.
 
-        Serialises to a same-directory ``.tmp`` file then ``os.replace`` onto
-        the target. Same-directory is required for atomicity (a cross-filesystem
-        rename is not atomic). A crash mid-write leaves the previous file
-        intact; the ``.tmp`` file is removed on failure.
+        Uses atomic_update_json (with flock and thread lock) writing to a unique
+        temporary file before replacing onto the target, ensuring process and
+        thread safety.
         """
-        session_path = self.sessions_dir / f"{session.session_id}.json"
-        tmp_path = self.sessions_dir / f"{session.session_id}.json.tmp"
+        from snodo.infrastructure.state import atomic_update_json
+
         data = asdict(session)
-        try:
-            with open(tmp_path, "w") as f:
-                json.dump(data, f, indent=2)
-            os.replace(str(tmp_path), str(session_path))
-        except BaseException:
-            tmp_path.unlink(missing_ok=True)
-            raise
+
+        def _updater(existing: Dict[str, Any]) -> None:
+            existing.clear()
+            existing.update(data)
+
+        atomic_update_json(
+            self.sessions_dir, f"{session.session_id}.json", _updater, strict=True,
+        )
 
     def _load_file(self, path: Path) -> SessionState:
         """Load session from a JSON file path.

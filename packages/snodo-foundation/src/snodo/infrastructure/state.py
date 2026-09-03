@@ -40,6 +40,7 @@ def atomic_update_json(
     target_dir: Path | str,
     filename: str,
     updater_fn: Callable[[Dict[str, Any]], None],
+    strict: bool = False,
 ) -> None:
     """Atomically and safely update a JSON file in target_dir.
 
@@ -47,6 +48,17 @@ def atomic_update_json(
     - Uses thread lock for within-process concurrency (e.g. litellm callbacks).
     - Uses file flock on target_dir/.<filename>.lock for cross-process concurrency.
     - Writes to a unique temporary file and atomically renames with os.replace.
+
+    Args:
+        target_dir: Directory containing the JSON file.
+        filename: Name of the JSON file to update.
+        updater_fn: Mutation callback receiving the decoded JSON dict.
+        strict: When True, flock errors and update exceptions are raised
+            instead of being caught/swallowed. Used for stores like sessions
+            where losing writes loses critical governance/failure context.
+            When False (default), flock and update failures are caught, logged
+            at debug level, and swallowed (used for telemetry where observation
+            must never break a run).
     """
     dir_path = Path(target_dir)
     dir_path.mkdir(parents=True, exist_ok=True)
@@ -56,49 +68,57 @@ def atomic_update_json(
     with _STATE_MUTATION_LOCK:
         try:
             with open(lock_file_path, "a") as lock_f:
-                try:
+                if strict:
                     fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
-                except (OSError, IOError):  # noqa: S110
-                    pass
-
-                data: Dict[str, Any] = {}
-                if target_file.exists():
+                else:
                     try:
-                        with open(target_file, "r", encoding="utf-8") as f:
-                            content = f.read().strip()
-                            if content:
-                                data = json.loads(content)
-                    except Exception as e:
-                        _logger.debug("Failed to read %s for update: %s", target_file, e)
+                        fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
+                    except (OSError, IOError):  # noqa: S110
+                        pass
+
+                try:
+                    data: Dict[str, Any] = {}
+                    if target_file.exists():
+                        try:
+                            with open(target_file, "r", encoding="utf-8") as f:
+                                content = f.read().strip()
+                                if content:
+                                    data = json.loads(content)
+                        except Exception as e:
+                            if strict:
+                                raise
+                            _logger.debug("Failed to read %s for update: %s", target_file, e)
+                            data = {}
+
+                    if not isinstance(data, dict):
                         data = {}
 
-                if not isinstance(data, dict):
-                    data = {}
+                    # Apply mutation
+                    updater_fn(data)
 
-                # Apply mutation
-                updater_fn(data)
-
-                # Write to unique temp file
-                tmp_fd, tmp_path_str = tempfile.mkstemp(
-                    dir=str(dir_path), prefix=f"{filename}_", suffix=".tmp"
-                )
-                try:
-                    with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=2, default=_json_default)
-                        f.write("\n")
-                    os.replace(tmp_path_str, str(target_file))
-                except Exception:
+                    # Write to unique temp file
+                    tmp_fd, tmp_path_str = tempfile.mkstemp(
+                        dir=str(dir_path), prefix=f"{filename}_", suffix=".tmp"
+                    )
                     try:
-                        os.unlink(tmp_path_str)
-                    except Exception:  # noqa: S110
-                        pass
-                    raise
+                        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                            json.dump(data, f, indent=2, default=_json_default)
+                            f.write("\n")
+                        os.replace(tmp_path_str, str(target_file))
+                    except Exception:
+                        try:
+                            os.unlink(tmp_path_str)
+                        except Exception:  # noqa: S110
+                            pass
+                        raise
                 finally:
                     try:
                         fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
                     except (OSError, IOError):  # noqa: S110
                         pass
         except Exception as e:
+            if strict:
+                raise
             _logger.debug("Failed to atomically update %s: %s", target_file, e)
 
 
