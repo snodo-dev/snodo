@@ -1,5 +1,13 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  // Auto-compaction is required, not optional: without it a large reading
+  // surface fills the context and the run degrades into planning instead of
+  // editing, or stalls until the caller's timeout. Matches the local-ollama
+  // config this was modelled on.
+  "compaction": {
+    "auto": true,
+    "threshold": 0.7
+  },
   // Ollama Cloud (https://ollama.com/v1). Model ids are the unversioned
   // aliases; the endpoint also serves pinned ids (deepseek-v4-flash:0731,
   // deepseek-v4-pro:0813) if a run needs to be reproducible against one
