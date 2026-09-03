@@ -1,6 +1,6 @@
 from typing import Dict, Any, List
 from snodo.engine.state import LoopStage, LoopState, _build_audit_results
-from snodo.core.interfaces import ValidatorResult, ExecutionError
+from snodo.core.interfaces import ValidatorResult, ExecutionError, NoFileOperationsError
 from snodo.coders.base import AdapterError, SnodoMutationError, TurnBudgetExhausted
 from snodo.infrastructure.tokens import TokenStoreError
 from snodo.engine.policy import PolicyAction, policy_decision_to_dict
@@ -300,6 +300,26 @@ class ValidationNodeMixin:
                 }
                 self._audit("execution_failed", {
                     "op": "execution_failed",
+                    "task_ref": loop_state.task.id,
+                    "error": str(e),
+                })
+                self._auto_write_failure_context(loop_state, [])
+                return self._state_to_dict(loop_state)
+            except NoFileOperationsError as e:
+                # The coder completed successfully (exit 0) but produced no
+                # file operations or changes. This is a nameable blocker halt
+                # (``no_file_operations``), not an engine failure
+                # (``internal_error``): the operator is told to revise the spec
+                # or fix the coder configuration (Fixes #203).
+                loop_state.is_blocked = True
+                loop_state.halt_type = "no_file_operations"
+                loop_state.constraint_violations.append(str(e))
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "skipped",
+                    "reason": str(e),
+                }
+                self._audit("no_file_operations", {
+                    "op": "no_file_operations",
                     "task_ref": loop_state.task.id,
                     "error": str(e),
                 })

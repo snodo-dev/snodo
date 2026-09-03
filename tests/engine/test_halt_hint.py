@@ -112,3 +112,17 @@ class TestBlockerHintContent:
         assert "--coder" in hint
         assert "internal" not in hint
         assert "inspect the logs" not in hint
+
+    def test_no_file_operations_is_spec_and_config(self):
+        """A coder that produced no file operations is a spec or config problem, not code (Fixes #203)."""
+        assert _blocker_fix_targets("no_file_operations", "unknown", None) == ["spec", "config"]
+
+    def test_no_file_operations_hint_names_spec_and_coder_not_code(self):
+        """A no-file-operations blocker hint names spec and coder configuration, not code (Fixes #203)."""
+        hint = _build_hint("blocker", "no_file_operations", "execute", None)
+        assert "Revise the task spec" in hint
+        assert "coder configuration" in hint
+        assert "--coder" in hint
+        assert "Fix the produced code" not in hint
+        assert "internal" not in hint
+        assert "inspect the logs" not in hint

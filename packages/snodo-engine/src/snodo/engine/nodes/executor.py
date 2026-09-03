@@ -4,7 +4,7 @@ FILE: snodo/engine/nodes/executor.py
 """
 
 from typing import Dict, Any, List, Optional, Union
-from snodo.core.interfaces import Task, TaskSpec, ExecutionError
+from snodo.core.interfaces import Task, TaskSpec, ExecutionError, NoFileOperationsError
 from snodo.coders.base import AdapterError, SnodoMutationError, TurnBudgetExhausted
 from snodo.infrastructure.tokens import ValidationToken
 from snodo.coders import LiteLLMAdapter, MockAdapter
@@ -67,7 +67,7 @@ class ExecutorMixin:
             # coder produce observable work — a no-op run must fail loudly on
             # every adapter, not be downgraded to an audit note on some
             # (docs/architecture/coder-adapter-contract.md §4, #68).
-            raise ExecutionError("Coder produced no file operations")
+            raise NoFileOperationsError("Coder produced no file operations")
         return artifact_paths
 
     def _commit_artifacts(self, git_mcp: Optional[Any], coder: Any, artifact_paths: List[str], task: Task) -> List[str]:

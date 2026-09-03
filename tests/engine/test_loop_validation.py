@@ -634,10 +634,11 @@ class TestExecutionFailureReporting:
         }
 
     def test_execute_failure_is_internal_error_and_skips_post_validation(self):
+        """A genuine internal engine fault raises ExecutionError and halts as internal_error."""
         from snodo.core.interfaces import ExecutionError
 
         def failing_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
-            raise ExecutionError("coder produced nothing")
+            raise ExecutionError("unexpected engine internal fault")
 
         builder = self._builder(failing_executor)
         result = builder.build_graph().compile().invoke(self._state())
@@ -651,7 +652,39 @@ class TestExecutionFailureReporting:
         assert payload["final_decision"] == "internal_error"
         # The failure reason reaches the top-level reason.
         assert payload["reason"] is not None
-        assert "coder produced nothing" in payload["reason"]
+        assert "unexpected engine internal fault" in payload["reason"]
+        # Hint points to internal error
+        assert "internal" in payload["hint"]
+        # Post-validation was skipped, not passed.
+        assert payload["post_validation"]["outcome"] == "skipped"
+
+    def test_no_file_operations_is_blocker_not_internal_error(self):
+        """A coder that ran fine and produced no file operations halts as
+        no_file_operations (canonical blocker), not internal_error (Fixes #203)."""
+        from snodo.core.interfaces import NoFileOperationsError
+
+        def no_op_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
+            raise NoFileOperationsError("Coder produced no file operations")
+
+        builder = self._builder(no_op_executor)
+        result = builder.build_graph().compile().invoke(self._state())
+
+        assert result["is_blocked"] is True
+        assert result["halt_type"] == "no_file_operations"
+
+        payload = result["metadata"]["halt_payload"]
+        assert payload["raw_halt_type"] == "blocker"
+        assert payload["halt_type"] == "blocker"
+        assert payload["final_decision"] == "blocker"
+        assert payload["status"] == "blocked"
+        assert payload["reason"] is not None
+        assert "Coder produced no file operations" in payload["reason"]
+        # The hint names spec and coder configuration, and not code or internal logs
+        assert "Revise the task spec" in payload["hint"]
+        assert "coder configuration" in payload["hint"]
+        assert "Fix the produced code" not in payload["hint"]
+        assert "internal" not in payload["hint"]
+        assert "inspect the logs" not in payload["hint"]
         # Post-validation was skipped, not passed.
         assert payload["post_validation"]["outcome"] == "skipped"
 

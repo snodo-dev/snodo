@@ -17,6 +17,10 @@ class ExecutionError(Exception):
     """Task execution produced no usable artifacts."""
 
 
+class NoFileOperationsError(ExecutionError):
+    """The coder completed successfully but produced no file operations."""
+
+
 class Coder(ABC):
     """Implements tasks. Can be LLM or human or traditional tooling.
 
