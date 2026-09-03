@@ -541,10 +541,9 @@ def _create_multi_task_wave_plan(planner: PlannerMCP, name: str = "parallel_plan
 
 
 def test_concurrent_wave_tasks_run_in_parallel_and_both_merge(plan_project_env):
-    """A wave with two independent tasks under a limit of two runs them concurrently and both complete."""
-    import threading
-    import time
+    """A wave with two independent tasks under a limit of two runs them concurrently as separate jobs and both complete."""
     from snodo.infrastructure.config import LlmConfig, CoderConfig
+    from snodo.jobs import JobManager
 
     planner = PlannerMCP(plan_project_env)
     plan_name, _, _ = _create_multi_task_wave_plan(planner, "concurrent_plan")
@@ -570,35 +569,171 @@ disagreement_policy: "unanimous"
 
     args = _make_plan_args(plan_name)
 
-    lock = threading.Lock()
+    submitted_jobs = {}
     active = 0
     max_active = 0
-    completed = []
 
-    def mock_execute_task(a, protocol, task, model):
+    def mock_submit(self, task_args):
         nonlocal active, max_active
-        with lock:
-            active += 1
-            if active > max_active:
-                max_active = active
-        time.sleep(0.05)
-        with lock:
-            active -= 1
-            completed.append(task.id)
-        return 0
+        job_id = f"j_{len(submitted_jobs) + 1:04x}"
+        active += 1
+        if active > max_active:
+            max_active = active
+        submitted_jobs[job_id] = task_args
+        return job_id
+
+    def mock_get_status(self, job_id):
+        nonlocal active
+        return {
+            "status": "completed",
+            "exit_code": 0,
+            "id": job_id,
+            "task": submitted_jobs.get(job_id, {}),
+        }
 
     custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
     with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
-        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
-            result = _run_plan(args)
+        with patch.object(JobManager, "submit", mock_submit):
+            with patch.object(JobManager, "get_status", mock_get_status):
+                result = _run_plan(args)
 
     assert result == 0
     assert max_active == 2
-    assert sorted(completed) == ["task_1_a", "task_1_b"]
+    assert len(submitted_jobs) == 2
+    tasks_in_jobs = {args["task_id"] for args in submitted_jobs.values()}
+    assert tasks_in_jobs == {"task_1_a", "task_1_b"}
 
     status = planner.get_status(plan_name)
     assert status["tasks"]["task_1_a"]["status"] == "completed"
     assert status["tasks"]["task_1_b"]["status"] == "completed"
+
+
+def test_concurrent_wave_tasks_run_as_separate_jobs_in_filesystem(plan_project_env):
+    """Concurrent wave tasks spawn separate job directories with their own task specs."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+    from snodo.jobs import JobManager
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "jobs_fs_plan")
+
+    protocol_content = """
+protocol_id: "concurrent_p"
+name: "Concurrent Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+    concurrency: 2
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (plan_project_env / ".snodo" / "protocol.yml").write_text(protocol_content)
+
+    args = _make_plan_args(plan_name)
+
+    submitted_job_ids = []
+
+    real_submit = JobManager.submit
+
+    def tracking_submit(self, task_args):
+        with patch("snodo.infrastructure.worktree.create_worktree", return_value=plan_project_env):
+            with patch("snodo.jobs.runner.spawn_background", return_value=99999):
+                job_id = real_submit(self, task_args)
+                submitted_job_ids.append(job_id)
+                # Write a completed state so polling sees it finished
+                self._save_state(self._job_dir(job_id), {
+                    "status": "completed",
+                    "exit_code": 0,
+                    "pid": 99999,
+                })
+                return job_id
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch.object(JobManager, "submit", tracking_submit):
+            result = _run_plan(args)
+
+    assert result == 0
+    assert len(submitted_job_ids) == 2
+    assert submitted_job_ids[0] != submitted_job_ids[1]
+
+    # Verify each job exists in .snodo/jobs/ with task.json
+    manager = JobManager(str(plan_project_env))
+    for j_id in submitted_job_ids:
+        job_dir = manager.jobs_dir / j_id
+        assert job_dir.is_dir()
+        task_info = manager._load_task(job_dir)
+        assert task_info["task_id"] in ("task_1_a", "task_1_b")
+
+
+def test_task_output_is_retrievable_per_task_after_wave(plan_project_env):
+    """A task's output logs are isolated and retrievable per task/job after wave execution."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+    from snodo.jobs import JobManager
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "logs_plan")
+
+    protocol_content = """
+protocol_id: "concurrent_p"
+name: "Concurrent Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+    concurrency: 2
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (plan_project_env / ".snodo" / "protocol.yml").write_text(protocol_content)
+
+    args = _make_plan_args(plan_name)
+
+    submitted_job_ids = []
+    real_submit = JobManager.submit
+
+    def tracking_submit(self, task_args):
+        with patch("snodo.infrastructure.worktree.create_worktree", return_value=plan_project_env):
+            with patch("snodo.jobs.runner.spawn_background", return_value=99999):
+                job_id = real_submit(self, task_args)
+                submitted_job_ids.append(job_id)
+                # Write stdout log specific to this task
+                job_dir = self._job_dir(job_id)
+                (job_dir / "stdout.log").write_text(f"Output log for {task_args['task_id']}\n")
+                (job_dir / "stderr.log").write_text(f"Error log for {task_args['task_id']}\n")
+                self._save_state(job_dir, {
+                    "status": "completed",
+                    "exit_code": 0,
+                    "pid": 99999,
+                })
+                return job_id
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch.object(JobManager, "submit", tracking_submit):
+            result = _run_plan(args)
+
+    assert result == 0
+    manager = JobManager(str(plan_project_env))
+    for j_id in submitted_job_ids:
+        task_info = manager._load_task(manager._job_dir(j_id))
+        tid = task_info["task_id"]
+        stdout_log = manager.get_logs(j_id, stream="stdout")
+        assert f"Output log for {tid}" in stdout_log
+        stderr_log = manager.get_logs(j_id, stream="stderr")
+        assert f"Error log for {tid}" in stderr_log
 
 
 def test_sequential_wave_tasks_under_limit_one(plan_project_env):
@@ -645,29 +780,19 @@ def test_sequential_wave_tasks_under_limit_one(plan_project_env):
 
 def test_lower_of_mode_ceiling_and_config_capacity_wins(plan_project_env):
     """The effective concurrency limit is the smaller of mode ceiling and config capacity."""
-    import threading
-    import time
     from snodo.infrastructure.config import LlmConfig, CoderConfig
+    from snodo.jobs import JobManager
 
     planner = PlannerMCP(plan_project_env)
 
-    # 1. Mode ceiling = 1, Config capacity = 3 -> effective = 1
+    # 1. Mode ceiling = 1, Config capacity = 3 -> effective = 1 (sequential)
     plan_name, _, _ = _create_multi_task_wave_plan(planner, "lower_limit_1")
     args = _make_plan_args(plan_name)
 
-    lock = threading.Lock()
-    max_active = 0
-    active = 0
+    executed_seq = []
 
     def mock_execute_task(a, protocol, task, model):
-        nonlocal active, max_active
-        with lock:
-            active += 1
-            if active > max_active:
-                max_active = active
-        time.sleep(0.02)
-        with lock:
-            active -= 1
+        executed_seq.append(task.id)
         return 0
 
     cfg_3 = LlmConfig(coder=CoderConfig(concurrency=3))
@@ -675,9 +800,9 @@ def test_lower_of_mode_ceiling_and_config_capacity_wins(plan_project_env):
         with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
             result = _run_plan(args)
     assert result == 0
-    assert max_active == 1
+    assert executed_seq == ["task_1_a", "task_1_b"]
 
-    # 2. Mode ceiling = 3, Config capacity = 1 -> effective = 1
+    # 2. Mode ceiling = 3, Config capacity = 1 -> effective = 1 (sequential)
     protocol_content = """
 protocol_id: "ceil_3_p"
 name: "Ceiling 3 Protocol"
@@ -700,32 +825,46 @@ disagreement_policy: "unanimous"
     plan_name2, _, _ = _create_multi_task_wave_plan(planner, "lower_limit_2")
     args2 = _make_plan_args(plan_name2)
 
-    max_active = 0
-    active = 0
+    executed_seq2 = []
+
+    def mock_execute_task2(a, protocol, task, model):
+        executed_seq2.append(task.id)
+        return 0
+
     cfg_1 = LlmConfig(coder=CoderConfig(concurrency=1))
     with patch("snodo.infrastructure.config.load_llm_config", return_value=cfg_1):
-        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task2):
             result = _run_plan(args2)
     assert result == 0
-    assert max_active == 1
+    assert executed_seq2 == ["task_1_a", "task_1_b"]
 
-    # 3. Mode ceiling = 3, Config capacity = 2 -> effective = 2
+    # 3. Mode ceiling = 3, Config capacity = 2 -> effective = 2 (concurrent jobs)
     plan_name3, _, _ = _create_multi_task_wave_plan(planner, "lower_limit_3")
     args3 = _make_plan_args(plan_name3)
 
-    max_active = 0
-    active = 0
+    submitted = []
+
+    def mock_submit(self, task_args):
+        job_id = f"j_test_{len(submitted)}"
+        submitted.append(task_args["task_id"])
+        return job_id
+
+    def mock_get_status(self, job_id):
+        return {"status": "completed", "exit_code": 0}
+
     cfg_2 = LlmConfig(coder=CoderConfig(concurrency=2))
     with patch("snodo.infrastructure.config.load_llm_config", return_value=cfg_2):
-        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
-            result = _run_plan(args3)
+        with patch.object(JobManager, "submit", mock_submit):
+            with patch.object(JobManager, "get_status", mock_get_status):
+                result = _run_plan(args3)
     assert result == 0
-    assert max_active == 2
+    assert sorted(submitted) == ["task_1_a", "task_1_b"]
 
 
 def test_failing_task_does_not_prevent_siblings_from_completing(plan_project_env):
     """A failing task in a wave fails alone and does not prevent its siblings from completing."""
     from snodo.infrastructure.config import LlmConfig, CoderConfig
+    from snodo.jobs import JobManager
 
     planner = PlannerMCP(plan_project_env)
     plan_name, _, _ = _create_multi_task_wave_plan(planner, "fail_plan")
@@ -751,15 +890,24 @@ disagreement_policy: "unanimous"
 
     args = _make_plan_args(plan_name)
 
-    def mock_execute_task(a, protocol, task, model):
-        if task.id == "task_1_a":
-            return 1  # task 1.a fails
-        return 0  # task 1.b succeeds
+    submitted = {}
+
+    def mock_submit(self, task_args):
+        job_id = f"j_fail_{task_args['task_id']}"
+        submitted[job_id] = task_args
+        return job_id
+
+    def mock_get_status(self, job_id):
+        task_info = submitted.get(job_id, {})
+        if task_info.get("task_id") == "task_1_a":
+            return {"status": "failed", "exit_code": 1, "error": "test failure"}
+        return {"status": "completed", "exit_code": 0}
 
     custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
     with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
-        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
-            result = _run_plan(args)
+        with patch.object(JobManager, "submit", mock_submit):
+            with patch.object(JobManager, "get_status", mock_get_status):
+                result = _run_plan(args)
 
     assert result == 1  # Plan reports failure because task_1_a failed
 
@@ -804,4 +952,5 @@ disagreement_policy: "unanimous"
     assert result == 1
     err = capsys.readouterr().err
     assert "incompatible with concurrent wave execution" in err
+
 

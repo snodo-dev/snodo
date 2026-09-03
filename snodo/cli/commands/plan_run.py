@@ -194,6 +194,129 @@ def _should_skip_task(task_id, tasks_status, interactive) -> bool:
     return False
 
 
+def _execute_wave_tasks_concurrent(
+    planner, args, protocol, model, wave_id, tasks_to_run: list, effective_concurrency: int
+) -> bool:
+    """Execute wave tasks concurrently via JobManager background job dispatch.
+
+    Dispatches tasks as isolated background processes (up to effective_concurrency
+    at a time) under .snodo/jobs/<job_id>, waits for all tasks to complete,
+    updates planner status, and ensures sibling tasks run to completion even if
+    one fails.
+
+    Returns:
+        True if all tasks succeeded, False if any task failed or blocked.
+    """
+    import time
+    from snodo.jobs import JobManager, JobError, TERMINAL_STATUSES
+    from snodo.coders import resolve_coder_name
+    from snodo.infrastructure.state import read_state
+
+    project_root = str(planner.project_root)
+    manager = JobManager(project_root)
+
+    state = read_state(project_root)
+    mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
+    mode_obj = protocol.get_mode(mode)
+    mode_coder = getattr(mode_obj, "coder", None) if mode_obj else None
+    coder = resolve_coder_name(
+        model=model,
+        mode_coder=mode_coder,
+        cli_coder=getattr(args, "coder", None),
+        use_mock=getattr(args, "mock", False),
+    )
+
+    wave_failed = False
+    active_jobs: dict[str, str] = {}  # job_id -> task_id
+    pending_tasks = list(tasks_to_run)
+
+    def _poll_active():
+        nonlocal wave_failed
+        for j_id, t_id in list(active_jobs.items()):
+            try:
+                st = manager.get_status(j_id)
+                status = st.get("status")
+                if status in TERMINAL_STATUSES:
+                    exit_code = st.get("exit_code")
+                    if status == "completed" and exit_code == 0:
+                        planner.update_status(args.plan, t_id, "completed")
+                        print(f"  [{t_id}] completed (job {j_id})")
+                    else:
+                        planner.update_status(args.plan, t_id, "blocked")
+                        err_msg = st.get("error") or "execution failed"
+                        print(f"  [{t_id}] FAILED (job {j_id}): {err_msg}", file=sys.stderr)
+                        wave_failed = True
+                    active_jobs.pop(j_id, None)
+            except Exception as e:
+                planner.update_status(args.plan, t_id, "blocked")
+                print(f"  [{t_id}] ERROR checking job {j_id}: {e}", file=sys.stderr)
+                wave_failed = True
+                active_jobs.pop(j_id, None)
+
+    for task_id in pending_tasks:
+        wave_dir = planner.plans_dir / args.plan / f"wave_{wave_id}"
+        spec_file = wave_dir / f"{task_id}_task.md"
+        if not spec_file.exists():
+            planner.update_status(args.plan, task_id, "blocked")
+            print(f"  [{task_id}] ERROR: spec file not found", file=sys.stderr)
+            wave_failed = True
+            continue
+
+        spec = spec_file.read_text()
+        tasks_status = planner.get_status(args.plan).get("tasks", {})
+        is_retry = False
+        if _task_is_blocked(tasks_status, task_id):
+            decision = _plan_retry_decision(planner, args, protocol, task_id)
+            if decision == "exhausted":
+                print(f"  [{task_id}] not re-executed (max_retries reached)")
+                wave_failed = True
+                continue
+            if decision == "retry":
+                is_retry = True
+                print(f"  [{task_id}] resuming as retry (failure context found)")
+            else:
+                print(f"  [{task_id}] no failure context found; running fresh")
+
+        planner.update_status(args.plan, task_id, "in_progress")
+
+        task_args = {
+            "task_id": task_id,
+            "description": spec,
+            "protocol": args.protocol,
+            "model": model,
+            "coder": coder,
+            "mode": mode,
+            "mock": getattr(args, "mock", False),
+            "verbose": getattr(args, "verbose", False),
+            "no_isolation": getattr(args, "no_isolation", False),
+            "cwd": project_root,
+        }
+        if is_retry:
+            task_args["retry"] = task_id
+        if getattr(args, "resume", None):
+            task_args["resume"] = args.resume
+
+        try:
+            job_id = manager.submit(task_args)
+            active_jobs[job_id] = task_id
+            print(f"  [{task_id}] executing (job {job_id})...")
+        except (ValueError, JobError) as e:
+            planner.update_status(args.plan, task_id, "blocked")
+            print(f"  [{task_id}] ERROR submitting job: {e}", file=sys.stderr)
+            wave_failed = True
+            continue
+
+        while len(active_jobs) >= effective_concurrency:
+            time.sleep(0.05)
+            _poll_active()
+
+    while active_jobs:
+        time.sleep(0.05)
+        _poll_active()
+
+    return not wave_failed
+
+
 def _execute_waves(waves, planner, args, protocol, model,
                    all_waves, interactive, effective_concurrency: int = 1) -> bool:
     """Execute waves in order, respecting dependencies and concurrency limits.
@@ -226,33 +349,16 @@ def _execute_waves(waves, planner, args, protocol, model,
         if not tasks_to_run:
             continue
 
-        wave_failed = False
         if effective_concurrency <= 1 or len(tasks_to_run) <= 1:
             for task_id in tasks_to_run:
                 if not _execute_wave_task(planner, args, protocol, model, wave_id, task_id):
-                    wave_failed = True
+                    has_failed_or_blocked = True
         else:
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-
-            with ThreadPoolExecutor(max_workers=effective_concurrency) as executor:
-                future_to_task = {
-                    executor.submit(
-                        _execute_wave_task, planner, args, protocol, model, wave_id, task_id
-                    ): task_id
-                    for task_id in tasks_to_run
-                }
-                for future in as_completed(future_to_task):
-                    task_id = future_to_task[future]
-                    try:
-                        success = future.result()
-                        if not success:
-                            wave_failed = True
-                    except Exception as e:
-                        print(f"  [{task_id}] EXCEPTION: {e}", file=sys.stderr)
-                        wave_failed = True
-
-        if wave_failed:
-            has_failed_or_blocked = True
+            success = _execute_wave_tasks_concurrent(
+                planner, args, protocol, model, wave_id, tasks_to_run, effective_concurrency
+            )
+            if not success:
+                has_failed_or_blocked = True
 
     return has_failed_or_blocked
 
