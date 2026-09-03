@@ -100,7 +100,7 @@ All 21 event types are transmitted.
 | `task_classified` | task_ref, flow_type, wave_id, task_summary |
 | `task_complete` | task_ref, artifacts, session_id |
 | `task_merged` | task_ref, branch, merge_sha, spec, session_id |
-| `halt` | task_ref, reason, blocker_validators |
+| `halt` | task_ref, reason, blocker_validators, halt_type, final_decision, raw_halt_type |
 | `transition` | from_mode, to_mode, task_ref |
 | `token_consumed` | task_ref, session_id |
 | `post_validation_route` | decision, task_ref |
