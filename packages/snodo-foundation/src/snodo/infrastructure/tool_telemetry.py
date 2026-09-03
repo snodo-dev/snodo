@@ -105,7 +105,10 @@ def _persist_drop(project_root: str, drop_event: dict) -> None:
             if not isinstance(drops, list):
                 drops = []
             drops.append(drop_event)
-            data["drops"] = drops
+            # Cap the persisted file at the same bound as the in-process list so
+            # a run dropping every record cannot turn the whole-file rewrite in
+            # atomic_update_json quadratic against the run it observes.
+            data["drops"] = drops[-_MAX_DROPPED_RECORDS:]
 
         atomic_update_json(root_path / ".snodo", "telemetry_drops.json", _update_global_drops)
     except Exception as e:

@@ -226,6 +226,35 @@ class TestToolTelemetrySink:
         assert json_out["tool_telemetry_summary"]["path_miss_rate"]["misses"] == 1
         assert json_out["tool_telemetry_summary"]["submit_size"]["median_bytes"] == 1024
 
+    def test_drop_file_stops_growing_at_cap(self, tmp_path, monkeypatch):
+        """.snodo/telemetry_drops.json is bounded by the in-process cap (Refs #206).
+
+        A run that drops every record must not turn the whole-file rewrite in
+        atomic_update_json into a quadratic cost against the run it observes.
+        The persisted global drop list stops growing at _MAX_DROPPED_RECORDS.
+        """
+        from snodo.infrastructure.tool_telemetry import (
+            _MAX_DROPPED_RECORDS,
+            persist_tool_telemetry,
+            reset_dropped_telemetry,
+        )
+
+        reset_dropped_telemetry()
+        monkeypatch.setenv("SNODO_PROJECT_ROOT", str(tmp_path))
+
+        # Emit far more unresolvable records than the cap; each becomes a
+        # no_target_id drop appended to the global file.
+        for i in range(_MAX_DROPPED_RECORDS + 50):
+            persist_tool_telemetry("unknown", {"turn_index": i, "tool": "read_files"})
+
+        drops_file = tmp_path / ".snodo" / "telemetry_drops.json"
+        assert drops_file.exists()
+        persisted = json.loads(drops_file.read_text())
+        assert len(persisted["drops"]) == _MAX_DROPPED_RECORDS
+
+        # The cap keeps the most recent drops, not the first ones.
+        assert persisted["drops"][-1]["record"]["turn_index"] == _MAX_DROPPED_RECORDS + 49
+
     def test_unconfigured_project_root_is_silent_noop(self, monkeypatch):
         from snodo.infrastructure.tool_telemetry import persist_tool_telemetry
         from snodo.infrastructure.usage_tracker import UsageTracker
