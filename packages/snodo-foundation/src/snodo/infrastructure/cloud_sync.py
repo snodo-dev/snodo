@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from snodo.infrastructure.paths import resolve_home
+from snodo.project import scope_for_project_id
 
 _logger = logging.getLogger(__name__)
 
@@ -286,6 +287,7 @@ class CloudSyncDispatcher:
                 "timestamp": ev.timestamp,
                 "event_type": ev.event_type,
                 "project_id": project_id_str,
+                "scope": scope_for_project_id(project_id_str),
                 "data": ev.data,
                 "previous_hash": ev.previous_hash,
                 "event_hash": ev.event_hash,

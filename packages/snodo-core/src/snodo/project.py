@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
+from typing import Optional
 
 _logger = logging.getLogger(__name__)
 
@@ -131,22 +132,58 @@ def _is_system_root_or_temp(path: Path | str) -> bool:
     return False
 
 
+def scope_for_project_id(project_id: str) -> str:
+    """Derive the scope from a project id, so the two cannot disagree.
+
+    The scope is a property of the id, not a separate fact that can drift
+    from it. A ``local:`` id is a leaf — deliberately unreconcilable, and a
+    consumer must never merge it with anything. Any other id is globally
+    identifiable: a normalized remote URL, or an operator-supplied override.
+    Deriving scope here, from the id itself, is what lets a repository that
+    gains a remote promote its identity without a stale cached scope holding
+    it back.
+    """
+    if project_id.startswith("local:"):
+        return "local"
+    return "remote"
+
+
 def get_project_id(project_root: str) -> tuple[str, str]:
-    """Retrieve the project ID and scope, utilizing .snodo/project.json cache/override."""
+    """Retrieve the project ID and scope, following the repository's state.
+
+    A cached ``local:`` identity is re-resolved on every call so that a
+    repository which gains a remote promotes to the remote id. A cached
+    ``remote`` or ``override`` identity is stable and returned as-is:
+    promotion is one-way, and an operator-supplied override is never
+    second-guessed.
+    """
     project_json_path = Path(project_root) / ".snodo" / "project.json"
+    cached_pid: Optional[str] = None
+    cached_scope: Optional[str] = None
     if project_json_path.exists():
         try:
             with open(project_json_path) as f:
                 data = json.load(f)
-            pid = data.get("project.id") or data.get("id")
-            scope = data.get("scope", "local")
-            if pid:
-                return (pid, scope)
+            cached_pid = data.get("project.id") or data.get("id")
+            cached_scope = data.get("scope", "local")
         except Exception as e:
             _logger.debug("Failed to read cached project ID from %s: %s", project_json_path, e)
 
-    # Resolve, cache, and return
+    # A remote or override identity is stable: return it without re-resolving.
+    # Promotion is one-way, so a remote never demotes, and an override is the
+    # operator's explicit assertion.
+    if cached_pid and cached_scope in ("remote", "override"):
+        return (cached_pid, cached_scope)
+
+    # Resolve against the repository's actual state. A local (or missing)
+    # identity must follow the repo: if a remote now exists, promote.
     pid, scope = resolve_project_id(project_root)
+
+    # A repository that still has no remote keeps its cached local id — the
+    # UUID is stable across runs, not re-minted on every call.
+    if cached_pid and scope == "local":
+        pid = cached_pid
+
     cache_project_id(project_root, pid, scope)
     return (pid, scope)
 
