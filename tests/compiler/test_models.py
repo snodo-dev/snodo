@@ -531,3 +531,53 @@ def test_max_recovery_depth_mode_override():
     """Mode-level max_recovery_depth overrides protocol-level setting."""
     p = _recovery_depth_protocol(execution_depth=3, mode_depth=1)
     assert p.max_recovery_depth_for("producer") == 1
+
+
+# ========== per-mode concurrency configuration ==========
+
+def _concurrency_protocol(execution_concurrency=1, mode_concurrency=None, coder_config_concurrency=None):
+    from snodo.compiler.models import ExecutionConfig
+    coder_config = {}
+    if coder_config_concurrency is not None:
+        coder_config["concurrency"] = coder_config_concurrency
+    return Protocol(
+        protocol_id="conc_proto",
+        name="Concurrency Protocol",
+        modes=[
+            Mode(
+                mode_id="producer",
+                name="Producer",
+                tools=["edit"],
+                validators=["v1"],
+                concurrency=mode_concurrency,
+                coder_config=coder_config,
+            )
+        ],
+        validators=[Validator(validator_id="v1", validator_type="security")],
+        initial_mode="producer",
+        execution=ExecutionConfig(concurrency=execution_concurrency),
+    )
+
+
+def test_concurrency_defaults_to_protocol():
+    """Silent mode inherits protocol execution.concurrency (default 1)."""
+    p = _concurrency_protocol(execution_concurrency=1, mode_concurrency=None)
+    assert p.concurrency_for("producer") == 1
+
+
+def test_concurrency_mode_override():
+    """Mode-level concurrency overrides protocol-level setting."""
+    p = _concurrency_protocol(execution_concurrency=1, mode_concurrency=4)
+    assert p.concurrency_for("producer") == 4
+
+
+def test_concurrency_coder_config_override():
+    """coder_config['concurrency'] overrides when mode.concurrency is None."""
+    p = _concurrency_protocol(execution_concurrency=1, mode_concurrency=None, coder_config_concurrency=3)
+    assert p.concurrency_for("producer") == 3
+
+
+def test_unknown_mode_field_rejected_by_compiler():
+    """An unknown field on Mode is rejected by extra='forbid' instead of silently dropped."""
+    with pytest.raises(ValidationError):
+        Mode(mode_id="producer", name="Producer", unknown_ceiling_field=5)

@@ -652,22 +652,17 @@ class PlannerMCP:
         if not plan_dir.exists():
             raise PlannerError(f"Plan not found: {plan_name}")
 
-        status_file = plan_dir / "status.json"
-        if status_file.exists():
-            with open(status_file) as f:
-                status_data = json.load(f)
-        else:
-            status_data = {"tasks": {}}
+        from snodo.infrastructure.state import atomic_update_json
 
-        tasks = status_data.setdefault("tasks", {})
-        existing = tasks.get(task_id)
-        if isinstance(existing, dict):
-            existing["status"] = status
-        else:
-            tasks[task_id] = status
+        def _updater(data: dict) -> None:
+            tasks = data.setdefault("tasks", {})
+            existing = tasks.get(task_id)
+            if isinstance(existing, dict):
+                existing["status"] = status
+            else:
+                tasks[task_id] = status
 
-        with open(status_file, "w") as f:
-            json.dump(status_data, f, indent=2)
+        atomic_update_json(plan_dir, "status.json", _updater, strict=True)
 
     def recompute_depths(self, plan_name: str) -> dict:
         """Two-pass depth recompute for legacy plans.

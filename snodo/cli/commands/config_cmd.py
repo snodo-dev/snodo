@@ -230,6 +230,7 @@ _LLM_SETTABLE_KEYS = {
     "coder.max_tokens": int,
     "coder.max_tool_turns": int,
     "coder.timeout_seconds": int,
+    "coder.concurrency": int,
     "validator.max_tokens": int,
     "validator.max_tool_turns": int,
     "classifier.model": str,
