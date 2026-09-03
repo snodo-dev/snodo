@@ -28,7 +28,6 @@ are compared on equal footing.
 import json
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -125,12 +124,16 @@ def _drive_subprocess_cli_adapter(name: str, workspace: Path, spec: TaskSpec):
     cls = CODER_REGISTRY[name]
     coder = cls(model=f"{name}/test-model", workspace=workspace)
 
-    def fake_run(cmd, **kwargs):
+    def fake_popen(cmd, **kwargs):
         (workspace / "src").mkdir(parents=True, exist_ok=True)
         (workspace / _FEATURE_PATH).write_text(_FEATURE_CONTENT)
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
+        proc = mock.MagicMock()
+        proc.pid = 12345
+        proc.returncode = 0
+        proc.communicate.return_value = ("", "")
+        return proc
 
-    with mock.patch("subprocess.run", side_effect=fake_run):
+    with mock.patch("subprocess.Popen", side_effect=fake_popen):
         artifact = coder.implement(spec)
     return coder, artifact
 

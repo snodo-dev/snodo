@@ -155,17 +155,99 @@ class TestSubprocessTimeout:
         adapter = AGYAdapter(workspace=temp_workspace, timeout_seconds=120)
         assert adapter.timeout_seconds == 120
 
-        called_timeout = None
+        mock_proc = mock.MagicMock()
+        mock_proc.pid = 12345
+        mock_proc.returncode = 0
+        mock_proc.communicate.return_value = ("", "")
 
-        def fake_run(argv, cwd, timeout):
-            nonlocal called_timeout
-            called_timeout = timeout
-            return subprocess.CompletedProcess(argv, returncode=0, stdout="", stderr="")
-
-        with mock.patch("subprocess.run") as mock_run:
-            mock_run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
+        with mock.patch("subprocess.Popen", return_value=mock_proc):
             adapter._run_subprocess(["agy", "-p", "test"], str(temp_workspace))
-            assert mock_run.call_args.kwargs["timeout"] == 120
+            mock_proc.communicate.assert_called_once_with(timeout=120)
+
+    def test_timed_out_run_records_timeout_in_audit_and_terminal_facts(self, temp_workspace: Path):
+        """A timed-out run that produced work records the timeout in audit log and terminal facts."""
+        protocol = Protocol(
+            protocol_id="test-proto",
+            name="test-proto",
+            initial_mode="producer",
+            modes=[
+                Mode(mode_id="producer", name="producer", coder="agy"),
+            ],
+            validators=[
+                Validator(
+                    validator_id="v1",
+                    validator_type="test",
+                    description="test validator",
+                    prompt="test",
+                )
+            ],
+        )
+        task = Task(id="t1", spec="build feature")
+
+        adapter = AGYAdapter(workspace=temp_workspace)
+
+        def fake_run_timeout_after_commits(*args, **kwargs):
+            (temp_workspace / "module.py").write_text("def x(): pass\n")
+            subprocess.run(["git", "add", "module.py"], cwd=temp_workspace, check=True)
+            subprocess.run(["git", "commit", "-m", "feature commit"], cwd=temp_workspace, check=True)
+
+            raise subprocess.TimeoutExpired(
+                cmd=["agy"],
+                timeout=1800,
+                output="Created module.py, committed.",
+                stderr="",
+            )
+
+        audited_events: list[tuple[str, dict]] = []
+
+        class MockAuditLog:
+            def append_event(self, event_type, data):
+                audited_events.append((event_type, data))
+
+        with mock.patch.object(adapter, "_run_subprocess", side_effect=fake_run_timeout_after_commits):
+            builder = GraphBuilder(
+                protocol=protocol,
+                workspace_mcp=WorkspaceMCP(str(temp_workspace)),
+                git_mcp=GitMCP(str(temp_workspace)),
+                coder=adapter,
+                project_root=str(temp_workspace),
+                audit_log=MockAuditLog(),
+            )
+
+            state = {
+                "task": task.model_dump(),
+                "current_mode": "producer",
+                "validation_token": {"jwt": "valid_token"},
+                "is_blocked": False,
+                "artifacts": [],
+                "metadata": {},
+                "summary": "",
+            }
+            with mock.patch.object(builder._token_issuer, "verify_token", return_value=True):
+                with mock.patch.object(builder._token_issuer, "consume_token"):
+                    result = builder._execute_node(state)
+
+            # Coder timed out audit event was emitted
+            timeout_events = [e for e in audited_events if e[0] == "coder_timed_out"]
+            assert len(timeout_events) == 1
+            assert timeout_events[0][1]["timeout_seconds"] == 1800
+            assert timeout_events[0][1]["artifacts_count"] > 0
+
+            # Dispatch audit event recorded the timeout
+            dispatch_events = [e for e in audited_events if e[0] == "dispatch"]
+            assert len(dispatch_events) == 1
+            assert dispatch_events[0][1]["timed_out"] is True
+
+            # Complete node records timeout in task_complete audit and terminal halt_payload
+            complete_res = builder._complete_node(result)
+            task_complete_events = [e for e in audited_events if e[0] == "task_complete"]
+            assert len(task_complete_events) == 1
+            assert task_complete_events[0][1]["timed_out"] is True
+            assert task_complete_events[0][1]["timeout_seconds"] == 1800
+
+            halt_payload = complete_res["metadata"]["halt_payload"]
+            assert halt_payload["timed_out"] is True
+            assert halt_payload["timeout_seconds"] == 1800
 
     def test_operator_set_timeout_honoured_via_config_and_mode(self, temp_workspace: Path):
         """Timeout configured in LlmConfig and overridden in Mode.coder_config is honoured."""
