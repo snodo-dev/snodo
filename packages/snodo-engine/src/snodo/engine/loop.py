@@ -57,7 +57,7 @@ from snodo.engine.nodes.executor import ExecutorMixin  # noqa: E402
 from snodo.engine.nodes.governance import GovernanceNodeMixin  # noqa: E402
 from snodo.engine.nodes.state import SerdeMixin  # noqa: E402
 from snodo.engine.nodes.validation import ValidationNodeMixin  # noqa: E402
-from snodo.engine.nodes.writeback import WritebackMixin  # noqa: E402
+from snodo.engine.nodes.writeback import WritebackMixin, _canonical_halt  # noqa: E402
 
 
 def _resolve_model_for_role(config: dict, role: str, fallback: str) -> str:
@@ -707,11 +707,16 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             r.validator_id for r in loop_state.validation_results
             if r.severity == "blocker"
         ]
+        canonical_halt = _canonical_halt(loop_state.halt_type)
+        raw_halt = loop_state.halt_type or canonical_halt
         self._audit("halt", {
             "op": "halt",
             "task_ref": loop_state.task.id,
             "reason": "; ".join(loop_state.constraint_violations) or "blocker",
             "blocker_validators": blocker_validators,
+            "halt_type": canonical_halt,
+            "final_decision": canonical_halt,
+            "raw_halt_type": raw_halt,
         })
 
         loop_state.stage = LoopStage.BLOCKED
