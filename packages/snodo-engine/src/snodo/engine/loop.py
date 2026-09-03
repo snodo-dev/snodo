@@ -966,19 +966,26 @@ def build_protocol_graph(
     if coder is None:
         initial_mode_obj = protocol.get_mode(protocol.initial_mode)
         mode_coder = getattr(initial_mode_obj, "coder", None) if initial_mode_obj else None
-        resolved_model = model or DEFAULT_MODEL
+        mode_coder_config = getattr(initial_mode_obj, "coder_config", {}) if initial_mode_obj else {}
+        resolved_model = model or (mode_coder_config.get("model") if mode_coder_config else None) or DEFAULT_MODEL
         resolved_name = resolve_coder_name(
             model=resolved_model,
             mode_coder=mode_coder,
             cli_coder=coder_name,
             use_mock=use_mock_coder,
         )
+        coder_kwargs: Dict[str, Any] = {
+            "max_tokens": llm_cfg.coder.max_tokens,
+            "max_tool_turns": llm_cfg.coder.max_tool_turns,
+            "timeout_seconds": llm_cfg.coder.timeout_seconds,
+            "workspace_mcp": workspace_mcp,
+        }
+        if mode_coder_config:
+            coder_kwargs.update(mode_coder_config)
         coder = get_coder(
             resolved_name,
             model=resolved_model,
-            max_tokens=llm_cfg.coder.max_tokens,
-            max_tool_turns=llm_cfg.coder.max_tool_turns,
-            workspace_mcp=workspace_mcp,
+            **coder_kwargs,
         )
 
     custom_functions.pop("workspace_mcp", None)

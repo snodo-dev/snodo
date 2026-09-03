@@ -148,6 +148,7 @@ class LiteLLMAdapter(CoderAdapter):
         max_tool_turns: Optional[int] = None,
         workspace_mcp: Optional[Any] = None,
         progress_callback: Optional[Any] = None,
+        **kwargs: Any,
     ):
         self.model = model
         self.mcp_servers = mcp_servers or []

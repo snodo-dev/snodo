@@ -229,6 +229,7 @@ def _config_get(mgr: ConfigManager, key: str) -> int:
 _LLM_SETTABLE_KEYS = {
     "coder.max_tokens": int,
     "coder.max_tool_turns": int,
+    "coder.timeout_seconds": int,
     "validator.max_tokens": int,
     "validator.max_tool_turns": int,
     "classifier.model": str,
