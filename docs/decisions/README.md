@@ -15,6 +15,7 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [009](009-fastmcp-over-custom-transport.md) | FastMCP over custom MCP transport | 2025-05-25 | Task 4.5 (`transport.py`) |
 | [010](010-gitpython-over-subprocess.md) | GitPython over subprocess for git operations | 2025-05-25 | Task 4.7 (`git.py`) |
 | [011](011-typer-over-argparse.md) | Typer over argparse for CLI | 2025-05-25 | Task 4.8 (`main.py`) |
+| [012](012-project-identity-from-git-remote.md) | Project identity is the git remote, or nothing | 2026-09-02 | Identity resolution (`project.py`) |
 | [013](013-kleene-closure-auto-fix-recovery.md) | Kleene-closure auto-fix recovery loop | 2026-06-28 | Recovery driver (`closure.py`) |
 | [014](014-trusted-repository-threat-model.md) | Trusted-repository threat model and `init` consent gate | 2026-08-21 | Threat-model decision (`init_cmd.py`) |
 | [015](015-mcp-validation-four-outcome-contract.md) | Real validation on the MCP path + four-outcome `validate_task` | 2026-08-21 | `handle_validate_task` (`server.py`) |

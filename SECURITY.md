@@ -33,9 +33,15 @@ snodo is a local protocol engine. The primary security surface is:
 - API key storage via `snodo config`
 - Protocol-file trust boundary: protocol-authored shell commands such as
   `tooling.test_command` and `prepare_command`
+- Cloud sync egress: when `cloud.sync_enabled` is set, audit events are
+  transmitted to the configured endpoint. What leaves the machine, in what
+  shape, and what is never sent is documented in
+  [docs/specs/cloud-sync.md](docs/specs/cloud-sync.md). Sync is opt-in and off
+  by default; a run with it disabled makes no network call.
 
-If you find a bypass of the WF1 token gate or a way to extract stored API
-keys, please report it.
+If you find a bypass of the WF1 token gate, a way to extract stored API keys,
+or a path by which content named as never-transmitted reaches the network,
+please report it.
 
 ## Threat model
 
