@@ -107,22 +107,27 @@ def _get_completed_waves(waves: list, tasks_status: dict) -> set:
 
 
 def _format_duration(seconds: float) -> str:
-    """Format duration in seconds as a human-readable, monotonic wall-clock string."""
+    """Format duration in seconds as a human-readable string with s, m, h buckets."""
     if seconds < 0:
         seconds = 0.0
     if seconds < 60:
         return f"{seconds:.1f}s"
-    minutes = int(seconds // 60)
-    rem = seconds % 60
-    return f"{minutes}m {rem:.1f}s"
+    if seconds < 3600:
+        minutes = int(seconds // 60)
+        rem_s = seconds % 60
+        return f"{minutes}m {rem_s:.1f}s"
+    hours = int(seconds // 3600)
+    rem_minutes = int((seconds % 3600) // 60)
+    rem_s = seconds % 60
+    return f"{hours}h {rem_minutes}m {rem_s:.1f}s"
 
 
-def _format_time_hhmmss(ts: Optional[float]) -> str:
-    """Format a timestamp as HH:MM:SS."""
+def _format_timestamp(ts: Optional[float]) -> str:
+    """Format a timestamp as YYYY-MM-DD HH:MM:SS."""
     if not ts:
         return "N/A"
     try:
-        return time.strftime("%H:%M:%S", time.localtime(ts))
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
     except (TypeError, ValueError, OSError):
         return "N/A"
 
@@ -169,8 +174,8 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
             end_mono = time.monotonic()
             end_wall = time.time()
             dur_str = _format_duration(end_mono - start_mono)
-            start_str = _format_time_hhmmss(start_wall)
-            end_str = _format_time_hhmmss(end_wall)
+            start_str = _format_timestamp(start_wall)
+            end_str = _format_timestamp(end_wall)
             if result == 0:
                 planner.update_status(args.plan, task_id, "completed")
                 print(f"  [{task_id}] completed in {dur_str} (started {start_str}, finished {end_str})")
@@ -194,8 +199,8 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
     end_mono = time.monotonic()
     end_wall = time.time()
     dur_str = _format_duration(end_mono - start_mono)
-    start_str = _format_time_hhmmss(start_wall)
-    end_str = _format_time_hhmmss(end_wall)
+    start_str = _format_timestamp(start_wall)
+    end_str = _format_timestamp(end_wall)
 
     if result == 0:
         planner.update_status(args.plan, task_id, "completed")
@@ -285,12 +290,20 @@ def _execute_wave_tasks_concurrent(
                     exit_code = st.get("exit_code")
                     now_mono = time.monotonic()
                     now_wall = time.time()
-                    t_start_mono = task_start_mono.get(t_id, now_mono)
-                    t_start_wall = st.get("started_at") or task_start_wall.get(t_id, now_wall)
-                    t_end_wall = st.get("completed_at") or now_wall
-                    dur_str = _format_duration(now_mono - t_start_mono)
-                    start_str = _format_time_hhmmss(t_start_wall)
-                    end_str = _format_time_hhmmss(t_end_wall)
+                    job_started = st.get("started_at")
+                    job_completed = st.get("completed_at")
+                    t_start_wall = job_started or task_start_wall.get(t_id, now_wall)
+                    t_end_wall = job_completed or now_wall
+
+                    if job_started is not None and job_completed is not None:
+                        task_duration = max(0.0, float(job_completed) - float(job_started))
+                    else:
+                        t_start_mono = task_start_mono.get(t_id, now_mono)
+                        task_duration = max(0.0, now_mono - t_start_mono)
+
+                    dur_str = _format_duration(task_duration)
+                    start_str = _format_timestamp(t_start_wall)
+                    end_str = _format_timestamp(t_end_wall)
 
                     if status == "completed" and exit_code == 0:
                         planner.update_status(args.plan, t_id, "completed")
@@ -309,9 +322,10 @@ def _execute_wave_tasks_concurrent(
                 now_wall = time.time()
                 t_start_mono = task_start_mono.get(t_id, now_mono)
                 t_start_wall = task_start_wall.get(t_id, now_wall)
-                dur_str = _format_duration(now_mono - t_start_mono)
-                start_str = _format_time_hhmmss(t_start_wall)
-                end_str = _format_time_hhmmss(now_wall)
+                task_duration = max(0.0, now_mono - t_start_mono)
+                dur_str = _format_duration(task_duration)
+                start_str = _format_timestamp(t_start_wall)
+                end_str = _format_timestamp(now_wall)
 
                 planner.update_status(args.plan, t_id, "blocked")
                 print(

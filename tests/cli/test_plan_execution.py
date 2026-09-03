@@ -955,9 +955,9 @@ disagreement_policy: "unanimous"
 
 
 def test_wave_timing_concurrency_overlap_reported(plan_project_env, capsys):
-    """Under concurrency 2, reported wave total is shorter than the sum of task elapsed times."""
+    """Under concurrency 2, tasks overlap if and only if later start precedes earlier finish."""
     import re
-    import time
+    from datetime import datetime
     from snodo.infrastructure.config import LlmConfig, CoderConfig
     from snodo.jobs import JobManager
 
@@ -985,29 +985,25 @@ disagreement_policy: "unanimous"
 
     args = _make_plan_args(plan_name)
 
-    submitted = {}
+    # Base timestamp: 2026-09-03 12:00:00
+    t0 = 1788436800.0
+    job_timings = {
+        "task_1_a": {"started_at": t0, "completed_at": t0 + 10.0},
+        "task_1_b": {"started_at": t0 + 2.0, "completed_at": t0 + 12.0},
+    }
 
     def mock_submit(self, task_args):
         job_id = f"j_time_{task_args['task_id']}"
-        now = time.time()
-        submitted[job_id] = {
-            "task_args": task_args,
-            "created_at": now,
-            "started_at": now,
-        }
         return job_id
 
     def mock_get_status(self, job_id):
-        # Sleep a small amount to simulate task runtime
-        time.sleep(0.06)
-        info = submitted[job_id]
-        started = info["started_at"]
-        completed = started + 0.06
+        tid = "task_1_a" if "task_1_a" in job_id else "task_1_b"
+        timing = job_timings[tid]
         return {
             "status": "completed",
             "exit_code": 0,
-            "started_at": started,
-            "completed_at": completed,
+            "started_at": timing["started_at"],
+            "completed_at": timing["completed_at"],
         }
 
     custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
@@ -1019,23 +1015,36 @@ disagreement_policy: "unanimous"
     assert result == 0
     out = capsys.readouterr().out
 
-    # Check task lines have timings and timestamps
-    # e.g.: [task_1_a] completed (job j_time_task_1_a) in 0.1s (started 19:22:30, finished 19:22:30)
-    task_a_match = re.search(r"\[task_1_a\] completed \(job \S+\) in (\d+\.\d+)s \(started (\d{2}:\d{2}:\d{2}), finished (\d{2}:\d{2}:\d{2})\)", out)
+    # Check task lines have timings and YYYY-MM-DD HH:MM:SS timestamps
+    task_a_match = re.search(
+        r"\[task_1_a\] completed \(job \S+\) in (\d+\.\d+)s \(started (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}), finished (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)",
+        out,
+    )
     assert task_a_match is not None, f"task_1_a timing line not matched in output:\n{out}"
 
-    task_b_match = re.search(r"\[task_1_b\] completed \(job \S+\) in (\d+\.\d+)s \(started (\d{2}:\d{2}:\d{2}), finished (\d{2}:\d{2}:\d{2})\)", out)
+    task_b_match = re.search(
+        r"\[task_1_b\] completed \(job \S+\) in (\d+\.\d+)s \(started (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}), finished (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)",
+        out,
+    )
     assert task_b_match is not None, f"task_1_b timing line not matched in output:\n{out}"
 
     wave_match = re.search(r"Wave 1 total: (\d+\.\d+)s", out)
     assert wave_match is not None, f"Wave 1 total not matched in output:\n{out}"
 
-    task_a_elapsed = float(task_a_match.group(1))
-    task_b_elapsed = float(task_b_match.group(1))
-    wave_total = float(wave_match.group(1))
+    task_a_dur = float(task_a_match.group(1))
+    task_b_dur = float(task_b_match.group(1))
+    assert task_a_dur == 10.0
+    assert task_b_dur == 10.0
 
-    # Because tasks run in parallel with overlap, wave_total < task_a + task_b
-    assert wave_total < (task_a_elapsed + task_b_elapsed) + 0.05
+    start_a = datetime.strptime(task_a_match.group(2), "%Y-%m-%d %H:%M:%S")
+    finish_a = datetime.strptime(task_a_match.group(3), "%Y-%m-%d %H:%M:%S")
+    start_b = datetime.strptime(task_b_match.group(2), "%Y-%m-%d %H:%M:%S")
+    finish_b = datetime.strptime(task_b_match.group(3), "%Y-%m-%d %H:%M:%S")
+
+    # Assert interval intersection: later start precedes earlier finish
+    latest_start = max(start_a, start_b)
+    earliest_finish = min(finish_a, finish_b)
+    assert latest_start < earliest_finish, f"Intervals [{start_a}, {finish_a}] and [{start_b}, {finish_b}] do not overlap"
 
 
 def test_wave_timing_sequential_shape_identical(plan_project_env, capsys):
@@ -1061,12 +1070,16 @@ def test_wave_timing_sequential_shape_identical(plan_project_env, capsys):
     assert result == 0
     out = capsys.readouterr().out
 
-    # Check task lines have timings and timestamps in identical shape
-    # e.g.: [task_1_a] completed in 0.0s (started 19:22:30, finished 19:22:30)
-    task_a_match = re.search(r"\[task_1_a\] completed in (\d+\.\d+)s \(started (\d{2}:\d{2}:\d{2}), finished (\d{2}:\d{2}:\d{2})\)", out)
+    task_a_match = re.search(
+        r"\[task_1_a\] completed in (\d+\.\d+)s \(started (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}), finished (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)",
+        out,
+    )
     assert task_a_match is not None, f"task_1_a timing line not matched in output:\n{out}"
 
-    task_b_match = re.search(r"\[task_1_b\] completed in (\d+\.\d+)s \(started (\d{2}:\d{2}:\d{2}), finished (\d{2}:\d{2}:\d{2})\)", out)
+    task_b_match = re.search(
+        r"\[task_1_b\] completed in (\d+\.\d+)s \(started (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}), finished (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)",
+        out,
+    )
     assert task_b_match is not None, f"task_1_b timing line not matched in output:\n{out}"
 
     wave_match = re.search(r"Wave 1 total: (\d+\.\d+)s", out)
@@ -1096,8 +1109,40 @@ def test_wave_timing_failed_task_reported(plan_project_env, capsys):
     assert result == 1
     err = capsys.readouterr().err
 
-    fail_match = re.search(r"\[task_1_a\] FAILED in (\d+\.\d+)s \(started (\d{2}:\d{2}:\d{2}), finished (\d{2}:\d{2}:\d{2})\)", err)
+    fail_match = re.search(
+        r"\[task_1_a\] FAILED in (\d+\.\d+)s \(started (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}), finished (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)",
+        err,
+    )
     assert fail_match is not None, f"Failed task timing not matched in stderr:\n{err}"
+
+
+def test_format_duration_hours_bucket():
+    """_format_duration includes seconds, minutes, and hours buckets."""
+    from snodo.cli.commands.plan_run import _format_duration
+
+    assert _format_duration(7000.0) == "1h 56m 40.0s"
+    assert _format_duration(45.2) == "45.2s"
+    assert _format_duration(125.0) == "2m 5.0s"
+    assert _format_duration(3600.0) == "1h 0m 0.0s"
+    assert _format_duration(0.0) == "0.0s"
+    assert _format_duration(-5.0) == "0.0s"
+
+
+def test_format_timestamp_day_boundary():
+    """_format_timestamp includes YYYY-MM-DD and captures transitions across midnight."""
+    import time
+    from datetime import datetime
+    from snodo.cli.commands.plan_run import _format_timestamp
+
+    dt1 = datetime(2026, 9, 3, 22, 30, 0)
+    dt2 = datetime(2026, 9, 4, 2, 30, 0)
+    ts1 = time.mktime(dt1.timetuple())
+    ts2 = time.mktime(dt2.timetuple())
+
+    assert _format_timestamp(ts1) == "2026-09-03 22:30:00"
+    assert _format_timestamp(ts2) == "2026-09-04 02:30:00"
+    assert _format_timestamp(None) == "N/A"
+
 
 
 
