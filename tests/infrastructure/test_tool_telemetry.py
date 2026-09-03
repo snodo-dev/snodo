@@ -98,6 +98,20 @@ class TestToolTelemetrySink:
         # Must not raise.
         persist_tool_telemetry("unknown", {"turn_index": 1})
 
+    def test_telemetry_write_lock_failure_is_silent(self, tmp_path, monkeypatch):
+        """A telemetry write that cannot take its lock is still silent and does not raise."""
+        from unittest.mock import patch
+        from snodo.infrastructure.tool_telemetry import persist_tool_telemetry
+
+        project_root = str(tmp_path)
+        job_id = "j_telemetry_flock_fail"
+        _make_job_dir(project_root, job_id)
+        monkeypatch.setenv("SNODO_PROJECT_ROOT", project_root)
+
+        with patch("fcntl.flock", side_effect=OSError("Lock unavailable")):
+            # Telemetry must not raise when lock cannot be acquired
+            persist_tool_telemetry(job_id, {"turn_index": 1, "tool": "read_file"})
+
     def test_record_with_no_resolvable_id_discarded_and_discoverable(self, tmp_path, monkeypatch, caplog):
         import logging
         from types import SimpleNamespace
