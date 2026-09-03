@@ -194,6 +194,7 @@ def test_build_halt_payload_final_decision_equals_halt_type(sample_protocol, sam
         ("turn_budget_exhausted", "blocker"),
         ("execution_error", "blocker"),
         ("recovery_exhausted", "blocker"),
+        ("no_file_operations", "blocker"),
     ]
     for raw, canonical in cases:
         ls = LoopState(task=sample_task, current_mode="producer")
@@ -218,6 +219,7 @@ def test_halt_type_equals_raw_halt_type_for_every_outcome(sample_protocol, sampl
     for raw in (
         "escalated", "blocked", "validator_error", "internal_error",
         "constraint", "wf3", "max_iterations", "turn_budget_exhausted", "execution_error", "recovery_exhausted",
+        "no_file_operations",
     ):
         ls = LoopState(task=sample_task, current_mode="producer")
         ls.is_blocked = True

@@ -230,7 +230,7 @@ def _get_all_task_branches(project_root: str) -> dict:
             blocked_types = (
                 "blocker", "escalate", "validator_error", "internal_error",
                 "recovery_exhausted", "execution_error", "wf3", "constraint",
-                "head_not_moved", "max_iterations",
+                "head_not_moved", "no_file_operations", "max_iterations",
             )
             if (
                 halt_status == "blocked"

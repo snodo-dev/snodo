@@ -42,6 +42,7 @@ _CANONICAL_HALT = {
     "recovery_exhausted": "blocker",
     "recovery_stalled": "blocker",
     "head_not_moved": "blocker",
+    "no_file_operations": "blocker",
 }
 
 
@@ -103,6 +104,11 @@ def _blocker_fix_targets(
         # what must change (the adapter must actually commit), so this is a
         # code fix, not a spec or policy problem.
         return ["code"]
+    if halt_type == "no_file_operations":
+        # The coder completed successfully (exit 0) but produced no file
+        # operations. There is no produced code to fix; the fix targets are
+        # the task spec and the coder backend or its configuration (Fixes #203).
+        return ["spec", "config"]
     if phase == "post_execute":
         return ["code"]
     if any(getattr(r, "cited_criteria", None) for r in (results or [])):
