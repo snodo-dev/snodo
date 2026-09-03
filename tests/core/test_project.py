@@ -4,6 +4,7 @@ FILE: tests/core/test_project.py
 """
 
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from snodo.project import (
     get_project_id,
     normalize_remote_url,
     resolve_project_id,
+    scope_for_project_id,
 )
 
 
@@ -87,6 +89,78 @@ def test_get_project_id_caching_and_override():
         pid3, scope3 = get_project_id(tmpdir)
         assert pid3 == "override-project-identity"
         assert scope3 == "local"
+
+
+def test_scope_for_project_id():
+    """Scope is derived from the id, so the two cannot disagree."""
+    assert scope_for_project_id("local:6bd1d012554546c4b9462bfaaa4183d8") == "local"
+    assert scope_for_project_id("github.com/org/repo") == "remote"
+    assert scope_for_project_id("custom-override") == "remote"
+
+
+def test_get_project_id_promotes_when_remote_appears():
+    """A repository initialised without a remote promotes to the remote id once one exists."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(["git", "init", "-q"], cwd=tmpdir, check=True)
+
+        # First run: no remote -> local id, cached.
+        pid1, scope1 = get_project_id(tmpdir)
+        assert pid1.startswith("local:")
+        assert scope1 == "local"
+
+        # A remote appears after initialisation.
+        subprocess.run(
+            ["git", "remote", "add", "origin", "git@github.com:myorg/myrepo.git"],
+            cwd=tmpdir,
+            check=True,
+        )
+
+        # Next run resolves to the remote id, not the cached local id.
+        pid2, scope2 = get_project_id(tmpdir)
+        assert pid2 == "github.com/myorg/myrepo"
+        assert scope2 == "remote"
+
+        # The promotion is persisted.
+        project_json = Path(tmpdir) / ".snodo" / "project.json"
+        with open(project_json) as f:
+            data = json.load(f)
+        assert data["id"] == "github.com/myorg/myrepo"
+        assert data["scope"] == "remote"
+
+
+def test_get_project_id_keeps_local_id_across_runs():
+    """A remote-less repository keeps its local id across runs (no re-mint)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(["git", "init", "-q"], cwd=tmpdir, check=True)
+
+        pid1, scope1 = get_project_id(tmpdir)
+        pid2, scope2 = get_project_id(tmpdir)
+
+        assert pid1.startswith("local:")
+        assert scope1 == "local"
+        assert pid2 == pid1
+        assert scope2 == "local"
+
+
+def test_get_project_id_remote_never_demotes():
+    """A remote-scope project never demotes, even when the remote is removed."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(["git", "init", "-q"], cwd=tmpdir, check=True)
+        subprocess.run(
+            ["git", "remote", "add", "origin", "git@github.com:myorg/myrepo.git"],
+            cwd=tmpdir,
+            check=True,
+        )
+
+        pid1, scope1 = get_project_id(tmpdir)
+        assert pid1 == "github.com/myorg/myrepo"
+        assert scope1 == "remote"
+
+        subprocess.run(["git", "remote", "remove", "origin"], cwd=tmpdir, check=True)
+
+        pid2, scope2 = get_project_id(tmpdir)
+        assert pid2 == "github.com/myorg/myrepo"
+        assert scope2 == "remote"
 
 
 def test_cache_project_id():

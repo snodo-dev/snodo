@@ -381,7 +381,43 @@ class TestCloudSyncDispatcher:
         assert len(captured_body["events"]) == 2
         for ev_payload in captured_body["events"]:
             assert ev_payload["project_id"] == "github.com/snodo-dev/test-repo"
+            assert ev_payload["scope"] == "remote"
             assert ev_payload["event_type"] == "tool_call"
+
+    def test_post_batch_carries_scope_alongside_local_id(self):
+        """A local: project_id is transmitted with scope 'local' so a consumer can tell it apart."""
+        from unittest.mock import patch, MagicMock
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
+
+        dispatcher = CloudSyncDispatcher()
+        events = self._make_events(1)
+        events[0].project_id = "local:6bd1d012554546c4b9462bfaaa4183d8"
+
+        captured_body = None
+
+        def fake_post(url, content, headers, timeout):
+            nonlocal captured_body
+            captured_body = json.loads(content.decode())
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.text = "ok"
+            return resp
+
+        with patch("httpx.post", side_effect=fake_post):
+            outcome, reason, status = dispatcher._post_batch(
+                "sess_local_scope",
+                "/home/user/code/nfc-card-v2",
+                events,
+                "sndo_live_xxx",
+                "https://api.example.com",
+            )
+
+        assert outcome == "delivered"
+        assert captured_body is not None
+        assert len(captured_body["events"]) == 1
+        ev_payload = captured_body["events"][0]
+        assert ev_payload["project_id"] == "local:6bd1d012554546c4b9462bfaaa4183d8"
+        assert ev_payload["scope"] == "local"
 
     def test_network_error_never_raises(self):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher

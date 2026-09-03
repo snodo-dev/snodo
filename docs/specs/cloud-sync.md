@@ -36,6 +36,7 @@ a 2xx, so a failed batch re-sends rather than being lost.
       "timestamp":     "2026-09-02T21:50:01.701669+00:00",
       "event_type":    "task_merged",
       "project_id":    "local:6bd1d012554546c4b9462bfaaa4183d8",
+      "scope":         "local",
       "data":          {},
       "previous_hash": "9f2c...",
       "event_hash":    "sha256 over sequence|timestamp|event_type|project_id|data|previous_hash"
@@ -56,6 +57,13 @@ dropped by the transmit path until #202.
 field on the envelope; an earlier draft of #202 also sent `project_name` with
 the same value and it was removed. Consumers read `display_name`.
 
+`scope` is transmitted alongside `project_id` on every event. It is derived
+from the id itself (`scope_for_project_id`), so the two cannot disagree: a
+`local:` id carries `"local"`, anything else carries `"remote"`. Its purpose is
+to tell the consumer when *not* to reconcile — a `local` id is a leaf and must
+never be merged with anything, however many clones report the same
+`display_name`.
+
 ## Project identity
 
 Identity has three states and one of them is deliberately a dead end.
@@ -69,15 +77,10 @@ Two `local:` projects sharing a display name are two projects. That is the
 correct reading, not a duplicate to be merged.
 
 Promotion is one-way: a project acquires a remote and its id becomes the remote
-id. There is no demotion.
-
-`scope` is not currently transmitted. It should be, and its purpose is to tell
-the consumer when *not* to reconcile.
-
-Known defect: `get_project_id` reads the `.snodo/project.json` cache before
-resolving, so a repository initialised before it had a remote keeps its
-`local:` id even once the remote exists. The project becomes globally
-identifiable and its id does not follow.
+id. There is no demotion. `get_project_id` re-resolves a cached `local:` id on
+every call, so a repository initialised before it had a remote promotes to the
+remote id on the next run; a cached `remote` or `override` id is stable and
+never re-resolved.
 
 The decision governing all of this is cited in `project.py` and `audit.py` as
 ADR 012, which was never written.
@@ -153,7 +156,6 @@ Coming off the wire:
 
 Coming onto the wire:
 
-- `scope`, alongside `project_id`.
 - Protocol identity: `protocol_id` and a content hash, never the file itself.
   A receiver can currently see which validators ran but not which the protocol
   declared.
