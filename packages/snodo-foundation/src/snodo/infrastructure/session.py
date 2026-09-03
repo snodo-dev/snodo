@@ -17,7 +17,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
 from snodo.infrastructure.paths import resolve_home
-from snodo.project import get_project_id
+from snodo.project import cache_project_id, get_project_id
 
 _logger = logging.getLogger(__name__)
 
@@ -130,11 +130,17 @@ class SessionManager:
         rand_hex = secrets.token_hex(3)
         session_id = f"sess_{date_str}_{prefix}_{rand_hex}"
 
+        pid, scope = get_project_id(project_root)
+        # Creating a session is an act of establishing identity, not merely
+        # reading it: persist the resolved id so a remote-less project's local
+        # uuid survives between runs (get_project_id itself is read-only).
+        cache_project_id(project_root, pid, scope)
+
         session = SessionState(
             session_id=session_id,
             mode=mode,
             project_root=project_root,
-            project_id=get_project_id(project_root)[0],
+            project_id=pid,
             created_at=now,
             updated_at=now,
             checkpoint=Checkpoint(timestamp=now),

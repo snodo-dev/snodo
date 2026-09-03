@@ -486,6 +486,34 @@ def test_get_audit_log_resolves_default_project_id(tmp_path, monkeypatch):
         reset_global_audit_log()
 
 
+def test_get_audit_log_resolving_id_creates_no_project_file(tmp_path, monkeypatch):
+    """Resolving an id for audit labelling must not write .snodo/project.json.
+
+    A read-shaped call (get_audit_log -> _resolve_default_project_id ->
+    get_project_id) must not acquire a write side effect: establishing a
+    project's identity for labelling must not change the filesystem, even in a
+    directory that resolves as the project root but was never initialised.
+    """
+    from snodo.infrastructure.audit import get_audit_log, reset_global_audit_log
+
+    project_root = tmp_path / "uninitialised_project"
+    project_root.mkdir()
+    # A .snodo/ directory exists (so the root resolves) but no project.json.
+    (project_root / ".snodo").mkdir()
+
+    monkeypatch.setenv("SNODO_PROJECT_ROOT", str(project_root))
+    monkeypatch.setenv("SNODO_AUDIT_LOG", str(project_root / ".snodo" / "audit.log"))
+    reset_global_audit_log()
+    try:
+        log = get_audit_log()
+        # The id resolves (a local: uuid) for labelling...
+        assert log._project_id.startswith("local:")
+        # ...but no project.json may be written as a side effect.
+        assert not (project_root / ".snodo" / "project.json").exists()
+    finally:
+        reset_global_audit_log()
+
+
 def test_get_audit_log_singleton_project_id_hazard_resolved(tmp_path, monkeypatch):
     """An initial get_audit_log() call from a utility command updates if a later caller passes project_id."""
     from snodo.infrastructure.audit import get_audit_log, reset_global_audit_log
