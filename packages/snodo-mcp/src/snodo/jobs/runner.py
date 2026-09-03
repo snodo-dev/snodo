@@ -48,6 +48,17 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
     if task_args.get("verbose"):
         cmd.append("--verbose")
 
+    if task_args.get("no_isolation"):
+        cmd.append("--no-isolation")
+
+    retry = task_args.get("retry")
+    if retry:
+        cmd.extend(["--retry", retry])
+
+    resume = task_args.get("resume")
+    if resume:
+        cmd.extend(["--resume", resume])
+
     from_pr = task_args.get("from_pr")
     if from_pr is not None:
         cmd.extend(["--from-pr", str(from_pr)])
