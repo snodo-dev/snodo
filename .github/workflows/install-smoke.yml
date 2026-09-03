@@ -31,7 +31,7 @@ jobs:
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -58,12 +58,17 @@ jobs:
           exit 1
 
       - name: Report installed version
+        env:
+          # Never interpolate a workflow input directly into a run block: the
+          # value is attacker-controllable on a dispatch and would expand into
+          # shell code. Passed through the environment and quoted instead.
+          REQUESTED: ${{ inputs.version }}
         run: |
           set -euo pipefail
           "$RUNNER_TEMP/venv/bin/snodo" --version
-          if [ -n "${{ inputs.version }}" ]; then
-            "$RUNNER_TEMP/venv/bin/snodo" --version | grep -qF "${{ inputs.version }}" \
-              || { echo "::error::installed version is not ${{ inputs.version }}"; exit 1; }
+          if [ -n "${REQUESTED}" ]; then
+            "$RUNNER_TEMP/venv/bin/snodo" --version | grep -qF "${REQUESTED}" \
+              || { echo "::error::installed version is not ${REQUESTED}"; exit 1; }
           fi
 
       - name: Create a project
