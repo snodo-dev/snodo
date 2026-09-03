@@ -44,6 +44,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Reading a project's identity no longer writes a file. `get_project_id`
+  persisted as a side effect of resolving, and #202 made that path reachable
+  from the default audit log, so any command touching it could create
+  `.snodo/project.json` in whatever directory resolved as the project root —
+  including one the operator never initialised. A read-shaped call had acquired
+  a write side effect and become reachable from everywhere. Resolution is now
+  read-only; persisting an identity is an explicit step taken by `snodo init`
+  and by session creation, the two places that establish one.
+  (Fixes #207, Refs #205, Refs #202)
+
 - A coder that runs to completion and writes nothing is no longer reported as
   an engine failure. The executor raised a bare `ExecutionError`, which had no
   canonical mapping and so resolved to `internal_error`, telling the operator
