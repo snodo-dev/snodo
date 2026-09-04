@@ -141,14 +141,15 @@ no-op default test command ran and no tests were executed (no
 counting ungated projects or distinguishing a real pass from a placeholder
 must key on that outcome — an ungated run never carries `"pass"` (ADR 031).
 
-`project_announced` is emitted once per session by `SessionManager.create_session`
-(Fixes #214), where the project identity is already resolved. It carries the
-resolved `project_id`, its `scope`, and the `display_name` (the project's
-directory basename) so a consumer reading only the event stream can create the
-project row without inspecting the transport envelope. It is deliberately
-re-emitted on every session start — a consumer that joined late, lost a batch,
-or rebuilt from an advanced cursor still sees a project that is being worked
-on. The payload is identity, scope and display name only: no paths, no machine
+`project_announced` is emitted on session creation (`SessionManager.create_session`)
+and on session resume (`_resolve_session` in `run_cmd` when adopting an existing
+session or explicitly resuming; Fixes #214, #219), where the project identity is
+already resolved. It carries the resolved `project_id`, its `scope`, and the
+`display_name` (the project's directory basename) so a consumer reading only the
+event stream can create the project row without inspecting the transport
+envelope. It is deliberately re-emitted on every run — a consumer that joined late,
+lost a batch, or rebuilt from an advanced cursor still sees a project that is being
+worked on. The payload is identity, scope and display name only: no paths, no machine
 details. `display_name` remains on the sync envelope for now; removing it is a
 separate wire-trim.
 

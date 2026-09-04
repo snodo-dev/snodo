@@ -38,6 +38,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Announced project identity on session resume as well as session creation.
+  `_resolve_session` in `run_cmd` now emits `project_announced` alongside `session_resumed`
+  when adopting an existing active session or explicitly resuming via `--resume`, giving
+  per-run announcement cadence so existing projects announce their identity on subsequent
+  runs without changing the payload format or identity resolution. Updated `docs/specs/cloud-sync.md`
+  to reflect the per-run cadence. (Fixes #219)
+
 - Kept workstation findings out of the `readiness_checked` audit event payload.
   The audit payload transmits repository findings only and retains `workstation_findings_count`,
   preventing machine-specific binaries and environment variable names from entering the
