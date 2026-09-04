@@ -383,6 +383,43 @@ def task_show_command(args) -> int:
     if spec is None and isinstance(halt_entry, dict):
         spec = halt_entry.get("task_spec")
 
+    # Recover local operator diagnostic fields (e.g. output_tail) from local task/job state
+    output_tail = None
+    if isinstance(halt_entry, dict):
+        output_tail = halt_entry.get("output_tail")
+
+    if not output_tail:
+        task_state_file = Path(project_root) / ".snodo" / "tasks" / task_id / "state.json"
+        if task_state_file.is_file():
+            try:
+                import json
+                ts_data = json.loads(task_state_file.read_text())
+                if isinstance(ts_data, dict):
+                    output_tail = (ts_data.get("halt") or {}).get("output_tail")
+            except (OSError, ValueError, TypeError):
+                output_tail = None
+
+    if not output_tail:
+        jobs_dir = Path(project_root) / ".snodo" / "jobs"
+        if jobs_dir.is_dir():
+            try:
+                import json
+                for job_path in jobs_dir.iterdir():
+                    state_path = job_path / "state.json"
+                    if state_path.is_file():
+                        js_data = json.loads(state_path.read_text())
+                        if isinstance(js_data, dict):
+                            h = js_data.get("halt") or {}
+                            if h.get("task_id") == task_id or js_data.get("task_id") == task_id:
+                                if h.get("output_tail"):
+                                    output_tail = h.get("output_tail")
+                                    break
+            except (OSError, ValueError, TypeError):
+                output_tail = None
+
+    if output_tail and isinstance(halt_entry, dict):
+        halt_entry["output_tail"] = output_tail
+
     if json_out:
         from snodo.cli.json_output import emit_json, schema_name
         return emit_json({
@@ -408,7 +445,6 @@ def task_show_command(args) -> int:
         reason = halt_entry.get("reason") or halt_entry.get("blocker_reason")
         if reason:
             print(f"  reason:         {reason}")
-        output_tail = halt_entry.get("output_tail")
         if output_tail and output_tail not in (reason or ""):
             print(f"  output_tail:    {output_tail}")
         hint = halt_entry.get("hint")

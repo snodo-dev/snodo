@@ -67,11 +67,7 @@ class ExecutorMixin:
             # coder produce observable work — a no-op run must fail loudly on
             # every adapter, not be downgraded to an audit note on some
             # (docs/architecture/coder-adapter-contract.md §4, #68).
-            msg = "Coder produced no file operations"
-            output_tail = getattr(coder, "last_output_tail", "") or getattr(code_artifact, "metadata", {}).get("output_tail", "")
-            if output_tail:
-                msg += f": {output_tail}"
-            raise NoFileOperationsError(msg)
+            raise NoFileOperationsError("Coder produced no file operations")
         return artifact_paths
 
     def _commit_artifacts(self, git_mcp: Optional[Any], coder: Any, artifact_paths: List[str], task: Task) -> List[str]:

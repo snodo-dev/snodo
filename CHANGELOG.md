@@ -11,6 +11,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Kept coder closing output local and out of session checkpoint wire audit events.
+  `_auto_write_halt_payload` strips `output_tail` before saving to the session checkpoint
+  via `update_decision`, preventing coder stdout from being transmitted in `session_decision_updated`
+  audit events while preserving the full output tail in local state files (`.snodo/tasks/<task_id>/state.json`,
+  `.snodo/jobs/<job_id>/state.json`) and halt console output. `snodo task show` resolves `output_tail`
+  from local state files. (Fixes #213)
+
 - Preserved coder closing output on zero-file halt and distinct stream truncation.
   `SubprocessCoderAdapter` now keeps stdout and stderr distinct, truncates each on
   its own terms, and takes closing messages from stdout rather than whichever stream
