@@ -134,15 +134,32 @@ def test_ready_cmd_json_output(git_project: Path, capsys):
     assert any(f["id"].startswith("architecture_decisions") for f in data["findings"])
 
 
-def test_ready_cmd_audit_event_emission(git_project: Path, monkeypatch):
-    """Running 'snodo ready' logs a 'readiness_checked' audit event following cloud payload discipline."""
+def test_ready_cmd_audit_event_emission(git_project: Path, capsys, monkeypatch):
+    """Running 'snodo ready' logs a 'readiness_checked' audit event with repository findings only and workstation count."""
+    # Ensure there is a workstation finding by setting a model requiring an unset env var
+    proto_file = git_project / ".snodo" / "protocol.yml"
+    protocol_data = yaml.safe_load(proto_file.read_text())
+    protocol_data["validators"][0]["model"] = "claude-3-5-sonnet-20241022"
+    proto_file.write_text(yaml.safe_dump(protocol_data))
+    subprocess.run(["git", "add", ".snodo/protocol.yml"], cwd=git_project, check=True)
+    subprocess.run(["git", "commit", "-qm", "update protocol model"], cwd=git_project, check=True)
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
     audit_log_path = git_project / ".snodo" / "audit.log"
     audit_log = AuditLog(str(audit_log_path))
     monkeypatch.setattr("snodo.infrastructure.audit.get_audit_log", lambda project_id=None: audit_log)
 
     args = SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=False)
-    ready_command(args)
+    exit_code = ready_command(args)
+    assert exit_code == 0
 
+    # 1. Terminal report still shows workstation finding
+    captured = capsys.readouterr().out
+    assert "Workstation Readiness" in captured
+    assert "ANTHROPIC_API_KEY" in captured
+
+    # 2. Audit event contains only repository findings and workstation_findings_count
     events = audit_log.get_history()
     assert len(events) >= 1
     readiness_events = [e for e in events if e.event_type == "readiness_checked"]
@@ -152,8 +169,14 @@ def test_ready_cmd_audit_event_emission(git_project: Path, monkeypatch):
     assert event_data["protocol_id"] == "proto-readiness"
     assert "score" in event_data
     assert "findings" in event_data
-    # Cloud payload discipline: no absolute paths in findings descriptions or remediations
+    assert "workstation_findings_count" in event_data
+    assert event_data["workstation_findings_count"] >= 1
+    assert event_data["repository_findings_count"] == len(event_data["findings"])
+
+    # No workstation findings in the transmitted event
     for f in event_data["findings"]:
+        assert f["kind"] == "repository"
+        assert "ANTHROPIC_API_KEY" not in str(f)
         assert str(git_project) not in f["finding"]
         assert str(git_project) not in f["remediation"]
 

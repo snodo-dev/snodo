@@ -38,6 +38,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Kept workstation findings out of the `readiness_checked` audit event payload.
+  The audit payload transmits repository findings only and retains `workstation_findings_count`,
+  preventing machine-specific binaries and environment variable names from entering the
+  wire audit stream while leaving workstation findings in the operator terminal report.
+  Documented `readiness_checked` in `docs/specs/cloud-sync.md` as the twenty-third event type.
+  (Fixes #217)
+
 - Kept coder closing output local and out of session checkpoint wire audit events.
   `_auto_write_halt_payload` strips `output_tail` before saving to the session checkpoint
   via `update_decision`, preventing coder stdout from being transmitted in `session_decision_updated`

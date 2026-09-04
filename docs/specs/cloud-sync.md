@@ -96,11 +96,12 @@ commands, absolute working directories and captured test output. "Opaque" is
 not an adequate description of a field that leaves the machine; the table below
 is.
 
-All 22 event types are transmitted.
+All 23 event types are transmitted.
 
 | event_type | data keys |
 |---|---|
 | `project_announced` | project_id, scope, display_name |
+| `readiness_checked` | project_id, scope, display_name, protocol_id, score, total_checks, passed_checks, repository_findings_count, workstation_findings_count, findings |
 | `dispatch` | task_ref, mode, token_id, artifacts_count |
 | `governance_check` | task_ref, mode, constraints_checked |
 | `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision |
@@ -126,6 +127,12 @@ All 22 event types are transmitted.
 
 `session_id` is injected into every engine event by `_audit()`, so it is
 present on events whose call site does not name it.
+
+`readiness_checked.findings` carries repository method scaffolding findings
+with relative paths only and never workstation detail (such as local binaries on
+`PATH` or environment variables). Workstation prerequisites are recorded in
+`workstation_findings_count` only, ensuring that audit logs from different
+machines remain consistent for the same repository state.
 
 `verification_executed.outcome` is `"pass"`, `"fail"`, `"error"`, or
 `"no_tests"`. `"no_tests"` is the honest record of an ungated run: the shipped
