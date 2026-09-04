@@ -9,6 +9,17 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Added a deterministic method scaffolding readiness check (`snodo ready` / `snodo readiness`).
+  Derives checks dynamically from the compiled protocol (committed decision records for architecture
+  validators, resolvable test commands for quality validators, committed paths cited in criteria,
+  committed coder configuration files). Reports ordered findings (cheapest fix at highest severity
+  first) and a scored repository readiness percentage, while reporting environment-specific workstation
+  prerequisites separately and unscored. Emits findings as a `readiness_checked` audit event following
+  cloud payload discipline without mutating project state or changing validator execution behavior.
+  (Fixes #216)
+
 ### Changed
 
 - Every shipped template now carries a working default test command, so a fresh
