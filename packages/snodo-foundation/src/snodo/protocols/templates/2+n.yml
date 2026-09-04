@@ -82,15 +82,19 @@ validators:
   - validator_id: "quality"
     validator_type: "quality"
     evaluation_phase: "post_execute"
-    tooling: {}
-    # Auto-detect test command from repo marker files
-    # Override for your stack:
-    # tooling:
-    #   test_command: "npm test"        # Node
-    #   test_command: "pytest"          # Python
-    #   test_command: "cargo test"      # Rust
-    #   test_command: "go test ./..."   # Go
-    #   test_command: "make test"       # Custom
+    # Default ships a command that runs on any POSIX shell and exits zero, so a
+    # fresh project never halts on an unresolvable test command. Auto-detection
+    # (marker files) and `snodo init --test-command` override it; while it
+    # stands the quality validator records that NO tests were executed rather
+    # than claiming a pass. Replace it with your stack's command:
+    tooling:
+      test_command: "echo 'snodo: no test_command configured; no tests executed'"
+      # Override for your stack:
+      #   test_command: "npm test"        # Node
+      #   test_command: "pytest"          # Python
+      #   test_command: "cargo test"      # Rust
+      #   test_command: "go test ./..."   # Go
+      #   test_command: "make test"       # Custom
 
   - validator_id: "protocol_adherence"
     validator_type: "protocol"

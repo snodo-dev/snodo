@@ -95,7 +95,9 @@
       "judges_spec": false,
       "model": null,
       "severity_cap": null,
-      "tooling": {},
+      "tooling": {
+        "test_command": "echo 'snodo: no test_command configured; no tests executed'"
+      },
       "tools": [],
       "validator_id": "quality",
       "validator_type": "quality"

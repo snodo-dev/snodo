@@ -113,6 +113,12 @@ class ValidatorResult(BaseModel):
     cited_criteria: Optional[List[str]] = None
     #: Pre-cap severity when a severity_cap downgraded this result; None otherwise.
     severity_original: Optional[str] = None
+    #: True when the validator's gate was skipped rather than genuinely
+    #: exercised (e.g. the quality validator ran the no-op default because no
+    #: test command is configured). Severity stays "pass" so the task proceeds,
+    #: but a skipped result is surfaced in normal run output and must never be
+    #: mistaken for real verification evidence.
+    skipped: bool = False
 
 
 class TaskSpec(BaseModel):

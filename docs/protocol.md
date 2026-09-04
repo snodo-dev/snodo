@@ -79,7 +79,7 @@ script, or CI config.
 The recovery depth cap controls how deep the engine recurses when spawning subtasks to fix validator rejections. It is configured at the protocol level (`execution.max_recovery_depth`, default `3`) and can be overridden per mode (`mode.max_recovery_depth`). When a mode is silent (`null`), it inherits the protocol's setting.
 
 - **Established Repositories / Feature Build Modes (`max_recovery_depth: 3`, default)**: When a codebase has a stable, verified build and test harness, validator rejections stem from implementation bugs or criterion mismatches. Legitimate fixes often require 2–3 incremental subtask turns (e.g., fixing the primary implementation, then addressing edge-case test failures). Recovery stall detection (which halts after 2 identical validator verdicts) and `max_total_fix_attempts` prevent runaway loops if non-convergence occurs.
-- **Greenfield Setup Modes (`max_recovery_depth: 1`)**: In bootstrap phases like `decide` or `scaffold`, early validator failures are setup or environment faults (unrecorded ADRs, missing lockfiles, placeholder test commands like `REPLACE_ME`) that subtasks cannot fix without human intervention. Setting `max_recovery_depth: 1` on setup modes bounds expenditure to a single recovery attempt, while allowing the downstream `build` mode to use `max_recovery_depth: 3` once the harness is verified.
+- **Greenfield Setup Modes (`max_recovery_depth: 1`)**: In bootstrap phases like `decide` or `scaffold`, early validator failures are setup or environment faults (unrecorded ADRs, missing lockfiles, an unset placeholder test command) that subtasks cannot fix without human intervention. Setting `max_recovery_depth: 1` on setup modes bounds expenditure to a single recovery attempt, while allowing the downstream `build` mode to use `max_recovery_depth: 3` once the harness is verified.
 
 ---
 
@@ -226,6 +226,13 @@ validators:
 Security note: `tooling.test_command` (used by the `quality` validator) is
 protocol-authored shell input. snodo does not sandbox it. Treat it like a
 `Makefile` target, `package.json` script, or CI config.
+
+Every shipped template sets a `test_command` default that runs on any POSIX
+shell and exits zero, so a project with no test framework yet can always run.
+Auto-detection (marker files) and `snodo init --test-command` take precedence
+over the default; when the default itself runs, the quality validator records
+audit outcome `no_tests` — it states that no tests were executed rather than
+claiming a pass (Fixes #215).
 
 ### Validator types
 

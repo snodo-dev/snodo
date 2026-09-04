@@ -127,6 +127,13 @@ All 22 event types are transmitted.
 `session_id` is injected into every engine event by `_audit()`, so it is
 present on events whose call site does not name it.
 
+`verification_executed.outcome` is `"pass"`, `"fail"`, `"error"`, or
+`"no_tests"`. `"no_tests"` is the honest record of an ungated run: the shipped
+no-op default test command ran and no tests were executed (no
+`tooling.test_command` configured and no marker file detected). A consumer
+counting ungated projects or distinguishing a real pass from a placeholder
+must key on that outcome — an ungated run never carries `"pass"` (ADR 031).
+
 `project_announced` is emitted once per session by `SessionManager.create_session`
 (Fixes #214), where the project identity is already resolved. It carries the
 resolved `project_id`, its `scope`, and the `display_name` (the project's
