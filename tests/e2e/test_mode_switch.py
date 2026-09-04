@@ -31,8 +31,9 @@ def test_run_honours_switched_mode(snodo_cli):
     assert r.returncode == 0, r.stderr
 
     r = snodo_cli(["run", "establish the toolchain", "--mock"])
-    # warn stubs under unanimous → ESCALATE → exit 1 (not a success)
-    assert r.returncode == 1, r.stderr
+    # The template ships a working default test command, so the run completes
+    # (the structured payload below is still emitted with a "completed" verdict).
+    assert r.returncode == 0, r.stderr
 
     payload = _halt_payload(r.stdout)
     assert payload["current_mode"] == "scaffold"
@@ -54,7 +55,7 @@ def test_session_mode_equals_execution_mode(snodo_cli):
     assert r.returncode == 0, r.stderr
 
     r = snodo_cli(["run", "establish the toolchain", "--mock"])
-    assert r.returncode == 1, r.stderr
+    assert r.returncode == 0, r.stderr
 
     # The session id embeds the mode prefix (scaf for scaffold).
     assert "sess_" in r.stdout
@@ -68,7 +69,7 @@ def test_single_mode_protocol_unaffected(snodo_cli):
     assert r.returncode == 0, r.stderr
 
     r = snodo_cli(["run", "implement a hello world function", "--mock"])
-    assert r.returncode == 1, r.stderr
+    assert r.returncode == 0, r.stderr
 
     payload = _halt_payload(r.stdout)
     assert payload["current_mode"] == "producer"

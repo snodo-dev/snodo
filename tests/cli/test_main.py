@@ -255,26 +255,25 @@ def test_run_missing_protocol(temp_project_dir):
 def test_run_with_valid_protocol(initialized_project):
     """Test snodo run with valid protocol (mock mode).
 
-    Under the corrected policy semantics, criteria-bearing validators
-    produce warn stubs → unanimous ESCALATE → exit code 1.
-    This is correct; warn withholds approval.
+    A fresh project ships a working default test command, so the first task
+    runs to completion instead of halting on an unresolvable test command.
     """
     with patch('sys.argv', ['snodo', 'run', 'test task', '--mock']):
         result = main()
 
-    assert result == 1
+    assert result == 0
 
 
 def test_run_creates_files(initialized_project):
-    """Test snodo run exits with block (warn stubs under unanimous)."""
+    """Test snodo run completes and produces artifacts (mock coder)."""
     with patch('sys.argv', ['snodo', 'run', 'add hello function', '--mock']):
         result = main()
 
-    assert result == 1
+    assert result == 0
 
 
 def test_run_custom_protocol_path(temp_project_dir):
-    """Test snodo run with custom protocol (team template → ESCALATE)."""
+    """Test snodo run with a custom protocol (team template) completes."""
     (temp_project_dir / ".snodo").mkdir(exist_ok=True)
     custom_protocol = temp_project_dir / "custom.yml"
     custom_protocol.write_text(DEFAULT_PROTOCOL + "\n")
@@ -282,7 +281,7 @@ def test_run_custom_protocol_path(temp_project_dir):
     with patch('sys.argv', ['snodo', 'run', 'test task', '--protocol', str(custom_protocol), '--mock']):
         result = main()
 
-    assert result == 1
+    assert result == 0
 
 
 def test_end_to_end_init_and_run(temp_project_dir):
@@ -296,10 +295,11 @@ def test_end_to_end_init_and_run(temp_project_dir):
     assert (temp_project_dir / ".snodo").exists()
     assert (temp_project_dir / ".snodo" / "protocol.yml").exists()
 
-    # Step 3: Run task — warn stubs under unanimous → ESCALATE → exit 1
+    # Step 3: Run task — completes (the template ships a working default
+    # test command, so the task is not blocked on an unresolvable one)
     with patch('sys.argv', ['snodo', 'run', 'implement feature X', '--mock']):
         result = main()
-    assert result == 1
+    assert result == 0
 
 
 def test_multiple_tasks_in_sequence(initialized_project):
@@ -313,7 +313,7 @@ def test_multiple_tasks_in_sequence(initialized_project):
     for task_desc in tasks:
         with patch('sys.argv', ['snodo', 'run', task_desc, '--mock']):
             result = main()
-        assert result == 1
+        assert result == 0
 
 
 # CLI Interface Tests
@@ -384,7 +384,7 @@ def test_run_with_special_characters(initialized_project):
     with patch('sys.argv', ['snodo', 'run', special_desc, '--mock']):
         result = main()
 
-    assert result == 1
+    assert result == 0
 
 
 def test_protocol_with_minimal_config(temp_project_dir):

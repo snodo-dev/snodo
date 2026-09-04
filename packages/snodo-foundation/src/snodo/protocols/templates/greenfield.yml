@@ -161,14 +161,18 @@ validators:
       - "No credentials, tokens, private keys, or account identifiers in the repository. They are supplied at runtime."
       - "Reject dependencies added for trivial reasons. Every package is supply-chain surface."
 
-  # ── Set test_command explicitly. Auto-detection reads repository marker files,
-  #    which do not exist during the scaffold phase that creates them.
-  #    Each task runs in a fresh worktree, so installation belongs in the command.
+  # ── Set test_command explicitly for your stack. Auto-detection reads
+  #    repository marker files, which do not exist during the scaffold phase
+  #    that creates them, and `snodo init --test-command` overrides this.
+  #    Until then the shipped default below runs and the quality validator
+  #    records that NO tests were executed instead of halting or pretending a
+  #    pass. Each task runs in a fresh worktree, so installation belongs in the
+  #    command.
   - validator_id: "quality"
     validator_type: "quality"
     evaluation_phase: "post_execute"
     tooling:
-      test_command: "REPLACE_ME"
+      test_command: "echo 'snodo: no test_command configured; no tests executed'"
       # Examples — the install step is not optional, see scaffold-gate criterion 1:
       #   Node    "npm ci --no-audit --no-fund && npm test"
       #   Python  "uv sync --all-extras && uv run pytest"

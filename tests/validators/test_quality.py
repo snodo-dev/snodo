@@ -21,7 +21,11 @@ import pytest
 from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
 from snodo.core.interfaces import ValidatorResult
 from snodo.engine.loop import GraphBuilder, LoopStage, build_protocol_graph
-from snodo.validators.quality import QualityValidator
+from snodo.validators.quality import (
+    NOOP_TEST_COMMAND,
+    NO_TESTS_OUTCOME,
+    QualityValidator,
+)
 
 # === Fixtures ===
 
@@ -255,10 +259,35 @@ class TestTestCommandResolution:
         qv = QualityValidator(quality_spec_no_tooling, project_dir)
         assert qv._resolve_test_command() == "make test"
 
-    def test_no_detection_returns_none(self, quality_spec_no_tooling, project_dir):
+    def test_no_detection_returns_noop_default(self, quality_spec_no_tooling, project_dir):
         qv = QualityValidator(quality_spec_no_tooling, project_dir)
-        # project_dir has no marker files (only README.md)
-        assert qv._resolve_test_command() is None
+        # project_dir has no marker files (only README.md): the shipped no-op
+        # default is used so a project can always run its first task.
+        assert qv._resolve_test_command() == NOOP_TEST_COMMAND
+
+    def test_shipped_noop_default_defer_to_auto_detect(self, quality_spec_no_tooling, project_dir):
+        """The shipped no-op default is 'not configured': a marker file in the
+        tree still auto-detects and takes precedence over it."""
+        (Path(project_dir) / "pyproject.toml").write_text("[project]\nname='test'\n")
+        spec = Validator(
+            validator_id="quality",
+            validator_type="quality",
+            tooling={"test_command": NOOP_TEST_COMMAND},
+        )
+        qv = QualityValidator(spec, project_dir)
+        assert qv._resolve_test_command() == "pytest"
+
+    def test_legacy_replace_me_defer_to_auto_detect(self, quality_spec_no_tooling, project_dir):
+        """`REPLACE_ME` (shipped by pre-fix greenfield templates) is treated as
+        unconfigured: auto-detection still wins, and the no-op default is the
+        fallback — the literal never reaches the shell."""
+        spec = Validator(
+            validator_id="quality",
+            validator_type="quality",
+            tooling={"test_command": "REPLACE_ME"},
+        )
+        qv = QualityValidator(spec, project_dir)
+        assert qv._resolve_test_command() == NOOP_TEST_COMMAND
 
     def test_tooling_overrides_auto_detect(self, project_dir):
         """Tooling config takes precedence over auto-detection."""
@@ -312,13 +341,57 @@ class TestQualityValidatorEvaluate:
             assert result.severity == "blocker"
             assert "timed out" in result.justification
 
-    def test_no_test_command_is_operational_error(self, quality_spec_no_tooling, project_dir):
-        """When no test command can be determined, return an operational error."""
+    def test_no_test_command_runs_noop_and_records_no_tests(self, quality_spec_no_tooling, project_dir):
+        """When no test command can be determined, the shipped no-op default
+        runs: the task proceeds (severity pass) and the result is flagged
+        skipped — no tests were executed, so nothing claims a pass."""
         qv = QualityValidator(quality_spec_no_tooling, project_dir)
         result = qv.evaluate()
-        assert result.error is True
-        assert result.severity == "blocker"
-        assert "tooling.test_command" in result.justification
+        assert result.severity == "pass"
+        assert result.skipped is True
+        assert result.error is False
+        assert "Tests passed" not in result.justification
+        assert "No tests executed" in result.justification
+
+    def test_noop_records_no_tests_audit_outcome(self, quality_spec_no_tooling, project_dir):
+        """An ungated run records outcome 'no_tests' in the audit trail — never
+        a pass — so operators and the cloud can tell a real pass from a run
+        that executed no tests."""
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.validators.context import ValidatorContext
+
+        log_path = Path(project_dir) / "audit.log"
+        audit_log = AuditLog(str(log_path))
+
+        qv = QualityValidator(quality_spec_no_tooling, project_dir)
+        ctx = ValidatorContext(
+            task=Task(id="t1", spec="test"),
+            working_directory=str(project_dir),
+            audit_log=audit_log,
+        )
+
+        res = qv.evaluate(ctx)
+        assert res.severity == "pass"
+        assert res.skipped is True
+
+        events = audit_log.get_history("verification_executed")
+        assert len(events) == 1
+        ev = events[0]
+        assert ev.data["outcome"] == NO_TESTS_OUTCOME
+        assert ev.data["command"] == NOOP_TEST_COMMAND
+        assert ev.data["returncode"] == 0
+        assert ev.data["outcome"] != "pass"
+
+    def test_noop_runs_real_command_and_exits_zero(self, quality_spec_no_tooling, project_dir):
+        """The shipped no-op is a real POSIX shell command: running it prints a
+        notice and exits zero, so auto-detection/CLI precedence aside, an
+        unconfigured project always has a command that runs and succeeds."""
+        qv = QualityValidator(quality_spec_no_tooling, project_dir)
+        result = qv.evaluate()
+        assert result.severity == "pass"
+        # The notice is surfaced so the default is never silent.
+        assert result.justification and "No tests executed" in result.justification
 
     def test_exit_127_command_not_found_is_operational_error(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)

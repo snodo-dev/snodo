@@ -36,7 +36,7 @@ def test_project_announced_once_per_session(snodo_cli):
     assert r.returncode == 0
 
     r2 = snodo_cli(["run", "implement a hello world function", "--mock"])
-    assert r2.returncode == 1, f"expected ESCALATE, got: {r2.stderr}"
+    assert r2.returncode == 0, r2.stderr
 
     entries = []
     audit_path = Path(tmp_dir) / ".snodo" / "audit.log"

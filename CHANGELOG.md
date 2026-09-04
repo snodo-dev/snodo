@@ -9,6 +9,22 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Every shipped template now carries a working default test command, so a fresh
+  project initialised in a directory with no marker file for any supported stack
+  no longer halts on its first task. `solo`, `team` and `2+n` previously shipped
+  an empty `tooling` map — when auto-detection found nothing the quality
+  validator halted with "No test command resolvable" — and `greenfield` shipped
+  the literal `REPLACE_ME`, which reached the shell and exited 127. Templates now
+  ship a POSIX no-op that prints a notice and exits zero; auto-detection and
+  `snodo init --test-command` still take precedence over it. When the no-op runs,
+  the quality validator records a `verification_executed` audit event with
+  outcome `no_tests` (and states plainly that no tests were executed) instead of
+  claiming a pass for work that did not run, the merge gate accepts that honest
+  record so a fresh project's first task lands, and the ungated run is shown in
+  the run output rather than only in the log. (Fixes #215)
+
 ### Fixed
 
 - Kept coder closing output local and out of session checkpoint wire audit events.

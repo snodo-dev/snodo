@@ -552,8 +552,9 @@ class TestFromPrCLI:
                                         'fix the auth bug', '--mock']):
                     result = main()
 
-        # Warn stubs under unanimous → ESCALATE → exit 1
-        assert result == 1
+        # A project with no test framework proceeds via the no-op default
+        # rather than halting on an unresolvable test command.
+        assert result == 0
         captured = capsys.readouterr()
         assert "Fetching PR #42 context" in captured.out
         assert "PR context prepended" in captured.out
@@ -568,5 +569,6 @@ class TestFromPrCLI:
                                         'fix the bug', '--mock']):
                     result = main()
 
-        # PR context errors are non-fatal. Warn stubs → ESCALATE → exit 1.
-        assert result == 1
+        # PR context errors are non-fatal, and a project without a test
+        # framework proceeds via the no-op default.
+        assert result == 0
