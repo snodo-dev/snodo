@@ -77,13 +77,16 @@ Two `local:` projects sharing a display name are two projects. That is the
 correct reading, not a duplicate to be merged.
 
 Promotion is one-way: a project acquires a remote and its id becomes the remote
-id. There is no demotion. `get_project_id` re-resolves a cached `local:` id on
-every call, so a repository initialised before it had a remote promotes to the
-remote id on the next run; a cached `remote` or `override` id is stable and
-never re-resolved.
+id. There is no demotion. Once established, project identity is stable: a cached
+`remote` or `override` id is returned as-is. If a git remote is repointed or
+changed, snodo warns on stderr that the identity is unchanged and that running
+`snodo init` adopts the new remote if desired. It does not automatically change
+the project id or split the audit history.
+`get_project_id` re-resolves only cached `local:` identities; cached `remote`
+and `override` identities are stable and returned without repeated subprocess
+calls.
 
-The decision governing all of this is cited in `project.py` and `audit.py` as
-ADR 012, which was never written.
+The decision governing all of this is documented in ADR 012 (`docs/decisions/012-project-identity-from-git-remote.md`).
 
 ## What is in `data`
 

@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import uuid
 from pathlib import Path
@@ -148,15 +149,22 @@ def scope_for_project_id(project_id: str) -> str:
     return "remote"
 
 
+_announced_identity_changes: set[tuple[str, str, str]] = set()
+_checked_remote_roots: set[str] = set()
+
+
 def get_project_id(project_root: str) -> tuple[str, str]:
     """Retrieve the project ID and scope, following the repository's state.
 
     Read-only: establishing an identity for labelling must not change the
-    filesystem. A cached ``local:`` identity is re-resolved on every call so
-    that a repository which gains a remote promotes to the remote id. A cached
-    ``remote`` or ``override`` identity is stable and returned as-is:
-    promotion is one-way, and an operator-supplied override is never
-    second-guessed.
+    filesystem. A cached ``local:`` identity promotes to a remote id once a
+    remote is added. A cached ``remote`` or ``override`` identity is stable
+    and returned as-is: promotion is one-way, and identity does not drift
+    or split when a remote is repointed.
+
+    If a git remote is repointed, snodo reports the divergence on stderr once
+    per process while returning the stable cached identity. The operator may
+    adopt the new remote by re-initialising (``snodo init``).
 
     Persisting the identity is a separate, explicit step (``cache_project_id``)
     performed by callers that establish identity (``snodo init``) — never as a
@@ -170,24 +178,61 @@ def get_project_id(project_root: str) -> tuple[str, str]:
             with open(project_json_path) as f:
                 data = json.load(f)
             cached_pid = data.get("project.id") or data.get("id")
-            cached_scope = data.get("scope", "local")
+            cached_scope = data.get("scope")
+            if cached_scope != "override" and cached_pid:
+                cached_scope = scope_for_project_id(cached_pid)
+            elif not cached_scope:
+                cached_scope = "local"
         except Exception as e:
             _logger.debug("Failed to read cached project ID from %s: %s", project_json_path, e)
 
-    # A remote or override identity is stable: return it without re-resolving.
-    # Promotion is one-way, so a remote never demotes, and an override is the
-    # operator's explicit assertion.
-    if cached_pid and cached_scope in ("remote", "override"):
+    # An override identity is an explicit operator assertion: return as-is.
+    if cached_pid and cached_scope == "override":
         return (cached_pid, cached_scope)
 
-    # Resolve against the repository's actual state. A local (or missing)
-    # identity must follow the repo: if a remote now exists, promote.
+    # A remote identity is stable after promotion. If this root hasn't been
+    # checked in this process, verify the git remote once to warn if repointed.
+    if cached_pid and cached_scope == "remote":
+        try:
+            resolved_root = str(Path(project_root).resolve())
+        except Exception:
+            resolved_root = str(project_root)
+
+        if resolved_root not in _checked_remote_roots:
+            _checked_remote_roots.add(resolved_root)
+            resolved_pid, resolved_scope = resolve_project_id(project_root)
+            if resolved_scope == "remote" and resolved_pid != cached_pid:
+                key = (resolved_root, cached_pid, resolved_pid)
+                if key not in _announced_identity_changes:
+                    _announced_identity_changes.add(key)
+                    print(
+                        f"Warning: git remote changed from {cached_pid} to {resolved_pid}. "
+                        f"Project identity is unchanged ({cached_pid}). "
+                        "Run 'snodo init' to adopt the new remote.",
+                        file=sys.stderr,
+                    )
+        return (cached_pid, cached_scope)
+
+    # Resolve against the repository's actual state for local or missing identities.
     pid, scope = resolve_project_id(project_root)
 
-    # A repository that still has no remote keeps its cached local id — the
-    # UUID is stable across runs, not re-minted on every call.
+    # A repository that still has no remote keeps its cached local id.
     if cached_pid and scope == "local":
-        pid = cached_pid
+        return (cached_pid, "local")
+
+    # Local identity promoting to remote:
+    if cached_pid and scope == "remote" and cached_pid != pid:
+        try:
+            resolved_root = str(Path(project_root).resolve())
+        except Exception:
+            resolved_root = str(project_root)
+        key = (resolved_root, cached_pid, pid)
+        if key not in _announced_identity_changes:
+            _announced_identity_changes.add(key)
+            print(
+                f"Project identity promoted from {cached_pid} to {pid}",
+                file=sys.stderr,
+            )
 
     return (pid, scope)
 
