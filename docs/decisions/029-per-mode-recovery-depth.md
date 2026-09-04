@@ -5,7 +5,7 @@ Accepted
 
 ## Context
 `execution.max_recovery_depth` was introduced to cap recursive subtask recovery along a single branch (default `3`). However, greenfield protocols contain modes that differ fundamentally in kind:
-- `decide` and `scaffold` are setup and bootstrap phases where early validator rejections are environment or config faults (unrecorded ADRs, placeholder test commands like `REPLACE_ME`) that subtasks cannot fix.
+- `decide` and `scaffold` are setup and bootstrap phases where early validator rejections are environment or config faults (unrecorded ADRs, an unset placeholder test command) that subtasks cannot fix.
 - `build` is a feature development phase where the codebase and test harness are verified, and multi-step recovery (depth 3) enables incremental subtask fixes.
 
 A single protocol-level depth cap forces a single answer across modes that differ in kind.

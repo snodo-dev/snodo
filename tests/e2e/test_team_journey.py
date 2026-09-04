@@ -36,4 +36,6 @@ def test_team_plan_list(snodo_cli):
 def test_team_init_then_run_simple_task(snodo_cli):
     snodo_cli(["init", "--template", "team", "--yes"])
     r = snodo_cli(["run", "a simple task", "--mock"])
-    assert r.returncode == 1
+    # The template ships a working default test command, so the first task on a
+    # fresh project completes instead of halting on an unresolvable one.
+    assert r.returncode == 0

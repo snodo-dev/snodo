@@ -233,3 +233,37 @@ def test_producer_reviewer_templates_do_not_auto_merge(name):
         assert p.auto_merge_enabled(mode.mode_id) is False, (
             f"{name}.yml mode '{mode.mode_id}' must NOT auto-merge"
         )
+
+
+def test_shipped_quality_templates_ship_the_noop_default():
+    """Every shipped template with a quality validator ships the exact no-op
+    default test command.
+
+    A fresh project initialised from a template in a directory with no marker
+    file must never halt on an unresolvable test command. The template's
+    default must match the validator's constant exactly: the validator
+    recognises that literal and records outcome "no_tests" (no tests executed)
+    rather than a false pass. Auto-detection and `--test-command` replace this
+    default; the default is only what remains when neither applies.
+    """
+    from snodo.protocols import list_templates, template_protocol
+    from snodo.validators.quality import NOOP_TEST_COMMAND
+
+    shipped = []
+    for name in list_templates():
+        p = template_protocol(name)
+        q = p.get_validator("quality")
+        if q is None:
+            continue
+        tooling = q.tooling or {}
+        tc = tooling.get("test_command")
+        assert tc == NOOP_TEST_COMMAND, (
+            f"{name}.yml quality validator must ship the exact no-op default "
+            f"test command (got {tc!r}) so an unconfigured project can run and "
+            "the validator can recognise the no-op it executed"
+        )
+        shipped.append(name)
+
+    assert {"solo", "team", "2+n", "greenfield"} <= set(shipped), (
+        f"expected solo/team/2+n/greenfield to ship the quality validator, got {shipped}"
+    )

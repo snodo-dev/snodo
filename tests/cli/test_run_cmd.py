@@ -1361,6 +1361,55 @@ class TestUnverifiedMergeBlocked:
         assert merged == branch
         assert (repo / "file.txt").exists()
 
+    def test_ungated_merge_allowed_with_no_tests_record(self, tmp_path):
+        """A task whose verification record states outcome 'no_tests' (the
+        configured no-op default ran — no tests were executed) still merges: a
+        fresh project must not strand its first task. The merge line must say
+        the task ran no tests, never claim it was verified."""
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+
+        from snodo.cli.commands.run_cmd import _merge_on_success
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        task = Task(id="task_ungated", spec="ungated task")
+        branch = task_branch_name(task.id, task.spec)
+        subprocess_run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "file.txt").write_text("new file\n")
+        subprocess_run(["git", "add", "file.txt"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+        audit_log = AuditLog(str(repo / "audit.log"))
+        target_commit = subprocess_run(
+            ["git", "rev-parse", branch], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        # Record the honest no-tests verification event (never outcome "pass").
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "command": "echo 'snodo: no test_command configured; no tests executed'",
+            "commit": target_commit,
+            "returncode": 0,
+            "outcome": "no_tests",
+            "validator_id": "quality",
+            "task_ref": task.id,
+        })
+
+        res, preserve, merged = _merge_on_success(str(repo), task, 0, "sess_1", audit_log)
+        assert res == 0
+        assert preserve is False
+        assert merged == branch
+        assert (repo / "file.txt").exists()
+
     def test_merge_refused_when_verification_is_for_different_task_and_commit(self, tmp_path):
         """A passing verification for a different task and commit does not satisfy the merge gate (Fixes #76)."""
         from snodo.core.interfaces import Task

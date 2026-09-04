@@ -9,8 +9,41 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Added a deterministic method scaffolding readiness check (`snodo ready` / `snodo readiness`).
+  Derives checks dynamically from the compiled protocol (committed decision records for architecture
+  validators, resolvable test commands for quality validators, committed paths cited in criteria,
+  committed coder configuration files). Reports ordered findings (cheapest fix at highest severity
+  first) and a scored repository readiness percentage, while reporting environment-specific workstation
+  prerequisites separately and unscored. Emits findings as a `readiness_checked` audit event following
+  cloud payload discipline without mutating project state or changing validator execution behavior.
+  (Fixes #216)
+
+### Changed
+
+- Every shipped template now carries a working default test command, so a fresh
+  project initialised in a directory with no marker file for any supported stack
+  no longer halts on its first task. `solo`, `team` and `2+n` previously shipped
+  an empty `tooling` map — when auto-detection found nothing the quality
+  validator halted with "No test command resolvable" — and `greenfield` shipped
+  the literal `REPLACE_ME`, which reached the shell and exited 127. Templates now
+  ship a POSIX no-op that prints a notice and exits zero; auto-detection and
+  `snodo init --test-command` still take precedence over it. When the no-op runs,
+  the quality validator records a `verification_executed` audit event with
+  outcome `no_tests` (and states plainly that no tests were executed) instead of
+  claiming a pass for work that did not run, the merge gate accepts that honest
+  record so a fresh project's first task lands, and the ungated run is shown in
+  the run output rather than only in the log. (Fixes #215)
+
 ### Fixed
 
+- Kept workstation findings out of the `readiness_checked` audit event payload.
+  The audit payload transmits repository findings only and retains `workstation_findings_count`,
+  preventing machine-specific binaries and environment variable names from entering the
+  wire audit stream while leaving workstation findings in the operator terminal report.
+  Documented `readiness_checked` in `docs/specs/cloud-sync.md` as the twenty-third event type.
+  (Fixes #217)
 - Configurable agy print timeout and preservation of committed changes on non-zero exit.
   `AGYAdapter` now sets `--print-timeout` in its subprocess argv based on the configured
   `timeout_seconds` (via `llm.coder.timeout_seconds` or mode-level `coder_config`), preventing

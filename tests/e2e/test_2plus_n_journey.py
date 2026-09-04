@@ -11,10 +11,10 @@ def test_2plus_n_init_and_run(snodo_cli):
     r1 = snodo_cli(["init", "--template", "2+n", "--yes"])
     assert r1.returncode == 0
 
-    # 2+n has strict constraints (files_in_scope, tests_exist).
-    # Run with a task that should produce in-scope artifacts.
+    # 2+n has strict global constraints (files_in_scope, tests_exist). The mock
+    # coder's fixture files fall outside the declared scope, so the run halts on
+    # the constraint blocker (quality's default test command resolves fine now).
     r2 = snodo_cli(["run", "implement a user registration endpoint", "--mock"])
-    # Warn stubs under unanimous → ESCALATE → exit 1
     assert r2.returncode == 1
 
 

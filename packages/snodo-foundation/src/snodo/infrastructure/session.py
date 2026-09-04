@@ -152,6 +152,16 @@ class SessionManager:
             "mode": mode,
             "project_root": project_root,
         })
+        # Announce the project once per session so a consumer reading only the
+        # event stream can materialise the project row without the transport
+        # envelope (Fixes #214). The identity is resolved above; the payload is
+        # identity, scope and display name — no paths, no machine details.
+        self._audit("project_announced", {
+            "op": "project_announced",
+            "project_id": pid,
+            "scope": scope,
+            "display_name": Path(project_root).name,
+        })
         # Set this session as active for its (project, mode)
         self._set_active_pointer(project_root, mode, session_id)
         return session
