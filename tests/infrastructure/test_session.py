@@ -537,9 +537,41 @@ class TestAuditLog:
     def test_create_session_audits(self, mgr_with_audit, audit_log, project_root):
         mgr_with_audit.create_session("producer", project_root)
         audit_log.append_event.assert_called()
-        call_args = audit_log.append_event.call_args
-        assert call_args[0][0] == "session_started"
-        assert call_args[0][1]["mode"] == "producer"
+        started = [
+            c for c in audit_log.append_event.call_args_list
+            if c[0][0] == "session_started"
+        ]
+        assert len(started) == 1
+        assert started[0][0][1]["mode"] == "producer"
+
+    def test_create_session_announces_project(self, mgr_with_audit, audit_log, project_root):
+        """create_session emits project_announced exactly once, carrying the
+        resolved identity, scope and display name (Fixes #214)."""
+        mgr_with_audit.create_session("producer", project_root)
+        announced = [
+            c for c in audit_log.append_event.call_args_list
+            if c[0][0] == "project_announced"
+        ]
+        assert len(announced) == 1
+        data = announced[0][0][1]
+        assert data["project_id"] == get_project_id(project_root)[0]
+        assert data["scope"] == get_project_id(project_root)[1]
+        assert data["display_name"] == Path(project_root).name
+        assert "project_root" not in data
+        assert "session_id" not in data
+
+    def test_create_session_announces_project_each_session(
+        self, mgr_with_audit, audit_log, project_root,
+    ):
+        """A second session in the same project re-announces the project."""
+        mgr_with_audit.create_session("producer", project_root)
+        audit_log.reset_mock()
+        mgr_with_audit.create_session("producer", project_root)
+        announced = [
+            c for c in audit_log.append_event.call_args_list
+            if c[0][0] == "project_announced"
+        ]
+        assert len(announced) == 1
 
     def test_delete_session_audits(self, mgr_with_audit, audit_log, project_root):
         session = mgr_with_audit.create_session("producer", project_root)
