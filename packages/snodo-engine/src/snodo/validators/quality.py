@@ -36,6 +36,37 @@ _DETECT_RULES = [
 # Bound on the stdout/stderr tail surfaced in a failure message.
 _OUTPUT_TAIL_CHARS = 400
 
+# The no-op default test command shipped by every protocol template that has a
+# quality validator. It is a POSIX shell command that prints a notice and exits
+# zero, so a project with no tooling.test_command and no detectable marker file
+# can always run its first task instead of halting on "No test command
+# resolvable" (the literal `REPLACE_ME` some templates shipped reached the
+# shell and exited 127).
+#
+# Auto-detection and `snodo init --test-command` take precedence over it: it is
+# treated as "not configured", so a marker file in the tree is still picked up,
+# and it is used only when neither produces anything. When the validator does
+# run it, the audit record states outcome ``NO_TESTS_OUTCOME`` ("no_tests") and
+# that NO tests were executed — never a pass for work that did not run (see
+# ADR 031).
+NOOP_TEST_COMMAND = "echo 'snodo: no test_command configured; no tests executed'"
+
+# Values of tooling.test_command that mean "no test command has been configured
+# yet" and must therefore defer to auto-detection and, failing that, to the
+# no-op default above. `REPLACE_ME` is honoured for projects initialised from
+# pre-fix greenfield templates; NOOP_TEST_COMMAND is the shipped default.
+_PLACEHOLDER_COMMANDS = frozenset({"", "REPLACE_ME", NOOP_TEST_COMMAND})
+
+# Audit `outcome` recorded when the configured no-op ran. Distinct from "pass"
+# so an operator reading the audit trail, and the cloud counting ungated
+# projects, can tell a real pass from a placeholder.
+NO_TESTS_OUTCOME = "no_tests"
+
+
+def _is_no_op(command: Optional[str]) -> bool:
+    """Return True when *command* is the configured no-op default."""
+    return (command or "").strip() == NOOP_TEST_COMMAND
+
 
 def _decode(data) -> str:
     """Decode subprocess output that may be bytes (TimeoutExpired stdout/stderr)."""
@@ -69,11 +100,14 @@ class QualityValidator(ValidatorBase):
 
         Returns:
             ValidatorResult:
-                - "pass" if tests pass (exit code 0)
+                - "pass" if tests pass (exit code 0). When the configured no-op
+                  default ran (no test framework detected), the result is "pass"
+                  but the audit record states "no tests executed" rather than
+                  claiming "Tests passed".
                 - "blocker" (error=False) if tests genuinely fail (non-zero exit)
-                - "blocker" with error=True if the fault is operational (no test
-                  command resolvable, command not found, not executable, timeout)
-                  — surfaced as validator_error, not a judgement
+                - "blocker" with error=True if the fault is operational (command
+                  not found, not executable, timeout) — surfaced as
+                  validator_error, not a judgement
         """
         # Backward-compat: old code calls evaluate() with no args
         if context is not None and context.working_directory:
@@ -81,37 +115,40 @@ class QualityValidator(ValidatorBase):
 
         test_command = self._resolve_test_command()
 
-        if test_command is None:
-            return ValidatorResult(
-                validator_id=self.validator_id,
-                severity="blocker",
-                error=True,
-                justification=(
-                    "No test command resolvable: no tooling.test_command is "
-                    "configured and no language marker file (package.json, "
-                    "pyproject.toml, setup.py, setup.cfg, Cargo.toml, Makefile, "
-                    "go.mod) was detected. Set tooling.test_command in the "
-                    "protocol's quality validator config."
-                ),
-            )
-
         timeout = self._get_timeout()
 
         return self._run_command(test_command, timeout, context=context)
 
-    def _resolve_test_command(self) -> Optional[str]:
+    def _resolve_test_command(self) -> str:
         """Resolve the test command from tooling config or auto-detection.
 
-        Returns:
-            Test command string, or None if cannot determine.
-        """
-        # 1. Check tooling config
-        tooling = self.validator_spec.tooling
-        if tooling and tooling.get("test_command"):
-            return tooling["test_command"]
+        Precedence:
+            1. ``tooling.test_command`` — unless it is a placeholder (the
+               shipped no-op default or the legacy ``REPLACE_ME``), which means
+               "no test command configured yet";
+            2. auto-detection from repository marker files;
+            3. the no-op default (``NOOP_TEST_COMMAND``) — a POSIX shell
+               command that prints a notice and exits zero, so a project can
+               always run.
 
-        # 2. Auto-detect from project files
-        return self._auto_detect()
+        Returns:
+            A test command string. Never None.
+        """
+        # 1. Check tooling config. The no-op sentinel is not a real command:
+        #    it is the shipped default, and auto-detection still takes
+        #    precedence over it.
+        tooling = self.validator_spec.tooling
+        configured = tooling.get("test_command") if tooling else None
+        if configured and configured not in _PLACEHOLDER_COMMANDS:
+            return configured
+
+        # 2. Auto-detect from project files.
+        detected = self._auto_detect()
+        if detected:
+            return detected
+
+        # 3. No-op default — a command that exists on a POSIX shell and exits 0.
+        return NOOP_TEST_COMMAND
 
     def _auto_detect(self) -> Optional[str]:
         """Auto-detect test command from project marker files.
@@ -224,6 +261,28 @@ class QualityValidator(ValidatorBase):
             )
 
             if result.returncode == 0:
+                if _is_no_op(command):
+                    # The configured no-op default ran. The task proceeds
+                    # (severity "pass") but the record must not claim tests
+                    # passed: no tests were executed. The `skipped` marker lets
+                    # the engine surface the ungated run in normal output (a
+                    # plain pass is only shown in verbose mode).
+                    summary = self._extract_summary(result.stdout)
+                    self._audit_verification(
+                        context, command, commit_hash, 0, NO_TESTS_OUTCOME, summary
+                    )
+                    return ValidatorResult(
+                        validator_id=self.validator_id,
+                        severity="pass",
+                        justification=(
+                            "No tests executed: no test command is configured "
+                            "and no test framework was detected, so the "
+                            "no-op default ran. Set tooling.test_command in "
+                            "the protocol's quality validator config to run "
+                            "a real suite."
+                        ),
+                        skipped=True,
+                    )
                 summary = self._extract_summary(result.stdout)
                 self._audit_verification(
                     context, command, commit_hash, 0, "pass", summary

@@ -203,10 +203,12 @@ Notes from the code path:
 - `--wave N` executes only that wave; `--interactive` prompts
   `Execute <task-id>? [y/N]` before each task.
 - The `quality` validator runs the project's test command after each task.
-  If none is resolvable (no `tooling.test_command` in the protocol and no
-  repo marker file it can auto-detect), the task halts with a
-  `validator_error` blocker — set `tooling.test_command` in the protocol's
-  quality validator config before running.
+  Every template ships a default that runs on any POSIX shell and exits zero,
+  so a missing `tooling.test_command` and no detectable marker file no longer
+  halt the task: the default runs and the validator records that no tests were
+  executed (audit outcome `no_tests`) rather than claiming a pass. Set
+  `tooling.test_command` in the protocol's quality validator config to run a
+  real suite.
 - If a task fails or blocks, the run stops there; later waves are not
   attempted. Exit code is `1`.
 

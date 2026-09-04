@@ -896,8 +896,15 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         original = getattr(result, "severity_original", None)
         cap_note = f" (from {original})" if original and original != severity else ""
 
-        if severity == "pass":
+        if severity == "pass" and not getattr(result, "skipped", False):
             self._progress(f"    ✓ {validator_id}: pass{cap_note}", verbose=True)
+        elif severity == "pass":
+            # A pass that skipped its gate (e.g. the quality validator ran the
+            # no-op default because no test command is configured) is visible
+            # in normal output — an ungated project must never look like a
+            # silently tested one.
+            snippet = f" — {first_line}" if first_line else ""
+            self._progress(f"    ✓ {validator_id}: pass (skipped){cap_note}{snippet}")
         elif severity == "warn":
             snippet = f" — {first_line}" if first_line else ""
             self._progress(f"    ⚠️ {validator_id}: warn{cap_note}{snippet}")

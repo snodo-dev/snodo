@@ -60,8 +60,11 @@ In snodo v0.7.0+ (Fixes #24), `snodo init` commits `.snodo/` and `.gitignore` sa
 
 Note: `greenfield` template registration was fixed in Issue #19 (`snodo init --template greenfield` works out of the box).
 
-Leave `test_command` as `REPLACE_ME`. You cannot know it yet — it is an output
-of phase 1.
+Leave the quality validator's `test_command` at its shipped no-op default for
+now. You cannot know the real command yet — it is an output of phase 1. The
+default runs on any POSIX shell and exits zero, so nothing halts while it
+stands, and the quality validator records that no tests were executed (audit
+outcome `no_tests`) rather than pretending a pass (Fixes #215).
 
 ## 3. Phase 1 — decide
 
@@ -107,7 +110,8 @@ only phase whose exit gate is one model's opinion of another's prose.
 
 ```bash
 cat docs/decisions/0004-verification-command.md
-sed -i '' 's|test_command: "REPLACE_ME"|test_command: "make check"|' .snodo/protocol.yml
+# Put the decided verification command in place of the shipped no-op default.
+sed -i '' "s|test_command: \"echo 'snodo: no test_command configured; no tests executed'\"|test_command: \"make check\"|" .snodo/protocol.yml
 git merge --no-ff $(git branch --format='%(refname:short)' | grep decide-and-record)
 git worktree prune
 ```

@@ -21,6 +21,20 @@ def test_validator_verdict_cb_formatting():
     assert len(messages) == 1
     assert messages[0] == ("    ✓ quality: pass", True)
 
+    # A skipped pass (e.g. the quality no-op default: no tests executed) is
+    # visible in normal output, not gated behind verbose like a real pass.
+    messages.clear()
+    res_skipped = ValidatorResult(
+        validator_id="quality", severity="pass", skipped=True,
+        justification="No tests executed: no test command configured",
+    )
+    GraphBuilder._validator_verdict_cb(loop, "quality", res_skipped)
+    assert len(messages) == 1
+    msg, verb = messages[0]
+    assert verb is False
+    assert "quality: pass (skipped)" in msg
+    assert "No tests executed" in msg
+
     # Test warn verdict (should be un-gated verbose=False and carry icon + snippet)
     messages.clear()
     res_warn = ValidatorResult(validator_id="quality", severity="warn", justification="Tests failed (exit 2)\nStack trace detail")

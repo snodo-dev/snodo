@@ -14,16 +14,28 @@ def test_solo_init_and_simple_task(snodo_cli, audit_log_entries):
     assert r1.returncode == 0
     assert (snodo_cli.home / ".snodo" / "protocol.yml").exists()
 
-    # Run — warn stubs under unanimous → ESCALATE → exit 1
+    # Run — the template ships a working default test command, so a fresh
+    # project's first task completes instead of halting on an unresolvable one.
     r2 = snodo_cli(["run", "implement a hello world function", "--mock"])
-    assert r2.returncode == 1, f"expected ESCALATE, got: {r2.stderr}"
+    assert r2.returncode == 0, f"expected completion, got: {r2.stderr}"
     assert "STRUCTURED HALT PAYLOAD" in r2.stdout
 
-    # Verify audit log was populated with expected escalation events
+    # Verify audit log was populated with expected events, and that the quality
+    # gate's verification record states no tests were executed (never a pass).
     entries = audit_log_entries()
     assert len(entries) > 0, "audit log should not be empty"
     event_types = {e["event_type"] for e in entries}
-    assert "disagreement_escalated" in event_types or "halt" in event_types
+    assert "verification_executed" in event_types
+    verification = [
+        e for e in entries
+        if e["event_type"] == "verification_executed"
+    ]
+    assert verification, "expected a verification_executed event"
+    for ev in verification:
+        assert ev["data"]["outcome"] == "no_tests", (
+            f"ungated run must not claim a pass, got outcome "
+            f"{ev['data']['outcome']!r}"
+        )
 
 
 @pytest.mark.e2e
@@ -32,7 +44,7 @@ def test_solo_init_and_task_with_special_chars(snodo_cli):
     assert r1.returncode == 0
 
     r2 = snodo_cli(["run", "Implement user login with OAuth2 & JWT", "--mock"])
-    assert r2.returncode == 1
+    assert r2.returncode == 0, r2.stderr
 
 
 @pytest.mark.e2e

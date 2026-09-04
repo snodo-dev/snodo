@@ -96,10 +96,12 @@ commands, absolute working directories and captured test output. "Opaque" is
 not an adequate description of a field that leaves the machine; the table below
 is.
 
-All 22 event types are transmitted.
+All 23 event types are transmitted.
 
 | event_type | data keys |
 |---|---|
+| `project_announced` | project_id, scope, display_name |
+| `readiness_checked` | project_id, scope, display_name, protocol_id, score, total_checks, passed_checks, repository_findings_count, workstation_findings_count, findings |
 | `dispatch` | task_ref, mode, token_id, artifacts_count |
 | `governance_check` | task_ref, mode, constraints_checked |
 | `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision |
@@ -125,6 +127,30 @@ All 22 event types are transmitted.
 
 `session_id` is injected into every engine event by `_audit()`, so it is
 present on events whose call site does not name it.
+
+`readiness_checked.findings` carries repository method scaffolding findings
+with relative paths only and never workstation detail (such as local binaries on
+`PATH` or environment variables). Workstation prerequisites are recorded in
+`workstation_findings_count` only, ensuring that audit logs from different
+machines remain consistent for the same repository state.
+
+`verification_executed.outcome` is `"pass"`, `"fail"`, `"error"`, or
+`"no_tests"`. `"no_tests"` is the honest record of an ungated run: the shipped
+no-op default test command ran and no tests were executed (no
+`tooling.test_command` configured and no marker file detected). A consumer
+counting ungated projects or distinguishing a real pass from a placeholder
+must key on that outcome — an ungated run never carries `"pass"` (ADR 031).
+
+`project_announced` is emitted once per session by `SessionManager.create_session`
+(Fixes #214), where the project identity is already resolved. It carries the
+resolved `project_id`, its `scope`, and the `display_name` (the project's
+directory basename) so a consumer reading only the event stream can create the
+project row without inspecting the transport envelope. It is deliberately
+re-emitted on every session start — a consumer that joined late, lost a batch,
+or rebuilt from an advanced cursor still sees a project that is being worked
+on. The payload is identity, scope and display name only: no paths, no machine
+details. `display_name` remains on the sync envelope for now; removing it is a
+separate wire-trim.
 
 `flow_type` and `wave_id` are emitted on `task_classified`. When they are
 absent it is because the classifier failed, not because they are unplumbed —

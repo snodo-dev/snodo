@@ -159,6 +159,10 @@ def _configure_test_command(args, template_raw: str, project_dir: Path) -> str:
     if not test_cmd:
         return template_raw
 
+    from snodo.validators.quality import NOOP_TEST_COMMAND
+
+    placeholders = {"REPLACE_ME", NOOP_TEST_COMMAND}
+
     try:
         data = yaml.safe_load(template_raw)
         if isinstance(data, dict) and "validators" in data:
@@ -167,7 +171,7 @@ def _configure_test_command(args, template_raw: str, project_dir: Path) -> str:
                 if v.get("validator_type") == "quality" or v.get("validator_id") == "quality":
                     tooling = v.setdefault("tooling", {})
                     current_tc = tooling.get("test_command")
-                    if not current_tc or current_tc == "REPLACE_ME":
+                    if not current_tc or current_tc in placeholders:
                         tooling["test_command"] = test_cmd
                         updated = True
             if updated:

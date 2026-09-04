@@ -948,14 +948,15 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
 
     if audit_log:
         history = audit_log.get_history("verification_executed")
-        matching_passes = [
+        matching = [
             e for e in history
-            if e.data.get("outcome") == "pass"
-            and (e.data.get("task_ref") == task.id or (getattr(task, "root_task_ref", None) and e.data.get("task_ref") == task.root_task_ref))
+            if (e.data.get("task_ref") == task.id or (getattr(task, "root_task_ref", None) and e.data.get("task_ref") == task.root_task_ref))
             and target_commit
             and _verified_commit_matches_merge_target(e.data.get("commit"), target_commit)
         ]
-        if not matching_passes:
+        matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
+        matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
+        if not matching_passes and not matching_ungated:
             commit_display = target_commit[:7] if target_commit else "unknown"
             print(f"✗ Refused merge for {branch}: no passing verification_executed event for task {task.id} at commit {commit_display}.", file=sys.stderr)
             print("  An unverified merge is forbidden. Worktree and branch left intact.", file=sys.stderr)
@@ -969,10 +970,20 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
             })
             return 1, True, None
 
-        accepted_event = matching_passes[-1]
-        commit_display = target_commit[:7] if target_commit else "unknown"
-        cmd = accepted_event.data.get("command", "")
-        print(f"✓ Verified merge for {branch}: task {task.id} verified at commit {commit_display} ({cmd}).", file=sys.stderr)
+        if matching_passes:
+            accepted_event = matching_passes[-1]
+            commit_display = target_commit[:7] if target_commit else "unknown"
+            cmd = accepted_event.data.get("command", "")
+            print(f"✓ Verified merge for {branch}: task {task.id} verified at commit {commit_display} ({cmd}).", file=sys.stderr)
+        else:
+            # No genuine pass exists, but the audit trail explicitly records the
+            # task ran ungated (outcome "no_tests"): the operator's configured
+            # default test command executed and no tests were run. The merge
+            # proceeds (a fresh project must not strand its first task) but the
+            # line says so plainly, so a merge on unexecuted tests is never
+            # mistaken for a verified one.
+            commit_display = target_commit[:7] if target_commit else "unknown"
+            print(f"✓ Merged {branch} ungated: task {task.id} at commit {commit_display} ran no tests (no test_command configured).", file=sys.stderr)
 
     try:
         res = merge_task_branch(project_root, branch)
