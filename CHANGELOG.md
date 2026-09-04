@@ -11,6 +11,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Configurable agy print timeout and preservation of committed changes on non-zero exit.
+  `AGYAdapter` now sets `--print-timeout` in its subprocess argv based on the configured
+  `timeout_seconds` (via `llm.coder.timeout_seconds` or mode-level `coder_config`), preventing
+  runs from being cut off by agy's 5-minute default when snodo's budget is longer.
+  `SubprocessCoderAdapter` now inspects the working tree for committed files on non-zero
+  exit before raising `LLMCallError`, preserving completed work in the returned `CodeArtifact`
+  and surfacing `output_tail` metadata. (Fixes #218)
+
 - Kept coder closing output local and out of session checkpoint wire audit events.
   `_auto_write_halt_payload` strips `output_tail` before saving to the session checkpoint
   via `update_decision`, preventing coder stdout from being transmitted in `session_decision_updated`
