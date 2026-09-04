@@ -1051,6 +1051,7 @@ def _resolve_session(args, session_manager, protocol, project_root):
         mode; the session is None when session management is unavailable.
     """
     from snodo.infrastructure.state import read_state
+    from snodo.project import get_project_id
     state = read_state(project_root)
     mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
 
@@ -1069,12 +1070,19 @@ def _resolve_session(args, session_manager, protocol, project_root):
             print(f"Error: Session project '{session.project_root}' does not "
                   f"match current project '{project_root}'", file=sys.stderr)
             raise SystemExit(1)
-        audit_log = getattr(args, "audit_log", None)
+        audit_log = getattr(args, "audit_log", None) or getattr(session_manager, "audit_log", None)
         if audit_log:
             audit_log.append_event("session_resumed", {
                 "op": "session_resumed",
                 "session_id": resume_id,
                 "parent_checkpoint_ts": session.checkpoint.timestamp,
+            })
+            pid, scope = get_project_id(project_root)
+            audit_log.append_event("project_announced", {
+                "op": "project_announced",
+                "project_id": pid,
+                "scope": scope,
+                "display_name": Path(project_root).name,
             })
         print(f"  Session: {resume_id} (resumed)")
         print(f"  Inspect: snodo session show {resume_id}")
@@ -1083,6 +1091,20 @@ def _resolve_session(args, session_manager, protocol, project_root):
     # Auto: check for existing session (matching mode + project)
     existing = session_manager.get_active_session(mode, project_root)
     if existing:
+        audit_log = getattr(args, "audit_log", None) or getattr(session_manager, "audit_log", None)
+        if audit_log:
+            audit_log.append_event("session_resumed", {
+                "op": "session_resumed",
+                "session_id": existing.session_id,
+                "parent_checkpoint_ts": existing.checkpoint.timestamp,
+            })
+            pid, scope = get_project_id(project_root)
+            audit_log.append_event("project_announced", {
+                "op": "project_announced",
+                "project_id": pid,
+                "scope": scope,
+                "display_name": Path(project_root).name,
+            })
         print(f"  Session: {existing.session_id}")
         print(f"  Inspect: snodo session show {existing.session_id}")
         return existing, mode

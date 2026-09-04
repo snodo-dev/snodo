@@ -1582,3 +1582,97 @@ class TestForegroundTelemetryPersistence:
         assert data["type"] == "task"
         assert data["ok"] is True
 
+
+class TestResolveSessionProjectAnnounced:
+    def test_resolve_session_on_active_resume_emits_project_announced(self, temp_project):
+        """When an existing active session is adopted, session_resumed and project_announced are emitted (Fixes #219)."""
+        from snodo.cli.commands.run_cmd import _resolve_session
+        from snodo.compiler.models import Mode, Protocol, Validator
+        from snodo.infrastructure.session import SessionManager
+        from snodo.project import get_project_id
+
+        protocol = Protocol(
+            protocol_id="test",
+            name="Test",
+            version="1.0.0",
+            initial_mode="producer",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"])],
+            validators=[Validator(validator_id="v1", validator_type="security")],
+        )
+
+        audited_events = []
+        mock_audit = MagicMock()
+        mock_audit.append_event.side_effect = lambda et, data: audited_events.append((et, data))
+
+        mgr = SessionManager(audit_log=mock_audit)
+        # 1. Create session (emits session_started + project_announced)
+        session = mgr.create_session("producer", str(temp_project))
+        assert len(audited_events) == 2
+        assert audited_events[0][0] == "session_started"
+        assert audited_events[1][0] == "project_announced"
+
+        audited_events.clear()
+
+        # 2. Resolve session (adopting existing active session)
+        args = SimpleNamespace(resume=None, mode="producer", audit_log=mock_audit)
+        res_session, mode = _resolve_session(args, mgr, protocol, str(temp_project))
+
+        assert res_session.session_id == session.session_id
+        assert mode == "producer"
+
+        resumed_events = [e for e in audited_events if e[0] == "session_resumed"]
+        announced_events = [e for e in audited_events if e[0] == "project_announced"]
+
+        assert len(resumed_events) == 1
+        assert resumed_events[0][1]["session_id"] == session.session_id
+
+        assert len(announced_events) == 1
+        pid, scope = get_project_id(str(temp_project))
+        assert announced_events[0][1]["project_id"] == pid
+        assert announced_events[0][1]["scope"] == scope
+        assert announced_events[0][1]["display_name"] == Path(temp_project).name
+
+    def test_resolve_session_on_explicit_resume_emits_project_announced(self, temp_project):
+        """When an existing session is explicitly resumed, session_resumed and project_announced are emitted (Fixes #219)."""
+        from snodo.cli.commands.run_cmd import _resolve_session
+        from snodo.compiler.models import Mode, Protocol, Validator
+        from snodo.infrastructure.session import SessionManager
+        from snodo.project import get_project_id
+
+        protocol = Protocol(
+            protocol_id="test",
+            name="Test",
+            version="1.0.0",
+            initial_mode="producer",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"])],
+            validators=[Validator(validator_id="v1", validator_type="security")],
+        )
+
+        audited_events = []
+        mock_audit = MagicMock()
+        mock_audit.append_event.side_effect = lambda et, data: audited_events.append((et, data))
+
+        mgr = SessionManager(audit_log=mock_audit)
+        session = mgr.create_session("producer", str(temp_project))
+        audited_events.clear()
+
+        # Explicit resume with args.resume = session.session_id
+        args = SimpleNamespace(resume=session.session_id, mode="producer", audit_log=mock_audit)
+        res_session, mode = _resolve_session(args, mgr, protocol, str(temp_project))
+
+        assert res_session.session_id == session.session_id
+        assert mode == "producer"
+
+        resumed_events = [e for e in audited_events if e[0] == "session_resumed"]
+        announced_events = [e for e in audited_events if e[0] == "project_announced"]
+
+        assert len(resumed_events) == 1
+        assert resumed_events[0][1]["session_id"] == session.session_id
+
+        assert len(announced_events) == 1
+        pid, scope = get_project_id(str(temp_project))
+        assert announced_events[0][1]["project_id"] == pid
+        assert announced_events[0][1]["scope"] == scope
+        assert announced_events[0][1]["display_name"] == Path(temp_project).name
+
+
