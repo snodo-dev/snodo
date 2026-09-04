@@ -51,12 +51,15 @@ Concretely:
    hashing, content fingerprinting and name matching are all excluded. A local
    project is a leaf.
 
-3. **Promotion is one-way and follows the repository.** A repository that gains
-   a remote promotes to the remote identity on the next resolution. A cached
-   `local:` identity is therefore re-resolved on every call; a cached `remote`
-   or operator-supplied `override` identity is stable and returned as-is. There
-   is no demotion — removing a remote does not return a project to `local`,
-   because the identity is already known elsewhere.
+3. **Promotion is one-way and identity is stable once established.** A repository
+   that gains a remote promotes to the remote identity on the next resolution.
+   A cached `local:` identity is therefore re-resolved on every call. Once
+   promoted to `remote`, the identity is stable: a cached `remote` or
+   operator-supplied `override` identity is returned as-is. If the git remote
+   is changed or repointed, snodo warns on stderr that the cached identity is
+   unchanged and that re-initialising (`snodo init`) adopts the new remote if
+   desired. There is no demotion — removing a remote does not return a project
+   to `local`, because the identity is already known elsewhere.
 
 4. **The local uuid is stable.** A repository that still has no remote keeps
    the identifier it was first given. Re-resolution promotes; it does not
@@ -89,6 +92,12 @@ history, with a clean cut at the moment of promotion. Consumers aggregating
 across the boundary have to decide whether to re-key the earlier events, keep
 an alias, or show the discontinuity. Snodo does not make that decision for
 them; it does not rewrite the past.
+
+Identity is stable after promotion. If a git remote is repointed or modified,
+snodo preserves the cached project identity and warns on stderr that the
+identity is unchanged, rather than silently adopting the new remote or
+splitting audit history. The operator chooses whether and when to adopt the
+new remote by re-initialising (`snodo init`).
 
 Resolution for a local-scope project runs `git remote get-url` on every call,
 because the answer can change. That is a subprocess where a cache read would

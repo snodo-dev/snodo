@@ -260,3 +260,96 @@ def test_tool_telemetry_does_not_create_snodo_in_uninitialized_dir():
             os.chdir(orig_cwd)
 
 
+def test_get_project_id_announces_promotion_once_on_stderr(capsys):
+    """Resolving identity for a local project that gained a remote announces promotion once on stderr."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(["git", "init", "-q"], cwd=tmpdir, check=True)
+
+        local_pid = "local:6bd1d012554546c4b9462bfaaa4183d8"
+        cache_project_id(tmpdir, local_pid, "local")
+
+        subprocess.run(
+            ["git", "remote", "add", "origin", "git@github.com:myorg/myrepo.git"],
+            cwd=tmpdir,
+            check=True,
+        )
+
+        capsys.readouterr()  # Clear any previous captured output
+
+        pid1, scope1 = get_project_id(tmpdir)
+        pid2, scope2 = get_project_id(tmpdir)
+
+        assert pid1 == pid2 == "github.com/myorg/myrepo"
+        assert scope1 == scope2 == "remote"
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert f"Project identity promoted from {local_pid} to github.com/myorg/myrepo" in captured.err
+        assert captured.err.count(f"Project identity promoted from {local_pid} to github.com/myorg/myrepo") == 1
+        assert "Warning" not in captured.err
+
+
+def test_get_project_id_repointed_remote_warns_once_on_stderr(capsys):
+    """Repointing a remote emits a warning on stderr once and leaves cached identity unchanged."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(["git", "init", "-q"], cwd=tmpdir, check=True)
+        subprocess.run(
+            ["git", "remote", "add", "origin", "git@github.com:starlitlog/old-repo.git"],
+            cwd=tmpdir,
+            check=True,
+        )
+
+        old_pid, scope = get_project_id(tmpdir)
+        assert old_pid == "github.com/starlitlog/old-repo"
+        assert scope == "remote"
+        cache_project_id(tmpdir, old_pid, scope)
+
+        subprocess.run(
+            ["git", "remote", "set-url", "origin", "git@github.com:starlitlog/new-repo.git"],
+            cwd=tmpdir,
+            check=True,
+        )
+
+        capsys.readouterr()  # Clear previous captured output
+
+        pid1, scope1 = get_project_id(tmpdir)
+        pid2, scope2 = get_project_id(tmpdir)
+
+        assert pid1 == pid2 == "github.com/starlitlog/old-repo"
+        assert scope1 == scope2 == "remote"
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert (
+            "Warning: git remote changed from github.com/starlitlog/old-repo to "
+            "github.com/starlitlog/new-repo" in captured.err
+        )
+        assert "Project identity is unchanged (github.com/starlitlog/old-repo)" in captured.err
+        assert "snodo init" in captured.err
+        assert captured.err.count("Warning: git remote changed") == 1
+        assert "promoted" not in captured.err
+
+
+def test_get_project_id_cached_remote_spawns_no_subprocess(monkeypatch):
+    """Resolution for a cached remote identity performs no git subprocess on subsequent calls."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache_project_id(tmpdir, "github.com/myorg/cachedrepo", "remote")
+
+        # Initial call checks the root once in the process
+        pid1, scope1 = get_project_id(tmpdir)
+        assert pid1 == "github.com/myorg/cachedrepo"
+        assert scope1 == "remote"
+
+        # Subsequent resolution must never invoke subprocess.run
+        def fail_subprocess(*args, **kwargs):
+            raise AssertionError("subprocess.run was unexpectedly called for cached remote identity")
+
+        monkeypatch.setattr(subprocess, "run", fail_subprocess)
+
+        pid2, scope2 = get_project_id(tmpdir)
+        assert pid2 == "github.com/myorg/cachedrepo"
+        assert scope2 == "remote"
+
+
+
+
