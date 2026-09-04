@@ -11,6 +11,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Added `snodo session new` to begin a new protocol session for the current project
+  and mode without destroying or modifying the previous session. The active pointer
+  moves to the new session while the outgoing session remains intact on disk, inspectable
+  via `snodo session show` and listed in `snodo session list`. Warns and requires confirmation
+  when the outgoing session contains live state (pending adjudication proposals or in-progress
+  tasks), with `--yes` / `--force` to skip for scripted use. (Fixes #220)
 - Added a deterministic method scaffolding readiness check (`snodo ready` / `snodo readiness`).
   Derives checks dynamically from the compiled protocol (committed decision records for architecture
   validators, resolvable test commands for quality validators, committed paths cited in criteria,

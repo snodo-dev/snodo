@@ -69,6 +69,31 @@ def session_prune(
     return session_command(args)
 
 
+@app.command("switch")
+def session_switch(
+    session_id: str = typer.Argument(..., help="Session ID to activate"),
+):
+    """Set an existing session as active."""
+    args = SimpleNamespace(session_action="switch", session_id=session_id)
+    return session_command(args)
+
+
+@app.command("new")
+def session_new(
+    mode: Optional[str] = typer.Option(None, "--mode", help="Protocol mode (defaults to current mode)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt when outgoing session has live state"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt (alias for --yes)"),
+):
+    """Create a new session and set it as active."""
+    args = SimpleNamespace(
+        session_action="new",
+        mode=mode,
+        yes=yes or force,
+        force=yes or force,
+    )
+    return session_command(args)
+
+
 
 def session_command(args) -> int:
     """Manage protocol execution sessions."""
@@ -245,7 +270,14 @@ def _session_prune(mgr: SessionManager, args) -> int:
 def _session_switch(mgr: SessionManager, args) -> int:
     """Set an existing session as the active one for its (project, mode)."""
     from snodo.infrastructure.paths import require_project_root
-    project_root = require_project_root()
+
+    project_root = getattr(args, "project_root", None) or getattr(args, "project", None)
+    if not project_root:
+        try:
+            project_root = require_project_root()
+        except SystemExit:
+            print("Error: Must run from within a project directory.", file=sys.stderr)
+            return 1
 
     try:
         session = mgr.load_session(args.session_id)
@@ -265,16 +297,73 @@ def _session_switch(mgr: SessionManager, args) -> int:
 
 def _session_new(mgr: SessionManager, args) -> int:
     """Create a new session and set it active."""
-    from snodo.infrastructure.state import read_state
     from snodo.infrastructure.paths import require_project_root
-    project_root = require_project_root()
-    state = read_state(project_root)
+    from snodo.infrastructure.state import read_state
 
+    project_root = getattr(args, "project_root", None) or getattr(args, "project", None)
+    if not project_root:
+        try:
+            project_root = require_project_root()
+        except SystemExit:
+            print("Error: Must run from within a project directory.", file=sys.stderr)
+            return 1
+
+    state = read_state(project_root)
     mode = getattr(args, "mode", None) or state.current_mode
     if not mode:
-        print("Error: No mode specified. Use --mode or set current_mode via 'snodo mode change'.", file=sys.stderr)
+        print(
+            "Error: No mode specified. Use --mode or set current_mode via 'snodo mode change'.",
+            file=sys.stderr,
+        )
         return 1
+
+    # Check for live state in outgoing active session
+    outgoing = mgr.get_active_session(mode, project_root)
+    if outgoing is not None:
+        pending = outgoing.checkpoint.decisions.get("pending_decisions", {})
+        current_task = outgoing.checkpoint.current_task
+        has_live_state = bool(pending or current_task)
+
+        if has_live_state:
+            skip_prompt = getattr(args, "yes", False) or getattr(args, "force", False)
+            if not skip_prompt:
+                print(
+                    f"Warning: Active session {outgoing.session_id} ({mode}) has live state that will be left behind:",
+                    file=sys.stderr,
+                )
+                if pending:
+                    print(
+                        f"  - {len(pending)} pending adjudication proposal(s) awaiting 'snodo authorize'",
+                        file=sys.stderr,
+                    )
+                    for task_id, proposal in pending.items():
+                        ptype = proposal.get("type", "proposal") if isinstance(proposal, dict) else "proposal"
+                        val = proposal.get("validator_id", "") if isinstance(proposal, dict) else ""
+                        dec = proposal.get("decision", "") if isinstance(proposal, dict) else ""
+                        details = f" ({val} -> {dec})" if val or dec else ""
+                        print(f"      • Task {task_id}: [{ptype}]{details}", file=sys.stderr)
+                if current_task:
+                    print(
+                        f"  - In-progress task: {current_task}",
+                        file=sys.stderr,
+                    )
+                print(
+                    "  Pending proposals and in-progress tasks cannot be reached from the new session.\n"
+                    "  The previous session remains on disk and can be inspected with 'snodo session show'.\n"
+                    "  Re-run with --yes to skip this confirmation.",
+                    file=sys.stderr,
+                )
+                try:
+                    answer = input("Begin new session and leave previous state behind? [y/N] ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    print("\nCancelled.", file=sys.stderr)
+                    return 1
+
+                if answer not in ("y", "yes"):
+                    print("Cancelled: session not created.", file=sys.stderr)
+                    return 1
 
     session = mgr.create_session(mode, project_root)
     print(f"Created new session: {session.session_id} (mode={mode})")
     return 0
+
