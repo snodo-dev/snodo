@@ -226,6 +226,7 @@ class ValidationNodeMixin:
                 return self._state_to_dict(loop_state)
             self._last_execution_writes = []
             self._last_execution_reads = {"files": [], "directories": []}
+            self._last_output_tail = ""
             try:
                 self._progress("  Coder dispatched")
                 artifacts = self.executor_fn(
@@ -240,9 +241,13 @@ class ValidationNodeMixin:
                 self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")
                 loop_state.metadata["attempt_written_files"] = list(self._last_execution_writes)
                 loop_state.metadata["attempt_read_files"] = dict(self._last_execution_reads)
+                if getattr(self, "_last_output_tail", ""):
+                    loop_state.metadata["output_tail"] = getattr(self, "_last_output_tail", "")
                 if getattr(self, "_last_timed_out", False):
                     loop_state.metadata["timed_out"] = True
                     loop_state.metadata["timeout_seconds"] = getattr(self, "_last_timeout_seconds", None)
+                    if getattr(self, "_last_timeout_tail", ""):
+                        loop_state.metadata["output_tail"] = getattr(self, "_last_timeout_tail", "")
                     self._audit("coder_timed_out", {
                         "op": "coder_timed_out",
                         "task_ref": loop_state.task.id,
@@ -329,10 +334,13 @@ class ValidationNodeMixin:
                     "outcome": "skipped",
                     "reason": str(e),
                 }
+                output_tail = getattr(self, "_last_output_tail", "")
+                if output_tail:
+                    loop_state.metadata["output_tail"] = output_tail
                 self._audit("no_file_operations", {
                     "op": "no_file_operations",
                     "task_ref": loop_state.task.id,
-                    "error": str(e),
+                    "error": "Coder produced no file operations",
                 })
                 self._auto_write_failure_context(loop_state, [])
                 return self._state_to_dict(loop_state)

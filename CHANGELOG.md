@@ -9,6 +9,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserved coder closing output on zero-file halt and distinct stream truncation.
+  `SubprocessCoderAdapter` now keeps stdout and stderr distinct, truncates each on
+  its own terms, and takes closing messages from stdout rather than whichever stream
+  wrote last. A zero-file completion preserves the coder's explanation in the halt
+  output, structured halt payload (`reason`, `output_tail`), and retry failure context
+  (`task_failure`), while keeping raw coder output out of the tamper-evident audit
+  log. The timeout branch receives the same stream distinction fix. (Fixes #212)
+
 ---
 
 ## [0.7.3] — 2026-09-02

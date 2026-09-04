@@ -486,6 +486,9 @@ class WritebackMixin:
             payload["timeout_seconds"] = meta.get("timeout_seconds") or getattr(self, "_last_timeout_seconds", None)
         if commit_reason is not None:
             payload["commit_reason"] = commit_reason
+        output_tail = meta.get("output_tail") or getattr(self, "_last_output_tail", "") or getattr(self, "_last_timeout_tail", "")
+        if output_tail:
+            payload["output_tail"] = output_tail
         return payload
 
     def _auto_write_halt_payload(self, loop_state: Any) -> None:
