@@ -112,6 +112,11 @@ def ready_command(args) -> int:
     display_name = project_root.name
 
     # Construct clean audit payload (relative paths only, no absolute paths or machine details)
+    # Repository findings only (workstation findings omitted; count preserved)
+    sorted_repo_findings = sorted(
+        assessment.repository_findings,
+        key=lambda f: (-f.severity.weight(), f.fix_cost, f.id),
+    )
     audit_payload = {
         "project_id": project_id,
         "scope": scope,
@@ -122,7 +127,7 @@ def ready_command(args) -> int:
         "passed_checks": assessment.passed_checks,
         "repository_findings_count": len(assessment.repository_findings),
         "workstation_findings_count": len(assessment.workstation_findings),
-        "findings": [f.to_dict() for f in assessment.all_findings],
+        "findings": [f.to_dict() for f in sorted_repo_findings],
     }
 
     # Record audit event
@@ -141,7 +146,16 @@ def ready_command(args) -> int:
                 "ok": True,
                 "project_root": str(project_root),
                 "mode_filter": mode_filter,
-                **audit_payload,
+                "project_id": project_id,
+                "scope": scope,
+                "display_name": display_name,
+                "protocol_id": assessment.protocol_id,
+                "score": assessment.score,
+                "total_checks": assessment.total_checks,
+                "passed_checks": assessment.passed_checks,
+                "repository_findings_count": len(assessment.repository_findings),
+                "workstation_findings_count": len(assessment.workstation_findings),
+                "findings": [f.to_dict() for f in assessment.all_findings],
             },
             EXIT_PASS,
         )
