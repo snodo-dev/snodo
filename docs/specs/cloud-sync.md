@@ -100,6 +100,7 @@ All 22 event types are transmitted.
 
 | event_type | data keys |
 |---|---|
+| `project_announced` | project_id, scope, display_name |
 | `dispatch` | task_ref, mode, token_id, artifacts_count |
 | `governance_check` | task_ref, mode, constraints_checked |
 | `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision |
@@ -125,6 +126,17 @@ All 22 event types are transmitted.
 
 `session_id` is injected into every engine event by `_audit()`, so it is
 present on events whose call site does not name it.
+
+`project_announced` is emitted once per session by `SessionManager.create_session`
+(Fixes #214), where the project identity is already resolved. It carries the
+resolved `project_id`, its `scope`, and the `display_name` (the project's
+directory basename) so a consumer reading only the event stream can create the
+project row without inspecting the transport envelope. It is deliberately
+re-emitted on every session start — a consumer that joined late, lost a batch,
+or rebuilt from an advanced cursor still sees a project that is being worked
+on. The payload is identity, scope and display name only: no paths, no machine
+details. `display_name` remains on the sync envelope for now; removing it is a
+separate wire-trim.
 
 `flow_type` and `wave_id` are emitted on `task_classified`. When they are
 absent it is because the classifier failed, not because they are unplumbed —
