@@ -67,12 +67,24 @@ def test_agy_adapter_argv_construction(temp_workspace: Path):
     assert executed_argv[1] == "-p"
     assert "Implement feature X" in executed_argv[2]
     assert "--dangerously-skip-permissions" in executed_argv
+    assert "--print-timeout" in executed_argv
+    timeout_idx = executed_argv.index("--print-timeout")
+    assert executed_argv[timeout_idx + 1] == "1800s"
     assert "--add-dir" in executed_argv
     dir_idx = executed_argv.index("--add-dir")
     assert executed_argv[dir_idx + 1] == str(temp_workspace)
     assert "--model" in executed_argv
     model_idx = executed_argv.index("--model")
     assert executed_argv[model_idx + 1] == "Gemini 3.5 Flash"
+
+
+def test_agy_custom_timeout_sets_print_timeout_in_argv(temp_workspace: Path):
+    """Configuring timeout_seconds sets --print-timeout accordingly (Fixes #218)."""
+    adapter = AGYAdapter(workspace=temp_workspace, timeout_seconds=120)
+    argv = adapter._build_argv("Implement X", str(temp_workspace), "")
+    assert "--print-timeout" in argv
+    timeout_idx = argv.index("--print-timeout")
+    assert argv[timeout_idx + 1] == "120s"
 
 
 def test_agy_binary_missing_raises_actionable_error(temp_workspace: Path):
@@ -90,7 +102,7 @@ def test_agy_binary_missing_raises_actionable_error(temp_workspace: Path):
 
 
 def test_agy_nonzero_exit_surfaces_stderr(temp_workspace: Path):
-    """Non-zero returncode surfaces stderr in LLMCallError."""
+    """Non-zero returncode surfaces stderr in LLMCallError when no files committed."""
     adapter = AGYAdapter(workspace=temp_workspace)
     spec = TaskSpec(description="Implement feature X", constraints=[])
 
@@ -101,6 +113,53 @@ def test_agy_nonzero_exit_surfaces_stderr(temp_workspace: Path):
     msg = str(exc_info.value)
     assert "agy run failed (rc=1)" in msg
     assert "Error: invalid model specified" in msg
+
+
+def test_agy_nonzero_exit_preserves_committed_changes(temp_workspace: Path):
+    """Non-zero returncode preserves committed files instead of discarding work (Fixes #218)."""
+    adapter = AGYAdapter(workspace=temp_workspace)
+    spec = TaskSpec(description="Implement feature X", constraints=[])
+
+    def fake_run_with_commit(*args, **kwargs):
+        (temp_workspace / "feature.py").write_text("def x(): pass\n")
+        subprocess.run(["git", "add", "feature.py"], cwd=temp_workspace, check=True)
+        subprocess.run(["git", "commit", "-m", "work in progress"], cwd=temp_workspace, check=True)
+        return subprocess.CompletedProcess(
+            args=["agy"],
+            returncode=1,
+            stdout="Successfully created feature.py before crash",
+            stderr="Error: unexpected exit",
+        )
+
+    with mock.patch.object(adapter, "_run_subprocess", side_effect=fake_run_with_commit):
+        artifact = adapter.implement(spec)
+
+    assert len(artifact.files) >= 1
+    paths = [f.path for f in artifact.files]
+    assert "feature.py" in paths
+    assert artifact.metadata.get("output_tail") == "Successfully created feature.py before crash"
+
+
+def test_agy_nonzero_exit_prioritizes_stdout_over_stderr_in_error(temp_workspace: Path):
+    """Non-zero returncode prioritizes stdout closing explanation over stderr noise (Fixes #218)."""
+    adapter = AGYAdapter(workspace=temp_workspace)
+    spec = TaskSpec(description="Implement feature X", constraints=[])
+
+    def fake_run_failure(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args=["agy"],
+            returncode=1,
+            stdout="Closing message: task cannot be completed",
+            stderr="tool_progress: some noisy progress",
+        )
+
+    with mock.patch.object(adapter, "_run_subprocess", side_effect=fake_run_failure):
+        with pytest.raises(LLMCallError) as exc_info:
+            adapter.implement(spec)
+
+    msg = str(exc_info.value)
+    assert "Closing message: task cannot be completed" in msg
+
 
 
 def test_coder_selection_and_validator_model_unaffected(temp_workspace: Path):
