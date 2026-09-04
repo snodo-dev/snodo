@@ -408,6 +408,9 @@ def task_show_command(args) -> int:
         reason = halt_entry.get("reason") or halt_entry.get("blocker_reason")
         if reason:
             print(f"  reason:         {reason}")
+        output_tail = halt_entry.get("output_tail")
+        if output_tail and output_tail not in (reason or ""):
+            print(f"  output_tail:    {output_tail}")
         hint = halt_entry.get("hint")
         if hint:
             print(f"  hint:           {hint}")

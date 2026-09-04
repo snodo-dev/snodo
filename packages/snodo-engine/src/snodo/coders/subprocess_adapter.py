@@ -161,6 +161,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         self.last_timed_out = False
         self.last_timeout_seconds = None
         self.last_timeout_tail = ""
+        self.last_output_tail = ""
 
         try:
             proc = self._run_subprocess(argv, project_root)
@@ -178,12 +179,12 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
                 out_str = out_str.decode("utf-8", errors="replace")
             if isinstance(err_str, bytes):
                 err_str = err_str.decode("utf-8", errors="replace")
-            tail = (err_str or "")[:2000] or (out_str or "")[:2000]
-            if not tail:
-                combined = (out_str + "\n" + err_str).strip()
-                tail = combined[-2000:] if combined else ""
-            timeout_tail = tail.strip()
+            out_tail = out_str.strip()[-2000:] if out_str else ""
+            err_tail = err_str.strip()[-2000:] if err_str else ""
+            tail = (out_tail or err_tail).strip()
+            timeout_tail = tail
             self.last_timeout_tail = timeout_tail
+            self.last_output_tail = timeout_tail
 
         if timed_out:
             msg = f"{self.binary} run timed out after {self.timeout_seconds}s"
@@ -197,18 +198,37 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             if artifact and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
                 artifact.metadata["timed_out"] = True
                 artifact.metadata["timeout_seconds"] = self.timeout_seconds
+                if timeout_tail:
+                    artifact.metadata["output_tail"] = timeout_tail
             return artifact
 
         if proc.returncode != 0:
-            tail = (proc.stderr or "")[:2000] or (proc.stdout or "")[:2000]
+            out_str = proc.stdout or ""
+            err_str = proc.stderr or ""
+            if isinstance(out_str, bytes):
+                out_str = out_str.decode("utf-8", errors="replace")
+            if isinstance(err_str, bytes):
+                err_str = err_str.decode("utf-8", errors="replace")
+            err_tail = err_str.strip()[-2000:] if err_str else ""
+            out_tail = out_str.strip()[-2000:] if out_str else ""
+            tail = (err_tail or out_tail).strip()
             raise LLMCallError(
                 f"{self.binary} run failed (rc={proc.returncode}): {tail}"
             )
 
+        out_str = proc.stdout or ""
+        err_str = proc.stderr or ""
+        if isinstance(out_str, bytes):
+            out_str = out_str.decode("utf-8", errors="replace")
+        if isinstance(err_str, bytes):
+            err_str = err_str.decode("utf-8", errors="replace")
+        out_tail = out_str.strip()[-1000:] if out_str else ""
+        err_tail = err_str.strip()[-1000:] if err_str else ""
+        tail = (out_tail or err_tail).strip()
+        self.last_output_tail = tail
+
         diff_entries = self._read_changes_from_disk()
         if not diff_entries:
-            combined = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
-            tail = combined[-1000:]
             _logger.warning(
                 "%s run completed but no changes detected (rc=0). output tail: %s",
                 self.binary, tail,
@@ -220,6 +240,10 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         """Build a CodeArtifact from diff entries, re-reading content from disk."""
         _ignored_dirs = {"__pycache__", ".venv", "venv", "node_modules", ".git", ".pytest_cache", ".mypy_cache"}
         _ignored_exts = {".pyc", ".pyo", ".DS_Store"}
+
+        meta: dict[str, Any] = {}
+        if getattr(self, "last_output_tail", ""):
+            meta["output_tail"] = self.last_output_tail
 
         files = []
         for entry in diff_entries:
@@ -246,9 +270,9 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
 
         if not files:
             _logger.warning("%s returned no files — task completed with no changes", self.binary)
-            return CodeArtifact(files=[])
+            return CodeArtifact(files=[], metadata=meta)
 
-        return CodeArtifact(files=files)
+        return CodeArtifact(files=files, metadata=meta)
 
     def _build_prompt(self, spec: TaskSpec) -> str:
         """Build prompt from TaskSpec."""
