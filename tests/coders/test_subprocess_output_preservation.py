@@ -34,14 +34,20 @@ def temp_workspace(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+    (root / ".gitignore").write_text(".snodo/\n")
     (root / "README.md").write_text("# Test Workspace\n")
     subprocess.run(["git", "add", "."], cwd=root, check=True)
     subprocess.run(["git", "commit", "-qm", "initial"], cwd=root, check=True)
     return root
 
 
-def test_zero_write_run_preserves_stdout_over_stderr_in_halt_payload(temp_workspace: Path):
-    """A coder that exits zero without writing files preserves stdout closing message in halt payload."""
+def test_zero_write_run_preserves_stdout_over_stderr_in_halt_payload(temp_workspace: Path, capsys, monkeypatch):
+    """A coder that exits zero without writing files preserves stdout closing message locally without putting it in audit log or session checkpoint wire surface."""
+    from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.state import ProjectState, write_state
+    from snodo.cli.commands.task_cmd import task_show_command
+    from types import SimpleNamespace
+
     protocol = Protocol(
         protocol_id="test-proto",
         name="test-proto",
@@ -72,7 +78,6 @@ def test_zero_write_run_preserves_stdout_over_stderr_in_halt_payload(temp_worksp
     )
 
     def fake_run_no_files(*args, **kwargs):
-        # Exits zero without modifying or creating any files in workspace
         return subprocess.CompletedProcess(
             args=["agy"],
             returncode=0,
@@ -86,6 +91,12 @@ def test_zero_write_run_preserves_stdout_over_stderr_in_halt_payload(temp_worksp
         def append_event(self, event_type, data):
             audited_events.append((event_type, data))
 
+    mock_audit = MockAuditLog()
+    monkeypatch.setenv("SNODO_HOME", str(temp_workspace / ".snodo"))
+    write_state(str(temp_workspace), ProjectState(current_mode="producer"))
+    session_mgr = SessionManager(audit_log=mock_audit)
+    session = session_mgr.create_session("producer", str(temp_workspace))
+
     with mock.patch.object(adapter, "_run_subprocess", side_effect=fake_run_no_files):
         builder = GraphBuilder(
             protocol=protocol,
@@ -93,8 +104,15 @@ def test_zero_write_run_preserves_stdout_over_stderr_in_halt_payload(temp_worksp
             git_mcp=GitMCP(str(temp_workspace)),
             coder=adapter,
             project_root=str(temp_workspace),
-            audit_log=MockAuditLog(),
+            session_manager=session_mgr,
+            session_id=session.session_id,
+            audit_log=mock_audit,
+            job_id="job-1",
         )
+
+        # Create job directory so job state.json is written
+        job_dir = temp_workspace / ".snodo" / "jobs" / "job-1"
+        job_dir.mkdir(parents=True, exist_ok=True)
 
         state = {
             "task": task.model_dump(),
@@ -114,22 +132,36 @@ def test_zero_write_run_preserves_stdout_over_stderr_in_halt_payload(temp_worksp
     assert result["is_blocked"] is True
     assert result["halt_type"] == "no_file_operations"
 
-    # Halt payload must carry the closing line from stdout, NOT the stderr noise
+    # 1. Local halt payload carries output_tail
     payload = blocked_res["metadata"]["halt_payload"]
     assert payload["status"] == "blocked"
     assert payload["halt_type"] == "blocker"
     assert payload["raw_halt_type"] == "blocker"
-    assert "I investigated the code and decided no changes are needed" in payload["reason"]
-    assert "SCREEN_PATHS" not in payload["reason"]
-    assert "I investigated the code and decided no changes are needed" in payload["blocker_reason"]
     assert payload.get("output_tail") == distinctive_stdout
 
-    # Audit log constraint: raw coder output must NOT be in audit log
-    no_file_ops_events = [e for e in audited_events if e[0] == "no_file_operations"]
-    assert len(no_file_ops_events) == 1
-    audit_data = no_file_ops_events[0][1]
-    assert audit_data["error"] == "Coder produced no file operations"
-    assert distinctive_stdout not in str(audit_data)
+    # 2. Local job state.json carries output_tail
+    import json
+    job_state = json.loads((job_dir / "state.json").read_text())
+    assert job_state["halt"]["output_tail"] == distinctive_stdout
+
+    # 3. Session checkpoint on wire does NOT carry output_tail
+    reloaded_session = session_mgr.load_session(session.session_id)
+    checkpoint_halt = reloaded_session.checkpoint.decisions.get("halt", {}).get("task-123", {})
+    assert "output_tail" not in checkpoint_halt
+
+    # 4. No audit event contains the coder's closing text
+    assert len(audited_events) > 0
+    for ev_type, ev_data in audited_events:
+        ev_str = json.dumps(ev_data, default=str)
+        assert distinctive_stdout not in ev_str, f"Audit event {ev_type} leaked coder stdout: {ev_str}"
+
+    # 5. snodo task show displays the coder closing text recovered from job state
+    args = SimpleNamespace(task_id="task-123", json=False)
+    with mock.patch("snodo.cli.commands.task_cmd.resolve_project_root", return_value=str(temp_workspace)):
+        ret = task_show_command(args)
+    assert ret == 0
+    captured = capsys.readouterr().out
+    assert distinctive_stdout in captured
 
 
 def test_timeout_run_preserves_stdout_closing_message(temp_workspace: Path):

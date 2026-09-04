@@ -517,7 +517,11 @@ class WritebackMixin:
         halt = session.checkpoint.decisions.get("halt", {})
         if not isinstance(halt, dict):
             halt = {}
-        halt[task_id] = halt_payload
+        # The session checkpoint is transmitted over the wire (emits session_decision_updated).
+        # Strip output_tail so raw coder output never enters the audit log.
+        wire_payload = dict(halt_payload)
+        wire_payload.pop("output_tail", None)
+        halt[task_id] = wire_payload
         self._session_manager.update_decision(
             self._session_id, "halt", halt,
         )
