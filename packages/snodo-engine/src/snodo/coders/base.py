@@ -220,6 +220,9 @@ class InPlaceCoderAdapter(Coder, ABC):
             for d in repo.index.diff(None):
                 path = d.b_path or d.a_path
                 if path:
+                    parts = Path(path).parts
+                    if parts and parts[0] == ".snodo":
+                        continue
                     if d.change_type == "D":
                         changed[path] = "deleted"
                     else:
@@ -229,10 +232,16 @@ class InPlaceCoderAdapter(Coder, ABC):
             for d in repo.index.diff("HEAD"):
                 path = d.b_path or d.a_path
                 if path and path not in changed:
+                    parts = Path(path).parts
+                    if parts and parts[0] == ".snodo":
+                        continue
                     changed[path] = d.change_type
 
             # Untracked files (new files the coder created)
             for path in repo.untracked_files:
+                parts = Path(path).parts
+                if parts and parts[0] == ".snodo":
+                    continue
                 changed[path] = "added"
 
             # If no unstaged/staged/untracked changes found, check if the
@@ -250,6 +259,9 @@ class InPlaceCoderAdapter(Coder, ABC):
                         for d in base_commit.diff(head_commit):
                             path = d.b_path or d.a_path
                             if path and path not in changed:
+                                parts = Path(path).parts
+                                if parts and parts[0] == ".snodo":
+                                    continue
                                 if d.change_type == "D":
                                     changed[path] = "deleted"
                                 else:

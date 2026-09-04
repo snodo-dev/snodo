@@ -195,6 +195,8 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             if not diff_entries:
                 raise LLMCallError(msg)
             artifact = self._diff_to_artifact(diff_entries)
+            if not artifact.files:
+                raise LLMCallError(msg)
             if artifact and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
                 artifact.metadata["timed_out"] = True
                 artifact.metadata["timeout_seconds"] = self.timeout_seconds
@@ -209,12 +211,24 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
                 out_str = out_str.decode("utf-8", errors="replace")
             if isinstance(err_str, bytes):
                 err_str = err_str.decode("utf-8", errors="replace")
-            err_tail = err_str.strip()[-2000:] if err_str else ""
             out_tail = out_str.strip()[-2000:] if out_str else ""
-            tail = (err_tail or out_tail).strip()
-            raise LLMCallError(
-                f"{self.binary} run failed (rc={proc.returncode}): {tail}"
-            )
+            err_tail = err_str.strip()[-2000:] if err_str else ""
+            tail = (out_tail or err_tail).strip()
+            self.last_output_tail = tail
+            msg = f"{self.binary} run failed (rc={proc.returncode})"
+            if tail:
+                msg += f": {tail}"
+            _logger.warning(msg)
+            diff_entries = self._read_changes_from_disk()
+            if not diff_entries:
+                raise LLMCallError(msg)
+            artifact = self._diff_to_artifact(diff_entries)
+            if not artifact.files:
+                raise LLMCallError(msg)
+            if artifact and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
+                if tail:
+                    artifact.metadata["output_tail"] = tail
+            return artifact
 
         out_str = proc.stdout or ""
         err_str = proc.stderr or ""

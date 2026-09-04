@@ -33,6 +33,9 @@ class AGYAdapter(SubprocessCoderAdapter):
             "--add-dir",
             project_root,
         ]
+        if getattr(self, "timeout_seconds", None):
+            argv.extend(["--print-timeout", f"{self.timeout_seconds}s"])
         if model:
             argv.extend(["--model", model])
         return argv
+
