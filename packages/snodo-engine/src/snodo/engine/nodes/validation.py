@@ -227,6 +227,7 @@ class ValidationNodeMixin:
             self._last_execution_writes = []
             self._last_execution_reads = {"files": [], "directories": []}
             self._last_output_tail = ""
+            self._last_existing_work_base_ref = None
             try:
                 self._progress("  Coder dispatched")
                 artifacts = self.executor_fn(
@@ -364,6 +365,34 @@ class ValidationNodeMixin:
                 return self._state_to_dict(loop_state)
 
             loop_state.artifacts.extend(artifacts)
+
+            # The coder produced no operations this attempt because the task
+            # branch already carried the work — an earlier attempt committed it
+            # and then the run failed afterwards. This is NOT "coder produced
+            # nothing": the work exists, sitting on the branch this run is
+            # executing. Report that plainly and point the post-execute judges
+            # at the branch base so they diff base_ref..HEAD (the committed
+            # work) instead of this no-op attempt's empty HEAD..HEAD range, and
+            # so the head_not_moved guard below does not mistake the
+            # intentionally-unchanged HEAD for a claimed-but-missing commit.
+            existing_base_ref = self._last_existing_work_base_ref
+            if existing_base_ref:
+                self._last_existing_work_base_ref = None
+                loop_state.base_ref = existing_base_ref
+                work_files = sorted({str(a) for a in loop_state.artifacts})
+                self._progress(
+                    "  Work already present on the task branch: an earlier "
+                    f"attempt committed {len(work_files)} file(s) before the run "
+                    "failed. Validating the existing work instead of reporting "
+                    "no_file_operations."
+                )
+                self._audit("work_already_present", {
+                    "op": "work_already_present",
+                    "task_ref": loop_state.task.id,
+                    "base_ref": existing_base_ref,
+                    "artifacts_count": len(work_files),
+                    "files": work_files,
+                })
 
             # The coder produced observable work — the git review channel must
             # reflect it. If the executor returned artifacts but HEAD did not
