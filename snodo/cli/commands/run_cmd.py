@@ -948,10 +948,17 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
 
     if audit_log:
         history = audit_log.get_history("verification_executed")
+        # The commit decides, not the task id. A passing verification recorded
+        # for the commit being merged proves that commit is verified, whoever
+        # recorded it — two tasks can only share a commit by being the same
+        # commit. Matching on task_ref as well was asymmetric: a subtask could
+        # find its parent's records through root_task_ref, but a parent could
+        # not find the record written by the recovery subtask that resolved it,
+        # so recovered work was refused despite passing at the merged commit
+        # (Fixes #223).
         matching = [
             e for e in history
-            if (e.data.get("task_ref") == task.id or (getattr(task, "root_task_ref", None) and e.data.get("task_ref") == task.root_task_ref))
-            and target_commit
+            if target_commit
             and _verified_commit_matches_merge_target(e.data.get("commit"), target_commit)
         ]
         matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
