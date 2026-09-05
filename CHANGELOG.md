@@ -64,6 +64,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
   `SubprocessCoderAdapter` now inspects the working tree for committed files on non-zero
   exit before raising `LLMCallError`, preserving completed work in the returned `CodeArtifact`
   and surfacing `output_tail` metadata. (Fixes #218)
+- The recovered-work guard now reads the configured task-branch prefix instead
+  of hardcoding `"task/"`. The protocol makes the prefix configurable
+  (`execution.branch_prefix`, default `"task"`), so a project that changed it
+  previously got no guard at all and a retry silently dropped committed work
+  exactly as it did before the fix — a guard against silent data loss must not
+  itself fail silently on a supported configuration. The `work_already_present`
+  event is now documented in `docs/specs/cloud-sync.md` as the twenty-fourth
+  transmitted event type, carrying `task_ref`, `base_ref`, `artifacts_count`,
+  and `files` (repository-relative paths only). Other call sites that hardcode
+  the same literal are out of scope. (Fixes #222)
 - A retried task whose work is already on its branch is no longer reported as
   if the coder did nothing. When a task commits work and then fails afterwards,
   the retry runs on a task branch that already carries that commit; a coder that
