@@ -1537,6 +1537,117 @@ class TestUnverifiedMergeBlocked:
         assert branch_commit[:7] in err_accept
         assert "pytest -q tests/test_code.py" in err_accept
 
+    def test_merge_allowed_with_recovery_subtask_pass(self, tmp_path):
+        """A passing verification recorded by the recovery subtask that resolved
+        a task is evidence for the commit being merged: the parent could never
+        find it through task identity, and the commit is what establishes the
+        merge (Fixes #223)."""
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+
+        from snodo.cli.commands.run_cmd import _merge_on_success
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        # The root task failed post-execute verification and recovered through
+        # subtask 1.1_pass-content, which passed at the commit being merged.
+        root_task = Task(id="1", spec="pass content", root_task_ref=None)
+        branch = task_branch_name(root_task.id, root_task.spec)
+        subprocess_run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "content.py").write_text("fixed\n")
+        subprocess_run(["git", "add", "content.py"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "recovered fix"], cwd=repo, check=True)
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+        audit_log = AuditLog(str(repo / "audit.log"))
+        target_commit = subprocess_run(
+            ["git", "rev-parse", branch], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        # The passing verification is recorded under the recovery subtask's id,
+        # not the root task's id — the root's root_task_ref is None, so the old
+        # task-identity condition would never match it.
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "command": "pytest",
+            "commit": target_commit,
+            "returncode": 0,
+            "outcome": "pass",
+            "validator_id": "quality",
+            "task_ref": "1.1_pass-content",
+        })
+
+        res, preserve, merged = _merge_on_success(str(repo), root_task, 0, "sess_1", audit_log)
+        assert res == 0
+        assert preserve is False
+        assert merged == branch
+        assert (repo / "content.py").exists()
+
+        events = audit_log.get_history("task_merged")
+        assert len(events) == 1
+        assert events[0].data["op"] == "task_merged"
+        assert events[0].data["task_ref"] == "1"
+
+    def test_merge_refused_when_pass_is_for_a_different_commit(self, tmp_path):
+        """A passing verification at a different commit does not satisfy the
+        gate even when the task identity matches: the commit still decides
+        (Fixes #223)."""
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+
+        from snodo.cli.commands.run_cmd import _merge_on_success
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        task = Task(id="task_same_identity", spec="same identity")
+        branch = task_branch_name(task.id, task.spec)
+        subprocess_run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "feature.txt").write_text("feature\n")
+        subprocess_run(["git", "add", "feature.txt"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
+        current_commit = subprocess_run(
+            ["git", "rev-parse", branch], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+        audit_log = AuditLog(str(repo / "audit.log"))
+        # Same task identity, but the passing verification is for a different commit.
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "command": "pytest",
+            "commit": "other_commit_sha_1234567890abcdef",
+            "returncode": 0,
+            "outcome": "pass",
+            "validator_id": "quality",
+            "task_ref": task.id,
+        })
+
+        res, preserve, merged = _merge_on_success(str(repo), task, 0, "sess_1", audit_log)
+        assert res == 1
+        assert preserve is True
+        assert merged is None
+        assert not (repo / "feature.txt").exists()
+
+        events = audit_log.get_history("unverified_merge_blocked")
+        assert len(events) == 1
+        assert events[0].data["task_ref"] == "task_same_identity"
+        assert events[0].data["target_commit"] == current_commit
+
 
 class TestForegroundTelemetryPersistence:
     def test_foreground_run_telemetry_persists_and_is_readable(self, temp_project, capsys):
