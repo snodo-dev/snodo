@@ -45,7 +45,13 @@ class ExecutorMixin:
                 git_mcp.create_branch(branch_name)
 
     def _apply_file_operations(self, workspace_mcp: Any, coder: Any, code_artifact: Any, task: Task) -> List[str]:
-        """Apply file write/delete operations and return affected paths."""
+        """Apply file write/delete operations and return affected paths.
+
+        Returns an empty list when the coder emitted no file operations; the
+        caller decides what an empty result means (see ``_default_executor``,
+        which raises ``NoFileOperationsError`` only when the work does not
+        exist anywhere on the branch, #221).
+        """
         artifact_paths = []
         for file_op in code_artifact.files:
             if file_op.action == "delete":
@@ -59,16 +65,73 @@ class ExecutorMixin:
                     workspace_mcp.write_file(file_op.path, file_op.content)
             artifact_paths.append(file_op.path)
 
-        if not artifact_paths:
-            # "Coder produced nothing" is the same fault whether the engine
-            # commits the artifacts (skip_engine_commit False) or the adapter
-            # commits them itself (skip_engine_commit True). Opting out of the
-            # engine's commit mechanism does NOT waive the obligation that the
-            # coder produce observable work — a no-op run must fail loudly on
-            # every adapter, not be downgraded to an audit note on some
-            # (docs/architecture/coder-adapter-contract.md §4, #68).
-            raise NoFileOperationsError("Coder produced no file operations")
         return artifact_paths
+
+    def _existing_task_branch_work(self, git_mcp: Optional[Any]) -> Optional[tuple]:
+        """Return work already committed to the task branch that the base lacks.
+
+        Within a single run the coder adapter distinguishes "committed its
+        work" from "did nothing" by diffing the HEAD recorded before dispatch
+        against HEAD after. Across runs that comparison is blind: when a retry
+        executes on a task branch that already carries an earlier attempt's
+        commit (the attempt committed its work and then the run failed
+        afterwards), this run's starting HEAD already contains that work. The
+        coder finds the work present, correctly writes nothing, HEAD does not
+        move, and the start..end diff is empty — so the run is misreported as
+        no_file_operations even though the task is done and the result is
+        sitting on the branch in front of it.
+
+        Compare against the branch's base as well — the point where the task
+        branch diverged from the branch it will merge into. When HEAD is ahead
+        of that base, the work exists. Returns ``(base_ref_sha, [paths])`` for
+        the committed work (the diff between the merge-base with the base
+        branch and HEAD), or None when there is no such work.
+
+        None is returned (and no_file_operations stands) when there is no git
+        repo, the active branch is not a task branch, or the branch is not
+        ahead of the base — a coder that produced nothing on an unchanged
+        branch is still no_file_operations.
+        """
+        if git_mcp is None:
+            return None
+        try:
+            from snodo.tools.git import resolve_base_branch
+
+            repo = git_mcp.repo
+            try:
+                branch = repo.active_branch.name
+            except Exception:
+                return None
+            # Only task branches hold this task's work; a degraded run on the
+            # operator's own branch must never be treated as task work.
+            if not branch.startswith("task/"):
+                return None
+            head = repo.head.commit
+            base_branch = resolve_base_branch(str(git_mcp.project_root))
+            base_commit = repo.commit(base_branch)
+        except Exception:
+            return None
+
+        # If HEAD is an ancestor (or equal) of the base tip, the branch holds
+        # no work the base lacks: genuinely empty, so no_file_operations stands.
+        try:
+            if repo.is_ancestor(head, base_commit):
+                return None
+            merge_bases = repo.merge_base(base_commit, head)
+            anchor = merge_bases[0] if merge_bases else base_commit
+            if anchor.hexsha == head.hexsha:
+                return None
+            paths = []
+            for d in anchor.diff(head):
+                path = d.b_path or d.a_path
+                if path and path not in paths:
+                    paths.append(path)
+        except Exception:
+            return None
+
+        if not paths:
+            return None
+        return (anchor.hexsha, sorted(paths))
 
     def _commit_artifacts(self, git_mcp: Optional[Any], coder: Any, artifact_paths: List[str], task: Task) -> List[str]:
         """Commit modified artifact files to repository."""
@@ -136,10 +199,38 @@ class ExecutorMixin:
             }
             if workspace_mcp:
                 artifact_paths = self._apply_file_operations(workspace_mcp, coder, code_artifact, task)
-                artifacts.extend(artifact_paths)
+                if not artifact_paths:
+                    # The coder produced no file operations. Before declaring a
+                    # no_file_operations halt, ask whether the work already
+                    # exists on the task branch: a retry runs on a branch that
+                    # may already carry an earlier attempt's commit (the attempt
+                    # committed and then failed afterwards), and a coder that
+                    # finds the work present correctly writes nothing.
+                    # no_file_operations must mean the work does not exist — not
+                    # that this particular attempt did not create it (#221).
+                    existing = self._existing_task_branch_work(git_mcp)
+                    if existing is None:
+                        # "Coder produced nothing" is the same fault whether the
+                        # engine commits the artifacts (skip_engine_commit False)
+                        # or the adapter commits them itself (skip_engine_commit
+                        # True). Opting out of the engine's commit mechanism does
+                        # NOT waive the obligation that the coder produce
+                        # observable work — a no-op run must fail loudly on every
+                        # adapter, not be downgraded to an audit note on some
+                        # (docs/architecture/coder-adapter-contract.md §4, #68).
+                        raise NoFileOperationsError("Coder produced no file operations")
+                    # The work is already committed on the branch: carry those
+                    # artifacts forward exactly as freshly produced ones would be
+                    # so post-execute validation judges what is actually there.
+                    # There is nothing new to stage or commit, so the engine's
+                    # commit path is skipped.
+                    self._last_existing_work_base_ref = existing[0]
+                    artifacts.extend(existing[1])
+                else:
+                    artifacts.extend(artifact_paths)
 
-                git_artifacts = self._commit_artifacts(git_mcp, coder, artifact_paths, task)
-                artifacts.extend(git_artifacts)
+                    git_artifacts = self._commit_artifacts(git_mcp, coder, artifact_paths, task)
+                    artifacts.extend(git_artifacts)
             else:
                 # No workspace, just return stub
                 artifacts.append(f"code_generated_for_{task.id}")

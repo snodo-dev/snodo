@@ -64,6 +64,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
   `SubprocessCoderAdapter` now inspects the working tree for committed files on non-zero
   exit before raising `LLMCallError`, preserving completed work in the returned `CodeArtifact`
   and surfacing `output_tail` metadata. (Fixes #218)
+- A retried task whose work is already on its branch is no longer reported as
+  if the coder did nothing. When a task commits work and then fails afterwards,
+  the retry runs on a task branch that already carries that commit; a coder that
+  finds the work present correctly writes nothing, and the engine previously
+  halted with `no_file_operations`. The engine now compares against the branch's
+  base — the point where the task branch diverged from the branch it will merge
+  into — and when the branch is already ahead of that base the work exists: it
+  reports that plainly (`work_already_present`) and carries the existing
+  artifacts into post-execute validation exactly as freshly produced ones would
+  be, so the validators judge what is actually there. `no_file_operations` now
+  means the work does not exist, not that this particular attempt did not create
+  it; a coder that produced nothing on an unchanged branch is still
+  `no_file_operations`. The merge gate is unchanged: work found this way faces
+  the same verification requirement as work produced in the run. (Fixes #221)
 
 - Kept coder closing output local and out of session checkpoint wire audit events.
   `_auto_write_halt_payload` strips `output_tail` before saving to the session checkpoint

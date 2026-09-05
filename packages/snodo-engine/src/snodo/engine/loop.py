@@ -460,6 +460,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._last_execution_writes: List[str] = []
         self._last_execution_reads: Dict[str, List[str]] = {"files": [], "directories": []}
         self._last_commit_reason: Optional[str] = None
+        self._last_existing_work_base_ref: Optional[str] = None
         self._last_output_tail: str = ""
         self._last_timed_out: bool = False
         self._last_timeout_seconds: Optional[int] = None
