@@ -96,13 +96,14 @@ commands, absolute working directories and captured test output. "Opaque" is
 not an adequate description of a field that leaves the machine; the table below
 is.
 
-All 23 event types are transmitted.
+All 24 event types are transmitted.
 
 | event_type | data keys |
 |---|---|
 | `project_announced` | project_id, scope, display_name |
 | `readiness_checked` | project_id, scope, display_name, protocol_id, score, total_checks, passed_checks, repository_findings_count, workstation_findings_count, findings |
 | `dispatch` | task_ref, mode, token_id, artifacts_count |
+| `work_already_present` | task_ref, base_ref, artifacts_count, files |
 | `governance_check` | task_ref, mode, constraints_checked |
 | `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision |
 | `task_classified` | task_ref, flow_type, wave_id, task_summary |
@@ -133,6 +134,14 @@ with relative paths only and never workstation detail (such as local binaries on
 `PATH` or environment variables). Workstation prerequisites are recorded in
 `workstation_findings_count` only, ensuring that audit logs from different
 machines remain consistent for the same repository state.
+
+`work_already_present` is emitted when a retry finds the task's work already
+committed on its task branch — the coder wrote nothing this attempt, but the
+branch is ahead of its base — and carries it into post-execute validation
+instead of halting as `no_file_operations`. `base_ref` is the branch base the
+post-execute judges diff against (`base_ref..HEAD`). `files` lists the produced
+file paths and carries repository-relative paths only, never absolute paths or
+contents.
 
 `verification_executed.outcome` is `"pass"`, `"fail"`, `"error"`, or
 `"no_tests"`. `"no_tests"` is the honest record of an ungated run: the shipped

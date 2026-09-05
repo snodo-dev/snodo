@@ -103,8 +103,11 @@ class ExecutorMixin:
             except Exception:
                 return None
             # Only task branches hold this task's work; a degraded run on the
-            # operator's own branch must never be treated as task work.
-            if not branch.startswith("task/"):
+            # operator's own branch must never be treated as task work. The
+            # prefix is the protocol's execution.branch_prefix (default "task"),
+            # read rather than assumed so a project that configures another
+            # prefix keeps the recovered-work guard (#222).
+            if not self._active_branch_is_task_branch(branch):
                 return None
             head = repo.head.commit
             base_branch = resolve_base_branch(str(git_mcp.project_root))
@@ -132,6 +135,28 @@ class ExecutorMixin:
         if not paths:
             return None
         return (anchor.hexsha, sorted(paths))
+
+    def _task_branch_prefix(self) -> str:
+        """Return the configured task-branch prefix for the active protocol.
+
+        ``execution.branch_prefix`` (default ``"task"``) is compiled into the
+        protocol, so the guard reads it rather than hardcoding the literal: a
+        project that changes the prefix gets the same recovered-work protection,
+        and the guard must not fail silently on a supported configuration (#222).
+        Falls back to the model default only when no protocol/execution config
+        is in scope (standalone unit use), never raising.
+        """
+        try:
+            execution = getattr(self.protocol, "execution", None)
+            prefix = getattr(execution, "branch_prefix", None) or "task"
+        except Exception:
+            prefix = "task"
+        return str(prefix).strip("/") or "task"
+
+    def _active_branch_is_task_branch(self, branch: str) -> bool:
+        """Return True when *branch* carries this protocol's task-branch prefix."""
+        prefix = self._task_branch_prefix()
+        return branch == prefix or branch.startswith(prefix + "/")
 
     def _commit_artifacts(self, git_mcp: Optional[Any], coder: Any, artifact_paths: List[str], task: Task) -> List[str]:
         """Commit modified artifact files to repository."""

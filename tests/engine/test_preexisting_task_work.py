@@ -21,7 +21,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
+from snodo.compiler.models import DisagreementPolicy, ExecutionConfig, Mode, Protocol, Validator
 from snodo.core.interfaces import CodeArtifact, ValidatorResult
 from snodo.engine.loop import GraphBuilder
 from snodo.infrastructure.tokens import TokenIssuer
@@ -123,7 +123,7 @@ def _state(task_id="task_retry", spec="Implement feature X"):
     }
 
 
-def _task_project_with_commit(tmp_path, *, task_id="task_retry", commit_work=True):
+def _task_project_with_commit(tmp_path, *, task_id="task_retry", branch=None, commit_work=True):
     """Create a project whose task worktree branch is ahead of ``main``.
 
     Returns (project_root, worktree_path, base_sha). When *commit_work* is
@@ -135,7 +135,9 @@ def _task_project_with_commit(tmp_path, *, task_id="task_retry", commit_work=Tru
     project.mkdir()
     _init_repo(project)
 
-    wt = Path(create_worktree(str(project), task_id, "Implement feature X"))
+    wt = Path(create_worktree(
+        str(project), task_id, "Implement feature X", branch=branch,
+    ))
 
     if commit_work:
         (wt / "feature.py").write_text("def feature():\n    return 42\n")
@@ -261,3 +263,68 @@ def test_noop_on_unchanged_task_branch_stays_no_file_operations(
     assert "Coder produced no file operations" in payload["reason"]
     ops = [call.args[0] for call in audit.append_event.call_args_list]
     assert "work_already_present" not in ops
+
+
+def test_nondefault_branch_prefix_still_recovers_preexisting_work(
+    protocol_with_post_execute, tmp_path, capsys
+):
+    """A project that configures execution.branch_prefix != "task" still gets the
+    recovered-work guard: the prefix is read from the compiled protocol rather
+    than assumed, so committed work under the configured prefix is not silently
+    dropped on retry (Fixes #222)."""
+    protocol = protocol_with_post_execute.model_copy(update={
+        "execution": ExecutionConfig(branch_prefix="feature"),
+    })
+
+    _, wt, base_sha = _task_project_with_commit(
+        tmp_path, branch="feature/task_retry/implement-feature-x",
+    )
+    head_sha = _git("git", "rev-parse", "HEAD", cwd=wt).stdout.strip()
+    assert head_sha != base_sha  # the branch is ahead of the base
+    branch = _git("git", "rev-parse", "--abbrev-ref", "HEAD", cwd=wt).stdout.strip()
+    assert branch.startswith("feature/")  # non-default prefix, not "task/"
+
+    workspace_mcp = WorkspaceMCP(wt)
+    git_mcp = GitMCP(wt)
+
+    def _all_pass(task, validators, shell_mcp, current_mode="", **kwargs):
+        return [
+            ValidatorResult(validator_id=v.validator_id, severity="pass",
+                            justification="ok")
+            for v in validators
+        ]
+
+    audit = MagicMock()
+    builder = GraphBuilder(
+        protocol,
+        workspace_mcp=workspace_mcp,
+        git_mcp=git_mcp,
+        shell_mcp=None,
+        coder=NoOpCoder(),
+        worktree_path=wt,
+        validator_fn=_all_pass,
+        token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
+        audit_log=audit,
+    )
+
+    graph = builder.build_graph().compile()
+    result = graph.invoke(_state())
+
+    # Not a no_file_operations halt: the configured-prefix branch's committed
+    # work was recognised and carried into the run.
+    assert result["is_blocked"] is False
+    assert result["halt_type"] is None
+    assert result["metadata"]["post_validation"]["outcome"] == "passed"
+    assert "feature.py" in result["artifacts"]
+
+    captured = capsys.readouterr().out
+    assert "Work already present on the task branch" in captured
+    audit.append_event.assert_any_call("work_already_present", {
+        "op": "work_already_present",
+        "task_ref": "task_retry",
+        "base_ref": base_sha,
+        "artifacts_count": 2,
+        "files": ["feature.py", "tests/test_feature.py"],
+    })
+    ops = [call.args[0] for call in audit.append_event.call_args_list]
+    assert "no_file_operations" not in ops
