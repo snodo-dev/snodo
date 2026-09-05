@@ -114,6 +114,110 @@ class TestAcceptanceValidatorPrompt:
         prompt = completion_fn.call_args[1]["messages"][0]["content"]
         assert "(none)" in prompt
 
+    def test_prompt_extracts_delimited_acceptance_section_omitting_surrounding_spec(self):
+        """When a spec delimits an acceptance section, only that section reaches the prompt (Fixes #224)."""
+        completion_fn = MagicMock(return_value=_make_response(
+            tool_calls=[_verdict_call("pass", "met")],
+        ))
+        validator = AcceptanceValidator(_validator())
+
+        spec = (
+            "# Intent\n"
+            "Build a distributed transaction coordinator.\n\n"
+            "## Architecture\n"
+            "Uses Two-Phase Commit over gRPC with Paxos consensus.\n\n"
+            "## Acceptance Criteria\n"
+            "1. Coordinator handles node failures during prepare phase.\n"
+            "2. Aborted transactions roll back all participants.\n\n"
+            "## Constraints\n"
+            "Must support at least 1000 concurrent transactions."
+        )
+
+        ctx = ValidatorContext(
+            task=Task(id="t1", spec=spec),
+            completion_fn=completion_fn,
+            workspace_mcp=MagicMock(),
+            git_mcp=MagicMock(),
+            phase="post_execute",
+            max_tool_turns=5,
+            artifacts=["src/coord.py"],
+        )
+
+        validator.evaluate(ctx)
+
+        prompt = completion_fn.call_args[1]["messages"][0]["content"]
+        # Acceptance criteria are present
+        assert "Coordinator handles node failures during prepare phase." in prompt
+        assert "Aborted transactions roll back all participants." in prompt
+        # Surrounding context (intent, architecture, constraints) is NOT present
+        assert "Build a distributed transaction coordinator." not in prompt
+        assert "Uses Two-Phase Commit over gRPC with Paxos consensus." not in prompt
+        assert "Must support at least 1000 concurrent transactions." not in prompt
+
+    def test_prompt_passes_undelimited_spec_through_unchanged(self):
+        """When no delimited acceptance section can be identified, the full spec is passed unchanged (Fixes #224)."""
+        completion_fn = MagicMock(return_value=_make_response(
+            tool_calls=[_verdict_call("pass", "met")],
+        ))
+        validator = AcceptanceValidator(_validator())
+
+        spec = "Refactor connection pooling logic in database.py without changing behavior."
+
+        ctx = ValidatorContext(
+            task=Task(id="t1", spec=spec),
+            completion_fn=completion_fn,
+            workspace_mcp=MagicMock(),
+            git_mcp=MagicMock(),
+            phase="post_execute",
+            max_tool_turns=5,
+            artifacts=["src/database.py"],
+        )
+
+        validator.evaluate(ctx)
+
+        prompt = completion_fn.call_args[1]["messages"][0]["content"]
+        assert "Refactor connection pooling logic in database.py without changing behavior." in prompt
+
+    def test_other_validators_receive_full_spec_when_acceptance_section_present(self):
+        """Other validators (e.g. meta-spec, architecture) receive the full spec (Fixes #224)."""
+        from snodo.validators.llm_validator import LLMValidator
+
+        completion_fn = MagicMock(return_value=_make_response(
+            tool_calls=[_verdict_call("pass", "ok")],
+        ))
+        arch_val = LLMValidator(Validator(
+            validator_id="architecture",
+            validator_type="architecture",
+            evaluation_phase="pre_execute",
+            criteria=["Follows architecture rules"],
+        ))
+
+        spec = (
+            "# Intent\n"
+            "Build a distributed transaction coordinator.\n\n"
+            "## Architecture\n"
+            "Uses Two-Phase Commit over gRPC with Paxos consensus.\n\n"
+            "## Acceptance Criteria\n"
+            "1. Coordinator handles node failures during prepare phase.\n"
+        )
+
+        ctx = ValidatorContext(
+            task=Task(id="t1", spec=spec),
+            completion_fn=completion_fn,
+            workspace_mcp=MagicMock(),
+            git_mcp=MagicMock(),
+            phase="pre_execute",
+            max_tool_turns=5,
+        )
+
+        arch_val.evaluate(ctx)
+
+        prompt = completion_fn.call_args[1]["messages"][0]["content"]
+        # Architecture validator receives the entire spec including Intent and Architecture
+        assert "Build a distributed transaction coordinator." in prompt
+        assert "Uses Two-Phase Commit over gRPC with Paxos consensus." in prompt
+        assert "Coordinator handles node failures during prepare phase." in prompt
+
 
 class TestAcceptanceValidatorVerdicts:
     def test_pass_when_all_met(self):

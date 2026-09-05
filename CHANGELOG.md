@@ -44,6 +44,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Extracted acceptance section for acceptance validator prompt.
+  `AcceptanceValidator` now extracts delimited acceptance criteria sections
+  (e.g. `## Acceptance Criteria` or `Acceptance criteria:`) from the task spec,
+  passing only the relevant criteria to the judge prompt while falling back
+  honestly to the full spec when no delimited section is found. Other validators
+  (meta-spec, architecture, security) continue to receive the entire spec. (Fixes #224)
+
 - Announced project identity on session resume as well as session creation.
   `_resolve_session` in `run_cmd` now emits `project_announced` alongside `session_resumed`
   when adopting an existing active session or explicitly resuming via `--resume`, giving

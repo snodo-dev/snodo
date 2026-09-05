@@ -28,12 +28,76 @@ Design (ADR 028):
   correctness of the code.  It never runs commands; it reads the tree.
 """
 
+import re
 from typing import Set
 
 from snodo.compiler.models import Validator
 from snodo.validators.context import ValidatorContext
 from snodo.validators.llm_validator import LLMValidator
 from snodo.validators.registry import _default_registry
+
+_MD_HEADER_PATTERN = re.compile(
+    r"^(#{1,6})\s+(?:\*{0,2}|_{0,2})(?:acceptance(?:\s+criteria|\s+criterion)?|done\s+when)(?:\*{0,2}|_{0,2}):?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+_LINE_HEADER_PATTERN = re.compile(
+    r"^(?:\*{1,2}|_{1,2})?(?:acceptance(?:\s+criteria|\s+criterion)?|done\s+when)(?:\*{1,2}|_{1,2})?:?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+_OTHER_SECTION_PATTERN = re.compile(
+    r"^(?:#{1,6}\s+|(?:\*{1,2}|_{1,2})?(?:intent|context|architecture|constraints?|implementation|non-goals?|notes?|background|guarantees?|chain\s+of\s+guarantees)(?:\*{1,2}|_{1,2})?:)",
+    re.IGNORECASE,
+)
+
+
+def extract_acceptance_section(spec: str) -> str:
+    """Extract delimited acceptance section from a task spec.
+
+    When a spec delimits its acceptance section (via markdown header or
+    explicit section line like 'Acceptance criteria:'), returns only that
+    section so the acceptance judge evaluates its remit rather than exploring
+    the entire spec (Fixes #224). When no delimited section is found, returns
+    the full spec unchanged as an honest fallback.
+    """
+    if not spec:
+        return ""
+
+    # 1. Check for Markdown header match (# Acceptance Criteria, ## Acceptance, etc.)
+    md_match = _MD_HEADER_PATTERN.search(spec)
+    if md_match:
+        level = len(md_match.group(1))
+        # Look for next header of equal or higher level (1..level hashes)
+        next_header_pattern = re.compile(rf"^#{{1,{level}}}\s+", re.MULTILINE)
+        subsequent = spec[md_match.end():]
+        next_match = next_header_pattern.search(subsequent)
+        if next_match:
+            section = spec[md_match.start() : md_match.end() + next_match.start()]
+        else:
+            section = spec[md_match.start():]
+        stripped = section.strip()
+        if stripped:
+            return stripped
+
+    # 2. Check for line-based delimiter (Acceptance criteria:, Done when:, etc.)
+    line_match = _LINE_HEADER_PATTERN.search(spec)
+    if line_match:
+        # Check subsequent text line by line for other top-level section headers
+        subsequent = spec[line_match.end():]
+        lines = subsequent.splitlines(keepends=True)
+        end_idx = line_match.end()
+        for line in lines:
+            if line.strip() and _OTHER_SECTION_PATTERN.match(line.strip()):
+                break
+            end_idx += len(line)
+        section = spec[line_match.start() : end_idx]
+        stripped = section.strip()
+        if stripped:
+            return stripped
+
+    # 3. Fallback: return full spec unchanged
+    return spec
 
 
 class AcceptanceValidator(LLMValidator):
@@ -65,13 +129,20 @@ class AcceptanceValidator(LLMValidator):
     ) -> str:
         """Judge the produced artifacts against the task's acceptance criteria.
 
-        The task spec is the source of the acceptance criteria.  The judge is
-        told to distinguish "unmet" (verifiable from the tree and demonstrably
-        absent) from "uncheckable" (device behaviour, human judgement — not
-        verifiable from the tree, and never a finding).
+        The task spec is the source of the acceptance criteria. When a spec
+        delimits its acceptance section, only that section is passed; otherwise
+        the full spec is passed as fallback. The judge is told to distinguish
+        "unmet" (verifiable from the tree and demonstrably absent) from
+        "uncheckable" (device behaviour, human judgement — not verifiable from
+        the tree, and never a finding).
         """
         artifacts = list(getattr(context, "artifacts", None) or [])
         artifact_text = "\n".join(f"  - {a}" for a in artifacts) or "  (none)"
+        task_spec = (
+            extract_acceptance_section(context.task.spec)
+            if context.task and context.task.spec
+            else ""
+        )
 
         prompt_parts = [
             "You are an acceptance validator for a software development protocol.\n",
@@ -84,7 +155,7 @@ class AcceptanceValidator(LLMValidator):
             "work, or of the tests and tooling it requires, IS a finding.\n",
             "\n",
             "## Task\n",
-            f"{context.task.spec}\n",
+            f"{task_spec}\n",
             "\n",
             "## Produced Artifacts\n",
             f"{artifact_text}\n",
