@@ -361,38 +361,26 @@ class InPlaceCoderAdapter(Coder, ABC):
             )
 
     def _snapshot_snodo(self) -> Dict[str, object]:
-        """Snapshot the .snodo/ directory and repository-local home contents under the workspace.
+        """Snapshot the .snodo/ directory contents under the workspace.
 
-        Because .snodo/ and repository-local home are normally gitignored, git
+        Because .snodo/ is normally gitignored (snodo init ignores it), git
         readback cannot see a mutation there; a filesystem snapshot is the
         only reliable detector. Content is compared, not mtime.
         """
-        root = Path(self._workspace)
+        root = self._workspace
+        snodo_dir = root / ".snodo"
         snap: Dict[str, object] = {}
-
-        dirs_to_snap = [root / ".snodo"]
-        try:
-            local_home_rel = get_project_local_home_rel(root)
-            if local_home_rel:
-                dirs_to_snap.append(root / local_home_rel)
-        except Exception as exc:
-            _logger.debug("Could not resolve local home for snapshot: %s", exc)
-
-        for target_dir in dirs_to_snap:
-            if not target_dir.is_dir():
-                continue
-            for path in sorted(target_dir.rglob("*")):
+        if not snodo_dir.is_dir():
+            return snap
+        for path in sorted(snodo_dir.rglob("*")):
+            rel = path.relative_to(root).as_posix()
+            if path.is_dir():
+                snap[rel] = ("dir",)
+            elif path.is_file():
                 try:
-                    rel = path.relative_to(root).as_posix()
-                except ValueError:
-                    continue
-                if path.is_dir():
-                    snap[rel] = ("dir",)
-                elif path.is_file():
-                    try:
-                        snap[rel] = (path.stat().st_size, path.read_bytes())
-                    except OSError:
-                        snap[rel] = ("unreadable",)
+                    snap[rel] = (path.stat().st_size, path.read_bytes())
+                except OSError:
+                    snap[rel] = ("unreadable",)
         return snap
 
     def _changed_snodo_paths(self, before: Dict[str, object]) -> List[str]:

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from git import Repo
 
-from snodo.coders.base import InPlaceCoderAdapter, SnodoMutationError
+from snodo.coders.base import InPlaceCoderAdapter
 from snodo.core.interfaces import CodeArtifact, TaskSpec
 
 
@@ -22,21 +22,6 @@ class _DummyInPlaceCoder(InPlaceCoderAdapter):
 
     def _implement_in_place(self, spec: TaskSpec) -> CodeArtifact:
         (self._workspace / "src" / "app.py").write_text("print('hello')\n")
-        return CodeArtifact(files=[])
-
-
-class _MutatingHomeCoder(InPlaceCoderAdapter):
-    coder_name = "mutating-home-coder"
-
-    def __init__(self, workspace: Path, home_dir: Path):
-        self._workspace = workspace
-        self._home_dir = home_dir
-        self.last_commit_reason = None
-        self._head_before_run = None
-
-    def _implement_in_place(self, spec: TaskSpec) -> CodeArtifact:
-        (self._workspace / "src" / "app.py").write_text("print('hello')\n")
-        (self._home_dir / "config.yml").write_text("mutated: true\n")
         return CodeArtifact(files=[])
 
 
@@ -90,15 +75,3 @@ def test_coder_staging_and_readback_excludes_repository_local_home(git_project_w
     assert "src/app.py" in files
     assert not any(f.startswith(".custom-home") for f in files)
 
-
-def test_coder_mutation_of_local_home_raises_snodo_mutation_error(git_project_with_local_home):
-    """A coder attempting to write inside a repository-local home triggers SnodoMutationError (Fixes #227)."""
-    repo_dir, local_home = git_project_with_local_home
-
-    coder = _MutatingHomeCoder(repo_dir, local_home)
-    spec = TaskSpec(description="test task", constraints=[])
-
-    with pytest.raises(SnodoMutationError) as exc_info:
-        coder.implement(spec)
-
-    assert ".custom-home/config.yml" in str(exc_info.value)
