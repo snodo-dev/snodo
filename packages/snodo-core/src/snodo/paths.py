@@ -105,3 +105,51 @@ def derive_task_id(description: str) -> str:
     retry/resume flows expect.
     """
     return f"task_{hashlib.sha256(description.encode()).hexdigest()[:12]}"
+
+
+def get_project_local_home_rel(project_root: Optional[Path | str] = None) -> Optional[str]:
+    """Return relative POSIX path of snodo home if it lies inside project_root, or None.
+
+    When SNODO_HOME is configured to a directory inside the repository, snodo
+    treats that directory as sensitive state (config.yml with credentials, tokens.db,
+    checkpoints.db) and ensures it is ignored and excluded from coder operations.
+    """
+    try:
+        home = resolve_home().resolve()
+        if project_root is None:
+            resolved_root = resolve_project_root()
+            if resolved_root is None:
+                return None
+            root = Path(resolved_root).resolve()
+        else:
+            root = Path(project_root).resolve()
+
+        rel = home.relative_to(root)
+        if rel == Path("."):
+            return None
+        return rel.as_posix()
+    except (ValueError, TypeError, RuntimeError):
+        return None
+
+
+def is_protected_workspace_path(path: str | Path, workspace: Path | str) -> bool:
+    """Return True if path is within .snodo/ or a repository-local snodo home."""
+    if not path:
+        return False
+    try:
+        p = Path(path)
+        parts = p.parts
+        if not parts:
+            return False
+        if parts[0] == ".snodo":
+            return True
+
+        local_home_rel = get_project_local_home_rel(workspace)
+        if local_home_rel:
+            home_parts = Path(local_home_rel).parts
+            if len(parts) >= len(home_parts) and parts[:len(home_parts)] == home_parts:
+                return True
+    except (ValueError, TypeError, RuntimeError):
+        return False
+    return False
+

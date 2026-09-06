@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from snodo.core.interfaces import Coder, CodeArtifact, TaskSpec
+from snodo.paths import get_project_local_home_rel, is_protected_workspace_path
 
 _logger = logging.getLogger(__name__)
 
@@ -220,8 +221,7 @@ class InPlaceCoderAdapter(Coder, ABC):
             for d in repo.index.diff(None):
                 path = d.b_path or d.a_path
                 if path:
-                    parts = Path(path).parts
-                    if parts and parts[0] == ".snodo":
+                    if is_protected_workspace_path(path, self._workspace):
                         continue
                     if d.change_type == "D":
                         changed[path] = "deleted"
@@ -232,15 +232,13 @@ class InPlaceCoderAdapter(Coder, ABC):
             for d in repo.index.diff("HEAD"):
                 path = d.b_path or d.a_path
                 if path and path not in changed:
-                    parts = Path(path).parts
-                    if parts and parts[0] == ".snodo":
+                    if is_protected_workspace_path(path, self._workspace):
                         continue
                     changed[path] = d.change_type
 
             # Untracked files (new files the coder created)
             for path in repo.untracked_files:
-                parts = Path(path).parts
-                if parts and parts[0] == ".snodo":
+                if is_protected_workspace_path(path, self._workspace):
                     continue
                 changed[path] = "added"
 
@@ -259,8 +257,7 @@ class InPlaceCoderAdapter(Coder, ABC):
                         for d in base_commit.diff(head_commit):
                             path = d.b_path or d.a_path
                             if path and path not in changed:
-                                parts = Path(path).parts
-                                if parts and parts[0] == ".snodo":
+                                if is_protected_workspace_path(path, self._workspace):
                                     continue
                                 if d.change_type == "D":
                                     changed[path] = "deleted"
@@ -306,11 +303,20 @@ class InPlaceCoderAdapter(Coder, ABC):
             )
             return
 
+        exclude_args = [":(exclude).snodo", ":(exclude).snodo/**"]
+        try:
+            local_home_rel = get_project_local_home_rel(self._workspace)
+            if local_home_rel:
+                rel_posix = local_home_rel.rstrip("/")
+                exclude_args.extend([f":(exclude,glob)**/{rel_posix}/**", f":(exclude,glob){rel_posix}/**"])
+        except Exception as exc:
+            _logger.debug("Could not resolve local home for exclude: %s", exc)
+
         try:
             repo.git.add(
                 "-A", "--",
                 ".",
-                ":(exclude).snodo", ":(exclude).snodo/**",
+                *exclude_args,
                 # keep coder-created virtualenvs / caches / build junk out of
                 # the committed diff (else review + extract_patch see MBs of it)
                 ":(exclude,glob)**/venv/**", ":(exclude,glob)**/.venv/**",
@@ -355,26 +361,38 @@ class InPlaceCoderAdapter(Coder, ABC):
             )
 
     def _snapshot_snodo(self) -> Dict[str, object]:
-        """Snapshot the .snodo/ directory contents under the workspace.
+        """Snapshot the .snodo/ directory and repository-local home contents under the workspace.
 
-        Because .snodo/ is normally gitignored (snodo init ignores it), git
+        Because .snodo/ and repository-local home are normally gitignored, git
         readback cannot see a mutation there; a filesystem snapshot is the
         only reliable detector. Content is compared, not mtime.
         """
-        root = self._workspace
-        snodo_dir = root / ".snodo"
+        root = Path(self._workspace)
         snap: Dict[str, object] = {}
-        if not snodo_dir.is_dir():
-            return snap
-        for path in sorted(snodo_dir.rglob("*")):
-            rel = path.relative_to(root).as_posix()
-            if path.is_dir():
-                snap[rel] = ("dir",)
-            elif path.is_file():
+
+        dirs_to_snap = [root / ".snodo"]
+        try:
+            local_home_rel = get_project_local_home_rel(root)
+            if local_home_rel:
+                dirs_to_snap.append(root / local_home_rel)
+        except Exception as exc:
+            _logger.debug("Could not resolve local home for snapshot: %s", exc)
+
+        for target_dir in dirs_to_snap:
+            if not target_dir.is_dir():
+                continue
+            for path in sorted(target_dir.rglob("*")):
                 try:
-                    snap[rel] = (path.stat().st_size, path.read_bytes())
-                except OSError:
-                    snap[rel] = ("unreadable",)
+                    rel = path.relative_to(root).as_posix()
+                except ValueError:
+                    continue
+                if path.is_dir():
+                    snap[rel] = ("dir",)
+                elif path.is_file():
+                    try:
+                        snap[rel] = (path.stat().st_size, path.read_bytes())
+                    except OSError:
+                        snap[rel] = ("unreadable",)
         return snap
 
     def _changed_snodo_paths(self, before: Dict[str, object]) -> List[str]:

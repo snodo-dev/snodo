@@ -309,8 +309,8 @@ def _confirm_consent(args) -> bool:
     return True
 
 
-def _ensure_gitignore_entry(gitignore_path: Path) -> bool:
-    """Ensure .gitignore contains exactly one '.snodo/' entry.
+def _ensure_gitignore_entry(gitignore_path: Path, entry: str = GITIGNORE_ENTRY) -> bool:
+    """Ensure .gitignore contains exactly one entry for the given path.
 
     Creates .gitignore if absent; appends the entry if missing; never
     duplicates an existing entry.
@@ -321,7 +321,9 @@ def _ensure_gitignore_entry(gitignore_path: Path) -> bool:
     if gitignore_path.exists():
         existing = gitignore_path.read_text()
 
-    if any(line.strip() == GITIGNORE_ENTRY for line in existing.splitlines()):
+    norm_entry = entry.strip()
+    norm_no_slash = norm_entry.rstrip("/")
+    if any(line.strip() in (norm_entry, norm_no_slash) for line in existing.splitlines()):
         return False
 
     prefix = ""
@@ -329,17 +331,17 @@ def _ensure_gitignore_entry(gitignore_path: Path) -> bool:
         prefix = "\n"
 
     with gitignore_path.open("a") as f:
-        f.write(prefix + GITIGNORE_ENTRY + "\n")
+        f.write(prefix + norm_entry + "\n")
     return True
 
 
 def _commit_gitignore(repo, gitignore_path: Path) -> bool:
-    """Commit .gitignore so `git clean` cannot remove it (and then .snodo/).
+    """Commit .gitignore so `git clean` cannot remove it (and then .snodo/ or local home).
 
     An untracked .gitignore is itself a `git clean -fd` target: the first
-    clean removes it, the second removes the now-unignored .snodo/ — destroying
-    the project id, session store and audit chain. Committing it makes the
-    ignore durable.
+    clean removes it, the second removes the now-unignored .snodo/ or local home —
+    destroying the project id, session store and audit chain, and exposing credentials.
+    Committing it makes the ignore durable.
 
     Only .gitignore is staged and committed; any other staged or unstaged
     changes are left untouched. Returns True on success, False when the commit
@@ -347,8 +349,9 @@ def _commit_gitignore(repo, gitignore_path: Path) -> bool:
     case the caller warns rather than failing init.
     """
     try:
-        if gitignore_path.name in repo.git.ls_files().splitlines():
-            return True  # already tracked — nothing to do
+        status = repo.git.status("--porcelain", "--", str(gitignore_path)).strip()
+        if not status:
+            return True  # already tracked and clean — nothing to do
 
         repo.git.add(str(gitignore_path))
         repo.git.commit("-m", "chore: ignore .snodo/", "--", str(gitignore_path))
@@ -444,10 +447,22 @@ def init_command(args) -> int:
 
     # .snodo/ hygiene: keep the protocol state out of git by default.
     try:
-        if _ensure_gitignore_entry(Path(".gitignore")):
+        if _ensure_gitignore_entry(Path(".gitignore"), ".snodo/"):
             print("Added .snodo/ to .gitignore")
     except Exception as e:
         print(f"Warning: Could not update .gitignore: {e}", file=sys.stderr)
+
+    # Repository-local home hygiene: keep credentials and tokens out of git.
+    try:
+        from snodo.paths import get_project_local_home_rel
+        local_home_rel = get_project_local_home_rel(Path.cwd())
+        if local_home_rel:
+            home_entry = f"{local_home_rel}/" if not local_home_rel.endswith("/") else local_home_rel
+            if home_entry != ".snodo/":
+                if _ensure_gitignore_entry(Path(".gitignore"), home_entry):
+                    print(f"Added {home_entry} to .gitignore")
+    except Exception as e:
+        print(f"Warning: Could not update .gitignore for local home: {e}", file=sys.stderr)
 
     # Commit .gitignore so `git clean -fd` cannot remove it and then .snodo/.
     # An untracked .gitignore is itself a clean target: the first clean removes

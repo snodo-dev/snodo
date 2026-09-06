@@ -51,6 +51,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
   Concurrent wave tasks racing to merge now wait their turn and merge cleanly into base
   rather than colliding on git repository locks (`.git/index.lock`, `.git/HEAD.lock`)
   and failing with `merge_failed_escalated`. (Fixes #226)
+- Ignored and excluded repository-local snodo home and reported plaintext keys in readiness.
+  When `SNODO_HOME` is pointed to a directory inside a repository, `snodo init` now ensures
+  the repository-local home directory is added to `.gitignore` and committed (recognised by
+  resolved path rather than name), and coder adapters strictly exclude the local home directory
+  from staging, diff readback, and coder mutation snapshots. In readiness checks, configured
+  providers carrying plaintext `api_key` values while `api_key_env` is available are now reported
+  in the unscored workstation category without modifying the repository score or altering configuration.
+  (Fixes #227)
+
 - Extracted acceptance section for acceptance validator prompt.
   `AcceptanceValidator` now extracts delimited acceptance criteria sections
   (e.g. `## Acceptance Criteria`, bare uppercase `DONE WHEN`, or `Acceptance criteria:`)

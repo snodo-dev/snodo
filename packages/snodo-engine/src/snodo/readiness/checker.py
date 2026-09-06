@@ -15,6 +15,7 @@ Derives checks dynamically from the compiled Protocol:
 Ordering: cheapest fix at highest severity first.
 """
 
+import logging
 import os
 import re
 import shutil
@@ -30,6 +31,8 @@ from snodo.readiness.models import (
     ReadinessFinding,
     ReadinessKind,
 )
+
+_logger = logging.getLogger(__name__)
 
 # Supported marker files for quality test runner auto-detection
 _TEST_MARKERS: List[Tuple[str, str]] = [
@@ -491,6 +494,39 @@ def assess_readiness(
                             fix_cost=3,
                         )
                     )
+
+    # Check for plaintext keys configured in config.yml (workstation, unscored)
+    try:
+        from snodo.config import ConfigManager, DEFAULT_PROVIDER_CATALOG
+        cfg_mgr = ConfigManager()
+        raw_config = cfg_mgr.load()
+        raw_providers = raw_config.get("providers", {})
+        if isinstance(raw_providers, dict):
+            for prov_name, prov_data in sorted(raw_providers.items()):
+                if isinstance(prov_data, dict):
+                    plaintext_key = str(prov_data.get("api_key") or "").strip()
+                    env_var = str(prov_data.get("api_key_env") or "").strip()
+                    if not env_var:
+                        default_pc = DEFAULT_PROVIDER_CATALOG.get(prov_name)
+                        if default_pc and default_pc.api_key_env:
+                            env_var = default_pc.api_key_env
+                    if plaintext_key and env_var:
+                        workstation_findings.append(
+                            ReadinessFinding(
+                                id=f"plaintext_key_configured:{prov_name}",
+                                kind=ReadinessKind.WORKSTATION,
+                                severity=FindingSeverity.WARN,
+                                modes=all_mode_ids,
+                                description=(
+                                    f"Plaintext API key configured for provider '{prov_name}' in config.yml "
+                                    f"while environment variable '{env_var}' is available."
+                                ),
+                                remediation=f"Remove 'api_key' from config.yml and export {env_var}='<your-api-key>'",
+                                fix_cost=1,
+                            )
+                        )
+    except Exception as e:
+        _logger.debug("Failed checking config.yml for plaintext keys: %s", e)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Check 6: Execution Prepare Command (Workstation)

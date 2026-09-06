@@ -263,3 +263,53 @@ def test_init_interactive_test_command_prompt(temp_project_dir, no_keygen):
     quality = next(v for v in proto["validators"] if v["validator_id"] == "quality")
     assert quality["tooling"]["test_command"] == "cargo test"
 
+
+# === Repository-local home gitignore & commit ===
+
+def test_init_ignores_and_commits_repository_local_home(temp_project_dir, no_keygen, monkeypatch):
+    """When SNODO_HOME is inside the repository, init adds it to .gitignore and commits it (Fixes #227)."""
+    local_home = temp_project_dir / ".custom_home"
+    monkeypatch.setenv("SNODO_HOME", str(local_home))
+
+    with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
+        result = main()
+
+    assert result == 0
+    gitignore = temp_project_dir / ".gitignore"
+    assert gitignore.exists()
+    content = gitignore.read_text()
+    assert ".snodo/" in content
+    assert ".custom_home/" in content
+
+    # Assert .gitignore is committed and tracked
+    tracked = subprocess.run(
+        ["git", "ls-files", ".gitignore"],
+        cwd=temp_project_dir, capture_output=True, text=True, check=True,
+    ).stdout
+    assert ".gitignore" in tracked
+
+    # Assert working tree status has no untracked/uncommitted .gitignore
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=temp_project_dir, capture_output=True, text=True, check=True,
+    ).stdout
+    assert ".gitignore" not in status
+
+
+def test_init_external_home_changes_nothing_in_gitignore(temp_project_dir, no_keygen, tmp_path, monkeypatch):
+    """When SNODO_HOME is outside the repository, init only adds .snodo/ (Fixes #227)."""
+    external_home = tmp_path / "global_snodo_home"
+    monkeypatch.setenv("SNODO_HOME", str(external_home))
+
+    with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
+        result = main()
+
+    assert result == 0
+    gitignore = temp_project_dir / ".gitignore"
+    assert gitignore.exists()
+    content = gitignore.read_text()
+    assert ".snodo/" in content
+    assert "global_snodo_home" not in content
+    assert len([line for line in content.splitlines() if line.strip() == ".snodo/"]) == 1
+
+
