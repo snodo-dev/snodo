@@ -178,6 +178,114 @@ class TestAcceptanceValidatorPrompt:
         prompt = completion_fn.call_args[1]["messages"][0]["content"]
         assert "Refactor connection pooling logic in database.py without changing behavior." in prompt
 
+    def test_prompt_extracts_acceptance_section_with_bare_uppercase_headings_without_colons(self):
+        """When a spec uses bare uppercase lines without colons, the extract contains acceptance clauses and none of the following sections (Fixes #225)."""
+        completion_fn = MagicMock(return_value=_make_response(
+            tool_calls=[_verdict_call("pass", "met")],
+        ))
+        validator = AcceptanceValidator(_validator())
+
+        spec = (
+            "INTENT\n"
+            "Build a distributed coordinator.\n\n"
+            "DONE WHEN\n"
+            "1. Node failures handled during prepare phase.\n"
+            "2. Aborted transactions roll back.\n\n"
+            "CONSTRAINTS\n"
+            "Must support 1000 concurrent transactions.\n\n"
+            "TESTS\n"
+            "Run pytest tests/coordinator."
+        )
+
+        ctx = ValidatorContext(
+            task=Task(id="t1", spec=spec),
+            completion_fn=completion_fn,
+            workspace_mcp=MagicMock(),
+            git_mcp=MagicMock(),
+            phase="post_execute",
+            max_tool_turns=5,
+            artifacts=["src/coord.py"],
+        )
+
+        validator.evaluate(ctx)
+
+        prompt = completion_fn.call_args[1]["messages"][0]["content"]
+        # Acceptance criteria clauses are present
+        assert "Node failures handled during prepare phase." in prompt
+        assert "Aborted transactions roll back." in prompt
+        # Preceding section (INTENT) is omitted
+        assert "Build a distributed coordinator." not in prompt
+        # Following sections (CONSTRAINTS, TESTS) are omitted
+        assert "CONSTRAINTS" not in prompt
+        assert "Must support 1000 concurrent transactions." not in prompt
+        assert "TESTS" not in prompt
+        assert "Run pytest tests/coordinator." not in prompt
+
+    def test_extract_acceptance_section_various_styles(self):
+        """Test extract_acceptance_section directly across various heading styles (Fixes #224, Fixes #225)."""
+        from snodo.validators.acceptance import extract_acceptance_section
+
+        # Bare uppercase without colons
+        spec_upper = (
+            "INTENT\n"
+            "Do something.\n\n"
+            "DONE WHEN\n"
+            "- First clause\n"
+            "- Second clause\n\n"
+            "CONSTRAINTS\n"
+            "Fast."
+        )
+        extracted = extract_acceptance_section(spec_upper)
+        assert "- First clause" in extracted
+        assert "- Second clause" in extracted
+        assert "CONSTRAINTS" not in extracted
+        assert "INTENT" not in extracted
+
+        # Colon-terminated headings
+        spec_colon = (
+            "Intent:\n"
+            "Do something.\n\n"
+            "Acceptance criteria:\n"
+            "- Criterion A\n"
+            "- Criterion B\n\n"
+            "Notes:\n"
+            "Some notes."
+        )
+        extracted_colon = extract_acceptance_section(spec_colon)
+        assert "- Criterion A" in extracted_colon
+        assert "- Criterion B" in extracted_colon
+        assert "Notes:" not in extracted_colon
+
+        # Bold headings
+        spec_bold = (
+            "**Intent:**\n"
+            "Do something.\n\n"
+            "**Done when:**\n"
+            "1. Item 1\n"
+            "2. Item 2\n\n"
+            "**Verification:**\n"
+            "Run checks."
+        )
+        extracted_bold = extract_acceptance_section(spec_bold)
+        assert "1. Item 1" in extracted_bold
+        assert "2. Item 2" in extracted_bold
+        assert "**Verification:**" not in extracted_bold
+
+        # Markdown headings with sub-headings
+        spec_md = (
+            "# Main\n\n"
+            "## Acceptance Criteria\n"
+            "- Criteria 1\n\n"
+            "### Sub-detail for criteria 1\n"
+            "Some sub-detail.\n\n"
+            "## Architecture\n"
+            "Some arch."
+        )
+        extracted_md = extract_acceptance_section(spec_md)
+        assert "Criteria 1" in extracted_md
+        assert "Sub-detail for criteria 1" in extracted_md
+        assert "Architecture" not in extracted_md
+
     def test_other_validators_receive_full_spec_when_acceptance_section_present(self):
         """Other validators (e.g. meta-spec, architecture) receive the full spec (Fixes #224)."""
         from snodo.validators.llm_validator import LLMValidator

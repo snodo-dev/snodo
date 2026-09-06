@@ -36,68 +36,98 @@ from snodo.validators.context import ValidatorContext
 from snodo.validators.llm_validator import LLMValidator
 from snodo.validators.registry import _default_registry
 
-_MD_HEADER_PATTERN = re.compile(
-    r"^(#{1,6})\s+(?:\*{0,2}|_{0,2})(?:acceptance(?:\s+criteria|\s+criterion)?|done\s+when)(?:\*{0,2}|_{0,2}):?\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-_LINE_HEADER_PATTERN = re.compile(
-    r"^(?:\*{1,2}|_{1,2})?(?:acceptance(?:\s+criteria|\s+criterion)?|done\s+when)(?:\*{1,2}|_{1,2})?:?\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-_OTHER_SECTION_PATTERN = re.compile(
-    r"^(?:#{1,6}\s+|(?:\*{1,2}|_{1,2})?(?:intent|context|architecture|constraints?|implementation|non-goals?|notes?|background|guarantees?|chain\s+of\s+guarantees)(?:\*{1,2}|_{1,2})?:)",
+_MD_ACCEPTANCE_HEADER = re.compile(
+    r"^(#{1,6})\s*(?:\*{0,2}|_{0,2})\s*(?:acceptance(?:\s+criteria|\s+criterion)?|done\s+when|done):?\s*(?:\*{0,2}|_{0,2}):?\s*$",
     re.IGNORECASE,
 )
+
+_LINE_ACCEPTANCE_HEADER = re.compile(
+    r"^(?:\*{1,2}|_{1,2})?\s*(?:acceptance(?:\s+criteria|\s+criterion)?|done\s+when|done):?\s*(?:\*{1,2}|_{1,2})?:?\s*$",
+    re.IGNORECASE,
+)
+
+_MD_HEADER = re.compile(r"^(#{1,6})\s+\S")
+_BOLD_HEADER = re.compile(r"^(\*{1,2}|_{1,2})[^*_]{1,60}\1:?$")
+_UPPERCASE_HEADER = re.compile(r"^[A-Z0-9][A-Z0-9 _/\-–—]{0,60}:?$")
+_COLON_HEADER = re.compile(r"^[A-Z][A-Za-z0-9 _/\-–—]{0,40}:?$")
+_LIST_OR_CODE_ITEM = re.compile(r"^(?:[-*+]|\d+[\.)]|\[[ xX]\]|\([0-9a-zA-Z]+\))\s+|^(?:```|~~~)")
+
+
+def _is_heading(line: str, opener_md_level: int | None = None) -> bool:
+    """Check if a line is a standalone heading that terminates the section."""
+    raw = line.rstrip("\r\n")
+    stripped = raw.strip()
+    if not stripped:
+        return False
+    if raw.startswith((" ", "\t")):
+        return False
+    if _LIST_OR_CODE_ITEM.match(stripped):
+        return False
+    if stripped.endswith((".", ",", ";", "?", "!")):
+        return False
+    if len(stripped) > 80:
+        return False
+
+    md = _MD_HEADER.match(stripped)
+    if md:
+        level = len(md.group(1))
+        if opener_md_level is not None:
+            return level <= opener_md_level
+        return True
+
+    if _BOLD_HEADER.match(stripped):
+        return True
+
+    if _UPPERCASE_HEADER.match(stripped) and re.search(r"[A-Z]", stripped):
+        return True
+
+    if _COLON_HEADER.match(stripped):
+        return True
+
+    return False
 
 
 def extract_acceptance_section(spec: str) -> str:
     """Extract delimited acceptance section from a task spec.
 
-    When a spec delimits its acceptance section (via markdown header or
-    explicit section line like 'Acceptance criteria:'), returns only that
-    section so the acceptance judge evaluates its remit rather than exploring
-    the entire spec (Fixes #224). When no delimited section is found, returns
-    the full spec unchanged as an honest fallback.
+    When a spec delimits its acceptance section (via markdown header, bare
+    heading, or colon-delimited line like 'Acceptance criteria:' or 'DONE WHEN'),
+    returns only that section so the acceptance judge evaluates its remit rather
+    than exploring the entire spec (Fixes #224, Fixes #225). When no delimited
+    section is found, returns the full spec unchanged as an honest fallback.
     """
     if not spec:
         return ""
 
-    # 1. Check for Markdown header match (# Acceptance Criteria, ## Acceptance, etc.)
-    md_match = _MD_HEADER_PATTERN.search(spec)
-    if md_match:
-        level = len(md_match.group(1))
-        # Look for next header of equal or higher level (1..level hashes)
-        next_header_pattern = re.compile(rf"^#{{1,{level}}}\s+", re.MULTILINE)
-        subsequent = spec[md_match.end():]
-        next_match = next_header_pattern.search(subsequent)
-        if next_match:
-            section = spec[md_match.start() : md_match.end() + next_match.start()]
-        else:
-            section = spec[md_match.start():]
-        stripped = section.strip()
-        if stripped:
-            return stripped
+    lines = spec.splitlines(keepends=True)
+    start_idx = None
+    opener_md_level = None
 
-    # 2. Check for line-based delimiter (Acceptance criteria:, Done when:, etc.)
-    line_match = _LINE_HEADER_PATTERN.search(spec)
-    if line_match:
-        # Check subsequent text line by line for other top-level section headers
-        subsequent = spec[line_match.end():]
-        lines = subsequent.splitlines(keepends=True)
-        end_idx = line_match.end()
-        for line in lines:
-            if line.strip() and _OTHER_SECTION_PATTERN.match(line.strip()):
-                break
-            end_idx += len(line)
-        section = spec[line_match.start() : end_idx]
-        stripped = section.strip()
-        if stripped:
-            return stripped
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        md_match = _MD_ACCEPTANCE_HEADER.match(stripped)
+        if md_match:
+            start_idx = i
+            opener_md_level = len(md_match.group(1))
+            break
+        if _LINE_ACCEPTANCE_HEADER.match(stripped):
+            start_idx = i
+            break
 
-    # 3. Fallback: return full spec unchanged
-    return spec
+    if start_idx is None:
+        return spec
+
+    end_idx = len(lines)
+    for i in range(start_idx + 1, len(lines)):
+        line = lines[i]
+        if _is_heading(line, opener_md_level=opener_md_level):
+            end_idx = i
+            break
+
+    section = "".join(lines[start_idx:end_idx]).strip()
+    return section if section else spec
 
 
 class AcceptanceValidator(LLMValidator):
