@@ -97,7 +97,12 @@ def main():
 
     # Write final state
     state = _load_state(job_dir)
-    status = "completed" if exit_code == 0 else "failed"
+    if exit_code == 0:
+        status = "completed"
+    elif exit_code == 2:
+        status = "unmerged"
+    else:
+        status = "failed"
     # Don't overwrite if already cancelled
     if state.get("status") != "cancelled":
         state["status"] = status

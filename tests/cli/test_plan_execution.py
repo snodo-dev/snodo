@@ -1408,5 +1408,128 @@ def test_format_timestamp_day_boundary():
     assert _format_timestamp(None) == "N/A"
 
 
+def test_plan_run_reports_complete_unmerged_when_task_returns_2(plan_project_env, capsys):
+    """When a task returns exit code 2 (unmerged), report complete (unmerged) and record status 'unmerged'."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name = "unmerged_plan"
+    _create_mock_plan(planner, plan_name)
+    args = _make_plan_args(plan_name)
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=1))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._execute_task", return_value=2):
+            result = _run_plan(args)
+
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "complete (unmerged)" in err
+    assert "FAILED" not in err
+
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_1"]["status"] == "unmerged"
+
+
+def test_plan_run_resumes_unmerged_task_via_fast_path(plan_project_env, capsys):
+    """A task with status 'unmerged' attempts fast-path merge without re-running _execute_task."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name = "unmerged_resume_plan"
+    _create_mock_plan(planner, plan_name)
+    planner.update_status(plan_name, "task_1_1", "unmerged")
+
+    args = _make_plan_args(plan_name, wave=1)
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=1))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._try_merge_unmerged_task", return_value=True) as mock_merge:
+            with patch("snodo.cli.commands.run_cmd._execute_task") as mock_exec:
+                result = _run_plan(args)
+
+    assert result == 0
+    assert mock_merge.called
+    assert not mock_exec.called
+    out = capsys.readouterr().out
+    assert "unmerged branch found; attempting fast-path merge" in out
+    assert "[task_1_1] completed" in out
+
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_1"]["status"] == "completed"
+
+
+def test_concurrent_plan_run_handles_unmerged_and_resumes(plan_project_env, capsys):
+    """Concurrent plan execution marks unmerged on job exit code 2 and fast-path resumes."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+    from snodo.jobs import JobManager
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "concurrent_unmerged_plan")
+
+    protocol_content = """
+protocol_id: "concurrent_p"
+name: "Concurrent Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+    concurrency: 2
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (plan_project_env / ".snodo" / "protocol.yml").write_text(protocol_content)
+
+    args = _make_plan_args(plan_name)
+
+    submitted = {}
+
+    def mock_submit(self, task_args):
+        job_id = f"j_unmerged_{task_args['task_id']}"
+        submitted[job_id] = task_args
+        return job_id
+
+    def mock_get_status(self, job_id):
+        task_info = submitted.get(job_id, {})
+        if task_info.get("task_id") == "task_1_a":
+            return {"status": "unmerged", "exit_code": 2, "started_at": 100.0, "completed_at": 105.0}
+        return {"status": "completed", "exit_code": 0, "started_at": 100.0, "completed_at": 104.0}
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch.object(JobManager, "submit", mock_submit):
+            with patch.object(JobManager, "get_status", mock_get_status):
+                result = _run_plan(args)
+
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "complete (unmerged)" in err
+
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_a"]["status"] == "unmerged"
+    assert status["tasks"]["task_1_b"]["status"] == "completed"
+
+    # Now resume the plan: task_1_a should fast-path merge and not submit a job
+    submitted.clear()
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._try_merge_unmerged_task", return_value=True) as mock_merge:
+            with patch.object(JobManager, "submit", mock_submit):
+                with patch.object(JobManager, "get_status", mock_get_status):
+                    res2 = _run_plan(args)
+
+    assert res2 == 0
+    assert mock_merge.called
+    assert not submitted
+    status2 = planner.get_status(plan_name)
+    assert status2["tasks"]["task_1_a"]["status"] == "completed"
+
+
+
 
 

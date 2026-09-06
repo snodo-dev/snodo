@@ -414,6 +414,12 @@ class TestPlanManagement:
         entry = plan_with_tasks._normalize_task_entry(status["tasks"]["1.1_models"])
         assert entry["status"] == "blocked"
 
+    def test_update_status_unmerged(self, plan_with_tasks):
+        plan_with_tasks.update_status("auth", "1.1_models", "unmerged")
+        status = plan_with_tasks.get_status("auth")
+        entry = plan_with_tasks._normalize_task_entry(status["tasks"]["1.1_models"])
+        assert entry["status"] == "unmerged"
+
     def test_update_status_invalid_raises(self, plan_with_tasks):
         with pytest.raises(PlannerError, match="Invalid status"):
             plan_with_tasks.update_status("auth", "1.1_models", "unknown")

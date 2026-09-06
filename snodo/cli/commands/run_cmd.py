@@ -450,6 +450,45 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
     if not isinstance(failure, dict):
         failure = _failure_from_halt_record(session, task_id)
     if failure is None:
+        # Check if this is an unmerged task with a verified branch
+        protocol_path = Path(args.protocol)
+        if not protocol_path.is_absolute():
+            protocol_path = Path(project_root) / args.protocol
+        protocol = load_protocol(protocol_path)
+
+        task_state_file = Path(project_root) / ".snodo" / "tasks" / task_id / "state.json"
+        spec = ""
+        if task_state_file.exists():
+            try:
+                task_data = json.loads(task_state_file.read_text())
+                spec = task_data.get("description", "")
+            except Exception as e:
+                _logger.debug("Could not read task state from %s: %s", task_state_file, e)
+        if not spec and getattr(args, "description", None):
+            spec = args.description
+
+        if spec:
+            audit_log = getattr(args, "audit_log", None)
+            if audit_log is None:
+                from snodo.infrastructure.audit import AuditLog
+                audit_log_path = Path(project_root) / ".snodo" / "audit.log"
+                if audit_log_path.exists():
+                    audit_log = AuditLog(str(audit_log_path))
+            merge_res = _try_merge_unmerged_task(
+                project_root,
+                task_id,
+                spec,
+                protocol=protocol,
+                session_id=session.session_id if session else None,
+                audit_log=audit_log,
+            )
+            if merge_res is True:
+                print(f"✓ Successfully merged unmerged task {task_id}")
+                return 0
+            elif merge_res is False:
+                print(f"✗ Failed to merge unmerged task {task_id}", file=sys.stderr)
+                return 1
+
         print(f"No failure context for {task_id}. Cannot retry.", file=sys.stderr)
         return 1
 
@@ -766,9 +805,14 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
         # Auto-merge on genuine completion (closure outcome "resolved").
         if _should_auto_merge(protocol, mode, closure_tree, worktree_path_val, worktree_degraded):
-            result, preserve_worktree, merged_branch = _merge_on_success(
+            merge_result, preserve_worktree, merged_branch = _merge_on_success(
                 project_root, task, result, session_id, audit_log,
             )
+            if merge_result != 0:
+                result = 2
+                _record_task_completion(project_root, task.id, "unmerged", halt_payload)
+            else:
+                result = merge_result
 
         # Preserve the worktree on non-completion (so the evidence survives) or
         # when the retain flag is set. A cleanly completed task is torn down.
@@ -1042,6 +1086,75 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
                 "session_id": session_id,
             })
         return 1, True, None
+
+
+def _try_merge_unmerged_task(
+    project_root: str,
+    task_id: str,
+    spec: str,
+    protocol: Optional[Protocol] = None,
+    session_id: Optional[str] = None,
+    audit_log: Optional[Any] = None,
+) -> Optional[bool]:
+    """Attempt fast-path merge of an unmerged task branch.
+
+    Returns:
+        True: Branch existed, passed merge gate, and was merged successfully.
+        False: Branch existed and passed gate, but merge failed (e.g. lock or conflict).
+        None: Branch does not exist or does not pass merge gate (cannot fast-path merge).
+    """
+    from snodo.infrastructure.worktree import (
+        task_branch_name,
+        remove_worktree,
+        delete_task_branch,
+    )
+    from git import Repo
+
+    branch = task_branch_name(task_id, spec)
+    try:
+        repo = Repo(str(Path(project_root)), search_parent_directories=True)
+        if branch not in repo.heads:
+            return None
+        target_commit = repo.commit(branch).hexsha
+    except Exception as e:
+        _logger.debug("Could not resolve branch %s for fast-path merge: %s", branch, e)
+        return None
+
+    if audit_log is None:
+        from snodo.infrastructure.audit import AuditLog
+        audit_log_path = Path(project_root) / ".snodo" / "audit.log"
+        if audit_log_path.exists():
+            audit_log = AuditLog(str(audit_log_path))
+
+    if audit_log:
+        history = audit_log.get_history("verification_executed")
+        matching = [
+            e for e in history
+            if target_commit
+            and _verified_commit_matches_merge_target(e.data.get("commit"), target_commit)
+        ]
+        matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
+        matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
+        if not matching_passes and not matching_ungated:
+            return None
+    else:
+        return None
+
+    task = Task(id=task_id, spec=spec)
+    merge_result, preserve_worktree, merged_branch = _merge_on_success(
+        project_root, task, 0, session_id, audit_log
+    )
+    if merge_result == 0 and merged_branch:
+        try:
+            remove_worktree(project_root, task_id)
+        except Exception as e:
+            _logger.debug("Could not remove worktree after merge for %s: %s", task_id, e)
+        delete_task_branch(project_root, merged_branch)
+        _record_task_completion(project_root, task_id, "completed")
+        return True
+    else:
+        _record_task_completion(project_root, task_id, "unmerged")
+        return False
 
 
 def _resolve_session(args, session_manager, protocol, project_root):

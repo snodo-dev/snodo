@@ -148,6 +148,13 @@ def _task_outcome_line(task_id: str, outcome: Optional[str]) -> str:
     }
     return labels[outcome]
 
+def _task_is_unmerged(tasks_status: dict, task_id: str) -> bool:
+    """Check if a task is marked unmerged, handling both string and dict entries."""
+    entry = tasks_status.get(task_id)
+    if isinstance(entry, dict):
+        return entry.get("status") == "unmerged"
+    return entry == "unmerged"
+
 
 def _resolve_failure_context(session, task_id: str) -> Optional[dict]:
     """Resolve retry failure context for *task_id*, mirroring ``_retry_task``.
@@ -306,6 +313,51 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
 
     status_data = planner.get_status(args.plan)
     tasks_status = status_data.get("tasks", {})
+    if _task_is_unmerged(tasks_status, task_id):
+        print(f"  [{task_id}] unmerged branch found; attempting fast-path merge")
+        start_mono = time.monotonic()
+        start_wall = time.time()
+        audit_log = getattr(args, "audit_log", None)
+        if audit_log is None:
+            from snodo.infrastructure.audit import AuditLog
+            audit_log_path = planner.project_root / ".snodo" / "audit.log"
+            if audit_log_path.exists():
+                audit_log = AuditLog(str(audit_log_path))
+        session_manager = getattr(args, "session_manager", None)
+        from snodo.infrastructure.state import read_state
+        state = read_state(str(planner.project_root))
+        mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
+        session = session_manager.get_active_session(mode, str(planner.project_root)) if session_manager else None
+        session_id = session.session_id if session else None
+
+        from snodo.cli.commands.run_cmd import _try_merge_unmerged_task
+        merge_success = _try_merge_unmerged_task(
+            str(planner.project_root),
+            task_id,
+            spec,
+            protocol=protocol,
+            session_id=session_id,
+            audit_log=audit_log,
+        )
+        end_mono = time.monotonic()
+        end_wall = time.time()
+        dur_str = _format_duration(end_mono - start_mono)
+        start_str = _format_timestamp(start_wall)
+        end_str = _format_timestamp(end_wall)
+
+        if merge_success is True:
+            planner.update_status(args.plan, task_id, "completed")
+            print(f"  [{task_id}] completed in {dur_str} (started {start_str}, finished {end_str})")
+            return True
+        elif merge_success is False:
+            planner.update_status(args.plan, task_id, "unmerged")
+            print(
+                f"  [{task_id}] complete (unmerged) in {dur_str} (started {start_str}, finished {end_str})",
+                file=sys.stderr,
+            )
+            return False
+        print(f"  [{task_id}] unmerged branch not found or unverified; running fresh")
+
     if _task_is_blocked(tasks_status, task_id):
         decision = _plan_retry_decision(planner, args, protocol, task_id)
         if decision == "exhausted":
@@ -356,6 +408,13 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
         planner.update_status(args.plan, task_id, "completed")
         print(f"  [{task_id}] completed in {dur_str} (started {start_str}, finished {end_str})")
         return True
+    elif result == 2:
+        planner.update_status(args.plan, task_id, "unmerged")
+        print(
+            f"  [{task_id}] complete (unmerged) in {dur_str} (started {start_str}, finished {end_str})",
+            file=sys.stderr,
+        )
+        return False
     else:
         session = _session_for_task(args, planner, protocol, task_id)
         _task_record_status(planner, args.plan, task_id, result, session)
@@ -462,6 +521,13 @@ def _execute_wave_tasks_concurrent(
                     if status == "completed" and exit_code == 0:
                         planner.update_status(args.plan, t_id, "completed")
                         print(f"  [{t_id}] completed (job {j_id}) in {dur_str} (started {start_str}, finished {end_str})")
+                    elif status == "unmerged" or exit_code == 2:
+                        planner.update_status(args.plan, t_id, "unmerged")
+                        print(
+                            f"  [{t_id}] complete (unmerged) (job {j_id}) in {dur_str} (started {start_str}, finished {end_str})",
+                            file=sys.stderr,
+                        )
+                        wave_failed = True
                     else:
                         _task_record_status(planner, args.plan, t_id, exit_code or 1, session)
                         err_msg = st.get("error") or "execution failed"
@@ -501,6 +567,49 @@ def _execute_wave_tasks_concurrent(
 
         spec = spec_file.read_text()
         tasks_status = planner.get_status(args.plan).get("tasks", {})
+        if _task_is_unmerged(tasks_status, task_id):
+            print(f"  [{task_id}] unmerged branch found; attempting fast-path merge")
+            start_mono = time.monotonic()
+            start_wall = time.time()
+            audit_log = getattr(args, "audit_log", None)
+            if audit_log is None:
+                from snodo.infrastructure.audit import AuditLog
+                audit_log_path = Path(project_root) / ".snodo" / "audit.log"
+                if audit_log_path.exists():
+                    audit_log = AuditLog(str(audit_log_path))
+            session_manager = getattr(args, "session_manager", None)
+            session = session_manager.get_active_session(mode, project_root) if session_manager else None
+            session_id = session.session_id if session else None
+
+            from snodo.cli.commands.run_cmd import _try_merge_unmerged_task
+            merge_success = _try_merge_unmerged_task(
+                project_root,
+                task_id,
+                spec,
+                protocol=protocol,
+                session_id=session_id,
+                audit_log=audit_log,
+            )
+            end_mono = time.monotonic()
+            end_wall = time.time()
+            dur_str = _format_duration(end_mono - start_mono)
+            start_str = _format_timestamp(start_wall)
+            end_str = _format_timestamp(end_wall)
+
+            if merge_success is True:
+                planner.update_status(args.plan, task_id, "completed")
+                print(f"  [{task_id}] completed in {dur_str} (started {start_str}, finished {end_str})")
+                continue
+            elif merge_success is False:
+                planner.update_status(args.plan, task_id, "unmerged")
+                print(
+                    f"  [{task_id}] complete (unmerged) in {dur_str} (started {start_str}, finished {end_str})",
+                    file=sys.stderr,
+                )
+                wave_failed = True
+                continue
+            print(f"  [{task_id}] unmerged branch not found or unverified; running fresh")
+
         is_retry = False
         if _task_is_blocked(tasks_status, task_id):
             decision = _plan_retry_decision(planner, args, protocol, task_id)
