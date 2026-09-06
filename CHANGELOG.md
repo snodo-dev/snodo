@@ -44,6 +44,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Serialised repository merges and git ref/index updates across concurrent wave tasks.
+  Added re-entrant `merge_lock` at `.snodo/.merge.lock` held across the entire merge
+  operation (target commit resolution, gate check, git merge, HEAD SHA resolution,
+  `task_merged` audit event recording, worktree setup/removal, and task branch deletion).
+  Concurrent wave tasks racing to merge now wait their turn and merge cleanly into base
+  rather than colliding on git repository locks (`.git/index.lock`, `.git/HEAD.lock`)
+  and failing with `merge_failed_escalated`. (Fixes #226)
 - Extracted acceptance section for acceptance validator prompt.
   `AcceptanceValidator` now extracts delimited acceptance criteria sections
   (e.g. `## Acceptance Criteria`, bare uppercase `DONE WHEN`, or `Acceptance criteria:`)

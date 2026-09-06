@@ -931,114 +931,117 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
     worktree is left for the caller's normal teardown. On a conflict the task
     is escalated: the branch and worktree survive for a human to resolve.
     """
-    from snodo.infrastructure.worktree import task_branch_name, merge_task_branch, merge_head_sha
+    from snodo.infrastructure.worktree import (
+        task_branch_name, merge_task_branch, merge_head_sha, merge_lock,
+    )
     from snodo.tools.git import GitError
 
     spec_for_branch = getattr(task, "root_spec", None) or task.spec
     branch = task_branch_name(task.id, spec_for_branch)
 
-    # Resolve target commit on the branch to be merged
-    target_commit = ""
-    try:
-        from git import Repo
-        repo = Repo(str(Path(project_root)), search_parent_directories=True)
-        target_commit = repo.commit(branch).hexsha
-    except Exception as e:
-        _logger.debug("Could not resolve commit for branch %s: %s", branch, e)
+    with merge_lock(project_root):
+        # Resolve target commit on the branch to be merged
+        target_commit = ""
+        try:
+            from git import Repo
+            repo = Repo(str(Path(project_root)), search_parent_directories=True)
+            target_commit = repo.commit(branch).hexsha
+        except Exception as e:
+            _logger.debug("Could not resolve commit for branch %s: %s", branch, e)
 
-    if audit_log:
-        history = audit_log.get_history("verification_executed")
-        # The commit decides, not the task id. A passing verification recorded
-        # for the commit being merged proves that commit is verified, whoever
-        # recorded it — two tasks can only share a commit by being the same
-        # commit. Matching on task_ref as well was asymmetric: a subtask could
-        # find its parent's records through root_task_ref, but a parent could
-        # not find the record written by the recovery subtask that resolved it,
-        # so recovered work was refused despite passing at the merged commit
-        # (Fixes #223).
-        matching = [
-            e for e in history
-            if target_commit
-            and _verified_commit_matches_merge_target(e.data.get("commit"), target_commit)
-        ]
-        matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
-        matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
-        if not matching_passes and not matching_ungated:
-            commit_display = target_commit[:7] if target_commit else "unknown"
-            print(f"✗ Refused merge for {branch}: no passing verification_executed event for task {task.id} at commit {commit_display}.", file=sys.stderr)
-            print("  An unverified merge is forbidden. Worktree and branch left intact.", file=sys.stderr)
-            audit_log.append_event("unverified_merge_blocked", {
-                "op": "unverified_merge_blocked",
-                "task_ref": task.id,
-                "branch": branch,
-                "target_commit": target_commit,
-                "reason": f"No passing verification_executed event recorded for task {task.id} at commit {commit_display}.",
-                "session_id": session_id,
-            })
+        if audit_log:
+            history = audit_log.get_history("verification_executed")
+            # The commit decides, not the task id. A passing verification recorded
+            # for the commit being merged proves that commit is verified, whoever
+            # recorded it — two tasks can only share a commit by being the same
+            # commit. Matching on task_ref as well was asymmetric: a subtask could
+            # find its parent's records through root_task_ref, but a parent could
+            # not find the record written by the recovery subtask that resolved it,
+            # so recovered work was refused despite passing at the merged commit
+            # (Fixes #223).
+            matching = [
+                e for e in history
+                if target_commit
+                and _verified_commit_matches_merge_target(e.data.get("commit"), target_commit)
+            ]
+            matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
+            matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
+            if not matching_passes and not matching_ungated:
+                commit_display = target_commit[:7] if target_commit else "unknown"
+                print(f"✗ Refused merge for {branch}: no passing verification_executed event for task {task.id} at commit {commit_display}.", file=sys.stderr)
+                print("  An unverified merge is forbidden. Worktree and branch left intact.", file=sys.stderr)
+                audit_log.append_event("unverified_merge_blocked", {
+                    "op": "unverified_merge_blocked",
+                    "task_ref": task.id,
+                    "branch": branch,
+                    "target_commit": target_commit,
+                    "reason": f"No passing verification_executed event recorded for task {task.id} at commit {commit_display}.",
+                    "session_id": session_id,
+                })
+                return 1, True, None
+
+            if matching_passes:
+                accepted_event = matching_passes[-1]
+                commit_display = target_commit[:7] if target_commit else "unknown"
+                cmd = accepted_event.data.get("command", "")
+                print(f"✓ Verified merge for {branch}: task {task.id} verified at commit {commit_display} ({cmd}).", file=sys.stderr)
+            else:
+                # No genuine pass exists, but the audit trail explicitly records the
+                # task ran ungated (outcome "no_tests"): the operator's configured
+                # default test command executed and no tests were run. The merge
+                # proceeds (a fresh project must not strand its first task) but the
+                # line says so plainly, so a merge on unexecuted tests is never
+                # mistaken for a verified one.
+                commit_display = target_commit[:7] if target_commit else "unknown"
+                print(f"✓ Merged {branch} ungated: task {task.id} at commit {commit_display} ran no tests (no test_command configured).", file=sys.stderr)
+
+        try:
+            res = merge_task_branch(project_root, branch)
+            if isinstance(res, tuple):
+                outcome, conflicting_paths = res
+            else:
+                outcome, conflicting_paths = res, []
+        except GitError as e:
+            print(f"✗ Merge failed for {branch}: {e}", file=sys.stderr)
+            print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
+            if audit_log:
+                audit_log.append_event("merge_failed_escalated", {
+                    "op": "merge_failed_escalated",
+                    "task_ref": task.id,
+                    "branch": branch,
+                    "error": str(e),
+                    "session_id": session_id,
+                })
             return 1, True, None
 
-        if matching_passes:
-            accepted_event = matching_passes[-1]
-            commit_display = target_commit[:7] if target_commit else "unknown"
-            cmd = accepted_event.data.get("command", "")
-            print(f"✓ Verified merge for {branch}: task {task.id} verified at commit {commit_display} ({cmd}).", file=sys.stderr)
-        else:
-            # No genuine pass exists, but the audit trail explicitly records the
-            # task ran ungated (outcome "no_tests"): the operator's configured
-            # default test command executed and no tests were run. The merge
-            # proceeds (a fresh project must not strand its first task) but the
-            # line says so plainly, so a merge on unexecuted tests is never
-            # mistaken for a verified one.
-            commit_display = target_commit[:7] if target_commit else "unknown"
-            print(f"✓ Merged {branch} ungated: task {task.id} at commit {commit_display} ran no tests (no test_command configured).", file=sys.stderr)
+        if outcome == "merged":
+            if audit_log:
+                authoritative_spec = getattr(task, "root_spec", None) or getattr(task, "spec", "")
+                audit_log.append_event("task_merged", {
+                    "op": "task_merged",
+                    "task_ref": task.id,
+                    "branch": branch,
+                    "merge_sha": merge_head_sha(project_root),
+                    "session_id": session_id,
+                    "spec": authoritative_spec,
+                })
+            print(f"✓ Merged {branch} into the base branch")
+            return result, False, branch
 
-    try:
-        res = merge_task_branch(project_root, branch)
-        if isinstance(res, tuple):
-            outcome, conflicting_paths = res
-        else:
-            outcome, conflicting_paths = res, []
-    except GitError as e:
-        print(f"✗ Merge failed for {branch}: {e}", file=sys.stderr)
-        print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
+        paths_str = ", ".join(conflicting_paths) if conflicting_paths else "unknown path(s)"
+        print(f"✗ Merge conflict merging {branch} into the base branch.", file=sys.stderr)
+        print(f"  Conflicting path(s): {paths_str}", file=sys.stderr)
+        print("  The merge was rolled back (base branch left clean; source branch intact).", file=sys.stderr)
+        print(f"  To perform the merge manually and resolve conflicts, run:\n    git merge {branch}", file=sys.stderr)
         if audit_log:
-            audit_log.append_event("merge_failed_escalated", {
-                "op": "merge_failed_escalated",
+            audit_log.append_event("merge_conflict_escalated", {
+                "op": "merge_conflict_escalated",
                 "task_ref": task.id,
                 "branch": branch,
-                "error": str(e),
+                "conflicting_paths": conflicting_paths,
                 "session_id": session_id,
             })
         return 1, True, None
-
-    if outcome == "merged":
-        if audit_log:
-            authoritative_spec = getattr(task, "root_spec", None) or getattr(task, "spec", "")
-            audit_log.append_event("task_merged", {
-                "op": "task_merged",
-                "task_ref": task.id,
-                "branch": branch,
-                "merge_sha": merge_head_sha(project_root),
-                "session_id": session_id,
-                "spec": authoritative_spec,
-            })
-        print(f"✓ Merged {branch} into the base branch")
-        return result, False, branch
-
-    paths_str = ", ".join(conflicting_paths) if conflicting_paths else "unknown path(s)"
-    print(f"✗ Merge conflict merging {branch} into the base branch.", file=sys.stderr)
-    print(f"  Conflicting path(s): {paths_str}", file=sys.stderr)
-    print("  The merge was rolled back (base branch left clean; source branch intact).", file=sys.stderr)
-    print(f"  To perform the merge manually and resolve conflicts, run:\n    git merge {branch}", file=sys.stderr)
-    if audit_log:
-        audit_log.append_event("merge_conflict_escalated", {
-            "op": "merge_conflict_escalated",
-            "task_ref": task.id,
-            "branch": branch,
-            "conflicting_paths": conflicting_paths,
-            "session_id": session_id,
-        })
-    return 1, True, None
 
 
 def _resolve_session(args, session_manager, protocol, project_root):

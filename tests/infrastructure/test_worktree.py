@@ -162,6 +162,39 @@ def test_merge_task_branch_nonexistent_raises(repo):
         merge_task_branch(str(repo), "task/nope/missing")
 
 
+def test_concurrent_merges_serialize_and_both_succeed(repo):
+    """Concurrent tasks merging at the same moment serialize on merge_lock and both land."""
+    import concurrent.futures
+
+    branch1 = task_branch_name("task_1", "feature one")
+    subprocess.run(["git", "checkout", "-qb", branch1], cwd=repo, check=True)
+    (repo / "feature1.txt").write_text("feature 1\n")
+    subprocess.run(["git", "add", "feature1.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "feature 1"], cwd=repo, check=True)
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+    branch2 = task_branch_name("task_2", "feature two")
+    subprocess.run(["git", "checkout", "-qb", branch2], cwd=repo, check=True)
+    (repo / "feature2.txt").write_text("feature 2\n")
+    subprocess.run(["git", "add", "feature2.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "feature 2"], cwd=repo, check=True)
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(merge_task_branch, str(repo), branch1)
+        f2 = executor.submit(merge_task_branch, str(repo), branch2)
+        res1 = f1.result()
+        res2 = f2.result()
+
+    assert res1 == ("merged", [])
+    assert res2 == ("merged", [])
+    assert (repo / "feature1.txt").exists()
+    assert (repo / "feature2.txt").exists()
+    assert not (repo / ".git" / "index.lock").exists()
+    assert not (repo / ".git" / "HEAD.lock").exists()
+
+
+
 # === delete_task_branch ===
 
 def test_delete_task_branch(repo):
