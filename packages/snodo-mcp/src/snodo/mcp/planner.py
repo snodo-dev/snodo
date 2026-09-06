@@ -650,7 +650,7 @@ class PlannerMCP:
         Raises:
             PlannerError: If plan not found or invalid status
         """
-        valid_statuses = {"pending", "in_progress", "completed", "blocked", "errored"}
+        valid_statuses = {"pending", "in_progress", "completed", "blocked", "errored", "unmerged"}
         if status not in valid_statuses:
             raise PlannerError(f"Invalid status: {status}. Must be one of {valid_statuses}")
 

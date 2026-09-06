@@ -1873,3 +1873,200 @@ class TestResolveSessionProjectAnnounced:
         assert announced_events[0][1]["display_name"] == Path(temp_project).name
 
 
+class TestUnmergedTaskHandling:
+    """Tests for distinguishing unmerged tasks from failures and fast-path merge retry (Fixes #228)."""
+
+    def test_execute_task_returns_2_and_records_unmerged_on_merge_failure(self, temp_project):
+        """When a task closure is resolved but auto-merge fails, return exit code 2 and record 'unmerged'."""
+        import json
+        from snodo.cli.commands.run_cmd import _execute_task
+        from snodo.compiler.models import Mode, Protocol, Validator
+        from snodo.core.interfaces import Task
+        from snodo.engine.closure import ClosureNode
+
+        protocol = Protocol(
+            protocol_id="test",
+            name="Test",
+            version="1.0.0",
+            initial_mode="producer",
+            modes=[Mode(mode_id="producer", name="Producer", tools=["edit"])],
+            validators=[Validator(validator_id="v1", validator_type="security")],
+        )
+        task = Task(id="1.1_unmerged_test", spec="Do some work")
+        args = SimpleNamespace(
+            model="mock",
+            protocol=str(temp_project / ".snodo" / "protocol.yml"),
+            no_isolation=True,
+            retain_worktree=False,
+        )
+
+        mock_closure = ClosureNode(task_id="1.1_unmerged_test", depth=0, outcome="resolved")
+
+        with patch("snodo.engine.closure.run_to_closure", return_value=({}, mock_closure)), \
+             patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)), \
+             patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")), \
+             patch("snodo.infrastructure.worktree.setup_for_task", return_value="/fake/wt"), \
+             patch("snodo.cli.commands.run_cmd._build_graph", return_value=MagicMock()), \
+             patch("snodo.cli.commands.run_cmd._should_auto_merge", return_value=True), \
+             patch("snodo.cli.commands.run_cmd._merge_on_success", return_value=(1, True, None)):
+            res = _execute_task(args, protocol, task, "mock")
+
+        assert res == 2
+        state_file = temp_project / ".snodo" / "tasks" / "1.1_unmerged_test" / "state.json"
+        assert state_file.exists()
+        task_state = json.loads(state_file.read_text())
+        assert task_state["status"] == "unmerged"
+
+    def test_try_merge_unmerged_task_success(self, temp_project):
+        """_try_merge_unmerged_task merges verified branch, removes worktree and deletes branch."""
+        from git import Repo
+        from snodo.cli.commands.run_cmd import _try_merge_unmerged_task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+
+        repo = Repo.init(str(temp_project))
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+        # Create initial commit on main
+        readme = temp_project / "README.md"
+        readme.write_text("# Project\n")
+        repo.index.add(["README.md"])
+        repo.index.commit("Initial commit")
+
+        task_id = "1.1_sample"
+        spec = "Add feature"
+        branch_name = task_branch_name(task_id, spec)
+
+        # Create task branch with commit
+        feature_branch = repo.create_head(branch_name)
+        feature_branch.checkout()
+        foo_file = temp_project / "foo.txt"
+        foo_file.write_text("Foo content\n")
+        repo.index.add(["foo.txt"])
+        task_commit = repo.index.commit("Add foo").hexsha
+
+        # Switch back to master/main
+        repo.heads[0].checkout()
+
+        # Audit log with passing verification at task_commit
+        audit_path = temp_project / ".snodo" / "audit.log"
+        audit_log = AuditLog(str(audit_path))
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "commit": task_commit,
+            "outcome": "pass",
+            "command": "pytest",
+        })
+
+        success = _try_merge_unmerged_task(
+            str(temp_project),
+            task_id,
+            spec,
+            audit_log=audit_log,
+        )
+
+        assert success is True
+        assert branch_name not in [h.name for h in repo.heads]
+        assert (temp_project / "foo.txt").exists()
+
+        state_file = temp_project / ".snodo" / "tasks" / task_id / "state.json"
+        assert state_file.exists()
+        import json
+        assert json.loads(state_file.read_text())["status"] == "completed"
+
+    def test_try_merge_unmerged_task_merge_failure(self, temp_project):
+        """_try_merge_unmerged_task returns False and marks unmerged when merge fails."""
+        from git import Repo
+        from snodo.cli.commands.run_cmd import _try_merge_unmerged_task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+        from snodo.tools.git import GitError
+
+        repo = Repo.init(str(temp_project))
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+        readme = temp_project / "README.md"
+        readme.write_text("# Project\n")
+        repo.index.add(["README.md"])
+        repo.index.commit("Initial commit")
+
+        task_id = "1.1_sample"
+        spec = "Add feature"
+        branch_name = task_branch_name(task_id, spec)
+
+        feature_branch = repo.create_head(branch_name)
+        feature_branch.checkout()
+        foo_file = temp_project / "foo.txt"
+        foo_file.write_text("Foo content\n")
+        repo.index.add(["foo.txt"])
+        task_commit = repo.index.commit("Add foo").hexsha
+        repo.heads[0].checkout()
+
+        audit_path = temp_project / ".snodo" / "audit.log"
+        audit_log = AuditLog(str(audit_path))
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "commit": task_commit,
+            "outcome": "pass",
+            "command": "pytest",
+        })
+
+        with patch("snodo.infrastructure.worktree.merge_task_branch", side_effect=GitError("Unable to create '.git/index.lock': File exists.")):
+            success = _try_merge_unmerged_task(
+                str(temp_project),
+                task_id,
+                spec,
+                audit_log=audit_log,
+            )
+
+        assert success is False
+        state_file = temp_project / ".snodo" / "tasks" / task_id / "state.json"
+        assert state_file.exists()
+        import json
+        assert json.loads(state_file.read_text())["status"] == "unmerged"
+
+    def test_try_merge_unmerged_task_unverified_returns_none(self, temp_project):
+        """_try_merge_unmerged_task returns None when merge gate has no passing verification."""
+        from git import Repo
+        from snodo.cli.commands.run_cmd import _try_merge_unmerged_task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+
+        repo = Repo.init(str(temp_project))
+        repo.config_writer().set_value("user", "name", "Test User").release()
+        repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+        readme = temp_project / "README.md"
+        readme.write_text("# Project\n")
+        repo.index.add(["README.md"])
+        repo.index.commit("Initial commit")
+
+        task_id = "1.1_sample"
+        spec = "Add feature"
+        branch_name = task_branch_name(task_id, spec)
+
+        feature_branch = repo.create_head(branch_name)
+        feature_branch.checkout()
+        foo_file = temp_project / "foo.txt"
+        foo_file.write_text("Foo content\n")
+        repo.index.add(["foo.txt"])
+        repo.index.commit("Add foo")
+        repo.heads[0].checkout()
+
+        audit_path = temp_project / ".snodo" / "audit.log"
+        audit_log = AuditLog(str(audit_path))
+        # No verification events in audit log
+
+        success = _try_merge_unmerged_task(
+            str(temp_project),
+            task_id,
+            spec,
+            audit_log=audit_log,
+        )
+
+        assert success is None
+
+
+

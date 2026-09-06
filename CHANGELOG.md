@@ -56,6 +56,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
   `internal_error` halts, which are not retried with failure context — the next
   attempt starts fresh. `plan_cmd.py` renders and counts `errored` tasks. The
   engine's classification and the audit log are unchanged. (Fixes #231)
+- Distinguish complete-but-unmerged tasks from failed tasks and allow fast-path merge retry.
+  When a task closure is resolved and verified at its commit but auto-merge fails due to
+  a repository lock collision or conflict, report the task as `complete (unmerged)` and record
+  status `unmerged` (in `.snodo/tasks/<task_id>/state.json`, background job status, and plan
+  `status.json`) rather than `FAILED` / `blocked`. Subsequent attempts re-check the merge gate
+  against the verified branch and perform a fast-path merge directly without re-running the coder.
+  (Fixes #228)
 - Serialised repository merges and git ref/index updates across concurrent wave tasks.
   Added re-entrant `merge_lock` at `.snodo/.merge.lock` held across the entire merge
   operation (target commit resolution, gate check, git merge, HEAD SHA resolution,

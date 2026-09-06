@@ -273,7 +273,7 @@ def _print_plan_waves(waves: list, tasks: dict) -> None:
     """Print wave and task details."""
     _STATUS_MARKERS = {"completed": "+", "in_progress": "~",
                        "blocked": "!", "errored": "?",
-                       "pending": " "}
+                       "unmerged": "u", "pending": " "}
     for wave in waves:
         wave_id = wave.get("id")
         deps = wave.get("depends_on", [])
@@ -291,9 +291,12 @@ def _print_plan_summary(tasks: dict) -> None:
     """Print plan progress summary."""
     total = len(tasks)
     done = sum(1 for s in tasks.values() if (s["status"] if isinstance(s, dict) else s) == "completed")
-    blocked = sum(1 for s in tasks.values() if s == "blocked")
-    errored = sum(1 for s in tasks.values() if s == "errored")
+    blocked = sum(1 for s in tasks.values() if (s["status"] if isinstance(s, dict) else s) == "blocked")
+    errored = sum(1 for s in tasks.values() if (s["status"] if isinstance(s, dict) else s) == "errored")
+    unmerged = sum(1 for s in tasks.values() if (s["status"] if isinstance(s, dict) else s) == "unmerged")
     print(f"Progress: {done}/{total} completed", end="")
+    if unmerged:
+        print(f", {unmerged} unmerged", end="")
     if blocked:
         print(f", {blocked} blocked", end="")
     if errored:
