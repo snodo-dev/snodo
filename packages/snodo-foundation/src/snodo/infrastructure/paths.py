@@ -3,10 +3,18 @@
 FILE: snodo/infrastructure/paths.py
 """
 
-from snodo.paths import resolve_home, resolve_project_root, require_project_root  # noqa: F401
+from snodo.paths import (  # noqa: F401
+    resolve_home,
+    resolve_project_root,
+    require_project_root,
+    get_project_local_home_rel,
+    is_protected_workspace_path,
+)
 
 __all__ = [
     "resolve_home",
     "resolve_project_root",
     "require_project_root",
+    "get_project_local_home_rel",
+    "is_protected_workspace_path",
 ]

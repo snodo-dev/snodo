@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Optional
 from unittest.mock import MagicMock
 
+from snodo.paths import is_protected_workspace_path
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
 from snodo.coders.base import CoderAdapter
 from snodo.infrastructure.config import DEFAULT_MODEL
@@ -201,7 +202,7 @@ class MockAdapter(CoderAdapter):
 
         valid_files = [
             f for f in files
-            if not (Path(f.path).parts and Path(f.path).parts[0] == ".snodo")
+            if not is_protected_workspace_path(f.path, getattr(self, "workspace_dir", None) or Path.cwd())
         ]
         return CodeArtifact(files=valid_files)
 

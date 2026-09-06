@@ -286,3 +286,49 @@ def test_readiness_assesses_whole_protocol_across_all_modes(git_repo: Path):
     # Filtering for 'code_mode' should exclude the plan_mode architecture finding
     code_mode_findings = assessment.findings_for_mode("code_mode")
     assert not any("architecture" in f.id for f in code_mode_findings)
+
+
+def test_plaintext_api_key_reported_in_workstation_findings(git_repo: Path, tmp_path: Path, monkeypatch):
+    """Plaintext API keys configured in config.yml are reported in workstation findings without affecting repo score (Fixes #227)."""
+    snodo_dir = git_repo / ".snodo"
+    snodo_dir.mkdir()
+    (snodo_dir / "protocol.yml").write_text("protocol_id: test-proto\n")
+    subprocess.run(["git", "add", ".snodo/protocol.yml"], cwd=git_repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "commit proto"], cwd=git_repo, check=True)
+
+    protocol = _make_protocol(
+        validators=[
+            Validator(
+                validator_id="val_quality",
+                validator_type="quality",
+                tooling={"test_command": "pytest"},
+            )
+        ]
+    )
+
+    # Set up config.yml with plaintext api_key
+    custom_home = tmp_path / "snodo_home"
+    custom_home.mkdir()
+    config_file = custom_home / "config.yml"
+    config_file.write_text(
+        "providers:\n"
+        "  anthropic:\n"
+        "    api_key: 'sk-ant-test12345'\n"
+        "    api_key_env: 'ANTHROPIC_API_KEY'\n"
+    )
+    monkeypatch.setenv("SNODO_HOME", str(custom_home))
+
+    assessment = assess_readiness(git_repo, protocol)
+
+    # Repo score remains 100%
+    assert assessment.score == 100
+    assert len(assessment.repository_findings) == 0
+
+    # Workstation findings include the plaintext key notification
+    pt_findings = [f for f in assessment.workstation_findings if f.id.startswith("plaintext_key_configured")]
+    assert len(pt_findings) == 1
+    assert pt_findings[0].id == "plaintext_key_configured:anthropic"
+    assert pt_findings[0].kind == ReadinessKind.WORKSTATION
+    assert "Plaintext API key configured for provider 'anthropic'" in pt_findings[0].description
+    assert "ANTHROPIC_API_KEY" in pt_findings[0].description
+

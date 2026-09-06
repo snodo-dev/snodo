@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
+from snodo.paths import is_protected_workspace_path
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError, TurnBudgetExhausted
 from snodo.engine.progress import format_elapsed, format_tool_call_summary
 from snodo.infrastructure.config import DEFAULT_MODEL
@@ -1066,9 +1067,8 @@ Return ONLY the JSON array, no other text.
                 raise ParseError(
                     f"Each file operation must have 'path' (and 'content' for write operations). Got keys: {list(item.keys())}"
                 )
-            rel_parts = Path(item["path"]).parts
-            if rel_parts and rel_parts[0] == ".snodo":
-                _logger.warning("Excluded protected path under .snodo/ from coder artifacts: %s", item["path"])
+            if is_protected_workspace_path(item["path"], getattr(self, "workspace_dir", None) or Path.cwd()):
+                _logger.warning("Excluded protected path under .snodo/ or local home from coder artifacts: %s", item["path"])
                 continue
             files.append(FileArtifact(
                 path=item["path"],
