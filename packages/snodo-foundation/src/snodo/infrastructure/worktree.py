@@ -173,6 +173,20 @@ def surface_untracked_files(project_root: str) -> List[str]:
         return []
 
 
+def merge_lock(project_root: str):
+    """Return a re-entrant process/thread-safe file lock for repository merges.
+
+    Serialises all operations that read or modify the base repository's git ref
+    and index state (gate check, merge, commit SHA resolution, ref updates,
+    worktree creation/teardown, branch cleanup).
+    """
+    from filelock import FileLock
+
+    lock_path = Path(project_root) / ".snodo" / ".merge.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    return FileLock(str(lock_path), is_singleton=True)
+
+
 def create_worktree(
     project_root: str,
     task_id: str,
@@ -195,41 +209,42 @@ def create_worktree(
     branch_name = branch or task_branch_name(task_id, spec)
     base_branch = base or resolve_base_branch(project_root)
 
-    repo = Repo(str(Path(project_root)), search_parent_directories=True)
+    with merge_lock(project_root):
+        repo = Repo(str(Path(project_root)), search_parent_directories=True)
 
-    # A repository with no commits has an unborn HEAD: the base branch does
-    # not resolve, so `git worktree add` fails with "invalid reference".
-    # This is the state every greenfield repository starts in — the agent
-    # would otherwise run in the operator's real working tree. Refuse
-    # loudly with actionable guidance rather than degrading isolation
-    # (Fixes #29). Callers that accept a degraded run must say so explicitly.
-    try:
-        head_commit = repo.head.commit
-    except Exception as e:  # noqa: BLE001 — unborn HEAD raises repo-specific error types
-        raise WorktreeIsolationError(
-            "Cannot create a task worktree: this repository has no commits "
-            "(unborn HEAD), so there is no base branch to branch from. "
-            "Make an initial commit first (e.g. 'git add -A && git commit -m "
-            "\"initial\"'), then re-run the task. To run without isolation, "
-            "pass --no-isolation explicitly."
-        ) from e
-    del head_commit  # only used to prove a resolvable HEAD
-
-    # Remove existing worktree if present (retry / partial cleanup)
-    if wt_path.exists():
+        # A repository with no commits has an unborn HEAD: the base branch does
+        # not resolve, so `git worktree add` fails with "invalid reference".
+        # This is the state every greenfield repository starts in — the agent
+        # would otherwise run in the operator's real working tree. Refuse
+        # loudly with actionable guidance rather than degrading isolation
+        # (Fixes #29). Callers that accept a degraded run must say so explicitly.
         try:
-            repo.git.worktree("remove", "--force", str(wt_path))
+            head_commit = repo.head.commit
+        except Exception as e:  # noqa: BLE001 — unborn HEAD raises repo-specific error types
+            raise WorktreeIsolationError(
+                "Cannot create a task worktree: this repository has no commits "
+                "(unborn HEAD), so there is no base branch to branch from. "
+                "Make an initial commit first (e.g. 'git add -A && git commit -m "
+                "\"initial\"'), then re-run the task. To run without isolation, "
+                "pass --no-isolation explicitly."
+            ) from e
+        del head_commit  # only used to prove a resolvable HEAD
+
+        # Remove existing worktree if present (retry / partial cleanup)
+        if wt_path.exists():
+            try:
+                repo.git.worktree("remove", "--force", str(wt_path))
+            except GitCommandError:
+                shutil.rmtree(str(wt_path), ignore_errors=True)
+
+        # Remove stale branch if present
+        try:
+            repo.git.branch("-D", branch_name)
         except GitCommandError:
-            shutil.rmtree(str(wt_path), ignore_errors=True)
+            pass
 
-    # Remove stale branch if present
-    try:
-        repo.git.branch("-D", branch_name)
-    except GitCommandError:
-        pass
-
-    repo.git.worktree("add", str(wt_path), "-b", branch_name, base_branch)
-    _logger.info("Created worktree %s on branch %s (off %s)", wt_path, branch_name, base_branch)
+        repo.git.worktree("add", str(wt_path), "-b", branch_name, base_branch)
+        _logger.info("Created worktree %s on branch %s (off %s)", wt_path, branch_name, base_branch)
 
     # Surface untracked files in the project root: a task worktree is built
     # from the branch, so an untracked file the operator can see is absent
@@ -282,16 +297,17 @@ def remove_worktree(project_root: str, task_id: str) -> None:
     wt_path = worktree_path(project_root, task_id)
     if not wt_path.exists():
         return
-    try:
-        from git import Repo, GitCommandError
-        repo = Repo(str(Path(project_root)), search_parent_directories=True)
+    with merge_lock(project_root):
         try:
-            repo.git.worktree("remove", "--force", str(wt_path))
-        except GitCommandError:
+            from git import Repo, GitCommandError
+            repo = Repo(str(Path(project_root)), search_parent_directories=True)
+            try:
+                repo.git.worktree("remove", "--force", str(wt_path))
+            except GitCommandError:
+                shutil.rmtree(str(wt_path), ignore_errors=True)
+        except Exception:
             shutil.rmtree(str(wt_path), ignore_errors=True)
-    except Exception:
-        shutil.rmtree(str(wt_path), ignore_errors=True)
-    _logger.info("Removed worktree %s", wt_path)
+        _logger.info("Removed worktree %s", wt_path)
 
 
 def merge_head_sha(project_root: str) -> str:
@@ -322,11 +338,8 @@ def merge_task_branch(project_root: str, branch: str) -> Tuple[str, List[str]]:
         GitError: on any other git failure.
     """
     from snodo.tools.git import GitMCP, MergeConflictError
-    from filelock import FileLock
 
-    lock_path = Path(project_root) / ".snodo" / ".merge.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with FileLock(str(lock_path)):
+    with merge_lock(project_root):
         git = GitMCP(project_root)
         try:
             git.merge_branch(branch)
@@ -337,15 +350,17 @@ def merge_task_branch(project_root: str, branch: str) -> Tuple[str, List[str]]:
 
 def delete_task_branch(project_root: str, branch: str) -> None:
     """Delete the task branch (best-effort, after a successful merge)."""
-    try:
-        from git import Repo, GitCommandError
-        repo = Repo(str(Path(project_root)), search_parent_directories=True)
+    with merge_lock(project_root):
         try:
-            repo.git.branch("-D", branch)
-        except GitCommandError as e:
-            _logger.debug("Failed to delete branch %s: %s", branch, e)
-    except Exception as e:
-        _logger.debug("Failed to delete task branch %s: %s", branch, e)
+            from git import Repo, GitCommandError
+            repo = Repo(str(Path(project_root)), search_parent_directories=True)
+            try:
+                repo.git.branch("-D", branch)
+            except GitCommandError as e:
+                _logger.debug("Failed to delete branch %s: %s", branch, e)
+        except Exception as e:
+            _logger.debug("Failed to delete task branch %s: %s", branch, e)
+
 
 
 def list_worktrees(project_root: str) -> list:

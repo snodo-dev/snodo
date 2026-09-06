@@ -1284,6 +1284,92 @@ class TestAutoMerge:
         ).stdout
         assert branch in branches
 
+    def test_merge_on_success_concurrent_tasks_both_land(self, tmp_path):
+        """Simultaneous merges for two tasks serialize on merge_lock, both succeed, record task_merged, and leave no lock files."""
+        import concurrent.futures
+        from git import Repo
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+
+        from snodo.cli.commands.run_cmd import _merge_on_success
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        snodo_dir = repo / ".snodo"
+        snodo_dir.mkdir(parents=True, exist_ok=True)
+        audit_log = AuditLog(str(snodo_dir / "audit.log"))
+
+        # Task 1 setup
+        task1 = Task(id="task_1", spec="feature one")
+        branch1 = task_branch_name(task1.id, task1.spec)
+        subprocess_run(["git", "checkout", "-qb", branch1], cwd=repo, check=True)
+        (repo / "feature1.txt").write_text("feature 1\n")
+        subprocess_run(["git", "add", "feature1.txt"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "feature 1 commit"], cwd=repo, check=True)
+        commit1 = Repo(str(repo)).commit(branch1).hexsha
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "task_ref": task1.id,
+            "commit": commit1,
+            "outcome": "pass",
+            "command": "pytest",
+        })
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+        # Task 2 setup
+        task2 = Task(id="task_2", spec="feature two")
+        branch2 = task_branch_name(task2.id, task2.spec)
+        subprocess_run(["git", "checkout", "-qb", branch2], cwd=repo, check=True)
+        (repo / "feature2.txt").write_text("feature 2\n")
+        subprocess_run(["git", "add", "feature2.txt"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "feature 2 commit"], cwd=repo, check=True)
+        commit2 = Repo(str(repo)).commit(branch2).hexsha
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed",
+            "task_ref": task2.id,
+            "commit": commit2,
+            "outcome": "pass",
+            "command": "pytest",
+        })
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+        # Drive simultaneous merges against the repository
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            f1 = executor.submit(_merge_on_success, str(repo), task1, 0, "sess_1", audit_log)
+            f2 = executor.submit(_merge_on_success, str(repo), task2, 0, "sess_1", audit_log)
+            res1, preserve1, merged1 = f1.result()
+            res2, preserve2, merged2 = f2.result()
+
+        assert res1 == 0
+        assert preserve1 is False
+        assert merged1 == branch1
+
+        assert res2 == 0
+        assert preserve2 is False
+        assert merged2 == branch2
+
+        # Both files exist in the main repository
+        assert (repo / "feature1.txt").exists()
+        assert (repo / "feature2.txt").exists()
+
+        # Both task_merged audit events are recorded
+        merged_events = audit_log.get_history("task_merged")
+        merged_task_refs = {e.data["task_ref"] for e in merged_events}
+        assert "task_1" in merged_task_refs
+        assert "task_2" in merged_task_refs
+
+        # No lock files left behind
+        assert not (repo / ".git" / "index.lock").exists()
+        assert not (repo / ".git" / "HEAD.lock").exists()
+
 
 class TestUnverifiedMergeBlocked:
     """Verify _merge_on_success refuses to merge unverified commits."""
