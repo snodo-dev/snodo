@@ -376,6 +376,10 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self.checkpointer = checkpointer
         self._audit_log = audit_log
         self._session_manager = session_manager
+        # Ownership follows construction: an injected issuer is released by
+        # the caller that created it; one constructed here belongs to the
+        # builder and is released by close().
+        self._owns_token_issuer = token_issuer is None
         self._token_issuer = token_issuer or TokenIssuer()
         self._session_id = session_id
 
@@ -466,6 +470,23 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._last_timeout_seconds: Optional[int] = None
         self._last_timeout_tail: str = ""
     
+    def close(self) -> None:
+        """Release resources this builder owns.
+
+        Closes the ``TokenIssuer`` — and through it the store's SQLite
+        connection — only when the builder constructed it.  An injected
+        issuer belongs to the caller.  Idempotent.
+        """
+        if self._owns_token_issuer:
+            self._token_issuer.close()
+
+    def __enter__(self) -> "GraphBuilder":
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        self.close()
+        return False
+
     def build_graph(self) -> StateGraph:
         """Build executable StateGraph from protocol.
 
@@ -935,6 +956,7 @@ def build_protocol_graph(
     worktree_path: Optional[str] = None,
     worktree_degraded: bool = False,
     verbose: bool = False,
+    token_issuer: Optional[TokenIssuer] = None,
     **custom_functions
 ) -> StateGraph:
     """Convenience function to build graph with MCP integration.
@@ -955,6 +977,8 @@ def build_protocol_graph(
         worktree_path: When set, MCPs root at the worktree instead of project_root
         worktree_degraded: Worktree creation failed — skip branch ops
         verbose: Print per-validator verdicts and fine-grained progress
+        token_issuer: Optional caller-owned TokenIssuer. When supplied, the
+            graph uses it and does NOT close it — the caller releases it.
         **custom_functions: Optional overrides
 
     Returns:
@@ -1029,6 +1053,7 @@ def build_protocol_graph(
         worktree_path=worktree_path,
         worktree_degraded=worktree_degraded,
         verbose=verbose,
+        token_issuer=token_issuer,
         **custom_functions
     )
     return builder.build_graph()

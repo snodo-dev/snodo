@@ -726,14 +726,14 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         print("  WARNING: No task branch will be created. Files change current working tree.")
         worktree_degraded = True
 
-    compiled_graph = _build_graph(
+    graph_and_issuer = _build_graph(
         args, protocol, project_root, model, checkpointer,
         audit_log=audit_log, session_manager=session_manager,
         session_id=session_id, job_id=job_id,
         worktree_path=worktree_path_val,
         worktree_degraded=worktree_degraded,
     )
-    if compiled_graph is None:
+    if graph_and_issuer is None:
         if worktree_path_val and not getattr(args, "retain_worktree", False):
             remove_worktree(project_root, task.id)
         elif worktree_path_val:
@@ -741,6 +741,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         if checkpointer:
             _close_checkpointer(checkpointer)
         return 1
+    compiled_graph, token_issuer = graph_and_issuer
 
     root_task_dict = {
         "id": task.id,
@@ -845,6 +846,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         # out in a worktree cannot be deleted until that worktree is removed).
         if merged_branch:
             delete_task_branch(project_root, merged_branch)
+        _close_token_issuer(token_issuer)
         _close_checkpointer(checkpointer)
 
         # Fire-and-forget cloud sync (background thread, never blocks)
@@ -1270,16 +1272,33 @@ def _close_checkpointer(checkpointer) -> None:
         _logger.debug("Could not close checkpointer connection: %s", e)
 
 
+def _close_token_issuer(token_issuer) -> None:
+    """Release the token store connection of an issuer we constructed."""
+    if token_issuer is None:
+        return
+    try:
+        token_issuer.close()
+    except Exception as e:
+        _logger.debug("Could not close token issuer store: %s", e)
+
+
 def _build_graph(args, protocol: Protocol, project_root: str, model: str,
                  checkpointer=None, audit_log=None, session_manager=None,
                  session_id=None, job_id=None, worktree_path=None,
                  worktree_degraded=False):
     """Build and compile the protocol execution graph.
 
+    The token issuer is constructed here and returned so the caller — the
+    owner of its lifetime — can release the store connection when the run
+    ends.  ``_build_graph`` closing it itself would be wrong: the compiled
+    graph is still live after this function returns.
+
     Returns:
-        Compiled graph, or None on failure.
+        (compiled_graph, token_issuer) tuple, or None on failure.
     """
     from snodo.engine.loop import build_protocol_graph
+    from snodo.infrastructure.tokens import TokenIssuer
+    token_issuer = None
     try:
         mcp_root = worktree_path or project_root
         use_mock = getattr(args, "mock", False)
@@ -1304,6 +1323,9 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             print("  Memory: persistent (SqliteSaver)")
         print()
 
+        # Constructed with the same defaults GraphBuilder used for its
+        # implicit issuer — only the ownership site moves.
+        token_issuer = TokenIssuer()
         graph = build_protocol_graph(
             protocol,
             project_root=project_root,
@@ -1318,14 +1340,17 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             worktree_path=worktree_path,
             worktree_degraded=worktree_degraded,
             verbose=getattr(args, "verbose", False),
+            token_issuer=token_issuer,
         )
         compiled_graph = graph.compile(checkpointer=checkpointer)
         print("✓ Graph compiled with MCP integration")
         print()
-        return compiled_graph
+        return compiled_graph, token_issuer
     except (AttributeError, TypeError):
+        _close_token_issuer(token_issuer)
         raise
     except Exception as e:
+        _close_token_issuer(token_issuer)
         print(f"Error: Failed to build graph: {e}", file=sys.stderr)
         if getattr(args, "verbose", False):
             import traceback

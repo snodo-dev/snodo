@@ -2131,3 +2131,38 @@ def test_classifier_completion_fn_binds_api_base_for_its_provider():
     # Construction succeeded — coder model (deepseek) does not have CF api_base
     # In the test fixture the coder uses raw _completion_fn without api_base
     assert builder._default_model == "deepseek/deepseek-v4-flash"
+
+
+# ============================================================================
+# Connection ownership (GraphBuilder.close) — token store fd-leak regression
+# ============================================================================
+
+def test_builder_closes_token_issuer_it_constructed(sample_protocol):
+    """A builder that constructs its own TokenIssuer releases it on close()."""
+    builder = GraphBuilder(sample_protocol)  # constructs its own TokenIssuer
+    assert builder._owns_token_issuer is True
+    issuer = builder._token_issuer
+    assert issuer._store.is_consumed("nope") is False  # opens the connection
+    assert issuer._store._conn is not None
+    builder.close()
+    assert issuer._store._conn is None
+
+
+def test_builder_does_not_close_injected_issuer(sample_protocol, tmp_path):
+    """Ownership follows construction: an injected issuer is the caller's to close."""
+    injected = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600,
+                           store_path=tmp_path / "inj.db")
+    builder = GraphBuilder(sample_protocol, token_issuer=injected)
+    assert injected._store.is_consumed("nope") is False  # opens the connection
+    assert injected._store._conn is not None
+    builder.close()
+    assert injected._store._conn is not None  # builder must not close it
+    injected.close()
+    assert injected._store._conn is None
+
+
+def test_builder_close_is_idempotent(sample_protocol):
+    builder = GraphBuilder(sample_protocol)
+    builder._token_issuer._store.is_consumed("nope")  # open the connection
+    builder.close()
+    builder.close()  # must not raise

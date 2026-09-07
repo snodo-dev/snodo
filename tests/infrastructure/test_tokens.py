@@ -18,12 +18,17 @@ Tests cover:
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
+import gc
+import os
+import warnings
+
 import jwt
 import pytest
 from snodo.core.interfaces import ValidatorResult
 from snodo.infrastructure.tokens import (
     TokenError,
     TokenIssuer,
+    TokenStore,
     TokenStoreError,
     ValidationToken,
 )
@@ -36,12 +41,14 @@ from tests.conftest import TEST_SECRET
 
 @pytest.fixture
 def issuer():
-    return TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600)
+    with TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600) as iss:
+        yield iss
 
 
 @pytest.fixture
 def short_ttl_issuer():
-    return TokenIssuer(secret=TEST_SECRET, ttl_seconds=1)
+    with TokenIssuer(secret=TEST_SECRET, ttl_seconds=1) as iss:
+        yield iss
 
 
 @pytest.fixture
@@ -469,3 +476,95 @@ def test_consensus_field_round_trips(issuer, no_blockers):
     assert token.consensus == "majority"
     payload = issuer.decode_token(token)
     assert payload["consensus"] == "majority"
+
+
+# ---------------------------------------------------------------------------
+# Connection lifetime (close / context manager)
+#
+# Regression guard for the fd leak that killed xdist workers: TokenStore's
+# cached WAL connection holds three descriptors (db, -wal, -shm) and had no
+# release path, so connections accumulated until EMFILE and were finally
+# reclaimed by the gc as "unclosed database" ResourceWarnings.
+# ---------------------------------------------------------------------------
+
+def _open_fd_count() -> int:
+    """Open file descriptors of this process (macOS: /dev/fd, Linux: /proc/self/fd)."""
+    for fd_path in ("/dev/fd", "/proc/self/fd"):
+        try:
+            return len(os.listdir(fd_path))
+        except OSError:
+            continue
+    pytest.skip("cannot enumerate open file descriptors on this platform")
+
+
+def _unclosed_db_warnings() -> list:
+    """Collect any 'unclosed database' ResourceWarnings emitted during a gc pass."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        gc.collect()
+    return [w for w in caught if "unclosed database" in str(w.message)]
+
+
+class TestConnectionLifetime:
+    def test_close_releases_cached_connection(self, tmp_path):
+        store = TokenStore(tmp_path / "tokens.db")
+        assert store.is_consumed("nope") is False
+        assert store._conn is not None
+        store.close()
+        assert store._conn is None
+
+    def test_close_is_idempotent(self, tmp_path):
+        store = TokenStore(tmp_path / "tokens.db")
+        assert store.is_consumed("nope") is False
+        store.close()
+        store.close()
+
+    def test_context_manager_closes_on_exit(self, tmp_path):
+        with TokenStore(tmp_path / "tokens.db") as store:
+            assert store.is_consumed("nope") is False
+            assert store._conn is not None
+        assert store._conn is None
+
+    def test_issuer_close_releases_its_store(self, tmp_path):
+        issuer = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600,
+                             store_path=tmp_path / "tokens.db")
+        # is_consumed (behind verify_token) is what opens the connection.
+        assert issuer._store.is_consumed("nope") is False
+        assert issuer._store._conn is not None
+        issuer.close()
+        assert issuer._store._conn is None
+
+    def test_store_semantics_survive_close_and_reopen(self, tmp_path):
+        """Closing releases the connection, not the data: consumption persists."""
+        store = tmp_path / "tokens.db"
+        with TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store) as issuer:
+            token = issuer.issue_token("task_1", [
+                ValidatorResult(validator_id="v", severity="pass", justification="ok"),
+            ])
+            assert issuer.consume_token(token) is True
+        reopened = TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store)
+        try:
+            assert reopened.verify_token(token) is False
+        finally:
+            reopened.close()
+
+    def test_repeated_create_and_release_does_not_grow_descriptors(self, tmp_path):
+        store_path = tmp_path / "tokens.db"
+        results = [ValidatorResult(validator_id="v", severity="pass", justification="ok")]
+        with TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store_path) as warmup:
+            warmup.verify_token(warmup.issue_token("warm", results))
+        gc.collect()
+        baseline = _open_fd_count()
+        for _ in range(50):
+            with TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600, store_path=store_path) as issuer:
+                token = issuer.issue_token("task", results)
+                assert issuer.verify_token(token) is True
+        gc.collect()
+        assert _open_fd_count() <= baseline
+
+    def test_released_store_emits_no_resource_warning_on_gc(self, tmp_path):
+        store = TokenStore(tmp_path / "tokens.db")
+        assert store.is_consumed("nope") is False
+        store.close()
+        del store
+        assert _unclosed_db_warnings() == []

@@ -324,16 +324,22 @@ class TestRotateThread:
 class TestCheckpointer:
     def test_get_checkpointer_creates_db(self, manager):
         """get_checkpointer creates the SQLite database file."""
+        # get_checkpointer's contract: the caller owns the connection, so the
+        # close happens in finally — a mid-test failure must not leak it.
         saver = manager.get_checkpointer()
-        assert manager.db_path.exists()
-        saver.conn.close()
+        try:
+            assert manager.db_path.exists()
+        finally:
+            saver.conn.close()
 
     def test_checkpointer_is_sqlitesaver(self, manager):
         """get_checkpointer returns a SqliteSaver instance."""
         from langgraph.checkpoint.sqlite import SqliteSaver
         saver = manager.get_checkpointer()
-        assert isinstance(saver, SqliteSaver)
-        saver.conn.close()
+        try:
+            assert isinstance(saver, SqliteSaver)
+        finally:
+            saver.conn.close()
 
 
 # === CLI Integration Tests ===
@@ -414,6 +420,7 @@ class TestEndToEnd:
         assert protocol is not None
 
         temp_home = tempfile.mkdtemp()
+        checkpointer = None
         try:
             mgr = AgentMemoryManager(home_dir=temp_home)
             agent = mgr.get_or_create_agent("test", "producer")
@@ -465,9 +472,11 @@ class TestEndToEnd:
             # Verify checkpoints were written
             summary = mgr.get_memory_summary("test:producer")
             assert summary["checkpoint_count"] > 0
-
-            checkpointer.conn.close()
         finally:
+            # get_checkpointer's contract: caller closes the connection —
+            # unconditionally, so a failing assertion does not leak it.
+            if checkpointer is not None:
+                checkpointer.conn.close()
             shutil.rmtree(temp_home, ignore_errors=True)
 
     def test_messages_contain_task_info(self, temp_project):
