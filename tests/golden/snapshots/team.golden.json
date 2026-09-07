@@ -95,6 +95,7 @@
       ]
     }
   ],
+  "modules": [],
   "name": "Default Snodo Protocol",
   "protocol_id": "default",
   "roles": [],

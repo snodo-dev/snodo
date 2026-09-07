@@ -60,6 +60,7 @@
       ]
     }
   ],
+  "modules": [],
   "name": "Intent-Driven Protocol",
   "protocol_id": "intent",
   "roles": [],

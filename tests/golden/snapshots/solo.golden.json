@@ -46,6 +46,7 @@
       ]
     }
   ],
+  "modules": [],
   "name": "Solo Developer Protocol",
   "protocol_id": "solo",
   "roles": [],
