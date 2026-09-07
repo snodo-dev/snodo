@@ -91,6 +91,16 @@ class TokenStore:
 
     The store is created lazily on first use (``mkdir(parents=True)``), NOT at
     ``snodo init``, so existing installs keep working without re-init.
+
+    Lifetime: the connection is cached on the instance because it carries
+    ``busy_timeout`` and the one-time WAL/DDL setup, which must not be repeated
+    per call.  The cache is opened lazily and released with ``close()`` (or by
+    using the store as a context manager).  Every object that constructs a
+    ``TokenStore`` owns it and is responsible for closing it; callers that
+    forget are caught by the ``__del__`` safety net below, which closes the
+    connection deterministically instead of leaving it for the garbage
+    collector to reclaim with a ``ResourceWarning`` (a WAL connection holds
+    three file descriptors: database, ``-wal`` and ``-shm``).
     """
 
     _PRUNE_EVERY = 100
@@ -99,6 +109,38 @@ class TokenStore:
         self._path = Path(path) if path else resolve_token_store()
         self._conn: Optional[sqlite3.Connection] = None
         self._inserts_since_prune = 0
+
+    def close(self) -> None:
+        """Release the cached connection (idempotent).
+
+        The store stays usable: a later call reopens the connection via the
+        same lazy path, and the WAL/user_version/CREATE TABLE setup is
+        idempotent, so reconnection repeats no irreversible work.
+        """
+        conn, self._conn = self._conn, None
+        if conn is None:
+            return
+        try:
+            conn.close()
+        except sqlite3.Error as e:
+            _logger.debug("Could not close token store connection: %s", e)
+
+    def __enter__(self) -> "TokenStore":
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        self.close()
+        return False
+
+    def __del__(self) -> None:
+        # Safety net: an unreleased connection must be closed here rather than
+        # surface later as a "unclosed database" ResourceWarning from an
+        # arbitrary gc pass.  Finalizers must never raise, including during
+        # interpreter shutdown.
+        try:
+            self.close()
+        except Exception:  # noqa: S110 — finalizer context; nothing to recover
+            pass
 
     def _connect(self) -> sqlite3.Connection:
         if self._conn is not None:
@@ -226,6 +268,12 @@ class TokenIssuer:
     Single-use: ``verify_token`` CHECKS the shared consumed-token store but does
     NOT consume (a dispatch may involve many mutating tool calls).  Consumption
     happens at the dispatch boundary via ``consume_token``.
+
+    Lifetime: the issuer constructs its ``TokenStore`` in ``__init__`` and
+    therefore owns it — ``close()`` (or leaving the ``with`` block of the
+    context manager) releases the store's SQLite connection.  Whoever creates
+    a ``TokenIssuer`` is responsible for closing it; whoever is handed one uses
+    it but does not close it.
     """
 
     def __init__(
@@ -245,6 +293,22 @@ class TokenIssuer:
         # Resolved at call time so tests can inject a fake clock without the
         # 1-second iat granularity forcing a real-time sleep.
         self._now_fn = now_fn
+
+    def close(self) -> None:
+        """Release the consumed-token store connection owned by this issuer.
+
+        Idempotent; token operations after close transparently reopen the
+        connection.  Injections of a store are not currently supported, so the
+        issuer always owns — and therefore always releases — its store.
+        """
+        self._store.close()
+
+    def __enter__(self) -> "TokenIssuer":
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        self.close()
+        return False
 
     @staticmethod
     def _resolve_secret(secret: Optional[str]) -> str:

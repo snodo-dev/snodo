@@ -66,7 +66,7 @@ def _run(project_root, outcome, retain=False):
     with patch("snodo.infrastructure.paths.require_project_root", return_value=str(project_root)):
         with patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")):
             with patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)):
-                with patch("snodo.cli.commands.run_cmd._build_graph", return_value=MagicMock()):
+                with patch("snodo.cli.commands.run_cmd._build_graph", return_value=(MagicMock(), MagicMock())):
                     with patch("snodo.engine.closure.run_to_closure",
                                return_value=(final_state, tree)):
                         return _execute_task(args, protocol, task, "gpt-4")
@@ -118,7 +118,7 @@ def _run_with_worktree_side_effect(project_root, side_effect):
         patch("snodo.infrastructure.paths.require_project_root", return_value=str(project_root)),
         patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")),
         patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)),
-        patch("snodo.cli.commands.run_cmd._build_graph", return_value=MagicMock()),
+        patch("snodo.cli.commands.run_cmd._build_graph", return_value=(MagicMock(), MagicMock())),
         patch("snodo.engine.closure.run_to_closure", return_value=(final_state, tree)),
         patch("snodo.infrastructure.worktree.setup_for_task", side_effect=side_effect),
     ):
@@ -159,7 +159,7 @@ class TestUnbornHeadFailLoud:
             patch("snodo.infrastructure.paths.require_project_root", return_value=str(git_project)),
             patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")),
             patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)),
-            patch("snodo.cli.commands.run_cmd._build_graph", return_value=MagicMock()),
+            patch("snodo.cli.commands.run_cmd._build_graph", return_value=(MagicMock(), MagicMock())),
             patch("snodo.engine.closure.run_to_closure", return_value=(final_state, tree)),
             patch("snodo.infrastructure.worktree.setup_for_task",
                    side_effect=WorktreeIsolationError("no commits")),

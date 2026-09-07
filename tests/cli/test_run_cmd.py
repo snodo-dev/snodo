@@ -8,6 +8,7 @@ Covers the uncovered paths in snodo/cli/commands/run_cmd.py:
 - _report_closure (structured halt payload emission)
 - _build_graph (success + failure)
 - _close_checkpointer
+- _close_token_issuer
 - _setup_memory
 - _get_completed_waves
 - _should_skip_task
@@ -370,6 +371,28 @@ class TestCloseCheckpointer:
         ckpt = MagicMock()
         ckpt.conn.close.side_effect = Exception("db error")
         _close_checkpointer(ckpt)  # Should not raise
+
+
+# === _close_token_issuer tests ===
+
+class TestCloseTokenIssuer:
+    """Tests for _close_token_issuer."""
+
+    def test_none_issuer(self):
+        from snodo.cli.commands.run_cmd import _close_token_issuer
+        _close_token_issuer(None)  # Should not raise
+
+    def test_closes_issuer(self):
+        from snodo.cli.commands.run_cmd import _close_token_issuer
+        issuer = MagicMock()
+        _close_token_issuer(issuer)
+        issuer.close.assert_called_once()
+
+    def test_close_exception_swallowed(self):
+        from snodo.cli.commands.run_cmd import _close_token_issuer
+        issuer = MagicMock()
+        issuer.close.side_effect = Exception("db error")
+        _close_token_issuer(issuer)  # Should not raise
 
 
 # === _setup_memory tests ===
