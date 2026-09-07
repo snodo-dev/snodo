@@ -3,6 +3,7 @@
 Extracted from cli/commands/run_cmd.py to isolate plan execution logic.
 """
 
+import json
 import sys
 import time
 from pathlib import Path
@@ -27,6 +28,125 @@ def _task_is_blocked(tasks_status: dict, task_id: str) -> bool:
     if isinstance(entry, dict):
         return entry.get("status") == "blocked"
     return entry == "blocked"
+
+
+_HALT_OUTCOME_LABELS = {
+    "escalate": "escalated",
+    "blocker": "blocked",
+    "validator_error": "validator_error",
+    "internal_error": "internal_error",
+}
+
+
+def _halt_outcome_from_task_state(session, task_id: str) -> Optional[str]:
+    """Return the engine's canonical halt outcome for *task_id* from job state.
+
+    Reads the job state.json records (the engine's own writes, produced by
+    ``WritebackMixin._auto_write_halt_payload``) for the task. The outcome is
+    the canonical ``final_decision`` / ``halt_type`` — one of the four-outcome
+    vocabulary (escalate, blocker, validator_error, internal_error). Returns
+    None when no matching job halt was recorded.
+    """
+    project_root = str(getattr(session, "project_root", "") or "")
+    jobs_dir = Path(project_root) / ".snodo" / "jobs"
+    if jobs_dir.is_dir():
+        for job_path in sorted(jobs_dir.iterdir()):
+            state_path = job_path / "state.json"
+            if not state_path.is_file():
+                continue
+            try:
+                data = json.loads(state_path.read_text())
+            except (OSError, ValueError, TypeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            halt = data.get("halt")
+            if not isinstance(halt, dict) or halt.get("task_id") != task_id:
+                continue
+            decision = halt.get("final_decision") or halt.get("halt_type")
+            if decision in _HALT_OUTCOME_LABELS:
+                return decision
+    return None
+
+
+def _halt_outcome_from_session(session, task_id: str) -> Optional[str]:
+    """Return the engine's canonical halt outcome for *task_id* from the session.
+
+    Falls back to the session checkpoint's ``decisions["halt"]`` record when no
+    job record exists. Returns None when no halt was recorded.
+    """
+    if session is None:
+        return None
+    try:
+        halt = session.checkpoint.decisions.get("halt", {})
+    except Exception:
+        return None
+    if not isinstance(halt, dict):
+        return None
+    record = halt.get(task_id)
+    if not isinstance(record, dict):
+        return None
+    decision = record.get("final_decision") or record.get("halt_type")
+    if decision in _HALT_OUTCOME_LABELS:
+        return decision
+    return None
+
+
+def _halt_outcome(session, task_id: str) -> Optional[str]:
+    """Return the engine's canonical halt outcome for *task_id*.
+
+    Prefers the persisted job state, then the session checkpoint. None when no
+    halt was recorded — an outcome that is not one of the four (e.g. the halt
+    record is entirely absent) keeps today's generic classification.
+    """
+    outcome = _halt_outcome_from_task_state(session, task_id)
+    if outcome is None:
+        outcome = _halt_outcome_from_session(session, task_id)
+    return outcome
+
+
+def _task_record_status(planner, plan: str, task_id: str, exit_code: int, session) -> str:
+    """Record the plan status for a finished task, honoring the engine outcome.
+
+    The status the plan layer records must not lose the operator-facing
+    distinction the engine already computed: a task that FAILED judgement is
+    ``blocked`` (next attempt retries with the failure context), while a task
+    that was never judged, or whose judged work could not be merged, is
+    ``errored`` — a different state that must not hand its halt reason to a
+    faultless coder as a critique (issue #231).
+
+    Returns the status actually recorded.
+    """
+    outcome = _halt_outcome(session, task_id)
+    if outcome in ("validator_error", "internal_error"):
+        planner.update_status(plan, task_id, "errored")
+        return "errored"
+    if outcome in ("escalate", "blocker"):
+        planner.update_status(plan, task_id, "blocked")
+        return "blocked"
+    planner.update_status(plan, task_id, "blocked")
+    return "blocked"
+
+
+def _task_outcome_line(task_id: str, outcome: Optional[str]) -> str:
+    """Render the named outcome for *task_id*, in operator-actionable terms.
+
+    Backs onto the engine's four-outcome vocabulary so the label can never
+    disagree with what the engine classified: ``blocked`` (failed judgement —
+    re-run after addressing the concerns), ``escalated`` (needs a human
+    decision — authorize), ``validator_error`` / ``internal_error``
+    (operational faults — re-run, do not retry the task), and a missing-halt
+    fallback that says the run failed without a recorded outcome.
+    """
+    if outcome is None:
+        return f"[{task_id}] FAILED in"
+    labels = {
+        "escalate": f"[{task_id}] ESCALATED in",
+        "blocker": f"[{task_id}] BLOCKED in",
+        "validator_error": f"[{task_id}] VALIDATOR ERROR in",
+        "internal_error": f"[{task_id}] INTERNAL ERROR in",
+    }
+    return labels[outcome]
 
 
 def _resolve_failure_context(session, task_id: str) -> Optional[dict]:
@@ -132,6 +252,27 @@ def _format_timestamp(ts: Optional[float]) -> str:
         return "N/A"
 
 
+def _session_for_task(args, planner, protocol, task_id: str):
+    """Resolve the active session whose checkpoint holds *task_id*'s halt record.
+
+    Mirrors ``_plan_retry_decision``'s session resolution so the outcome read
+    and the retry decision read the same session, and so a failed-task lookup
+    with no session manager (e.g. inline tests) degrades to no record — the
+    generic classification.
+
+    Returns:
+        The active session, or None.
+    """
+    session_manager = getattr(args, "session_manager", None)
+    if session_manager is None:
+        return None
+    from snodo.infrastructure.state import read_state
+    project_root = str(planner.project_root)
+    state = read_state(project_root)
+    mode = state.current_mode or protocol.initial_mode
+    return session_manager.get_active_session(mode, project_root)
+
+
 def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool:
     """Execute a single task within a wave.
 
@@ -141,6 +282,13 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
     context ``_auto_write_failure_context`` persists is consumed. A task at
     ``max_retries`` is not re-executed. With no failure context, the task runs
     fresh (today's behaviour) and the line says so.
+
+    A failed task is recorded by the outcome the engine decided — the persisted
+    halt payload's ``final_decision`` — not by the exit code alone: a task that
+    FAILED judgement is recorded ``blocked`` (and retries with failure context),
+    while an operational fault (``validator_error`` / ``internal_error``, which
+    means the work was never judged) is recorded ``errored`` and must not hand
+    the halt reason to a faultless coder on the next attempt (issue #231).
 
     Returns:
         True on success, False on failure.
@@ -180,9 +328,11 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
                 planner.update_status(args.plan, task_id, "completed")
                 print(f"  [{task_id}] completed in {dur_str} (started {start_str}, finished {end_str})")
                 return True
-            planner.update_status(args.plan, task_id, "blocked")
+            session = _session_for_task(args, planner, protocol, task_id)
+            _task_record_status(planner, args.plan, task_id, result, session)
             print(
-                f"  [{task_id}] FAILED in {dur_str} (started {start_str}, finished {end_str})",
+                f"{_task_outcome_line(task_id, _halt_outcome(session, task_id))} "
+                f"{dur_str} (started {start_str}, finished {end_str})",
                 file=sys.stderr,
             )
             return False
@@ -207,9 +357,11 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
         print(f"  [{task_id}] completed in {dur_str} (started {start_str}, finished {end_str})")
         return True
     else:
-        planner.update_status(args.plan, task_id, "blocked")
+        session = _session_for_task(args, planner, protocol, task_id)
+        _task_record_status(planner, args.plan, task_id, result, session)
         print(
-            f"  [{task_id}] FAILED in {dur_str} (started {start_str}, finished {end_str})",
+            f"{_task_outcome_line(task_id, _halt_outcome(session, task_id))} "
+            f"{dur_str} (started {start_str}, finished {end_str})",
             file=sys.stderr,
         )
         return False
@@ -288,6 +440,8 @@ def _execute_wave_tasks_concurrent(
                 status = st.get("status")
                 if status in TERMINAL_STATUSES:
                     exit_code = st.get("exit_code")
+                    session = _session_for_task(args, planner, protocol, t_id)
+                    outcome = _halt_outcome(session, t_id)
                     now_mono = time.monotonic()
                     now_wall = time.time()
                     job_started = st.get("started_at")
@@ -309,10 +463,11 @@ def _execute_wave_tasks_concurrent(
                         planner.update_status(args.plan, t_id, "completed")
                         print(f"  [{t_id}] completed (job {j_id}) in {dur_str} (started {start_str}, finished {end_str})")
                     else:
-                        planner.update_status(args.plan, t_id, "blocked")
+                        _task_record_status(planner, args.plan, t_id, exit_code or 1, session)
                         err_msg = st.get("error") or "execution failed"
                         print(
-                            f"  [{t_id}] FAILED (job {j_id}) in {dur_str} (started {start_str}, finished {end_str}): {err_msg}",
+                            f"{_task_outcome_line(t_id, outcome)} {dur_str} "
+                            f"(started {start_str}, finished {end_str}): {err_msg}",
                             file=sys.stderr,
                         )
                         wave_failed = True
@@ -327,7 +482,7 @@ def _execute_wave_tasks_concurrent(
                 start_str = _format_timestamp(t_start_wall)
                 end_str = _format_timestamp(now_wall)
 
-                planner.update_status(args.plan, t_id, "blocked")
+                planner.update_status(args.plan, t_id, "errored")
                 print(
                     f"  [{t_id}] ERROR checking job {j_id} in {dur_str} (started {start_str}, finished {end_str}): {e}",
                     file=sys.stderr,
@@ -385,7 +540,7 @@ def _execute_wave_tasks_concurrent(
             active_jobs[job_id] = task_id
             print(f"  [{task_id}] executing (job {job_id})...")
         except (ValueError, JobError) as e:
-            planner.update_status(args.plan, task_id, "blocked")
+            planner.update_status(args.plan, task_id, "errored")
             print(f"  [{task_id}] ERROR submitting job: {e}", file=sys.stderr)
             wave_failed = True
             continue
