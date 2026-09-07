@@ -7,7 +7,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.8.0] — 2026-09-07
 
 ### Added
 
@@ -44,6 +44,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `unmerged` is now a terminal job status. The job wrapper writes it for exit
+  code 2 — work that finished and verified but whose branch could not be merged
+  — but `TERMINAL_STATUSES` did not contain it, and every caller that asks
+  whether a job is done consults that set. An unmerged job therefore looked
+  perpetually live: the concurrent plan runner's poll loop never removed it from
+  the active set and spun until killed, `wait_for()` ran to its timeout,
+  `archive_jobs` never reaped it, and `_reconcile_state` rewrote it as `failed`
+  with `exit_code -1` and "Process died unexpectedly" once the process was gone
+  — so completed-but-unmerged work was recorded as a crash. (Fixes #232)
 - The plan layer reports the outcome the engine decided instead of collapsing it.
   `snodo run --plan` printed `FAILED` and recorded every halted task as `blocked`
   regardless of its canonical halt — so an escalate, a blocker, a validator that
