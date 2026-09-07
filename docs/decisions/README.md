@@ -44,3 +44,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [038](038-orchestrator-role-and-audit-contract.md) | The Orchestrator Role & Audit Trail Contract | 2026-08-27 | `docs/decisions/038-orchestrator-role-and-audit-contract.md` |
 | [039](039-validation-independent-of-coder.md) | Validation is independent of the coder; engine builds its LLM client from configuration | 2026-08-30 | `engine/loop.py` (`GraphBuilder.__init__`) |
 | [040](040-coder-observes-declared-test-runner.md) | The coder observes the declared test runner; the validators still judge | 2026-09-01 | `coders/litellm.py` + `tools/shell.py` + `validators/acceptance.py` |
+| [041](041-modules-scope-tooling-not-modes.md) | A module is a scope, not a mode; Protocol gains an optional modules list | 2026-09-07 | `compiler/models.py` (`Module`) + `compiler/verifier.py` (`check_wf6`) |
