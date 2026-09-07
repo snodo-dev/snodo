@@ -9,6 +9,25 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Gave the consumed-token store's SQLite connection an explicit, bounded
+  lifetime. `TokenStore` cached the connection opened in `_connect` with no
+  way to release it — no close, no context manager — so every WAL-mode
+  connection (three descriptors: database, `-wal`, `-shm`) leaked until the
+  garbage collector reclaimed it with an "unclosed database" ResourceWarning,
+  and `uv run pytest tests/ -m "" -n auto --cov` died partway with
+  `OSError: [Errno 24] Too many open files`. `TokenStore` and `TokenIssuer`
+  now provide `close()` and context-manager support (the lazy per-instance
+  connection and its one-time WAL/DDL setup are unchanged), a `__del__` safety
+  net closes connections reclaimed from owners that forgot, `GraphBuilder`
+  tracks whether it constructed its `TokenIssuer` and releases only its own,
+  and `run_cmd` now constructs the issuer, passes it into
+  `build_protocol_graph`, and releases it at the same teardown points as the
+  checkpointer. The checkpointer tests in `tests/infrastructure/test_memory.py`
+  close their `SqliteSaver` connection in `finally`, honouring the documented
+  contract. (Fixes #234)
+
 ---
 
 ## [0.8.0] — 2026-09-07
@@ -75,24 +94,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
   status `unmerged` (in `.snodo/tasks/<task_id>/state.json`, background job status, and plan
   `status.json`) rather than `FAILED` / `blocked`. Subsequent attempts re-check the merge gate
   against the verified branch and perform a fast-path merge directly without re-running the coder.
-  (Fixes #228)
-- Gave the consumed-token store's SQLite connection an explicit, bounded
-  lifetime. `TokenStore` cached the connection opened in `_connect` with no
-  way to release it — no close, no context manager — so every WAL-mode
-  connection (three descriptors: database, `-wal`, `-shm`) leaked until the
-  garbage collector reclaimed it with an "unclosed database" ResourceWarning,
-  and `uv run pytest tests/ -m "" -n auto --cov` died partway with
-  `OSError: [Errno 24] Too many open files`. `TokenStore` and `TokenIssuer`
-  now provide `close()` and context-manager support (the lazy per-instance
-  connection and its one-time WAL/DDL setup are unchanged), a `__del__` safety
-  net closes connections reclaimed from owners that forgot, `GraphBuilder`
-  tracks whether it constructed its `TokenIssuer` and releases only its own,
-  and `run_cmd` now constructs the issuer, passes it into
-  `build_protocol_graph`, and releases it at the same teardown points as the
-  checkpointer. The checkpointer tests in `tests/infrastructure/test_memory.py`
-  close their `SqliteSaver` connection in `finally`, honouring the documented
-  contract. (Fixes #234)
-- Serialised repository merges and git ref/index updates across concurrent wave tasks.
+  (Fixes #228)- Serialised repository merges and git ref/index updates across concurrent wave tasks.
   Added re-entrant `merge_lock` at `.snodo/.merge.lock` held across the entire merge
   operation (target commit resolution, gate check, git merge, HEAD SHA resolution,
   `task_merged` audit event recording, worktree setup/removal, and task branch deletion).
