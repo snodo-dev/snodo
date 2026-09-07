@@ -38,8 +38,8 @@ class WF5Violation(WellFormednessViolation):
     """WF5: Constraint consistency violation - invalid or conflicting constraints."""
 
 
-class WF6Violation(WellFormednessViolation):
-    """WF6: Module well-formedness violation (ADR 041).
+class MalformedModuleDeclarationError(Exception):
+    """Raised when a module declaration violates schema constraints.
 
     Covers three rules:
     - Module identifiers must be unique within the protocol.
@@ -87,22 +87,25 @@ class ProtocolVerifier:
     
     def verify(self) -> VerificationResult:
         """Run all well-formedness checks.
-        
+
         Returns:
             VerificationResult with pass/fail status and any errors/warnings
         """
         self.errors = []
         self.warnings = []
-        
+
         try:
             self.check_wf1()
             self.check_wf2()
             self.check_wf3()
             self.check_wf4()
             self.check_wf5()
-            self.check_wf6()
+            self.check_modules()
         except WellFormednessViolation:
             # Violations are already recorded in self.errors
+            pass
+        except MalformedModuleDeclarationError:
+            # Module declaration errors are already recorded in self.errors
             pass
 
         return VerificationResult(
@@ -346,10 +349,10 @@ class ProtocolVerifier:
             self.errors.append(error_msg)
             raise WF5Violation(error_msg)
 
-    def check_wf6(self) -> None:
-        """WF6: Module well-formedness — ADR 041.
+    def check_modules(self) -> None:
+        """Module declaration validation — ADR 041.
 
-        Checks:
+        Validates module schema constraints:
         1. Module identifiers are unique within the protocol.
         2. Every module owns at least one path (enforced by the Module model
            itself via ``min_length=1``; validated here for belt-and-suspenders
@@ -366,7 +369,7 @@ class ProtocolVerifier:
         warning rather than refusing to compile (ADR 041 §Overlapping paths).
 
         Raises:
-            WF6Violation: If any of the three hard rules are broken.
+            MalformedModuleDeclarationError: If any of the three schema rules are broken.
         """
         if not self.protocol.modules:
             return  # No modules declared — nothing to check; protocol is unchanged.
@@ -390,8 +393,8 @@ class ProtocolVerifier:
         for module in self.protocol.modules:
             if not module.paths:
                 errors.append(
-                    f"Module '{module.module_id}' declares no paths; "
-                    "a module must own at least one path"
+                    f"Module '{module.module_id}' is malformed: "
+                    "declares no paths; a module must own at least one path"
                 )
 
         # --- Rule 3: validator reference closure ----------------------------
@@ -399,15 +402,15 @@ class ProtocolVerifier:
             for vid in module.validators:
                 if vid not in defined_validators:
                     errors.append(
-                        f"Module '{module.module_id}' references unknown validator "
-                        f"'{vid}'; validators must be declared at the protocol level "
-                        f"before a module can reference them"
+                        f"Module '{module.module_id}' is malformed: "
+                        f"references unknown validator '{vid}'; validators must be "
+                        f"declared at the protocol level before a module can reference them"
                     )
 
         if errors:
-            error_msg = f"WF6 Violation: {'; '.join(errors)}"
+            error_msg = f"Malformed module declaration: {'; '.join(errors)}"
             self.errors.append(error_msg)
-            raise WF6Violation(error_msg)
+            raise MalformedModuleDeclarationError(error_msg)
 
         # --- Warning: overlapping paths (advisory only) ---------------------
         # Compare each pair of modules; warn if any path of one is a prefix
@@ -426,10 +429,9 @@ class ProtocolVerifier:
                             or pa_norm.startswith(pb_norm + "/")
                         ):
                             self.warnings.append(
-                                f"WF6 Warning: Modules '{a.module_id}' and "
-                                f"'{b.module_id}' have overlapping paths "
-                                f"('{pa}' and '{pb}'). This creates ambiguity "
-                                f"about which module is authoritative for files "
+                                f"Modules '{a.module_id}' and '{b.module_id}' have "
+                                f"overlapping paths ('{pa}' and '{pb}'). This creates "
+                                f"ambiguity about which module is authoritative for files "
                                 f"in the overlap."
                             )
 

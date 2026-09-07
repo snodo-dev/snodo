@@ -27,7 +27,7 @@ from snodo.compiler.verifier import (
     WF3Violation,
     WF4Violation,
     WF5Violation,
-    WF6Violation,
+    MalformedModuleDeclarationError,
     verify_protocol,
 )
 
@@ -897,13 +897,13 @@ def test_wf3_via_verify_protocol_integration():
     assert any("no pre_execute" in e for e in result.errors)
 
 
-# ========== WF6: MODULE WELL-FORMEDNESS TESTS (ADR 041) ==========
+# ========== MODULE DECLARATION VALIDATION TESTS (ADR 041) ==========
 
 def _base_protocol(**kwargs) -> Protocol:
-    """Minimal valid protocol as a base for WF6 tests."""
+    """Minimal valid protocol as a base for module declaration tests."""
     defaults = dict(
-        protocol_id="wf6_test",
-        name="WF6 Test Protocol",
+        protocol_id="module_test",
+        name="Module Test Protocol",
         modes=[Mode(mode_id="start", name="Start")],
         validators=[
             Validator(validator_id="v1", validator_type="quality"),
@@ -915,8 +915,8 @@ def _base_protocol(**kwargs) -> Protocol:
     return Protocol(**defaults)
 
 
-def test_wf6_no_modules_passes():
-    """A protocol with no modules field passes WF6 without change.
+def test_modules_no_modules_passes():
+    """A protocol with no modules field passes validation without change.
 
     Guards backward-compatibility: a protocol that does not declare modules
     must compile and verify identically to before ADR 041.
@@ -924,19 +924,17 @@ def test_wf6_no_modules_passes():
     protocol = _base_protocol()
     result = verify_protocol(protocol)
     assert result.passed
-    assert not any("WF6" in e for e in result.errors)
-    assert not any("WF6" in w for w in result.warnings)
 
 
-def test_wf6_empty_modules_list_passes():
+def test_modules_empty_modules_list_passes():
     """An explicit empty modules list is the same as omitting the field."""
     protocol = _base_protocol(modules=[])
     result = verify_protocol(protocol)
     assert result.passed
 
 
-def test_wf6_two_valid_modules_passes():
-    """Two well-formed non-overlapping modules pass WF6."""
+def test_modules_two_valid_modules_passes():
+    """Two well-formed non-overlapping modules pass validation."""
     modules = [
         Module(
             module_id="core",
@@ -955,8 +953,8 @@ def test_wf6_two_valid_modules_passes():
     assert not result.errors
 
 
-def test_wf6_duplicate_module_ids_raises():
-    """Two modules with the same identifier raise WF6Violation.
+def test_modules_duplicate_module_ids_raises():
+    """Two modules with the same identifier raise MalformedModuleDeclarationError.
 
     The error message must name the offending identifier.
     """
@@ -967,14 +965,14 @@ def test_wf6_duplicate_module_ids_raises():
     protocol = _base_protocol(modules=modules)
     verifier = ProtocolVerifier(protocol)
 
-    with pytest.raises(WF6Violation):
-        verifier.check_wf6()
+    with pytest.raises(MalformedModuleDeclarationError):
+        verifier.check_modules()
 
     # The error message must name 'core'.
     assert any("core" in e for e in verifier.errors)
 
 
-def test_wf6_duplicate_module_ids_via_verify():
+def test_modules_duplicate_module_ids_via_verify():
     """Duplicate module IDs surface as a failed VerificationResult."""
     modules = [
         Module(module_id="dup", paths=["packages/a"]),
@@ -986,8 +984,8 @@ def test_wf6_duplicate_module_ids_via_verify():
     assert any("dup" in e for e in result.errors)
 
 
-def test_wf6_unknown_validator_reference_raises():
-    """A module that references an undeclared validator raises WF6Violation.
+def test_modules_unknown_validator_reference_raises():
+    """A module that references an undeclared validator raises MalformedModuleDeclarationError.
 
     The error message must name the unknown validator identifier and the
     module that referenced it.
@@ -1002,14 +1000,14 @@ def test_wf6_unknown_validator_reference_raises():
     protocol = _base_protocol(modules=modules)
     verifier = ProtocolVerifier(protocol)
 
-    with pytest.raises(WF6Violation):
-        verifier.check_wf6()
+    with pytest.raises(MalformedModuleDeclarationError):
+        verifier.check_modules()
 
     assert any("nonexistent_validator" in e for e in verifier.errors)
     assert any("engine" in e for e in verifier.errors)
 
 
-def test_wf6_unknown_validator_via_verify():
+def test_modules_unknown_validator_via_verify():
     """Unknown validator reference surfaces as a failed VerificationResult."""
     modules = [
         Module(
@@ -1025,7 +1023,7 @@ def test_wf6_unknown_validator_via_verify():
     assert any("mcp" in e for e in result.errors)
 
 
-def test_wf6_overlapping_paths_is_warning_not_error():
+def test_modules_overlapping_paths_is_warning_not_error():
     """Overlapping paths between modules produce a warning, not an error.
 
     Per ADR 041: overlap is ambiguity, not a safety violation.  The verifier
@@ -1044,7 +1042,7 @@ def test_wf6_overlapping_paths_is_warning_not_error():
     )
 
 
-def test_wf6_identical_paths_is_warning_not_error():
+def test_modules_identical_paths_is_warning_not_error():
     """Identical paths between two modules produce a warning, not an error."""
     modules = [
         Module(module_id="alpha", paths=["packages/shared"]),
@@ -1057,8 +1055,8 @@ def test_wf6_identical_paths_is_warning_not_error():
     assert any("alpha" in w or "beta" in w for w in result.warnings)
 
 
-def test_wf6_module_with_valid_validators_passes():
-    """A module referencing only declared validators passes WF6."""
+def test_modules_module_with_valid_validators_passes():
+    """A module referencing only declared validators passes validation."""
     modules = [
         Module(
             module_id="tools",
@@ -1071,8 +1069,8 @@ def test_wf6_module_with_valid_validators_passes():
     assert result.passed
 
 
-def test_wf6_multiple_errors_all_reported():
-    """Multiple WF6 violations are all collected in the error message."""
+def test_modules_multiple_errors_all_reported():
+    """Multiple module declaration errors are all collected in the error message."""
     modules = [
         # Duplicate id AND unknown validator
         Module(module_id="dup", paths=["packages/a"], validators=["missing_v"]),
@@ -1086,3 +1084,37 @@ def test_wf6_multiple_errors_all_reported():
     combined = " ".join(result.errors)
     assert "dup" in combined
     assert "missing_v" in combined
+
+
+def test_modules_error_messages_no_wf6_reference():
+    """Malformed module declaration errors contain no WF6 reference.
+
+    Per the refactoring: module declaration checks are schema validation,
+    not governance invariants. Error messages must not reference WF6.
+    """
+    modules = [
+        Module(module_id="bad", paths=["packages/bad"], validators=["unknown_v"]),
+    ]
+    protocol = _base_protocol(modules=modules)
+    result = verify_protocol(protocol)
+
+    assert not result.passed
+    combined_errors = " ".join(result.errors)
+    combined_warnings = " ".join(result.warnings)
+
+    # No WF6 in error messages
+    assert "WF6" not in combined_errors, (
+        f"Error messages must not reference WF6; got: {combined_errors}"
+    )
+    # No WF6 in warning messages
+    assert "WF6" not in combined_warnings, (
+        f"Warning messages must not reference WF6; got: {combined_warnings}"
+    )
+    # Error message names the offending module
+    assert "bad" in combined_errors, (
+        f"Error message must name the offending module 'bad'; got: {combined_errors}"
+    )
+    # Error message is plain and descriptive
+    assert "malformed" in combined_errors.lower(), (
+        f"Error message should describe the module as malformed; got: {combined_errors}"
+    )
