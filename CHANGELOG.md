@@ -9,6 +9,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Added `snodo monitor`, a read-only live view of what the engine is already
+  writing: a task/job table (phase, how long that phase has been going,
+  seconds since the last sign of life, liveness from the recorded pid, calls,
+  cost) plus the recent phase-transition feed and the checked-out worktrees.
+  Everything is rendered from `.snodo/audit.log`, the per-call `usage` lists
+  in task and job `state.json`, and the worktree container — the monitor
+  writes nothing, records no audit event, and never takes a lock the engine's
+  `flock`ed appends would queue behind. A partially written `state.json` or a
+  torn trailing audit line is reported and skipped, never fatal. Where the
+  disk genuinely cannot see progress — an in-place subprocess coder mid-run
+  (ADR 034) — the view says so and leans on elapsed time instead of implying
+  a heartbeat it does not have. A foreground run now records its `pid` in the
+  task's `state.json` at start, so liveness is answerable for it the same way
+  it already was for a background job. (Fixes #235)
+
 ### Fixed
 
 - Gave the consumed-token store's SQLite connection an explicit, bounded
