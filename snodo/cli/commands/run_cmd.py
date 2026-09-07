@@ -1523,6 +1523,11 @@ def _record_task_start(project_root: str, task_id: str, spec: str) -> None:
                 state["created_at"] = time.time()
             state["started_at"] = time.time()
             state["status"] = "running"
+            # A foreground run recorded no pid anywhere, so a monitor could not
+            # tell a slow coder from a process that died an hour ago. Record it
+            # alongside started_at so liveness is answerable the same way it
+            # already is for a background job (jobs/wrapper.py writes its own).
+            state["pid"] = os.getpid()
 
         atomic_update_json(task_dir, "state.json", _update)
     except Exception as e:
