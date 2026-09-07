@@ -12,6 +12,7 @@ from snodo.compiler.models import (
     Constraint,
     DisagreementPolicy,
     Mode,
+    Module,
     Protocol,
     Role,
     Validator,
@@ -26,6 +27,7 @@ from snodo.compiler.verifier import (
     WF3Violation,
     WF4Violation,
     WF5Violation,
+    WF6Violation,
     verify_protocol,
 )
 
@@ -894,3 +896,193 @@ def test_wf3_via_verify_protocol_integration():
     assert not result.passed
     assert any("no pre_execute" in e for e in result.errors)
 
+
+# ========== WF6: MODULE WELL-FORMEDNESS TESTS (ADR 041) ==========
+
+def _base_protocol(**kwargs) -> Protocol:
+    """Minimal valid protocol as a base for WF6 tests."""
+    defaults = dict(
+        protocol_id="wf6_test",
+        name="WF6 Test Protocol",
+        modes=[Mode(mode_id="start", name="Start")],
+        validators=[
+            Validator(validator_id="v1", validator_type="quality"),
+            Validator(validator_id="v2", validator_type="security"),
+        ],
+        initial_mode="start",
+    )
+    defaults.update(kwargs)
+    return Protocol(**defaults)
+
+
+def test_wf6_no_modules_passes():
+    """A protocol with no modules field passes WF6 without change.
+
+    Guards backward-compatibility: a protocol that does not declare modules
+    must compile and verify identically to before ADR 041.
+    """
+    protocol = _base_protocol()
+    result = verify_protocol(protocol)
+    assert result.passed
+    assert not any("WF6" in e for e in result.errors)
+    assert not any("WF6" in w for w in result.warnings)
+
+
+def test_wf6_empty_modules_list_passes():
+    """An explicit empty modules list is the same as omitting the field."""
+    protocol = _base_protocol(modules=[])
+    result = verify_protocol(protocol)
+    assert result.passed
+
+
+def test_wf6_two_valid_modules_passes():
+    """Two well-formed non-overlapping modules pass WF6."""
+    modules = [
+        Module(
+            module_id="core",
+            paths=["packages/snodo-core"],
+            validators=["v1"],
+        ),
+        Module(
+            module_id="foundation",
+            paths=["packages/snodo-foundation"],
+            validators=["v2"],
+        ),
+    ]
+    protocol = _base_protocol(modules=modules)
+    result = verify_protocol(protocol)
+    assert result.passed
+    assert not result.errors
+
+
+def test_wf6_duplicate_module_ids_raises():
+    """Two modules with the same identifier raise WF6Violation.
+
+    The error message must name the offending identifier.
+    """
+    modules = [
+        Module(module_id="core", paths=["packages/snodo-core"]),
+        Module(module_id="core", paths=["packages/snodo-foundation"]),
+    ]
+    protocol = _base_protocol(modules=modules)
+    verifier = ProtocolVerifier(protocol)
+
+    with pytest.raises(WF6Violation):
+        verifier.check_wf6()
+
+    # The error message must name 'core'.
+    assert any("core" in e for e in verifier.errors)
+
+
+def test_wf6_duplicate_module_ids_via_verify():
+    """Duplicate module IDs surface as a failed VerificationResult."""
+    modules = [
+        Module(module_id="dup", paths=["packages/a"]),
+        Module(module_id="dup", paths=["packages/b"]),
+    ]
+    protocol = _base_protocol(modules=modules)
+    result = verify_protocol(protocol)
+    assert not result.passed
+    assert any("dup" in e for e in result.errors)
+
+
+def test_wf6_unknown_validator_reference_raises():
+    """A module that references an undeclared validator raises WF6Violation.
+
+    The error message must name the unknown validator identifier and the
+    module that referenced it.
+    """
+    modules = [
+        Module(
+            module_id="engine",
+            paths=["packages/snodo-engine"],
+            validators=["v1", "nonexistent_validator"],
+        ),
+    ]
+    protocol = _base_protocol(modules=modules)
+    verifier = ProtocolVerifier(protocol)
+
+    with pytest.raises(WF6Violation):
+        verifier.check_wf6()
+
+    assert any("nonexistent_validator" in e for e in verifier.errors)
+    assert any("engine" in e for e in verifier.errors)
+
+
+def test_wf6_unknown_validator_via_verify():
+    """Unknown validator reference surfaces as a failed VerificationResult."""
+    modules = [
+        Module(
+            module_id="mcp",
+            paths=["packages/snodo-mcp"],
+            validators=["ghost_validator"],
+        ),
+    ]
+    protocol = _base_protocol(modules=modules)
+    result = verify_protocol(protocol)
+    assert not result.passed
+    assert any("ghost_validator" in e for e in result.errors)
+    assert any("mcp" in e for e in result.errors)
+
+
+def test_wf6_overlapping_paths_is_warning_not_error():
+    """Overlapping paths between modules produce a warning, not an error.
+
+    Per ADR 041: overlap is ambiguity, not a safety violation.  The verifier
+    warns and names both modules rather than refusing to compile.
+    """
+    modules = [
+        Module(module_id="docs", paths=["docs"]),
+        Module(module_id="core", paths=["docs/decisions"]),
+    ]
+    protocol = _base_protocol(modules=modules)
+    result = verify_protocol(protocol)
+
+    assert result.passed, f"Expected pass but got errors: {result.errors}"
+    assert any("docs" in w and "core" in w for w in result.warnings), (
+        f"Expected overlap warning naming both modules; got: {result.warnings}"
+    )
+
+
+def test_wf6_identical_paths_is_warning_not_error():
+    """Identical paths between two modules produce a warning, not an error."""
+    modules = [
+        Module(module_id="alpha", paths=["packages/shared"]),
+        Module(module_id="beta", paths=["packages/shared"]),
+    ]
+    protocol = _base_protocol(modules=modules)
+    result = verify_protocol(protocol)
+
+    assert result.passed
+    assert any("alpha" in w or "beta" in w for w in result.warnings)
+
+
+def test_wf6_module_with_valid_validators_passes():
+    """A module referencing only declared validators passes WF6."""
+    modules = [
+        Module(
+            module_id="tools",
+            paths=["packages/snodo-tools"],
+            validators=["v1", "v2"],
+        ),
+    ]
+    protocol = _base_protocol(modules=modules)
+    result = verify_protocol(protocol)
+    assert result.passed
+
+
+def test_wf6_multiple_errors_all_reported():
+    """Multiple WF6 violations are all collected in the error message."""
+    modules = [
+        # Duplicate id AND unknown validator
+        Module(module_id="dup", paths=["packages/a"], validators=["missing_v"]),
+        Module(module_id="dup", paths=["packages/b"]),
+    ]
+    protocol = _base_protocol(modules=modules)
+    result = verify_protocol(protocol)
+
+    assert not result.passed
+    # Both the duplicate id and the unknown validator must appear in errors.
+    combined = " ".join(result.errors)
+    assert "dup" in combined
+    assert "missing_v" in combined

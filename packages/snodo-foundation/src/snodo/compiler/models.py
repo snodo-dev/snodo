@@ -223,6 +223,68 @@ class Role(BaseModel):
         return v
 
 
+class Module(BaseModel):
+    """A module — a scope that partitions the repository into named regions.
+
+    Implements ADR 041: a module is a structural concept, not an operational
+    stage. It declares which paths it owns, where its decision records live,
+    what tooling it uses, and which validators apply within its scope.
+
+    A protocol that declares no modules must compile and behave exactly as it
+    does today; the field is additive and backward-compatible.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    module_id: str = Field(
+        ...,
+        description="Unique module identifier (slug-safe alphanumeric with - and _)",
+    )
+    paths: List[str] = Field(
+        ...,
+        min_length=1,
+        description="One or more root paths this module owns. At least one is required.",
+    )
+    decisions_path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Directory where this module's decision records live. "
+            "When absent, ADR tooling falls back to the protocol-level setting."
+        ),
+    )
+    tooling: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Per-module tooling map (same shape as the tooling field on Validator). "
+            "When empty, tooling falls back to the protocol-level setting."
+        ),
+    )
+    validators: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Validator IDs that apply within this module. "
+            "Every ID must name a validator already declared in the protocol."
+        ),
+    )
+
+    @field_validator("module_id")
+    @classmethod
+    def validate_module_id(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("module_id cannot be empty")
+        if not v.replace("_", "").replace("-", "").isalnum():
+            raise ValueError("module_id must be alphanumeric with - or _")
+        return v
+
+    @field_validator("paths")
+    @classmethod
+    def validate_paths_non_empty_items(cls, v: List[str]) -> List[str]:
+        for p in v:
+            if not p or not p.strip():
+                raise ValueError("module paths must not contain empty strings")
+        return v
+
+
 class Mode(BaseModel):
     """Operational stage with defined permissions and transitions.
 
@@ -317,6 +379,14 @@ class Protocol(BaseModel):
             "Tools that must be exclusive to a single mode (approval-conferring). "
             "Default: approve + merge. A protocol may extend, but not shrink, this "
             "set — the defaults are always enforced."
+        ),
+    )
+    modules: List[Module] = Field(
+        default_factory=list,
+        description=(
+            "Optional list of modules (ADR 041). A module is a scope — a named "
+            "partition of the repository — not an operational stage. A protocol "
+            "that declares no modules compiles and behaves exactly as it does today."
         ),
     )
     
