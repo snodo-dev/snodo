@@ -970,7 +970,7 @@ class TestServePortAndProxy:
 
                 os.environ.pop("FORWARDED_ALLOW_IPS", None)
                 _run_server(args, mock_protocol)
-                assert "FORWARDED_ALLOW_IPS" not in os.environ
+                assert os.getenv("FORWARDED_ALLOW_IPS") is None
 
     def test_hint_printed_for_sse(self, capsys):
         """DIY remote access hint printed for sse transport."""
