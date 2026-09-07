@@ -249,29 +249,25 @@ class TestTestKeys:
         result = mgr._test_single_key("custom", "sk-test", pc=pc)
         assert result == "untestable"
 
-    def test_test_single_key_success(self, mgr):
+    def test_test_single_key_success(self, mgr, monkeypatch):
         """Test key validation happy path with mocked litellm."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         mock_completion = MagicMock()
         with patch.dict("sys.modules", {"litellm": MagicMock(completion=mock_completion)}):
             # Clear the cached import so it re-imports
             result = mgr._test_single_key("openai", "sk-test-key")
             assert result == "valid"
-            assert os.environ.get("OPENAI_API_KEY") != "sk-test-key"  # Cleaned up
+            assert os.getenv("OPENAI_API_KEY") is None  # Cleaned up
 
-    def test_test_single_key_restores_env_var(self, mgr):
+    def test_test_single_key_restores_env_var(self, mgr, monkeypatch):
         """Env var is restored after test, even on success."""
         old_value = "sk-original-value"
-        os.environ["ANTHROPIC_API_KEY"] = old_value
-        try:
-            mock_completion = MagicMock()
-            with patch.dict("sys.modules", {"litellm": MagicMock(completion=mock_completion)}):
-                result = mgr._test_single_key("anthropic", "sk-new-key")
-                assert result == "valid"
-                assert os.environ["ANTHROPIC_API_KEY"] == old_value
-        finally:
-            if "ANTHROPIC_API_KEY" in os.environ:
-                if os.environ["ANTHROPIC_API_KEY"] == old_value:
-                    del os.environ["ANTHROPIC_API_KEY"]
+        monkeypatch.setenv("ANTHROPIC_API_KEY", old_value)
+        mock_completion = MagicMock()
+        with patch.dict("sys.modules", {"litellm": MagicMock(completion=mock_completion)}):
+            result = mgr._test_single_key("anthropic", "sk-new-key")
+            assert result == "valid"
+            assert os.getenv("ANTHROPIC_API_KEY") == old_value
 
     def test_test_single_key_api_failure(self, mgr):
         """Genuinely rejected key reports as invalid."""
@@ -280,13 +276,13 @@ class TestTestKeys:
             result = mgr._test_single_key("openai", "sk-bad-key")
             assert result == "invalid"
 
-    def test_test_single_key_cleans_up_env_on_failure(self, mgr):
+    def test_test_single_key_cleans_up_env_on_failure(self, mgr, monkeypatch):
         """Env var is cleaned up even when API call fails."""
-        assert "OPENAI_API_KEY" not in os.environ
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         mock_completion = MagicMock(side_effect=Exception("fail"))
         with patch.dict("sys.modules", {"litellm": MagicMock(completion=mock_completion)}):
             mgr._test_single_key("openai", "sk-temp")
-        assert "OPENAI_API_KEY" not in os.environ
+        assert os.getenv("OPENAI_API_KEY") is None
 
 
 # === CLI config commands ===
