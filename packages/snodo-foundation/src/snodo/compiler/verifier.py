@@ -38,6 +38,17 @@ class WF5Violation(WellFormednessViolation):
     """WF5: Constraint consistency violation - invalid or conflicting constraints."""
 
 
+class WF6Violation(WellFormednessViolation):
+    """WF6: Module well-formedness violation (ADR 041).
+
+    Covers three rules:
+    - Module identifiers must be unique within the protocol.
+    - Every module must own at least one path.
+    - Every validator ID in a module's validators list must be declared in
+      the protocol's top-level validators list.
+    """
+
+
 class ProtocolWellFormednessError(Exception):
     """Raised when a protocol fails well-formedness verification at load time."""
 
@@ -89,10 +100,11 @@ class ProtocolVerifier:
             self.check_wf3()
             self.check_wf4()
             self.check_wf5()
+            self.check_wf6()
         except WellFormednessViolation:
             # Violations are already recorded in self.errors
             pass
-        
+
         return VerificationResult(
             passed=len(self.errors) == 0,
             errors=self.errors,
@@ -333,6 +345,93 @@ class ProtocolVerifier:
             error_msg = f"WF5 Violation: {'; '.join(errors)}"
             self.errors.append(error_msg)
             raise WF5Violation(error_msg)
+
+    def check_wf6(self) -> None:
+        """WF6: Module well-formedness — ADR 041.
+
+        Checks:
+        1. Module identifiers are unique within the protocol.
+        2. Every module owns at least one path (enforced by the Module model
+           itself via ``min_length=1``; validated here for belt-and-suspenders
+           reporting in a consistent error format).
+        3. Every validator ID in a module's ``validators`` list must name a
+           validator already declared in the protocol's top-level
+           ``validators`` list.  The error message names the unknown ID.
+
+        Overlapping paths between modules are a **warning**, not an error.
+        A monorepo can legitimately have a top-level ``docs/`` module that
+        coexists with per-package modules whose roots sit under
+        ``packages/``.  Overlap is ambiguity, not a safety violation, so
+        the verifier names both modules and the overlapping path in a
+        warning rather than refusing to compile (ADR 041 §Overlapping paths).
+
+        Raises:
+            WF6Violation: If any of the three hard rules are broken.
+        """
+        if not self.protocol.modules:
+            return  # No modules declared — nothing to check; protocol is unchanged.
+
+        defined_validators = {v.validator_id for v in self.protocol.validators}
+        errors: List[str] = []
+
+        # --- Rule 1: identifier uniqueness ----------------------------------
+        seen_ids: Set[str] = set()
+        duplicate_ids: List[str] = []
+        for module in self.protocol.modules:
+            if module.module_id in seen_ids:
+                duplicate_ids.append(module.module_id)
+            seen_ids.add(module.module_id)
+        if duplicate_ids:
+            errors.append(
+                f"Duplicate module identifiers: {sorted(duplicate_ids)}"
+            )
+
+        # --- Rule 2: non-empty paths (belt-and-suspenders) ------------------
+        for module in self.protocol.modules:
+            if not module.paths:
+                errors.append(
+                    f"Module '{module.module_id}' declares no paths; "
+                    "a module must own at least one path"
+                )
+
+        # --- Rule 3: validator reference closure ----------------------------
+        for module in self.protocol.modules:
+            for vid in module.validators:
+                if vid not in defined_validators:
+                    errors.append(
+                        f"Module '{module.module_id}' references unknown validator "
+                        f"'{vid}'; validators must be declared at the protocol level "
+                        f"before a module can reference them"
+                    )
+
+        if errors:
+            error_msg = f"WF6 Violation: {'; '.join(errors)}"
+            self.errors.append(error_msg)
+            raise WF6Violation(error_msg)
+
+        # --- Warning: overlapping paths (advisory only) ---------------------
+        # Compare each pair of modules; warn if any path of one is a prefix
+        # of any path of another (or they are identical).
+        modules = self.protocol.modules
+        for i in range(len(modules)):
+            for j in range(i + 1, len(modules)):
+                a, b = modules[i], modules[j]
+                for pa in a.paths:
+                    pa_norm = pa.rstrip("/")
+                    for pb in b.paths:
+                        pb_norm = pb.rstrip("/")
+                        if (
+                            pa_norm == pb_norm
+                            or pb_norm.startswith(pa_norm + "/")
+                            or pa_norm.startswith(pb_norm + "/")
+                        ):
+                            self.warnings.append(
+                                f"WF6 Warning: Modules '{a.module_id}' and "
+                                f"'{b.module_id}' have overlapping paths "
+                                f"('{pa}' and '{pb}'). This creates ambiguity "
+                                f"about which module is authoritative for files "
+                                f"in the overlap."
+                            )
 
 
 def verify_protocol(protocol: Protocol) -> VerificationResult:

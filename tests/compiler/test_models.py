@@ -14,6 +14,7 @@ from snodo.compiler.models import (
     Constraint,
     DisagreementPolicy,
     Mode,
+    Module,
     Protocol,
     Role,
     Severity,
@@ -581,3 +582,148 @@ def test_unknown_mode_field_rejected_by_compiler():
     """An unknown field on Mode is rejected by extra='forbid' instead of silently dropped."""
     with pytest.raises(ValidationError):
         Mode(mode_id="producer", name="Producer", unknown_ceiling_field=5)
+
+
+# ========== MODULE MODEL TESTS (ADR 041) ==========
+
+def _minimal_protocol_with_modules(modules):
+    """Helper: build a minimal Protocol carrying the given modules list."""
+    return Protocol(
+        protocol_id="mod_test",
+        name="Module Test Protocol",
+        modes=[Mode(mode_id="start", name="Start")],
+        validators=[Validator(validator_id="v1", validator_type="quality")],
+        initial_mode="start",
+        modules=modules,
+    )
+
+
+def test_module_minimal_valid():
+    """A Module with only required fields constructs without error."""
+    m = Module(module_id="core", paths=["packages/snodo-core"])
+    assert m.module_id == "core"
+    assert m.paths == ["packages/snodo-core"]
+    assert m.decisions_path is None
+    assert m.tooling == {}
+    assert m.validators == []
+
+
+def test_module_all_fields():
+    """A Module with all optional fields carries them through."""
+    m = Module(
+        module_id="engine",
+        paths=["packages/snodo-engine", "packages/snodo-engine/src"],
+        decisions_path="docs/decisions/engine",
+        tooling={"test_command": "uv run pytest packages/snodo-engine/"},
+        validators=["v1"],
+    )
+    assert m.module_id == "engine"
+    assert len(m.paths) == 2
+    assert m.decisions_path == "docs/decisions/engine"
+    assert m.tooling["test_command"] == "uv run pytest packages/snodo-engine/"
+    assert m.validators == ["v1"]
+
+
+def test_module_id_empty_raises():
+    """An empty module_id raises ValidationError."""
+    with pytest.raises(ValidationError):
+        Module(module_id="", paths=["src/"])
+
+
+def test_module_id_whitespace_raises():
+    """A whitespace-only module_id raises ValidationError."""
+    with pytest.raises(ValidationError):
+        Module(module_id="   ", paths=["src/"])
+
+
+def test_module_id_special_chars_raises():
+    """A module_id with forbidden characters raises ValidationError."""
+    with pytest.raises(ValidationError):
+        Module(module_id="my module!", paths=["src/"])
+
+
+def test_module_id_hyphen_underscore_allowed():
+    """Hyphens and underscores are valid in module_id."""
+    m = Module(module_id="my-module_123", paths=["src/"])
+    assert m.module_id == "my-module_123"
+
+
+def test_module_paths_empty_string_item_raises():
+    """A path list containing an empty string raises ValidationError."""
+    with pytest.raises(ValidationError):
+        Module(module_id="core", paths=[""])
+
+
+def test_module_paths_whitespace_item_raises():
+    """A path list containing a whitespace string raises ValidationError."""
+    with pytest.raises(ValidationError):
+        Module(module_id="core", paths=["   "])
+
+
+def test_module_is_immutable():
+    """Module instances are frozen (immutable)."""
+    m = Module(module_id="core", paths=["packages/core"])
+    with pytest.raises(Exception):
+        m.module_id = "other"  # type: ignore[misc]
+
+
+def test_protocol_without_modules_unchanged():
+    """A protocol without a modules list behaves identically to before ADR 041.
+
+    This test guards backward-compatibility: the field is optional and defaults
+    to an empty list; no existing protocol YAML needs updating.
+    """
+    p = Protocol(
+        protocol_id="no_mod_proto",
+        name="No Modules Protocol",
+        modes=[Mode(mode_id="start", name="Start")],
+        validators=[Validator(validator_id="v1", validator_type="quality")],
+        initial_mode="start",
+    )
+    assert p.modules == []
+
+
+def test_protocol_with_modules_round_trips():
+    """A two-module protocol round-trips through model_dump/model_validate without loss."""
+    modules = [
+        Module(
+            module_id="core",
+            paths=["packages/snodo-core"],
+            decisions_path="docs/decisions/core",
+            tooling={"test_command": "uv run pytest packages/snodo-core/ -q"},
+            validators=["v1"],
+        ),
+        Module(
+            module_id="foundation",
+            paths=["packages/snodo-foundation"],
+            tooling={"test_command": "uv run pytest packages/snodo-foundation/ -q"},
+        ),
+    ]
+    original = _minimal_protocol_with_modules(modules)
+
+    # Round-trip: serialise to dict, reconstruct, compare field by field.
+    data = original.model_dump()
+    reconstructed = Protocol.model_validate(data)
+
+    assert len(reconstructed.modules) == 2
+    core = reconstructed.modules[0]
+    assert core.module_id == "core"
+    assert core.paths == ["packages/snodo-core"]
+    assert core.decisions_path == "docs/decisions/core"
+    assert core.tooling["test_command"] == "uv run pytest packages/snodo-core/ -q"
+    assert core.validators == ["v1"]
+
+    foundation = reconstructed.modules[1]
+    assert foundation.module_id == "foundation"
+    assert foundation.decisions_path is None
+    assert foundation.validators == []
+
+
+def test_protocol_modules_field_in_serialised_dict():
+    """The modules field appears in model_dump() output when modules are declared."""
+    m = Module(module_id="api", paths=["packages/api"])
+    p = _minimal_protocol_with_modules([m])
+    d = p.model_dump()
+    assert "modules" in d
+    assert len(d["modules"]) == 1
+    assert d["modules"][0]["module_id"] == "api"
