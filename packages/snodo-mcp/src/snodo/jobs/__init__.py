@@ -18,8 +18,15 @@ class JobError(Exception):
     """Job system error."""
 
 
-# Valid status transitions: queued -> running -> completed/failed/cancelled
-TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+# Valid status transitions: queued -> running -> completed/failed/unmerged/cancelled
+#
+# "unmerged" is terminal. The job wrapper writes it for exit code 2 -- work that
+# finished and verified but whose branch could not be merged -- and every caller
+# that waits on a job asks this set whether it is done. Leaving it out made an
+# unmerged job look perpetually live: _reconcile_state rewrote it as failed with
+# exit_code -1 once the process was gone, wait() and the concurrent plan poll
+# loop spun forever, and archive_jobs never reaped it.
+TERMINAL_STATUSES = {"completed", "failed", "cancelled", "unmerged"}
 
 
 class JobManager:
