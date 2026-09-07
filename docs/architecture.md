@@ -109,6 +109,16 @@ operator-fixable coder fault, not an engine fault: it halts under the raw
 operator is told to fix the coder configuration rather than inspect engine
 logs (Fixes #195).
 
+The plan layer reports that outcome rather than its own. The plan runner
+(`cli/commands/plan_run.py`) reads the persisted halt payload for each completed
+task and names the canonical outcome (`BLOCKED` / `ESCALATED` / `VALIDATOR
+ERROR` / `INTERNAL ERROR`), and records plan status from it: work the engine
+judged and failed is `blocked` (the next attempt retries with failure context),
+while a `validator_error` / `internal_error` halt is `errored` — an operational
+fault, never retried with the previous halt handed to a faultless coder. The
+status vocabulary lives on `PlannerMCP.update_status` (pending / in_progress /
+completed / blocked / errored); only `blocked` feeds the retry path. (Refs #231)
+
 ## Mode model + infrastructure boundary
 
 Each mode declares a set of **logical tools** (edit, approve, pr, etc.) that map to **concrete MCP operations**. Approval-conferring tools (`approve`, `merge` by default, extendable via `Protocol.exclusive_tools`) must appear in at most one mode — WF1 verifies this at load time (`compiler/verifier.py:check_wf1()`), which is what makes self-approval impossible. Non-exclusive tools may be shared across modes; the active mode of every operation is recorded in the audit log (`mcp/server.py:_active_mode()`) so attribution no longer depends on tool uniqueness.

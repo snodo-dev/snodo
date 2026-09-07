@@ -500,6 +500,270 @@ def test_completed_task_still_skipped(plan_project_env, capsys):
 
 
 # ---------------------------------------------------------------------------
+# The plan layer reports the outcome the engine decided (Fixes #231)
+# ---------------------------------------------------------------------------
+
+def _setup_session_with_halt(project_dir, task_id, final_decision, status="blocked",
+                             spec="Spec for task 1.1"):
+    """Create an active session whose checkpoint carries a halt record for *task_id*.
+
+    Mirrors what ``WritebackMixin._auto_write_halt_payload`` persists. Returns
+    the SessionManager so tests can attach it to args.session_manager.
+    """
+    from snodo.infrastructure.session import SessionManager
+    from snodo.infrastructure.state import ProjectState, write_state
+    from snodo.protocols import _TEMPLATE_PROTOCOLS
+
+    protocol = _TEMPLATE_PROTOCOLS["solo"]
+    mode = protocol.modes[0].mode_id
+    write_state(project_dir, ProjectState(current_mode=mode))
+
+    session_mgr = SessionManager(sessions_dir=project_dir / ".snodo" / "sessions")
+    session = session_mgr.create_session(mode, str(project_dir))
+    session_mgr.update_decision(session.session_id, "halt", {
+        task_id: {
+            "status": status,
+            "halt_type": final_decision,
+            "final_decision": final_decision,
+            "raw_halt_type": final_decision,
+            "reason": "halt recorded",
+            "task_id": task_id,
+            "task_spec": spec,
+            "phase": "pre_execute",
+            "validator_results": [],
+        },
+    })
+    return session_mgr
+
+
+def _run_plan_with_halt(plan_project_env, plan_name, final_decision):
+    """Execute a plan whose task_1_1 halts with the given engine outcome.
+
+    Seeds the active session's halt record before the run and patches
+    ``_execute_task`` to fail (exit 1) on the first task only. Returns the
+    plan runner result and the capsys output.
+    """
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, plan_name)
+    session_mgr = _setup_session_with_halt(plan_project_env, "task_1_1", final_decision)
+    args = _make_plan_args(plan_name, session_manager=session_mgr)
+
+    def mock_execute_task(a, protocol, task, model):
+        return 1 if task.id == "task_1_1" else 0
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+        result = _run_plan(args)
+    return planner, result
+
+
+@pytest.mark.parametrize(
+    ("final_decision", "report_line", "plan_status"),
+    [
+        ("blocker", "[task_1_1] BLOCKED", "blocked"),
+        ("escalate", "[task_1_1] ESCALATED", "blocked"),
+        ("validator_error", "[task_1_1] VALIDATOR ERROR", "errored"),
+        ("internal_error", "[task_1_1] INTERNAL ERROR", "errored"),
+    ],
+    ids=["blocker", "escalate", "validator_error", "internal_error"],
+)
+def test_plan_report_names_each_engine_outcome(
+    plan_project_env, capsys, final_decision, report_line, plan_status
+):
+    """The plan report names the engine outcome instead of collapsing to FAILED."""
+    planner, result = _run_plan_with_halt(plan_project_env, "outcome_plan", final_decision)
+
+    assert result == 1
+    err = capsys.readouterr().err
+    assert report_line in err, err
+
+    status = planner.get_status("outcome_plan")
+    assert status["tasks"]["task_1_1"]["status"] == plan_status
+    # Wave 2 depends on wave 1, so it is not reached.
+    assert status["tasks"]["task_2_1"]["status"] == "pending"
+
+
+def test_validator_error_is_not_sent_to_retry_path(plan_project_env, capsys):
+    """A validator_error is recorded errored and re-runs fresh with no failure context.
+
+    The halted task does not feed its reason to the next attempt as a critique:
+    a fresh plan run re-executes it in the fresh path (no failure context is
+    consumed), so the next coder gets no ``Previous attempt failed`` prompt.
+    """
+    from snodo.infrastructure.state import read_state
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "valerr_plan")
+    session_mgr = _setup_session_with_halt(plan_project_env, "task_1_1", "validator_error")
+    args = _make_plan_args(plan_name, session_manager=session_mgr)
+
+    def mock_execute_task(a, protocol, task, model):
+        assert "Previous attempt" not in task.spec
+        assert "failed pre-validation" not in task.spec
+        return 1 if task.id == "task_1_1" else 0
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+        result = _run_plan(args)
+
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "[task_1_1] VALIDATOR ERROR" in err
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_1"]["status"] == "errored", status
+    assert status["tasks"]["task_2_1"]["status"] == "pending"
+
+    # The halt record produced NO task_failure context (never fed forward), and
+    # the session checkpoint's active task_failure store carries nothing for it.
+    state = read_state(plan_project_env)
+    session = session_mgr.get_active_session(state.current_mode, str(plan_project_env))
+    failures = session.checkpoint.decisions.get("task_failure", {})
+    assert task_failure_for(failures, "task_1_1") is None
+
+    # A second plan run treats the errored task as fresh work, not a retry,
+    # and hands the next coder a clean spec.
+    executed_specs = []
+
+    def mock_execute_task_2(a, protocol, task, model):
+        executed_specs.append((task.id, task.spec))
+        return 0
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task_2):
+        result = _run_plan(args)
+    assert result == 0
+    first_task_specs = [spec for tid, spec in executed_specs if tid == "task_1_1"]
+    assert first_task_specs == ["Spec for task 1.1"], executed_specs
+
+
+def task_failure_for(failures, task_id):
+    """Return the task_failure entry for *task_id* when present, else None."""
+    if not isinstance(failures, dict):
+        return None
+    entry = failures.get(task_id)
+    return entry if isinstance(entry, dict) else None
+
+
+def test_halt_outcome_resolves_from_job_state_before_session(plan_project_env, capsys):
+    """The outcome resolves from the engine's own job state.json, not the fallback."""
+    import json
+
+    from snodo.infrastructure.state import ProjectState, write_state
+    from snodo.protocols import _TEMPLATE_PROTOCOLS
+    from snodo.cli.commands.plan_run import _halt_outcome
+
+    protocol = _TEMPLATE_PROTOCOLS["solo"]
+    mode = protocol.modes[0].mode_id
+    write_state(plan_project_env, ProjectState(current_mode=mode))
+
+    from snodo.infrastructure.session import SessionManager
+    session_mgr = SessionManager(sessions_dir=plan_project_env / ".snodo" / "sessions")
+    session = session_mgr.create_session(mode, str(plan_project_env))
+
+    # A job record and a different session record: the job wins.
+    job_dir = plan_project_env / ".snodo" / "jobs" / "j_test"
+    job_dir.mkdir(parents=True)
+    (job_dir / "state.json").write_text(json.dumps({
+        "halt": {
+            "task_id": "task_1_1",
+            "status": "blocked",
+            "halt_type": "blocker",
+            "final_decision": "blocker",
+            "raw_halt_type": "blocker",
+        }
+    }))
+    session_mgr.update_decision(session.session_id, "halt", {
+        "task_1_1": {
+            "task_id": "task_1_1",
+            "halt_type": "validator_error",
+            "final_decision": "validator_error",
+        }
+    })
+
+    assert _halt_outcome(session, "task_1_1") == "blocker"
+
+
+def test_concurrent_job_failure_names_engine_outcome(plan_project_env, capsys):
+    """The concurrent path names the outcome the engine recorded, not a generic FAILED."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+    from snodo.infrastructure.state import ProjectState, write_state
+    from snodo.jobs import JobManager
+    from snodo.protocols import _TEMPLATE_PROTOCOLS
+    from snodo.infrastructure.session import SessionManager
+
+    protocol = _TEMPLATE_PROTOCOLS["solo"]
+    mode = protocol.modes[0].mode_id
+    write_state(plan_project_env, ProjectState(current_mode=mode))
+
+    session_mgr = SessionManager(sessions_dir=plan_project_env / ".snodo" / "sessions")
+    session = session_mgr.create_session(mode, str(plan_project_env))
+    session_mgr.update_decision(session.session_id, "halt", {
+        "task_1_a": {
+            "task_id": "task_1_a",
+            "halt_type": "validator_error",
+            "final_decision": "validator_error",
+        }
+    })
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "conc_outcome_plan")
+    args = _make_plan_args(plan_name, session_manager=session_mgr)
+
+    protocol_content = """
+protocol_id: "conc_outcome_p"
+name: "Concurrent Outcome Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+    concurrency: 2
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (plan_project_env / ".snodo" / "protocol.yml").write_text(protocol_content)
+
+    submitted = {}
+
+    def mock_submit(self, task_args):
+        job_id = f"j_{task_args['task_id']}"
+        submitted[job_id] = task_args
+        return job_id
+
+    def mock_get_status(self, job_id):
+        task_info = submitted.get(job_id, {})
+        if task_info.get("task_id") == "task_1_a":
+            return {"status": "failed", "exit_code": 1, "error": "validator timed out"}
+        return {"status": "completed", "exit_code": 0}
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch.object(JobManager, "submit", mock_submit):
+            with patch.object(JobManager, "get_status", mock_get_status):
+                result = _run_plan(args)
+
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "[task_1_a] VALIDATOR ERROR" in err
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_a"]["status"] == "errored"
+    assert status["tasks"]["task_1_b"]["status"] == "completed"
+
+
+def test_task_outcome_line_labels():
+    """The report line labels each of the four outcomes and the no-record fallback."""
+    from snodo.cli.commands.plan_run import _task_outcome_line
+
+    assert _task_outcome_line("t1", "blocker") == "[t1] BLOCKED in"
+    assert _task_outcome_line("t1", "escalate") == "[t1] ESCALATED in"
+    assert _task_outcome_line("t1", "validator_error") == "[t1] VALIDATOR ERROR in"
+    assert _task_outcome_line("t1", "internal_error") == "[t1] INTERNAL ERROR in"
+    assert _task_outcome_line("t1", None) == "[t1] FAILED in"
+
+
+# ---------------------------------------------------------------------------
 # Concurrency and Wave Independence Tests
 # ---------------------------------------------------------------------------
 

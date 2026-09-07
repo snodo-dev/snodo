@@ -639,12 +639,18 @@ class PlannerMCP:
         Args:
             plan_name: Plan name
             task_id: Task identifier
-            status: New status (pending/in_progress/completed/blocked)
+            status: New status (pending/in_progress/completed/blocked/errored).
+
+              ``errored`` is for tasks that halted without being judged — an
+              operational fault (``validator_error`` / ``internal_error``), or
+              a halted task that could not be merged. Unlike ``blocked`` it
+              never routes the next attempt through the retry path with the
+              previous failure handed to a faultless coder (issue #231).
 
         Raises:
             PlannerError: If plan not found or invalid status
         """
-        valid_statuses = {"pending", "in_progress", "completed", "blocked"}
+        valid_statuses = {"pending", "in_progress", "completed", "blocked", "errored"}
         if status not in valid_statuses:
             raise PlannerError(f"Invalid status: {status}. Must be one of {valid_statuses}")
 

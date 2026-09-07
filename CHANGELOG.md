@@ -44,6 +44,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The plan layer reports the outcome the engine decided instead of collapsing it.
+  `snodo run --plan` printed `FAILED` and recorded every halted task as `blocked`
+  regardless of its canonical halt — so an escalate, a blocker, a validator that
+  produced no verdict, and an engine fault were indistinguishable, and an
+  operational fault was fed to the next attempt as a critique. The plan runner now
+  reads the persisted halt payload (`halt_type` / `final_decision`) and names the
+  outcome in the report (`BLOCKED`, `ESCALATED`, `VALIDATOR ERROR`,
+  `INTERNAL ERROR`). It records `blocked` only for tasks the engine judged and
+  failed (blocker/escalate) and a new `errored` status for `validator_error` /
+  `internal_error` halts, which are not retried with failure context — the next
+  attempt starts fresh. `plan_cmd.py` renders and counts `errored` tasks. The
+  engine's classification and the audit log are unchanged. (Fixes #231)
 - Serialised repository merges and git ref/index updates across concurrent wave tasks.
   Added re-entrant `merge_lock` at `.snodo/.merge.lock` held across the entire merge
   operation (target commit resolution, gate check, git merge, HEAD SHA resolution,
