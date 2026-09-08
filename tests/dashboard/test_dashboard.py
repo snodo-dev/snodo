@@ -320,10 +320,11 @@ class TestDashboardDataProviderExtended:
 
         provider = DashboardDataProvider(str(temp_project))
 
-        # Verify get_jobs
-        jobs = provider.get_jobs("sess_1", "main:task_1")
+        # Verify get_jobs: every job, tagged with its owning task (a column).
+        jobs = provider.get_jobs("sess_1")
         assert len(jobs) == 1
         assert jobs[0]["job_id"] == "job_123"
+        assert jobs[0]["task_ref"] == "task_1"
         assert jobs[0]["status"] == "completed"
         assert jobs[0]["duration"] == 4.0
 
@@ -337,8 +338,9 @@ class TestDashboardDataProviderExtended:
     # ------------------------------------------------------------------
 
     def test_cascade_populates_tasks_jobs_log(self, temp_project):
-        """Verify cascade: wave with N tasks → get_tasks returns N; task with
-        a job → get_jobs returns the job; running job → log tail nonempty."""
+        """Verify cascade: wave with N tasks → get_tasks returns N; the Jobs
+        pane lists every job with its task (a column, not a filter); running
+        job → log tail nonempty."""
         import json
 
         from snodo.dashboard.providers import DashboardDataProvider
@@ -379,14 +381,12 @@ class TestDashboardDataProviderExtended:
         tasks = provider.get_tasks("sess_1")
         assert len(tasks) == 3
 
-        # --- Task → Jobs cascade ---
-        jobs_for_a = provider.get_jobs("sess_1", "plan1:task_a")
-        assert len(jobs_for_a) == 0  # no job for task_a
-
-        jobs_for_b = provider.get_jobs("sess_1", "plan1:task_b")
-        assert len(jobs_for_b) == 1
-        assert jobs_for_b[0]["job_id"] == "job_456"
-        assert jobs_for_b[0]["status"] == "running"
+        # --- Jobs cascade: every job, not filtered by the selected task ---
+        jobs = provider.get_jobs("sess_1")
+        assert len(jobs) == 1
+        assert jobs[0]["job_id"] == "job_456"
+        assert jobs[0]["task_ref"] == "task_b"  # the owning task is a column
+        assert jobs[0]["status"] == "running"
 
         # --- Running job → Log tail ---
         log = provider.get_job_log("sess_1", "plan1:task_b", "job_456")
@@ -450,4 +450,95 @@ class TestPanelRegistry:
 
         provider = DashboardDataProvider(str(temp_project))
         assert provider._get_audit_log() is None
+
+
+# ---------------------------------------------------------------------------
+# Read cost: a viewer read is bounded by the tail, not by the whole record
+# ---------------------------------------------------------------------------
+
+def _big_audit_log(root, n):
+    """Write an *n*-event audit log. No valid chain: a viewer read must not
+    need it, and a chain-constructing read would fail loudly here."""
+    import json
+    from datetime import datetime, UTC
+    ts = datetime.now(UTC).isoformat()
+    lines = [
+        json.dumps({
+            "sequence": i,
+            "timestamp": ts,
+            "event_type": "validate",
+            "project_id": "p_test",
+            "data": {"op": "validate", "task_ref": f"task_{i % 10}", "phase": "post_execute"},
+            "previous_hash": "0" * 64,
+            "event_hash": "1" * 64,
+        })
+        for i in range(n)
+    ]
+    (root / ".snodo" / "audit.log").write_text("".join(line + "\n" for line in lines))
+
+
+class TestViewerReadsAreBounded:
+    """A read-only viewer shows a tail; it must not parse the whole record."""
+
+    def test_get_all_events_reads_tail_not_whole_log(self, temp_project, monkeypatch):
+        """Showing the last twenty events reads a bounded tail and does not
+        construct an AuditLog (which parses and hash-verifies every event).
+        The hash chain is verified by `snodo audit verify`, not the viewer."""
+        from snodo.dashboard.providers import DashboardDataProvider
+
+        _big_audit_log(temp_project, 5000)
+        provider = DashboardDataProvider(str(temp_project))
+
+        import snodo.infrastructure.audit as audit_mod
+
+        def _boom(*args, **kwargs):
+            raise AssertionError(
+                "get_all_events must not construct an AuditLog (full parse + chain verify)"
+            )
+        monkeypatch.setattr(audit_mod.AuditLog, "__init__", _boom)
+
+        events = provider.get_all_events(limit=20)
+        assert [e.sequence for e in events] == list(range(4980, 5000))
+
+    def test_get_job_log_reads_tail_not_whole_file(self, temp_project):
+        """A job with a very large stdout renders from a bounded tail; the pane
+        shows a screenful, so the read never grows with the output length."""
+        import json
+
+        from snodo.dashboard.providers import DashboardDataProvider
+
+        job_dir = temp_project / ".snodo" / "jobs" / "job_big"
+        job_dir.mkdir(parents=True)
+        (job_dir / "task.json").write_text(json.dumps({"task_id": "task_1"}))
+        (job_dir / "state.json").write_text(json.dumps({"status": "completed", "created_at": 1.0}))
+        stdout = job_dir / "stdout.log"
+        stdout.write_text("FIRSTLINE\n" + "".join(("x" * 180 + "\n") for _ in range(10000)) + "LASTLINE\n")
+
+        provider = DashboardDataProvider(str(temp_project))
+        log = provider.get_job_log("sess_1", "plan:task_1", "job_big")
+
+        assert "LASTLINE" in log
+        assert "FIRSTLINE" not in log
+        assert len(log) < 1024 * 1024
+        assert stdout.stat().st_size > 1024 * 1024  # the file itself is larger than what we read
+
+    def test_get_jobs_lists_every_job_with_its_task(self, temp_project):
+        """A job's identity includes its task — a column, not a filter."""
+        import json
+
+        from snodo.dashboard.providers import DashboardDataProvider
+
+        for job_id, task_id in [("job_a1", "task_a"), ("job_b1", "task_b"), ("job_b2", "task_b")]:
+            d = temp_project / ".snodo" / "jobs" / job_id
+            d.mkdir(parents=True)
+            (d / "task.json").write_text(json.dumps({"task_id": task_id}))
+            (d / "state.json").write_text(json.dumps({"status": "completed", "created_at": 1.0}))
+
+        provider = DashboardDataProvider(str(temp_project))
+        jobs = provider.get_jobs("sess_1")
+        assert {j["job_id"]: j["task_ref"] for j in jobs} == {
+            "job_a1": "task_a", "job_b1": "task_b", "job_b2": "task_b",
+        }
+        assert {j["task_ref"] for j in jobs} == {"task_a", "task_b"}
+
 

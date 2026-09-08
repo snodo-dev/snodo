@@ -636,7 +636,7 @@ def test_cockpit_panes_render_liveness_from_fixture_state(tmp_path, monkeypatch)
                 "Task ID", "Wave", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost",
             ]
             assert [c.label.plain for c in jobs.columns.values()] == [
-                "Job ID", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost",
+                "Job ID", "Task", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost",
             ]
             assert tasks.row_count == 1
             assert jobs.row_count == 1
@@ -647,10 +647,12 @@ def test_cockpit_panes_render_liveness_from_fixture_state(tmp_path, monkeypatch)
             assert task_row[3] == "execute"  # Phase (was index 2)
             assert "alive" in task_row[6]    # Alive? (was index 5)
             assert "$0.0300" in task_row[7]  # Cost (was index 6)
-            # Jobs table columns: Job ID=0, Status=1, Phase=2, Phase For=3, Idle=4, Alive?=5, Cost=6
-            assert job_row[2] == "execute"  # Phase
-            assert "alive" in job_row[5]    # Alive?
-            assert "$0.1000" in job_row[6]  # Cost
+            # Jobs table columns: Job ID=0, Task=1, Status=2, Phase=3, Phase For=4,
+            # Idle=5, Alive?=6, Cost=7 — the owning task is a visible column.
+            assert job_row[1] == "task_alpha"  # Task
+            assert job_row[3] == "execute"  # Phase
+            assert "alive" in job_row[6]    # Alive?
+            assert "$0.1000" in job_row[7]  # Cost
             # every cell must parse as rich markup (what DataTable does at render)
             from rich.text import Text
             for table in (tasks, jobs):
@@ -689,3 +691,138 @@ def test_cockpit_marks_stale_running_task_not_live(tmp_path, monkeypatch):
             assert task_row[2] == "[bold red]stale[/]"
 
     asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
+# 8. The keystroke path reads a tail, not the whole record
+# ---------------------------------------------------------------------------
+
+
+def _grow_audit_log(root, n):
+    """Append *n* events so a full-chain read would scale with the log size."""
+    lines = []
+    now = time.time()
+    for i in range(3, 3 + n):
+        lines.append(_audit_line(i, "validate", "task_alpha", now - i, phase="post_execute"))
+    with open(root / ".snodo" / "audit.log", "a") as f:
+        f.write("".join(line + "\n" for line in lines))
+
+
+def _log_plain(log_pane):
+    return "\n".join(strip.text for strip in log_pane.lines)
+
+
+def test_cursor_move_does_not_parse_whole_audit_log(tmp_path, monkeypatch):
+    """Moving the cursor performs no read whose cost grows with the audit
+    log's size: the Live Log reads a bounded tail and never constructs an
+    AuditLog (which would parse and hash-verify every event)."""
+    import asyncio
+    from unittest.mock import patch
+
+    from snodo.dashboard.app import SnodoDashboard
+    from snodo.dashboard.panels.cockpit import CockpitScreen
+
+    project = _cockpit_fixture(tmp_path, monkeypatch)
+    _grow_audit_log(project, 5000)
+
+    async def _run():
+        app = SnodoDashboard(project_root=str(project))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, CockpitScreen)
+            await pilot.pause(0.2)
+
+            with patch("snodo.dashboard.providers.AuditLog") as mock_auditlog:
+                mock_auditlog.side_effect = AssertionError(
+                    "a cursor move must not construct an AuditLog"
+                )
+                # A job selected: re-reads only a bounded job-log tail.
+                screen._update_live_log(screen.selected_session, screen.selected_task, screen.selected_job)
+                await pilot.pause()
+                # No job selected: re-reads only the audit tail.
+                screen._update_live_log(screen.selected_session, screen.selected_task, None)
+                await pilot.pause()
+
+            mock_auditlog.assert_not_called()
+
+    asyncio.run(_run())
+
+
+def test_cockpit_jobs_pane_lists_jobs_from_multiple_tasks(tmp_path, monkeypatch):
+    """The Jobs pane lists every job with its owning task visible on each row,
+    not only the currently selected task's jobs."""
+    import asyncio
+
+    from snodo.dashboard.app import SnodoDashboard
+    from snodo.dashboard.panels.cockpit import CockpitScreen
+
+    project = _cockpit_fixture(tmp_path, monkeypatch)  # has j_alpha -> task_alpha
+    _write_job_state(project, "j_beta", {
+        "status": "completed", "pid": None, "created_at": 5.0,
+        "started_at": time.time() - 100, "completed_at": time.time() - 50, "usage": [],
+    }, task_id="task_beta")
+
+    async def _run():
+        app = SnodoDashboard(project_root=str(project))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, CockpitScreen)
+            await pilot.pause(0.2)
+            jobs = screen.query_one("#jobs-table")
+            rows = [jobs.get_row(rk) for rk in jobs.rows]
+            # Job ID=0, Task=1 — jobs from two tasks, each row names its task.
+            assert {r[0]: r[1] for r in rows} == {"j_alpha": "task_alpha", "j_beta": "task_beta"}
+
+    asyncio.run(_run())
+
+
+def test_cockpit_renders_ansi_without_literal_escapes(tmp_path, monkeypatch):
+    """ANSI-coloured job output renders as styled text, not literal
+    ``[1;31m`` / ``[0m`` sequences."""
+    import asyncio
+
+    from snodo.dashboard.app import SnodoDashboard
+    from snodo.dashboard.panels.cockpit import CockpitScreen
+
+    project = _cockpit_fixture(tmp_path, monkeypatch)
+    (project / ".snodo" / "jobs" / "j_alpha" / "stdout.log").write_text(
+        "\x1b[1;31mred error text\x1b[0m and plain\nsecond line\n"
+    )
+
+    async def _run():
+        app = SnodoDashboard(project_root=str(project))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, CockpitScreen)
+            await pilot.pause(0.2)
+            rendered = _log_plain(screen.query_one("#log-pane"))
+            assert "red error text" in rendered
+            assert "second line" in rendered
+            assert "\x1b" not in rendered
+            assert "[1;31m" not in rendered
+            assert "[0m" not in rendered
+
+    asyncio.run(_run())
+
+
+def test_ansi_to_text_decodes_escapes_into_styles():
+    from rich.text import Text
+
+    from snodo.dashboard.panels.cockpit import _ansi_to_text
+
+    text = _ansi_to_text("\x1b[1;31mred\x1b[0m plain")
+    assert isinstance(text, Text)
+    assert text.plain == "red plain"
+    assert "\x1b" not in text.plain and "[1;31m" not in text.plain
+    assert text.spans  # the colour survived as a style, not as literal text
+
+
+def test_ansi_to_text_keeps_square_brackets_literal():
+    """Job output that merely looks like Rich markup is rendered as itself."""
+    from snodo.dashboard.panels.cockpit import _ansi_to_text
+
+    text = _ansi_to_text("[1;31m] not markup, and [/red] not a close tag")
+    assert text.plain == "[1;31m] not markup, and [/red] not a close tag"
