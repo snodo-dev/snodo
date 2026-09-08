@@ -62,15 +62,20 @@ class TestInPlaceCoderAttribution:
         adapter = AGYAdapter(model="agy/gemini-3.7-flash", workspace=temp_workspace)
         spec = TaskSpec(description="Implement feature Y", constraints=[])
 
-        def fake_popen(argv, **kwargs):
+        def fake_run(argv, project_root, **kwargs):
+            # Simulate the host CLI running and writing files in place.
             (temp_workspace / "feature_y.py").write_text("def y(): return 42\n")
-            proc = mock.MagicMock()
-            proc.pid = 12345
-            proc.returncode = 0
-            proc.communicate.return_value = ("Success", "")
-            return proc
+            return subprocess.CompletedProcess(
+                args=argv, returncode=0, stdout="Success", stderr="",
+            )
 
-        with mock.patch("subprocess.Popen", side_effect=fake_popen):
+        # Patch the adapter's own subprocess call (the seam sibling coder
+        # tests use), NOT subprocess.Popen: a module-global patch would
+        # capture every other caller in the process. GitPython runs
+        # "git version" through Popen during its own initialisation, and the
+        # adapter imports git lazily inside implement() — a global patch
+        # breaks that import.
+        with mock.patch.object(adapter, "_run_subprocess", side_effect=fake_run):
             artifact = adapter.implement(spec)
 
         # Artifact metadata includes measured metrics
@@ -118,15 +123,11 @@ class TestInPlaceCoderAttribution:
             project_context={"task_id": task_id},
         )
 
-        def fake_popen(argv, **kwargs):
+        def fake_run(argv, project_root, **kwargs):
             (temp_workspace / "feature_z.py").write_text("def z(): pass\n")
-            proc = mock.MagicMock()
-            proc.pid = 12345
-            proc.returncode = 0
-            proc.communicate.return_value = ("Success", "")
-            return proc
+            return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
 
-        with mock.patch("subprocess.Popen", side_effect=fake_popen):
+        with mock.patch.object(adapter, "_run_subprocess", side_effect=fake_run):
             adapter.implement(spec)
 
         state_path = project_root / ".snodo" / "tasks" / task_id / "state.json"
@@ -262,3 +263,71 @@ class TestLiteLLMAccountingPinned:
         assert rec["role"] == "coder"
         # Source is NOT inplace_coder
         assert rec.get("source") != "inplace_coder"
+
+
+# ============================================================================
+# Guards on the tests themselves
+#
+# The two adapter tests patch subprocess.Popen to fake the host CLI. That
+# patch must reach NO further than the adapter's own call site: GitPython
+# runs "git version" through Popen during its own import, and the adapter
+# imports git lazily inside implement(). A module-global subprocess.Popen
+# patch breaks that import (see the commit message for #243).
+# ============================================================================
+
+
+class TestAttributionGuard:
+    def test_tests_fail_if_adapter_stops_recording_attribution(self, tmp_path: Path):
+        """If the adapter stops writing the attribution record, the adapter
+        tests in this file must fail — a regression in the recording path
+        must be a red suite, not a silent pass.
+
+        Drives the two adapter tests directly (same assertions, same code)
+        with ``record_inplace_coder_run`` patched to a no-op and asserts each
+        FAILS. Their assertions read the persisted state.json, so a pass under
+        a no-op recorder would mean the assertions stopped checking the record.
+        """
+        from _pytest.monkeypatch import MonkeyPatch
+
+        recorder = TestInPlaceCoderAttribution()
+
+        mp = MonkeyPatch()
+        try:
+            mp.setattr(
+                "snodo.infrastructure.usage_tracker.record_inplace_coder_run",
+                lambda **_kw: None,
+            )
+            for test_fn in (
+                recorder.test_agy_run_leaves_attribution_record_in_job_state,
+                recorder.test_opencode_cli_run_leaves_attribution_record,
+            ):
+                workspace = tmp_path / f"ws_{test_fn.__name__}"
+                workspace.mkdir()
+                subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+                subprocess.run(["git", "config", "user.email", "t@t"], cwd=workspace, check=True)
+                subprocess.run(["git", "config", "user.name", "T"], cwd=workspace, check=True)
+                (workspace / "README.md").write_text("# probe\n")
+                subprocess.run(["git", "add", "."], cwd=workspace, check=True)
+                subprocess.run(["git", "commit", "-qm", "init"], cwd=workspace, check=True)
+                with pytest.raises(AssertionError):
+                    test_fn(workspace, mp)
+        finally:
+            mp.undo()
+
+    def test_no_test_in_this_file_patches_module_global_libraries(self):
+        """No test in this file patches a module-global another library relies
+        on. The fix scopes the fake of the adapter's subprocess call to the
+        adapter instance (``_run_subprocess``); this guard asserts the tests
+        never reach for ``subprocess.Popen`` directly."""
+        src = Path(__file__).read_text()
+        # Scan only the actual test bodies, not this guard's own literals.
+        test_class = src.index("class TestInPlaceCoderAttribution")
+        guard_comment = src.index("# Guards on the tests themselves")
+        body = src[test_class:guard_comment]
+        forbidden = (
+            'mock.patch("subprocess.Popen"',
+            "mock.patch('subprocess.Popen'",
+        )
+        for line in body.splitlines():
+            assert not any(frag in line for frag in forbidden), line
+

@@ -41,6 +41,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
   moves the cursor: all `_programmatic_move` flag set/clear pairs are wrapped in
   `try/finally` so the flag is always cleared even if exceptions occur. Audit log
   read failures are reported plainly instead of being swallowed. (Fixes #240)
+- The in-place coder attribution tests no longer poison other libraries' lazy
+  imports. They patched `subprocess.Popen` module-globally to fake the host
+  CLI, which captured every other caller in the process: GitPython runs
+  `git version` through `Popen` during its own initialisation, and the
+  adapter's `implement()` imports git lazily, so the first adapter test to
+  run received the fake's bytes response and raised `ImportError: Failed to
+  initialize: endswith first arg must be str ... not bytes` from GitPython's
+  import. Three tests failed as a result; the two that do not use an adapter
+  subprocess passed. The fakes now target the adapter's own
+  `_run_subprocess` call site (the seam the sibling coder tests already use),
+  so the patch reaches no further than the subprocess call the test is
+  actually exercising. A guard re-drives the two adapter tests with the
+  recording call neutralised and asserts they FAIL, so a future regression in
+  the attribution path is a red suite rather than a silent pass. (Fixes #243)
 - The cockpit dashboard hierarchy changed to show waves as labels (a column on each
   task row) rather than filter levels. The spine is now Session → Tasks → Jobs
   instead of Session → Waves → Tasks. All tasks from a session are shown regardless
