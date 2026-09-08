@@ -633,7 +633,7 @@ def test_cockpit_panes_render_liveness_from_fixture_state(tmp_path, monkeypatch)
             tasks = app.screen.query_one("#tasks-table")
             jobs = app.screen.query_one("#jobs-table")
             assert [c.label.plain for c in tasks.columns.values()] == [
-                "Task ID", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost",
+                "Task ID", "Wave", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost",
             ]
             assert [c.label.plain for c in jobs.columns.values()] == [
                 "Job ID", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost",
@@ -642,13 +642,15 @@ def test_cockpit_panes_render_liveness_from_fixture_state(tmp_path, monkeypatch)
             assert jobs.row_count == 1
             task_row = tasks.get_row(next(iter(tasks.rows)))
             job_row = jobs.get_row(next(iter(jobs.rows)))
-            # phase, phase-for, idle, alive, cost — the operator's questions
-            assert task_row[2] == "execute"
-            assert "alive" in task_row[5]
-            assert "$0.0300" in task_row[6]
-            assert job_row[2] == "execute"
-            assert "alive" in job_row[5]
-            assert "$0.1000" in job_row[6]
+            # After adding Wave column at index 1, indices shift:
+            # Task ID=0, Wave=1, Status=2, Phase=3, Phase For=4, Idle=5, Alive?=6, Cost=7
+            assert task_row[3] == "execute"  # Phase (was index 2)
+            assert "alive" in task_row[6]    # Alive? (was index 5)
+            assert "$0.0300" in task_row[7]  # Cost (was index 6)
+            # Jobs table columns: Job ID=0, Status=1, Phase=2, Phase For=3, Idle=4, Alive?=5, Cost=6
+            assert job_row[2] == "execute"  # Phase
+            assert "alive" in job_row[5]    # Alive?
+            assert "$0.1000" in job_row[6]  # Cost
             # every cell must parse as rich markup (what DataTable does at render)
             from rich.text import Text
             for table in (tasks, jobs):
@@ -683,6 +685,7 @@ def test_cockpit_marks_stale_running_task_not_live(tmp_path, monkeypatch):
             tasks = app.screen.query_one("#tasks-table")
             assert tasks.row_count == 1
             task_row = tasks.get_row(next(iter(tasks.rows)))
-            assert task_row[1] == "[bold red]stale[/]"
+            # After adding Wave column, Status is at index 2 (was index 1)
+            assert task_row[2] == "[bold red]stale[/]"
 
     asyncio.run(_run())
