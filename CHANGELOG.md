@@ -11,6 +11,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A role's model and credential now travel with its completion call instead of
+  through process-global state. Every provider block declaring
+  `litellm_provider: openai` had its key written into `OPENAI_API_KEY` in
+  addition to its own `api_key_env`, the write was never undone, and the last
+  role set up won for all of them — so two OpenAI-compatible providers in one
+  run authenticated each other's calls and failed as an authentication error
+  naming the wrong service. The classifier additionally passed its raw model
+  string as a kwarg, overriding the bound completion function, so a configured
+  provider block never became a litellm-shaped name and its `base_url` was
+  never applied. `api_key` is now bound alongside `model` and `api_base`, and
+  the classifier uses what the binding carries. (Fixes #237)
+
+### Fixed
+
 - Gave the consumed-token store's SQLite connection an explicit, bounded
   lifetime. `TokenStore` cached the connection opened in `_connect` with no
   way to release it — no close, no context manager — so every WAL-mode
