@@ -363,6 +363,17 @@ class Protocol(BaseModel):
         default=DisagreementPolicy.UNANIMOUS,
         description="How to resolve validator conflicts"
     )
+    abstention_policy: str = Field(
+        default="blocking",
+        description=(
+            "How to treat abstentions (judges that exhausted budget without deciding). "
+            "'blocking' (default, safe for existing protocols): an abstention breaks "
+            "consensus regardless of policy, so protocols expecting agreement will halt. "
+            "'non_blocking': abstentions are excluded from policy evaluation, allowing "
+            "the task to proceed if other validators satisfy the policy."
+        ),
+        pattern="^(blocking|non_blocking)$",
+    )
     initial_mode: str = Field(..., description="Starting mode ID")
     global_constraints: List[Constraint] = Field(
         default_factory=list,
