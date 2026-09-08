@@ -154,7 +154,6 @@ prefix routing, and enrolls it in the adapter conformance suite.
 | `validate` | Check the protocol against the well-formedness rules |
 | `audit verify` | Verify the hash chain |
 | `job` / `logs` / `meta` | Background jobs: `list`, `status`, `logs`, `wait`, `cancel`; log streaming; usage |
-| `monitor` | Read-only live view of running tasks/jobs: phase, elapsed-in-phase, idle since last sign of life, liveness, cost |
 | `task` / `worktree` | Task branches and the git worktrees used for isolation |
 | `recon` | Fan out read-only agents to answer a question about the codebase |
 | `models` / `config` | Model discovery; keys and settings |
