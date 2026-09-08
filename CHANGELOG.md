@@ -9,6 +9,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- A validator that exhausts its tool-turn budget without deciding is now
+  recorded as an abstention rather than an engine fault, and an abstention can
+  no longer be mistaken for agreement. Previously an exhausted judge produced
+  `validator_error` and failed closed, killing a task the other validators had
+  passed; the turn count grows with the repository and the budget does not, so
+  this became routine on larger projects. Judges are now told how much of their
+  budget remains so they can return a verdict before it runs out. Token
+  issuance refuses to mint a validation token when any validator abstained and
+  excludes abstentions from the token's signature list, so a judge that never
+  decided can never be signed into a token as having passed. Run output marks
+  an abstention distinctly instead of showing a pass tick, and the audit trail
+  records it as an abstention with its reason. Protocols gain
+  `abstention_policy`, defaulting to `blocking` so protocols written before
+  abstentions existed keep failing safe. (Fixes #244, Fixes #245)
+
 ### Added
 - The dashboard's Tasks and Jobs panes now answer the operator's real question — is this
   still alive, and how long has it been in the phase it is in — from what the engine already
