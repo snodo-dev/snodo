@@ -334,13 +334,17 @@ class TokenIssuer:
         validator_results: List[ValidatorResult],
         consensus: str = "unanimous",
     ) -> Optional[ValidationToken]:
-        """Issue a JWT validation token if no blockers present.
+        """Issue a JWT validation token if no blockers or abstentions present.
 
         INV3 root: a token can only be issued when the validator quorum
-        is satisfied (no blocker results).  Without a token, mutating
-        tools are gated by WF1.  This makes non-overridable validation
+        is satisfied (no blocker results and no abstentions). Without a token,
+        mutating tools are gated by WF1. This makes non-overridable validation
         structural — blockers prevent token issuance, and without a
         token the MCP server rejects all mutations.
+
+        An abstention (a judge that could not reach a verdict within budget)
+        must not be signed into a token as if it were an agreement. The token's
+        signatures are evidence of consensus and must not be false records.
 
         Args:
             task_id: Unique identifier for the task
@@ -348,7 +352,7 @@ class TokenIssuer:
             consensus: Type of consensus achieved
 
         Returns:
-            ValidationToken wrapper, or None if blockers present
+            ValidationToken wrapper, or None if blockers or abstentions present
         """
         if self._has_blockers(validator_results):
             blocker_ids = [
@@ -360,9 +364,21 @@ class TokenIssuer:
             })
             return None
 
+        abstained = [
+            r.validator_id for r in validator_results
+            if getattr(r, "abstained", False)
+        ]
+        if abstained:
+            self._log_event("token_blocked_abstention", {
+                "task_ref": task_id,
+                "abstaining_validators": abstained,
+            })
+            return None
+
         signatures = [
             f"{result.validator_id}:{result.severity}"
             for result in validator_results
+            if not getattr(result, "abstained", False)
         ]
 
         now = self._now_fn() if self._now_fn is not None else datetime.now(timezone.utc)

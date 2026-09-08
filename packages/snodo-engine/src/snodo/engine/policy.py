@@ -91,6 +91,7 @@ class PolicyEvaluator:
         self,
         quorum_threshold: float = 0.67,
         decision_issuer: Optional[Any] = None,
+        abstention_policy: str = "blocking",
     ):
         """Initialize policy evaluator.
 
@@ -98,12 +99,19 @@ class PolicyEvaluator:
             quorum_threshold: Fraction of validators required for QUORUM policy (0.0-1.0)
             decision_issuer: Optional DecisionRecordIssuer for verifying
                              DecisionRecords. Uses default issuer if None.
+            abstention_policy: How to treat validator abstentions. "blocking" (default,
+                               safe for existing protocols) means an abstention always
+                               halts. "non_blocking" excludes abstentions from policy
+                               evaluation so the policy applies to non-abstaining validators.
         """
         if not 0.0 <= quorum_threshold <= 1.0:
             raise ValueError("quorum_threshold must be between 0.0 and 1.0")
+        if abstention_policy not in ("blocking", "non_blocking"):
+            raise ValueError("abstention_policy must be 'blocking' or 'non_blocking'")
 
         self.quorum_threshold = quorum_threshold
         self._decision_issuer = decision_issuer
+        self.abstention_policy = abstention_policy
     
     def evaluate(
         self,
@@ -161,12 +169,10 @@ class PolicyEvaluator:
             )
 
         # Abstain count: judges that could not reach a verdict within budget
-        # Policy behavior: abstentions are blocking if configured, else silent.
-        # For now, blocking: if any validator abstained, we cannot have full confidence.
+        # Policy behavior depends on abstention_policy configuration.
         if abstain_count > 0:
-            non_abstain_count = total_count - abstain_count
-            if non_abstain_count == 0:
-                # All validators abstained — cannot proceed without consensus
+            if self.abstention_policy == "blocking":
+                # Blocking (default, safe for existing protocols): any abstention halts
                 return PolicyDecision(
                     action=PolicyAction.HALT,
                     consensus_achieved=False,
@@ -174,8 +180,9 @@ class PolicyEvaluator:
                     warn_count=warn_count,
                     blocker_count=blocker_count,
                     total_count=total_count,
-                    justification=f"All {abstain_count} validator(s) abstained: could not produce verdicts within budget"
+                    justification=f"{abstain_count} validator(s) abstained: could not produce verdicts within budget (abstention_policy=blocking)"
                 )
+            # else: non_blocking — abstentions excluded from counts, policy applies to non-abstaining validators (handled below)
 
         # Pre-execute findings about existing tree state during recovery (is_recovery=True)
         # must not block the recovery attempt from running the coder.
@@ -405,6 +412,7 @@ def evaluate_policy(
     task_ref: str = "",
     is_recovery: bool = False,
     phase: str = "pre_execute",
+    abstention_policy: str = "blocking",
 ) -> PolicyDecision:
     """Evaluate policy (convenience function).
 
@@ -416,11 +424,15 @@ def evaluate_policy(
         task_ref: Task ID for matching DecisionRecords
         is_recovery: Whether this task is in a recovery cycle (depth > 0)
         phase: Validation phase ("pre_execute" or "post_execute")
+        abstention_policy: How to treat abstentions ("blocking" or "non_blocking")
 
     Returns:
         PolicyDecision
     """
-    evaluator = PolicyEvaluator(quorum_threshold=quorum_threshold)
+    evaluator = PolicyEvaluator(
+        quorum_threshold=quorum_threshold,
+        abstention_policy=abstention_policy,
+    )
     return evaluator.evaluate(
         results, policy,
         phase=phase,
