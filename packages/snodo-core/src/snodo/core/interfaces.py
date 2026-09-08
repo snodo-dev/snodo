@@ -119,6 +119,12 @@ class ValidatorResult(BaseModel):
     #: but a skipped result is surfaced in normal run output and must never be
     #: mistaken for real verification evidence.
     skipped: bool = False
+    #: True when the validator could not produce a verdict within its budget
+    #: (e.g., exhausted tool turns). An abstention is distinct from error=True
+    #: (a fault) and is handled by disagreement policy, not fail-closed.
+    abstained: bool = False
+    #: Reason for abstention (e.g., "exhausted budget after 20 turns"). None if not abstained.
+    abstention_reason: Optional[str] = None
 
 
 class TaskSpec(BaseModel):

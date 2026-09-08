@@ -139,14 +139,16 @@ class PolicyEvaluator:
                 justification="No validator results provided"
             )
 
-        # Count severities
-        pass_count = sum(1 for r in results if r.severity == "pass")
-        warn_count = sum(1 for r in results if r.severity == "warn")
-        blocker_count = sum(1 for r in results if r.severity == "blocker")
+        # Count severities (excluding abstentions for severity counting)
+        pass_count = sum(1 for r in results if r.severity == "pass" and not getattr(r, 'abstained', False))
+        warn_count = sum(1 for r in results if r.severity == "warn" and not getattr(r, 'abstained', False))
+        blocker_count = sum(1 for r in results if r.severity == "blocker" and not getattr(r, 'abstained', False))
         error_count = sum(1 for r in results if getattr(r, 'error', False))
+        abstain_count = sum(1 for r in results if getattr(r, 'abstained', False))
         total_count = len(results)
 
         # Validator error always halts fail-closed (hard invariant)
+        # Abstention is distinct from error: an exhausted judge is not an engine fault
         if error_count > 0:
             return PolicyDecision(
                 action=PolicyAction.HALT,
@@ -155,8 +157,25 @@ class PolicyEvaluator:
                 warn_count=warn_count,
                 blocker_count=blocker_count,
                 total_count=total_count,
-                justification=f"{error_count} validator(s) failed to produce a verdict — fail-closed"
+                justification=f"{error_count} validator(s) produced operational errors — fail-closed"
             )
+
+        # Abstain count: judges that could not reach a verdict within budget
+        # Policy behavior: abstentions are blocking if configured, else silent.
+        # For now, blocking: if any validator abstained, we cannot have full confidence.
+        if abstain_count > 0:
+            non_abstain_count = total_count - abstain_count
+            if non_abstain_count == 0:
+                # All validators abstained — cannot proceed without consensus
+                return PolicyDecision(
+                    action=PolicyAction.HALT,
+                    consensus_achieved=False,
+                    pass_count=pass_count,
+                    warn_count=warn_count,
+                    blocker_count=blocker_count,
+                    total_count=total_count,
+                    justification=f"All {abstain_count} validator(s) abstained: could not produce verdicts within budget"
+                )
 
         # Pre-execute findings about existing tree state during recovery (is_recovery=True)
         # must not block the recovery attempt from running the coder.

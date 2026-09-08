@@ -156,6 +156,7 @@ class AcceptanceValidator(LLMValidator):
         change_diff: str,
         diff_label: str = "",
         diff_is_fallback: bool = False,
+        total_turns: int = 20,
     ) -> str:
         """Judge the produced artifacts against the task's acceptance criteria.
 
@@ -233,6 +234,11 @@ class AcceptanceValidator(LLMValidator):
             "`submit_verdict(severity, justification)` tool — this is the\n",
             "ONLY way to return your verdict.  Do NOT narrate your verdict\n",
             "as prose; use the tool.\n",
+            "\n",
+            "## Tool Budget\n",
+            f"You have {total_turns} interaction turn(s) to inspect the repository and deliver a verdict.\n",
+            "As you approach this limit, return a verdict based on the evidence you have gathered.\n",
+            "An incomplete verdict from a judge who acted responsibly is preferable to running out of turns.\n",
             "\n",
             "## Instructions\n",
             "Identify the acceptance criteria in the task spec (look for "

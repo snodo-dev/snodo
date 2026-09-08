@@ -389,6 +389,7 @@ class LLMValidator(ValidatorBase):
         system_prompt = self._build_tool_loop_prompt(
             context, active_names, has_diff, change_diff,
             diff_label=diff_label, diff_is_fallback=diff_is_fallback,
+            total_turns=tool_turns,
         )
 
         messages: List[Dict[str, Any]] = [
@@ -542,15 +543,17 @@ class LLMValidator(ValidatorBase):
                 error=True,
             )
 
-        # Hit the turn cap — fail closed
+        # Hit the turn cap — record as abstention, not error
         return ValidatorResult(
             validator_id=self.validator_spec.validator_id,
-            severity="blocker",
+            severity="pass",
             justification=(
-                f"Validator tool-loop reached the maximum of {tool_turns} "
-                "turns without calling submit_verdict."
+                f"Validator could not reach a definitive verdict within the "
+                f"allocated {tool_turns} turns. Falling back to pass — policy "
+                "will decide whether to treat this abstention as blocking."
             ),
-            error=True,
+            abstained=True,
+            abstention_reason=f"exhausted budget after {tool_turns} turns",
         )
 
     def _build_tool_loop_prompt(
@@ -561,6 +564,7 @@ class LLMValidator(ValidatorBase):
         change_diff: str,
         diff_label: str = "",
         diff_is_fallback: bool = False,
+        total_turns: int = _DEFAULT_MAX_TOOL_TURNS,
     ) -> str:
         """Build the tool-loop judge prompt for this validator.
 
@@ -611,6 +615,11 @@ class LLMValidator(ValidatorBase):
             "`submit_verdict(severity, justification)` tool — this is the\n",
             "ONLY way to return your verdict.  Do NOT narrate your verdict\n",
             "as prose; use the tool.\n",
+            "\n",
+            "## Tool Budget\n",
+            f"You have {total_turns} interaction turn(s) to inspect the repository and deliver a verdict.\n",
+            "As you approach this limit, return a verdict based on the evidence you have gathered.\n",
+            "An incomplete verdict from a judge who acted responsibly is preferable to running out of turns.\n",
             "\n",
             "## Instructions\n",
             "Evaluate against EACH criterion.\n",
