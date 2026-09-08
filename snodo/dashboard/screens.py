@@ -118,7 +118,7 @@ class SessionsScreen(Screen):
         table = self.query_one("#session-table", DataTable)
         table.add_columns("Session", "Mode", "#A", "#V", "Last Event", "Status")
         self._refresh()
-        self._refresh_timer = self.set_interval(2.0, self._refresh)
+        
         self._update_header()
 
     def on_screen_resume(self):
@@ -355,6 +355,7 @@ class SessionDetailScreen(Screen):
         self.provider = provider
         self._events_row_keys: Dict[int, Any] = {}
         self._refresh_timer: Any = None
+        self._data_read_time: Optional[float] = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -379,7 +380,7 @@ class SessionDetailScreen(Screen):
     def on_mount(self):
         self._populate()
         self._update_header()
-        self._refresh_timer = self.set_interval(2.0, self._refresh_events)
+        
 
     def _populate(self):
         d = self.detail
@@ -582,6 +583,9 @@ class EventsScreen(Screen):
         fb = self.query_one("#events-filter", Input)
         fb.visible = True
         fb.focus()
+
+    def action_refresh(self):
+        self._refresh_events()
 
     def on_input_submitted(self, event: Input.Submitted):
         if event.input.id == "events-filter":

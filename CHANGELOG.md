@@ -32,6 +32,22 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The cockpit dashboard and all other dashboard screens now refresh only when the
+  operator presses the refresh key (`r`) instead of continuously rewriting every
+  cell on a 2-second interval. The automatic timer is removed. Each screen now shows
+  when the displayed data was last read (`Data: 5s ago`, `Data: 2m ago`), so the
+  operator can distinguish a quiet system from a stale view. The data-age indicator
+  is calculated at header update time with no separate timer. Refresh no longer
+  moves the cursor: all `_programmatic_move` flag set/clear pairs are wrapped in
+  `try/finally` so the flag is always cleared even if exceptions occur. Audit log
+  read failures are reported plainly instead of being swallowed. (Fixes #240)
+- The cockpit dashboard hierarchy changed to show waves as labels (a column on each
+  task row) rather than filter levels. The spine is now Session → Tasks → Jobs
+  instead of Session → Waves → Tasks. All tasks from a session are shown regardless
+  of wave, so the Tasks pane is never empty because the oldest wave has no current
+  tasks. The layout was reduced from three horizontal panes to two, which fits a
+  standard terminal width. The three-pane structure (Sessions, Waves, Tasks) forced
+  choice between wide viewing and fitting the screen. (Fixes #239)
 - A role's model and credential now travel with its completion call instead of
   through process-global state. Every provider block declaring
   `litellm_provider: openai` had its key written into `OPENAI_API_KEY` in

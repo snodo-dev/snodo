@@ -3,6 +3,7 @@
 FILE: snodo/dashboard/panels/sessions.py
 """
 
+import time
 from typing import Any, Dict, Optional
 
 from textual.app import ComposeResult
@@ -71,7 +72,7 @@ class SessionsScreen(Screen):
         super().__init__(**kwargs)
         self.provider = provider
         self._row_keys: Dict[str, Any] = {}
-        self._refresh_timer: Any = None
+        self._data_read_time: Optional[float] = None
         self._all_sessions: list = []
         self._filter_text: str = ""
 
@@ -87,7 +88,6 @@ class SessionsScreen(Screen):
         table = self.query_one("#session-table", DataTable)
         table.add_columns("Session", "Mode", "#A", "#V", "Last Event", "Status")
         self._refresh()
-        self._refresh_timer = self.set_interval(2.0, self._refresh)
         self._update_header()
 
     def on_screen_resume(self):
@@ -261,6 +261,20 @@ class SessionsScreen(Screen):
     def _update_status_footer(self, table: DataTable):
         rows = table.row_count
         sel = (table.cursor_row or 0) + 1 if table.row_count else 0
+
+        # Show data age
+        age_str = "—"
+        if self._data_read_time:
+            age_secs = time.time() - self._data_read_time
+            if age_secs < 60:
+                age_str = f"{int(age_secs)}s"
+            elif age_secs < 3600:
+                age_str = f"{int(age_secs / 60)}m"
+            else:
+                age_str = f"{int(age_secs / 3600)}h"
+        header = self.query_one("#session-header", Static)
+        header.update(f"  Sessions  |  Data: [dim]{age_str} ago[/]")
+
         self.app.sub_title = f"Row {sel}/{rows}  |  Enter:detail  /:filter  ::commands  q:quit"
 
     def _row_key_to_session_id(self, row_key: Any) -> Optional[str]:
