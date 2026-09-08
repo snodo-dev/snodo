@@ -293,6 +293,7 @@ class SessionDetailScreen(Screen):
     BINDINGS = [
         Binding("escape", "pop_screen", "Back"),
         Binding("q", "quit", "Quit"),
+        Binding("r", "refresh", "Refresh"),
     ]
 
     CSS = """
@@ -380,7 +381,10 @@ class SessionDetailScreen(Screen):
     def on_mount(self):
         self._populate()
         self._update_header()
-        
+        self._data_read_time = _time.time()
+
+    def action_refresh(self):
+        self._refresh_events()
 
     def _populate(self):
         d = self.detail
@@ -486,6 +490,9 @@ class SessionDetailScreen(Screen):
             else:
                 self._events_row_keys[seq] = table.add_row(*cells, key=str(seq))
 
+        self._data_read_time = _time.time()
+        self._update_header()
+
     def _update_header(self):
         header = self.query_one("#detail-header", Static)
         d = self.detail
@@ -498,11 +505,24 @@ class SessionDetailScreen(Screen):
             status = " [bold red]ESCALATED[/]"
         elif d.is_halted:
             status = " [bold red]HALTED[/]"
+
+        # Show data age
+        age_str = "—"
+        if self._data_read_time:
+            age_secs = _time.time() - self._data_read_time
+            if age_secs < 60:
+                age_str = f"{int(age_secs)}s"
+            elif age_secs < 3600:
+                age_str = f"{int(age_secs / 60)}m"
+            else:
+                age_str = f"{int(age_secs / 3600)}h"
+
         header.update(
             f"  [bold]{self.provider.project_name}[/] > sessions > "
             f"{short}{active_tag}{status}  "
             f"|  mode: [bold]{d.mode_id}[/]  "
-            f"|  task: {d.current_task or '—'}"
+            f"|  task: {d.current_task or '—'}  "
+            f"|  Data: [dim]{age_str} ago[/]"
         )
 
 
@@ -583,9 +603,6 @@ class EventsScreen(Screen):
         fb = self.query_one("#events-filter", Input)
         fb.visible = True
         fb.focus()
-
-    def action_refresh(self):
-        self._refresh_events()
 
     def on_input_submitted(self, event: Input.Submitted):
         if event.input.id == "events-filter":
