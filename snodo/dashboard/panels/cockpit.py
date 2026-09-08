@@ -4,6 +4,7 @@ FILE: snodo/dashboard/panels/cockpit.py
 """
 
 from contextlib import suppress
+import time
 from typing import Any, Dict, Optional, List
 
 from rich.markup import escape as _escape
@@ -117,8 +118,8 @@ class CockpitScreen(Screen):
     def __init__(self, provider: Any, **kwargs):
         super().__init__(**kwargs)
         self.provider = provider
-        self._refresh_timer: Any = None
         self._programmatic_move = False  # Flag to distinguish refresh moves from keypresses
+        self._data_read_time: Optional[float] = None  # Timestamp of last data read
 
         # Selection state cache
         self.selected_session: Optional[str] = None
@@ -161,9 +162,8 @@ class CockpitScreen(Screen):
         jobs_table = self.query_one("#jobs-table", DataTable)
         jobs_table.add_columns("Job ID", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost")
 
-        # Populate initial data
+        # Populate initial data (no automatic refresh timer - explicit only via 'r' key)
         self._refresh()
-        self._refresh_timer = self.set_interval(2.0, self._refresh)
 
     def on_screen_resume(self):
         self._refresh()
@@ -235,6 +235,9 @@ class CockpitScreen(Screen):
 
             # Trigger cascade update (which will also use _programmatic_move)
             self._cascade_update()
+
+            # Record when this data was read
+            self._data_read_time = time.time()
         finally:
             # Always clear the flag when done, even if an exception occurred
             self._programmatic_move = False
@@ -295,8 +298,10 @@ class CockpitScreen(Screen):
         # Update Tasks - show all tasks from session, no wave filtering
         tasks_table = self.query_one("#tasks-table", DataTable)
         self._programmatic_move = True
-        tasks_table.clear()
-        self._programmatic_move = False
+        try:
+            tasks_table.clear()
+        finally:
+            self._programmatic_move = False
 
         all_tasks = self.provider.get_tasks(session_id)
         flat_tasks = _flatten_tasks(all_tasks)
@@ -321,8 +326,10 @@ class CockpitScreen(Screen):
         if self.selected_task and flat_tasks:
             with suppress(RowDoesNotExist):
                 self._programmatic_move = True
-                tasks_table.move_cursor(row=tasks_table.get_row_index(self.selected_task))
-                self._programmatic_move = False
+                try:
+                    tasks_table.move_cursor(row=tasks_table.get_row_index(self.selected_task))
+                finally:
+                    self._programmatic_move = False
         elif flat_tasks:
             self.selected_task = flat_tasks[0]["task_ref"]
 
@@ -330,8 +337,10 @@ class CockpitScreen(Screen):
         task_ref = self.selected_task
         jobs_table = self.query_one("#jobs-table", DataTable)
         self._programmatic_move = True
-        jobs_table.clear()
-        self._programmatic_move = False
+        try:
+            jobs_table.clear()
+        finally:
+            self._programmatic_move = False
 
         if task_ref:
             jobs = self.provider.get_jobs(session_id, task_ref)
@@ -354,8 +363,10 @@ class CockpitScreen(Screen):
             if self.selected_job and jobs:
                 with suppress(RowDoesNotExist):
                     self._programmatic_move = True
-                    jobs_table.move_cursor(row=jobs_table.get_row_index(self.selected_job))
-                    self._programmatic_move = False
+                    try:
+                        jobs_table.move_cursor(row=jobs_table.get_row_index(self.selected_job))
+                    finally:
+                        self._programmatic_move = False
             elif jobs:
                 self.selected_job = jobs[0]["job_id"]
 
@@ -392,8 +403,10 @@ class CockpitScreen(Screen):
                         log_pane.write(summary)
                 else:
                     log_pane.write("[dim]No audit log events[/]")
-            except Exception:
-                log_pane.write("[dim]Audit log[/]")
+            except Exception as e:
+                # Report the error clearly rather than swallowing it
+                error_msg = str(e) if str(e) else type(e).__name__
+                log_pane.write(f"[bold red]Error reading audit log:[/] {error_msg}")
 
     def _update_header(self):
         header = self.query_one("#cockpit-header", Static)
@@ -401,10 +414,23 @@ class CockpitScreen(Screen):
         active_mode = self.provider.get_active_mode()
         active_id = self.provider.get_active_session_id()
         active_short = _short_id(active_id) if active_id else "none"
+
+        # Show data age: how long ago this was read
+        age_str = "—"
+        if self._data_read_time:
+            age_secs = time.time() - self._data_read_time
+            if age_secs < 60:
+                age_str = f"{int(age_secs)}s"
+            elif age_secs < 3600:
+                age_str = f"{int(age_secs / 60)}m"
+            else:
+                age_str = f"{int(age_secs / 3600)}h"
+
         header.update(
             f"  [bold]{project}[/] > Cockpit  "
             f"|  Active Mode: [bold green]{active_mode or '—'}[/]  "
-            f"|  Active Session: [bold green]{active_short}[/]"
+            f"|  Active Session: [bold green]{active_short}[/]  "
+            f"|  Data: [dim]{age_str} ago[/]"
         )
         self.app.sub_title = (
             "  :protocol  :settings  :sessions  |  r:refresh  ::command  q:quit"
