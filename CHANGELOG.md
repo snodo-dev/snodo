@@ -49,6 +49,26 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The cockpit no longer slows down as a project grows. Every keystroke rebuilt
+  everything: `providers._get_audit_log()` constructed an `AuditLog`, whose
+  `__init__` parsed and hash-chain verified every event in the file, and
+  `get_all_events` then threw all but the last twenty away; `get_job_log` read a
+  job's entire stdout with `read_text()`. Both ran from `_cascade_update`, so the
+  cost of moving the cursor one row scaled with the size of the audit log and the
+  length of a job's output, neither of which is bounded. The viewer now reads what
+  it displays: the audit tail reads a bounded window at the end of the log through
+  the existing lock-free `tail_audit_events`, a job log reads a bounded tail, and
+  the settled Tasks and Jobs panes are re-read only when the session changes (or on
+  an explicit refresh), never as the operator moves inside them. The hash chain is
+  verified by `snodo audit verify`, where it is a governance claim; re-verifying
+  2,698 events on every keypress was a performance bug wearing a safety property.
+  The Jobs pane now lists every job the project has with the owning task shown as a
+  column rather than only the selected task's jobs, because a job's identity
+  includes its task and that is a column, not a filter. And the Live Log no longer
+  prints raw ANSI escapes literally — job stdout is decoded into styled text rather
+  than parsed as Rich markup. Textual is unchanged, no timer returns, no lock is
+  taken on the audit log or any state file, and no governance verification is
+  weakened. (Fixes #247)
 - The cockpit dashboard and all other dashboard screens now refresh only when the
   operator presses the refresh key (`r`) instead of continuously rewriting every
   cell on a 2-second interval. The automatic timer is removed. Each screen now shows

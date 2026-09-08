@@ -7,7 +7,8 @@ from contextlib import suppress
 import time
 from typing import Any, Dict, Optional, List
 
-from rich.markup import escape as _escape
+from rich.ansi import AnsiDecoder
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -17,6 +18,22 @@ from textual.widgets.data_table import RowDoesNotExist
 
 from snodo.dashboard.panels import register_panel, get_panel
 from snodo.dashboard.screens import _short_id
+
+
+def _ansi_to_text(content: str) -> Text:
+    """Decode ANSI escape sequences in job output into a styled Text.
+
+    Job stdout is terminal output, not Rich markup. ``AnsiDecoder`` turns the
+    escape sequences into styled text so colours render instead of printing
+    ``[1;31m`` literally; writing the result as a ``Text`` keeps it out of
+    Rich's square-bracket markup parser entirely.
+    """
+    text = Text()
+    for i, part in enumerate(AnsiDecoder().decode(content)):
+        if i:
+            text.append("\n")
+        text.append_text(part)
+    return text
 
 
 def _flatten_tasks(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -126,6 +143,10 @@ class CockpitScreen(Screen):
         self.selected_task: Optional[str] = None
         self.selected_job: Optional[str] = None
 
+        # Session the settled Tasks/Jobs panes were last read for. They are
+        # settled records: not re-read as the operator moves inside them.
+        self._tasks_built_for: Optional[str] = None
+
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static(id="cockpit-header")
@@ -160,7 +181,7 @@ class CockpitScreen(Screen):
         tasks_table.add_columns("Task ID", "Wave", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost")
 
         jobs_table = self.query_one("#jobs-table", DataTable)
-        jobs_table.add_columns("Job ID", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost")
+        jobs_table.add_columns("Job ID", "Task", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost")
 
         # Populate initial data (no automatic refresh timer - explicit only via 'r' key)
         self._refresh()
@@ -233,6 +254,10 @@ class CockpitScreen(Screen):
             # Update Cockpit Header
             self._update_header()
 
+            # Settled records are re-read on an explicit refresh (and when the
+            # session changes), never on every cursor move inside them.
+            self._tasks_built_for = None
+
             # Trigger cascade update (which will also use _programmatic_move)
             self._cascade_update()
 
@@ -245,8 +270,10 @@ class CockpitScreen(Screen):
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         """Handle user moving cursor to update cascade state.
 
-        Ignores programmatic cursor moves from refresh to avoid resetting selection
-        when tables are cleared and rebuilt (#239).
+        Ignores programmatic cursor moves during refresh to avoid resetting
+        selection when tables are cleared and rebuilt (#239). Only the Live Log
+        re-reads on a cursor move — the Tasks and Jobs panes are settled
+        records and are rebuilt only when the selected session changes.
         """
         # Ignore programmatic cursor moves during refresh
         if self._programmatic_move:
@@ -263,30 +290,49 @@ class CockpitScreen(Screen):
                 self.selected_session = row_id
                 self.selected_task = None
                 self.selected_job = None
+                # A different session has different tasks: re-read the settled panes.
                 self._cascade_update()
         elif table_id == "tasks-table":
             if self.selected_task != row_id:
                 self.selected_task = row_id
                 self.selected_job = None
-                self._cascade_update()
+                # Jobs are listed project-wide; only the Live Log re-reads.
+                self._update_live_log(self.selected_session, row_id, None)
         elif table_id == "jobs-table":
             if self.selected_job != row_id:
                 self.selected_job = row_id
-                self._cascade_update()
+                self._update_live_log(
+                    self.selected_session, self.selected_task, row_id
+                )
 
     def _cascade_update(self):
         """Update tables in cascade based on selection states.
 
         Hierarchy: Session → Tasks (with wave shown as a column) → Jobs → Live Log.
         Waves are no longer a filter level; all tasks from a session are shown.
+
+        The Tasks and Jobs panes are settled records: they are read from disk
+        only when the selected session changes (or an explicit refresh clears
+        the cache), never on every cursor move inside them. Moving inside a
+        settled pane re-reads nothing but the Live Log.
         """
         session_id = self.selected_session
         if not session_id:
+            self._tasks_built_for = None
             self.query_one("#tasks-table", DataTable).clear()
             self.query_one("#jobs-table", DataTable).clear()
             self._update_live_log(None, None, None)
             return
 
+        if self._tasks_built_for != session_id:
+            self._tasks_built_for = session_id
+            self._populate_tasks(session_id)
+            self._populate_jobs()
+
+        self._update_live_log(session_id, self.selected_task, self.selected_job)
+
+    def _populate_tasks(self, session_id: str) -> None:
+        """Read and render the Tasks pane for the selected session."""
         # Build a wave_id lookup map: task_ref → wave_id
         waves = self.provider.get_waves(session_id)
         task_to_wave: Dict[str, str] = {}
@@ -295,7 +341,6 @@ class CockpitScreen(Screen):
                 # Store mapping for both task_id and task_ref (which might be same)
                 task_to_wave[task_id] = w["wave_id"]
 
-        # Update Tasks - show all tasks from session, no wave filtering
         tasks_table = self.query_one("#tasks-table", DataTable)
         self._programmatic_move = True
         try:
@@ -333,8 +378,8 @@ class CockpitScreen(Screen):
         elif flat_tasks:
             self.selected_task = flat_tasks[0]["task_ref"]
 
-        # Update Jobs
-        task_ref = self.selected_task
+    def _populate_jobs(self) -> None:
+        """Read and render the Jobs pane: every job, with its task as a column."""
         jobs_table = self.query_one("#jobs-table", DataTable)
         self._programmatic_move = True
         try:
@@ -342,36 +387,33 @@ class CockpitScreen(Screen):
         finally:
             self._programmatic_move = False
 
-        if task_ref:
-            jobs = self.provider.get_jobs(session_id, task_ref)
-            for j in jobs:
-                job_id = j["job_id"]
-                status = j["status"]
-                liveness = self.provider.get_job_liveness(job_id)
-                if liveness is not None:
-                    if self.provider.is_stale_row(liveness):
-                        status = "[bold red]stale[/]"
-                    elif liveness.is_terminal():
-                        status = f"[dim]{status}[/dim]"
-                    cells = [job_id, status] + self.provider.liveness_cells(liveness)
-                else:
-                    dur_str = f"{j['duration']:.1f}s" if j["duration"] else "—"
-                    cells = [job_id, status, "—", "—", dur_str, "—", "—"]
-                jobs_table.add_row(*cells, key=job_id)
+        jobs = self.provider.get_jobs(self.selected_session)
+        for j in jobs:
+            job_id = j["job_id"]
+            task_ref = j.get("task_ref", "") or "—"
+            status = j["status"]
+            liveness = self.provider.get_job_liveness(job_id)
+            if liveness is not None:
+                if self.provider.is_stale_row(liveness):
+                    status = "[bold red]stale[/]"
+                elif liveness.is_terminal():
+                    status = f"[dim]{status}[/dim]"
+                cells = [job_id, task_ref, status] + self.provider.liveness_cells(liveness)
+            else:
+                dur_str = f"{j['duration']:.1f}s" if j["duration"] else "—"
+                cells = [job_id, task_ref, status, "—", "—", dur_str, "—", "—"]
+            jobs_table.add_row(*cells, key=job_id)
 
-            # Restore cursor position for jobs
-            if self.selected_job and jobs:
-                with suppress(RowDoesNotExist):
-                    self._programmatic_move = True
-                    try:
-                        jobs_table.move_cursor(row=jobs_table.get_row_index(self.selected_job))
-                    finally:
-                        self._programmatic_move = False
-            elif jobs:
-                self.selected_job = jobs[0]["job_id"]
-
-        # Update Live Log - show job log if job selected, else show audit log tail
-        self._update_live_log(session_id, task_ref, self.selected_job)
+        # Restore cursor position for jobs
+        if self.selected_job and jobs:
+            with suppress(RowDoesNotExist):
+                self._programmatic_move = True
+                try:
+                    jobs_table.move_cursor(row=jobs_table.get_row_index(self.selected_job))
+                finally:
+                    self._programmatic_move = False
+        elif jobs:
+            self.selected_job = jobs[0]["job_id"]
 
     def _update_live_log(self, session_id: Optional[str], task_ref: Optional[str], job_id: Optional[str]):
         """Update the Live Log pane with job log or audit log tail.
@@ -381,11 +423,13 @@ class CockpitScreen(Screen):
         log_pane = self.query_one("#log-pane", RichLog)
         log_pane.clear()
 
-        if job_id and session_id and task_ref:
-            # Show job log if job is selected
+        if job_id and session_id:
+            # Show job log if job is selected — a bounded tail, rendered as ANSI.
+            # A job's log is keyed by job_id alone; the task is a column, not a
+            # precondition, so a job can be read with no task selected.
             log_text = self.provider.get_job_log(session_id, task_ref, job_id)
             if log_text:
-                log_pane.write(_escape(log_text))
+                log_pane.write(_ansi_to_text(log_text))
             else:
                 log_pane.write("[dim]No log data available[/]")
         else:
@@ -394,9 +438,10 @@ class CockpitScreen(Screen):
                 events = self.provider.get_all_events(limit=20)
                 if events:
                     for event in reversed(events):  # Show newest first
-                        timestamp = event.get("timestamp", "?")
-                        event_type = event.get("event_type", "unknown")
-                        detail = event.get("detail", "")
+                        timestamp = event.timestamp
+                        event_type = event.event_type
+                        data = event.data if isinstance(event.data, dict) else {}
+                        detail = data.get("detail", "")
                         summary = f"[dim]{timestamp}[/] {event_type}"
                         if detail:
                             summary += f" - {detail[:60]}"

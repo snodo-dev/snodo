@@ -23,9 +23,41 @@ from snodo.dashboard.liveness import (
     idle_style,
     in_place_blind,
     liveness_text,
+    tail_audit_events,
 )
 
 _logger = logging.getLogger(__name__)
+
+#: Hard cap on a job-log tail read per interaction — a log pane shows a
+#: screenful, never the whole file, so the cost of selecting a job does not
+#: scale with how much that job has printed.
+_LOG_TAIL_BYTES = 256 * 1024
+
+
+def _read_tail_text(path: Path, max_bytes: int = _LOG_TAIL_BYTES) -> str:
+    """Read the tail of a text file, bounded to *max_bytes* bytes.
+
+    Seeks to a trailing window and drops the partial first line of that
+    window (the read may start mid-line), mirroring ``tail_audit_events``.
+    A plain ``open`` — no lock is taken, so a concurrent writer is never
+    blocked by the viewer. Returns "" when the file is missing or unreadable.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return ""
+    if size == 0:
+        return ""
+    window = min(size, max_bytes)
+    try:
+        with open(path, "rb") as f:
+            f.seek(size - window)
+            if window < size:
+                f.readline()  # drop the partial first line of the window
+            raw = f.read()
+    except OSError:
+        return ""
+    return raw.decode("utf-8", errors="replace")
 
 
 @dataclass
@@ -217,10 +249,26 @@ class DashboardDataProvider:
     # ------------------------------------------------------------------
 
     def get_all_events(self, limit: int = 100) -> List[AuditEvent]:
-        audit = self._get_audit_log()
-        if audit is None:
-            return []
-        return audit.get_history()[-limit:]
+        """Return the most recent *limit* audit events.
+
+        Reads a bounded window at the end of the log — never the whole file —
+        and does not re-verify the hash chain. Chain verification is
+        ``snodo audit verify``'s job, made once against an attestation; a
+        read-only viewer showing the last twenty events does not re-derive
+        every hash on every keypress.
+        """
+        events, _notes = tail_audit_events(
+            Path(self.project_root) / ".snodo" / "audit.log"
+        )
+        result: List[AuditEvent] = []
+        for event in events[-limit:]:
+            event = dict(event)
+            event.setdefault("project_id", "")
+            try:
+                result.append(AuditEvent(**event))
+            except TypeError:
+                continue  # unknown shape: skip, never crash the viewer
+        return result
 
     # ------------------------------------------------------------------
     # Waves, Tasks, Jobs, and Logs (Cockpit support)
@@ -276,13 +324,17 @@ class DashboardDataProvider:
             _logger.warning("Could not read plan status files: %s", e)
         return tasks
 
-    def get_jobs(self, session_id: str, task_ref: str) -> List[Dict[str, Any]]:
+    def get_jobs(self, session_id: str) -> List[Dict[str, Any]]:
+        """Return every job the project has, each tagged with its task.
+
+        A job's identity includes its task; that is a column, not a filter.
+        Listing them all means moving the cursor between tasks never re-reads
+        or re-filters job state.
+        """
         jobs_dir = Path(self.project_root) / ".snodo" / "jobs"
         if not jobs_dir.exists():
             return []
-        
-        target_task_id = task_ref.split(":")[-1] if ":" in task_ref else task_ref
-        
+
         import json
         import time
         jobs = []
@@ -294,15 +346,12 @@ class DashboardDataProvider:
                     if task_path.exists() and state_path.exists():
                         with open(task_path) as f:
                             task_data = json.load(f)
-                        
-                        job_task_id = task_data.get("task_id", "")
-                        job_retry_task_id = task_data.get("retry_task_id", "")
-                        if job_task_id != target_task_id and job_retry_task_id != target_task_id:
-                            continue
-                            
+
+                        job_task_id = task_data.get("task_id") or task_data.get("retry_task_id") or ""
+
                         with open(state_path) as f:
                             state_data = json.load(f)
-                        
+
                         started = state_data.get("started_at")
                         completed = state_data.get("completed_at")
                         duration = 0.0
@@ -311,9 +360,10 @@ class DashboardDataProvider:
                                 duration = completed - started
                             else:
                                 duration = time.time() - started
-                        
+
                         jobs.append({
                             "job_id": job_path.name,
+                            "task_ref": job_task_id,
                             "status": state_data.get("status", "unknown"),
                             "duration": duration,
                             "created_at": state_data.get("created_at"),
@@ -328,28 +378,27 @@ class DashboardDataProvider:
         return jobs
 
     def get_job_log(self, session_id: str, task_ref: str, job_id: str) -> str:
+        """Return a bounded tail of a job's stdout/stderr — never the whole file.
+
+        A log pane shows a screenful; reading every byte a long-running job
+        printed would make each cursor move cost that job's full output.
+        """
         job_dir = Path(self.project_root) / ".snodo" / "jobs" / job_id
         if not job_dir.exists():
             return "No log found: job directory does not exist."
-        
+
         log_content = []
         stdout_file = job_dir / "stdout.log"
         stderr_file = job_dir / "stderr.log"
-        
-        if stdout_file.exists():
-            try:
-                log_content.append(stdout_file.read_text(errors="replace"))
-            except Exception as e:
-                log_content.append(f"Error reading stdout: {e}")
-        
-        if stderr_file.exists():
-            try:
-                err_text = stderr_file.read_text(errors="replace")
-                if err_text.strip():
-                    log_content.append("\n--- STDERR ---\n" + err_text)
-            except Exception as e:
-                log_content.append(f"Error reading stderr: {e}")
-                 
+
+        stdout_text = _read_tail_text(stdout_file)
+        if stdout_text:
+            log_content.append(stdout_text)
+
+        stderr_text = _read_tail_text(stderr_file)
+        if stderr_text.strip():
+            log_content.append("\n--- STDERR ---\n" + stderr_text)
+
         return "".join(log_content) if log_content else "No log records found."
 
     # ------------------------------------------------------------------
