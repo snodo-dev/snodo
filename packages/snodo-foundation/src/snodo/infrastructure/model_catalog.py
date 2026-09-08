@@ -7,9 +7,16 @@ context window, and capability metadata.  Fallback: litellm.model_cost
 then "unknown".
 
 Lookup normalises snodo model strings to catalog keys:
-  deepseek/deepseek-v4-flash  -> providers.deepseek.models["deepseek-v4-flash"]
+  <block>/<id>                -> providers[<catalog_provider>].models["<id>"]
+                                 The configured provider's own prefix is
+                                 stripped, and the block's ``catalog_provider``
+                                 names the catalog key (defaulting to the block
+                                 name so every existing configuration keeps
+                                 working unchanged).
   gemini/X                    -> providers.google.models["X"]
+                                 (google's prefix differs from its block name)
   openai/@cf/<rest>           -> providers.cloudflare.models["<rest>"]
+                                 (cloudflare's prefix differs from its block name)
   claude-{X} (bare)           -> providers.anthropic.models["claude-{X}"]
 """
 
@@ -85,9 +92,18 @@ def get_catalog() -> Optional[dict]:
 
 
 def _normalise(model: str) -> tuple[Optional[str], Optional[str]]:
-    """Return (provider_name, model_id) or (None, None).
+    """Return (catalog_provider, model_id) or (None, None).
 
     Normalizes snodo model strings for catalog.providers[provider].models[model_id].
+
+    The configured provider's own prefix is stripped to get the model_id —
+    ``ollama/deepseek-v4-flash:0731`` -> ``deepseek-v4-flash:0731`` — and the
+    block's ``catalog_provider`` (defaulting to the block name) names the
+    catalog key, because the two are different vocabularies: the catalog
+    carries 213 providers and the operator is free to name their block
+    anything. The three special cases below exist only because their prefixes
+    differ from their block names (cloudflare's ``openai/@cf/``, google's
+    ``gemini/``); stripping the provider's own prefix is the general rule.
     """
     if not model:
         return None, None
@@ -95,6 +111,11 @@ def _normalise(model: str) -> tuple[Optional[str], Optional[str]]:
     provider = ConfigManager._provider_for_model(model)
     if not provider:
         return None, None
+
+    # The catalog provider key: the block's catalog_provider when set,
+    # otherwise the block name itself (every existing config keeps working).
+    pc = ConfigManager().get_providers().get(provider)
+    catalog_provider = (getattr(pc, "catalog_provider", "") or provider) if pc else provider
 
     # Strip the provider/path prefix to get the model_id
     model_lower = model.lower()
@@ -104,25 +125,32 @@ def _normalise(model: str) -> tuple[Optional[str], Optional[str]]:
         # strip "openai/@cf/"
         prefix = "openai/@cf/"
         if model_lower.startswith(prefix):
-            return provider, model[len(prefix):]
-        return provider, model
+            return catalog_provider, model[len(prefix):]
+        return catalog_provider, model
 
     if provider == "google":
         # gemini/gemini-2.0-flash-exp -> gemini-2.0-flash-exp
         prefix = "gemini/"
         if model_lower.startswith(prefix):
-            return provider, model[len(prefix):]
-        return provider, model
+            return catalog_provider, model[len(prefix):]
+        return catalog_provider, model
 
     if provider == "deepseek":
         # deepseek/deepseek-v4-flash -> deepseek-v4-flash
         prefix = "deepseek/"
         if model_lower.startswith(prefix):
-            return provider, model[len(prefix):]
-        return provider, model
+            return catalog_provider, model[len(prefix):]
+        return catalog_provider, model
+
+    # General rule: strip the configured provider's own prefix. A model id
+    # containing a colon or a slash (e.g. "deepseek-v4-flash:0731") survives
+    # untouched — only the leading "<block>/" is removed.
+    prefix = f"{provider}/"
+    if model_lower.startswith(prefix):
+        return catalog_provider, model[len(prefix):]
 
     # anthropic, openai: bare model string like "claude-sonnet-4-20250514"
-    return provider, model
+    return catalog_provider, model
 
 
 def lookup(model: str) -> dict[str, Any]:
