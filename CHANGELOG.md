@@ -54,6 +54,24 @@ snodo uses [Semantic Versioning](https://semver.org/).
   via `snodo session show` and listed in `snodo session list`. Warns and requires confirmation
   when the outgoing session contains live state (pending adjudication proposals or in-progress
   tasks), with `--yes` / `--force` to skip for scripted use. (Fixes #220)
+- The dashboard's Tasks and Jobs panes now answer the operator's real question — is this
+  still alive, and how long has it been in the phase it is in — from what the engine already
+  records. Each row shows the current phase, how long it has been in it, seconds since the
+  last sign of life (audit event or LLM-call usage record, the number that matters most and
+  was previously unavailable anywhere), whether the process is alive, and cost so far. A
+  foreground run now records its pid in `.snodo/tasks/<id>/state.json` at start, the same
+  way a background job's wrapper already does, so liveness is answerable for both. The panes
+  are pure readers: no telemetry, no new audit events, no new payload fields, no lock on the
+  audit log or any state file (the engine appends under `fcntl.flock` while the dashboard
+  reads), and a partially written state file or torn audit tail is tolerated rather than
+  crashing the screen. A record whose state file still says `running` but whose pid is dead
+  and whose last sign of life is older than ten minutes is named `stale` rather than
+  presented as live — the active session's `current_task` is deliberately not a liveness
+  signal, because it is set at run start and never cleared, so it is exactly as stale-prone
+  as the `status: running` field it would be asked to rescue. In-place subprocess coders
+  record no per-turn usage (ADR 034 documents that as a decision, not a gap), so during the
+  coder phase the pane says `blind` and leans on elapsed time rather than implying progress
+  it cannot see. (Fixes #236)
 - Added a deterministic method scaffolding readiness check (`snodo ready` / `snodo readiness`).
   Derives checks dynamically from the compiled protocol (committed decision records for architecture
   validators, resolvable test commands for quality validators, committed paths cited in criteria,

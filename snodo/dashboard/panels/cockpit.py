@@ -160,10 +160,10 @@ class CockpitScreen(Screen):
         waves_table.add_columns("Wave", "Description")
         
         tasks_table = self.query_one("#tasks-table", DataTable)
-        tasks_table.add_columns("Task ID", "Status")
+        tasks_table.add_columns("Task ID", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost")
         
         jobs_table = self.query_one("#jobs-table", DataTable)
-        jobs_table.add_columns("Job ID", "Status", "Duration")
+        jobs_table.add_columns("Job ID", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost")
 
         self._refresh()
         self._refresh_timer = self.set_interval(2.0, self._refresh)
@@ -309,7 +309,17 @@ class CockpitScreen(Screen):
         for t in flat_tasks:
             indent = "  " * t["depth"] + ("↳ " if t["depth"] > 0 else "")
             display_id = indent + t["task_id"]
-            tasks_table.add_row(display_id, t["status"], key=t["task_ref"])
+            status = t["status"]
+            liveness = self.provider.get_task_liveness(t["task_id"])
+            if liveness is not None:
+                if self.provider.is_stale_row(liveness):
+                    status = "[bold red]stale[/]"
+                elif liveness.is_terminal():
+                    status = f"[dim]{status}[/dim]"
+                cells = [display_id, status] + self.provider.liveness_cells(liveness)
+            else:
+                cells = [display_id, status, "—", "—", "—", "—", "—"]
+            tasks_table.add_row(*cells, key=t["task_ref"])
             
         if not self.selected_task and flat_tasks:
             self.selected_task = flat_tasks[0]["task_ref"]
@@ -331,8 +341,19 @@ class CockpitScreen(Screen):
             
         jobs = self.provider.get_jobs(session_id, task_ref)
         for j in jobs:
-            dur_str = f"{j['duration']:.1f}s" if j["duration"] else "—"
-            jobs_table.add_row(j["job_id"], j["status"], dur_str, key=j["job_id"])
+            job_id = j["job_id"]
+            status = j["status"]
+            liveness = self.provider.get_job_liveness(job_id)
+            if liveness is not None:
+                if self.provider.is_stale_row(liveness):
+                    status = "[bold red]stale[/]"
+                elif liveness.is_terminal():
+                    status = f"[dim]{status}[/dim]"
+                cells = [job_id, status] + self.provider.liveness_cells(liveness)
+            else:
+                dur_str = f"{j['duration']:.1f}s" if j["duration"] else "—"
+                cells = [job_id, status, "—", "—", dur_str, "—", "—"]
+            jobs_table.add_row(*cells, key=job_id)
             
         if not self.selected_job and jobs:
             self.selected_job = jobs[0]["job_id"]

@@ -15,6 +15,16 @@ from snodo.compiler.models import Protocol, Mode
 from snodo.infrastructure.audit import AuditLog, AuditEvent, AuditError
 from snodo.infrastructure.state import read_state
 
+from snodo.dashboard.liveness import (
+    RunRow,
+    collect_snapshot,
+    fmt_age,
+    fmt_cost,
+    idle_style,
+    in_place_blind,
+    liveness_text,
+)
+
 _logger = logging.getLogger(__name__)
 
 
@@ -67,6 +77,7 @@ class DashboardDataProvider:
         self._audit_log: Optional[AuditLog] = None
         self._protocol: Optional[Protocol] = None
         self._protocol_error: Optional[str] = None
+        self._liveness_cache: Optional[dict] = None
 
     @property
     def project_name(self) -> str:
@@ -340,6 +351,75 @@ class DashboardDataProvider:
                 log_content.append(f"Error reading stderr: {e}")
                  
         return "".join(log_content) if log_content else "No log records found."
+
+    # ------------------------------------------------------------------
+    # Liveness (Tasks and Jobs panes)
+    # ------------------------------------------------------------------
+
+    def get_liveness_snapshot(self) -> dict:
+        """Read the on-disk liveness snapshot. Pure reads, no locks, no writes.
+
+        Cached for a short window so one refresh pass reads disk once even
+        though it asks for many rows; the cockpit's 2s timer keeps the view
+        fresh.
+        """
+        import time as _time
+        now = _time.time()
+        cached = self._liveness_cache
+        if cached is not None and now - cached["at"] < 1.0:
+            return cached["snapshot"]
+        snapshot = collect_snapshot(self.project_root)
+        self._liveness_cache = {"at": now, "snapshot": snapshot}
+        return snapshot
+
+    def get_liveness_rows(self) -> List[RunRow]:
+        """All task/job rows from disk, live runs first, then recent settled."""
+        return self.get_liveness_snapshot()["runs"]
+
+    def get_liveness_notes(self) -> List[str]:
+        """Reader notes (partial state, torn tail, dual-written usage, ...)."""
+        return self.get_liveness_snapshot()["notes"]
+
+    def get_task_liveness(self, task_id: str) -> Optional[RunRow]:
+        """Liveness row for one task id, or None when it is not on disk."""
+        for row in self.get_liveness_rows():
+            if row.kind == "task" and row.run_id == task_id:
+                return row
+        return None
+
+    def get_job_liveness(self, job_id: str) -> Optional[RunRow]:
+        """Liveness row for one job id, or None when it is not on disk."""
+        for row in self.get_liveness_rows():
+            if row.kind == "job" and row.run_id == job_id:
+                return row
+        return None
+
+    def liveness_cells(self, row: RunRow) -> List[str]:
+        """Render the liveness columns for a task/job row.
+
+        Returns ``[phase, phase_for, idle, alive, cost]`` as markup strings
+        ready for a DataTable cell. ``idle`` is the number that matters most:
+        seconds since the last sign of life (audit event or LLM-call usage
+        record), styled by how long it has been silent.
+        """
+        now = self.get_liveness_snapshot()["now"]
+        phase, since = row.phase_group(now)
+        idle = row.idle_seconds(now)
+        phase_for = fmt_age(now - since) if since else "—"
+        if in_place_blind(row, now):
+            phase = f"{phase} [dim](blind: ADR 034)[/dim]"
+        return [
+            phase,
+            phase_for,
+            f"[{idle_style(idle)}]{fmt_age(idle)}[/]",
+            liveness_text(row),
+            fmt_cost(row),
+        ]
+
+    def is_stale_row(self, row: RunRow) -> bool:
+        """True when a record that claims to be running is actually stale."""
+        from snodo.dashboard.liveness import is_stale
+        return is_stale(row, self.get_liveness_snapshot()["now"])
 
     # ------------------------------------------------------------------
     # Internal helpers
