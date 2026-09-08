@@ -270,6 +270,11 @@ class WaveRegistry:
     ) -> dict:
         """Call LLM classifier, validate required fields, retry once on failure.
 
+        The completion_fn is a functools.partial with model and api_base already
+        bound. Do not pass model as a kwarg — the binding carries the model and
+        routing (api_base) configured for this classifier role, and overriding
+        it would break provider configuration (ADR 020, #237).
+
         Returns a dict with at minimum ``flow_type``.  On total failure
         after retry, ``wave_id`` and ``task_summary`` are None — the caller
         must not mint a wave.
@@ -280,7 +285,6 @@ class WaveRegistry:
                     from litellm import completion as completion_fn
 
                 kwargs: dict = {
-                    "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": self._classifier.max_tokens,
                     "temperature": self._classifier.temperature,

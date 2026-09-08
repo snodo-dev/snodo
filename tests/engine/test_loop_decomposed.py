@@ -86,6 +86,8 @@ def test_init_api_base_set(sample_protocol):
         @staticmethod
         def resolve_api_base(model):
             return "https://custom-api.openai.com/v1"
+        def get_key_for_model(self, model):
+            return "mock-api-key"
 
     class MockProviderManager:
         def get_providers(self):

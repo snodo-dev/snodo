@@ -374,10 +374,12 @@ def resolve_model_for_role(config: dict, role: str, fallback: str) -> str:
 
 
 def build_completion_fn(model: str, base_fn: Any) -> Any:
-    """Build a ``functools.partial`` of *base_fn* bound to *model*.
+    """Build a ``functools.partial`` of *base_fn* bound to *model* and credentials.
 
-    If the model's provider has a ``base_url`` configured, ``api_base`` is
-    also bound so the call routes to the correct endpoint.
+    Binds model and api_base so the call routes to the correct endpoint and
+    uses the correct provider configuration. Binds api_key directly to avoid
+    credential collision when multiple OpenAI-compatible providers exist in
+    one run (#237).
     """
     import functools
 
@@ -387,6 +389,14 @@ def build_completion_fn(model: str, base_fn: Any) -> Any:
     api_base = ConfigManager.resolve_api_base(model)
     if api_base:
         kwargs["api_base"] = api_base
+
+    # Get API key for this model's provider and bind it directly to avoid
+    # credential collision via os.environ when two OpenAI-compatible providers
+    # are used in the same run. This carries the credential with the call.
+    api_key = ConfigManager().get_key_for_model(model)
+    if api_key:
+        kwargs["api_key"] = api_key
+
     return functools.partial(base_fn, **kwargs)
 
 
