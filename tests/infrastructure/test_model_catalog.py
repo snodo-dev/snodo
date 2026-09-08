@@ -40,6 +40,10 @@ def catalog(tmp_path, monkeypatch):
                         "limit": {"context": 1048576},
                         "tool_call": True,
                     },
+                    "deepseek-v4-pro": {
+                        "cost": None,
+                        "limit": {"context": 1048576},
+                    },
                     "llama3:8b": {
                         "cost": {"input": 0.0000001, "output": 0.0000002},
                         "limit": {"context": 8192},
@@ -48,8 +52,8 @@ def catalog(tmp_path, monkeypatch):
             },
             "cloudflare": {
                 "models": {
-                    "google/gemma-4-26b-a4b-it": {
-                        "cost": {"input": 0.0000001, "output": 0.0000002},
+                    "@cf/google/gemma-4-26b-a4b-it": {
+                        "cost": {"input": 0.1, "output": 0.3},
                         "limit": {"context": 262144},
                     },
                 },
@@ -166,13 +170,17 @@ def test_bare_model_id_without_prefix_is_unattributable(catalog, monkeypatch):
 
 
 def test_cloudflare_special_case_unchanged(catalog, monkeypatch):
-    """openai/@cf/<rest> -> cloudflare.models["<rest>"]."""
+    """openai/@cf/<rest> -> cloudflare.models["@cf/<rest>"]."""
     _configure_provider(monkeypatch, "cloudflare")
     provider, model_id = _normalise("openai/@cf/google/gemma-4-26b-a4b-it")
     assert provider == "cloudflare"
-    assert model_id == "google/gemma-4-26b-a4b-it"
+    assert model_id == "@cf/google/gemma-4-26b-a4b-it"
     meta = lookup("openai/@cf/google/gemma-4-26b-a4b-it")
     assert meta["context"] == 262144
+    assert meta["input_cost"] == 0.1
+    assert meta["output_cost"] == 0.3
+    assert meta["cost_unit"] == "per_1m"
+    assert meta["found"] is True
 
 
 def test_google_special_case_unchanged(catalog, monkeypatch):
@@ -215,6 +223,37 @@ def test_model_with_no_catalog_entry_reports_unknown(catalog, monkeypatch):
     meta = lookup("ollama/not-in-catalog")
     assert meta["input_cost"] == "unknown"
     assert meta["context"] == 0
+    assert meta["found"] is False
+
+
+def test_model_with_tag_resolves_when_catalog_has_untagged(catalog, monkeypatch):
+    """A :tag id resolves when the catalog carries the model untagged."""
+    _configure_provider(monkeypatch, "ollama", catalog_provider="ollama-cloud")
+    meta = lookup("ollama/deepseek-v4-pro:0813")
+    assert meta["found"] is True
+    assert meta["context"] == 1048576
+    assert meta["input_cost"] == "unknown"
+
+
+def test_model_with_tag_resolves_when_catalog_has_tagged(catalog, monkeypatch):
+    """A :tag id resolves when the catalog carries the model with the tag."""
+    _configure_provider(monkeypatch, "ollama", catalog_provider="ollama-cloud")
+    meta = lookup("ollama/deepseek-v4-flash:0731")
+    assert meta["found"] is True
+    assert meta["context"] == 1048576
+
+
+def test_found_without_price_is_distinguishable_from_not_found(catalog, monkeypatch):
+    """A model found with no published price reports found=True; a model not
+    found at all reports found=False."""
+    _configure_provider(monkeypatch, "ollama", catalog_provider="ollama-cloud")
+    found = lookup("ollama/deepseek-v4-flash:0731")
+    assert found["found"] is True
+    assert found["input_cost"] == "unknown"
+
+    missing = lookup("ollama/not-in-catalog")
+    assert missing["found"] is False
+    assert missing["input_cost"] == "unknown"
 
 
 def test_no_catalog_on_disk_reports_unknown(tmp_path, monkeypatch):

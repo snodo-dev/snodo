@@ -53,6 +53,13 @@ class UsageTracker(CustomLogger):
                 inp = meta.get("input_cost")
                 outp = meta.get("output_cost")
                 if isinstance(inp, (int, float)) and isinstance(outp, (int, float)):
+                    # models.dev publishes dollars per million tokens; the
+                    # litellm fallback publishes dollars per token.  The unit
+                    # is carried on the lookup result so the per-token cost is
+                    # never scaled by the wrong factor.
+                    if meta.get("cost_unit", "per_1m") == "per_1m":
+                        inp = inp / 1_000_000
+                        outp = outp / 1_000_000
                     cost = (prompt_tokens * inp) + (completion_tokens * outp)
             except Exception as e:
                 _logger.debug("Catalog cost calculation failed: %s", e)

@@ -69,6 +69,26 @@ snodo uses [Semantic Versioning](https://semver.org/).
   table, no change to what is printed when metadata is genuinely absent, and
   the catalog is fetched no more often than the existing 24h cache TTL.
   (Fixes #241)
+- `snodo models` now prints every number in the unit it was published in, and
+  says which kind of absent a missing value is. The cloudflare branch of
+  `_normalise` stripped `openai/@cf/` but the catalog key keeps the `@cf/`
+  (only `openai/` is snodo's prefix), so `openai/@cf/google/gemma-4-26b-a4b-it`
+  never resolved; it now resolves to `@cf/google/gemma-4-26b-a4b-it` and its
+  cost and context come from the catalog. A model id carrying a `:tag` now
+  resolves when the catalog carries the model untagged (the tag is stripped
+  only as a fallback, so a tagged catalog entry still wins). A published price
+  renders at its true magnitude: models.dev publishes dollars per million
+  tokens and the litellm fallback publishes dollars per token, and the lookup
+  result now carries `cost_unit` so the caller never scales by the wrong
+  factor — the previous code multiplied every price by 1,000,000, printing
+  `$100,000.00` for a `$0.10`/1M model. A context window renders in K/M
+  (`1048576` → `1M`, `262144` → `256K`) while the exact value stays available
+  on the lookup result. `unknown` no longer means two things: a model that
+  resolved but publishes no price prints `none published`, and a model that
+  did not resolve at all prints `unknown` (the lookup result carries `found`).
+  No hardcoded price table, no hardcoded provider-name mapping, no invented
+  cost where the catalog states none, no business-model label the catalog does
+  not state, and the 24h cache TTL is unchanged. (Fixes #242)
 
 - A role's model and credential now travel with its completion call instead of
   through process-global state. Every provider block declaring

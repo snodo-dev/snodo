@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 
 from snodo.cli.commands.models_cmd import (
     _apply_discrete_filters,
+    _format_context,
     _get_models,
     _lookup_context,
     _lookup_price,
@@ -266,15 +267,66 @@ def test_models_command_no_filters_matched(mock_providers_config, monkeypatch, c
 
 def test_lookup_price_and_context(monkeypatch):
     """_lookup_price and _lookup_context query catalog for metadata."""
-    mock_lookup = MagicMock(return_value={"input_cost": 0.000005, "output_cost": 0.000015, "context": 128000})
+    mock_lookup = MagicMock(return_value={
+        "input_cost": 0.1, "output_cost": 0.3, "context": 131072,
+        "found": True, "cost_unit": "per_1m",
+    })
     monkeypatch.setattr("snodo.infrastructure.model_catalog.lookup", mock_lookup)
 
+    inp, outp = _lookup_price("openai/gpt-4o")
+    assert inp == "$0.10"
+    assert outp == "$0.30"
+
+    ctx_str = _lookup_context("openai/gpt-4o")
+    assert ctx_str == "128K"
+
+
+def test_lookup_price_respects_published_unit(monkeypatch):
+    """A per-token price (litellm fallback) is scaled to per-1M; a per-1M
+    price (models.dev) is printed at its true magnitude."""
+    monkeypatch.setattr("snodo.infrastructure.model_catalog.lookup", MagicMock(return_value={
+        "input_cost": 0.000005, "output_cost": 0.000015, "context": 0,
+        "found": True, "cost_unit": "per_token",
+    }))
     inp, outp = _lookup_price("openai/gpt-4o")
     assert inp == "$5.00"
     assert outp == "$15.00"
 
-    ctx_str = _lookup_context("openai/gpt-4o")
-    assert ctx_str == "128000"
+    monkeypatch.setattr("snodo.infrastructure.model_catalog.lookup", MagicMock(return_value={
+        "input_cost": 0.1, "output_cost": 0.3, "context": 0,
+        "found": True, "cost_unit": "per_1m",
+    }))
+    inp, outp = _lookup_price("openai/@cf/google/gemma-4-26b-a4b-it")
+    assert inp == "$0.10"
+    assert outp == "$0.30"
+
+
+def test_lookup_price_distinguishes_absent_kinds(monkeypatch):
+    """A model found with no published price prints 'none published'; a model
+    not found at all prints 'unknown'."""
+    monkeypatch.setattr("snodo.infrastructure.model_catalog.lookup", MagicMock(return_value={
+        "input_cost": "unknown", "output_cost": "unknown", "context": 0,
+        "found": True, "cost_unit": "per_1m",
+    }))
+    inp, outp = _lookup_price("ollama/deepseek-v4-flash:0731")
+    assert inp == "none published"
+    assert outp == "none published"
+
+    monkeypatch.setattr("snodo.infrastructure.model_catalog.lookup", MagicMock(return_value={
+        "input_cost": "unknown", "output_cost": "unknown", "context": 0,
+        "found": False, "cost_unit": "per_1m",
+    }))
+    inp, outp = _lookup_price("ollama/not-in-catalog")
+    assert inp == "unknown"
+    assert outp == "unknown"
+
+
+def test_format_context_renders_k_and_m():
+    """Context windows render in K/M while the exact value stays available."""
+    assert _format_context(1048576) == "1M"
+    assert _format_context(262144) == "256K"
+    assert _format_context(8192) == "8K"
+    assert _format_context(999) == "999"
 
 
 def test_cli_register_models(mock_providers_config, monkeypatch):
