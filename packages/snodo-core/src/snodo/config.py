@@ -31,6 +31,7 @@ class ProviderConfig(BaseModel):
     litellm_provider: str = ""
     extra_headers: Dict[str, str] = Field(default_factory=dict)
     probe_model: str = ""
+    catalog_provider: str = ""
 
 
 DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {

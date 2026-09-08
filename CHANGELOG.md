@@ -48,6 +48,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
   tasks. The layout was reduced from three horizontal panes to two, which fits a
   standard terminal width. The three-pane structure (Sessions, Waves, Tasks) forced
   choice between wide viewing and fitting the screen. (Fixes #239)
+- `snodo models` now resolves cost and context metadata for providers the
+  operator configured themselves, even when the block name differs from the
+  catalog's provider key. Two independent bugs in `_normalise` in
+  `snodo/infrastructure/model_catalog.py` stopped the lookup: the configured
+  provider's own prefix was only stripped for three providers (cloudflare,
+  google, deepseek — special only because their prefixes differ from their
+  block names), so `ollama/deepseek-v4-flash:0731` was looked up as
+  `models["ollama/deepseek-v4-flash:0731"]` instead of
+  `models["deepseek-v4-flash:0731"]`; and the block's name was used as the
+  catalog's provider key, two different vocabularies (the catalog carries 213
+  providers and names this one `ollama-cloud`; the operator's block is called
+  `ollama`). Stripping the provider's own prefix is now the general rule, and
+  a provider block can declare `catalog_provider` to say which catalog key it
+  corresponds to, defaulting to its own name so every existing configuration
+  keeps working unchanged. A model id containing a colon or a slash survives
+  normalisation untouched. Cost that the catalog states as `None` (e.g. a
+  subscription plan) is still reported honestly as unknown; the context window
+  is present and appears. No new per-provider branches, no hardcoded mapping
+  table, no change to what is printed when metadata is genuinely absent, and
+  the catalog is fetched no more often than the existing 24h cache TTL.
+  (Fixes #241)
+
 - A role's model and credential now travel with its completion call instead of
   through process-global state. Every provider block declaring
   `litellm_provider: openai` had its key written into `OPENAI_API_KEY` in
