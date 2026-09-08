@@ -955,7 +955,7 @@ class TestPostExecuteToolLoop:
         mock_workspace.list_files.assert_called_once_with("src")
 
     def test_tool_loop_bounded_at_max_turns(self, security_validator):
-        """Tool loop should fail-closed after max turns without submit_verdict."""
+        """Tool loop should record abstention after max turns without submit_verdict."""
         from snodo.validators.llm_validator import _DEFAULT_MAX_TOOL_TURNS
 
         mock_git = MagicMock()
@@ -980,9 +980,11 @@ class TestPostExecuteToolLoop:
 
         result = validator.evaluate(ctx)
 
-        assert result.severity == "blocker"
-        assert result.error
-        assert "maximum" in result.justification.lower()
+        # Exhausted judges record as abstention, not error
+        assert result.severity == "pass"
+        assert not result.error
+        assert result.abstained
+        assert "exhausted" in result.abstention_reason.lower()
         assert completion_fn.call_count == _DEFAULT_MAX_TOOL_TURNS
 
     def test_tool_loop_invalid_submit_verdict_gets_tool_response(self, security_validator):
