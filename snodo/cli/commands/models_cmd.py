@@ -179,22 +179,49 @@ def _get_models(provider_name: str, pc, force_refresh: bool = False) -> list:
 
 
 def _lookup_price(full_string: str) -> tuple:
-    """Return (input_cost_per_1M, output_cost_per_1M) or ("unknown", "unknown")."""
+    """Return (input_cost_per_1M, output_cost_per_1M) or ("unknown", "unknown").
+
+    The catalog publishes dollars per million tokens; the litellm fallback
+    publishes dollars per token.  ``cost_unit`` from the lookup tells the two
+    apart, so a number is never scaled by the wrong factor.  A model that
+    resolved but publishes no price prints "none published"; a model that did
+    not resolve at all prints "unknown".
+    """
     from snodo.infrastructure.model_catalog import lookup as catalog_lookup
     meta = catalog_lookup(full_string)
     inp = meta.get("input_cost")
     outp = meta.get("output_cost")
-    inp_str = f"${float(inp) * 1_000_000:.2f}" if isinstance(inp, (int, float)) else "unknown"
-    outp_str = f"${float(outp) * 1_000_000:.2f}" if isinstance(outp, (int, float)) else "unknown"
-    return inp_str, outp_str
+    unit = meta.get("cost_unit", "per_1m")
+    found = meta.get("found", False)
+
+    def _fmt(val) -> str:
+        if not isinstance(val, (int, float)):
+            return "none published" if found else "unknown"
+        if unit == "per_token":
+            return f"${float(val) * 1_000_000:.2f}"
+        return f"${float(val):.2f}"
+
+    return _fmt(inp), _fmt(outp)
+
+
+def _format_context(ctx: int) -> str:
+    """Render a token count in K/M, keeping the exact value available.
+
+    ``1048576`` -> ``1M``, ``262144`` -> ``256K``, ``8192`` -> ``8K``.
+    """
+    if ctx >= 1024 * 1024:
+        return f"{ctx / (1024 * 1024):.0f}M"
+    if ctx >= 1024:
+        return f"{ctx / 1024:.0f}K"
+    return str(ctx)
 
 
 def _lookup_context(full_string: str) -> str:
-    """Return context window as string, or '—' if unknown."""
+    """Return context window as a K/M string, or '—' if unknown."""
     from snodo.infrastructure.model_catalog import lookup as catalog_lookup
     meta = catalog_lookup(full_string)
     ctx = meta.get("context", 0)
-    return str(ctx) if ctx else "—"
+    return _format_context(int(ctx)) if ctx else "—"
 
 
 def _apply_discrete_filters(

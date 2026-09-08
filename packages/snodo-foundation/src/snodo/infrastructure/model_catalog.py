@@ -15,9 +15,16 @@ Lookup normalises snodo model strings to catalog keys:
                                  working unchanged).
   gemini/X                    -> providers.google.models["X"]
                                  (google's prefix differs from its block name)
-  openai/@cf/<rest>           -> providers.cloudflare.models["<rest>"]
-                                 (cloudflare's prefix differs from its block name)
+  openai/@cf/<rest>           -> providers.cloudflare.models["@cf/<rest>"]
+                                 (only "openai/" is snodo's prefix; "@cf/" is
+                                 part of the model id, so it is kept)
   claude-{X} (bare)           -> providers.anthropic.models["claude-{X}"]
+
+Every result carries the unit its numbers were published in:
+  ``cost_unit`` is ``"per_1m"`` for models.dev (dollars per million tokens)
+  and ``"per_token"`` for the litellm fallback (``input_cost_per_token``).
+  ``found`` distinguishes a model that resolved (but publishes no price)
+  from one that did not resolve at all.
 """
 
 import json
@@ -121,9 +128,10 @@ def _normalise(model: str) -> tuple[Optional[str], Optional[str]]:
     model_lower = model.lower()
 
     if provider == "cloudflare":
-        # openai/@cf/google/gemma-4-26b-a4b-it -> google/gemma-4-26b-a4b-it
-        # strip "openai/@cf/"
-        prefix = "openai/@cf/"
+        # openai/@cf/google/gemma-4-26b-a4b-it -> @cf/google/gemma-4-26b-a4b-it
+        # only "openai/" is snodo's prefix; "@cf/" is part of the model id
+        # (the catalog key is "@cf/google/gemma-4-26b-a4b-it").
+        prefix = "openai/"
         if model_lower.startswith(prefix):
             return catalog_provider, model[len(prefix):]
         return catalog_provider, model
@@ -157,6 +165,11 @@ def lookup(model: str) -> dict[str, Any]:
     """Look up model metadata: input_cost, output_cost, context, tool_call, reasoning.
 
     Returns a dict with all keys present (fallback values for missing keys).
+
+    ``found`` is True only when the model resolved in the catalog (or litellm)
+    and its metadata was read from there.  ``cost_unit`` is ``"per_1m"`` when
+    the cost numbers are dollars per million tokens (models.dev) and
+    ``"per_token"`` when they are dollars per token (litellm fallback).
     """
     result: dict[str, Any] = {
         "input_cost": "unknown",
@@ -164,6 +177,8 @@ def lookup(model: str) -> dict[str, Any]:
         "context": 0,
         "tool_call": False,
         "reasoning": False,
+        "found": False,
+        "cost_unit": "per_1m",
     }
 
     provider, model_id = _normalise(model)
@@ -178,7 +193,17 @@ def lookup(model: str) -> dict[str, Any]:
     model_data = provider_data.get("models", {}).get(model_id, {})
 
     if not model_data:
+        # A version tag is sometimes part of the catalog id and sometimes not
+        # (ollama-cloud carries both "deepseek-v4-flash:0731" and
+        # "deepseek-v4-flash").  Retry with the tag stripped before giving up.
+        if ":" in model_id:
+            untagged = model_id.split(":", 1)[0]
+            model_data = provider_data.get("models", {}).get(untagged, {})
+
+    if not model_data:
         return _litellm_fallback(model, result)
+
+    result["found"] = True
 
     cost = model_data.get("cost", {})
     if isinstance(cost, dict):
@@ -218,6 +243,8 @@ def _litellm_fallback(model: str, result: dict) -> dict:
             ctx = info.get("max_input_tokens") or info.get("max_tokens") or info.get("context_window")
             if ctx:
                 result["context"] = int(ctx)
+            result["found"] = True
+            result["cost_unit"] = "per_token"
             return result
     except Exception as e:
         _logger.debug("Failed to get model info from litellm: %s", e)
