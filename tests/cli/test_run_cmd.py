@@ -1929,7 +1929,7 @@ class TestUnmergedTaskHandling:
              patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)), \
              patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")), \
              patch("snodo.infrastructure.worktree.setup_for_task", return_value="/fake/wt"), \
-             patch("snodo.cli.commands.run_cmd._build_graph", return_value=MagicMock()), \
+             patch("snodo.cli.commands.run_cmd._build_graph", return_value=(MagicMock(), None)), \
              patch("snodo.cli.commands.run_cmd._should_auto_merge", return_value=True), \
              patch("snodo.cli.commands.run_cmd._merge_on_success", return_value=(1, True, None)):
             res = _execute_task(args, protocol, task, "mock")
