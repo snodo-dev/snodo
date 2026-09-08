@@ -85,30 +85,6 @@ Schema: `snodo.worktree.v1`
 | `project_root` | string | project root |
 | `worktrees` | array | `[{task_id, path, age_days}]` |
 
-### `snodo monitor --json`
-
-Schema: `snodo.monitor.v1`
-
-A single read-only snapshot of what is on disk (audit log tail, task/job
-`state.json`, worktrees). The live view refreshes on a timer; `--json` emits
-one snapshot and exits.
-
-| Field | Type | Meaning |
-|-------|------|---------|
-| `schema` | string | `snodo.monitor.v1` |
-| `ok` | bool | always `true` |
-| `project_root` | string | absolute project root |
-| `now` | number | snapshot wall clock (epoch seconds) |
-| `runs` | array | `[{kind, run_id, status, pid, alive, phase, idle_seconds, usage_records, cost_total, cost_partial, tokens_total, description, coder, state_readable}]` |
-| `recent_events` | array | last phase events: `{ts, label, task_ref, detail, sequence}` |
-| `worktrees` | array | `[{task_id, path, branch}]` |
-| `notes` | array | reader caveats: unreadable/partial state, torn audit tail |
-
-`alive` is `null` when no pid was recorded — liveness is then unanswerable and
-the view says so rather than guessing. `idle_seconds` is the seconds since the
-newest sign of life (audit event or per-call usage record), the number that
-separates a slow phase from a dead run.
-
 ### `snodo validate <task_spec> [--phase pre_execute|post_execute] [--mode <m>]`
 
 Schema: `snodo.validate.v1`
