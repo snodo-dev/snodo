@@ -24,7 +24,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
   an abstention distinctly instead of showing a pass tick, and the audit trail
   records it as an abstention with its reason. Protocols gain
   `abstention_policy`, defaulting to `blocking` so protocols written before
-  abstentions existed keep failing safe. (Fixes #244, Fixes #245)
+  abstentions existed keep failing safe. The absence of a verdict is carried in
+  the model rather than beside it: `ValidatorResult.severity` is now optional
+  and is `None` when no verdict was reached, with `abstention_reason` saying
+  why. A consumer reading a severity therefore cannot mistake an abstention for
+  a verdict, and no per-caller guard is needed to avoid it. Anything
+  constructing or reading a `ValidatorResult` should expect `severity` to be
+  `None`. (Fixes #244, Fixes #245, Fixes #249)
 
 ### Added
 - The dashboard's Tasks and Jobs panes now answer the operator's real question — is this
