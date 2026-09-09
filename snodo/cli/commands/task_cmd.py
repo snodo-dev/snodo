@@ -23,6 +23,72 @@ COMMAND_NAME = "task"
 
 app = typer.Typer(invoke_without_command=True, help="Manage task branches")
 
+#: Task statuses that mean the run has stopped. Anything else in a task's
+#: ``state.json`` is treated as live. Mirrors the dashboard's terminal set, but
+#: is kept here so ``snodo.cli`` does not import the higher ``snodo.dashboard``
+#: layer (enforced by the app layering contract).
+_TASK_TERMINAL_STATUSES = {"completed", "failed", "cancelled", "unmerged", "blocked"}
+
+#: A record whose state says running but has had no sign of life for this long
+#: is stale, not live — the same window the dashboard uses. Used only when no
+#: pid is recorded, so an early run reads live and an abandoned one does not.
+_TASK_RUNNING_GRACE_SECONDS = 600.0
+
+
+def _pid_alive(pid: Any) -> Optional[bool]:
+    """Best-effort liveness probe (signal 0). True/False, or None if unrecorded."""
+    import os
+    if pid is None:
+        return None
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (ValueError, OSError):
+        return None
+    return True
+
+
+def _read_task_state(project_root: str, task_id: str) -> Optional[dict]:
+    """Read ``.snodo/tasks/<task_id>/state.json``; None when absent/unreadable."""
+    import json
+    state_file = Path(project_root) / ".snodo" / "tasks" / task_id / "state.json"
+    if not state_file.is_file():
+        return None
+    try:
+        data = json.loads(state_file.read_text())
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _task_is_running(project_root: str, task_id: str) -> bool:
+    """Whether the task is still running (a live record, no terminal status yet).
+
+    Reads the run's own ``state.json`` and answers with liveness facts already
+    on disk: a non-terminal status whose process is alive. When no pid was
+    recorded it falls back to the grace window so a just-started run reads live
+    while an old, never-finalized record does not. This never polls or renders —
+    it is a single read used only to tell a running task apart from an unknown
+    one in ``snodo task show``.
+    """
+    import time
+    state = _read_task_state(project_root, task_id)
+    if not state:
+        return False
+    status = str(state.get("status") or "")
+    if not status or status in _TASK_TERMINAL_STATUSES:
+        return False
+    alive = _pid_alive(state.get("pid"))
+    if alive is not None:
+        return alive
+    ts = state.get("started_at") or state.get("created_at") or state.get("updated_at")
+    if isinstance(ts, (int, float)) and (time.time() - ts) < _TASK_RUNNING_GRACE_SECONDS:
+        return True
+    return False
+
 
 @app.callback()
 def _task_callback(ctx: typer.Context):
@@ -309,12 +375,21 @@ def task_list_command(args) -> int:
     print(f"{'TASK ID':<14} {'BRANCH':<50} {'ATTEMPT':<8} {'STATUS'}")
     print("-" * 86)
 
+    from snodo.cli.commands import followup
+
     for tid, info in sorted(tasks.items()):
         branch = info["branch"]
         attempt = info["attempt"]
         status = info["status"]
         print(f" {tid:<14} {branch:<50} {attempt:<8} {status}")
-        print(f"   inspect: snodo task show {tid}")
+        # Offer the live surface only for a task proven to be running (a live
+        # record on disk), never for the inferred "in_progress" label alone —
+        # that can denote abandoned work whose `snodo task show` still answers.
+        if _task_is_running(project_root, tid):
+            print(f"   watch (running): {followup.task_followup(tid, running=True)}")
+            print(f"   inspect (after it stops): {followup.task_inspect(tid)}")
+        else:
+            print(f"   inspect: {followup.task_inspect(tid)}")
 
     print()
     print("Use snodo task abandon <task_id> to delete a task branch.")
@@ -369,6 +444,45 @@ def task_show_command(args) -> int:
     failure_entry = failure.get(task_id) if isinstance(failure, dict) else None
 
     if not halt_entry and not failure_entry:
+        # A task that has not stopped has no halt/failure record — that is not
+        # the same as there being no such task. Say what is true and point at
+        # the live surface, rather than the "No record" line an unknown id gets.
+        running_state = _read_task_state(project_root, task_id) if _task_is_running(
+            project_root, task_id
+        ) else None
+        if running_state is not None:
+            from snodo.cli.commands import followup
+            running_spec = (
+                running_state.get("description")
+                or running_state.get("root_spec")
+                or running_state.get("spec")
+            )
+            if json_out:
+                from snodo.cli.json_output import emit_json, schema_name
+                return emit_json({
+                    "schema": schema_name("task"),
+                    "ok": True,
+                    "task_id": task_id,
+                    "session_id": session.session_id,
+                    "mode": session.mode,
+                    "status": "running",
+                    "halt": None,
+                    "failure": None,
+                    "spec": running_spec,
+                    "watch": followup.task_followup(task_id, running=True),
+                    "record": followup.task_followup(task_id, running=False),
+                })
+            print(f"Task:    {task_id}")
+            print(f"Session: {session.session_id}  mode={session.mode}")
+            print()
+            print("Still running — no halt or failure record yet.")
+            if running_spec:
+                print(f"  spec: {running_spec}")
+            print("Watch it while it runs (the dashboard is the live surface):")
+            print(f"  {followup.task_followup(task_id, running=True)}")
+            print("Read its record once it stops:")
+            print(f"  {followup.task_followup(task_id, running=False)}")
+            return 0
         if json_out:
             from snodo.cli.json_output import emit_error
             return emit_error("task", f"No record for task {task_id} in session {session.session_id}.", 1)
@@ -479,9 +593,10 @@ def task_show_command(args) -> int:
 
     print()
     print("Inspect:")
-    print(f"  snodo session show {session.session_id}")
+    from snodo.cli.commands import followup
+    print(f"  {followup.session_inspect(session.session_id)}")
     if isinstance(failure_entry, dict):
-        print(f'  snodo run --retry {task_id} "revised spec"')
+        print(f"  {followup.task_retry(task_id)}")
     return 0
 
 
