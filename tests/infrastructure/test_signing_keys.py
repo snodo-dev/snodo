@@ -198,12 +198,18 @@ def test_tampered_rs256_record_fails():
     assert verifier.verify_record(tampered) is None
 
 
-def test_keypair_generation_idempotent():
-    """generate_keypair is idempotent — second call is a no-op."""
+def test_keypair_generation_idempotent(isolate_home):
+    """generate_keypair is idempotent — second call is a no-op.
+
+    The keys must land under the session-isolated HOME (conftest
+    isolate_home), never the machine's real ~/.ssh.
+    """
     from snodo.infrastructure.signing_keys import generate_keypair, keypair_exists
 
     priv, pub = generate_keypair()
     assert keypair_exists()
+    assert Path(priv).is_relative_to(isolate_home)
+    assert Path(pub).is_relative_to(isolate_home)
 
     # Second call should not overwrite
     priv2, pub2 = generate_keypair()
