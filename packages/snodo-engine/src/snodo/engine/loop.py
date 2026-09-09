@@ -767,7 +767,6 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             "blocker_validators": blocker_validators,
             "abstained_validators": abstained_validators,
             "halt_type": canonical_halt,
-            "final_decision": canonical_halt,
             "raw_halt_type": raw_halt,
         }
         if loop_state.metadata.get("timed_out"):
