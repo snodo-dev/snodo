@@ -113,7 +113,6 @@ def enrich_result_with_criteria(
         justification=justification,
         error=result.error,
         cited_criteria=cited_list,
-        abstained=getattr(result, "abstained", False),
         abstention_reason=getattr(result, "abstention_reason", None),
     )
 
@@ -311,7 +310,6 @@ def run_validators(
                         justification=f"[Pre-execute recovery finding ({original_severity}): non-blocking evidence for coder] {result.justification}",
                         cited_criteria=result.cited_criteria,
                         severity_original=original_severity,
-                        abstained=getattr(result, "abstained", False),
                         abstention_reason=getattr(result, "abstention_reason", None),
                     )
                     if audit_log is not None:
@@ -339,7 +337,6 @@ def run_validators(
                             justification=result.justification,
                             cited_criteria=result.cited_criteria,
                             severity_original=original_severity,
-                            abstained=getattr(result, "abstained", False),
                             abstention_reason=getattr(result, "abstention_reason", None),
                         )
                         cap_originals[result.validator_id] = original_severity

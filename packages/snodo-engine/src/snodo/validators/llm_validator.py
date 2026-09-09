@@ -546,13 +546,11 @@ class LLMValidator(ValidatorBase):
         # Hit the turn cap — record as abstention, not error
         return ValidatorResult(
             validator_id=self.validator_spec.validator_id,
-            severity="pass",
+            severity=None,
             justification=(
-                f"Validator could not reach a definitive verdict within the "
-                f"allocated {tool_turns} turns. Falling back to pass — policy "
-                "will decide whether to treat this abstention as blocking."
+                f"Validator could not reach a verdict within the "
+                f"allocated {tool_turns} turns."
             ),
-            abstained=True,
             abstention_reason=f"exhausted budget after {tool_turns} turns",
         )
 

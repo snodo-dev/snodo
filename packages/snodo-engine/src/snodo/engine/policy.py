@@ -147,12 +147,12 @@ class PolicyEvaluator:
                 justification="No validator results provided"
             )
 
-        # Count severities (excluding abstentions for severity counting)
-        pass_count = sum(1 for r in results if r.severity == "pass" and not getattr(r, 'abstained', False))
-        warn_count = sum(1 for r in results if r.severity == "warn" and not getattr(r, 'abstained', False))
-        blocker_count = sum(1 for r in results if r.severity == "blocker" and not getattr(r, 'abstained', False))
+        # Count severities (abstentions have severity=None)
+        pass_count = sum(1 for r in results if r.severity == "pass")
+        warn_count = sum(1 for r in results if r.severity == "warn")
+        blocker_count = sum(1 for r in results if r.severity == "blocker")
         error_count = sum(1 for r in results if getattr(r, 'error', False))
-        abstain_count = sum(1 for r in results if getattr(r, 'abstained', False))
+        abstain_count = sum(1 for r in results if r.severity is None)
         total_count = len(results)
 
         # Validator error always halts fail-closed (hard invariant)

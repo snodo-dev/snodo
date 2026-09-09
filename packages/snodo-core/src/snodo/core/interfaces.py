@@ -107,7 +107,10 @@ class Task(BaseModel):
 class ValidatorResult(BaseModel):
     """Output from a single validator."""
     validator_id: str
-    severity: Literal["pass", "warn", "blocker"]
+    #: Severity of the verdict, or None if no verdict (abstained). This is the
+    #: only safe way to determine whether a verdict exists — abstentions make
+    #: severity architecturally absent, not hidden behind a flag.
+    severity: Optional[Literal["pass", "warn", "blocker"]] = None
     justification: str
     error: bool = False
     cited_criteria: Optional[List[str]] = None
@@ -119,11 +122,7 @@ class ValidatorResult(BaseModel):
     #: but a skipped result is surfaced in normal run output and must never be
     #: mistaken for real verification evidence.
     skipped: bool = False
-    #: True when the validator could not produce a verdict within its budget
-    #: (e.g., exhausted tool turns). An abstention is distinct from error=True
-    #: (a fault) and is handled by disagreement policy, not fail-closed.
-    abstained: bool = False
-    #: Reason for abstention (e.g., "exhausted budget after 20 turns"). None if not abstained.
+    #: Reason for abstention (e.g., "exhausted budget after 20 turns"). Empty if not abstained.
     abstention_reason: Optional[str] = None
 
 
