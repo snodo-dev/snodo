@@ -48,12 +48,55 @@ class TestSuggestedCommandsResolve:
             ["job", "wait"],
             ["meta"],
             ["logs"],
+            ["dashboard"],
             ["run"],
             ["mode", "show"],
             ["status"],
         ]
         for tokens in command_paths:
             _resolve_command(tokens)  # raises KeyError on 404
+
+    def test_followup_commands_resolve(self):
+        """Commands produced by the followup builders resolve to real commands.
+
+        followup.py is the single source of truth for every suggestion; a
+        suggestion that 404s is worse than none, so each builder's output is
+        checked against the CLI, not just a hand-written list.
+        """
+        from snodo.cli.commands import followup
+
+        paths = {
+            followup.session_inspect("sess_1"): ["session", "show"],
+            followup.task_inspect("task_1"): ["task", "show"],
+            followup.task_followup("task_1", running=True): ["dashboard"],
+            followup.task_followup("task_1", running=False): ["task", "show"],
+            followup.job_inspect("j_1"): ["job", "status"],
+            followup.job_watch("j_1"): ["logs"],
+            followup.job_followup("j_1", running=True): ["logs"],
+            followup.job_followup("j_1", running=False): ["job", "status"],
+            followup.recon_inspect("rec_1"): ["logs"],
+            followup.task_retry("task_1"): ["run"],
+        }
+        for suggested, tokens in paths.items():
+            _resolve_command(tokens)  # raises KeyError on 404
+            assert suggested.startswith("snodo")
+
+    def test_running_and_finished_suggestions_differ(self):
+        """A running thing is offered a live surface; a finished one a record.
+
+        A job and a foreground task do not resolve the same way: the job can be
+        tailed by its own id, the foreground task cannot (no job id) so its live
+        surface is the dashboard.
+        """
+        from snodo.cli.commands import followup
+
+        # Foreground task: live surface is the dashboard, record is task show.
+        assert followup.task_followup("task_1", running=True) == "snodo dashboard"
+        assert followup.task_followup("task_1", running=False) == "snodo task show task_1"
+
+        # Job: live surface tails its output; record is its status.
+        assert followup.job_followup("j_1", running=True) == "snodo logs j_1 --watch"
+        assert followup.job_followup("j_1", running=False) == "snodo job status j_1"
 
 
 # === snodo status ===
@@ -171,6 +214,123 @@ class TestTaskShowCommand:
         assert result == 1
         assert "No record for task" in capsys.readouterr().out
 
+    def test_task_show_running_task_is_not_reported_as_unknown(self, tmp_path, capsys):
+        """A live task with no terminal record reads as running, not missing.
+
+        The recorded case: a task mid-run with a live worktree answered "No
+        record for task ..." — the run's own suggested command, run while the
+        run was on screen. The message was true and completely misleading about
+        why. A running task must be distinguished from an unknown one.
+        """
+        import os
+        import time
+        from snodo.infrastructure.session import SessionManager
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        from snodo.cli.commands.task_cmd import task_show_command
+
+        snodo_dir = tmp_path / ".snodo"
+        snodo_dir.mkdir()
+        write_state(str(tmp_path), ProjectState(current_mode="producer"))
+
+        # The task records its own live state at run start (run_cmd
+        # _record_task_start): status running, its pid.
+        task_dir = snodo_dir / "tasks" / "task_running"
+        task_dir.mkdir(parents=True)
+        (task_dir / "state.json").write_text(json.dumps({
+            "task_id": "task_running",
+            "description": "do stuff",
+            "status": "running",
+            "pid": os.getpid(),
+            "started_at": time.time(),
+        }))
+
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        mgr = SessionManager(sessions_dir=sessions_dir)
+        mgr.create_session("producer", str(tmp_path))
+
+        with patch("snodo.cli.commands.task_cmd.resolve_project_root", return_value=str(tmp_path)):
+            with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
+                result = task_show_command(SimpleNamespace(task_id="task_running"))
+
+        out = capsys.readouterr().out
+        assert result == 0
+        # It is named as running, and no "No record" line is printed for it.
+        assert "No record for task" not in out
+        assert "Still running" in out
+        # The running suggestion offered is the live surface (the dashboard).
+        assert "snodo dashboard" in out
+
+    def test_task_show_running_suggestion_resolves(self, tmp_path, capsys):
+        """The dashboard command the running case suggests is a real CLI command."""
+        import os
+        import time
+        from snodo.infrastructure.session import SessionManager
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        from snodo.cli.commands.task_cmd import task_show_command
+
+        snodo_dir = tmp_path / ".snodo"
+        snodo_dir.mkdir()
+        write_state(str(tmp_path), ProjectState(current_mode="producer"))
+        task_dir = snodo_dir / "tasks" / "task_running"
+        task_dir.mkdir(parents=True)
+        (task_dir / "state.json").write_text(json.dumps({
+            "task_id": "task_running", "status": "running",
+            "pid": os.getpid(), "started_at": time.time(),
+        }))
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        mgr = SessionManager(sessions_dir=sessions_dir)
+        mgr.create_session("producer", str(tmp_path))
+
+        with patch("snodo.cli.commands.task_cmd.resolve_project_root", return_value=str(tmp_path)):
+            with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
+                task_show_command(SimpleNamespace(task_id="task_running"))
+
+        _resolve_command(["dashboard"])
+
+    def test_task_show_finished_record_unchanged(self, tmp_path, capsys):
+        """The halted/failed record path is unchanged by the running branch.
+
+        A task that genuinely halted still prints its halt record and the
+        session/retry follow-ups — nothing here adds polling or live rendering.
+        """
+        from snodo.infrastructure.session import SessionManager
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        from snodo.cli.commands.task_cmd import task_show_command
+
+        snodo_dir = tmp_path / ".snodo"
+        snodo_dir.mkdir()
+        write_state(str(tmp_path), ProjectState(current_mode="producer"))
+
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        mgr = SessionManager(sessions_dir=sessions_dir)
+        session = mgr.create_session("producer", str(tmp_path))
+        mgr.update_decision(session.session_id, "halt", {
+            "task_done": {"final_decision": "escalate", "halt_type": "escalated",
+                          "phase": "pre_execute", "validator_results": []},
+        })
+        mgr.update_decision(session.session_id, "task_failure", {
+            "task_done": {"attempt": 1, "branch": "task/task_done", "files_changed": []},
+        })
+
+        with patch("snodo.cli.commands.task_cmd.resolve_project_root", return_value=str(tmp_path)):
+            with patch("snodo.infrastructure.session.SessionManager", return_value=mgr):
+                result = task_show_command(SimpleNamespace(task_id="task_done"))
+
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "Halt:" in out
+        assert "final_decision: escalate" in out
+        assert "snodo run --retry task_done" in out
+        # The record is what is offered, not a live tail.
+        assert "Still running" not in out
+
+
 
 # === session list sorted by recency + per-row inspect ===
 
@@ -232,7 +392,45 @@ class TestRunHeaderSuggestions:
         assert result == 1
         out = capsys.readouterr().out
         assert "Task ID: task_abc" in out
-        assert "Inspect: snodo task show task_abc" in out
+        # At the top of a run the task is alive and has no record yet, so the
+        # header must offer the live surface (the dashboard) — not only a
+        # command that cannot answer until the task stops.
+        assert "Watch (running): snodo dashboard" in out
+        # `snodo task show` survives as the after-it-stops suggestion.
+        assert "Inspect (after it stops): snodo task show task_abc" in out
+
+    def test_running_suggestion_answers_while_running(self, tmp_path, capsys):
+        """The suggestion offered for a still-running task is a live command.
+
+        A foreground task has no job id, so its live surface is the dashboard.
+        The command the header offers for the running case must be the
+        dashboard — the thing that answers while the run is on screen.
+        """
+        from snodo.core.interfaces import Task
+
+        from snodo.cli.commands.run_cmd import _execute_task
+
+        protocol = SimpleNamespace(
+            name="test", initial_mode="producer",
+            execution=SimpleNamespace(max_total_fix_attempts=10, max_recovery_depth=3),
+        )
+        task = Task(id="task_live", spec="do stuff")
+        args = SimpleNamespace(
+            mock=True, verbose=False, audit_log=None, session_manager=None,
+            resume=None,
+        )
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=str(tmp_path)):
+            with patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")):
+                with patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)):
+                    with patch("snodo.infrastructure.worktree.setup_for_task", return_value=None):
+                        with patch("snodo.cli.commands.run_cmd._build_graph", return_value=None):
+                            _execute_task(args, protocol, task, "gpt-4")
+
+        out = capsys.readouterr().out
+        # The running suggestion resolves to the dashboard, a real command.
+        assert "Watch (running): snodo dashboard" in out
+        _resolve_command(["dashboard"])
 
     def test_resolve_session_prints_inspect(self, tmp_path, capsys):
         from snodo.infrastructure.session import SessionManager

@@ -18,6 +18,7 @@ from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
+from snodo.cli.commands import followup
 
 
 # === Shared execution options (single declaration) ===
@@ -587,7 +588,13 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     """
     print(f"Task: {task.spec}")
     print(f"Task ID: {task.id}")
-    print(f"  Inspect: snodo task show {task.id}")
+    # This runs at the top of the task, before it has produced a halt or
+    # failure record — so `snodo task show` would answer "No record" for exactly
+    # as long as the task is alive. Offer the live surface (the dashboard, since
+    # a foreground task has no job id to tail) that answers now, and name the
+    # record command as the after-it-stops follow-up.
+    print(f"  Watch (running): {followup.task_followup(task.id, running=True)}")
+    print(f"  Inspect (after it stops): {followup.task_inspect(task.id)}")
     print()
 
     from snodo.infrastructure.paths import require_project_root
@@ -877,7 +884,7 @@ def _print_worktree_retained(project_root, task, worktree_path_val) -> None:
     print()
     print(f"Worktree preserved for inspection: {worktree_path_val}")
     print(f"  Branch: {branch}")
-    print(f"  Inspect: snodo task show {task.id}")
+    print(f"  Inspect: {followup.task_inspect(task.id)}")
     print(f"  List/remove: snodo worktree list / snodo worktree remove {task.id}")
 
 
@@ -1446,17 +1453,22 @@ def _report_closure(tree, final_state: dict, session_id: Optional[str] = None) -
 
 
 def _print_halt_followup(halt_payload: dict, session_id: Optional[str]) -> None:
-    """Print inspect/retry commands for the ids in a halt payload."""
+    """Print inspect/retry commands for the ids in a halt payload.
+
+    A halt payload is emitted only for a task that has stopped, so the record
+    command (``snodo task show``) is the right suggestion here — it answers
+    immediately.
+    """
     task_id = (halt_payload or {}).get("task_id", "")
     final_decision = (halt_payload or {}).get("final_decision")
 
     commands = []
     if session_id:
-        commands.append(f"snodo session show {session_id}")
+        commands.append(followup.session_inspect(session_id))
     if task_id:
-        commands.append(f"snodo task show {task_id}")
+        commands.append(followup.task_followup(task_id, running=False))
         if final_decision not in ("completed", None):
-            commands.append(f'snodo run --retry {task_id} "revised spec"')
+            commands.append(followup.task_retry(task_id))
 
     if not commands:
         return

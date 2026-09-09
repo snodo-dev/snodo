@@ -73,6 +73,13 @@ Schema: `snodo.task.v1`
 | `mode` | string | session mode |
 | `halt` | object \| null | the halt payload, or `null` |
 | `failure` | object \| null | the failure context, or `null` |
+| `spec` | string \| null | the task spec |
+
+For a task that is **still running** (no halt/failure record yet, a live run
+record on disk) the command answers `ok: true` with `status: "running"`, null
+`halt`/`failure`, and a `watch` field pointing at the live surface rather than
+a record. This distinguishes a running task from an unknown one, which keeps
+returning the `No record for task <id>` error.
 
 ### `snodo worktree list --json`
 

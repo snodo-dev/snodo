@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from snodo.config import ConfigManager, provider_env
+from snodo.cli.commands import followup
 
 
 def _build_sandbox_command(args) -> list:
@@ -178,6 +179,9 @@ def _submit_background_job(args) -> int:
             return 1
 
         print(f"Job submitted: {job_id}")
+        # A job that has just started is still running: offer its live surface
+        # (tail the output until it completes) alongside the record commands.
+        print(f"  Watch (running): {followup.job_followup(job_id, running=True)}")
         print(f"  snodo job status {job_id}")
         print(f"  snodo job logs {job_id}")
         print(f"  snodo job wait {job_id}")
