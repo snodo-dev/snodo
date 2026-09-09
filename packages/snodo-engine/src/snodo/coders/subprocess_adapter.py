@@ -24,6 +24,14 @@ from snodo.core.interfaces import CodeArtifact, FileArtifact, TaskSpec
 
 _logger = logging.getLogger(__name__)
 
+#: Trailing characters of EACH output stream that survive into the diagnostic
+#: tail (``last_output_tail`` / ``last_timeout_tail`` / ``output_tail``).
+#: One limit for all three exit paths (timeout, non-zero exit, zero-exit-with-
+#: no-changes): they previously differed (2000 / 2000 / 1000) with no stated
+#: reason, and the same fault must leave the same record no matter which path
+#: produced it.
+_OUTPUT_TAIL_CHARS = 2000
+
 
 class SubprocessCoderAdapter(InPlaceCoderAdapter):
     """Base coder adapter for host CLI subprocess tools."""
@@ -144,6 +152,30 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             stderr=stderr,
         )
 
+    @staticmethod
+    def _combined_output_tail(stdout: str, stderr: str) -> str:
+        """Build a diagnostic tail that keeps the end of BOTH output streams.
+
+        A coder that narrates to stdout keeps that stream busy, so the *reason*
+        a run stopped — budget exhaustion, a rate limit, a provider error —
+        lands at the end of stderr. Choosing one stream (the old
+        ``out_tail or err_tail``) discarded stderr entirely on exactly the runs
+        that needed a diagnosis, and a single window over combined output
+        allowed a busy stream to crowd the other one's ending out of the
+        record. Tailing each stream under its own budget guarantees the end of
+        the run survives in both channels: whatever the coder printed last, on
+        either stream, is in the tail.
+
+        When only one stream has content the tail is that stream's ending
+        verbatim (no labels around a lone channel); when both have content
+        they are returned as labeled sections.
+        """
+        out_tail = stdout.strip()[-_OUTPUT_TAIL_CHARS:] if stdout and stdout.strip() else ""
+        err_tail = stderr.strip()[-_OUTPUT_TAIL_CHARS:] if stderr and stderr.strip() else ""
+        if out_tail and err_tail:
+            return f"[stdout]\n{out_tail}\n\n[stderr]\n{err_tail}"
+        return out_tail or err_tail
+
     def _implement_in_place(self, spec: TaskSpec) -> CodeArtifact:
         prompt = self._build_prompt(spec)
         project_root = str(self._workspace)
@@ -179,9 +211,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
                 out_str = out_str.decode("utf-8", errors="replace")
             if isinstance(err_str, bytes):
                 err_str = err_str.decode("utf-8", errors="replace")
-            out_tail = out_str.strip()[-2000:] if out_str else ""
-            err_tail = err_str.strip()[-2000:] if err_str else ""
-            tail = (out_tail or err_tail).strip()
+            tail = self._combined_output_tail(out_str, err_str)
             timeout_tail = tail
             self.last_timeout_tail = timeout_tail
             self.last_output_tail = timeout_tail
@@ -211,9 +241,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
                 out_str = out_str.decode("utf-8", errors="replace")
             if isinstance(err_str, bytes):
                 err_str = err_str.decode("utf-8", errors="replace")
-            out_tail = out_str.strip()[-2000:] if out_str else ""
-            err_tail = err_str.strip()[-2000:] if err_str else ""
-            tail = (out_tail or err_tail).strip()
+            tail = self._combined_output_tail(out_str, err_str)
             self.last_output_tail = tail
             msg = f"{self.binary} run failed (rc={proc.returncode})"
             if tail:
@@ -236,13 +264,20 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             out_str = out_str.decode("utf-8", errors="replace")
         if isinstance(err_str, bytes):
             err_str = err_str.decode("utf-8", errors="replace")
-        out_tail = out_str.strip()[-1000:] if out_str else ""
-        err_tail = err_str.strip()[-1000:] if err_str else ""
-        tail = (out_tail or err_tail).strip()
+        tail = self._combined_output_tail(out_str, err_str)
         self.last_output_tail = tail
 
         diff_entries = self._read_changes_from_disk()
         if not diff_entries:
+            # Two different faults share this one shape: a coder that read the
+            # code and DECIDED no change was needed, and a coder that STOPPED
+            # before writing (an error on stderr under a busy stdout, a stream
+            # that ends mid-tool-call). Telling them apart needs per-coder
+            # output parsing, which ADR 034 keeps out of the adapter — so the
+            # engine does not classify the difference, but the record must
+            # let the operator see it: both stream endings are preserved
+            # above, and the engine turns this into a no_file_operations halt
+            # whose output_tail carries them.
             _logger.warning(
                 "%s run completed but no changes detected (rc=0). output tail: %s",
                 self.binary, tail,

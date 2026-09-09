@@ -248,6 +248,27 @@ snodo uses [Semantic Versioning](https://semver.org/).
   checkpointer. The checkpointer tests in `tests/infrastructure/test_memory.py`
   close their `SqliteSaver` connection in `finally`, honouring the documented
   contract. (Fixes #234)
+- A coder that stopped without writing now leaves enough behind to diagnose it.
+  `SubprocessCoderAdapter` built its diagnostic tail as `out_tail or err_tail`
+  on every exit path: stderr was used only when stdout was empty. A coder that
+  narrates to stdout therefore lost its stderr entirely — which is exactly
+  where a budget exhaustion, a rate limit or a provider error is reported. The
+  observed case: two ~7-minute runs of the same task, each exiting 0 with no
+  files written, each leaving ten preserved lines of the coder saying it was
+  about to read another file, and nothing anywhere in the record saying why it
+  stopped; the runs were indistinguishable because the discard was
+  unconditional. Each stream is now tailed under its own budget, so what is
+  kept includes the end of the run in BOTH channels, and the three exit paths
+  (timeout, non-zero exit, zero exit with no changes) share one 2000-character
+  per-stream limit where they previously disagreed (2000/2000/1000) for no
+  stated reason. A halt caused by this shape (exit 0, no writes) is still
+  `no_file_operations`: whether the coder decided no change was needed or
+  never got as far as writing cannot be told without parsing coder-specific
+  output, which ADR 034 keeps out of the adapter — but the record now carries
+  the evidence for the operator to tell (a stdout closing explanation versus a
+  stderr error), and the halt reason says to look at `output_tail`. Raw coder
+  output still never enters the audit log or the wire: the writeback strip
+  that keeps it out of session checkpoints is unchanged and still holds.
 
 ---
 

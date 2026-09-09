@@ -137,11 +137,14 @@ def test_agy_nonzero_exit_preserves_committed_changes(temp_workspace: Path):
     assert len(artifact.files) >= 1
     paths = [f.path for f in artifact.files]
     assert "feature.py" in paths
-    assert artifact.metadata.get("output_tail") == "Successfully created feature.py before crash"
+    # Both stream endings survive in the preserved record.
+    tail = artifact.metadata.get("output_tail")
+    assert "Successfully created feature.py before crash" in tail
+    assert "Error: unexpected exit" in tail
 
 
-def test_agy_nonzero_exit_prioritizes_stdout_over_stderr_in_error(temp_workspace: Path):
-    """Non-zero returncode prioritizes stdout closing explanation over stderr noise (Fixes #218)."""
+def test_agy_nonzero_exit_preserves_both_stream_endings_in_error(temp_workspace: Path):
+    """Non-zero returncode keeps the stdout closing explanation AND the stderr ending (Fixes #218; both-channel preservation supersedes the stdout-over-stderr choice)."""
     adapter = AGYAdapter(workspace=temp_workspace)
     spec = TaskSpec(description="Implement feature X", constraints=[])
 
@@ -159,6 +162,7 @@ def test_agy_nonzero_exit_prioritizes_stdout_over_stderr_in_error(temp_workspace
 
     msg = str(exc_info.value)
     assert "Closing message: task cannot be completed" in msg
+    assert "tool_progress: some noisy progress" in msg
 
 
 
