@@ -124,6 +124,53 @@ class ValidatorResult(BaseModel):
     skipped: bool = False
     #: Reason for abstention (e.g., "exhausted budget after 20 turns"). Empty if not abstained.
     abstention_reason: Optional[str] = None
+    #: What an abstaining judge examined before its budget ran out — an ordered
+    #: summary of the tool calls it made ("turn 3: read_file src/auth.py").
+    #: Only ever set alongside severity=None; a judge that decided has no
+    #: unfinished inspection to report.
+    examined: Optional[List[str]] = None
+    #: Read-only tools the judge was granted but never exercised when its budget
+    #: ran out — the honest "what was NOT examined" half of an abstention.
+    unexamined_tools: Optional[List[str]] = None
+
+    def abstained(self) -> bool:
+        """True when this result carries no verdict (severity is None).
+
+        A method, not a field: abstention is the absence of a verdict, so it
+        cannot be a value any severity comparison could confuse with one.
+        """
+        return self.severity is None and not self.error
+
+    def record(self) -> Dict[str, Any]:
+        """The canonical audit/display record for this result. See result_record."""
+        return result_record(self)
+
+
+def result_record(result: Any) -> Dict[str, Any]:
+    """The canonical audit/display record for a validator result.
+
+    Every site that records, serialises or displays what a validator concluded
+    goes through this one function, so an abstention reads as "no verdict,
+    here is why, and here is what was and was not examined" everywhere at
+    once — never as a pass (Fixes #252).  Attribute-based so faithful test
+    doubles of ValidatorResult serialise identically to real instances.
+    """
+    out: Dict[str, Any] = {
+        "validator_id": getattr(result, "validator_id", ""),
+        "severity": getattr(result, "severity", None),
+        "justification": getattr(result, "justification", ""),
+    }
+    if out["severity"] is None:
+        reason = getattr(result, "abstention_reason", None)
+        if reason:
+            out["abstention_reason"] = reason
+        examined = getattr(result, "examined", None)
+        if examined:
+            out["examined"] = list(examined)
+        unexamined = getattr(result, "unexamined_tools", None)
+        if unexamined:
+            out["unexamined_tools"] = list(unexamined)
+    return out
 
 
 class TaskSpec(BaseModel):

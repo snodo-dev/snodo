@@ -47,6 +47,7 @@ This declares one mode (producer) with one tool (edit) and one validator (securi
 | `roles` | list[Role] | no | Participant roles |
 | `validators` | list[Validator] | yes | One or more validator configurations |
 | `disagreement_policy` | string | no | How to resolve validator conflicts: `"unanimous"`, `"majority"`, `"quorum"`, `"any"` (default `"unanimous"`) |
+| `abstention_policy` | string | no | How to treat validators that ran out of budget without a verdict: `"blocking"` halts on any abstention, `"non_blocking"` excludes abstentions from the policy counts (default `"blocking"`) |
 | `initial_mode` | string | yes | Mode ID to start in |
 | `global_constraints` | list[Constraint] | no | Protocol-wide constraints (see Constraints) |
 | `execution` | ExecutionConfig | no | Execution and recovery configuration (see Execution configuration) |
@@ -255,6 +256,33 @@ Every validator result carries one of three severities, ordered `pass < warn < b
 | `pass` | No issues found | Counts toward policy threshold |
 | `warn` | Advisory concern | Withholds approval — does NOT count toward policy threshold (post-policy-fix: warn ≠ approval) |
 | `blocker` | Critical issue | Halts execution unconditionally (INV3) — bypasses all policy thresholds |
+
+### Abstention (no verdict)
+
+A tool-loop judge that exhausts its turn budget without calling
+`submit_verdict` has not passed, warned, or blocked — it has not decided. Its
+result carries **no severity** (`severity` is absent) plus an
+`abstention_reason` and the record of what it did and did not examine
+(`examined`, `unexamined_tools`). Because the absence lives in the severity
+itself, no consumer comparing severities can mistake an abstention for a
+verdict: audit events, checkpoints, escalation payloads, the halt payload,
+run output, and the dashboard all say "abstained", and a validation token
+never signs one.
+
+How abstentions affect the decision is set by the protocol's
+`abstention_policy`:
+
+| `abstention_policy` | Effect |
+|---------------------|--------|
+| `"blocking"` (default) | Any unadjudicated abstention halts — consensus cannot be presumed while a judge is silent |
+| `"non_blocking"` | Abstentions are excluded from the policy counts; the threshold applies to the judges that decided |
+
+An abstention is the case a human is asked about. `snodo authorize <task_id>`
+renders which judge abstained, why it ran out, and what it examined before it
+did; signing that proposal mints a `DecisionRecord` with
+`adjudicated_severity: "abstain"`, which retires that judge from the quorum
+(it is never converted into a pass vote). A `blocker` halt is never described
+in terms of blockers that do not exist: the halt record names the abstainers.
 
 ---
 

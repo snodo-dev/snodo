@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
-from snodo.core.interfaces import Task, ValidatorResult
+from snodo.core.interfaces import Task, ValidatorResult, result_record
 from snodo.infrastructure.tokens import ValidationToken
 
 
@@ -69,17 +69,39 @@ def _build_audit_results(
     validators_by_id = {v.validator_id: v for v in validators}
     audit_results = []
     for r in results:
-        entry = {
-            "validator_id": r.validator_id,
-            "severity": r.severity,
-            "justification": r.justification,
-        }
+        # result_record(): the abstention truth (absent severity, reason,
+        # examined / not-examined) flows into every audit event from one
+        # representation — the trail can never log an abstention as a pass
+        # (Fixes #252).
+        entry = result_record(r)
         v = validators_by_id.get(r.validator_id)
         if v is not None and cap_originals and r.validator_id in cap_originals:
             entry["severity_at_cap"] = True
             entry["severity_original"] = cap_originals[r.validator_id]
         audit_results.append(entry)
     return audit_results
+
+
+def state_result_dict(r: Any) -> Dict[str, Any]:
+    """Checkpoint-safe dict for one validator result, lossless for abstentions.
+
+    An abstention must survive the graph-state round trip and be recoverable
+    from it: severity None plus the abstention story are carried explicitly.
+    Attribute-based so result-carrying test doubles round-trip like real
+    instances (Fixes #252).
+    """
+    d: Dict[str, Any] = {
+        "validator_id": r.validator_id,
+        "severity": r.severity,
+        "justification": r.justification,
+    }
+    if r.severity is None:
+        d["abstention_reason"] = getattr(r, "abstention_reason", None)
+        d["examined"] = list(r.examined) if getattr(r, "examined", None) else None
+        d["unexamined_tools"] = (
+            list(r.unexamined_tools) if getattr(r, "unexamined_tools", None) else None
+        )
+    return d
 
 
 def _slugify(spec: str, max_words: int = 5) -> str:

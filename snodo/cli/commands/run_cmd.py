@@ -405,10 +405,16 @@ def _failure_from_halt_record(session, task_id: str) -> Optional[dict]:
         {
             "validator_id": v.get("validator_id", "unknown"),
             "severity": v.get("severity", "blocker"),
-            "justification": v.get("justification", ""),
+            "justification": (
+                f"[judge could not decide: {v['abstention_reason']}] " + v.get("justification", "")
+                if v.get("severity") is None and v.get("abstention_reason")
+                else v.get("justification", "")
+            ),
         }
         for v in (validator_results or [])
-        if isinstance(v, dict) and v.get("severity") in ("blocker", "warn")
+        if isinstance(v, dict) and (
+            v.get("severity") in ("blocker", "warn") or v.get("severity") is None
+        )
     ]
     if not failed_validators and record.get("reason"):
         failed_validators = [

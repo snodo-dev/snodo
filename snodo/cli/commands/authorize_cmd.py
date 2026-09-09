@@ -92,7 +92,14 @@ def authorize_command(args) -> int:
     print(f"  Type:   {proposal_type}")
     if proposal_type == "adjudicate":
         print(f"  Validator: {proposal.get('validator_id', '—')}")
+        print(f"  Severity:  {proposal.get('severity') or 'abstain (no verdict reached)'}")
         print(f"  Decision:  {proposal.get('decision', '—')}")
+        if proposal.get("abstention_reason"):
+            print(f"  Abstention: {proposal['abstention_reason']}")
+        for examined in (proposal.get("examined") or []):
+            print(f"    examined:   {examined}")
+        for tool in (proposal.get("unexamined_tools") or []):
+            print(f"    not examined: {tool}")
     elif proposal_type == "set_model":
         print(f"  Model:  {proposal.get('proposed_model', '—')}")
         print(f"  Scope:  {proposal.get('scope', '—')}")
@@ -121,19 +128,32 @@ def authorize_command(args) -> int:
     issuer = signing_issuer()
 
     if proposal_type == "adjudicate":
+        # Mint against the severity actually proposed. A None severity is an
+        # abstention — the issuer records it as "abstain" so the policy layer
+        # can retire the missing verdict (Fixes #252). Entries predating this
+        # field (agent proposals) carry no severity key and keep their
+        # historical warn semantics; a blocker proposal is refused at mint
+        # (INV3) instead of being laundered into a warn record.
         validator_result = ValidatorResult(
             validator_id=proposal["validator_id"],
-            severity="warn",
+            severity=proposal.get("severity", "warn"),
             justification=proposal["justification"],
         )
-        record = issuer.issue_record(
-            task_ref=task_id,
-            validator_id=proposal["validator_id"],
-            validator_result=validator_result,
-            decision=proposal["decision"],
-            justification=proposal["justification"],
-            resolved_by="human",
-        )
+        from snodo.infrastructure.decisions import DecisionInvalidSeverityError
+
+        try:
+            record = issuer.issue_record(
+                task_ref=task_id,
+                validator_id=proposal["validator_id"],
+                validator_result=validator_result,
+                decision=proposal["decision"],
+                justification=proposal["justification"],
+                resolved_by="human",
+            )
+        except DecisionInvalidSeverityError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
         # Persist to decision_records (existing path)
         records = session.checkpoint.decisions.get("decision_records", [])
         if not isinstance(records, list):
@@ -296,19 +316,27 @@ def _reject_decision(task_id: str, proposal: dict, session, session_mgr) -> int:
     now = dt.now(timezone.utc)
 
     if proposal_type == "adjudicate":
+        from snodo.infrastructure.decisions import DecisionInvalidSeverityError
+
         validator_result = ValidatorResult(
             validator_id=proposal.get("validator_id", ""),
-            severity="warn",
+            severity=proposal.get("severity", "warn"),
             justification=proposal.get("justification", ""),
         )
-        record = issuer.issue_record(
-            task_ref=task_id,
-            validator_id=proposal.get("validator_id", ""),
-            validator_result=validator_result,
-            decision="reject",
-            justification=proposal.get("justification", ""),
-            resolved_by="human",
-        )
+        try:
+            record = issuer.issue_record(
+                task_ref=task_id,
+                validator_id=proposal.get("validator_id", ""),
+                validator_result=validator_result,
+                decision="reject",
+                justification=proposal.get("justification", ""),
+                resolved_by="human",
+            )
+        except DecisionInvalidSeverityError:
+            # A rejected blocker needs no signed record — blockers are
+            # non-overridable (INV3); clearing the pending proposal is the
+            # whole effect of the rejection.
+            record = None
     else:
         payload = {
             "iat": now,
@@ -331,14 +359,15 @@ def _reject_decision(task_id: str, proposal: dict, session, session_mgr) -> int:
             issued_at=now.isoformat(),
         )
 
-    # Persist to decision_records
-    records = session.checkpoint.decisions.get("decision_records", [])
-    if not isinstance(records, list):
-        records = []
-    records.append(record.jwt)
-    session_mgr.update_decision(
-        session.session_id, "decision_records", records,
-    )
+    # Persist to decision_records (a rejected blocker mints no record — INV3)
+    if record is not None:
+        records = session.checkpoint.decisions.get("decision_records", [])
+        if not isinstance(records, list):
+            records = []
+        records.append(record.jwt)
+        session_mgr.update_decision(
+            session.session_id, "decision_records", records,
+        )
 
     # Consume the proposal
     pending = session.checkpoint.decisions.get("pending_decisions", {})
@@ -348,6 +377,9 @@ def _reject_decision(task_id: str, proposal: dict, session, session_mgr) -> int:
             session.session_id, "pending_decisions", pending,
         )
 
-    print("Decision rejected and recorded.")
-    print(f"  Record ID: {issuer._record_id(record.jwt)}")
+    if record is not None:
+        print("Decision rejected and recorded.")
+        print(f"  Record ID: {issuer._record_id(record.jwt)}")
+    else:
+        print("Decision rejected (blockers are non-overridable; no record minted).")
     return 0

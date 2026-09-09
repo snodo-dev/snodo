@@ -97,6 +97,27 @@ snodo uses [Semantic Versioning](https://semver.org/).
   than parsed as Rich markup. Textual is unchanged, no timer returns, no lock is
   taken on the audit log or any state file, and no governance verification is
   weakened. (Fixes #247)
+- An abstention — a tool-loop validator that exhausted its turn budget without reaching a
+  verdict — is now recorded, adjudicated, checkpointed, and displayed as the absence of a
+  verdict rather than as a pass. The representation (severity absent, not severity `pass`
+  behind a flag) carries the truth through every site at once: the `validate` and
+  `validator_results` audit events, the graph-state checkpoint (an abstention round-trips
+  through `_state_to_dict`/`_dict_to_state` and is recoverable; a stored result without a
+  severity is no longer restored as `pass`), the halt payload and escalation payloads, and
+  the engine's own retry evidence (`task_failure.failed_validators` now carries the silent
+  judge with a "could not decide" annotation). The adjudication path finally sees the case
+  it exists for: pending-decision writers in the engine and the MCP server create
+  adjudicable entries for abstentions carrying which judge abstained, why it ran out, and
+  what it did and did not examine; `snodo authorize` renders that detail and mints a
+  human-signed record with `adjudicated_severity: "abstain"`, which the policy evaluator
+  honours by retiring that judge from the quorum — never converting the silence into a
+  pass vote. A halt caused by abstentions names the abstainers instead of claiming
+  blockers that do not exist, CLI/MCP instructions distinguish "no blockers; N validators
+  abstained" from "blockers present", the dashboard shows `◐` rather than a green tick,
+  and a severity_cap can no longer rewrite an abstention into a capped verdict. Policy
+  decision behaviour, the halt taxonomy, the fail-closed error path, and token issuance
+  (which already refuses to sign an abstention) are unchanged. (Fixes #252)
+
 - The cockpit dashboard and all other dashboard screens now refresh only when the
   operator presses the refresh key (`r`) instead of continuously rewriting every
   cell on a 2-second interval. The automatic timer is removed. Each screen now shows

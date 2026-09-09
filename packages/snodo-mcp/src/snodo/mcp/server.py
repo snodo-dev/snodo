@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from snodo.compiler.models import Protocol
 from snodo.infrastructure.tokens import TokenIssuer, TokenStoreError, ValidationToken
-from snodo.core.interfaces import Task
+from snodo.core.interfaces import Task, result_record
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.tools.git import GitMCP
 from snodo.tools.shell import ShellMCP
@@ -451,18 +451,19 @@ class CoreToolHandler:
         status = classify_outcome(results, decision)
         server._validation_status = status
 
-        serialized = [
-            {"validator_id": r.validator_id, "severity": r.severity,
-             "justification": r.justification}
-            for r in results
-        ]
+        # result_record(): abstentions carry their absent severity plus reason
+        # and examination into the tool response and the audit event, so
+        # neither can read a silent judge as a pass (Fixes #252).
+        serialized = [result_record(r) for r in results]
 
         server._audit("validator_results", {
             "op": "validator_results",
             "task_id": task_id,
             "status": status,
             "validator_outcomes": [
-                {"validator_id": r.validator_id, "severity": r.severity}
+                {"validator_id": r.validator_id, "severity": r.severity,
+                 **({"abstention_reason": r.abstention_reason}
+                    if r.severity is None else {})}
                 for r in results
             ],
         })
@@ -491,8 +492,7 @@ class CoreToolHandler:
                 "decision_id": decision_id,
                 "policy": protocol.disagreement_policy.value,
                 "options": [
-                    {"validator_id": r.validator_id, "severity": r.severity,
-                     "justification": r.justification, "decision": "proceed"}
+                    {**result_record(r), "decision": "proceed"}
                     for r in results if r.severity != "pass"
                 ],
                 "results": serialized,
@@ -501,9 +501,24 @@ class CoreToolHandler:
             }
 
         if status == "blocker":
+            blocker_instruction = (
+                "Blockers present. Fix the code and re-validate; "
+                "if exhausted, revise the spec."
+            )
+            # A HALT with no blockers but abstaining judges must name the
+            # silence, not claim blockers that do not exist (Fixes #252).
+            if not any(r["severity"] == "blocker" for r in serialized):
+                abstainers = [r["validator_id"] for r in serialized if r["severity"] is None]
+                if abstainers:
+                    blocker_instruction = (
+                        f"No blockers; {len(abstainers)} validator(s) abstained "
+                        f"({', '.join(abstainers)}): no verdict within budget. "
+                        "Raise the validator turn budget, revise the spec, or "
+                        f"run: snodo authorize {task_id}."
+                    )
             return self._outcome(
                 "blocker", task_id, serialized,
-                "Blockers present. Fix the code and re-validate; if exhausted, revise the spec.",
+                blocker_instruction,
             )
 
         # validator_error
@@ -571,9 +586,9 @@ class CoreToolHandler:
 
             now = datetime.now(timezone.utc).isoformat()
             for r in results:
-                if r.severity not in ("warn", "blocker"):
+                if r.severity not in ("warn", "blocker") and r.severity is not None:
                     continue
-                pending[task_id] = {
+                entry = {
                     "type": "adjudicate",
                     "validator_id": r.validator_id,
                     "decision": "proceed",
@@ -583,6 +598,18 @@ class CoreToolHandler:
                     "timestamp": now,
                     "policy_decision": policy_decision_to_dict(decision),
                 }
+                if r.severity is None:
+                    # The human must be able to see that a judge abstained,
+                    # why it ran out, and what it did and did not examine
+                    # (Fixes #252).
+                    entry["abstention_reason"] = r.abstention_reason or (
+                        "judge did not reach a verdict"
+                    )
+                    if r.examined:
+                        entry["examined"] = list(r.examined)
+                    if r.unexamined_tools:
+                        entry["unexamined_tools"] = list(r.unexamined_tools)
+                pending[task_id] = entry
 
             mgr.update_decision(session.session_id, "pending_decisions", pending)
             self.server._audit("disagreement_escalated", {

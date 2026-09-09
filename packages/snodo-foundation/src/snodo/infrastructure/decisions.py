@@ -309,7 +309,14 @@ class SigningDecisionRecordIssuer(DecisionRecordIssuer):
         resolved_by: str = "human",
     ) -> DecisionRecord:
         """Mint an RS256-signed DecisionRecord."""
-        severity = validator_result.severity.lower().strip()
+        # A None severity is an abstention (no verdict reached) — minted as
+        # "abstain" so the policy layer can match it and the record says what
+        # the human actually adjudicated: a judge that did not decide
+        # (Fixes #252).
+        if validator_result.severity is None:
+            severity = "abstain"
+        else:
+            severity = validator_result.severity.lower().strip()
         self._validate_severity(severity)
         self._validate_decision(decision)
 

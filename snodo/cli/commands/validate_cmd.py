@@ -16,7 +16,7 @@ validator_error=3, internal_error=4.
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Optional
+from typing import Any, List, Optional
 
 import typer
 
@@ -137,7 +137,7 @@ def validate_command(args) -> int:
         print(f"Error: Could not resolve validator LLM: {e}", file=sys.stderr)
         return OUTCOME_EXIT_CODES["validator_error"]
 
-    from snodo.core.interfaces import Task
+    from snodo.core.interfaces import Task, result_record
     from snodo.paths import derive_task_id
 
     task = Task(id=derive_task_id(task_spec), spec=task_spec)
@@ -166,11 +166,9 @@ def validate_command(args) -> int:
     )
     status = classify_outcome(results, decision)
 
-    serialized = [
-        {"validator_id": r.validator_id, "severity": r.severity,
-         "justification": r.justification}
-        for r in results
-    ]
+    # result_record(): an abstention serialises with its absent severity plus
+    # the reason and examination, never as a pass (Fixes #252).
+    serialized = [result_record(r) for r in results]
 
     payload = {
         "schema": schema_name("validate"),
@@ -181,7 +179,7 @@ def validate_command(args) -> int:
         "mode": mode_id,
         "results": serialized,
         "policy_decision": policy_decision_to_dict(decision),
-        "instruction": _instruction(status),
+        "instruction": _instruction(status, results),
     }
 
     if json_out:
@@ -190,17 +188,30 @@ def validate_command(args) -> int:
     # Human output: a compact summary of the same result.
     print(f"Validation ({phase}, mode={mode_id}): {status}")
     for r in serialized:
-        print(f"  {r['validator_id']} [{r['severity']}]: {r['justification']}")
+        sev = r["severity"] if r["severity"] is not None else "abstain"
+        print(f"  {r['validator_id']} [{sev}]: {r['justification']}")
     return OUTCOME_EXIT_CODES.get(status, EXIT_INTERNAL_ERROR)
 
 
-def _instruction(status: str) -> str:
+def _instruction(status: str, results: Optional[List[Any]] = None) -> str:
     """Return the follow-up instruction for a validation outcome."""
     if status == "pass":
         return "Validation passed. The task may proceed to execution."
     if status == "escalate":
         return "Human review required. Run: snodo authorize <task_id>."
     if status == "blocker":
+        # A HALT with no blockers but abstaining judges must not be
+        # described as "Blockers present" — name the silence instead
+        # (Fixes #252).
+        blockers = [r for r in (results or []) if r.severity == "blocker"]
+        abstainers = [r.validator_id for r in (results or []) if r.severity is None]
+        if not blockers and abstainers:
+            return (
+                f"No blockers; {len(abstainers)} validator(s) abstained "
+                f"({', '.join(abstainers)}): no verdict within budget. "
+                "Raise the validator turn budget, revise the spec, or run: "
+                "snodo authorize <task_id>."
+            )
         return "Blockers present. Fix the code and re-validate; if exhausted, revise the spec."
     if status == "validator_error":
         return "A validator failed to produce a verdict. Retry or inspect logs."

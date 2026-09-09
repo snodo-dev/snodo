@@ -187,6 +187,7 @@ def test_validate_node_escalate_spec_authoring(sample_task):
             "warn_count": 1,
             "blocker_count": 0,
             "total_count": 1,
+            "abstain_count": 0,
             "justification": "Unanimous policy requires all validators to pass"
         }
     })
