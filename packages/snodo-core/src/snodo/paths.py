@@ -56,15 +56,20 @@ def resolve_project_root(start: Optional[str] = None) -> Optional[str]:
         if not _is_system_root_or_temp(candidate) and (candidate / ".snodo").is_dir():
             return str(candidate)
 
-    snodo_home = resolve_home()
+    # A config directory is never a project, whichever home is configured.
+    # Excluding only resolve_home() covers just the *currently configured*
+    # one: with SNODO_HOME redirected, a real ~/.snodo on disk stopped being
+    # excluded and the walk reported the user's home directory as the project
+    # root. Both are excluded, always.
+    config_homes = {resolve_home(), Path.home() / ".snodo"}
     directory = Path(start).resolve() if start else Path.cwd()
     for parent in [directory] + list(directory.parents):
         if (
-            parent == snodo_home
-            or (parent / ".snodo") == snodo_home
+            parent in config_homes
+            or (parent / ".snodo") in config_homes
             or _is_system_root_or_temp(parent)
         ):
-            continue  # ~/.snodo and /tmp are not project markers
+            continue  # a config directory and /tmp are not project markers
         if (parent / ".snodo").is_dir():
             return str(parent)
 
