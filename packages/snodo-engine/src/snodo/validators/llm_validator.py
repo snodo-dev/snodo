@@ -400,6 +400,14 @@ class LLMValidator(ValidatorBase):
         cb = getattr(context, "progress_callback", None) or getattr(self, "progress_callback", None)
         start_time = time.monotonic()
         read_tracker = ReadMemoryTracker(getattr(workspace, "project_root", None))
+        # What the judge examined, in order. Carried into the abstention record
+        # so a human adjudicating it can see how far the inspection got
+        # (Fixes #252).
+        examination: List[str] = []
+        tools_exercised: Set[str] = set()
+        if has_diff and change_diff and not change_diff.startswith("(unable"):
+            examination.append(f"prompt: preloaded diff {diff_label or 'HEAD~1..HEAD'}")
+            tools_exercised.add("read_diff_between_refs")
 
         for turn in range(tool_turns):
             turn_start = time.monotonic()
@@ -486,6 +494,9 @@ class LLMValidator(ValidatorBase):
                         # tool response so every tool_call_id is answered
                         # before the next request.
                         result = self._submit_verdict_feedback(tc)
+                        examination.append(
+                            f"turn {turn + 1}: submit_verdict (rejected — invalid arguments)"
+                        )
                     else:
                         prev_turn = read_tracker.check_read(tool_name, args)
                         if prev_turn is not None:
@@ -493,6 +504,9 @@ class LLMValidator(ValidatorBase):
                         else:
                             result = self._execute_tool(tool_name, args, workspace, git)
                             read_tracker.record_read(tool_name, args, turn + 1)
+                        target = _normalize_path_arg(args) or json.dumps(args)[:60]
+                        examination.append(f"turn {turn + 1}: {tool_name} {target}".rstrip())
+                        tools_exercised.add(tool_name)
                         self._emit_turn_telemetry(
                             turn_index=turn + 1,
                             tool=tool_name,
@@ -518,6 +532,9 @@ class LLMValidator(ValidatorBase):
 
             if has_content and not retried_free_text:
                 retried_free_text = True
+                examination.append(
+                    f"turn {turn + 1}: free-text response (not a verdict; asked for submit_verdict)"
+                )
                 messages.append({
                     "role": "assistant",
                     "content": msg.content,
@@ -543,7 +560,11 @@ class LLMValidator(ValidatorBase):
                 error=True,
             )
 
-        # Hit the turn cap — record as abstention, not error
+        # Hit the turn cap — record as abstention, not error. The record says
+        # what happened (no verdict), why it ran out (budget), and how far the
+        # inspection got (examined / not examined) so a human can adjudicate it
+        # (Fixes #252).
+        unexamined = sorted(active_names - tools_exercised)
         return ValidatorResult(
             validator_id=self.validator_spec.validator_id,
             severity=None,
@@ -552,6 +573,8 @@ class LLMValidator(ValidatorBase):
                 f"allocated {tool_turns} turns."
             ),
             abstention_reason=f"exhausted budget after {tool_turns} turns",
+            examined=examination or None,
+            unexamined_tools=unexamined or None,
         )
 
     def _build_tool_loop_prompt(

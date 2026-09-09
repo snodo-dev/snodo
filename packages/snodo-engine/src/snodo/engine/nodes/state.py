@@ -6,7 +6,7 @@ FILE: snodo/engine/nodes/state.py
 from typing import Dict, Any
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.infrastructure.tokens import ValidationToken
-from snodo.engine.state import LoopState, LoopStage
+from snodo.engine.state import LoopState, LoopStage, state_result_dict
 from snodo.engine.policy import policy_decision_to_dict
 
 
@@ -32,10 +32,17 @@ class SerdeMixin:
         
         results = []
         for r in d.get("validation_results", []):
+            # severity is restored exactly as stored: None means the judge
+            # abstained. It must never default to "pass" — an abstention that
+            # cannot be recovered from a checkpoint becomes a false record
+            # (Fixes #252).
             results.append(ValidatorResult(
                 validator_id=r.get("validator_id", ""),
-                severity=r.get("severity", "pass"),
-                justification=r.get("justification", "")
+                severity=r.get("severity"),
+                justification=r.get("justification", ""),
+                abstention_reason=r.get("abstention_reason"),
+                examined=r.get("examined"),
+                unexamined_tools=r.get("unexamined_tools"),
             ))
         
         token = None
@@ -113,14 +120,10 @@ class SerdeMixin:
                 "wave_id": state.task.wave_id,
             },
             "current_mode": state.current_mode,
-            "validation_results": [
-                {
-                    "validator_id": r.validator_id,
-                    "severity": r.severity,
-                    "justification": r.justification
-                }
-                for r in state.validation_results
-            ],
+            # state_result_dict(): an abstention (severity None + reason +
+            # examination) must survive a checkpoint and be recoverable from
+            # it (Fixes #252).
+            "validation_results": [state_result_dict(r) for r in state.validation_results],
             "validation_token": {
                 "jwt": state.validation_token.jwt,
             } if state.validation_token else None,

@@ -1,6 +1,6 @@
 from typing import Dict, Any, List
 from snodo.engine.state import LoopStage, LoopState, _build_audit_results
-from snodo.core.interfaces import ValidatorResult, ExecutionError, NoFileOperationsError
+from snodo.core.interfaces import ValidatorResult, ExecutionError, NoFileOperationsError, result_record
 from snodo.coders.base import AdapterError, SnodoMutationError, TurnBudgetExhausted
 from snodo.infrastructure.tokens import TokenStoreError
 from snodo.engine.policy import PolicyAction, policy_decision_to_dict
@@ -17,15 +17,16 @@ class ValidationNodeMixin:
         pending_disagreement = {
             "phase": phase,
             "policy": self.protocol.disagreement_policy.value,
-            "validator_results": [
-                {"validator_id": r.validator_id, "severity": r.severity, "justification": r.justification}
-                for r in results
-            ],
+            # record() carries the abstention truth (absent severity, why it
+            # ran out, what was and was not examined) into the human-facing
+            # escalation payload and its audit event (Fixes #252).
+            "validator_results": [result_record(r) for r in results],
             "policy_decision": {
                 "pass_count": decision.pass_count,
                 "warn_count": decision.warn_count,
                 "blocker_count": decision.blocker_count,
                 "total_count": decision.total_count,
+                "abstain_count": getattr(decision, "abstain_count", 0),
                 "justification": decision.justification,
             },
         }
@@ -115,7 +116,7 @@ class ValidationNodeMixin:
             spec_critique = [
                 {"validator_id": r.validator_id, "justification": r.justification}
                 for r in results
-                if r.severity != "pass" and self._judges_spec(r.validator_id)
+                if r.severity not in (None, "pass") and self._judges_spec(r.validator_id)
             ]
             if (
                 not has_blocker and not has_error
@@ -130,29 +131,9 @@ class ValidationNodeMixin:
                 loop_state.halt_type = "escalated"
                 outcome = "escalated"
 
-            loop_state.pending_disagreement = {
-                "phase": "pre_execute",
-                "policy": self.protocol.disagreement_policy.value,
-                "validator_results": [
-                    {"validator_id": r.validator_id, "severity": r.severity, "justification": r.justification}
-                    for r in results
-                ],
-                "policy_decision": {
-                    "pass_count": decision.pass_count,
-                    "warn_count": decision.warn_count,
-                    "blocker_count": decision.blocker_count,
-                    "total_count": decision.total_count,
-                    "justification": decision.justification,
-                },
-            }
-            self._audit("disagreement_escalated", {
-                "op": "disagreement_escalated",
-                "phase": "pre_execute",
-                "task_ref": loop_state.task.id,
-                "policy": self.protocol.disagreement_policy.value,
-                "validator_results": loop_state.pending_disagreement["validator_results"],
-                "policy_decision": loop_state.pending_disagreement["policy_decision"],
-            })
+            loop_state.pending_disagreement = self._build_pending_disagreement(
+                loop_state, "pre_execute", results, decision
+            )
 
         loop_state.metadata["pre_validation"] = {
             "policy_decision": policy_decision_to_dict(decision),

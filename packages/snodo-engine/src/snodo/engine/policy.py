@@ -57,6 +57,10 @@ class PolicyDecision:
     blocker_count: int
     total_count: int
     justification: str
+    #: Judges that abstained (no verdict within budget). Recorded so the
+    #: decision itself — not only prose — says that consensus was missing a
+    #: verdict; abstentions never inflate pass/warn/blocker counts.
+    abstain_count: int = 0
 
 
 def policy_decision_to_dict(pd: Any) -> Optional[Dict[str, Any]]:
@@ -165,8 +169,32 @@ class PolicyEvaluator:
                 warn_count=warn_count,
                 blocker_count=blocker_count,
                 total_count=total_count,
+                abstain_count=abstain_count,
                 justification=f"{error_count} validator(s) produced operational errors — fail-closed"
             )
+
+        # Adjudicated abstentions: a human-signed DecisionRecord(proceed) for
+        # an abstaining validator retires that judge from the quorum
+        # (Fixes #252). An abstention is never converted into a pass vote —
+        # the human consented to proceed WITHOUT that verdict, so total_count
+        # shrinks. With no matching record, abstentions behave exactly as
+        # before (blocking → HALT, non_blocking → excluded from the counts).
+        adjudicated_abstainers: List[str] = []
+        if decision_records and task_ref and abstain_count > 0:
+            from snodo.infrastructure.decisions import (
+                verify_only_issuer,
+            )
+            issuer = self._decision_issuer or verify_only_issuer()
+            for r in results:
+                if r.severity is not None:
+                    continue
+                payload = issuer.find_adjudicated(
+                    decision_records, task_ref, r.validator_id, "abstain"
+                )
+                if payload is not None:
+                    adjudicated_abstainers.append(r.validator_id)
+                    abstain_count -= 1
+                    total_count -= 1
 
         # Abstain count: judges that could not reach a verdict within budget
         # Policy behavior depends on abstention_policy configuration.
@@ -180,6 +208,7 @@ class PolicyEvaluator:
                     warn_count=warn_count,
                     blocker_count=blocker_count,
                     total_count=total_count,
+                    abstain_count=abstain_count,
                     justification=f"{abstain_count} validator(s) abstained: could not produce verdicts within budget (abstention_policy=blocking)"
                 )
             # else: non_blocking — abstentions excluded from counts, policy applies to non-abstaining validators (handled below)
@@ -194,6 +223,7 @@ class PolicyEvaluator:
                 warn_count=warn_count + blocker_count,
                 blocker_count=0,
                 total_count=total_count,
+                abstain_count=abstain_count,
                 justification=f"Pre-execute recovery finding(s) ({warn_count + blocker_count}) passed to coder as evidence"
             )
 
@@ -208,6 +238,7 @@ class PolicyEvaluator:
                 warn_count=warn_count,
                 blocker_count=blocker_count,
                 total_count=total_count,
+                abstain_count=abstain_count,
                 justification=f"{blocker_count} blocker(s) present"
             )
 
@@ -233,9 +264,18 @@ class PolicyEvaluator:
         evaluator = self._POLICY_DISPATCH.get(policy)
         if not evaluator:
             raise ValueError(f"Unknown policy: {policy}")
-        return getattr(self, evaluator)(
+        decision = getattr(self, evaluator)(
             pass_count, warn_count, blocker_count, total_count
         )
+        # The decision record itself must say that a verdict was missing and
+        # how it was resolved, so no consumer has to re-derive it from prose.
+        decision.abstain_count = abstain_count + len(adjudicated_abstainers)
+        if adjudicated_abstainers:
+            decision.justification += (
+                f" [abstention(s) retired by human DecisionRecord: "
+                f"{', '.join(adjudicated_abstainers)}]"
+            )
+        return decision
     
     def _evaluate_unanimous(
         self,

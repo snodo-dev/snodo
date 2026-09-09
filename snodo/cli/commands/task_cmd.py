@@ -454,7 +454,7 @@ def task_show_command(args) -> int:
         if validator_results:
             print("  validators:")
             for r in validator_results:
-                print(f"    {r.get('validator_id', '?')} [{r.get('severity', '?')}]: {r.get('justification', '')}")
+                print(f"    {r.get('validator_id', '?')} [{r.get('severity') or 'abstain'}]: {r.get('justification', '')}")
 
     if isinstance(failure_entry, dict):
         print()

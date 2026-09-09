@@ -986,6 +986,44 @@ class TestPostExecuteToolLoop:
         assert "exhausted" in result.abstention_reason.lower()
         assert completion_fn.call_count == _DEFAULT_MAX_TOOL_TURNS
 
+    def test_tool_loop_abstention_records_examination(self, security_validator):
+        """An abstention tells the human what the judge examined and which
+        granted tools it never got to use (Fixes #252)."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+        mock_workspace.read_file.return_value = "print(1)"
+
+        def completion_side_effect(**kwargs):
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            tool_call = MagicMock()
+            tool_call.id = "tc_1"
+            tool_call.function.name = "read_file"
+            tool_call.function.arguments = '{"path": "app.py"}'
+            resp.choices[0].message.content = None
+            resp.choices[0].message.tool_calls = [tool_call]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity is None
+        assert result.abstention_reason == "exhausted budget after 20 turns"
+        # What WAS examined: the preloaded diff plus every read it made.
+        assert any("preloaded diff" in e for e in result.examined)
+        assert any("turn" in e and "read_file app.py" in e for e in result.examined)
+        # What was NOT examined: granted read-only tools never exercised.
+        assert set(result.unexamined_tools) == {
+            "read_file_lines", "git_show", "git_log", "list_files",
+        }
+        # read_diff_between_refs counts as exercised: the judge received the
+        # diff in its prompt.
+        assert "read_diff_between_refs" not in result.unexamined_tools
+
     def test_tool_loop_invalid_submit_verdict_gets_tool_response(self, security_validator):
         """A submit_verdict with an invalid severity is answered with a tool
         response, so every tool_call_id is answered before the next request

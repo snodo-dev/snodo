@@ -82,6 +82,11 @@ def enrich_result_with_criteria(
     """Enrich ValidatorResult with legible cited criteria text."""
     if not result or not criteria:
         return result
+    if result.severity is None:
+        # No verdict — nothing was cited, and the numeric fallback in
+        # extract_cited_indices could otherwise turn "after 20 turns" into a
+        # fabricated criterion citation (Fixes #252).
+        return result
 
     total_criteria = len(criteria)
     cited_indices = extract_cited_indices(result.justification, total_criteria)
@@ -114,6 +119,8 @@ def enrich_result_with_criteria(
         error=result.error,
         cited_criteria=cited_list,
         abstention_reason=getattr(result, "abstention_reason", None),
+        examined=getattr(result, "examined", None),
+        unexamined_tools=getattr(result, "unexamined_tools", None),
     )
 
 
@@ -326,6 +333,7 @@ def run_validators(
                     v_obj is not None
                     and v_obj.severity_cap is not None
                     and not getattr(result, "error", False)
+                    and result.severity is not None
                 ):
                     from snodo.compiler.models import Severity
 

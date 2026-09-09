@@ -746,13 +746,26 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             r.validator_id for r in loop_state.validation_results
             if r.severity == "blocker"
         ]
+        # Judges that reached no verdict. A halt caused by abstentions must
+        # not name blockers that do not exist (Fixes #252).
+        abstained_validators = [
+            r.validator_id for r in loop_state.validation_results
+            if r.severity is None and not getattr(r, "error", False)
+        ]
+        default_reason = "blocker"
+        if not blocker_validators and abstained_validators:
+            default_reason = (
+                f"{len(abstained_validators)} validator(s) abstained: "
+                "no verdict reached within budget"
+            )
         canonical_halt = _canonical_halt(loop_state.halt_type)
         raw_halt = loop_state.halt_type or canonical_halt
         halt_audit = {
             "op": "halt",
             "task_ref": loop_state.task.id,
-            "reason": "; ".join(loop_state.constraint_violations) or "blocker",
+            "reason": "; ".join(loop_state.constraint_violations) or default_reason,
             "blocker_validators": blocker_validators,
+            "abstained_validators": abstained_validators,
             "halt_type": canonical_halt,
             "final_decision": canonical_halt,
             "raw_halt_type": raw_halt,

@@ -267,6 +267,14 @@ def _highlight(halt: dict, tokens: int, cost_str: str) -> str:
         if blocker:
             reason = (blocker.get("justification", "") or "")[:60]
             return f"blocked at {phase}: {blocker['validator_id']} — {reason}"
+        # No blockers but abstainers: name the silence rather than leaving the
+        # operator with an unexplained block (Fixes #252).
+        abstainers = [r["validator_id"] for r in results if r.get("severity") is None]
+        if abstainers:
+            return (
+                f"blocked at {phase}: {len(abstainers)} validator(s) abstained "
+                f"({', '.join(abstainers)}) — no verdict within budget"
+            )
         reason = halt.get("blocker_reason", "") or ""
         return f"blocked at {phase}: {reason}" if reason else f"blocked at {phase}"
     if fd == "escalate":

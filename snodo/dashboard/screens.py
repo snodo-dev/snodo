@@ -433,11 +433,15 @@ class SessionDetailScreen(Screen):
         parts = []
         for r in results[:4]:
             vid = _escape(str(r.get("validator_id", "?")))
-            sev = r.get("severity", "?")
+            sev = r.get("severity")
             if sev == "blocker":
                 parts.append(f"[red]{vid}:✗[/]")
             elif sev == "warn":
                 parts.append(f"[yellow]{vid}:![/]")
+            elif sev is None:
+                # Abstention: no verdict reached — never a green tick
+                # (Fixes #252).
+                parts.append(f"[dim]{vid}:◐[/]")
             else:
                 parts.append(f"[green]{vid}:✓[/]")
         if len(results) > 4:

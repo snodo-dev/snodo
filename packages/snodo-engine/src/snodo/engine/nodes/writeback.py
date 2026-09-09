@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 from snodo.engine.policy import policy_decision_to_dict
 from snodo.engine.state import _task_branch_name
+from snodo.core.interfaces import result_record
 
 _logger = logging.getLogger(__name__)
 
@@ -193,7 +194,14 @@ class WritebackMixin:
     """Mixin providing payload persistence and decision writeback capabilities."""
 
     def _auto_write_pending_decisions(self, loop_state: Any, results: list) -> None:
-        """Write pending_decision entries for every blocking/escalating validator."""
+        """Write pending_decision entries for every blocking/escalating validator.
+
+        Abstentions (severity=None) are exactly the case a human must be able
+        to adjudicate: the entry carries that a judge abstained, which judge,
+        why it ran out, and what it did and did not examine — so `snodo
+        authorize` renders something actionable instead of showing nothing
+        about the silent judge (Fixes #252).
+        """
         if not self._session_manager or not self._session_id:
             return
 
@@ -210,7 +218,7 @@ class WritebackMixin:
         now = datetime.now(timezone.utc).isoformat()
 
         for r in results:
-            if r.severity not in ("blocker", "warn"):
+            if r.severity not in ("blocker", "warn") and r.severity is not None:
                 continue
             entry = {
                 "type": "adjudicate",
@@ -221,6 +229,15 @@ class WritebackMixin:
                 "proposed_by": "engine",
                 "timestamp": now,
             }
+            if r.severity is None:
+                entry["abstention_reason"] = (
+                    getattr(r, "abstention_reason", None)
+                    or "judge did not reach a verdict"
+                )
+                if getattr(r, "examined", None):
+                    entry["examined"] = list(r.examined)
+                if getattr(r, "unexamined_tools", None):
+                    entry["unexamined_tools"] = list(r.unexamined_tools)
             pending[task_id] = entry
 
         self._session_manager.update_decision(
@@ -274,10 +291,13 @@ class WritebackMixin:
             {
                 "validator_id": r.validator_id,
                 "severity": r.severity,
-                "justification": r.justification,
+                "justification": (
+                    f"[judge could not decide: {r.abstention_reason or 'no verdict within budget'}] "
+                    + r.justification
+                ) if r.severity is None else r.justification,
             }
             for r in (results or [])
-            if hasattr(r, "severity") and r.severity in ("blocker", "warn")
+            if hasattr(r, "severity") and (r.severity in ("blocker", "warn") or r.severity is None)
         ]
 
         if not failed_validators and loop_state.constraint_violations:
@@ -468,10 +488,11 @@ class WritebackMixin:
             "coder": coder_name,
             "coder_model": coder_model,
             "judging_model": judging_model,
+            # record(): the halt payload is what the orchestrator reads to
+            # learn what happened; an abstention must not read as a pass
+            # (Fixes #252).
             "validator_results": [
-                {"validator_id": r.validator_id, "severity": r.severity,
-                 "justification": r.justification}
-                for r in loop_state.validation_results
+                result_record(r) for r in loop_state.validation_results
             ],
             "policy_decision": policy_decision_to_dict(loop_state.policy_decision),
             "hint": _build_hint(halt, loop_state.halt_type, phase, loop_state.validation_results),
