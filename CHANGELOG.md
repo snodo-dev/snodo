@@ -33,6 +33,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
   `None`. (Fixes #244, Fixes #245, Fixes #249)
 
 ### Added
+- A wave is now openable from the cockpit. Pressing `w` on a selected task
+  opens the wave that owns it, showing the wave's description, the anchor
+  summaries of the separate intents folded into it, every member task with its
+  current state, and when the wave was created and last moved. Waves carry a
+  name and a description that group and explain a set of tasks, which was
+  visible nowhere: the cockpit's Wave column names the wave but says nothing
+  about it. This is a drill-down, not a navigation level — the cockpit keeps
+  its selection and is restored to it on close — and it reads only, in keeping
+  with the dashboard being an observer. (Fixes #253)
 - The dashboard's Tasks and Jobs panes now answer the operator's real question — is this
   still alive, and how long has it been in the phase it is in — from what the engine already
   records. Each row shows the current phase, how long it has been in it, seconds since the
