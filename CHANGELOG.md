@@ -11,6 +11,48 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.2] — 2026-09-09
+
+### Fixed
+
+- The test suite no longer depends on the machine it runs on. Six plan-CLI
+  tests passed only where someone had already run `snodo init`: the signing
+  key directory was resolved once at import time from the real home
+  directory, so a clean checkout failed with "Public key not found at
+  ~/.ssh/NO-AGENT/snodo.pub.pem" and the release job went red while the same
+  command reported 3332 passed locally. Key paths now resolve per call, the
+  production location and its deterrence rationale unchanged, and the suite
+  redirects HOME and git's global config to a private per-session directory
+  with a throwaway keypair seeded into it. A tripwire fails the session if
+  anything touches the real `~/.ssh/NO-AGENT`. Two further couplings were
+  found and closed on the way: 41 tests inherited `init.defaultBranch` and a
+  git identity from the developer's `~/.gitconfig`, and two init tests were
+  regenerating the developer's real private key on every full run. The
+  engine still refuses to build a graph without a signing key, now covered
+  explicitly rather than by accident.
+- A follow-up command now matches the state of the thing it names. Every id
+  the CLI printed was accompanied by `snodo task show <id>`, which reads a
+  halt or failure record — a running task has neither, so the suggestion was
+  printed at dispatch and answered "No record for task ..." for exactly as
+  long as the task was alive, then started working once the operator no
+  longer needed it. A running task is now pointed at the dashboard and a
+  finished one at its record; a job gets `snodo logs <id> --watch` while it
+  runs and `snodo job status <id>` once it stops. `snodo task show` also
+  distinguishes a task that is still running from an id it has never heard
+  of, which read identically before.
+- `snodo serve --tunnel` reached the wrong service. Tunnel provisioning and
+  audit sync were built from one configuration key, so a provision request
+  inherited the ingest host and was answered by the ingest worker, which
+  validates every request it receives as an event batch — hence the
+  "Missing or invalid field: project_path" for a field no tunnel API has.
+  The two services are now configured independently, with a config written
+  before the split resolving to the tunnel default rather than the ingest
+  host. Provisioning failures also report what the response actually was
+  instead of advising that the API key may have expired, which was the
+  wrong suspect for any error that never reached an authenticator.
+
+---
+
 ## [0.8.1] — 2026-09-09
 
 ### Changed
