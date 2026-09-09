@@ -981,9 +981,8 @@ class TestPostExecuteToolLoop:
         result = validator.evaluate(ctx)
 
         # Exhausted judges record as abstention, not error
-        assert result.severity == "pass"
+        assert result.severity is None
         assert not result.error
-        assert result.abstained
         assert "exhausted" in result.abstention_reason.lower()
         assert completion_fn.call_count == _DEFAULT_MAX_TOOL_TURNS
 

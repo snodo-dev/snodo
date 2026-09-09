@@ -619,8 +619,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         root_spec = loop_state.task.root_spec or loop_state.task.spec
 
         # Failures produced by THIS attempt, tagged with the 1-based attempt
-        # number (root = 1, fix_1 = 2, ...). Include abstentions so the audit
-        # trail shows which judges did not reach verdicts.
+        # number (root = 1, fix_1 = 2, ...). Include abstentions (severity=None)
+        # so the audit trail shows which judges did not reach verdicts.
         attempt_no = current_depth + 1
         new_failures = [
             {
@@ -628,11 +628,10 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                 "validator_id": r.validator_id,
                 "severity": r.severity,
                 "justification": r.justification,
-                "abstained": getattr(r, "abstained", False),
                 "abstention_reason": getattr(r, "abstention_reason", None),
             }
             for r in results
-            if r.severity in ("warn", "blocker") or getattr(r, "abstained", False)
+            if r.severity in ("warn", "blocker") or r.severity is None
         ]
 
         # Identical repeated verdict: this attempt's failures match the previous
@@ -923,13 +922,10 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         the audit record; when a severity_cap was applied the pre-cap value is
         shown alongside it rather than hidden.
 
-        An abstention (a judge that exhausted its budget without deciding) is
-        never shown as a pass, even though it carries severity="pass". It is
-        always visible as an abstention so operators see that consensus was not
-        reached.
+        An abstention (severity=None) is always visible as an abstention so
+        operators see that consensus was not reached.
         """
         severity = getattr(result, "severity", "?")
-        abstained = getattr(result, "abstained", False)
         justification = getattr(result, "justification", "") or ""
         first_line = justification.strip().splitlines()[0] if justification.strip() else ""
         if len(first_line) > 80:
@@ -938,7 +934,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         original = getattr(result, "severity_original", None)
         cap_note = f" (from {original})" if original and original != severity else ""
 
-        if abstained:
+        if severity is None:
             snippet = f" — {first_line}" if first_line else ""
             self._progress(f"    ◐ {validator_id}: abstained{cap_note}{snippet}")
         elif severity == "pass" and not getattr(result, "skipped", False):

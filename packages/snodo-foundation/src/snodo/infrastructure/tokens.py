@@ -366,7 +366,7 @@ class TokenIssuer:
 
         abstained = [
             r.validator_id for r in validator_results
-            if getattr(r, "abstained", False)
+            if r.severity is None
         ]
         if abstained:
             self._log_event("token_blocked_abstention", {
@@ -378,7 +378,7 @@ class TokenIssuer:
         signatures = [
             f"{result.validator_id}:{result.severity}"
             for result in validator_results
-            if not getattr(result, "abstained", False)
+            if result.severity is not None
         ]
 
         now = self._now_fn() if self._now_fn is not None else datetime.now(timezone.utc)
