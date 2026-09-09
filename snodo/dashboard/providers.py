@@ -436,6 +436,7 @@ class DashboardDataProvider:
                 res.append({
                     "wave_id": item.get("wave_id"),
                     "feature_description": item.get("feature_description"),
+                    "anchor_summaries": item.get("anchor_summaries", []),
                     "task_ids": item.get("task_ids", []),
                     "created": item.get("created"),
                     "last_activity": item.get("last_activity"),
@@ -443,6 +444,33 @@ class DashboardDataProvider:
             return res
         except Exception:
             return []
+
+    def get_wave_detail(self, wave_id: str) -> Optional[Dict[str, Any]]:
+        """Get detailed information about a specific wave (observable only).
+
+        Returns wave description, anchor summaries, member tasks, and timestamps.
+        No mutations, audit writes, or locks are taken.
+        """
+        wave_path = Path(self.project_root) / ".snodo" / "wave.json"
+        if not wave_path.exists():
+            return None
+        try:
+            import json
+            with open(wave_path) as f:
+                data = json.load(f)
+            for item in data:
+                if item.get("wave_id") == wave_id:
+                    return {
+                        "wave_id": item.get("wave_id"),
+                        "feature_description": item.get("feature_description"),
+                        "anchor_summaries": item.get("anchor_summaries", []),
+                        "task_ids": item.get("task_ids", []),
+                        "created": item.get("created"),
+                        "last_activity": item.get("last_activity"),
+                    }
+            return None
+        except Exception:
+            return None
 
     def get_tasks(self, session_id: str) -> List[Dict[str, Any]]:
         plans_dir = Path(self.project_root) / ".snodo" / "plans"

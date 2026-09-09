@@ -722,3 +722,131 @@ def _event_color(event_type: str) -> str:
     if event_type == "session_started":
         return "cyan"
     return ""
+
+
+# ---------------------------------------------------------------------------
+# WaveDetailScreen
+# ---------------------------------------------------------------------------
+
+class WaveDetailScreen(Screen):
+    """Wave drill-down view: shows wave description, intents, member tasks, and timestamps.
+
+    A drill-down (detail view), not a navigation level. The cockpit is the primary
+    context; this view is opened on demand from a task selection and returns to it
+    when closed.
+    """
+
+    BINDINGS = [
+        Binding("escape", "close_wave", "Close"),
+    ]
+
+    CSS = """
+    WaveDetailScreen {
+        layout: vertical;
+        background: $surface;
+    }
+    #wave-header {
+        height: auto;
+        padding: 1;
+        background: $panel;
+        color: $text;
+        border-bottom: solid $primary;
+    }
+    #wave-body {
+        height: 1fr;
+        background: $surface;
+    }
+    #wave-content {
+        height: 1fr;
+        width: 1fr;
+        padding: 1;
+    }
+    .wave-section-title {
+        text-style: bold;
+        color: $primary;
+        margin-top: 1;
+        margin-bottom: 0;
+    }
+    .wave-description {
+        margin-top: 1;
+        color: $text;
+    }
+    .wave-summary {
+        color: $text-muted;
+        margin-top: 1;
+        height: auto;
+    }
+    DataTable {
+        height: 1fr;
+        border: tall $surface-lighten-1;
+    }
+    """
+
+    def __init__(self, wave_data: Dict[str, Any], tasks_by_id: Dict[str, Any], **kwargs):
+        super().__init__(**kwargs)
+        self.wave_data = wave_data
+        self.tasks_by_id = tasks_by_id
+
+    def compose(self) -> ComposeResult:
+        wave = self.wave_data
+        yield Header()
+        yield Static(
+            f"Wave: {wave.get('wave_id')}",
+            id="wave-header",
+        )
+        with Vertical(id="wave-body"):
+            with VerticalScroll(id="wave-content"):
+                # Description
+                desc = wave.get("feature_description", "(no description)")
+                yield Static(desc, classes="wave-description")
+
+                # Anchor summaries (the separate intents folded into this wave)
+                anchors = wave.get("anchor_summaries", [])
+                if anchors:
+                    yield Static("Intents", classes="wave-section-title")
+                    for anchor in anchors:
+                        yield Static(f"• {anchor}", classes="wave-summary")
+
+                # Wave timestamps
+                created = wave.get("created", 0)
+                last_activity = wave.get("last_activity", 0)
+
+                yield Static("Timeline", classes="wave-section-title")
+                from datetime import datetime, timezone
+                created_str = (
+                    datetime.fromtimestamp(created, tz=timezone.utc).isoformat(timespec="seconds")
+                    if created else "unknown"
+                )
+                activity_str = (
+                    datetime.fromtimestamp(last_activity, tz=timezone.utc).isoformat(timespec="seconds")
+                    if last_activity else "unknown"
+                )
+                yield Static(f"Created: {created_str}", classes="wave-summary")
+                yield Static(f"Last activity: {activity_str}", classes="wave-summary")
+
+                # Member tasks table
+                yield Static("Member Tasks", classes="wave-section-title")
+                task_table = DataTable()
+                task_table.add_columns("Task", "Status", "Phase", "Idle")
+                task_ids = wave.get("task_ids", [])
+                if task_ids:
+                    for task_id in task_ids:
+                        task = self.tasks_by_id.get(task_id, {})
+                        status = task.get("status", "?")
+                        phase = task.get("phase", "—")
+                        idle = task.get("idle", "—")
+                        task_table.add_row(
+                            _short_id(task_id),
+                            status,
+                            phase,
+                            idle,
+                        )
+                else:
+                    task_table.add_row("(no tasks)", "—", "—", "—")
+                yield task_table
+
+        yield Footer()
+
+    def action_close_wave(self) -> None:
+        """Close the wave detail and return to cockpit."""
+        self.app.pop_screen()

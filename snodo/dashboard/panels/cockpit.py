@@ -106,6 +106,7 @@ class CockpitScreen(Screen):
         Binding("/", "search_mode", "Search"),
         Binding("n", "search_next", "Next"),
         Binding(":", "command_mode", "Command"),
+        Binding("w", "open_wave", "Wave"),
     ]
 
     CSS = """
@@ -245,6 +246,38 @@ class CockpitScreen(Screen):
         if self._search_hits:
             self._search_index = (self._search_index + 1) % len(self._search_hits)
             self._go_to_hit(self._search_hits[self._search_index])
+
+    def action_open_wave(self) -> None:
+        """Open the wave that owns the selected task.
+
+        A drill-down, not a navigation level: the cockpit keeps its selection
+        and is restored to it when the wave view closes.
+        """
+        if not self.selected_session or not self.selected_task:
+            self.notify("No task selected", severity="warning")
+            return
+
+        wave_id = None
+        for wave in self.provider.get_waves(self.selected_session):
+            if self.selected_task in wave.get("task_ids", []):
+                wave_id = wave.get("wave_id")
+                break
+
+        if not wave_id:
+            self.notify("Task does not belong to a wave", severity="information")
+            return
+
+        wave_data = self.provider.get_wave_detail(wave_id)
+        if not wave_data:
+            self.notify("Wave not found", severity="warning")
+            return
+
+        from snodo.dashboard.screens import WaveDetailScreen
+
+        flat = _flatten_tasks(self.provider.get_tasks(self.selected_session))
+        self.app.push_screen(
+            WaveDetailScreen(wave_data, {t["task_id"]: t for t in flat})
+        )
 
     def on_input_submitted(self, event: Input.Submitted):
         if event.input.id == "command-bar":
