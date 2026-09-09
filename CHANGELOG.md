@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.8.1] — 2026-09-09
+
 ### Changed
 
 - A validator that exhausts its tool-turn budget without deciding is now
