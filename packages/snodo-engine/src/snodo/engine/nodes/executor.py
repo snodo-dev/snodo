@@ -243,7 +243,17 @@ class ExecutorMixin:
                         # observable work — a no-op run must fail loudly on every
                         # adapter, not be downgraded to an audit note on some
                         # (docs/architecture/coder-adapter-contract.md §4, #68).
-                        raise NoFileOperationsError("Coder produced no file operations")
+                        raise NoFileOperationsError(
+                            "Coder produced no file operations: it exited 0 "
+                            "having written nothing. output_tail carries the "
+                            "closing lines of BOTH stdout and stderr: a "
+                            "closing explanation that no change was needed is "
+                            "a different fault from a run that stopped before "
+                            "writing (budget, rate-limit and provider errors "
+                            "land on stderr while stdout narrates), and the "
+                            "engine does not parse coder output to tell them "
+                            "apart (ADR 034)."
+                        )
                     # The work is already committed on the branch: carry those
                     # artifacts forward exactly as freshly produced ones would be
                     # so post-execute validation judges what is actually there.
