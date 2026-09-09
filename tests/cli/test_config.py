@@ -833,3 +833,62 @@ class TestProviders:
         """Missing config file does not raise — returns defaults."""
         config = mgr.load()
         assert config["model"] == DEFAULT_MODEL
+
+
+# === Cloud service base URLs (ingest / tunnel split) ===
+
+class TestCloudServiceUrls:
+    def test_ingest_url_reads_api_url(self):
+        from snodo.config import get_cloud_ingest_url
+
+        config = {"cloud": {"api_url": "https://ingest.snodo.example.test"}}
+        assert get_cloud_ingest_url(config) == "https://ingest.snodo.example.test"
+
+    def test_tunnel_url_reads_tunnel_api_url(self):
+        from snodo.config import get_cloud_tunnel_url
+
+        config = {"cloud": {
+            "api_url": "https://ingest.snodo.example.test",
+            "tunnel_api_url": "https://tunnel.snodo.example.test",
+        }}
+        assert get_cloud_tunnel_url(config) == "https://tunnel.snodo.example.test"
+
+    def test_legacy_config_resolves_both_endpoints(self):
+        """A config predating the split keeps working without edits:
+        ingest from api_url, tunnel from the tunnel default — never the
+        ingest host, which would answer tunnel requests as event batches."""
+        from snodo.config import (
+            DEFAULT_TUNNEL_API_URL,
+            get_cloud_ingest_url,
+            get_cloud_tunnel_url,
+        )
+
+        legacy = {"cloud": {
+            "api_key": "sndo_live_xxx",
+            "api_url": "https://api.snodo.dev",
+            "sync_enabled": True,
+        }}
+        assert get_cloud_ingest_url(legacy) == "https://api.snodo.dev"
+        assert get_cloud_tunnel_url(legacy) == DEFAULT_TUNNEL_API_URL
+        assert get_cloud_tunnel_url(legacy) != get_cloud_ingest_url(legacy)
+
+    def test_missing_or_empty_values_use_defaults(self):
+        from snodo.config import (
+            DEFAULT_CLOUD_API_URL,
+            DEFAULT_TUNNEL_API_URL,
+            get_cloud_ingest_url,
+            get_cloud_tunnel_url,
+        )
+
+        assert get_cloud_ingest_url({}) == DEFAULT_CLOUD_API_URL
+        assert get_cloud_tunnel_url({}) == DEFAULT_TUNNEL_API_URL
+        assert get_cloud_ingest_url({"cloud": {}}) == DEFAULT_CLOUD_API_URL
+        assert get_cloud_tunnel_url({"cloud": {"tunnel_api_url": "  "}}) == DEFAULT_TUNNEL_API_URL
+
+    def test_default_config_contains_both_keys(self, mgr):
+        from snodo.config import DEFAULT_CLOUD_API_URL, DEFAULT_TUNNEL_API_URL
+
+        cloud = mgr.load()["cloud"]
+        assert cloud["api_url"] == DEFAULT_CLOUD_API_URL
+        assert cloud["tunnel_api_url"] == DEFAULT_TUNNEL_API_URL
+

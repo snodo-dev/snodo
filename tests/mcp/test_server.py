@@ -1103,6 +1103,150 @@ class TestTunnelProvisioning:
             mock_run.return_value.returncode = 0
             assert _check_cloudflared() is True
 
+    # -- destination: tunnel worker, not ingest -----------------------
+
+    @staticmethod
+    def _write_cloud_config(tmp_path, body):
+        (tmp_path / "config.yml").write_text(body)
+
+    def test_provision_targets_tunnel_worker_not_ingest(self, tmp_path, monkeypatch):
+        """cloud.tunnel_api_url routes provisioning; cloud.api_url (ingest)
+        must never see /tunnel/provision."""
+        import httpx
+
+        from snodo.cli.commands import serve_cmd
+
+        self._write_cloud_config(
+            tmp_path,
+            "cloud:\n"
+            "  api_key: sndo_live_test\n"
+            "  api_url: https://ingest.snodo.example.test\n"
+            "  tunnel_api_url: https://tunnel.snodo.example.test\n",
+        )
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path))
+
+        captured = {}
+
+        def fake_post(url, **kwargs):
+            captured["url"] = url
+            captured["json"] = kwargs.get("json")
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {
+                "hostname": "proj-all-abc123.tunnel.snodo.dev",
+                "tunnel_token": "tok_x",
+            }
+            return resp
+
+        monkeypatch.setattr(httpx, "post", fake_post)
+        out = serve_cmd._provision_tunnel(
+            "sndo_live_test", "proj", "all", "abc123", "1.2.3", 55441,
+        )
+
+        assert out["hostname"] == "proj-all-abc123.tunnel.snodo.dev"
+        assert captured["url"] == "https://tunnel.snodo.example.test/tunnel/provision"
+        assert "ingest.snodo.example.test" not in captured["url"]
+        # Request body is unchanged by the split.
+        assert captured["json"] == {
+            "project_slug": "proj",
+            "mode": "all",
+            "short_id": "abc123",
+            "snodo_version": "1.2.3",
+            "port": 55441,
+        }
+
+    def test_provision_legacy_config_resolves_to_default_tunnel_host(self, tmp_path, monkeypatch):
+        """A config written before the split (api_url only) still provisions
+        against the tunnel host, not the ingest host it names."""
+        import httpx
+
+        from snodo.cli.commands import serve_cmd
+        from snodo.config import DEFAULT_CLOUD_API_URL, DEFAULT_TUNNEL_API_URL
+
+        self._write_cloud_config(
+            tmp_path,
+            "cloud:\n"
+            "  api_key: sndo_live_test\n"
+            f"  api_url: {DEFAULT_CLOUD_API_URL}\n"
+            "  sync_enabled: true\n",
+        )
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path))
+
+        captured = {}
+
+        def fake_post(url, **kwargs):
+            captured["url"] = url
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {"hostname": "h", "tunnel_token": "t"}
+            return resp
+
+        monkeypatch.setattr(httpx, "post", fake_post)
+        serve_cmd._provision_tunnel("sndo_live_test", "proj", "all", "abc123", "1.2.3")
+
+        assert captured["url"] == f"{DEFAULT_TUNNEL_API_URL}/tunnel/provision"
+        assert DEFAULT_CLOUD_API_URL not in captured["url"]
+
+    def test_deprovision_targets_tunnel_worker_not_ingest(self, tmp_path, monkeypatch):
+        import httpx
+
+        from snodo.cli.commands import serve_cmd
+
+        self._write_cloud_config(
+            tmp_path,
+            "cloud:\n"
+            "  api_key: sndo_live_test\n"
+            "  api_url: https://ingest.snodo.example.test\n"
+            "  tunnel_api_url: https://tunnel.snodo.example.test\n",
+        )
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path))
+
+        captured = {}
+
+        def fake_delete(url, **kwargs):
+            captured["url"] = url
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.text = "ok"
+            return resp
+
+        monkeypatch.setattr(httpx, "delete", fake_delete)
+        assert serve_cmd._deprovision_tunnel("sndo_live_test", "h.tunnel.snodo.dev") is True
+        assert captured["url"] == "https://tunnel.snodo.example.test/tunnel/h.tunnel.snodo.dev"
+        assert "ingest.snodo.example.test" not in captured["url"]
+
+    # -- error reporting ----------------------------------------------
+
+    def test_provision_failure_reports_actual_response(self, tmp_path, monkeypatch):
+        """A non-auth failure surfaces the endpoint, status, and body —
+        not a guess about the API key."""
+        import httpx
+
+        from snodo.cli.commands import serve_cmd
+        from snodo.cli.commands.serve_cmd import TunnelAPIError
+
+        self._write_cloud_config(
+            tmp_path,
+            "cloud:\n"
+            "  api_url: https://ingest.snodo.example.test\n"
+            "  tunnel_api_url: https://tunnel.snodo.example.test\n",
+        )
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path))
+
+        resp = MagicMock()
+        resp.status_code = 400
+        resp.text = '{"error": "Missing or invalid field: project_path"}'
+        monkeypatch.setattr(httpx, "post", lambda url, **kw: resp)
+
+        with pytest.raises(TunnelAPIError) as excinfo:
+            serve_cmd._provision_tunnel("k", "proj", "all", "abc123", "1.2.3")
+
+        message = str(excinfo.value)
+        assert excinfo.value.status_code == 400
+        assert "POST https://tunnel.snodo.example.test/tunnel/provision" in message
+        assert "HTTP 400" in message
+        assert "project_path" in message
+
 
 class TestTunnelRunErrors:
     """Test error paths in _run_tunnel."""
@@ -1276,6 +1420,69 @@ class TestTunnelRunErrors:
         assert result == 0
         mock_rotate.assert_not_called()
         mock_save.assert_not_called()
+
+    def test_non_auth_provision_failure_does_not_blame_api_key(self, capsys):
+        """A 400 from provisioning reports the response and does NOT tell
+        the user to re-run snodo cloud connect."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from snodo.cli.commands.serve_cmd import TunnelAPIError, _run_tunnel
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000, rotate=False, delete=False,
+        )
+
+        err = TunnelAPIError(
+            "Tunnel provisioning failed: POST https://app.snodo.dev/tunnel/provision "
+            "returned HTTP 400: Missing or invalid field: project_path",
+            status_code=400,
+        )
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+                with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
+                    with patch("snodo.cli.commands.serve_cmd._provision_tunnel", side_effect=err):
+                        result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 1
+        stderr_text = capsys.readouterr().err
+        assert "HTTP 400" in stderr_text
+        assert "project_path" in stderr_text
+        assert "not an authentication error" in stderr_text
+        assert "Re-run: snodo cloud connect" not in stderr_text
+
+    def test_auth_provision_failure_advises_reconnect(self, capsys):
+        """A 401 keeps the reconnect advice."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from snodo.cli.commands.serve_cmd import TunnelAPIError, _run_tunnel
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000, rotate=False, delete=False,
+        )
+
+        err = TunnelAPIError(
+            "Tunnel provisioning failed: POST https://app.snodo.dev/tunnel/provision "
+            "returned HTTP 401: unauthorized",
+            status_code=401,
+        )
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+                with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
+                    with patch("snodo.cli.commands.serve_cmd._provision_tunnel", side_effect=err):
+                        result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 1
+        stderr_text = capsys.readouterr().err
+        assert "HTTP 401" in stderr_text
+        assert "cloud connect" in stderr_text
 
 class TestServerAuditLog:
     """Tests for audit log wiring in ProtocolMCPServer."""

@@ -255,6 +255,20 @@ def _handle_uninstall(args, protocol, protocol_path) -> int:
 # ------------------------------------------------------------------#
 
 
+class TunnelAPIError(RuntimeError):
+    """A tunnel worker request failed.
+
+    *status_code* is the HTTP status the tunnel worker actually answered
+    with (``None`` for transport-level failures), so callers can tell an
+    authentication rejection apart from every other error instead of
+    blaming the API key for all of them.
+    """
+
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def _check_cloudflared() -> bool:
     """Return True if cloudflared is on PATH."""
     try:
@@ -266,12 +280,17 @@ def _check_cloudflared() -> bool:
         return False
 
 
-def _get_cloud_api_url() -> str:
-    """Read the cloud API URL from ~/.snodo/config.yml."""
-    from snodo.config import ConfigManager
+def _get_cloud_tunnel_api_url() -> str:
+    """Read the tunnel worker's base URL from ~/.snodo/config.yml.
 
-    config = ConfigManager().load()
-    return config.get("cloud", {}).get("api_url", "https://api.snodo.dev")
+    Distinct from ``cloud.api_url`` (the audit ingest base): the tunnel
+    worker is a separate worker on a separate host, so tunnel requests
+    must never inherit the ingest base. Configs predating the split
+    resolve to the default tunnel host.
+    """
+    from snodo.config import ConfigManager, get_cloud_tunnel_url
+
+    return get_cloud_tunnel_url(ConfigManager().load())
 
 
 def _get_snodo_api_key() -> str:
@@ -299,7 +318,7 @@ def _provision_tunnel(
     try:
         import httpx
 
-        api_url = _get_cloud_api_url()
+        api_url = _get_cloud_tunnel_api_url()
 
         url = f"{api_url.rstrip('/')}/tunnel/provision"
         payload = {
@@ -316,14 +335,16 @@ def _provision_tunnel(
             timeout=30.0,
         )
         if resp.status_code != 200:
-            raise RuntimeError(
-                f"Tunnel provisioning failed (HTTP {resp.status_code}): {resp.text[:500]}"
+            raise TunnelAPIError(
+                f"Tunnel provisioning failed: POST {url} returned "
+                f"HTTP {resp.status_code}: {resp.text[:500]}",
+                status_code=resp.status_code,
             )
         return resp.json()
-    except RuntimeError:
+    except TunnelAPIError:
         raise
     except Exception as e:
-        raise RuntimeError(f"Tunnel provisioning failed: {e}") from e
+        raise TunnelAPIError(f"Tunnel provisioning failed: {e}") from e
 
 
 def _rotate_tunnel_token(api_key: str, hostname: str) -> dict:
@@ -340,7 +361,7 @@ def _deprovision_tunnel(api_key: str, hostname: str) -> bool:
     try:
         import httpx
 
-        api_url = _get_cloud_api_url()
+        api_url = _get_cloud_tunnel_api_url()
         url = f"{api_url.rstrip('/')}/tunnel/{hostname}"
         resp = httpx.delete(
             url,
@@ -349,13 +370,15 @@ def _deprovision_tunnel(api_key: str, hostname: str) -> bool:
         )
         if resp.status_code in (200, 404):
             return resp.status_code == 200
-        raise RuntimeError(
-            f"Tunnel deprovision failed (HTTP {resp.status_code}): {resp.text[:500]}"
+        raise TunnelAPIError(
+            f"Tunnel deprovision failed: DELETE {url} returned "
+            f"HTTP {resp.status_code}: {resp.text[:500]}",
+            status_code=resp.status_code,
         )
-    except RuntimeError:
+    except TunnelAPIError:
         raise
     except Exception as e:
-        raise RuntimeError(f"Tunnel deprovision failed: {e}") from e
+        raise TunnelAPIError(f"Tunnel deprovision failed: {e}") from e
 
 
 def _handle_tunnel_delete(project_root: str, tunnel_config: dict,
@@ -483,10 +506,17 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             provisioned = _provision_tunnel(
                 api_key, project_slug, mode, short_id, __version__, port,
             )
+        except TunnelAPIError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            if e.status_code in (401, 403):
+                print("The tunnel worker rejected your snodo API key.", file=sys.stderr)
+                print("Re-run: snodo cloud connect <api_key>", file=sys.stderr)
+            else:
+                print("This is not an authentication error — re-running "
+                      "'snodo cloud connect' will not change it.", file=sys.stderr)
+            return 1
         except RuntimeError as e:
             print(f"Error: {e}", file=sys.stderr)
-            print("If you see an authentication error, your snodo API key may have expired.", file=sys.stderr)
-            print("Re-run: snodo cloud connect <api_key>", file=sys.stderr)
             return 1
 
         tunnel_config = {

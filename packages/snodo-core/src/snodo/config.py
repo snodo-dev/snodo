@@ -72,6 +72,40 @@ DEFAULT_PROVIDER_CATALOG: Dict[str, ProviderConfig] = {
 
 DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
+# Audit ingest and tunnel provisioning are separate workers on separate
+# hosts. Each gets its own config key so a tunnel request can never
+# inherit the ingest base (and be answered with event-batch validation
+# errors), and vice versa.
+DEFAULT_CLOUD_API_URL = "https://api.snodo.dev"
+DEFAULT_TUNNEL_API_URL = "https://app.snodo.dev"
+
+
+def get_cloud_ingest_url(config: dict) -> str:
+    """Return the audit ingest base URL (``cloud.api_url``).
+
+    ``cloud_sync`` builds ``{base}/ingest`` from this value.
+    """
+    return _cloud_url(config, "api_url", DEFAULT_CLOUD_API_URL)
+
+
+def get_cloud_tunnel_url(config: dict) -> str:
+    """Return the tunnel worker base URL (``cloud.tunnel_api_url``).
+
+    Configs written before the ingest/tunnel split have no
+    ``tunnel_api_url``; they resolve to the default tunnel host. The
+    fallback is deliberately *not* ``cloud.api_url`` — that host runs
+    ingest, which answers tunnel requests as malformed event batches.
+    """
+    return _cloud_url(config, "tunnel_api_url", DEFAULT_TUNNEL_API_URL)
+
+
+def _cloud_url(config: dict, key: str, default: str) -> str:
+    cloud = config.get("cloud") if isinstance(config, dict) else None
+    value = cloud.get(key) if isinstance(cloud, dict) else None
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return default
+
 
 # Provider-to-model prefix mapping for key resolution
 PROVIDER_MODEL_PREFIXES = {
@@ -176,7 +210,8 @@ class ConfigManager:
             "engine": {"max_subtask_depth": 3, "max_session_age_days": 30, "token_ttl_seconds": 600},
             "cloud": {
                 "api_key": "",
-                "api_url": "https://api.snodo.dev",
+                "api_url": DEFAULT_CLOUD_API_URL,
+                "tunnel_api_url": DEFAULT_TUNNEL_API_URL,
                 "sync_enabled": False,
             },
             "mcp": {

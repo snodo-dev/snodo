@@ -478,9 +478,14 @@ def sync_if_enabled(
         from snodo.config import ConfigManager
         config = ConfigManager().load()
 
+    from snodo.config import get_cloud_ingest_url
+
     cloud = config.get("cloud", {})
     api_key = cloud["api_key"]
-    api_url = cloud["api_url"]
+    # cloud.api_url is the ingest base. Tunnel provisioning uses its own
+    # key (cloud.tunnel_api_url) — never route one service's requests to
+    # the other's host.
+    api_url = get_cloud_ingest_url(config)
 
     dispatcher = CloudSyncDispatcher()
     result: dict = {"synced": 0, "failed": False, "pending": 0}
