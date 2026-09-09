@@ -96,7 +96,7 @@ def cloud_disconnect_command() -> int:
 
 def cloud_status_command() -> int:
     """Show cloud connection and sync state."""
-    from snodo.config import ConfigManager
+    from snodo.config import ConfigManager, get_cloud_ingest_url
     from snodo.infrastructure.cloud_sync import CloudSyncState
 
     mgr = ConfigManager()
@@ -105,7 +105,7 @@ def cloud_status_command() -> int:
 
     api_key = cloud.get("api_key", "")
     sync_enabled = cloud.get("sync_enabled", False)
-    api_url = cloud.get("api_url", "https://api.snodo.dev")
+    api_url = get_cloud_ingest_url(config)
 
     if api_key:
         prefix = api_key[:16] + "..." if len(api_key) > 16 else api_key[:4] + "***"
@@ -170,7 +170,7 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
     --force / --retry: force re-attempt sync for refused sessions
     (no flags): sync the current active session
     """
-    from snodo.config import ConfigManager
+    from snodo.config import ConfigManager, get_cloud_ingest_url
     from snodo.infrastructure.paths import require_project_root
     from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
     from snodo.infrastructure.audit import AuditLog, AuditError
@@ -180,7 +180,7 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
     cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
 
     api_key = cloud.get("api_key", "")
-    api_url = cloud.get("api_url", "https://api.snodo.dev")
+    api_url = get_cloud_ingest_url(config)
 
     if not api_key:
         print("Error: Not connected to snodo cloud.", file=sys.stderr)

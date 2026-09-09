@@ -22,7 +22,9 @@ First run:
         Then run: snodo auth login"
      Exit if no account.
   4. Generate short_id: 6 random alphanumeric chars
-  5. POST api.snodo.dev/tunnel/provision:
+   5. POST {cloud.tunnel_api_url}/tunnel/provision
+      (tunnel worker base, default https://app.snodo.dev — NOT
+       cloud.api_url, which is the audit ingest base):
        {project_slug, mode, short_id, snodo_version}
      Auth: snodo API key in Authorization header
      Response: {hostname, tunnel_token, client_id, client_secret}
@@ -69,7 +71,7 @@ Ctrl+C handling:
 
 ## snodo-cloud API (spec for snodo-cloud, implement separately)
 
-POST api.snodo.dev/tunnel/provision
+POST {cloud.tunnel_api_url}/tunnel/provision   # default https://app.snodo.dev
   Auth: Bearer {snodo_api_key}
   Body: {project_slug, mode, short_id, snodo_version}
   Creates: Cloudflare tunnel + DNS record + Access app + service token

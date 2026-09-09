@@ -539,6 +539,62 @@ class TestCloudSyncDispatcher:
 
         mock_sync.assert_not_called()
 
+    def test_sync_if_enabled_posts_to_ingest_base_even_with_tunnel_key(self):
+        """The ingest/tunnel config split must not move audit sync.
+
+        sync_if_enabled resolves the base from cloud.api_url (ingest);
+        cloud.tunnel_api_url is for tunnel provisioning only.
+        """
+        import snodo.infrastructure.cloud_sync as cs
+        from snodo.infrastructure.cloud_sync import sync_if_enabled
+
+        config = {"cloud": {
+            "sync_enabled": True,
+            "api_key": "sndo_live_xxx",
+            "api_url": "https://api.example.com",
+            "tunnel_api_url": "https://tunnel.example.com",
+        }}
+
+        with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher.sync") as mock_sync:
+            mock_sync.return_value = {"synced": 0, "failed": False, "pending": 0}
+            sync_if_enabled("sess_split", "/proj", MagicMock(), config=config)
+
+            import threading
+            for t in threading.enumerate():
+                if t is not threading.main_thread() and t.daemon:
+                    t.join(timeout=1)
+
+        mock_sync.assert_called_once()
+        api_url_arg = mock_sync.call_args.args[4]
+        assert api_url_arg == "https://api.example.com"
+        assert "tunnel.example.com" not in api_url_arg
+        cs._pending_syncs.clear()
+
+    def test_post_batch_targets_ingest_path(self):
+        """_post_batch still builds {api_url}/ingest — unchanged destination."""
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
+
+        dispatcher = CloudSyncDispatcher()
+        events = self._make_events(1)
+
+        captured = {}
+
+        def fake_post(url, **kwargs):
+            captured["url"] = url
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.text = "ok"
+            return resp
+
+        with patch("httpx.post", side_effect=fake_post):
+            outcome, _, _ = dispatcher._post_batch(
+                "sess_ingest", "/proj", events,
+                "sndo_live_xxx", "https://api.example.com",
+            )
+
+        assert outcome == "delivered"
+        assert captured["url"] == "https://api.example.com/ingest"
+
     def test_refused_response_records_reason_range_and_skips_automatic_retry(self, tmp_path, monkeypatch):
         """A 400 refused response leaves cursor, records reason & range, and is skipped on automatic sync."""
         from unittest.mock import patch, MagicMock
