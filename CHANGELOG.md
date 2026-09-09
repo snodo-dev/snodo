@@ -31,6 +31,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
   a verdict, and no per-caller guard is needed to avoid it. Anything
   constructing or reading a `ValidatorResult` should expect `severity` to be
   `None`. (Fixes #244, Fixes #245, Fixes #249)
+- The cockpit's Tasks and Jobs panes now say *when* a record ran, not only
+  whether it is alive. Thirty completed tasks used to read as one undifferentiated
+  block: the run from an hour ago looked exactly like the run from last week, no
+  row showed how long it took, and rows came in whatever order the plan
+  directories were walked, so the task that just finished could sit twenty rows
+  down. Each row now carries **Started** (a wall-clock stamp, dated once it is
+  older than a day), **Ran** (start to the last sign of life, or to now for a
+  run still going) and **Last** (when the record last moved, coloured by how
+  long it has been silent), and both panes lead with the most recently started
+  work. Descendants stay under their parent — the ordering is applied level by
+  level, never to a flattened list — and a record that never wrote a
+  `started_at` still renders, sorting last rather than crashing or vanishing.
+  The pane fits eight columns, so three new facts displaced three old ones:
+  **Phase For** and **Idle** are the same number for any finished record, and a
+  duration says more than either once the run is over; **Alive?** goes because
+  its fact survives in **Status**, which now renames a silent run `stale`, dims
+  a settled one, and appends `pid not recorded` when liveness cannot be
+  answered at all. Nothing new is recorded: every fact comes from the
+  `started_at` and the audit/usage markers already on disk, the panes stay pure
+  readers (no telemetry, no new audit events or state fields, no lock, no
+  write), and reading the whole settled set costs the same single bounded pass
+  a refresh already made.
 
 ### Added
 - A wave is now openable from the cockpit. Pressing `w` on a selected task

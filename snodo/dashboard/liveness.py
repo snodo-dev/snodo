@@ -31,7 +31,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
@@ -280,6 +280,29 @@ class RunRow:
     def idle_seconds(self, now: float) -> Optional[float]:
         last = self.last_marker()
         return (now - last.ts) if last else None
+
+    def duration_seconds(self, now: float) -> Optional[float]:
+        """How long the run occupied time: start to last sign of life.
+
+        For a live record the run has not ended, so the honest measure is
+        start to *now*. For a terminal one it is start to the last marker — the
+        wall-clock span the work actually took. A terminal record with no
+        markers never revealed an end, so its duration is unknown rather than
+        invented.
+        """
+        if self.started_at is None:
+            return None
+        last = self.last_marker()
+        if self.is_terminal():
+            if last is None:
+                return None
+            return max(0.0, last.ts - self.started_at)
+        return max(0.0, now - self.started_at)
+
+    def last_moved(self) -> Optional[float]:
+        """Epoch of the most recent sign of life, or None when there is none."""
+        last = self.last_marker()
+        return last.ts if last else None
 
     def is_terminal(self) -> bool:
         return self.status in _TERMINAL_STATUSES
@@ -668,6 +691,24 @@ def fmt_age(seconds: Optional[float]) -> str:
     if hours < 48:
         return f"{hours}h{minutes:02d}m"
     return f"{hours // 24}d{hours % 24:02d}h"
+
+
+def fmt_when(ts: Optional[float], now: float) -> str:
+    """Wall-clock stamp for *when* something happened, at a glance.
+
+    A duration answers "how long"; this answers "when did this run". Recent
+    activity (within a day of *now*) prints as a clock time — that is the
+    resolution an operator scans at — and anything older carries its date, so a
+    run from last week is not mistaken for one from this morning. UTC-based so
+    the pane reads the same wherever it is opened.
+    """
+    if ts is None:
+        return "—"
+    moment = datetime.fromtimestamp(ts, timezone.utc)
+    if abs(now - ts) < 24 * 3600:
+        return moment.strftime("%H:%M")
+    same_year = moment.year == datetime.fromtimestamp(now, timezone.utc).year
+    return moment.strftime("%d %b %H:%M" if same_year else "%Y-%m-%d %H:%M")
 
 
 def idle_style(seconds: Optional[float]) -> str:

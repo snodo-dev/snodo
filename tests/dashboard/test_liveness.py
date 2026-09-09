@@ -33,12 +33,19 @@ from snodo.dashboard.liveness import (
     RunRow,
     collect_snapshot,
     fmt_age,
+    fmt_when,
     in_place_blind,
     is_stale,
+    liveness_text,
     read_json_state,
     tail_audit_events,
 )
 from snodo.dashboard.providers import DashboardDataProvider
+
+
+def _stamp(ts: float) -> str:
+    """The wall-clock stamp a pane shows for an epoch value within a day of now."""
+    return datetime.fromtimestamp(ts, UTC).strftime("%H:%M")
 
 
 # ---------------------------------------------------------------------------
@@ -135,11 +142,46 @@ def test_provider_liveness_cells(snapshot_project):
     provider = DashboardDataProvider(str(snapshot_project))
     row = provider.get_task_liveness("task_alpha")
     assert row is not None
-    phase, phase_for, idle, alive, cost = provider.liveness_cells(row)
+    now = provider.get_liveness_snapshot()["now"]
+    phase, started, ran, last, cost = provider.liveness_cells(row)
     assert "execute" in phase
-    assert "1m00s" in idle  # seconds since the last sign of life
-    assert "alive" in alive
+    # when the run began, as a wall-clock stamp — not an age
+    assert started == _stamp(row.started_at)
+    # how long it has taken so far: start to now for a live record
+    assert row.duration_seconds(now) == pytest.approx(900.0, abs=2.0)
+    assert ran == fmt_age(row.duration_seconds(now))
+    assert ran != "1m00s"  # not the old idle number, which repeated itself
+    # when it last moved, coloured by how long it has been silent (60s -> yellow)
+    assert last == f"[yellow]{_stamp(row.last_moved())}[/]"
     assert "$0.0500" in cost
+
+
+def test_row_renders_known_start_run_and_last_moved(project):
+    """A finished record with a known start and last sign of life renders the
+    start, the run's duration and the moment it last moved, exactly.
+
+    The clock is pinned to a whole second: an ISO round-trip of a fractional
+    stamp can land a hair below the arithmetic difference, and a duration
+    printed to the second must not hinge on that.
+    """
+    base = float(int(time.time()))
+    _write_audit(project, [
+        _audit_line(0, "dispatch", "task_alpha", base - 3600, coder="litellm"),
+        _audit_line(1, "task_complete", "task_alpha", base - 600),
+    ])
+    _write_task_state(project, "task_alpha", {
+        "task_id": "task_alpha", "status": "completed",
+        "started_at": base - 3600, "usage": [],
+    })
+    provider = DashboardDataProvider(str(project))
+    row = provider.get_task_liveness("task_alpha")
+    assert row is not None
+    # terminal record: the run lasted from its start to its last sign of life
+    assert row.duration_seconds(provider.get_liveness_snapshot()["now"]) == pytest.approx(3000.0)
+    _phase, started, ran, last, _cost = provider.liveness_cells(row)
+    assert started == _stamp(base - 3600)
+    assert ran == "50m00s"
+    assert _stamp(base - 600) in last  # styled by silence, stamped by time
 
 
 def test_provider_liveness_rows_include_jobs(snapshot_project):
@@ -170,21 +212,26 @@ def test_snapshot_dead_pid_is_visible(project):
     assert row.status == "running"
     assert row.alive() is False
     provider = DashboardDataProvider(str(project))
-    assert "DEAD" in provider.liveness_cells(row)[3]
+    # The pane's old "Alive?" column is gone; its fact now rides on Status, so
+    # a record whose process is gone is never shown as simply running.
+    assert "DEAD" in provider.status_cell(row.status, row)
 
 
 def test_snapshot_missing_pid_is_honestly_unknown(project):
     """A task started before pids were recorded cannot answer liveness — say so."""
+    now = time.time()
     _write_task_state(project, "task_legacy", {
-        "task_id": "task_legacy", "status": "running", "started_at": time.time() - 10,
-        "usage": [],
+        "task_id": "task_legacy", "status": "running", "started_at": now - 10,
+        "usage": [{"timestamp": now - 5, "role": "coder", "model": "gpt-4o",
+                   "cost": 0.01, "total_tokens": 100, "duration_ms": 100}],
     })
     snap = collect_snapshot(str(project))
     row = {r.run_id: r for r in snap["runs"]}["task_legacy"]
     assert row.pid is None
     assert row.alive() is None
     provider = DashboardDataProvider(str(project))
-    assert "pid not recorded" in provider.liveness_cells(row)[3]
+    assert "pid not recorded" in provider.status_cell(row.status, row)
+    assert "pid not recorded" in liveness_text(row)
 
 
 def test_blind_coder_phase_says_so(project):
@@ -553,6 +600,22 @@ def test_dual_written_usage_is_flagged(project):
     assert any("dual-written" in n for n in snap["notes"])
 
 
+def test_terminal_row_without_a_marker_has_no_invented_duration():
+    """A finished record that never showed an end reads as unknown, not as zero."""
+    now = time.time()
+    row = RunRow(
+        kind="task", run_id="task_y", description="", status="completed",
+        pid=None, started_at=now - 500, markers=[],
+    )
+    assert row.last_moved() is None
+    assert row.duration_seconds(now) is None
+    live = RunRow(
+        kind="task", run_id="task_z", description="", status="running",
+        pid=None, started_at=now - 500, markers=[],
+    )
+    assert live.duration_seconds(now) == pytest.approx(500.0)
+
+
 def test_runrow_idle_and_cost():
     now = time.time()
     row = RunRow(
@@ -633,25 +696,30 @@ def test_cockpit_panes_render_liveness_from_fixture_state(tmp_path, monkeypatch)
             tasks = app.screen.query_one("#tasks-table")
             jobs = app.screen.query_one("#jobs-table")
             assert [c.label.plain for c in tasks.columns.values()] == [
-                "Task ID", "Wave", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost",
+                "Task ID", "Wave", "Status", "Phase", "Started", "Ran", "Last", "Cost",
             ]
             assert [c.label.plain for c in jobs.columns.values()] == [
-                "Job ID", "Task", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost",
+                "Job ID", "Task", "Status", "Phase", "Started", "Ran", "Last", "Cost",
             ]
             assert tasks.row_count == 1
             assert jobs.row_count == 1
             task_row = tasks.get_row(next(iter(tasks.rows)))
             job_row = jobs.get_row(next(iter(jobs.rows)))
-            # After adding Wave column at index 1, indices shift:
-            # Task ID=0, Wave=1, Status=2, Phase=3, Phase For=4, Idle=5, Alive?=6, Cost=7
-            assert task_row[3] == "execute"  # Phase (was index 2)
-            assert "alive" in task_row[6]    # Alive? (was index 5)
-            assert "$0.0300" in task_row[7]  # Cost (was index 6)
-            # Jobs table columns: Job ID=0, Task=1, Status=2, Phase=3, Phase For=4,
-            # Idle=5, Alive?=6, Cost=7 — the owning task is a visible column.
+            provider = app.screen.provider
+            t_run = provider.get_task_liveness("task_alpha")
+            j_run = provider.get_job_liveness("j_alpha")
+            # Columns: ID=0, Wave=1, Status=2, Phase=3, Started=4, Ran=5, Last=6, Cost=7
+            assert task_row[2] == "in_progress"  # Status: live pid, so not stale
+            assert task_row[3] == "execute"  # Phase
+            assert task_row[4] == _stamp(t_run.started_at)  # Started
+            assert task_row[5].startswith("15m")  # Ran: live, so timed so far
+            assert _stamp(t_run.last_moved()) in task_row[6]  # Last moved
+            assert "$0.0300" in task_row[7]  # Cost
+            # Jobs table: ID=0, Task=1 — the owning task is a visible column.
             assert job_row[1] == "task_alpha"  # Task
             assert job_row[3] == "execute"  # Phase
-            assert "alive" in job_row[6]    # Alive?
+            assert job_row[4] == _stamp(j_run.started_at)  # Started
+            assert _stamp(j_run.last_moved()) in job_row[6]  # Last moved
             assert "$0.1000" in job_row[7]  # Cost
             # every cell must parse as rich markup (what DataTable does at render)
             from rich.text import Text
@@ -826,3 +894,176 @@ def test_ansi_to_text_keeps_square_brackets_literal():
 
     text = _ansi_to_text("[1;31m] not markup, and [/red] not a close tag")
     assert text.plain == "[1;31m] not markup, and [/red] not a close tag"
+
+
+# ---------------------------------------------------------------------------
+# 8. When it happened: started / ran / last moved, and the order they read in
+# ---------------------------------------------------------------------------
+
+
+def _timing_project(tmp_path, monkeypatch, plan_tasks, states):
+    """A session whose plan lists *plan_tasks*, with *states* on disk per task.
+
+    ``states`` maps a task id to the dict written as its ``state.json``; a task
+    deliberately left out has no record on disk at all — the shape a started_at
+    -less record takes.
+    """
+    snodo = tmp_path / ".snodo"
+    (snodo / "plans" / "main").mkdir(parents=True)
+    (snodo / "plans" / "main" / "status.json").write_text(json.dumps({"tasks": plan_tasks}))
+    for task_id, state in states.items():
+        _write_task_state(tmp_path, task_id, state)
+    monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+    from snodo.infrastructure.session import SessionManager
+
+    mgr = SessionManager()
+    sess = mgr.create_session("producer", str(tmp_path))
+    (snodo / "state.json").write_text(json.dumps({
+        "current_mode": "producer",
+        "active_session": {"producer": sess.session_id},
+        "metadata": {},
+    }))
+    return tmp_path
+
+
+def test_flatten_orders_recently_started_first_and_keeps_children_under_parent():
+    """The newest work leads the pane; a child never escapes its parent."""
+    from snodo.dashboard.panels.cockpit import _flatten_tasks
+
+    now = 1_700_000_000.0
+    started = {
+        "root_old": now - 7200,
+        "root_new": now - 60,
+        "child_of_old": now - 30,  # newer than both roots, still a child
+        "root_no_start": None,
+    }
+    tasks = [
+        {"task_ref": "p:root_old", "task_id": "root_old", "parent_task_ref": None, "depth": 0},
+        {"task_ref": "p:root_new", "task_id": "root_new", "parent_task_ref": None, "depth": 0},
+        {"task_ref": "p:root_no_start", "task_id": "root_no_start", "parent_task_ref": None, "depth": 0},
+        {"task_ref": "p:child_of_old", "task_id": "child_of_old", "parent_task_ref": "p:root_old", "depth": 1},
+    ]
+    flat = _flatten_tasks(tasks, started_of=lambda t: started.get(t["task_id"]))
+    assert [t["task_ref"] for t in flat] == [
+        "p:root_new",
+        "p:root_old",
+        "p:child_of_old",
+        "p:root_no_start",  # no started_at: rendered, but last
+    ]
+
+
+def test_flatten_without_timing_keeps_disk_order():
+    """Ordering is opt-in: with no start supplied the tree is walked as before."""
+    from snodo.dashboard.panels.cockpit import _flatten_tasks
+
+    tasks = [
+        {"task_ref": "p:b", "task_id": "b", "parent_task_ref": None, "depth": 0},
+        {"task_ref": "p:a", "task_id": "a", "parent_task_ref": None, "depth": 0},
+    ]
+    assert [t["task_ref"] for t in _flatten_tasks(tasks)] == ["p:b", "p:a"]
+
+
+def test_fmt_when_answers_when_not_how_long():
+    """A stamp is a clock time within a day, a dated stamp beyond it."""
+    now = datetime(2026, 5, 4, 12, 0, tzinfo=UTC).timestamp()
+    assert fmt_when(now - 45, now) == "11:59"
+    assert fmt_when(now - 3 * 86400, now) == "01 May 12:00"
+    assert fmt_when(now - 400 * 86400, now) == "2025-03-30 12:00"
+    assert fmt_when(None, now) == "—"
+
+
+def test_cockpit_orders_tasks_by_recent_start_and_renders_a_start_less_one(tmp_path, monkeypatch):
+    """End to end: the pane leads with the newest run, keeps a child under its
+    parent, and still lists — last — a record that never recorded a start."""
+    import asyncio
+
+    from snodo.dashboard.app import SnodoDashboard
+
+    now = float(int(time.time()))
+    project = _timing_project(
+        tmp_path, monkeypatch,
+        plan_tasks={
+            "root_old": {"status": "completed", "parent_task_ref": None, "depth": 0},
+            "root_new": {"status": "completed", "parent_task_ref": None, "depth": 0},
+            "child_of_old": {"status": "completed", "parent_task_ref": "main:root_old", "depth": 1},
+            "root_no_start": {"status": "completed", "parent_task_ref": None, "depth": 0},
+        },
+        states={
+            "root_old": {"task_id": "root_old", "status": "completed", "started_at": now - 7200,
+                         "usage": [{"timestamp": now - 7000, "role": "coder", "cost": 0.1}]},
+            "root_new": {"task_id": "root_new", "status": "completed", "started_at": now - 120,
+                         "usage": [{"timestamp": now - 60, "role": "coder", "cost": 0.2}]},
+            # Started most recently of all, yet it must not leave its parent.
+            "child_of_old": {"task_id": "child_of_old", "status": "completed", "started_at": now - 30,
+                             "usage": [{"timestamp": now - 20, "role": "coder", "cost": 0.05}]},
+            # root_no_start has no state.json: it is on disk as a plan record only.
+        },
+    )
+
+    async def _run():
+        app = SnodoDashboard(project_root=str(project))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause(0.2)
+            tasks = app.screen.query_one("#tasks-table")
+            rows = [tasks.get_row(rk) for rk in tasks.rows]
+            ids = [r[0] for r in rows]
+            assert ids == ["root_new", "root_old", "  ↳ child_of_old", "root_no_start"]
+            # a finished record is dimmed, not left claiming to be current
+            assert rows[0][2] == "[dim]completed[/dim]"
+            # The newest root: an hour of work, then two minutes of silence.
+            assert rows[0][4] == _stamp(now - 120)
+            assert rows[0][5] == "1m00s"  # terminal: start to its last sign of life
+            assert _stamp(now - 60) in rows[0][6]
+            # The start-less record renders — dashes, not a crash, not an absence.
+            assert rows[3][2:] == ["completed", "—", "—", "—", "—", "—"]
+
+    asyncio.run(_run())
+
+
+def test_cockpit_orders_jobs_by_recent_start_with_start_less_job_last(tmp_path, monkeypatch):
+    """The Jobs pane reads the same way: newest first, a job with no start last."""
+    import asyncio
+
+    from snodo.dashboard.app import SnodoDashboard
+
+    now = float(int(time.time()))
+    project = _cockpit_fixture(tmp_path, monkeypatch)  # task_alpha + j_alpha (running)
+    # A task of its own: task_alpha's audit trail must not leak into its timing.
+    _write_job_state(project, "j_old", {
+        "status": "completed", "pid": None, "started_at": now - 3600,
+        "completed_at": now - 3000,
+        "usage": [{"timestamp": now - 3000, "role": "coder", "cost": 0.4}],
+    }, task_id="task_other")
+    _write_job_state(project, "j_no_start", {
+        "status": "completed", "pid": None,
+        "usage": [{"timestamp": now - 10, "role": "coder", "cost": 0.1}],
+    }, task_id="task_other")
+    # A job the liveness reader never names (not "j_*"): its own timing must
+    # still reach the pane, from the record the job list already carries.
+    legacy = project / ".snodo" / "jobs" / "job_legacy"
+    legacy.mkdir()
+    (legacy / "task.json").write_text(json.dumps({"task_id": "task_other"}))
+    (legacy / "state.json").write_text(json.dumps({
+        "status": "completed", "started_at": now - 1800, "completed_at": now - 1200,
+    }))
+
+    async def _run():
+        app = SnodoDashboard(project_root=str(project))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause(0.2)
+            jobs = app.screen.query_one("#jobs-table")
+            rows = [jobs.get_row(rk) for rk in jobs.rows]
+            assert [r[0] for r in rows] == ["j_alpha", "job_legacy", "j_old", "j_no_start"]
+            # job_legacy: started half an hour ago, ran ten minutes, per its record
+            assert rows[1][4] == _stamp(now - 1800)
+            assert rows[1][5] == "10m00s"
+            # j_old ran an hour ago for ten minutes, last heard from at its end.
+            assert rows[2][4] == _stamp(now - 3600)
+            assert rows[2][5] == "10m00s"
+            assert _stamp(now - 3000) in rows[2][6]
+            # The job that never recorded a start still shows, with the dash.
+            assert rows[3][4] == "—"
+
+    asyncio.run(_run())

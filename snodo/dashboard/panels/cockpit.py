@@ -5,9 +5,9 @@ FILE: snodo/dashboard/panels/cockpit.py
 The cockpit is an observer: it reads and displays, and it acts nowhere. Every
 action that changes state (dispatch, plan, recon, authorize) belongs to
 ``snodo cloud``/``snodo``, where it is attributable to an identity. So the
-panes here answer only "what do I need to look at, and why" — and the one pane
-that earns the most space is the one that names what will not move until a
-person acts.
+panes here answer only "what do I need to look at, why, and when did it
+happen" — and the one pane that earns the most space is the one that names what
+will not move until a person acts.
 
 Layout:
     row 1: Needs You (awaiting a human) | Tasks Tree
@@ -22,7 +22,7 @@ project cost the per-call usage records already carry.
 
 from contextlib import suppress
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from rich.ansi import AnsiDecoder
 from rich.text import Text
@@ -33,7 +33,7 @@ from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 from textual.widgets.data_table import RowDoesNotExist
 
-from snodo.dashboard.liveness import fmt_age
+from snodo.dashboard.liveness import fmt_age, fmt_when
 from snodo.dashboard.panels import register_panel, get_panel
 from snodo.dashboard.screens import _short_id
 
@@ -54,8 +54,29 @@ def _ansi_to_text(content: str) -> Text:
     return text
 
 
-def _flatten_tasks(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Flatten tasks into recovery hierarchical list."""
+StartedOf = Callable[[Dict[str, Any]], Optional[float]]
+
+
+def _flatten_tasks(
+    tasks: List[Dict[str, Any]],
+    started_of: Optional[StartedOf] = None,
+) -> List[Dict[str, Any]]:
+    """Flatten tasks into the hierarchical list the pane renders.
+
+    ``started_of(task) -> Optional[float]`` orders the tree: the most recently
+    started work sits at the top. Ordering is applied at each level of the
+    hierarchy, not to a flattened list, so a descendant always stays under its
+    parent. A task with no recorded start sorts last rather than being dropped
+    or raising — a legacy or half-written record still has to be visible.
+    """
+
+    def started_key(t: Dict[str, Any]) -> Optional[float]:
+        return started_of(t) if started_of else None
+
+    def order_key(t: Dict[str, Any]):
+        started = started_key(t)
+        return (started is None, -(started or 0.0))
+
     by_parent: Dict[str, List[Dict[str, Any]]] = {}
     roots: List[Dict[str, Any]] = []
     for t in tasks:
@@ -66,6 +87,11 @@ def _flatten_tasks(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if parent not in by_parent:
                 by_parent[parent] = []
             by_parent[parent].append(t)
+
+    if started_of:
+        roots.sort(key=order_key)
+        for children in by_parent.values():
+            children.sort(key=order_key)
 
     flat: List[Dict[str, Any]] = []
 
@@ -81,6 +107,8 @@ def _flatten_tasks(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if child["task_ref"] not in seen:
                 seen.add(child["task_ref"])
                 deduped.append(child)
+        if started_of:
+            deduped.sort(key=order_key)
         for child in deduped:
             traverse(child)
 
@@ -89,9 +117,10 @@ def _flatten_tasks(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     # Orphaned fallback
     seen_refs = {t["task_ref"] for t in flat}
-    for t in tasks:
-        if t["task_ref"] not in seen_refs:
-            flat.append(t)
+    orphans = [t for t in tasks if t["task_ref"] not in seen_refs]
+    if started_of:
+        orphans.sort(key=order_key)
+    flat.extend(orphans)
 
     return flat
 
@@ -212,12 +241,18 @@ class CockpitScreen(Screen):
         yield Footer()
 
     def on_mount(self):
-        # Configure columns
+        # Configure columns. The pane fits eight, so timing earns its place by
+        # replacing the pair that repeated itself: "Phase For" and "Idle" are
+        # the same number for any finished record, while "Started", "Ran" and
+        # "Last" answer the question a settled list actually poses — when did
+        # this happen, and how long did it take. "Alive?" goes because its fact
+        # survives in "Status" (a dead run is renamed stale) and a long silence
+        # reads out of "Last" in red.
         tasks_table = self.query_one("#tasks-table", DataTable)
-        tasks_table.add_columns("Task ID", "Wave", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost")
+        tasks_table.add_columns("Task ID", "Wave", "Status", "Phase", "Started", "Ran", "Last", "Cost")
 
         jobs_table = self.query_one("#jobs-table", DataTable)
-        jobs_table.add_columns("Job ID", "Task", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost")
+        jobs_table.add_columns("Job ID", "Task", "Status", "Phase", "Started", "Ran", "Last", "Cost")
 
         # The initial read is performed once, in on_screen_resume, which fires
         # as this screen becomes active — doing it here too would read twice on
@@ -458,19 +493,23 @@ class CockpitScreen(Screen):
             self._programmatic_move = False
 
         all_tasks = self.provider.get_tasks(session_id)
-        flat_tasks = _flatten_tasks(all_tasks)
+        # Timing comes from the run records on disk (the whole set, not the
+        # snapshot's truncated display list): a settled task that just
+        # finished must still show when it ran and sort to the top.
+        task_runs = self.provider.get_run_index("task")
+        for t in all_tasks:
+            run = task_runs.get(t["task_id"])
+            t["started_at"] = run.started_at if run is not None else None
+        flat_tasks = _flatten_tasks(all_tasks, started_of=lambda t: t.get("started_at"))
 
         for t in flat_tasks:
             indent = "  " * t["depth"] + ("↳ " if t["depth"] > 0 else "")
             display_id = indent + t["task_id"]
             wave_id = task_to_wave.get(t["task_id"], t.get("wave_id", "—"))
             status = t["status"]
-            liveness = self.provider.get_task_liveness(t["task_id"])
+            liveness = task_runs.get(t["task_id"])
             if liveness is not None:
-                if self.provider.is_stale_row(liveness):
-                    status = "[bold red]stale[/]"
-                elif liveness.is_terminal():
-                    status = f"[dim]{status}[/dim]"
+                status = self.provider.status_cell(status, liveness)
                 cells = [display_id, wave_id, status] + self.provider.liveness_cells(liveness)
             else:
                 cells = [display_id, wave_id, status, "—", "—", "—", "—", "—"]
@@ -497,20 +536,29 @@ class CockpitScreen(Screen):
             self._programmatic_move = False
 
         jobs = self.provider.get_jobs(self.selected_session)
+        job_runs = self.provider.get_run_index("job")
+
+        # Most recently started first, on the same start the row displays; a
+        # job with no recorded start renders and sorts last rather than
+        # vanishing from the pane.
+        def _started(j: Dict[str, Any]) -> Optional[float]:
+            run = job_runs.get(j["job_id"])
+            started = run.started_at if run is not None else j.get("started_at")
+            return float(started) if started else None
+
+        jobs = sorted(jobs, key=lambda j: (_started(j) is None, -(_started(j) or 0.0)))
+        now = time.time()
         for j in jobs:
             job_id = j["job_id"]
             task_ref = j.get("task_ref", "") or "—"
             status = j["status"]
-            liveness = self.provider.get_job_liveness(job_id)
+            liveness = job_runs.get(job_id)
             if liveness is not None:
-                if self.provider.is_stale_row(liveness):
-                    status = "[bold red]stale[/]"
-                elif liveness.is_terminal():
-                    status = f"[dim]{status}[/dim]"
+                status = self.provider.status_cell(status, liveness)
                 cells = [job_id, task_ref, status] + self.provider.liveness_cells(liveness)
             else:
-                dur_str = f"{j['duration']:.1f}s" if j["duration"] else "—"
-                cells = [job_id, task_ref, status, "—", "—", dur_str, "—", "—"]
+                dur_str = fmt_age(j["duration"]) if j["duration"] else "—"
+                cells = [job_id, task_ref, status, "—", fmt_when(_started(j), now), dur_str, "—", "—"]
             jobs_table.add_row(*cells, key=job_id)
 
         # Restore cursor position for jobs
