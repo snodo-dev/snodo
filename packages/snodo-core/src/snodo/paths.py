@@ -9,6 +9,7 @@ platform home directory.
 
 import hashlib
 import os
+from contextlib import suppress
 from pathlib import Path
 from typing import Optional
 
@@ -40,6 +41,25 @@ def resolve_token_store() -> Path:
     return resolve_home() / "tokens.db"
 
 
+def _machine_config_homes() -> set:
+    """Config directories that exist regardless of the current environment.
+
+    ``Path.home()`` follows ``$HOME``, so it cannot answer this: a process
+    with ``$HOME`` redirected still has the machine's real ``~/.snodo``
+    sitting on disk above its working directory, and that directory is a
+    config directory, not a project. The passwd entry gives the account's
+    real home independently of the environment; ``Path.home()`` is kept as
+    well so a redirected home's config directory is excluded too.
+    """
+    homes = set()
+    with suppress(Exception):
+        homes.add(Path.home() / ".snodo")
+    with suppress(Exception):
+        import pwd
+        homes.add(Path(pwd.getpwuid(os.getuid()).pw_dir) / ".snodo")
+    return homes
+
+
 def resolve_project_root(start: Optional[str] = None) -> Optional[str]:
     """Walk up from *start* (or cwd) looking for a .snodo/ directory.
 
@@ -61,7 +81,8 @@ def resolve_project_root(start: Optional[str] = None) -> Optional[str]:
     # one: with SNODO_HOME redirected, a real ~/.snodo on disk stopped being
     # excluded and the walk reported the user's home directory as the project
     # root. Both are excluded, always.
-    config_homes = {resolve_home(), Path.home() / ".snodo"}
+    config_homes = {resolve_home()}
+    config_homes.update(_machine_config_homes())
     directory = Path(start).resolve() if start else Path.cwd()
     for parent in [directory] + list(directory.parents):
         if (
