@@ -101,16 +101,16 @@ def _halt_event_fields(event: dict) -> Tuple[str, str]:
     """Return ``(outcome_label, awaits_text)`` for a halt/escalation event.
 
     The recorded outcome is what groups a wave that failed the same way six
-    times into one fact: ``halt_type``/``final_decision`` is the canonical
-    vocabulary, and an abstention (a judge that could not reach a verdict) is
-    named as such rather than folded into a generic blocker.
+    times into one fact: ``halt_type`` is the canonical vocabulary, and an
+    abstention (a judge that could not reach a verdict) is named as such rather
+    than folded into a generic blocker.
     """
     event_type = event.get("event_type", "")
     data = event.get("data") if isinstance(event.get("data"), dict) else {}
     reason = str(data.get("reason") or "")
-    halt_type = str(
-        data.get("final_decision") or data.get("halt_type") or ""
-    ) or event_type.replace("_escalated", "").replace("unverified_merge_", "merge ")
+    halt_type = str(data.get("halt_type") or "") or event_type.replace(
+        "_escalated", ""
+    ).replace("unverified_merge_", "merge ")
 
     # An abstention — a judge that exhausted its budget without a verdict — is
     # the halt that will not resolve on its own. It is recorded across the
