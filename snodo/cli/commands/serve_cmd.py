@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import random
+import re
 import signal
 import string
 import subprocess
@@ -47,6 +48,11 @@ def register(app: typer.Typer) -> None:
         delete: bool = typer.Option(
             False, "--delete", help="Deprovision and remove the managed tunnel",
         ),
+        hostname: Optional[str] = typer.Option(
+            None, "--hostname",
+            help="With --delete: deprovision a tunnel by hostname, even if this "
+                 "project's local config does not record it (e.g. provisioned out of band)",
+        ),
         install: bool = typer.Option(
             False, "--install", help="Install MCP servers into Claude Desktop config",
         ),
@@ -63,7 +69,7 @@ def register(app: typer.Typer) -> None:
         """Start MCP server from protocol definition."""
         args = SimpleNamespace(
             protocol=protocol, mode=mode, transport=transport, port=port,
-            tunnel=tunnel, rotate=rotate, delete=delete,
+            tunnel=tunnel, rotate=rotate, delete=delete, hostname=hostname,
             install=install, uninstall=uninstall, uninstall_all=uninstall_all,
             project_name=project_name,
         )
@@ -262,11 +268,39 @@ class TunnelAPIError(RuntimeError):
     with (``None`` for transport-level failures), so callers can tell an
     authentication rejection apart from every other error instead of
     blaming the API key for all of them.
+
+    *existing_hostname* is set on a 409 conflict: the cloud's
+    one-tunnel-per-project-and-mode rule names the tunnel that blocks
+    provisioning, and the operator needs that hostname to act on it.
     """
 
-    def __init__(self, message: str, status_code: Optional[int] = None):
+    def __init__(self, message: str, status_code: Optional[int] = None,
+                 existing_hostname: Optional[str] = None):
         super().__init__(message)
         self.status_code = status_code
+        self.existing_hostname = existing_hostname
+
+
+# Managed tunnel hostnames look like "<slug>-<mode>-<short>.tunnel.snodo.dev";
+# the 409 body may carry it as JSON or inside free-form error text.
+_TUNNEL_HOSTNAME_RE = re.compile(
+    r"\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.tunnel\.snodo\.dev\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_existing_hostname(body: str) -> Optional[str]:
+    """Pull the blocking tunnel hostname out of a 409 provisioning body."""
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        data = None
+    if isinstance(data, dict):
+        host = data.get("hostname")
+        if isinstance(host, str) and host.strip():
+            return host.strip()
+    match = _TUNNEL_HOSTNAME_RE.search(body)
+    return match.group(0) if match else None
 
 
 def _check_cloudflared() -> bool:
@@ -313,7 +347,7 @@ def _provision_tunnel(
     """Provision a tunnel via the snodo-cloud API.
 
     Returns a dict with hostname, tunnel_token.
-    Raises RuntimeError on failure.
+    Raises TunnelAPIError on failure (409 carries existing_hostname).
     """
     try:
         import httpx
@@ -335,10 +369,15 @@ def _provision_tunnel(
             timeout=30.0,
         )
         if resp.status_code != 200:
+            existing = (
+                _extract_existing_hostname(resp.text)
+                if resp.status_code == 409 else None
+            )
             raise TunnelAPIError(
                 f"Tunnel provisioning failed: POST {url} returned "
                 f"HTTP {resp.status_code}: {resp.text[:500]}",
                 status_code=resp.status_code,
+                existing_hostname=existing,
             )
         return resp.json()
     except TunnelAPIError:
@@ -382,25 +421,45 @@ def _deprovision_tunnel(api_key: str, hostname: str) -> bool:
 
 
 def _handle_tunnel_delete(project_root: str, tunnel_config: dict,
-                          api_key: str) -> int:
-    """Deprovision and remove the tunnel."""
-    hostname = tunnel_config.get("hostname", "")
-    if not hostname:
-        print("No tunnel configured for this project.")
+                          api_key: str, hostname: Optional[str] = None) -> int:
+    """Deprovision and remove a tunnel.
+
+    With *hostname*, addresses the tunnel the cloud holds by that name
+    even when this project's local config never recorded it (provisioned
+    out of band). Without it, falls back to the locally stored hostname.
+    Deletion stays deliberate: the target is only ever a hostname the
+    operator named or a tunnel this project recorded.
+    """
+    local_hostname = tunnel_config.get("hostname", "")
+    target = (hostname or "").strip() or local_hostname
+    if not target:
+        print("No tunnel configured for this project.", file=sys.stderr)
+        print("  If the cloud holds a tunnel this project's config does not",
+              file=sys.stderr)
+        print("  record (e.g. provisioned out of band), delete it by name:",
+              file=sys.stderr)
+        print("    snodo serve --tunnel --delete --hostname <hostname>",
+              file=sys.stderr)
+        print("  The hostname is reported when 'snodo serve --tunnel' hits a conflict.",
+              file=sys.stderr)
         return 1
 
     try:
-        was_found = _deprovision_tunnel(api_key, hostname)
+        was_found = _deprovision_tunnel(api_key, target)
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    _delete_tunnel_file(project_root)
+    # Only clear the local record when it pointed at the tunnel we just
+    # removed — an explicit --hostname may target a different tunnel than
+    # the one tunnel.json remembers.
+    if not hostname or target == local_hostname:
+        _delete_tunnel_file(project_root)
 
     if was_found:
-        print("Tunnel deprovisioned.")
+        print(f"Tunnel deprovisioned: {target}")
     else:
-        print("Tunnel not found remotely, cleaned up locally.")
+        print(f"Tunnel {target} not found remotely, cleaned up locally.")
     return 0
 
 
@@ -451,6 +510,30 @@ def _wait_for_server_bind(mcp_process, sleep_fn=None) -> bool:
     return mcp_process.poll() is None
 
 
+def _print_tunnel_conflict(err: TunnelAPIError) -> None:
+    """Report a 409 provisioning conflict in a form the operator can act on.
+
+    A conflict is neither reused nor silently replaced. The cloud returns
+    only the hostname of the blocking tunnel — not the tunnel_token
+    needed to run cloudflared against it — and implicitly replacing a
+    tunnel someone may be using would make removal an accident instead
+    of a deliberate act. So the CLI names the blocker and hands back the
+    exact commands to replace it, keeping deletion explicit.
+    """
+    print("The cloud allows one tunnel per project and mode, and this "
+          "project's slot is already taken.", file=sys.stderr)
+    if err.existing_hostname:
+        print(f"Blocking tunnel: {err.existing_hostname}", file=sys.stderr)
+        print("To replace it — deliberate: if that tunnel is in use, its "
+              "clients will drop — run:", file=sys.stderr)
+        print(f"  snodo serve --tunnel --delete --hostname {err.existing_hostname}",
+              file=sys.stderr)
+        print("  snodo serve --tunnel", file=sys.stderr)
+    else:
+        print("The conflict response did not name the existing tunnel.",
+              file=sys.stderr)
+
+
 def _run_tunnel(args, protocol, protocol_path) -> int:
     """Start an MCP server behind a managed Cloudflare tunnel.
 
@@ -464,6 +547,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     port = getattr(args, "port", 55441)
     rotate = getattr(args, "rotate", False)
     delete = getattr(args, "delete", False)
+    delete_hostname = getattr(args, "hostname", None) or None
 
     # Prefer streamable-http for tunnels
     if transport == "stdio":
@@ -490,7 +574,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
     # --delete flow
     if delete:
-        return _handle_tunnel_delete(project_root, tunnel_config, api_key)
+        return _handle_tunnel_delete(project_root, tunnel_config, api_key,
+                                     delete_hostname)
 
     # --rotate flow (no-op)
     if rotate:
@@ -508,7 +593,9 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             )
         except TunnelAPIError as e:
             print(f"Error: {e}", file=sys.stderr)
-            if e.status_code in (401, 403):
+            if e.status_code == 409:
+                _print_tunnel_conflict(e)
+            elif e.status_code in (401, 403):
                 print("The tunnel worker rejected your snodo API key.", file=sys.stderr)
                 print("Re-run: snodo cloud connect <api_key>", file=sys.stderr)
             else:

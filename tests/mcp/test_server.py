@@ -1247,6 +1247,45 @@ class TestTunnelProvisioning:
         assert "HTTP 400" in message
         assert "project_path" in message
 
+    # -- 409 conflict: the cloud names the blocking tunnel ------------
+
+    def test_extract_existing_hostname_from_json_and_free_text(self):
+        from snodo.cli.commands.serve_cmd import _extract_existing_hostname
+
+        assert _extract_existing_hostname(
+            '{"error": "exists", "hostname": "ghost-all-abc123.tunnel.snodo.dev"}'
+        ) == "ghost-all-abc123.tunnel.snodo.dev"
+        assert _extract_existing_hostname(
+            'Error: project already has tunnel ghost-all-abc123.tunnel.snodo.dev for mode all'
+        ) == "ghost-all-abc123.tunnel.snodo.dev"
+        assert _extract_existing_hostname('{"error": "conflict"}') is None
+
+    def test_provision_conflict_carries_blocking_hostname(self, tmp_path, monkeypatch):
+        """A 409 raises TunnelAPIError with existing_hostname set."""
+        import httpx
+
+        from snodo.cli.commands import serve_cmd
+        from snodo.cli.commands.serve_cmd import TunnelAPIError
+
+        self._write_cloud_config(
+            tmp_path,
+            "cloud:\n"
+            "  api_url: https://ingest.snodo.example.test\n"
+            "  tunnel_api_url: https://tunnel.snodo.example.test\n",
+        )
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path))
+
+        resp = MagicMock()
+        resp.status_code = 409
+        resp.text = '{"error": "tunnel exists", "hostname": "ghost-all-abc123.tunnel.snodo.dev"}'
+        monkeypatch.setattr(httpx, "post", lambda url, **kw: resp)
+
+        with pytest.raises(TunnelAPIError) as excinfo:
+            serve_cmd._provision_tunnel("k", "proj", "all", "abc123", "1.2.3")
+
+        assert excinfo.value.status_code == 409
+        assert excinfo.value.existing_hostname == "ghost-all-abc123.tunnel.snodo.dev"
+
 
 class TestTunnelRunErrors:
     """Test error paths in _run_tunnel."""
@@ -1483,6 +1522,176 @@ class TestTunnelRunErrors:
         stderr_text = capsys.readouterr().err
         assert "HTTP 401" in stderr_text
         assert "cloud connect" in stderr_text
+
+    # -- 409 conflict at the run level ---------------------------------
+
+    def test_conflict_surfaces_blocking_hostname_actionably(self, capsys):
+        """A 409 prints the existing hostname and a pasteable replace
+        command — the operator can act without parsing the body."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from snodo.cli.commands.serve_cmd import TunnelAPIError, _run_tunnel
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000, rotate=False, delete=False,
+        )
+
+        err = TunnelAPIError(
+            "Tunnel provisioning failed: POST https://app.snodo.dev/tunnel/provision "
+            "returned HTTP 409: {\"hostname\": \"ghost-all-abc123.tunnel.snodo.dev\"}",
+            status_code=409,
+            existing_hostname="ghost-all-abc123.tunnel.snodo.dev",
+        )
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+                with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
+                    with patch("snodo.cli.commands.serve_cmd._provision_tunnel", side_effect=err):
+                        result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 1
+        stderr_text = capsys.readouterr().err
+        assert "Blocking tunnel: ghost-all-abc123.tunnel.snodo.dev" in stderr_text
+        assert ("snodo serve --tunnel --delete --hostname "
+                "ghost-all-abc123.tunnel.snodo.dev") in stderr_text
+        assert "cloud connect" not in stderr_text
+
+    def test_conflict_without_named_host_says_so(self, capsys):
+        """A 409 whose body names no hostname must not print a command with
+        a hole in it."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from snodo.cli.commands.serve_cmd import TunnelAPIError, _run_tunnel
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000, rotate=False, delete=False,
+        )
+
+        err = TunnelAPIError("HTTP 409", status_code=409, existing_hostname=None)
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+                with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
+                    with patch("snodo.cli.commands.serve_cmd._provision_tunnel", side_effect=err):
+                        result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 1
+        stderr_text = capsys.readouterr().err
+        assert "did not name the existing tunnel" in stderr_text
+        assert "--delete --hostname" not in stderr_text
+
+    # -- --delete by hostname the local config never recorded ----------
+
+    def test_delete_can_reach_tunnel_not_in_local_config(self, capsys, monkeypatch):
+        """--delete --hostname addresses the cloud-held tunnel even when
+        tunnel.json is empty — the old 'No tunnel configured' dead end."""
+        import httpx
+
+        from snodo.cli.commands import serve_cmd
+        from snodo.cli.commands.serve_cmd import _handle_tunnel_delete
+
+        captured = {}
+
+        def fake_delete(url, **kwargs):
+            captured["url"] = url
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.text = "ok"
+            return resp
+
+        monkeypatch.setattr(httpx, "delete", fake_delete)
+        monkeypatch.setattr(serve_cmd, "_get_cloud_tunnel_api_url",
+                            lambda: "https://tunnel.snodo.example.test")
+
+        result = _handle_tunnel_delete(
+            "/nonexistent-project-root", {}, "key123",
+            hostname="ghost-all-abc123.tunnel.snodo.dev",
+        )
+
+        assert result == 0
+        assert captured["url"] == (
+            "https://tunnel.snodo.example.test/tunnel/ghost-all-abc123.tunnel.snodo.dev"
+        )
+        out = capsys.readouterr()
+        assert "No tunnel configured" not in out.err
+        assert "ghost-all-abc123.tunnel.snodo.dev" in out.out
+
+    def test_run_tunnel_wires_hostname_into_delete(self, capsys):
+        """args.hostname reaches _handle_tunnel_delete via _run_tunnel."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from snodo.cli.commands.serve_cmd import _run_tunnel
+
+        mock_protocol = MagicMock()
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000,
+            rotate=False, delete=True, hostname="ghost-all-abc123.tunnel.snodo.dev",
+        )
+
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+                with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
+                    with patch("snodo.cli.commands.serve_cmd._handle_tunnel_delete",
+                               return_value=0) as mock_del:
+                        result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+        assert result == 0
+        mock_del.assert_called_once_with(
+            mock_del.call_args.args[0], {}, "key123",
+            "ghost-all-abc123.tunnel.snodo.dev",
+        )
+
+    def test_delete_without_local_record_advises_hostname(self, capsys):
+        """No local config and no --hostname: point at the by-name escape."""
+        from snodo.cli.commands.serve_cmd import _handle_tunnel_delete
+
+        result = _handle_tunnel_delete("/nonexistent-project-root", {}, "key123")
+
+        assert result == 1
+        stderr_text = capsys.readouterr().err
+        assert "No tunnel configured" in stderr_text
+        assert "--delete --hostname <hostname>" in stderr_text
+
+    def test_explicit_hostname_delete_preserves_unrelated_local_record(self, tmp_path, monkeypatch):
+        """Removing a named tunnel that is not the locally recorded one
+        leaves tunnel.json alone."""
+        import httpx
+
+        from snodo.cli.commands import serve_cmd
+        from snodo.cli.commands.serve_cmd import _handle_tunnel_delete
+
+        tunnel_file = tmp_path / ".snodo" / "tunnel.json"
+        tunnel_file.parent.mkdir(parents=True)
+        tunnel_file.write_text('{"hostname": "mine-all-aaa111.tunnel.snodo.dev"}')
+
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.text = "ok"
+        monkeypatch.setattr(httpx, "delete", lambda url, **kw: resp)
+        monkeypatch.setattr(serve_cmd, "_get_cloud_tunnel_api_url",
+                            lambda: "https://tunnel.snodo.example.test")
+
+        local = {"hostname": "mine-all-aaa111.tunnel.snodo.dev"}
+        result = _handle_tunnel_delete(
+            str(tmp_path), local, "key123",
+            hostname="ghost-all-abc123.tunnel.snodo.dev",
+        )
+
+        assert result == 0
+        assert tunnel_file.exists()  # local record names a different tunnel
+
+        # Deleting the locally recorded hostname still clears it.
+        result = _handle_tunnel_delete(str(tmp_path), local, "key123")
+        assert result == 0
+        assert not tunnel_file.exists()
 
 class TestServerAuditLog:
     """Tests for audit log wiring in ProtocolMCPServer."""
