@@ -68,6 +68,161 @@ _WAITING_STATUSES = {"queued", "pending"}
 #: load an unbounded log into memory on a timer.
 _AUDIT_TAIL_BYTES = 512 * 1024
 
+#: Events that stop a task until a person acts. A task awaiting one of these
+#: is the only thing on the cockpit that will not progress on its own: an
+#: escalated disagreement or a merge conflict needs a human, and a halt whose
+#: judges abstained — "could not reach a verdict" — has already spent its
+#: budget and will retry forever without intervention. Operator actions are
+#: taken in ``snodo cloud``/``snodo authorize``, never from the viewer.
+_AWAITING_EVENTS = {
+    "halt",
+    "disagreement_escalated",
+    "merge_conflict_escalated",
+    "merge_failed_escalated",
+    "unverified_merge_blocked",
+}
+
+#: Events that mean a task got past a waiting state: it completed, merged, or
+#: (a later dispatch/transition) the operator already acted on it.
+_RESOLVED_EVENTS = {
+    "task_complete",
+    "task_merged",
+    "dispatch",
+    "transition",
+    "subtask_spawned",
+}
+
+#: Bounded number of raw audit events kept on the snapshot for the viewer's
+#: Live Log, so a refresh performs exactly one tail read, never a second.
+_AUDIT_TAIL_KEEP = 40
+
+
+def _halt_event_fields(event: dict) -> Tuple[str, str]:
+    """Return ``(outcome_label, awaits_text)`` for a halt/escalation event.
+
+    The recorded outcome is what groups a wave that failed the same way six
+    times into one fact: ``halt_type``/``final_decision`` is the canonical
+    vocabulary, and an abstention (a judge that could not reach a verdict) is
+    named as such rather than folded into a generic blocker.
+    """
+    event_type = event.get("event_type", "")
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    reason = str(data.get("reason") or "")
+    halt_type = str(
+        data.get("final_decision") or data.get("halt_type") or ""
+    ) or event_type.replace("_escalated", "").replace("unverified_merge_", "merge ")
+
+    # An abstention — a judge that exhausted its budget without a verdict — is
+    # the halt that will not resolve on its own. It is recorded across the
+    # reason text and the validator/failure payloads, so scan them all rather
+    # than trusting one field, and name it distinctly from a plain blocker.
+    abstain_signal = "abstain" in reason.lower() or "abstain" in str(
+        data.get("raw_halt_type", "")
+    ).lower() or "abstain" in json.dumps(data, default=str).lower()
+    if abstain_signal:
+        return ("abstention", "a verdict the judges could not reach")
+    if halt_type == "escalate" or event_type == "disagreement_escalated":
+        return ("escalate", "authorization (snodo authorize)")
+    if event_type == "merge_conflict_escalated":
+        return ("merge_conflict", "a merge conflict to resolve")
+    if event_type == "merge_failed_escalated" or event_type == "unverified_merge_blocked":
+        return ("merge_failed", "a failed/unverified merge to resolve")
+    if halt_type in ("validator_error", "internal_error"):
+        return (halt_type, f"a {halt_type} to investigate")
+    if halt_type == "blocker" or event_type == "halt":
+        return ("blocker", "a blocker to fix and re-run")
+    detail = (reason or halt_type or event_type).strip()
+    return (detail or "halted", detail or "a decision")
+
+
+def attention_analysis(events: List[dict], now: float) -> dict:
+    """Group the bounded audit tail into what a human must act on.
+
+    Pure analysis of events already read by :func:`tail_audit_events` — it
+    takes no lock, reads no extra file, and its cost is bounded by the same
+    tail window. Returns:
+
+    - ``awaiting``: the most recent escalation/halt per task that has not since
+      been resolved, each with what it awaits and how long it has waited;
+    - ``halt_outcomes``: every escalation/halt grouped by its recorded outcome
+      (so six identical failures read as one fact);
+    - ``awaiting_count``: how many tasks await a person right now.
+    """
+    # task_ref -> (last awaiting event ts, its dict) and last resolved event ts.
+    last_awaiting: dict = {}
+    last_resolved_ts: dict = {}
+    outcome_counts: dict = {}
+
+    for event in events:
+        event_type = event.get("event_type", "")
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        task_ref = str(data.get("task_ref") or "")
+        ts = _iso_to_epoch(event.get("timestamp"))
+        if ts is None:
+            continue
+
+        if event_type in _AWAITING_EVENTS:
+            outcome, _ = _halt_event_fields(event)
+            outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+            if task_ref:
+                prev = last_awaiting.get(task_ref)
+                if prev is None or ts >= prev[0]:
+                    last_awaiting[task_ref] = (ts, event)
+        elif event_type in _RESOLVED_EVENTS and task_ref:
+            if ts > last_resolved_ts.get(task_ref, float("-inf")):
+                last_resolved_ts[task_ref] = ts
+
+    awaiting: List[dict] = []
+    for task_ref, (ts, event) in last_awaiting.items():
+        if last_resolved_ts.get(task_ref, float("-inf")) > ts:
+            continue  # the operator already acted; it is no longer waiting
+        outcome, awaits = _halt_event_fields(event)
+        awaiting.append({
+            "task_ref": task_ref,
+            "event_type": event.get("event_type", ""),
+            "outcome": outcome,
+            "awaits": awaits,
+            "waiting_since": ts,
+            "waited_seconds": max(0.0, now - ts),
+        })
+
+    # Longest-waiting first: the thing the operator has been ignoring longest.
+    awaiting.sort(key=lambda a: a["waiting_since"])
+    return {
+        "awaiting": awaiting,
+        "halt_outcomes": outcome_counts,
+        "awaiting_count": len(awaiting),
+    }
+
+
+def cost_rollup(runs: List["RunRow"], task_rows: dict) -> dict:
+    """Aggregate the per-call cost the usage records already carry.
+
+    Nothing else in the cockpit totals cost across a project. The rollup sums
+    each run's cost over the *whole* ``runs`` list (which the reader truncates
+    to live + a few settled rows only for display). A background job that wraps
+    a task records the same usage twice (dual-written); its cost is counted
+    once, on the task row, so the total is a true project cost, not a doubled
+    one.
+    """
+    total = 0.0
+    partial = False
+    runs_with_cost = 0
+    for row in runs:
+        if row.kind == "job" and row.linked_ref and row.linked_ref in task_rows:
+            continue  # its cost is already counted on the task row
+        if row.cost_total is None:
+            continue
+        total += row.cost_total
+        runs_with_cost += 1
+        partial = partial or row.cost_partial
+    return {
+        "total": total,
+        "partial": partial,
+        "runs_with_cost": runs_with_cost,
+        "runs_total": len(runs),
+    }
+
 
 @dataclass
 class PhaseMarker:
@@ -478,11 +633,18 @@ def collect_snapshot(project_root: str, now: Optional[float] = None) -> dict:
     live = [r for r in runs if not r.is_terminal()]
     settled = [r for r in runs if r.is_terminal()]
     settled.sort(key=lambda r: (r.started_at or 0.0), reverse=True)
+    attention = attention_analysis(events, now)
     return {
         "project_root": str(root),
         "now": now,
         "runs": live + settled[:5],
+        "runs_all": runs,
         "recent_events": recent_events[-12:],
+        # Raw bounded tail for the viewer's audit pane and search: the same
+        # window this reader already parsed, so a refresh never re-reads the log.
+        "tail_events": events[-_AUDIT_TAIL_KEEP:],
+        "attention": attention,
+        "cost": cost_rollup(runs, task_rows),
         "notes": notes,
         "audit_events_seen": len(recent_events),
     }
