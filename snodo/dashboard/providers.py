@@ -153,6 +153,33 @@ class DashboardDataProvider:
         state = read_state(self.project_root)
         return state.current_mode or ""
 
+    def get_session_brief(self) -> Dict[str, Any]:
+        """Active session + mode + how many sessions exist — with no audit read.
+
+        The cockpit header carries the one fact the old Sessions pane showed
+        (which session is active). Counting sessions reads only the small
+        per-session files, lock-free — it does not touch the audit log.
+        """
+        from snodo.infrastructure.session import SessionManager
+        try:
+            count = len(SessionManager().list_sessions(project_root=self.project_root))
+        except Exception:
+            count = 0
+        return {
+            "active_id": self.get_active_session_id(),
+            "mode": self.get_active_mode(),
+            "count": count,
+        }
+
+    def invalidate_read_caches(self) -> None:
+        """Drop the cached disk snapshot so the next read is a fresh pass.
+
+        An explicit refresh must re-read the world exactly once; without this
+        the liveness snapshot's short cache would let a refresh reuse a stale
+        pass and the read count would not be one-per-refresh.
+        """
+        self._liveness_cache = None
+
     def get_sessions(self) -> List[SessionSummary]:
         """Return all sessions for the current project, active pinned first."""
         from snodo.infrastructure.session import SessionManager
@@ -269,6 +296,128 @@ class DashboardDataProvider:
             except TypeError:
                 continue  # unknown shape: skip, never crash the viewer
         return result
+
+    def get_tail_events(self, limit: int = 20) -> List[dict]:
+        """Most recent raw audit events, from the cached snapshot's tail.
+
+        Serves the Live Log and search from the one bounded tail a refresh has
+        already read, so neither triggers a second full-file parse.
+        """
+        events = self.get_liveness_snapshot().get("tail_events", [])
+        return events[-limit:]
+
+    # ------------------------------------------------------------------
+    # What requires a human (the cockpit's "Needs You" pane)
+    # ------------------------------------------------------------------
+
+    def get_attention(self) -> Dict[str, Any]:
+        """Tasks awaiting a person, halts grouped by outcome, and project cost.
+
+        Computed from the single bounded audit tail and the state files the
+        liveness snapshot already reads — no lock, no full-log parse, no read
+        whose cost grows with a job's output.
+        """
+        snap = self.get_liveness_snapshot()
+        attention = dict(snap.get("attention") or {})
+        attention.setdefault("awaiting", [])
+        attention.setdefault("halt_outcomes", {})
+        attention.setdefault("awaiting_count", 0)
+        attention["cost"] = snap.get("cost") or {}
+        return attention
+
+    def fmt_waiting(self, seconds: Optional[float]) -> str:
+        """Human 'how long waiting' string for the Needs You pane."""
+        return fmt_age(seconds)
+
+    # ------------------------------------------------------------------
+    # Search: find a task, a job, or an audit event from one place
+    # ------------------------------------------------------------------
+
+    def search(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Match tasks, jobs and audit events by text — without reading output.
+
+        The default search deliberately never opens a job's stdout/stderr: that
+        is where the megabytes are, and searching it would restore exactly the
+        cost a bounded log tail just removed. It reads only the settled task
+        records, the job records, and the audit tail already in the snapshot.
+        Each hit names its kind and the key the cockpit navigates to.
+        """
+        q = query.strip().lower()
+        if not q:
+            return []
+        hits: List[Dict[str, Any]] = []
+
+        for t in self.get_tasks(""):
+            haystack = " ".join([
+                str(t.get("task_id", "")),
+                str(t.get("plan_name", "")),
+                str(t.get("status", "")),
+            ]).lower()
+            if q in haystack:
+                hits.append({
+                    "kind": "task",
+                    "key": t["task_ref"],
+                    "label": f"{t['task_ref']}  [{t.get('status', '?')}]",
+                })
+
+        for j in self.get_jobs(""):
+            haystack = " ".join([
+                str(j.get("job_id", "")),
+                str(j.get("task_ref", "")),
+                str(j.get("status", "")),
+            ]).lower()
+            if q in haystack:
+                hits.append({
+                    "kind": "job",
+                    "key": j["job_id"],
+                    "label": f"{j['job_id']}  task={j.get('task_ref') or '—'}  [{j.get('status', '?')}]",
+                })
+
+        for event in self.get_tail_events(limit=500):
+            data = event.get("data") if isinstance(event.get("data"), dict) else {}
+            haystack = " ".join([
+                str(event.get("event_type", "")),
+                str(data.get("task_ref", "")),
+                str(data.get("detail", "")),
+                str(data.get("reason", "")),
+            ]).lower()
+            if q in haystack:
+                seq = event.get("sequence")
+                hits.append({
+                    "kind": "audit",
+                    "key": seq,
+                    "event": event,
+                    "label": f"{event.get('timestamp', '')} {event.get('event_type', '')}",
+                })
+
+        return hits[:limit]
+
+    def search_job_output(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Opt-in search of job stdout/stderr — the operator must ask for it.
+
+        This is the one dashboard read that touches a job's output, so it is
+        never on the default path. Each log is still a *bounded* tail (never
+        the whole record), and the caller is expected to warn that it is
+        slower. Returns job hits only.
+        """
+        q = query.strip().lower()
+        if not q:
+            return []
+        hits: List[Dict[str, Any]] = []
+        for j in self.get_jobs(""):
+            job_dir = Path(self.project_root) / ".snodo" / "jobs" / j["job_id"]
+            for name in ("stdout.log", "stderr.log"):
+                text = _read_tail_text(job_dir / name)
+                if q in text.lower():
+                    hits.append({
+                        "kind": "job",
+                        "key": j["job_id"],
+                        "label": f"{j['job_id']}  (output match in {name})",
+                    })
+                    break
+            if len(hits) >= limit:
+                break
+        return hits
 
     # ------------------------------------------------------------------
     # Waves, Tasks, Jobs, and Logs (Cockpit support)

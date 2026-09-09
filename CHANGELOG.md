@@ -51,6 +51,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
   record no per-turn usage (ADR 034 documents that as a decision, not a gap), so during the
   coder phase the pane says `blind` and leans on elapsed time rather than implying progress
   it cannot see. (Fixes #236)
+- The cockpit's upper-left pane is now **Needs You**, replacing the Sessions
+  pane. The Sessions pane earned its half-height only when there were many
+  sessions — not the normal case — and its one fact (which session is active)
+  already prints in the header, so the header now carries it and the pane is
+  gone. The reclaimed space shows the only thing on the screen that will not
+  move until a person acts: tasks that escalated or halted on a judge that
+  could not reach a verdict, each with what it awaits and how long it has been
+  waiting — previously discoverable only by remembering to run `snodo authorize`.
+  Below that, halts are grouped by their recorded outcome (a wave that failed
+  the same way six times reads as one fact, not six) and a project cost rollup
+  aggregates the per-call usage records the engine already writes. When nothing
+  awaits, the pane says so plainly rather than leaving an empty frame.
+- The cockpit gains one search (`/`, cycle with `n`) that finds a task, a job or
+  an audit event by text from one place and moves the operator to the match. It
+  reads only the settled task and job records and the bounded audit tail already
+  in the refresh's snapshot; it never reads a job's stdout/stderr — where the
+  megabytes are — so it restores none of the cost the bounded log tail removed.
+  Searching job output is a separate, explicit, opt-in command (`:output <text>`)
+  that warns it is slower and still reads only a bounded tail per job. The dashboard
+  remains an observer: no dispatch, plan, recon or mutation, no audit event
+  written, no lock taken, no timer — exactly one read on mount and one per
+  explicit refresh, as before. (Fixes #251)
 
 
 ### Fixed

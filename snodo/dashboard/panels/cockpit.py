@@ -1,11 +1,28 @@
 """Linked Cascade Cockpit panel screen for Snodo dashboard.
 
 FILE: snodo/dashboard/panels/cockpit.py
+
+The cockpit is an observer: it reads and displays, and it acts nowhere. Every
+action that changes state (dispatch, plan, recon, authorize) belongs to
+``snodo cloud``/``snodo``, where it is attributable to an identity. So the
+panes here answer only "what do I need to look at, and why" — and the one pane
+that earns the most space is the one that names what will not move until a
+person acts.
+
+Layout:
+    row 1: Needs You (awaiting a human) | Tasks Tree
+    row 2: Jobs                          | Live Log
+
+The Sessions pane used to occupy the upper-left. It earned that space only when
+there were many sessions, which is not the normal case; its single fact — which
+session is active — is already printed in the header. It is gone; the space now
+shows what requires a human, halts grouped by their recorded outcome, and the
+project cost the per-call usage records already carry.
 """
 
 from contextlib import suppress
 import time
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
 from rich.ansi import AnsiDecoder
 from rich.text import Text
@@ -16,6 +33,7 @@ from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 from textual.widgets.data_table import RowDoesNotExist
 
+from snodo.dashboard.liveness import fmt_age
 from snodo.dashboard.panels import register_panel, get_panel
 from snodo.dashboard.screens import _short_id
 
@@ -80,11 +98,13 @@ def _flatten_tasks(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 @register_panel("cockpit")
 class CockpitScreen(Screen):
-    """Cockpit view: sessions | waves | tasks top row, jobs | logs bottom row."""
+    """Cockpit view: needs-you | tasks top row, jobs | logs bottom row."""
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),
+        Binding("/", "search_mode", "Search"),
+        Binding("n", "search_next", "Next"),
         Binding(":", "command_mode", "Command"),
     ]
 
@@ -130,6 +150,15 @@ class CockpitScreen(Screen):
     #command-bar:focus-within {
         visibility: visible;
     }
+    #search-bar {
+        height: 1;
+        dock: bottom;
+        visibility: hidden;
+        border-top: solid $secondary;
+    }
+    #search-bar:focus-within {
+        visibility: visible;
+    }
     """
 
     def __init__(self, provider: Any, **kwargs):
@@ -147,15 +176,23 @@ class CockpitScreen(Screen):
         # settled records: not re-read as the operator moves inside them.
         self._tasks_built_for: Optional[str] = None
 
+        # Search state: the last query and the current position in its hits,
+        # so pressing 'n' cycles matches without a second disk read.
+        self._search_query: str = ""
+        self._search_hits: List[Dict[str, Any]] = []
+        self._search_index: int = 0
+
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static(id="cockpit-header")
 
-        # Top row: Sessions | Tasks Tree
+        # Top row: Needs You | Tasks Tree. The Sessions pane is gone: its one
+        # fact lives in the header, and the operator's attention belongs on
+        # what will not move without a person.
         with Horizontal(classes="cockpit-row"):
             with Vertical(classes="pane"):
-                yield Static("Sessions", classes="pane-title")
-                yield DataTable(id="sessions-table", cursor_type="row")
+                yield Static("Needs You", classes="pane-title")
+                yield RichLog(id="attention-pane", highlight=False, markup=True)
             with Vertical(classes="pane"):
                 yield Static("Tasks Tree", classes="pane-title")
                 yield DataTable(id="tasks-table", cursor_type="row")
@@ -169,24 +206,26 @@ class CockpitScreen(Screen):
                 yield Static("Live Log", classes="pane-title")
                 yield RichLog(id="log-pane", highlight=True, markup=True)
 
+        yield Input(id="search-bar", placeholder="/  find a task, job, or audit event (n: next)  — output not searched")
         yield Input(id="command-bar", placeholder=":command  (e.g. :protocol, :settings, :sessions)")
         yield Footer()
 
     def on_mount(self):
         # Configure columns
-        sessions_table = self.query_one("#sessions-table", DataTable)
-        sessions_table.add_columns("Session", "Mode", "Status")
-
         tasks_table = self.query_one("#tasks-table", DataTable)
         tasks_table.add_columns("Task ID", "Wave", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost")
 
         jobs_table = self.query_one("#jobs-table", DataTable)
         jobs_table.add_columns("Job ID", "Task", "Status", "Phase", "Phase For", "Idle", "Alive?", "Cost")
 
-        # Populate initial data (no automatic refresh timer - explicit only via 'r' key)
-        self._refresh()
+        # The initial read is performed once, in on_screen_resume, which fires
+        # as this screen becomes active — doing it here too would read twice on
+        # mount. Refresh stays explicit thereafter (the 'r' key); there is no
+        # timer.
 
     def on_screen_resume(self):
+        # The single read for this activation: on first show and on every
+        # return to the screen. Exactly one read pass per activation.
         self._refresh()
 
     def action_refresh(self):
@@ -197,15 +236,34 @@ class CockpitScreen(Screen):
         cmd.visible = True
         cmd.focus()
 
+    def action_search_mode(self):
+        search = self.query_one("#search-bar", Input)
+        search.visible = True
+        search.focus()
+
+    def action_search_next(self):
+        if self._search_hits:
+            self._search_index = (self._search_index + 1) % len(self._search_hits)
+            self._go_to_hit(self._search_hits[self._search_index])
+
     def on_input_submitted(self, event: Input.Submitted):
         if event.input.id == "command-bar":
             raw = event.value.strip()
             event.input.value = ""
             event.input.visible = False
-            self.query_one(DataTable).focus()
+            self._focus_default()
             if raw.startswith(":"):
                 cmd = raw[1:].strip().lower()
                 self._handle_command(cmd)
+        elif event.input.id == "search-bar":
+            query = event.value
+            event.input.value = ""
+            event.input.visible = False
+            self._run_search(query)
+
+    def _focus_default(self):
+        with suppress(Exception):
+            self.query_one("#tasks-table", DataTable).focus()
 
     def _handle_command(self, cmd: str):
         known = {"sessions", "protocol", "settings"}
@@ -213,46 +271,55 @@ class CockpitScreen(Screen):
             self.app.push_screen(get_panel(cmd, self.provider))
         elif cmd in ("cockpit", "dashboard"):
             self.notify("Already in cockpit view")
+        elif cmd.startswith("output "):
+            # Opt-in, explicitly slower: searching job output is the one read
+            # that touches a job's stdout/stderr, so it is never the default.
+            self._run_output_search(cmd[len("output "):].strip())
         else:
             self.notify(f"Unknown command: :{cmd}", severity="error")
 
+    def _run_output_search(self, query: str) -> None:
+        if not query:
+            return
+        self.notify("Searching job output — this reads each job's log tail and is slower",
+                    severity="warning", timeout=8)
+        hits = self.provider.search_job_output(query)
+        if not hits:
+            self.notify(f"No job output match for {query!r}", severity="warning")
+            return
+        self._search_query = query
+        self._search_hits = hits
+        self._search_index = 0
+        self._go_to_hit(hits[0])
+        self.notify(f"{query!r}: found in {len(hits)} job(s) — 1st is a {hits[0]['kind']}  (n: next)")
+
     def _refresh(self):
-        """Standard refresh to query provider and update pane hierarchies.
+        """One read pass: query the provider and update every pane.
 
         Uses _programmatic_move flag to prevent RowHighlighted events from
         being mistaken for user keypresses when tables are cleared and rebuilt.
+        Exactly one read happens here (collect_snapshot, cached across the
+        pass); the screen never re-reads on cursor movement and has no timer.
         """
         # Mark this as a programmatic update (not user input)
         self._programmatic_move = True
 
         try:
-            # 1. Update Sessions
-            sessions = self.provider.get_sessions()
-            sessions_table = self.query_one("#sessions-table", DataTable)
+            # Invalidate first: a refresh is one fresh read, not a cache hit.
+            self.provider.invalidate_read_caches()
 
-            # Save cursor position or select first session if none selected
-            current_sel_session = self.selected_session
+            # The Sessions pane is gone. The cockpit works against the active
+            # session; browsing all sessions is :sessions' job. This read is a
+            # lock-free state/session-file read, not the full audit parse the
+            # old Sessions table performed every refresh.
+            brief = self.provider.get_session_brief()
+            self.selected_session = brief.get("active_id")
 
-            sessions_table.clear()
-            for s in sessions:
-                status_str = "active" if s.is_active else "—"
-                if s.is_escalated:
-                    status_str = "esc"
-                elif s.is_halted:
-                    status_str = "halted"
-                sessions_table.add_row(_short_id(s.session_id), s.mode, status_str, key=s.session_id)
+            # Header carries the active session (where the Sessions pane lived).
+            self._update_header(brief)
 
-            if not current_sel_session and sessions:
-                current_sel_session = sessions[0].session_id
-
-            self.selected_session = current_sel_session
-            if self.selected_session:
-                # Restore cursor position without triggering event handlers
-                with suppress(RowDoesNotExist):
-                    sessions_table.move_cursor(row=sessions_table.get_row_index(self.selected_session))
-
-            # Update Cockpit Header
-            self._update_header()
+            # Render the "Needs You" pane from the bounded audit tail.
+            self._render_attention()
 
             # Settled records are re-read on an explicit refresh (and when the
             # session changes), never on every cursor move inside them.
@@ -285,14 +352,7 @@ class CockpitScreen(Screen):
             return
         row_id = getattr(row_key, "value", None) or str(row_key)
 
-        if table_id == "sessions-table":
-            if self.selected_session != row_id:
-                self.selected_session = row_id
-                self.selected_task = None
-                self.selected_job = None
-                # A different session has different tasks: re-read the settled panes.
-                self._cascade_update()
-        elif table_id == "tasks-table":
+        if table_id == "tasks-table":
             if self.selected_task != row_id:
                 self.selected_task = row_id
                 self.selected_job = None
@@ -415,6 +475,52 @@ class CockpitScreen(Screen):
         elif jobs:
             self.selected_job = jobs[0]["job_id"]
 
+    def _render_attention(self) -> None:
+        """Show what will not move until a person acts — or say nothing does.
+
+        The pane names each task awaiting a human, what it is waiting on, and
+        how long it has waited. Halts are also grouped by their recorded
+        outcome, so a wave that failed the same way six times reads as one
+        fact. A project cost rollup uses the per-call usage records already on
+        disk. When nothing is waiting the pane says so plainly rather than
+        leaving an empty frame.
+        """
+        pane = self.query_one("#attention-pane", RichLog)
+        pane.clear()
+        att = self.provider.get_attention()
+        awaiting = att.get("awaiting") or []
+
+        if awaiting:
+            pane.write(f"[bold red]▼ {len(awaiting)} task(s) waiting on a person[/]")
+            for a in awaiting:
+                pane.write(f"  [bold]{a['task_ref']}[/]")
+                pane.write(
+                    f"     awaits: [yellow]{a['awaits']}[/]  ·  "
+                    f"waiting: [bold red]{fmt_age(a['waited_seconds'])}[/]"
+                )
+        else:
+            pane.write("[dim]Nothing is waiting on you.[/]")
+
+        pane.write("")
+        outcomes = att.get("halt_outcomes") or {}
+        if outcomes:
+            pane.write("[bold]Halts by outcome[/]")
+            for outcome, count in sorted(outcomes.items(), key=lambda kv: (-kv[1], kv[0])):
+                plural = "" if count == 1 else "s"
+                pane.write(f"  {outcome}: [bold]{count}[/] task{plural}")
+
+        pane.write("")
+        cost = att.get("cost") or {}
+        total = cost.get("total")
+        if total and cost.get("runs_with_cost"):
+            prefix = "~" if cost.get("partial") else ""
+            pane.write(
+                f"[bold]Cost[/]  {prefix}${total:.4f}  "
+                f"[dim]across {cost['runs_with_cost']} run(s)[/]"
+            )
+        else:
+            pane.write("[bold]Cost[/]  [dim]no usage recorded[/]")
+
     def _update_live_log(self, session_id: Optional[str], task_ref: Optional[str], job_id: Optional[str]):
         """Update the Live Log pane with job log or audit log tail.
 
@@ -433,32 +539,94 @@ class CockpitScreen(Screen):
             else:
                 log_pane.write("[dim]No log data available[/]")
         else:
-            # Show recent audit log events as fallback when no job is selected
-            try:
-                events = self.provider.get_all_events(limit=20)
-                if events:
-                    for event in reversed(events):  # Show newest first
-                        timestamp = event.timestamp
-                        event_type = event.event_type
-                        data = event.data if isinstance(event.data, dict) else {}
-                        detail = data.get("detail", "")
-                        summary = f"[dim]{timestamp}[/] {event_type}"
-                        if detail:
-                            summary += f" - {detail[:60]}"
-                        log_pane.write(summary)
-                else:
-                    log_pane.write("[dim]No audit log events[/]")
-            except Exception as e:
-                # Report the error clearly rather than swallowing it
-                error_msg = str(e) if str(e) else type(e).__name__
-                log_pane.write(f"[bold red]Error reading audit log:[/] {error_msg}")
+            # Show recent audit log events as fallback when no job is selected.
+            # Served from the bounded tail the refresh already read — a cursor
+            # move here re-renders, it never re-parses the log.
+            events = self.provider.get_tail_events(limit=20)
+            if events:
+                for event in reversed(events):  # Show newest first
+                    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+                    detail = str(data.get("detail", ""))
+                    summary = f"[dim]{event.get('timestamp', '')}[/] {event.get('event_type', '')}"
+                    if detail:
+                        summary += f" - {detail[:60]}"
+                    log_pane.write(summary)
+            else:
+                log_pane.write("[dim]No audit log events[/]")
 
-    def _update_header(self):
+    # ------------------------------------------------------------------
+    # Search: one place to find a task, a job, or an audit event
+    # ------------------------------------------------------------------
+
+    def _run_search(self, query: str) -> None:
+        """Find a match and move the operator to it. No output is searched."""
+        query = query.strip()
+        if not query:
+            return
+        hits = self.provider.search(query)
+        if not hits:
+            self._search_hits = []
+            self._search_query = ""
+            self._search_index = 0
+            self.notify(f"No match for {query!r}", severity="warning")
+            return
+        self._search_query = query
+        self._search_hits = hits
+        self._search_index = 0
+        self._go_to_hit(hits[0])
+        self.notify(f"{query!r}: {len(hits)} match(es) — 1st is a {hits[0]['kind']}  (n: next)")
+
+    def _go_to_hit(self, hit: Dict[str, Any]) -> None:
+        kind = hit.get("kind")
+        key = hit.get("key")
+        if kind == "task":
+            self._select_in_table("#tasks-table", key)
+            self.selected_task = key
+            self.selected_job = None
+            self._update_live_log(self.selected_session, key, None)
+        elif kind == "job":
+            self._select_in_table("#jobs-table", key)
+            self.selected_job = key
+            self._update_live_log(self.selected_session, self.selected_task, key)
+        elif kind == "audit":
+            self._show_audit_hit(hit.get("event") or {})
+
+    def _select_in_table(self, selector: str, key: Optional[str]) -> None:
+        if not key:
+            return
+        table = self.query_one(selector, DataTable)
+        self._programmatic_move = True
+        try:
+            with suppress(RowDoesNotExist):
+                table.move_cursor(row=table.get_row_index(key))
+        finally:
+            self._programmatic_move = False
+        table.focus()
+
+    def _show_audit_hit(self, event: Dict[str, Any]) -> None:
+        """Bring an audit event into view: the operator asked to be taken to it."""
+        pane = self.query_one("#log-pane", RichLog)
+        pane.clear()
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        pane.write(f"[bold]{event.get('event_type', '')}[/]  seq={event.get('sequence', '—')}")
+        pane.write(f"[dim]{event.get('timestamp', '')}[/]")
+        for k, v in data.items():
+            pane.write(f"  {k}: {v}")
+        pane.focus()
+
+    # ------------------------------------------------------------------
+    # Header
+    # ------------------------------------------------------------------
+
+    def _update_header(self, brief: Optional[Dict[str, Any]] = None):
         header = self.query_one("#cockpit-header", Static)
         project = self.provider.project_name
-        active_mode = self.provider.get_active_mode()
-        active_id = self.provider.get_active_session_id()
+        if brief is None:
+            brief = self.provider.get_session_brief()
+        active_id = brief.get("active_id")
+        active_mode = brief.get("mode") or self.provider.get_active_mode()
         active_short = _short_id(active_id) if active_id else "none"
+        session_count = brief.get("count", 0)
 
         # Show data age: how long ago this was read
         age_str = "—"
@@ -475,8 +643,9 @@ class CockpitScreen(Screen):
             f"  [bold]{project}[/] > Cockpit  "
             f"|  Active Mode: [bold green]{active_mode or '—'}[/]  "
             f"|  Active Session: [bold green]{active_short}[/]  "
+            f"|  Sessions: {session_count}  "
             f"|  Data: [dim]{age_str} ago[/]"
         )
         self.app.sub_title = (
-            "  :protocol  :settings  :sessions  |  r:refresh  ::command  q:quit"
+            "  /:search  n:next  :protocol  :settings  :sessions  |  r:refresh  q:quit"
         )
