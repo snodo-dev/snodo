@@ -20,6 +20,7 @@ from snodo.dashboard.liveness import (
     collect_snapshot,
     fmt_age,
     fmt_cost,
+    fmt_when,
     idle_style,
     in_place_blind,
     liveness_text,
@@ -602,45 +603,73 @@ class DashboardDataProvider:
         """All task/job rows from disk, live runs first, then recent settled."""
         return self.get_liveness_snapshot()["runs"]
 
+    def get_run_index(self, kind: str) -> Dict[str, RunRow]:
+        """``run_id -> RunRow`` for *every* row of a kind on disk.
+
+        The display list is truncated to live runs plus a few settled ones; a
+        pane that orders or times thirty completed records must read the whole
+        set, not the five the snapshot keeps for its own summary. Still one
+        bounded, lock-free pass — the index is built from rows already read.
+        """
+        snap = self.get_liveness_snapshot()
+        rows = snap.get("runs_all") or snap["runs"]
+        return {r.run_id: r for r in rows if r.kind == kind}
+
     def get_liveness_notes(self) -> List[str]:
         """Reader notes (partial state, torn tail, dual-written usage, ...)."""
         return self.get_liveness_snapshot()["notes"]
 
     def get_task_liveness(self, task_id: str) -> Optional[RunRow]:
         """Liveness row for one task id, or None when it is not on disk."""
-        for row in self.get_liveness_rows():
-            if row.kind == "task" and row.run_id == task_id:
-                return row
-        return None
+        return self.get_run_index("task").get(task_id)
 
     def get_job_liveness(self, job_id: str) -> Optional[RunRow]:
         """Liveness row for one job id, or None when it is not on disk."""
-        for row in self.get_liveness_rows():
-            if row.kind == "job" and row.run_id == job_id:
-                return row
-        return None
+        return self.get_run_index("job").get(job_id)
 
     def liveness_cells(self, row: RunRow) -> List[str]:
-        """Render the liveness columns for a task/job row.
+        """Render the timing columns for a task/job row.
 
-        Returns ``[phase, phase_for, idle, alive, cost]`` as markup strings
-        ready for a DataTable cell. ``idle`` is the number that matters most:
-        seconds since the last sign of life (audit event or LLM-call usage
-        record), styled by how long it has been silent.
+        Returns ``[phase, started, ran, last, cost]`` as markup strings ready
+        for a DataTable cell. The pane used to carry *Phase For* and *Idle*,
+        which for any finished record are the same number read twice; what an
+        operator scanning settled work actually asks is *when did this happen*,
+        so those two give their place to *Started* and *Ran*, and *Last* keeps
+        the idle signal — a wall-clock stamp, coloured by how long the record
+        has been silent, so a dead run still fails the eye.
         """
         now = self.get_liveness_snapshot()["now"]
-        phase, since = row.phase_group(now)
-        idle = row.idle_seconds(now)
-        phase_for = fmt_age(now - since) if since else "—"
+        phase, _since = row.phase_group(now)
         if in_place_blind(row, now):
             phase = f"{phase} [dim](blind: ADR 034)[/dim]"
+        idle = row.idle_seconds(now)
+        last = row.last_moved()
+        last_cell = f"[{idle_style(idle)}]{fmt_when(last, now)}[/]" if last is not None else "—"
         return [
             phase,
-            phase_for,
-            f"[{idle_style(idle)}]{fmt_age(idle)}[/]",
-            liveness_text(row),
+            fmt_when(row.started_at, now),
+            fmt_age(row.duration_seconds(now)),
+            last_cell,
             fmt_cost(row),
         ]
+
+    def status_cell(self, status: str, row: RunRow) -> str:
+        """The Status column as the pane shows it: what the record claims,
+        corrected by what the rest of the disk says.
+
+        The panes used to carry a separate *Alive?* column; its fact lives here
+        now, because it only ever changes what the status *means* — a record
+        still saying ``running`` with no sign of life is stale, a finished
+        record is settled, and a record that cannot answer for its process says
+        so rather than being shown as live.
+        """
+        if self.is_stale_row(row):
+            return "[bold red]stale[/]"
+        if row.is_terminal():
+            return f"[dim]{status}[/dim]"
+        if row.alive() is not True:
+            return f"{status} [dim]({liveness_text(row)})[/dim]"
+        return status
 
     def is_stale_row(self, row: RunRow) -> bool:
         """True when a record that claims to be running is actually stale."""
