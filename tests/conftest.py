@@ -160,6 +160,101 @@ def _isolate_tempdir(tmp_path_factory):
         os.environ["TMPDIR"] = old_env
 
 
+# The machine's real home, captured at conftest import — before isolate_home
+# redirects $HOME. Used only by the write-tripwire below.
+_MACHINE_HOME = Path.home()
+
+
+def _machine_ssh_fingerprint() -> dict:
+    """Fingerprint the real ``~/.ssh/NO-AGENT`` subtree by stat metadata.
+
+    Scoped to the NO-AGENT key dir (the concrete thing a snodo test could
+    write) rather than all of ~/.ssh, so an unrelated ssh-agent or
+    known_hosts touch cannot make the suite flaky.  Stat only — the guard
+    must not read private-key contents either.
+    """
+    key_dir = _MACHINE_HOME / ".ssh" / "NO-AGENT"
+    if not key_dir.is_dir():
+        return {}
+    state: dict = {}
+    for p in sorted(key_dir.rglob("*")):
+        key = str(p.relative_to(key_dir))
+        try:
+            st = p.stat()
+            state[key] = (p.is_dir(), st.st_size, round(st.st_mtime, 3))
+        except OSError:
+            state[key] = "unstatable"
+    return state
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolate_home(tmp_path_factory):
+    """Point $HOME (and git's global config) at a private per-session dir.
+
+    The suite must pass on a clean checkout and must never read or write the
+    real ~/.ssh or ~/.gitconfig of the machine running it. Two documented
+    home-state couplings made that false:
+
+    - RS256 signing keys: the engine's GraphBuilder refuses to build without
+      ~/.ssh/NO-AGENT/snodo.pub.pem (deliberate — see signing_keys.py threat
+      model). Tests previously passed only because the developer had run
+      `snodo init`; `snodo init` in tests then wrote keys into the REAL home.
+    - Global git config: fixtures create repos with bare `git init` and the
+      tests use `main`, relying on the developer's ~/.gitconfig having
+      init.defaultBranch=main and a user identity.
+
+    Redirecting HOME at session scope (and pinning GIT_CONFIG_GLOBAL to a
+    small test-owned gitconfig) removes both, and every other $HOME consumer
+    — including `snodo` subprocesses in e2e tests, which inherit the env.
+    A keypair is seeded into the fake home up front so graph construction is
+    deterministic regardless of test order; the missing-key refusal is covered
+    explicitly in tests/engine/test_missing_signing_key.py.
+    """
+    fake_home = tmp_path_factory.mktemp("snodo_home")
+    gitconfig = fake_home / ".gitconfig"
+    gitconfig.write_text(
+        "[user]\n\tname = Snodo Test\n\temail = snodo-test@example.invalid\n"
+        "[init]\n\tdefaultBranch = main\n"
+    )
+    old = {k: os.environ.get(k) for k in ("HOME", "USERPROFILE", "GIT_CONFIG_GLOBAL")}
+    os.environ["HOME"] = str(fake_home)
+    os.environ["USERPROFILE"] = str(fake_home)
+    os.environ["GIT_CONFIG_GLOBAL"] = str(gitconfig)
+
+    from snodo.infrastructure.signing_keys import generate_keypair
+
+    generate_keypair()
+    yield fake_home
+
+    for key, value in old.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _guard_machine_home_untouched(isolate_home):
+    """Fail the session if the real ``~/.ssh/NO-AGENT`` changed while tests ran.
+
+    isolate_home makes touching it unnecessary (HOME points at a fake home),
+    so any change means some code bypassed the isolation with an absolute path
+    — the exact coupling that made plan-CLI tests pass only on machines where
+    someone had run `snodo init`.
+    """
+    before = _machine_ssh_fingerprint()
+    yield
+    after = _machine_ssh_fingerprint()
+    assert after == before, (
+        "A test created, changed, or deleted something under the real "
+        f"~/.ssh/NO-AGENT of the machine running the suite "
+        f"({_MACHINE_HOME / '.ssh' / 'NO-AGENT'}): it went from {before} to "
+        f"{after}. Tests must operate under the isolated HOME the isolate_home "
+        "fixture provides and must never read or write the machine's real "
+        "signing keys."
+    )
+
+
 @pytest.fixture(autouse=True)
 def isolate_snodo_home(monkeypatch):
     """Ensure no test reads/writes the real ~/.snodo/.

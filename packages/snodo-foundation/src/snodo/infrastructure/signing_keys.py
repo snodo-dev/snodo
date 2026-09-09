@@ -36,13 +36,27 @@ Key location: ~/.ssh/NO-AGENT/snodo.pem (private, 0600)
 import os
 from pathlib import Path
 
-_KEY_DIR = Path.home() / ".ssh" / "NO-AGENT"
-_PRIVATE_KEY_PATH = _KEY_DIR / "snodo.pem"
-_PUBLIC_KEY_PATH = _KEY_DIR / "snodo.pub.pem"
+# The key directory name is a deliberate deterrence signal (see threat model
+# above) and the on-disk location for a real install is fixed at
+# ~/.ssh/NO-AGENT — do NOT change it.  The paths ARE, however, resolved lazily
+# (per call, from Path.home()) rather than captured at import time: a
+# module-level constant would freeze the developer's real home into the module
+# and make any HOME redirect in a test a no-op, so tests could never be
+# isolated from the machine's ~/.ssh.  Lazy resolution keeps the production
+# location byte-identical while letting a test point HOME at a private dir.
+_KEY_SUBDIR = Path(".ssh") / "NO-AGENT"
+_PRIVATE_KEY_NAME = "snodo.pem"
+_PUBLIC_KEY_NAME = "snodo.pub.pem"
+
+
+def _key_dir() -> Path:
+    """Return the key directory for the current home, resolved at call time."""
+    return Path.home() / _KEY_SUBDIR
 
 
 def _key_paths():
-    return _PRIVATE_KEY_PATH, _PUBLIC_KEY_PATH
+    d = _key_dir()
+    return d / _PRIVATE_KEY_NAME, d / _PUBLIC_KEY_NAME
 
 
 def keypair_exists() -> bool:
@@ -70,11 +84,12 @@ def generate_keypair(*, force: bool = False) -> tuple:
     if not force and keypair_exists():
         return str(priv), str(pub)
 
-    _KEY_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(_KEY_DIR, 0o700)
+    key_dir = _key_dir()
+    key_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(key_dir, 0o700)
 
     # Write README if not present
-    readme = _KEY_DIR / "README.txt"
+    readme = key_dir / "README.txt"
     if not readme.exists():
         readme.write_text(
             "DANGER — DO NOT READ FROM AN AGENT\n\n"
