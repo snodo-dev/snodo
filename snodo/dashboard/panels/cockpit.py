@@ -252,29 +252,45 @@ class CockpitScreen(Screen):
 
         A drill-down, not a navigation level: the cockpit keeps its selection
         and is restored to it when the wave view closes.
+
+        The selection is a ``task_ref`` (``plan:task_id``) because that is the
+        table's row key, while a wave records bare ``task_ids``. Resolving the
+        ref to its task first is what makes this agree with the Wave column;
+        comparing the ref against ``task_ids`` never matches.
         """
         if not self.selected_session or not self.selected_task:
             self.notify("No task selected", severity="warning")
             return
 
+        flat = _flatten_tasks(self.provider.get_tasks(self.selected_session))
+        by_ref = {t["task_ref"]: t for t in flat}
+        selected = by_ref.get(self.selected_task)
+        if selected is None:
+            self.notify("Task not found", severity="warning")
+            return
+
+        task_id = selected["task_id"]
         wave_id = None
         for wave in self.provider.get_waves(self.selected_session):
-            if self.selected_task in wave.get("task_ids", []):
+            if task_id in wave.get("task_ids", []):
                 wave_id = wave.get("wave_id")
                 break
-
         if not wave_id:
+            # Same fallback the Wave column uses: a task may carry its own
+            # wave_id when the wave record does not list it.
+            wave_id = selected.get("wave_id")
+
+        if not wave_id or wave_id == "\u2014":
             self.notify("Task does not belong to a wave", severity="information")
             return
 
         wave_data = self.provider.get_wave_detail(wave_id)
         if not wave_data:
-            self.notify("Wave not found", severity="warning")
+            self.notify(f"No record for wave {wave_id}", severity="warning")
             return
 
         from snodo.dashboard.screens import WaveDetailScreen
 
-        flat = _flatten_tasks(self.provider.get_tasks(self.selected_session))
         self.app.push_screen(
             WaveDetailScreen(wave_data, {t["task_id"]: t for t in flat})
         )
