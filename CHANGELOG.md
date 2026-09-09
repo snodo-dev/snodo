@@ -15,6 +15,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A tunnel conflict is now something an operator can act on. The cloud
+  allows one tunnel per project and mode and refuses a second, naming the
+  hostname that blocks it — a fact the CLI had in hand and discarded,
+  reporting the refusal as a flat failure. Worse, `--delete` consulted only
+  the local project's configuration, so a tunnel that existed for the
+  organisation but was never recorded locally was invisible to it: the two
+  commands contradicted each other and neither could resolve the state. The
+  blocking hostname is now surfaced with the commands that clear it, and a
+  tunnel can be deleted by the identity the cloud holds rather than only the
+  one the local config remembers. A conflict never reuses or silently
+  replaces the existing tunnel: the refusal carries no tunnel token, so
+  there is nothing to run against, and deprovisioning something another
+  session may be using stays a deliberate act.
+- A config directory is no longer mistaken for a project. Project resolution
+  walks up from the working directory looking for `.snodo` and excludes the
+  global config directory, but the exclusion only covered whichever home was
+  currently configured. With `SNODO_HOME` pointed elsewhere, a real
+  `~/.snodo` on disk stopped being excluded and the walk reported the user's
+  home directory as the project root — silently, so a run proceeded against
+  the config directory as though it were a repository. The machine's own
+  home is now resolved independently of the environment, since `$HOME` is
+  exactly what a redirected process cannot be asked.
 - The test suite no longer depends on the machine it runs on. Six plan-CLI
   tests passed only where someone had already run `snodo init`: the signing
   key directory was resolved once at import time from the real home
