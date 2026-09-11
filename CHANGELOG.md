@@ -9,6 +9,24 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A tunnelled MCP server rejected every correctly issued token. The bearer
+  verifier called `jwt.decode` without an `audience` argument, on the
+  understanding that omitting it skips the audience check. It does the
+  opposite: PyJWT raises `InvalidAudienceError` when a token carries an `aud`
+  claim and the caller named no audience (`api_jwt.py` `_validate_aud`). Every
+  resource-indicated token carries one, so each was refused for being correct.
+  The rejection was then swallowed into a bare `None` and surfaced as the MCP
+  SDK's generic 401 "Authentication required" — a message that says a token
+  was absent or malformed when in fact it was perfect. The verifier is now
+  given the server's resource identifier and verifies `aud` against it, from
+  the same string the protected-resource metadata advertises, so the two
+  cannot drift. `AccessToken.resource` is populated from the claim, which a
+  later SDK is expected to compare against `resource_server_url`. Every
+  rejection reason is now logged at debug rather than collapsed: diagnosing
+  this took a night because the reason existed and was discarded.
+
 ---
 
 ## [0.8.2] — 2026-09-09
