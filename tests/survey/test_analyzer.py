@@ -27,13 +27,15 @@ class TestSurveyAnalyzer:
             # Create a single-package Python project
             (project_root / "src").mkdir()
             (project_root / "src" / "main.py").write_text("print('hello')")
-            (project_root / "pyproject.toml").write_text("[project]\nname = 'test'")
+            (project_root / "pyproject.toml").write_text(
+                "[project]\nname = 'test'\n\n[tool.pytest.ini_options]\ntestpaths = ['src']"
+            )
 
             # Analyze
             survey = analyze_repository(project_root)
 
             # Single package detected
-            assert len(survey.modules) == 0  # No workspaces, so no modules
+            assert len(survey.modules) == 0  # No workspaces or nested manifests
             assert "python" in survey.languages
             assert survey.test_command == "pytest"
             assert survey.test_marker_file == "pyproject.toml"
@@ -172,3 +174,182 @@ members = ["crate_a", "crate_b"]
 
             # Should detect modules
             assert len(survey.modules) > 0
+
+
+class TestGrownNotScaffoldedRepository:
+    """Regression tests for a repository shaped like the seven-service survey miss.
+
+    Sibling service directories each hold their own manifest with no root
+    workspace declaration, the Makefile has no test target, node_modules is
+    populated, and tooling configuration lives in a dotted directory.
+    """
+
+    @staticmethod
+    def _make_repo(root: Path) -> None:
+        import json
+
+        # Makefile with operational targets but no test target
+        (root / "Makefile").write_text(
+            "help:\n\t@echo help\n"
+            "install-api: api.droptrack.io\n\tnpm install\n"
+            "install:\n\tnpm install\n"
+            "deploy-prod:\n\tnpm run deploy\n"
+            "dev:\n\tnpm run dev\n"
+            "stop:\n\tdocker compose down\n"
+        )
+
+        # Service directories, each declaring itself by manifest
+        services = [
+            "api.droptrack.io",
+            "app.droptrack.io",
+            "core.droptrack.io",
+            "play.droptrack.io/droptrack-play",
+        ]
+        for service in services:
+            service_dir = root / service
+            (service_dir / "src").mkdir(parents=True)
+            (service_dir / "package.json").write_text(
+                json.dumps({"name": service, "scripts": {"dev": "vite", "build": "vite build"}})
+            )
+            (service_dir / "src" / "index.ts").write_text("export const served = true")
+
+        # Tooling configuration in a dotted directory — not a product module
+        (root / ".opencode").mkdir()
+        (root / ".opencode" / "package.json").write_text('{"name": "tooling"}')
+        (root / ".opencode" / "theme.php").write_text("<?php // vendored tooling\n")
+
+        # A populated dependency tree holding languages the repository lacks
+        vendored = root / "node_modules" / "left-pad"
+        vendored.mkdir(parents=True)
+        (vendored / "index.js").write_text("// vendored javascript\n")
+        (vendored / "legacy.php").write_text("<?php // vendored php\n")
+        (vendored / "bindings.c").write_text("/* vendored c */\n")
+        (vendored / "glue.cpp").write_text("// vendored cpp\n")
+        (vendored / "build.sh").write_text("#!/bin/sh\nexit 0\n")
+
+    def test_modules_found_without_workspace_declaration(self, tmp_path):
+        """Nested manifests are boundaries even when nothing upstream announces them."""
+        self._make_repo(tmp_path)
+
+        survey = analyze_repository(tmp_path)
+
+        paths = {p for module in survey.modules for p in module.paths}
+        assert "api.droptrack.io" in paths
+        assert "app.droptrack.io" in paths
+        assert "core.droptrack.io" in paths
+        assert "play.droptrack.io/droptrack-play" in paths
+        assert len(survey.modules) == 4
+
+    def test_dotted_directory_is_tooling_not_module(self, tmp_path):
+        """A manifest inside a dotted directory is configuration, not a service."""
+        self._make_repo(tmp_path)
+
+        survey = analyze_repository(tmp_path)
+
+        assert not any(p.startswith(".") for module in survey.modules for p in module.paths)
+
+    def test_no_test_command_claimed_from_makefile_without_test_target(self, tmp_path):
+        """A Makefile without a test target must not certify `make test`."""
+        self._make_repo(tmp_path)
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.test_command is None
+        assert survey.test_marker_file is None
+        for module in survey.modules:
+            assert module.test_command is None
+        serialized = str(survey.to_dict())
+        assert "make test" not in serialized
+        assert "npm test" not in serialized
+
+    def test_languages_come_from_own_source_not_dependencies(self, tmp_path):
+        """No language is reported that has no file outside the dependency tree."""
+        self._make_repo(tmp_path)
+
+        survey = analyze_repository(tmp_path)
+
+        reported = set(survey.languages)
+        for module in survey.modules:
+            reported |= set(module.languages)
+        assert reported == {"typescript"}
+        for vendored_language in ("javascript", "php", "c", "cpp", "shell"):
+            assert vendored_language not in reported
+
+    def test_absent_test_command_is_not_framed_as_violation(self, tmp_path):
+        """A deferred quality gate is reported plainly, not as a requirement."""
+        self._make_repo(tmp_path)
+
+        survey = analyze_repository(tmp_path)
+
+        for finding in survey.findings:
+            lowered = finding.message.lower()
+            assert "violat" not in lowered
+            assert "missing" not in lowered
+            assert "require" not in lowered
+
+    def test_analyzer_writes_nothing(self, tmp_path):
+        """Survey reads the repository; it never writes into it."""
+        self._make_repo(tmp_path)
+
+        before = {p.relative_to(tmp_path) for p in tmp_path.rglob("*")}
+        analyze_repository(tmp_path)
+        after = {p.relative_to(tmp_path) for p in tmp_path.rglob("*")}
+
+        assert before == after
+        assert not (tmp_path / ".snodo").exists()
+
+
+class TestTestCommandConfirmation:
+    """Marker contents, not marker presence, decide what is claimed."""
+
+    def test_makefile_with_test_target_is_confirmed(self, tmp_path):
+        (tmp_path / "Makefile").write_text(
+            "help:\n\t@echo help\n\ntest:\n\tpytest -q\n"
+        )
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hi')")
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.test_command == "make test"
+        assert survey.test_marker_file == "Makefile"
+
+    def test_package_json_without_test_script_is_not_claimed(self, tmp_path):
+        (tmp_path / "package.json").write_text(
+            '{"name": "solo", "scripts": {"build": "vite build"}}'
+        )
+        (tmp_path / "index.js").write_text("// js")
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.test_command is None
+
+    def test_package_json_with_test_script_is_confirmed(self, tmp_path):
+        (tmp_path / "package.json").write_text(
+            '{"name": "solo", "scripts": {"test": "vitest run"}}'
+        )
+        (tmp_path / "index.js").write_text("// js")
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.test_command == "npm test"
+        assert survey.test_marker_file == "package.json"
+
+    def test_pyproject_without_pytest_is_not_claimed(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'bare'")
+        (tmp_path / "main.py").write_text("print('hi')")
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.test_command is None
+
+    def test_pyproject_with_pytest_dependency_is_confirmed(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text(
+            "[project]\nname = 'pkg'\ndependencies = ['requests>=2.0']\n\n"
+            "[dependency-groups]\ndev = ['pytest>=8', 'ruff']\n"
+        )
+        (tmp_path / "main.py").write_text("print('hi')")
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.test_command == "pytest"

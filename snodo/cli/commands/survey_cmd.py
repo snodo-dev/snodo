@@ -163,7 +163,7 @@ def survey_command(args) -> int:
     if analysis.test_command:
         print(f"  Detected: {analysis.test_command}")
         if analysis.test_marker_file:
-            print(f"  From: {analysis.test_marker_file} (marker file in git)")
+            print(f"  From: {analysis.test_marker_file} (command confirmed in that file)")
     else:
         print("  No test command could be resolved from marker files or explicit configuration.")
     print()
