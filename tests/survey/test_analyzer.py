@@ -8,12 +8,22 @@ Tests that the analyzer correctly:
 3. Identifies test commands from marker files
 4. Locates decision records
 5. Never infers requirements from absence of practices
+6. Proposes undeclared boundaries arithmetically and leaves their status to
+   judgement
+7. Accepts agent judgements only when they cite gathered evidence, and
+   reports every judgement that was not made
 """
 
+import json
 import tempfile
 from pathlib import Path
 
-from snodo.survey.analyzer import analyze_repository
+from snodo.survey.analyzer import (
+    _DOSSIER_MAX_MANIFEST_CHARS,
+    analyze_repository,
+)
+
+_DOSSIER_TRUNC_NOTE_LIMIT = _DOSSIER_MAX_MANIFEST_CHARS + 40
 
 
 class TestSurveyAnalyzer:
@@ -353,3 +363,438 @@ class TestTestCommandConfirmation:
         survey = analyze_repository(tmp_path)
 
         assert survey.test_command == "pytest"
+
+
+def _verdict(subject_id, verdict, reason="because the evidence says so", cited=("package.json",)):
+    return {
+        "subject": subject_id,
+        "verdict": verdict,
+        "reason": reason,
+        "cited_files": list(cited),
+    }
+
+
+def _recording_judge(verdicts):
+    """A judge that returns canned verdicts and records the dossiers it saw."""
+    calls = []
+
+    def judge(dossier):
+        calls.append(dossier)
+        return {"verdicts": verdicts}
+
+    judge.calls = calls
+    return judge
+
+
+class TestExtensionArithmetic:
+    """Languages that exist on disk must appear in the survey."""
+
+    def test_svelte_and_astro_are_detected(self, tmp_path):
+        (tmp_path / "package.json").write_text('{"name": "site"}')
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "App.svelte").write_text("<h1>hi</h1>")
+        (tmp_path / "src" / "Page.astro").write_text("---\n---")
+
+        survey = analyze_repository(tmp_path)
+
+        assert "svelte" in survey.languages
+        assert "astro" in survey.languages
+
+    def test_swift_is_detected(self, tmp_path):
+        (tmp_path / "main.swift").write_text("print(\"hi\")")
+
+        survey = analyze_repository(tmp_path)
+
+        assert "swift" in survey.languages
+
+    def test_pods_tree_contributes_no_language(self, tmp_path):
+        """A vendored iOS dependency tree is pruned like node_modules is."""
+        (tmp_path / "trival-app").mkdir()
+        own = tmp_path / "trival-app" / "ios" / "Runner"
+        own.mkdir(parents=True)
+        (own / "AppDelegate.swift").write_text("import UIKit")
+        pods = tmp_path / "trival-app" / "ios" / "Pods"
+        pods.mkdir()
+        (pods / "Something.h").write_text("/* vendored */")
+        (pods / "Something.cpp").write_text("// vendored")
+
+        survey = analyze_repository(tmp_path)
+
+        reported = set(survey.languages)
+        for module in survey.modules:
+            reported |= set(module.languages)
+        assert "swift" in reported
+        assert "cpp" not in reported
+        assert "c" not in reported
+
+
+class TestManifestsTheWalkKnows:
+    """A manifest the stack moved on to is still arithmetic once recognised."""
+
+    def test_flutter_app_is_found_by_its_pubspec(self, tmp_path):
+        app = tmp_path / "my-app"
+        (app / "lib").mkdir(parents=True)
+        (app / "pubspec.yaml").write_text(
+            "name: my_app\ndescription: A Flutter application\n"
+            "flutter:\n  sdk: flutter\n"
+        )
+        (app / "lib" / "main.dart").write_text("void main() {}")
+
+        survey = analyze_repository(tmp_path)
+
+        assert [m.paths for m in survey.modules] == [["my-app"]]
+        assert "dart" in survey.modules[0].languages
+        # a source-dense app tree with a manifest we now parse is found
+        # arithmetically; it is never an undeclared-boundary candidate
+        assert not [
+            u for u in survey.unmade_judgements
+            if u.kind == "undeclared-boundary" and u.subject_path == "my-app"
+        ]
+
+
+class TestUndeclaredBoundaries:
+    """A boundary is a boundary whether or not it declares itself in a format we parse."""
+
+    @staticmethod
+    def _make_repo(root: Path) -> None:
+        # The product: an app tree with no manifest this walk recognises.
+        app = root / "trival-app"
+        (app / "src").mkdir(parents=True)
+        (app / "ios" / "Runner.xcodeproj").mkdir(parents=True)
+        (app / "ios" / "Runner.xcodeproj" / "project.pbxproj").write_text("// xcode\n")
+        (app / "ios" / "Podfile").write_text("platform :ios\n")
+        vendored = app / "ios" / "Pods" / "LeftThing"
+        vendored.mkdir(parents=True)
+        for i in range(30):
+            (vendored / f"Vendored{i}.h").write_text("/* vendored */\n")
+        for i in range(30):
+            (app / "src" / f"feature{i}.ts").write_text("export const x = 1\n")
+
+    def test_candidate_is_proposed_not_promoted(self, tmp_path):
+        """Without a judge, the app directory yields no module and no invented boundary."""
+        self._make_repo(tmp_path)
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.modules == []
+        subjects = {u.subject_path for u in survey.unmade_judgements}
+        assert "trival-app" in subjects
+        # The report says plainly which judgement was not made
+        gap = next(u for u in survey.unmade_judgements if u.subject_path == "trival-app")
+        assert "no agent" in gap.reason
+        # and it never promotes the candidate on arithmetic alone
+        assert not any("trival-app" in m.paths for m in survey.modules)
+
+    def test_judge_can_accept_an_undeclared_boundary(self, tmp_path):
+        self._make_repo(tmp_path)
+        judge = _recording_judge([
+            _verdict(
+                "undeclared-boundary:trival-app", "module",
+                reason="iOS/Android application, the repository's product",
+                cited=("trival-app/src/feature0.ts", "trival-app/ios/Podfile"),
+            ),
+        ])
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        assert [m.paths for m in survey.modules] == [["trival-app"]]
+        assert survey.modules[0].origin == "agent-judgement"
+        assert "typescript" in survey.modules[0].languages
+        # The vendored tree inside the accepted module contributes no language
+        assert "cpp" not in survey.modules[0].languages
+        assert survey.agent_consulted
+
+    def test_judge_verdict_cannot_rest_on_vendored_or_imagined_files(self, tmp_path):
+        """Citations must be real files of the subject's own source — the reader
+        has to be able to go and look at them."""
+        self._make_repo(tmp_path)
+        vendored_judge = _recording_judge([
+            _verdict(
+                "undeclared-boundary:trival-app", "module",
+                cited=("trival-app/ios/Pods/LeftThing/Vendored0.h",),
+            ),
+        ])
+        survey = analyze_repository(tmp_path, judge=vendored_judge)
+        assert survey.modules == []
+        gap = survey.unmade_judgements[0]
+        assert "own source" in gap.reason
+
+        imagined_judge = _recording_judge([
+            _verdict(
+                "undeclared-boundary:trival-app", "module",
+                cited=("trival-app/src/nonexistent-feature.ts",),
+            ),
+        ])
+        survey = analyze_repository(tmp_path, judge=imagined_judge)
+        assert survey.modules == []
+        assert "own source" in survey.unmade_judgements[0].reason
+
+    def test_subject_relative_citations_are_anchored_to_the_subject(self, tmp_path):
+        """'src/feature0.ts' for subject 'trival-app' means 'trival-app/src/feature0.ts'."""
+        self._make_repo(tmp_path)
+        judge = _recording_judge([
+            _verdict(
+                "undeclared-boundary:trival-app", "module",
+                reason="the application ships here",
+                cited=("src/feature0.ts", "ios/Podfile"),
+            ),
+        ])
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        assert [m.paths for m in survey.modules] == [["trival-app"]]
+        record = survey.judgements[0]
+        assert record.cited_files == [
+            "trival-app/src/feature0.ts", "trival-app/ios/Podfile",
+        ]
+
+    def test_abstention_is_honest_not_guessed(self, tmp_path):
+        self._make_repo(tmp_path)
+        judge = _recording_judge([
+            _verdict(
+                "undeclared-boundary:trival-app", "abstain",
+                reason="cannot tell from a file listing alone",
+            ),
+        ])
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        assert survey.modules == []
+        assert survey.judgements == []
+        assert "abstained" in survey.unmade_judgements[0].reason
+
+    def test_root_manifest_means_no_candidates(self, tmp_path):
+        """A root package declaration covers its tree; src/ is internals, not a boundary."""
+        (tmp_path / "package.json").write_text('{"name": "site"}')
+        src = tmp_path / "src"
+        src.mkdir()
+        for i in range(35):
+            (src / f"page{i}.svelte").write_text("<h1>x</h1>")
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.modules == []
+        assert survey.unmade_judgements == []
+        assert "svelte" in survey.languages
+
+    def test_scaffolding_dirs_are_not_candidates_when_claimed(self, tmp_path):
+        """Directories that already carry a manifest are judged as modules, not candidates."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "package.json").write_text('{"name": "docs"}')
+        for i in range(30):
+            (docs / f"page{i}.js").write_text("// js\n")
+
+        survey = analyze_repository(tmp_path)
+
+        kinds = {u.subject_path: u.kind for u in survey.unmade_judgements}
+        assert kinds.get("docs") == "boundary-role"
+
+
+class TestAgentBoundaryRole:
+    """Is a manifest-backed work the product, or scaffolding that hosts a doc site or test harness?"""
+
+    @staticmethod
+    def _make_deskflow_shape(root: Path) -> None:
+        # Two real products and two works that only host tooling.
+        for name in ("app", "lib", "docs", "tests"):
+            d = root / name
+            d.mkdir()
+            (d / "package.json").write_text(json.dumps(
+                {"name": name, "scripts": {"test": "vitest run"}}
+            ))
+            (d / "main.ts").write_text("export const x = 1\n")
+
+    def test_scaffolding_verdict_removes_the_module(self, tmp_path):
+        self._make_deskflow_shape(tmp_path)
+        judge = _recording_judge([
+            _verdict("boundary-role:app", "product", cited=("app/package.json",)),
+            _verdict("boundary-role:lib", "product", cited=("lib/package.json",)),
+            _verdict(
+                "boundary-role:docs", "scaffolding",
+                reason="a doc site, not shipped",
+                cited=("docs/package.json",),
+            ),
+            _verdict(
+                "boundary-role:tests", "scaffolding",
+                reason="a test harness around the product",
+                cited=("tests/package.json",),
+            ),
+        ])
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        assert {m.module_id for m in survey.modules} == {"app", "lib"}
+        assert len(survey.modules) == 2
+        assert {r.subject_path for r in survey.judgements if r.verdict == "scaffolding"} == {
+            "docs", "tests",
+        }
+        # A reader can disagree with a specific file: verdicts name their citations
+        docs_record = next(r for r in survey.judgements if r.subject_path == "docs")
+        assert docs_record.cited_files == ["docs/package.json"]
+
+    def test_dossier_is_grounded_in_gathered_evidence(self, tmp_path):
+        """The judge is shown a digest the deterministic pass built — bounded listings,
+        manifest summaries, source histograms — not sent to explore."""
+        self._make_deskflow_shape(tmp_path)
+        judge = _recording_judge([])
+
+        analyze_repository(tmp_path, judge=judge)
+
+        assert len(judge.calls) == 1
+        dossier = judge.calls[0]
+        subjects = {s["id"]: s for s in dossier["subjects"]}
+        docs = subjects["boundary-role:docs"]
+        assert docs["question"]
+        assert "docs/package.json" in docs["evidence"]["manifests"]
+        assert docs["evidence"]["own_source_file_count"] == 1  # main.ts; manifests don't count
+        assert "repository" in dossier
+        assert "top_level" in dossier["repository"]
+
+    def test_missing_verdict_keeps_deterministic_result(self, tmp_path):
+        self._make_deskflow_shape(tmp_path)
+        judge = _recording_judge([
+            _verdict("boundary-role:app", "product", cited=("app/package.json",)),
+        ])
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        # All four stand: only judgements that were made change anything
+        assert len(survey.modules) == 4
+        unmade_paths = {u.subject_path for u in survey.unmade_judgements}
+        assert {"lib", "docs", "tests"} <= unmade_paths
+
+    def test_judge_exception_degrades_to_deterministic(self, tmp_path):
+        self._make_deskflow_shape(tmp_path)
+
+        def judge(dossier):
+            raise RuntimeError("provider down")
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        assert len(survey.modules) == 4
+        assert all("provider down" in u.reason for u in survey.unmade_judgements)
+        assert not survey.agent_consulted
+
+    def test_unparsable_verdicts_recorded_as_not_made(self, tmp_path):
+        self._make_deskflow_shape(tmp_path)
+        survey = analyze_repository(tmp_path, judge=lambda dossier: None)
+
+        assert len(survey.modules) == 4
+        assert len(survey.unmade_judgements) == 4
+        assert all(u.reason for u in survey.unmade_judgements)
+
+    def test_bogus_verdict_string_is_not_applied(self, tmp_path):
+        self._make_deskflow_shape(tmp_path)
+        judge = _recording_judge([
+            {"subject": "boundary-role:docs", "verdict": "probably-fine",
+             "reason": "hunch", "cited_files": ["docs/package.json"]},
+        ])
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        assert any(m.module_id == "docs" for m in survey.modules)
+        gap = next(u for u in survey.unmade_judgements if u.subject_path == "docs")
+        assert "unrecognized verdict" in gap.reason
+
+    def test_empty_citations_are_not_attributable(self, tmp_path):
+        self._make_deskflow_shape(tmp_path)
+        judge = _recording_judge([
+            {"subject": "boundary-role:docs", "verdict": "scaffolding",
+             "reason": "looks like docs", "cited_files": []},
+        ])
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        assert any(m.module_id == "docs" for m in survey.modules)
+        gap = next(u for u in survey.unmade_judgements if u.subject_path == "docs")
+        assert "cited no evidence" in gap.reason
+
+    def test_judged_scaffolding_is_reported_not_inventedin_requirements(self, tmp_path):
+        """Verdicts classify what exists; they never demand governance."""
+        self._make_deskflow_shape(tmp_path)
+        judge = _recording_judge([
+            _verdict("boundary-role:docs", "scaffolding", cited=("docs/package.json",)),
+            _verdict("boundary-role:tests", "scaffolding", cited=("tests/package.json",)),
+        ])
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        for finding in survey.findings:
+            lowered = finding.message.lower()
+            assert "violat" not in lowered
+            assert "missing" not in lowered
+            assert "require" not in lowered
+
+    def test_survey_still_works_with_no_subjects_no_call(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'")
+        (tmp_path / "main.py").write_text("print('hi')")
+        called = []
+
+        def judge(dossier):
+            called.append(dossier)
+            return {"verdicts": []}
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        assert called == []
+        assert survey.modules == []
+        assert survey.unmade_judgements == []
+
+
+class TestDossierManifestSummaries:
+    """The judge sees a structured digest of every manifest format we parse."""
+
+    def test_manifests_are_summarized_for_each_stack(self, tmp_path):
+        (tmp_path / "py").mkdir()
+        (tmp_path / "py" / "pyproject.toml").write_text(
+            "[project]\nname = 'svc'\ndependencies = ['flask']\n"
+        )
+        (tmp_path / "rs").mkdir()
+        (tmp_path / "rs" / "Cargo.toml").write_text("[package]\nname = 'tool'\n")
+        (tmp_path / "go").mkdir()
+        (tmp_path / "go" / "go.mod").write_text("module example.dev/svc\n\ngo 1.22\n")
+        (tmp_path / "jvm").mkdir()
+        (tmp_path / "jvm" / "pom.xml").write_text(
+            "<project><artifactId>service</artifactId></project>"
+        )
+        (tmp_path / "big").mkdir()
+        (tmp_path / "big" / "package.json").write_text(json.dumps(
+            {"name": "big", "description": "x" * 4000}
+        ))
+
+        judge = _recording_judge([])
+        analyze_repository(tmp_path, judge=judge)
+
+        subjects = {s["id"]: s for s in judge.calls[0]["subjects"]}
+        assert "svc" in subjects["boundary-role:py"]["evidence"]["manifests"][
+            "py/pyproject.toml"
+        ]
+        assert "tool" in subjects["boundary-role:rs"]["evidence"]["manifests"][
+            "rs/Cargo.toml"
+        ]
+        assert "example.dev/svc" in subjects["boundary-role:go"]["evidence"]["manifests"][
+            "go/go.mod"
+        ]
+        assert "service" in subjects["boundary-role:jvm"]["evidence"]["manifests"][
+            "jvm/pom.xml"
+        ]
+        big = subjects["boundary-role:big"]["evidence"]["manifests"]["big/package.json"]
+        assert len(big) <= _DOSSIER_TRUNC_NOTE_LIMIT
+        assert "truncated" in big
+
+
+class TestJudgementWritesNothing:
+    def test_analyzer_with_judge_writes_nothing(self, tmp_path):
+        TestGrownNotScaffoldedRepository._make_repo(tmp_path)
+        judge = _recording_judge([
+            _verdict("boundary-role:api.droptrack.io", "product",
+                     cited=("api.droptrack.io/package.json",)),
+        ])
+
+        before = {p.relative_to(tmp_path) for p in tmp_path.rglob("*")}
+        analyze_repository(tmp_path, judge=judge)
+        after = {p.relative_to(tmp_path) for p in tmp_path.rglob("*")}
+
+        assert before == after
+        assert not (tmp_path / ".snodo").exists()

@@ -89,7 +89,7 @@ _LIST_FILES_TOOL = {
 _READ_ONLY_TOOLS = [_READ_FILE_TOOL, _LIST_FILES_TOOL]
 
 
-def _resolve_agent_model(agent: str) -> str:
+def resolve_agent_model(agent: str) -> str:
     """Resolve 'default' to the configured model; pass-through otherwise."""
     if agent == "default":
         from snodo.config import ConfigManager
@@ -171,7 +171,7 @@ def _list_files(project_root: str, directory: str) -> str:
         return f"Error listing files: {e}"
 
 
-def _call_agent(
+def call_agent(
     project_root: str,
     model: str,
     query: str,
@@ -179,7 +179,12 @@ def _call_agent(
     agent_label: str,
     max_turns: int = 10,
 ) -> ReconResult:
-    """Run a single agent: LLM with read-only tools, returning raw text."""
+    """Run a single recon agent: LLM with read-only tools, returning raw text.
+
+    Public entry into the recon dispatch path for callers that need one
+    synchronous agent call (e.g. survey judgements) without the background
+    ReconManager state directories.
+    """
     import litellm
     litellm.suppress_debug_info = True
 
@@ -368,7 +373,7 @@ class ReconManager:
 
         resolved_agents = []
         for agent_label in agents:
-            model = _resolve_agent_model(agent_label)
+            model = resolve_agent_model(agent_label)
             resolved_agents.append((agent_label, model))
 
         results = []
@@ -376,7 +381,7 @@ class ReconManager:
             futures = {}
             for agent_label, model in resolved_agents:
                 future = executor.submit(
-                    _call_agent,
+                    call_agent,
                     self.project_root, model, query, paths, agent_label,
                 )
                 futures[future] = agent_label
