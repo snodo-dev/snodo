@@ -28,6 +28,33 @@ class JobError(Exception):
 # loop spun forever, and archive_jobs never reaped it.
 TERMINAL_STATUSES = {"completed", "failed", "cancelled", "unmerged"}
 
+#: A listing row shows the first line of a job's task spec, clipped — the
+#: spec itself is a detail of one job and belongs in get_status, not in a
+#: listing whose cost must not scale with spec prose across all of history.
+LISTING_TITLE_MAX_CHARS = 120
+
+
+def _title_from_description(description: object) -> str:
+    """One-line bounded title from a job's task description.
+
+    Specs are templates and start with section labels ("INTENT", "# Task");
+    the title is the first line that reads like prose — at least three words
+    once markdown decoration is stripped — falling back to the first
+    non-empty line when the whole description is short.
+    """
+    if not isinstance(description, str):
+        return ""
+    fallback = ""
+    for line in description.splitlines():
+        stripped = line.strip().lstrip("#").strip()
+        if not stripped:
+            continue
+        if not fallback:
+            fallback = stripped
+        if len(stripped.split()) >= 3:
+            return stripped[:LISTING_TITLE_MAX_CHARS]
+    return fallback[:LISTING_TITLE_MAX_CHARS]
+
 
 class JobManager:
     """Manages background jobs in .snodo/jobs/ directories.
@@ -207,8 +234,13 @@ class JobManager:
     def list_jobs(self) -> List[dict]:
         """List all jobs, sorted by creation time (newest first).
 
+        Each row is a bounded summary — enough to identify the work and see
+        how it ended at a glance — never the task spec itself.  The spec is
+        a detail of one job; get_status carries it.
+
         Returns:
-            List of job summary dicts with id, status, description, created_at.
+            List of dicts with id, status, task_ref, title, exit_code,
+            created_at, started_at, completed_at, duration_seconds.
         """
         jobs: list[dict] = []
         if not self.jobs_dir.exists():
@@ -221,17 +253,33 @@ class JobManager:
                 state = self._load_state(entry)
                 state = self._reconcile_state(entry, state)
                 task = self._load_task(entry)
-                jobs.append({
-                    "id": entry.name,
-                    "status": state.get("status", "unknown"),
-                    "description": task.get("description", ""),
-                    "created_at": state.get("created_at", 0),
-                })
+                jobs.append(self._summarize_job(entry.name, state, task))
             except (JobError, json.JSONDecodeError):
                 continue
 
         jobs.sort(key=lambda j: j["created_at"], reverse=True)
         return jobs
+
+    @staticmethod
+    def _summarize_job(job_id: str, state: dict, task: dict) -> dict:
+        """Bounded one-job summary: which work it was, and how it ended."""
+        started = state.get("started_at")
+        completed = state.get("completed_at")
+        duration = None
+        if started:
+            end = completed if completed else time.time()
+            duration = round(max(0.0, end - started), 1)
+        return {
+            "id": job_id,
+            "status": state.get("status", "unknown"),
+            "task_ref": task.get("task_id") or task.get("retry_task_id") or "",
+            "title": _title_from_description(task.get("description", "")),
+            "exit_code": state.get("exit_code"),
+            "created_at": state.get("created_at", 0),
+            "started_at": started,
+            "completed_at": completed,
+            "duration_seconds": duration,
+        }
 
     def get_status(self, job_id: str) -> dict:
         """Get full status for a job, reconciled with process state.

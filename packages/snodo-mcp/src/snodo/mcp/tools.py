@@ -296,10 +296,10 @@ TOOL_REGISTRY = {
     },
     "get_job_status": {
         "description": (
-            "Poll execution status of a dispatched job. Call after "
-            "dispatch_task returns a task_id. Status progresses: queued → "
-            "running → completed | failed. Check for completed + exit_code=0 "
-            "to confirm success."
+            "Poll execution status of one dispatched job and its full task "
+            "spec. Call after dispatch_task returns a task_id. Status "
+            "progresses: queued → running → completed | failed. Check for "
+            "completed + exit_code=0 to confirm success."
         ),
         "inputSchema": {
             "type": "object",
@@ -313,7 +313,12 @@ TOOL_REGISTRY = {
         "method": None,
     },
     "list_jobs": {
-        "description": "List all jobs for this project with their current status.",
+        "description": (
+            "List all jobs for this project as bounded one-line summaries: "
+            "id, status, exit_code, task_ref, title, timestamps, duration. "
+            "Cheap to call repeatedly — task specs are not included; read "
+            "one job's spec with get_job_status."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {},

@@ -297,14 +297,157 @@ class TestListJobs:
         assert manager.list_jobs() == []
 
     @patch("snodo.jobs.runner.spawn_background")
-    def test_list_includes_description(self, mock_spawn, manager, sample_task_args):
-        """list_jobs() includes task description."""
+    def test_list_row_carries_title_not_spec(self, mock_spawn, manager, sample_task_args):
+        """The listing identifies the work by its first line — never the spec."""
         mock_spawn.return_value = 99999
+        sample_task_args["description"] = (
+            "# Add payment retry with backoff\n\n"
+            + "Detailed specification prose.\n" * 40
+        )
 
         manager.submit(sample_task_args)
 
         jobs = manager.list_jobs()
-        assert jobs[0]["description"] == "Test task description"
+        assert jobs[0]["title"] == "Add payment retry with backoff"
+        assert "description" not in jobs[0]
+        serialized = json.dumps(jobs)
+        assert "Detailed specification prose" not in serialized
+
+
+class TestBoundedListing:
+    """A listing answerable at a glance, cheap to ask repeatedly.
+
+    The rows must carry enough to identify the work (task_ref, title) and
+    how it ended (status, exit_code, duration), at a per-row size that does
+    not scale with how much spec prose the project has accumulated.
+    """
+
+    @staticmethod
+    def _seed_jobs(manager, count, spec_chars):
+        base = 1_700_000_000.0
+        spec = "# Job title " + "x" * spec_chars
+        for i in range(count):
+            job_dir = manager.jobs_dir / f"j_{i:06d}"
+            job_dir.mkdir()
+            (job_dir / "task.json").write_text(json.dumps({
+                "description": spec,
+                "task_id": f"T-{i}",
+            }))
+            (job_dir / "state.json").write_text(json.dumps({
+                "status": "failed" if i % 2 else "completed",
+                "pid": None,
+                "created_at": base + i,
+                "started_at": base + i + 1,
+                "completed_at": base + i + 31,
+                "exit_code": 1 if i % 2 else 0,
+            }))
+
+    def test_listing_bounded_across_many_jobs(self, manager):
+        """91 jobs with fat specs produce a listing of rows, not prose."""
+        self._seed_jobs(manager, 91, spec_chars=2400)
+
+        jobs = manager.list_jobs()
+
+        assert len(jobs) == 91
+        payload = json.dumps(jobs)
+        # the pre-fix row *was* the spec: 91 x ~2.5KB ≈ 229KB of listing
+        old_style_row = json.dumps({
+            "id": "j_xxxxxx", "status": "completed",
+            "description": "# Job title " + "x" * 2400, "created_at": 0,
+        })
+        assert len(payload) < 91 * len(old_style_row) / 5
+        # and per row, bounded regardless of spec length
+        for j in jobs:
+            assert len(json.dumps(j)) < 500
+        assert "x" * 300 not in payload
+
+    def test_row_identifies_work_and_ending(self, manager):
+        self._seed_jobs(manager, 2, spec_chars=100)
+
+        jobs = manager.list_jobs()
+        failed = next(j for j in jobs if j["status"] == "failed")
+        assert failed["task_ref"].startswith("T-")
+        assert failed["exit_code"] == 1
+        assert failed["duration_seconds"] == 30.0
+        assert failed["title"].startswith("Job title")
+        assert set(jobs[0]) == {
+            "id", "status", "task_ref", "title", "exit_code",
+            "created_at", "started_at", "completed_at", "duration_seconds",
+        }
+
+    def test_running_job_duration_advances_queued_job_none(self, manager):
+        job_dir = manager.jobs_dir / "j_running"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(json.dumps({"description": "go"}))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "running", "pid": os.getpid(),
+            "created_at": time.time() - 60, "started_at": time.time() - 30,
+            "completed_at": None, "exit_code": None,
+        }))
+        (manager.jobs_dir / "j_queued").mkdir()
+
+        jobs = manager.list_jobs()
+        running = next(j for j in jobs if j["id"] == "j_running")
+        assert 29 <= running["duration_seconds"] <= 31
+
+    def test_retry_task_id_used_as_task_ref(self, manager):
+        job_dir = manager.jobs_dir / "j_retry"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(json.dumps({
+            "description": "retry attempt",
+            "retry_task_id": "T-9",
+        }))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "completed", "pid": None, "created_at": 1.0,
+            "started_at": 2.0, "completed_at": 3.0, "exit_code": 0,
+        }))
+
+        jobs = manager.list_jobs()
+        assert jobs[0]["task_ref"] == "T-9"
+
+    def test_template_label_yields_to_the_prose_line(self, manager):
+        """Real specs open with a section label; that is not their title."""
+        job_dir = manager.jobs_dir / "j_intent"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(json.dumps({
+            "description": (
+                "INTENT\n\n"
+                "The print export works and produces a good file.\n\n"
+                "PLAN\n- step one\n"
+            ),
+        }))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "completed", "pid": None, "created_at": 1.0,
+            "started_at": None, "completed_at": None, "exit_code": None,
+        }))
+
+        jobs = manager.list_jobs()
+        assert jobs[0]["title"].startswith("The print export works")
+
+    def test_short_specs_still_get_a_title(self, manager):
+        job_dir = manager.jobs_dir / "j_short"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(json.dumps({"description": "Fix login"}))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "completed", "pid": None, "created_at": 1.0,
+            "started_at": None, "completed_at": None, "exit_code": None,
+        }))
+
+        jobs = manager.list_jobs()
+        assert jobs[0]["title"] == "Fix login"
+
+    def test_title_clip_is_bounded(self, manager):
+        long_line = "word " * 500
+        job_dir = manager.jobs_dir / "j_long"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(json.dumps({"description": long_line}))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "completed", "pid": None, "created_at": 1.0,
+            "started_at": None, "completed_at": None, "exit_code": None,
+        }))
+
+        jobs = manager.list_jobs()
+        assert len(jobs[0]["title"]) <= 120
 
 
 # === Get Status Tests ===

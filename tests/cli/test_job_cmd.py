@@ -88,19 +88,19 @@ class TestJobList:
         assert "No jobs found." in out
 
     def test_list_with_jobs(self, mock_manager, capsys):
-        """Job list prints table with job details."""
+        """Job list prints bounded rows: how each job ended, what it was."""
         mock_manager.list_jobs.return_value = [
             {
-                "id": "j_abc123",
-                "status": "running",
-                "created_at": 1700000000,
-                "description": "Short description",
+                "id": "j_abc123", "status": "running", "task_ref": "T-12",
+                "title": "Short title", "exit_code": None,
+                "created_at": 1700000000, "started_at": 1700000001,
+                "completed_at": None, "duration_seconds": 42.0,
             },
             {
-                "id": "j_def456",
-                "status": "completed",
-                "created_at": 1700001000,
-                "description": "Another task",
+                "id": "j_def456", "status": "failed", "task_ref": "",
+                "title": "Another task", "exit_code": 1,
+                "created_at": 1700001000, "started_at": 1700001001,
+                "completed_at": 1700001011, "duration_seconds": 10.0,
             },
         ]
 
@@ -110,26 +110,33 @@ class TestJobList:
         out = capsys.readouterr().out
         assert "j_abc123" in out
         assert "running" in out
-        assert "Short description" in out
+        assert "Short title" in out
         assert "j_def456" in out
-        assert "completed" in out
+        assert "failed" in out
         assert "Another task" in out
+        # how it ended: exit code and duration columns
+        assert "Exit" in out
+        assert "Duration" in out
+        assert "42s" in out
+        assert "1" in out
+        # which work it belonged to
+        assert "task: T-12" in out
         # Check header
         assert "ID" in out
         assert "Status" in out
         assert "Created" in out
-        assert "Description" in out
-        assert "-" * 72 in out
+        assert "Title" in out
 
-    def test_long_description_truncated(self, mock_manager, capsys):
-        """Descriptions longer than 40 chars are truncated with ellipsis."""
-        long_desc = "A" * 50  # 50 chars, exceeds 40
+    def test_list_never_carries_spec_prose(self, mock_manager, capsys):
+        """The list prints the title the manager produced — no re-expansion
+        of task spec prose into the listing."""
+        spec_like = "# Implement payment retry\n" + "detail prose\n" * 50
         mock_manager.list_jobs.return_value = [
             {
-                "id": "j_aaa111",
-                "status": "running",
-                "created_at": 1700000000,
-                "description": long_desc,
+                "id": "j_spec01", "status": "completed", "task_ref": "",
+                "title": "Implement payment retry", "exit_code": 0,
+                "created_at": 1700000000, "started_at": 1700000001,
+                "completed_at": 1700000005, "duration_seconds": 4.0,
             },
         ]
 
@@ -137,28 +144,9 @@ class TestJobList:
 
         assert result == 0
         out = capsys.readouterr().out
-        # Should be truncated to 37 chars + "..."
-        assert "A" * 37 + "..." in out
-        assert long_desc not in out
-
-    def test_exact_40_char_description_not_truncated(self, mock_manager, capsys):
-        """Description with exactly 40 chars is not truncated."""
-        desc_40 = "B" * 40
-        mock_manager.list_jobs.return_value = [
-            {
-                "id": "j_bbb222",
-                "status": "completed",
-                "created_at": 1700000000,
-                "description": desc_40,
-            },
-        ]
-
-        result = _job_list(mock_manager)
-
-        assert result == 0
-        out = capsys.readouterr().out
-        assert desc_40 in out
-        assert "..." not in out
+        assert "Implement payment retry" in out
+        assert "detail prose" not in out
+        assert spec_like not in out
 
 
 # === _job_status Tests ===
