@@ -457,7 +457,10 @@ class TestServerIntegration:
     def test_plan_in_mode_tool_map(self):
         from snodo.mcp.server import MODE_TOOL_MAP
         assert "plan" in MODE_TOOL_MAP
-        assert set(MODE_TOOL_MAP["plan"]) == {"decompose", "generate_spec", "validate_plan"}
+        assert set(MODE_TOOL_MAP["plan"]) == {
+            "decompose", "generate_spec", "validate_plan",
+            "propose_plan", "get_plan", "run_plan",
+        }
 
 
 class TestModeFiltering:

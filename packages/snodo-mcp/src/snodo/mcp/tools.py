@@ -280,6 +280,68 @@ TOOL_REGISTRY = {
         "mcp": "planner",
         "method": "validate_plan",
     },
+    "propose_plan": {
+        "description": (
+            "Turn an intent into a proposed plan on disk (.snodo/plans/<name>/). "
+            "Returns the plan structure (name, intent, waves with ids, "
+            "dependencies and tasks) and its validation state — nothing "
+            "executes. Add tasks with generate_spec, gate with validate_plan, "
+            "then run_plan."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "intent": {"type": "string", "description": "The intent/goal the plan is for"},
+                "plan_name": {"type": "string", "description": "Plan name (stable identifier, used as directory name)"},
+                "waves": {"type": "integer", "description": "Number of sequential wave slots to scaffold (default 1)"},
+            },
+            "required": ["intent", "plan_name"],
+        },
+        "requires_token": True,
+        "mcp": None,
+        "method": None,
+    },
+    "get_plan": {
+        "description": (
+            "Retrieve a plan by name: name, intent, waves (ids, depends_on, "
+            "tasks), per-task status, and validation state. Read from the "
+            "plan files on disk, which are the source of truth; callable any "
+            "time, including while a run is in progress."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "plan_name": {"type": "string", "description": "Plan name"},
+            },
+            "required": ["plan_name"],
+        },
+        "requires_token": False,
+        "mcp": None,
+        "method": None,
+    },
+    "run_plan": {
+        "description": (
+            "Run an approved plan through the protocol loop. Refuses without "
+            "executing anything if the plan fails validation — the validators "
+            "stay authoritative. Blocks until the run finishes and returns the "
+            "plan's final task statuses read from status.json."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "plan_name": {"type": "string", "description": "Plan name to execute"},
+                "wave": {"type": "integer", "description": "Optional: run only this wave id"},
+                "model": {"type": "string", "description": "Optional coder model override"},
+                "mock": {"type": "boolean", "description": "Use the mock coder instead of a real LLM"},
+                "no_isolation": {"type": "boolean", "description": "Run tasks in the working tree instead of isolated worktrees"},
+                "protocol": {"type": "string", "description": "Protocol file path (default: .snodo/protocol.yml)"},
+            },
+            "required": ["plan_name"],
+        },
+        "requires_token": True,
+        "mcp": None,
+        "method": None,
+    },
     "dispatch_task": {
         "description": "Dispatch a task for execution via the protocol engine",
         "inputSchema": {
@@ -577,6 +639,22 @@ MODE_TOOL_MAP = {
         "create_pr", "read_pr_diff", "post_review_comment",
         "approve_pr", "reject_pr", "merge_pr",
     ],
-    "plan": ["decompose", "generate_spec", "validate_plan"],
+    "plan": [
+        "decompose", "generate_spec", "validate_plan",
+        "propose_plan", "get_plan", "run_plan",
+    ],
     "read": ["read_file", "list_files"],
 }
+
+# The planning surface — the human gate above the task loop. A server pinned
+# to a single mode exposes these only when its mode grants the "plan"
+# capability (MODE_TOOL_MAP above); the all-modes server (mode_id=None),
+# which is the surface a control-plane consumer drives, always exposes them.
+PLANNING_TOOLS = [
+    "decompose",
+    "generate_spec",
+    "validate_plan",
+    "propose_plan",
+    "get_plan",
+    "run_plan",
+]
