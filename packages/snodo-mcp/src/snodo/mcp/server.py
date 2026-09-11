@@ -22,11 +22,12 @@ from snodo.tools.git import GitMCP
 from snodo.tools.shell import ShellMCP
 from snodo.mcp.pr import PrMCP
 from snodo.mcp.planner import PlannerMCP
-from snodo.mcp.tools import TOOL_REGISTRY, MODE_TOOL_MAP
+from snodo.mcp.tools import TOOL_REGISTRY, MODE_TOOL_MAP, PLANNING_TOOLS
 from snodo.mcp.job_handlers import JobToolHandler
 from snodo.mcp.model_handlers import ModelToolHandler
 from snodo.mcp.decision_handlers import DecisionToolHandler
 from snodo.mcp.recon_handlers import ReconToolHandler
+from snodo.mcp.plan_handlers import PlanToolHandler
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ class ProtocolMCPServer:
         )
 
         # Tools whose handlers may block the event loop — dispatched async
-        self._SLOW_TOOLS = {"validate_task", "run_tests"}
+        self._SLOW_TOOLS = {"validate_task", "run_tests", "run_plan"}
 
         # Initialize backing MCPs
         self.workspace = WorkspaceMCP(project_root)
@@ -111,6 +112,7 @@ class ProtocolMCPServer:
         self._tools = self._resolve_tools()
 
         self._core_handler = CoreToolHandler(self)
+        self._plan_handler = PlanToolHandler(self)
 
         # Build registry of tool handlers, detecting collisions
         self._dispatch = {}
@@ -119,6 +121,7 @@ class ProtocolMCPServer:
             self._model_handler,
             self._decision_handler,
             self._recon_handler,
+            self._plan_handler,
             self._core_handler,
         ]
         for h in handlers:
@@ -200,6 +203,16 @@ class ProtocolMCPServer:
 
         # Always include validate_task (meta-tool for WF1 token issuance)
         tools["validate_task"] = TOOL_REGISTRY["validate_task"]
+
+        # The planning surface is the human gate above the task loop: a
+        # control-plane consumer driving the all-modes server must be able to
+        # propose, validate and run plans, not only dispatch tasks. A server
+        # pinned to one mode stays capability-filtered — its mode grants plan
+        # tools only through the "plan" capability (MODE_TOOL_MAP).
+        if self.mode_id is None:
+            for name in PLANNING_TOOLS:
+                if name not in tools:
+                    tools[name] = TOOL_REGISTRY[name]
 
         return tools
 
