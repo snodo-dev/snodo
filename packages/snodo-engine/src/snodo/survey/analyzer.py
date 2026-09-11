@@ -18,11 +18,31 @@ Marker files used for module boundary discovery:
 - Cargo.toml (Rust)
 - go.mod (Go)
 - pom.xml (Maven)
+- pubspec.yaml (Dart/Flutter)
 
 A manifest inside a dotted directory (for example .opencode/) is tooling
 configuration, not a module of the product, and is excluded. Files under
-dependency and build trees (node_modules, dist, vendor, ...) are vendored,
-not the repository's own source, and are excluded from language detection.
+dependency and build trees (node_modules, dist, vendor, Pods, ...) are
+vendored, not the repository's own source, and are excluded from language
+detection.
+
+Division of labour: everything above is arithmetic and runs unconditionally.
+Two questions are not arithmetic and go to a judge only when one is provided:
+
+- Is a manifest-backed work a product module, or scaffolding that exists to
+  hold a doc site or a test harness? Nothing on disk distinguishes them
+  reliably.
+- Is a source-dense directory that declares no manifest we parse a module
+  boundary? A boundary is a boundary whether or not it declares itself in a
+  format we recognise.
+
+The deterministic pass proposes these subjects together with an evidence
+dossier it gathered from the filesystem; the judge only classifies. Its
+verdicts are accepted only when they cite files that exist inside the
+subject's own (non-vendored, non-hidden) source, so a conclusion is
+attributable to evidence a reader can go and look at and disagree with.
+When no judge is available, a judge call fails, or the judge abstains, the
+deterministic result stands and the judgement is reported as not made.
 
 Test command detection — the marker must actually declare the command:
 - package.json  → npm test, only if scripts.test exists
@@ -43,12 +63,18 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import tomllib
 import yaml
 
-from snodo.survey.models import ModuleInfo, RepositorySurvey, SurveyFinding
+from snodo.survey.models import (
+    JudgementRecord,
+    ModuleInfo,
+    RepositorySurvey,
+    SurveyFinding,
+    UnmadeJudgement,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -59,6 +85,7 @@ _WORKSPACE_MARKERS: List[Tuple[str, str]] = [
     ("Cargo.toml", "rust"),
     ("go.mod", "go"),
     ("pom.xml", "maven"),
+    ("pubspec.yaml", "dart"),
 ]
 
 # Manifest file names that mark a module boundary when found nested in the tree
@@ -77,6 +104,8 @@ _EXCLUDED_DIR_NAMES: Set[str] = {
     "target",
     "venv",
     "__pycache__",
+    "Pods",      # iOS dependency tree, installed alongside the app it serves
+    "Carthage",  # iOS dependency checkouts, same
 }
 
 
@@ -108,6 +137,10 @@ _LANGUAGE_EXTS = {
     "ruby": {".rb"},
     "shell": {".sh", ".bash"},
     "yaml": {".yml", ".yaml"},
+    "svelte": {".svelte"},
+    "astro": {".astro"},
+    "swift": {".swift"},
+    "dart": {".dart"},
 }
 
 # Reverse map: extension → languages it can indicate
@@ -436,6 +469,110 @@ def _discover_module_boundaries(project_root: Path) -> List[Tuple[str, List[str]
     return modules
 
 
+# ---------------------------------------------------------------------------
+# Undeclared boundary candidates (arithmetic: propose, never promote)
+#
+# A directory that holds a body of the repository's own source without a
+# manifest this walk can parse (an Xcode app tree, a native project) is a
+# boundary the filesystem shows but no declaration announces. Proposing it
+# is arithmetic; deciding whether it is a module needs the judgement of a
+# reader who knows what the repository is for — so candidates are handed to
+# the judge and never become modules on the deterministic pass alone.
+# ---------------------------------------------------------------------------
+
+# Own-source files needed before a manifest-less directory is worth asking
+# about (a handful of scripts is not a boundary).
+_CANDIDATE_MIN_SOURCE_FILES = 25
+
+
+def _count_own_source_files(dirpath: Path, skip_dirs: Optional[Set[Path]] = None) -> int:
+    """Count files with a recognised source extension, pruning vendored trees.
+
+    Directories in *skip_dirs* (absolute paths) are not counted either: a
+    directory whose sources all live inside already-claimed modules holds no
+    source of its own and is not a boundary.
+    """
+    count = 0
+    if not dirpath.is_dir():
+        return 0
+    skip = skip_dirs or set()
+    for current, dirnames, filenames in os.walk(dirpath):
+        cur = Path(current)
+        dirnames[:] = [
+            d for d in dirnames
+            if not _is_excluded_dir(d) and (cur / d) not in skip
+        ]
+        count += sum(
+            1 for name in filenames
+            if Path(name).suffix.lower() in _EXT_TO_LANGUAGES
+        )
+    return count
+
+
+# Declarations a directory may make in formats the deterministic pass does
+# not parse.  These never create a module by themselves — they are recorded
+# in the evidence dossier so the judge sees what the directory declares.
+_UNSEEN_PACKAGE_SIGNALS = (
+    "*.xcodeproj", "*.xcworkspace", "Podfile", "Podfile.lock",
+    "AndroidManifest.xml", "gradlew", "build.gradle", "build.gradle.kts",
+    "settings.gradle", "Info.plist",
+)
+
+
+def _boundary_signals(dirpath: Path) -> List[str]:
+    """Repo-relative paths of declarations this directory makes outside our parse set."""
+    signals: List[str] = []
+    for pattern in _UNSEEN_PACKAGE_SIGNALS:
+        if "*" in pattern:
+            hits = sorted(dirpath.glob(pattern))
+        else:
+            hits = [dirpath / pattern] if (dirpath / pattern).is_file() else []
+        for hit in hits:
+            signals.append(hit.relative_to(dirpath.parent).as_posix())
+    return signals
+
+
+def _discover_undeclared_candidates(
+    project_root: Path,
+    claimed_paths: Set[str],
+) -> List[Tuple[str, List[str]]]:
+    """Source-dense directories that declare no manifest this walk recognises.
+
+    Only applies when the root itself declares no manifest: a root package
+    declaration covers its whole tree, and the directories inside it are
+    that package's internals, not sibling boundaries.
+
+    The walk skips dependency/build/hidden trees and directories already
+    claimed as modules. The first directory that qualifies is recorded and
+    not descended into, so the candidate is the outermost boundary.
+    """
+    if any((project_root / name).is_file() for name in _MODULE_MANIFEST_NAMES):
+        return []
+
+    candidates: List[Tuple[str, List[str]]] = []
+    claimed_abs = {project_root / p for p in claimed_paths}
+
+    def walk(rel: str) -> None:
+        dirpath = project_root / rel if rel else project_root
+        if rel and rel in claimed_paths:
+            return
+        if rel and _count_own_source_files(dirpath, skip_dirs=claimed_abs) >= _CANDIDATE_MIN_SOURCE_FILES:
+            candidates.append((dirpath.name, [rel]))
+            return
+        try:
+            children = sorted(
+                entry.name for entry in dirpath.iterdir()
+                if entry.is_dir() and not _is_excluded_dir(entry.name)
+            )
+        except OSError:
+            return
+        for child in children:
+            walk(f"{rel}/{child}" if rel else child)
+
+    walk("")
+    return candidates
+
+
 def _detect_languages(project_root: Path, paths: Optional[List[str]] = None) -> List[str]:
     """Detect programming languages from the repository's own files.
 
@@ -508,23 +645,498 @@ def _detect_decision_paths(project_root: Path) -> List[str]:
     return paths
 
 
-def analyze_repository(project_root: Path) -> RepositorySurvey:
+# ---------------------------------------------------------------------------
+# Judgement: the questions that are not arithmetic
+#
+# A judge is a callable the caller provides — the CLI wires it to the recon
+# machinery's read-only agent dispatch.  It receives the evidence dossier
+# (subjects plus what the deterministic walk already gathered) and returns
+# verdicts, or signals that no verdicts came.  The analyzer never imports an
+# agent itself: survey works with no model configured, and a failed or
+# abstained judgement degrades to the deterministic result, reported plainly.
+# ---------------------------------------------------------------------------
+
+# Judge contract: takes the dossier dict, returns either
+#   - a list of verdict dicts: {"subject", "verdict", "reason", "cited_files"}
+#   - {"verdicts": [...]} or {"reason": "..."} for why no verdicts came
+#   - None when the agent was unavailable or its call failed
+Judge = Callable[[Dict[str, Any]], Any]
+
+KIND_BOUNDARY_ROLE = "boundary-role"
+KIND_UNDECLARED_BOUNDARY = "undeclared-boundary"
+
+_VERDICTS_BY_KIND: Dict[str, Tuple[str, ...]] = {
+    KIND_BOUNDARY_ROLE: ("product", "scaffolding"),
+    KIND_UNDECLARED_BOUNDARY: ("module", "not-module"),
+}
+
+_JUDGE_QUESTIONS: Dict[str, str] = {
+    KIND_BOUNDARY_ROLE: (
+        "Is this work a module of the product, or scaffolding that exists to "
+        "hold a doc site, a test harness, or tooling?"
+    ),
+    KIND_UNDECLARED_BOUNDARY: (
+        "Is this directory a module boundary of the product, even though it "
+        "carries no manifest this survey parses — or is it something else "
+        "(generated output, vendored content, internals of another work)?"
+    ),
+}
+
+# Dossier limits: evidence is a bounded digest of what the walk gathered,
+# not an invitation to explore.
+_DOSSIER_DEPTH = 2
+_DOSSIER_MAX_LISTING = 80
+_DOSSIER_MAX_MANIFEST_CHARS = 1500
+
+
+def _subject_id(kind: str, path: str) -> str:
+    return f"{kind}:{path}"
+
+
+def _clip(value: Any, limit: int = 300) -> str:
+    text = value if isinstance(value, str) else ("" if value is None else str(value))
+    return text.strip()[:limit]
+
+
+def _bounded_listing(
+    dirpath: Path,
+    max_depth: int = _DOSSIER_DEPTH,
+    cap: int = _DOSSIER_MAX_LISTING,
+) -> Tuple[List[str], Set[str]]:
+    """Depth-limited listing plus the paths it revealed, relative to the root.
+
+    The listing bounds what the judge is shown.  A verdict's citations are
+    checked against the filesystem (see _resolve_citation), so the reader
+    can always go and look at the specific file a conclusion rests on.
+    """
+    entries: List[str] = []
+    revealed: Set[str] = set()
+
+    def walk(current: Path, depth: int) -> None:
+        try:
+            children = sorted(current.iterdir(), key=lambda e: (e.is_file(), e.name.lower()))
+        except OSError:
+            return
+        for entry in children:
+            if entry.is_dir() and _is_excluded_dir(entry.name):
+                continue
+            if len(entries) >= cap:
+                return
+            rel = entry.relative_to(dirpath).as_posix()
+            entries.append(f"{rel}/" if entry.is_dir() else rel)
+            revealed.add(rel)
+            if entry.is_dir() and depth < max_depth:
+                walk(entry, depth + 1)
+
+    walk(dirpath, 0)
+    return entries, revealed
+
+
+def _extension_histogram(dirpath: Path) -> Dict[str, int]:
+    """Count of own-source files by extension, vendored trees pruned."""
+    histogram: Dict[str, int] = {}
+    if not dirpath.is_dir():
+        return histogram
+    for _current, _dirs, files in _iter_own_source_dirs(dirpath):
+        for name in files:
+            ext = Path(name).suffix.lower() or "(no extension)"
+            histogram[ext] = histogram.get(ext, 0) + 1
+    return dict(sorted(histogram.items(), key=lambda item: (-item[1], item[0]))[:25])
+
+
+def _summarize_manifest(path: Path) -> str:
+    """A compact structured view of a manifest's contents for the dossier."""
+    raw = _read_text_file(path) or ""
+    summary: Optional[object] = None
+    if path.name == "package.json":
+        data = _read_json_file(path)
+        if isinstance(data, dict):
+            def _names(field: str):
+                value = data.get(field)
+                return sorted(value) if isinstance(value, dict) else value
+
+            summary = {
+                "name": data.get("name"),
+                "description": data.get("description"),
+                "scripts": _names("scripts"),
+                "workspaces": data.get("workspaces"),
+                "dependencies": _names("dependencies"),
+                "devDependencies": _names("devDependencies"),
+            }
+    elif path.name in ("pyproject.toml", "Cargo.toml"):
+        data = _read_toml_file(path)
+        if isinstance(data, dict):
+            project = data.get("project") if isinstance(data.get("project"), dict) else {}
+            package = data.get("package") if isinstance(data.get("package"), dict) else {}
+            workspace = data.get("workspace") if isinstance(data.get("workspace"), dict) else {}
+            summary = {
+                "name": project.get("name") or package.get("name"),
+                "dependencies": project.get("dependencies") or package.get("dependencies"),
+                "workspace_members": workspace.get("members"),
+            }
+    elif path.name == "go.mod":
+        summary = {"first_lines": raw.splitlines()[:8]}
+    elif path.name == "pom.xml":
+        match = re.search(r"<artifactId>(.*?)</artifactId>", raw)
+        summary = {"artifact_id": match.group(1) if match else None}
+
+    text = json.dumps(summary, default=str) if summary is not None else raw
+    if len(text) > _DOSSIER_MAX_MANIFEST_CHARS:
+        text = text[:_DOSSIER_MAX_MANIFEST_CHARS] + " …(truncated)"
+    return text
+
+
+def _gather_subject_evidence(project_root: Path, rel: str) -> Dict[str, Any]:
+    """Evidence dossier for one subject, gathered from the filesystem."""
+    dirpath = project_root / rel
+    evidence: Dict[str, Any] = {
+        "own_source_file_count": _count_own_source_files(dirpath),
+        "source_file_histogram": _extension_histogram(dirpath),
+    }
+    entries, _revealed = _bounded_listing(dirpath)
+    evidence["listing"] = entries
+
+    manifests = {}
+    for name in sorted(_MODULE_MANIFEST_NAMES):
+        mpath = dirpath / name
+        if mpath.is_file():
+            manifests[f"{rel}/{name}"] = _summarize_manifest(mpath)
+    if manifests:
+        evidence["manifests"] = manifests
+
+    signals = _boundary_signals(dirpath)
+    if signals:
+        evidence["boundary_signals"] = signals
+
+    return evidence
+
+
+def _root_context(project_root: Path) -> Dict[str, Any]:
+    """Repository-level context the deterministic pass gathered."""
+    context: Dict[str, Any] = {"name": project_root.name}
+    root_manifests = sorted(
+        name for name in _MODULE_MANIFEST_NAMES if (project_root / name).is_file()
+    )
+    if root_manifests:
+        context["root_manifests"] = root_manifests
+    entries, _revealed = _bounded_listing(project_root, max_depth=0)
+    context["top_level"] = entries
+    for readme in sorted(project_root.glob("README*"))[:1]:
+        context["readme_excerpt"] = (_read_text_file(readme) or "")[
+            :_DOSSIER_MAX_MANIFEST_CHARS
+        ]
+    return context
+
+
+def _build_subjects(
+    project_root: Path,
+    modules: List[ModuleInfo],
+    candidates: List[Tuple[str, List[str]]],
+) -> List[Dict[str, Any]]:
+    """Judgement subjects: each discovered boundary and each candidate."""
+    subjects: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+
+    for module in modules:
+        if not module.paths:
+            continue
+        path = module.paths[0]
+        if path in seen:
+            continue
+        seen.add(path)
+        subjects.append(_make_subject(project_root, KIND_BOUNDARY_ROLE, path))
+
+    for _cand_id, cand_paths in candidates:
+        path = cand_paths[0]
+        if path in seen:
+            continue
+        seen.add(path)
+        subjects.append(_make_subject(project_root, KIND_UNDECLARED_BOUNDARY, path))
+
+    return subjects
+
+
+def _make_subject(project_root: Path, kind: str, path: str) -> Dict[str, Any]:
+    return {
+        "id": _subject_id(kind, path),
+        "kind": kind,
+        "path": path,
+        "question": _JUDGE_QUESTIONS[kind],
+        "evidence": _gather_subject_evidence(project_root, path),
+    }
+
+
+def _consult_judge(
+    judge: Optional[Judge],
+    judge_mode: str,
+    dossier: Dict[str, Any],
+) -> Tuple[Dict[str, Dict[str, Any]], bool, str]:
+    """Run the judge once for the whole dossier.
+
+    Returns (verdicts by subject id, agent consulted, batch reason when no
+    verdicts came at all).
+    """
+    if judge is None:
+        reason = (
+            "deterministic-only run, by request"
+            if judge_mode == "off"
+            else "no agent was configured or reachable for survey judgements"
+        )
+        return {}, False, reason
+
+    try:
+        outcome = judge(dossier)
+    except Exception as e:  # a provider outage must not take survey down
+        _logger.debug("Survey judge call failed: %s", e)
+        return {}, False, f"the agent call failed: {e}"
+
+    if isinstance(outcome, dict):
+        verdicts = outcome.get("verdicts")
+        if verdicts is None:
+            return {}, False, outcome.get("reason") or "the agent call produced no verdicts"
+    elif isinstance(outcome, list):
+        verdicts = outcome
+    else:
+        verdicts = None
+
+    if not isinstance(verdicts, list):
+        return {}, False, "the agent call produced no usable verdicts"
+
+    by_id = {
+        verdict["subject"]: verdict
+        for verdict in verdicts
+        if isinstance(verdict, dict) and isinstance(verdict.get("subject"), str)
+    }
+    return by_id, True, ""
+
+
+def _apply_verdict(
+    project_root: Path,
+    subject: Dict[str, Any],
+    entry: Optional[Dict[str, Any]],
+) -> Tuple[Optional[JudgementRecord], Optional[UnmadeJudgement]]:
+    """Validate one verdict; accept it only if attributable to gathered evidence."""
+    kind = subject["kind"]
+    sid = subject["id"]
+    path = subject["path"]
+
+    def gap(reason: str):
+        return None, UnmadeJudgement(sid, kind, path, reason)
+
+    if entry is None:
+        return gap("the agent returned no verdict for this subject")
+
+    verdict = entry.get("verdict")
+    if verdict == "abstain":
+        reason = _clip(entry.get("reason"))
+        return gap("the agent abstained" + (f": {reason}" if reason else ""))
+    if verdict not in _VERDICTS_BY_KIND[kind]:
+        return gap(f"unrecognized verdict for this question: {verdict!r}")
+
+    cited = entry.get("cited_files")
+    if not isinstance(cited, list) or not cited:
+        return gap("the verdict cited no evidence files")
+    normalised: List[str] = []
+    for cite in cited:
+        resolved = _resolve_citation(project_root, path, cite)
+        if resolved is None:
+            return gap(
+                f"the verdict cites {cite!r}, which is not a file of the "
+                "subject's own source the reader can go and check"
+            )
+        normalised.append(resolved)
+
+    record = JudgementRecord(
+        subject_id=sid,
+        kind=kind,
+        subject_path=path,
+        verdict=verdict,
+        reason=_clip(entry.get("reason")) or "(no reason given)",
+        cited_files=normalised,
+    )
+    return record, None
+
+
+def _resolve_citation(project_root: Path, subject_path: str, cite: Any) -> Optional[str]:
+    """Anchor a cited path to the repository and confirm it is own source.
+
+    Accepts repo-relative or subject-relative citations — 'src/index.ts'
+    for subject 'app' means 'app/src/index.ts'.  A citation is verifiable
+    only when it exists, sits inside the subject, and is not inside a
+    vendored or hidden tree, so a verdict stays attributable to evidence a
+    reader can go and look at rather than to the model's impression.
+    """
+    if not isinstance(cite, str) or not cite.strip():
+        return None
+    cleaned = cite.strip().replace("\\", "/").lstrip("/")
+    if cleaned.startswith("./"):
+        cleaned = cleaned[2:]
+    cleaned = cleaned.rstrip("/")
+    if not cleaned:
+        return None
+    for cand in (cleaned, f"{subject_path}/{cleaned}"):
+        parts = cand.split("/")
+        if any(_is_excluded_dir(p) for p in parts):
+            continue
+        if cand != subject_path and not cand.startswith(subject_path + "/"):
+            continue
+        if (project_root / cand).exists():
+            return cand
+    return None
+
+
+def _build_module(
+    project_root: Path,
+    module_id: str,
+    paths: List[str],
+    origin: Optional[str] = None,
+    extra_evidence: Optional[List[str]] = None,
+) -> ModuleInfo:
+    """Assemble a module's observable facts with the same deterministic machinery."""
+    evidence: List[str] = list(extra_evidence or [])
+
+    languages = _detect_languages(project_root, paths)
+    if languages:
+        evidence.append(f"Languages: {', '.join(languages)}")
+
+    test_cmd, marker = _detect_test_command(project_root, paths)
+    if test_cmd:
+        evidence.append(f"Test command confirmed from {marker}")
+
+    decisions_path = None
+    for candidate_path in ["docs/decisions", "docs/adr"]:
+        for module_path in paths:
+            full_candidate = f"{module_path}/{candidate_path}"
+            candidate_dir = project_root / full_candidate
+            if candidate_dir.exists() and list(candidate_dir.glob("*.md")):
+                decisions_path = full_candidate
+                evidence.append(f"Decision records at {full_candidate}")
+                break
+        if decisions_path:
+            break
+
+    if origin is None:
+        declares_manifest = bool(paths) and any(
+            (project_root / paths[0] / name).is_file()
+            for name in _MODULE_MANIFEST_NAMES
+        )
+        origin = "manifest" if declares_manifest else "declaration"
+
+    return ModuleInfo(
+        module_id=module_id,
+        paths=paths,
+        languages=languages,
+        test_command=test_cmd,
+        test_marker_file=marker,
+        decisions_path=decisions_path,
+        evidence=evidence,
+        origin=origin,
+    )
+
+
+def analyze_repository(
+    project_root: Path,
+    judge: Optional[Judge] = None,
+    judge_mode: str = "auto",
+) -> RepositorySurvey:
     """Analyze a repository and discover observable facts.
 
     Returns a RepositorySurvey containing:
-    - Discovered modules (from workspace declarations and nested manifests)
+    - Discovered modules (from workspace declarations and nested manifests,
+      plus any undeclared boundary an accepted judgement promoted)
     - Languages per module (repository source only, no vendored trees)
     - Test commands (confirmed against marker file contents)
     - Decision record locations
-    - Repository-level tooling
+    - Judgements the agent made, each citing its evidence files, and the
+      judgements that were not made and why
+
+    Without a judge — none provided, call failed, or verdict unverifiable —
+    the deterministic result stands and every unmade judgement is listed.
+    A manifest-backed work is then kept and a candidate not promoted; the
+    report says plainly that the role question was left unanswered rather
+    than pretending it was settled.
 
     Never infers governance requirements from absence of practices.
     """
     survey = RepositorySurvey()
     findings: List[SurveyFinding] = []
 
-    # Discover module boundaries
+    # Deterministic pass: boundaries the filesystem declares in a form we parse
     module_boundaries = _discover_module_boundaries(project_root)
+    deterministic_modules = [
+        _build_module(project_root, module_id, paths)
+        for module_id, paths in module_boundaries
+    ]
+
+    # Arithmetic: source-dense directories that declare themselves in a form
+    # we do not parse.  Proposed here, decided by judgement or left alone.
+    claimed = {paths[0] for _mid, paths in module_boundaries if paths}
+    candidates = _discover_undeclared_candidates(project_root, claimed)
+
+    subjects = _build_subjects(project_root, deterministic_modules, candidates)
+    if subjects:
+        dossier = {
+            "repository": _root_context(project_root),
+            "subjects": subjects,
+        }
+        verdicts_by_id, agent_consulted, batch_reason = _consult_judge(
+            judge, judge_mode, dossier
+        )
+    else:
+        verdicts_by_id, agent_consulted, batch_reason = {}, False, ""
+
+    records: List[JudgementRecord] = []
+    unmade: List[UnmadeJudgement] = []
+    for subject in subjects:
+        if batch_reason:
+            unmade.append(
+                UnmadeJudgement(
+                    subject["id"], subject["kind"], subject["path"], batch_reason
+                )
+            )
+            continue
+        record, missing = _apply_verdict(
+            project_root, subject, verdicts_by_id.get(subject["id"])
+        )
+        if record is not None:
+            records.append(record)
+        if missing is not None:
+            unmade.append(missing)
+
+    survey.agent_consulted = agent_consulted
+    survey.judgements = records
+    survey.unmade_judgements = unmade
+
+    # Compose the module list from the deterministic pass and the judgements
+    scaffolding_paths = {
+        record.subject_path
+        for record in records
+        if record.kind == KIND_BOUNDARY_ROLE and record.verdict == "scaffolding"
+    }
+    accepted_boundaries = [
+        record
+        for record in records
+        if record.kind == KIND_UNDECLARED_BOUNDARY and record.verdict == "module"
+    ]
+    final_modules = [
+        module
+        for module in deterministic_modules
+        if module.paths and module.paths[0] not in scaffolding_paths
+    ]
+    for record in accepted_boundaries:
+        final_modules.append(
+            _build_module(
+                project_root,
+                Path(record.subject_path).name,
+                [record.subject_path],
+                origin="agent-judgement",
+                extra_evidence=[
+                    f"Boundary accepted by agent judgement: {record.reason} "
+                    f"(cited: {', '.join(record.cited_files)})"
+                ],
+            )
+        )
+    survey.modules = final_modules
 
     if module_boundaries:
         findings.append(
@@ -533,44 +1145,42 @@ def analyze_repository(project_root: Path) -> RepositorySurvey:
                 evidence=[f"Found {len(module_boundaries)} module boundary(s)"],
             )
         )
-
-        for module_id, paths in module_boundaries:
-            evidence: List[str] = []
-
-            # Detect languages in this module
-            languages = _detect_languages(project_root, paths)
-            if languages:
-                evidence.append(f"Languages: {', '.join(languages)}")
-
-            # Detect test command for this module
-            test_cmd, marker = _detect_test_command(project_root, paths)
-            if test_cmd:
-                evidence.append(f"Test command confirmed from {marker}")
-
-            # Detect decisions path for this module
-            decisions_path = None
-            for candidate_path in ["docs/decisions", "docs/adr"]:
-                for module_path in paths:
-                    full_candidate = f"{module_path}/{candidate_path}"
-                    candidate_dir = project_root / full_candidate
-                    if candidate_dir.exists() and list(candidate_dir.glob("*.md")):
-                        decisions_path = full_candidate
-                        evidence.append(f"Decision records at {full_candidate}")
-                        break
-                if decisions_path:
-                    break
-
-            module = ModuleInfo(
-                module_id=module_id,
-                paths=paths,
-                languages=languages,
-                test_command=test_cmd,
-                test_marker_file=marker,
-                decisions_path=decisions_path,
-                evidence=evidence,
+    if scaffolding_paths:
+        findings.append(
+            SurveyFinding(
+                message="Manifest-backed works classified as scaffolding, not product modules.",
+                evidence=[
+                    f"{record.subject_path}: {record.reason} "
+                    f"(cited: {', '.join(record.cited_files)})"
+                    for record in records
+                    if record.subject_path in scaffolding_paths
+                ],
             )
-            survey.modules.append(module)
-    else:
+        )
+    for record in accepted_boundaries:
+        findings.append(
+            SurveyFinding(
+                message=f"Undeclared boundary accepted as a module: {record.subject_path}",
+                evidence=[
+                    record.reason,
+                    f"cited: {', '.join(record.cited_files)}",
+                ],
+            )
+        )
+    if unmade:
+        findings.append(
+            SurveyFinding(
+                message=(
+                    "Boundary judgements were not made for every candidate; "
+                    "the deterministic result stands for the subjects listed."
+                ),
+                evidence=[
+                    f"{u.subject_path} ({u.kind}): {u.reason}" for u in unmade
+                ],
+            )
+        )
+
+    if not final_modules:
         # Single package repository
         languages = _detect_languages(project_root)
         if languages:

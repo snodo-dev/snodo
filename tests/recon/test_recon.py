@@ -258,16 +258,16 @@ class TestReconToolHandler:
 
 class TestResolveAgentModel:
     def test_default_resolves_to_configured_model(self):
-        from snodo.recon import _resolve_agent_model
+        from snodo.recon import resolve_agent_model
 
         with patch("snodo.config.ConfigManager") as MockCM:
             MockCM.return_value.get_model.return_value = "gpt-4"
-            result = _resolve_agent_model("default")
+            result = resolve_agent_model("default")
             assert result == "gpt-4"
 
     def test_named_agent_passes_through(self):
-        from snodo.recon import _resolve_agent_model
-        result = _resolve_agent_model("gemini/gemini-2.0-flash-exp")
+        from snodo.recon import resolve_agent_model
+        result = resolve_agent_model("gemini/gemini-2.0-flash-exp")
         assert result == "gemini/gemini-2.0-flash-exp"
 
 
@@ -321,7 +321,7 @@ class TestReconDefectFixes:
     def test_api_base_reaches_completion_call_when_configured(self, project_with_snodo):
         from unittest.mock import MagicMock
 
-        from snodo.recon import _call_agent
+        from snodo.recon import call_agent
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -331,7 +331,7 @@ class TestReconDefectFixes:
         with patch("snodo.config.ConfigManager.resolve_api_base", return_value="https://custom.endpoint.ai/v1"), \
              patch("snodo.config.ConfigManager._provider_for_model", return_value="custom"), \
              patch("litellm.completion", return_value=mock_response) as mock_comp:
-            res = _call_agent(
+            res = call_agent(
                 project_root=project_with_snodo,
                 model="custom/my-model",
                 query="test query",
