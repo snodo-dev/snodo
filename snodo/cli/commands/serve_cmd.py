@@ -160,7 +160,8 @@ def _run_server(args, protocol) -> int:
 
         jwks = JwksClient()
         if jwks.fetch():
-            extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks)
+            resource = f"https://{tunnel_hostname}/mcp"
+            extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks, resource=resource)
             # The resource identifier is the canonical URI of the MCP server,
             # which is the endpoint clients actually call — FastMCP serves
             # streamable-http at streamable_http_path, default "/mcp". Passing
@@ -171,7 +172,7 @@ def _run_server(args, protocol) -> int:
             # resource it never agreed to.
             extra_kwargs["auth_settings"] = AuthSettings(
                 issuer_url=AnyHttpUrl("https://mcp-auth.snodo.dev"),
-                resource_server_url=AnyHttpUrl(f"https://{tunnel_hostname}/mcp"),
+                resource_server_url=AnyHttpUrl(resource),
             )
             print("  OAuth 2.1 enabled (RS256 JWTs from mcp-auth.snodo.dev)", file=sys.stderr)
         else:
