@@ -643,7 +643,8 @@ class TestDispatchTask:
                 "id": "j_abc", "status": "completed", "pid": 12345,
                 "created_at": 100.0, "started_at": 101.0,
                 "completed_at": 105.0, "exit_code": 0,
-                "task": {"description": "test", "mode": "producer"},
+                "task": {"description": "test", "mode": "producer",
+                         "task_id": "T-7"},
             }
             mock_cls.return_value = mock_jm
             result = dispatch_server.call_tool(
@@ -654,6 +655,9 @@ class TestDispatchTask:
         assert result["id"] == "j_abc"
         assert result["exit_code"] == 0
         assert "task" not in result
+        # the single-job tool keeps the full spec — the listing dropped it
+        assert result["task_spec"] == "test"
+        assert result["task_ref"] == "T-7"
 
     def test_get_job_status_not_found(self, dispatch_server):
         with patch("snodo.jobs.JobManager") as mock_cls:
@@ -666,14 +670,18 @@ class TestDispatchTask:
                     "get_job_status", {"job_id": "j_bad"}
                 )
 
-    def test_list_jobs_returns_array(self, dispatch_server):
+    def test_list_jobs_returns_bounded_rows(self, dispatch_server):
         with patch("snodo.jobs.JobManager") as mock_cls:
             mock_jm = MagicMock()
             mock_jm.list_jobs.return_value = [
-                {"id": "j_1", "status": "completed",
-                 "description": "task A", "created_at": 100.0},
-                {"id": "j_2", "status": "running",
-                 "description": "task B", "created_at": 200.0},
+                {"id": "j_1", "status": "completed", "task_ref": "T-1",
+                 "title": "task A", "exit_code": 0, "created_at": 100.0,
+                 "started_at": 100.0, "completed_at": 130.0,
+                 "duration_seconds": 30.0},
+                {"id": "j_2", "status": "running", "task_ref": "",
+                 "title": "task B", "exit_code": None, "created_at": 200.0,
+                 "started_at": 201.0, "completed_at": None,
+                 "duration_seconds": 5.0},
             ]
             mock_cls.return_value = mock_jm
             result = dispatch_server.call_tool("list_jobs", {})
@@ -682,6 +690,69 @@ class TestDispatchTask:
         assert len(result) == 2
         assert result[0]["id"] == "j_1"
         assert result[1]["status"] == "running"
+        # no row is a carrier for spec prose
+        assert not any("description" in row for row in result)
+
+    def test_list_jobs_size_bounded_on_a_real_project(self, dispatch_server):
+        """A project with many jobs answers the listing at bounded size."""
+        import json as json_mod
+        import tempfile
+        from pathlib import Path as _Path
+        from snodo.jobs import JobManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (_Path(tmp) / ".snodo").mkdir()
+            mgr = JobManager(tmp)
+            base = 1_700_000_000.0
+            spec = "# Payment retry engine\n" + "prose of the specification\n" * 120
+            for i in range(40):
+                jd = mgr.jobs_dir / f"j_{i:06d}"
+                jd.mkdir()
+                (jd / "task.json").write_text(json_mod.dumps(
+                    {"description": spec, "task_id": f"T-{i}"}
+                ))
+                (jd / "state.json").write_text(json_mod.dumps({
+                    "status": "failed", "pid": None, "created_at": base + i,
+                    "started_at": base + i + 1, "completed_at": base + i + 9,
+                    "exit_code": 1,
+                }))
+            with patch("snodo.jobs.JobManager", return_value=mgr):
+                rows = dispatch_server.call_tool("list_jobs", {})
+
+            payload = json_mod.dumps(rows)
+            # 40 fat specs inline would exceed 40KB; rows are bounded
+            assert len(payload) < 40 * 400
+            assert "prose of the specification" not in payload
+            assert rows[0]["exit_code"] == 1
+            assert rows[0]["task_ref"].startswith("T-")
+            assert rows[0]["title"] == "Payment retry engine"
+            assert rows[0]["duration_seconds"] == 8.0
+
+    def test_get_job_status_carries_the_full_spec(self, dispatch_server):
+        """The spec is a detail of one job — available per job, still."""
+        import json as json_mod
+        import tempfile
+        from pathlib import Path as _Path
+        from snodo.jobs import JobManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (_Path(tmp) / ".snodo").mkdir()
+            mgr = JobManager(tmp)
+            jd = mgr.jobs_dir / "j_spec01"
+            jd.mkdir()
+            spec = "# Title\n" + "prose\n" * 200
+            (jd / "task.json").write_text(json_mod.dumps({"description": spec}))
+            (jd / "state.json").write_text(json_mod.dumps({
+                "status": "completed", "pid": None, "created_at": 1.0,
+                "started_at": 2.0, "completed_at": 3.0, "exit_code": 0,
+            }))
+            with patch("snodo.jobs.JobManager", return_value=mgr):
+                result = dispatch_server.call_tool(
+                    "get_job_status", {"job_id": "j_spec01"}
+                )
+
+        assert result["task_spec"] == spec
+        assert result["status"] == "completed"
 
     def test_get_job_logs_missing_id(self, dispatch_server):
         with pytest.raises(MCPError, match="requires job_id"):

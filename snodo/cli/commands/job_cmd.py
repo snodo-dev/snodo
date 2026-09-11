@@ -165,14 +165,21 @@ def _job_list(manager) -> int:
         return 0
 
     # Table header
-    print(f"{'ID':<12} {'Status':<12} {'Created':<20} {'Description'}")
-    print("-" * 72)
+    print(f"{'ID':<12} {'Status':<12} {'Exit':<5} {'Duration':<9} {'Created':<20} {'Title'}")
+    print("-" * 88)
     for job in jobs:
-        desc = job["description"]
-        if len(desc) > 40:
-            desc = desc[:37] + "..."
+        title = job.get("title", "")
+        exit_code = job.get("exit_code")
+        duration = job.get("duration_seconds")
         created = _format_time(job["created_at"])
-        print(f"{job['id']:<12} {job['status']:<12} {created:<20} {desc}")
+        print(
+            f"{job['id']:<12} {job['status']:<12} "
+            f"{(str(exit_code) if exit_code is not None else '-'):<5} "
+            f"{(f'{duration:.0f}s' if duration is not None else '-'):<9} "
+            f"{created:<20} {title}"
+        )
+        if job.get("task_ref"):
+            print(f"  task: {job['task_ref']}")
         print(f"  inspect: snodo job status {job['id']}")
     return 0
 

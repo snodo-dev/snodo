@@ -13,7 +13,11 @@ class JobToolHandler:
         self.project_root = project_root
 
     def handle_get_job_status(self, arguments: Dict[str, Any]) -> dict:
-        """Get the current status of a dispatched job (status fields only)."""
+        """Get the current status of one dispatched job.
+
+        This is the single-job tool: it carries the full task spec — the
+        detail the bounded list_jobs listing omits.
+        """
         from snodo.jobs import JobManager
 
         job_id = arguments.get("job_id", "")
@@ -28,6 +32,7 @@ class JobToolHandler:
             from snodo.mcp.server import MCPError
             raise MCPError(f"Job not found or error: {e}") from e
 
+        task = full.get("task") if isinstance(full.get("task"), dict) else {}
         return {
             "id": full.get("id", job_id),
             "status": full.get("status", "unknown"),
@@ -36,10 +41,17 @@ class JobToolHandler:
             "created_at": full.get("created_at"),
             "started_at": full.get("started_at"),
             "completed_at": full.get("completed_at"),
+            "task_ref": task.get("task_id") or task.get("retry_task_id") or "",
+            "task_spec": task.get("description", ""),
         }
 
     def handle_list_jobs(self, arguments: Dict[str, Any]) -> list:
-        """List all jobs for the current project."""
+        """List all jobs as bounded one-line summaries.
+
+        Rows identify the work (task_ref, title) and how it ended (status,
+        exit_code, duration) without carrying task spec prose; the full spec
+        of a job is available per job from get_job_status.
+        """
         from snodo.jobs import JobManager
 
         job_mgr = JobManager(self.project_root)
