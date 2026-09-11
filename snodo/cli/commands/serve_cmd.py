@@ -161,9 +161,17 @@ def _run_server(args, protocol) -> int:
         jwks = JwksClient()
         if jwks.fetch():
             extra_kwargs["token_verifier"] = JwksTokenVerifier(jwks)
+            # The resource identifier is the canonical URI of the MCP server,
+            # which is the endpoint clients actually call — FastMCP serves
+            # streamable-http at streamable_http_path, default "/mcp". Passing
+            # the bare host instead made pydantic normalise it to
+            # "https://<host>/", so the protected-resource metadata advertised
+            # the origin while the server lived at /mcp. A client that checks a
+            # token against the endpoint it was configured with then sees a
+            # resource it never agreed to.
             extra_kwargs["auth_settings"] = AuthSettings(
                 issuer_url=AnyHttpUrl("https://mcp-auth.snodo.dev"),
-                resource_server_url=AnyHttpUrl(f"https://{tunnel_hostname}"),
+                resource_server_url=AnyHttpUrl(f"https://{tunnel_hostname}/mcp"),
             )
             print("  OAuth 2.1 enabled (RS256 JWTs from mcp-auth.snodo.dev)", file=sys.stderr)
         else:
