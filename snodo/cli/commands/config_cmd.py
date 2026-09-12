@@ -222,20 +222,30 @@ def _config_get(mgr: ConfigManager, key: str) -> int:
         return 1
 
 
-# Settable llm.* keys and their value type.  classifier.* and the remaining
-# wave.* (lifetime) keys are included so they can be set without hand-editing
-# YAML.  The deprecated wave.max_tokens / wave.temperature are deliberately
-# absent — they moved to classifier.* (ADR 020).
+# Settable llm.* keys and their value type.  The list mirrors the typed
+# fields of LlmConfig (snodo.infrastructure.config) so every operator-facing
+# knob can be set without hand-editing YAML.  All role models (coder,
+# validator, classifier) are plain strings; the value is deliberately NOT
+# checked against the provider catalog — local or self-hosted models are
+# legitimate and appear in no catalog.  "list" values are given as
+# comma-separated strings.  The deprecated wave.max_tokens /
+# wave.temperature are deliberately absent — they moved to classifier.*
+# (ADR 020).
 _LLM_SETTABLE_KEYS = {
+    "num_retries": int,
+    "coder.model": str,
     "coder.max_tokens": int,
     "coder.max_tool_turns": int,
     "coder.timeout_seconds": int,
     "coder.concurrency": int,
+    "validator.model": str,
     "validator.max_tokens": int,
     "validator.max_tool_turns": int,
     "classifier.model": str,
     "classifier.max_tokens": int,
     "classifier.temperature": float,
+    "recon.num_agents": int,
+    "recon.models": list,
     "wave.max_age_days": int,
     "wave.max_idle_days": int,
 }
@@ -244,6 +254,7 @@ _LLM_SETTABLE_KEYS = {
 _LLM_MOVED_KEYS = {
     "wave.max_tokens": "classifier.max_tokens",
     "wave.temperature": "classifier.temperature",
+    "validator_llm.model": "validator.model",
 }
 
 
@@ -262,16 +273,25 @@ def _set_llm_value(mgr: ConfigManager, subkey: str, value: str) -> int:
         return 1
 
     value_type = _LLM_SETTABLE_KEYS[subkey]
-    try:
-        parsed = value_type(value)
-    except ValueError:
-        print(f"Error: llm.{subkey} must be a {value_type.__name__}", file=sys.stderr)
-        return 1
+    if value_type is list:
+        parsed: object = [item.strip() for item in value.split(",") if item.strip()]
+        if not parsed:
+            print(f"Error: llm.{subkey} must be a non-empty comma-separated list", file=sys.stderr)
+            return 1
+    else:
+        try:
+            parsed = value_type(value)
+        except ValueError:
+            print(f"Error: llm.{subkey} must be a {value_type.__name__}", file=sys.stderr)
+            return 1
 
     config = mgr.load()
     llm = config.setdefault("llm", {})
-    section, field = subkey.split(".")
-    llm.setdefault(section, {})[field] = parsed
+    section, sep, field = subkey.partition(".")
+    if sep:
+        llm.setdefault(section, {})[field] = parsed
+    else:
+        llm[subkey] = parsed
     mgr.save(config)
     print(f"Set llm.{subkey} = {value}")
     return 0
@@ -281,32 +301,32 @@ def _get_llm_value(subkey: str) -> int:
     """Get an llm.* config value (reads config, returns default when absent)."""
     from snodo.infrastructure.config import load_llm_config
 
+    if subkey in _LLM_MOVED_KEYS:
+        print(
+            f"Error: llm.{subkey} moved to llm.{_LLM_MOVED_KEYS[subkey]}.",
+            file=sys.stderr,
+        )
+        return 1
+
     llm_cfg = load_llm_config()
-    key_parts = subkey.split(".")
-    if len(key_parts) != 2:
+    section, sep, field = subkey.partition(".")
+    if sep:
+        obj: object = getattr(llm_cfg, section, None)
+    else:
+        section, field, obj = "", subkey, llm_cfg
+    if obj is None or not hasattr(obj, field):
         print(f"Error: Unknown llm key: llm.{subkey}", file=sys.stderr)
+        print(f"Valid: {', '.join(sorted(_LLM_SETTABLE_KEYS))}", file=sys.stderr)
         return 1
 
-    section, field = key_parts[0], key_parts[1]
-    sections = {
-        "coder": llm_cfg.coder,
-        "validator": llm_cfg.validator,
-        "classifier": llm_cfg.classifier,
-        "wave": llm_cfg.wave,
-    }
-    obj = sections.get(section)
-    if obj is None:
-        print(f"Error: Unknown llm section: {section}", file=sys.stderr)
+    value = getattr(obj, field)
+    if hasattr(value, "model_dump"):
+        # Named a sub-model (e.g. "wave"), not a value.
+        print(f"Error: Unknown llm key: llm.{subkey}", file=sys.stderr)
+        print(f"Valid: {', '.join(sorted(_LLM_SETTABLE_KEYS))}", file=sys.stderr)
         return 1
-    if not hasattr(obj, field):
-        if subkey in _LLM_MOVED_KEYS:
-            print(
-                f"Error: llm.{subkey} moved to llm.{_LLM_MOVED_KEYS[subkey]}.",
-                file=sys.stderr,
-            )
-        else:
-            print(f"Error: Unknown llm key: llm.{subkey}", file=sys.stderr)
-        return 1
-
-    print(getattr(obj, field))
+    if isinstance(value, list):
+        print(", ".join(str(v) for v in value))
+    else:
+        print(value)
     return 0

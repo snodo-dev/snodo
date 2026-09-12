@@ -736,7 +736,7 @@ def _run_plan(args) -> int:
         return 1
 
     mgr = ConfigManager()
-    model = args.model or mgr.get_model()
+    model = args.model or mgr.get_coder_model()
 
     with provider_env(model) as mgr:
         try:

@@ -158,3 +158,35 @@ def test_wave_lifetime_keys_do_not_warn():
         cfg = load_llm_config(config_dir=tmpdir)
         assert cfg.wave.max_age_days == 30
         assert cfg.wave.max_idle_days == 10
+
+
+def test_role_models_load_from_config():
+    """Every role model (coder, validator, classifier) is a typed, loadable string.
+
+    Model names are not checked against any catalog — a self-hosted model is
+    legitimate and must survive the load untouched.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text(
+            "llm:\n"
+            "  coder:\n"
+            "    model: ollama/qwen3:32b\n"
+            "  validator:\n"
+            "    model: deepseek/deepseek-chat\n"
+            "  classifier:\n"
+            "    model: google/gemini-2.5-flash\n"
+        )
+        cfg = load_llm_config(config_dir=tmpdir)
+        assert cfg.coder.model == "ollama/qwen3:32b"
+        assert cfg.validator.model == "deepseek/deepseek-chat"
+        assert cfg.classifier.model == "google/gemini-2.5-flash"
+
+
+def test_role_models_default_to_none():
+    """Absent role models default to None (= use the top-level model)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text("model: gpt-4o\n")
+        cfg = load_llm_config(config_dir=tmpdir)
+        assert cfg.coder.model is None
+        assert cfg.validator.model is None
+        assert cfg.classifier.model is None

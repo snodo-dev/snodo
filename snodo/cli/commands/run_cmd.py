@@ -341,7 +341,7 @@ def run_command(args) -> int:
         return _run_in_sandbox(args)
 
     mgr = ConfigManager()
-    model = args.model or mgr.get_model()
+    model = args.model or mgr.get_coder_model()
 
     # Preflight the provider credential before any session, worktree or graph
     # work (Fixes #137): a fresh install must fail immediately with one line,
@@ -746,7 +746,7 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
     augmented = "\n\n".join(prompt_parts)
 
     mgr = ConfigManager()
-    model = args.model or mgr.get_model()
+    model = args.model or mgr.get_coder_model()
 
     task = Task(id=task_id, spec=augmented, root_spec=authoritative_spec)
     print(f"Retrying task {task_id} (attempt {attempt + 1}/{max_retries})")

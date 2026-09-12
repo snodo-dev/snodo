@@ -174,6 +174,26 @@ class TestModelConfig:
         mgr2 = ConfigManager(config_dir=mgr.config_dir)
         assert mgr2.get_model() == "gpt-4"
 
+    def test_get_coder_model_defaults_to_default_model(self, mgr):
+        mgr.set_model("gpt-4o")
+        assert mgr.get_coder_model() == "gpt-4o"
+
+    def test_get_coder_model_llm_coder_override_wins(self, mgr):
+        mgr.set_model("gpt-4o")
+        config = mgr.load()
+        config.setdefault("llm", {}).setdefault("coder", {})["model"] = "ollama/qwen3:32b"
+        mgr.save(config)
+        assert mgr.get_coder_model() == "ollama/qwen3:32b"
+        # The top-level default is untouched — other roles still resolve it.
+        assert mgr.get_model() == "gpt-4o"
+
+    def test_get_coder_model_empty_override_falls_back(self, mgr):
+        mgr.set_model("gpt-4o")
+        config = mgr.load()
+        config.setdefault("llm", {}).setdefault("coder", {})["model"] = ""
+        mgr.save(config)
+        assert mgr.get_coder_model() == "gpt-4o"
+
 
 # === ConfigManager.mask_key ===
 
@@ -619,6 +639,87 @@ class TestCLISetGet:
         assert result == 1
         err = capsys.readouterr().err
         assert "classifier.max_tokens" in err
+
+
+# ========== OPERATOR llm.* MODEL + KNOB SET/GET ==========
+
+class TestCLILLMModelKeys:
+    """Every typed LlmConfig knob — including each role model — round-trips
+    through `snodo config set/get` without hand-editing YAML.  Model values
+    are free strings: a local or self-hosted model appears in no catalog and
+    must still be accepted."""
+
+    @pytest.mark.parametrize("key", [
+        "llm.coder.model",
+        "llm.validator.model",
+        "llm.classifier.model",
+    ])
+    def test_model_key_round_trip(self, key, capsys):
+        model = "ollama/qwen3:32b"  # self-hosted — absent from every catalog
+        assert main(["config", "set", key, model]) == 0
+        capsys.readouterr()
+        assert main(["config", "get", key]) == 0
+        assert model in capsys.readouterr().out
+
+    def test_judging_model_settable(self, capsys):
+        """The reported failure: `config set llm.validator.model` no longer
+        answers 'Unknown llm key' — it stores the judging model."""
+        assert main(["config", "set", "llm.validator.model", "deepseek/deepseek-chat"]) == 0
+        assert "llm.validator.model" in capsys.readouterr().out
+
+    def test_coder_model_settable_beats_top_level_default(self, capsys):
+        assert main(["config", "set", "model", "gpt-4o"]) == 0
+        assert main(["config", "set", "llm.coder.model", "deepseek/deepseek-chat"]) == 0
+        capsys.readouterr()
+        assert main(["config", "get", "llm.coder.model"]) == 0
+        out = capsys.readouterr().out
+        assert "deepseek/deepseek-chat" in out
+        assert "gpt-4o" not in out
+
+    def test_unknown_llm_key_still_refused_on_set(self, capsys):
+        assert main(["config", "set", "llm.validator.temperature", "0.2"]) == 1
+        err = capsys.readouterr().err
+        assert "Unknown llm key: llm.validator.temperature" in err
+
+    def test_unknown_llm_key_still_refused_on_get(self, capsys):
+        assert main(["config", "get", "llm.bogus.field"]) == 1
+        err = capsys.readouterr().err
+        assert "Unknown llm key: llm.bogus.field" in err
+
+    def test_legacy_validator_llm_model_points_to_validator(self, capsys):
+        """llm.validator_llm.model was renamed to llm.validator.model; the CLI
+        must name the new key instead of a bare 'Unknown llm key'."""
+        assert main(["config", "set", "llm.validator_llm.model", "gpt-4o"]) == 1
+        err = capsys.readouterr().err
+        assert "moved to llm.validator.model" in err
+        capsys.readouterr()
+        assert main(["config", "get", "llm.validator_llm.model"]) == 1
+        assert "moved to llm.validator.model" in capsys.readouterr().err
+
+    def test_num_retries_round_trip(self, capsys):
+        assert main(["config", "set", "llm.num_retries", "5"]) == 0
+        capsys.readouterr()
+        assert main(["config", "get", "llm.num_retries"]) == 0
+        assert "5" in capsys.readouterr().out
+
+    def test_recon_knobs_round_trip(self, capsys):
+        assert main(["config", "set", "llm.recon.num_agents", "3"]) == 0
+        assert main(["config", "set", "llm.recon.models", "gpt-4o, claude-sonnet-4-20250514"]) == 0
+        capsys.readouterr()
+        assert main(["config", "get", "llm.recon.num_agents"]) == 0
+        assert "3" in capsys.readouterr().out
+        assert main(["config", "get", "llm.recon.models"]) == 0
+        out = capsys.readouterr().out
+        assert "gpt-4o" in out
+        assert "claude-sonnet-4-20250514" in out
+
+    def test_int_llm_key_rejects_non_int(self, capsys):
+        assert main(["config", "set", "llm.num_retries", "abc"]) == 1
+        assert "must be a int" in capsys.readouterr().err
+
+    def test_recon_models_rejects_empty_list(self, capsys):
+        assert main(["config", "set", "llm.recon.models", " , "]) == 1
+        assert "comma-separated list" in capsys.readouterr().err
 
 
 # ========== TASK 7.3: SESSION CONFIG TESTS ==========
