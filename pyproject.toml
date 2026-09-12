@@ -55,7 +55,7 @@ Issues = "https://github.com/snodo-dev/snodo/issues"
 
 [project.optional-dependencies]
 dev = [
-    "pytest==9.0.3",
+    "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "pytest-timeout==2.4.0",
     "hypothesis==6.155.2",
@@ -114,7 +114,7 @@ dev = [
     "httpx2>=2.4.0",
     "hypothesis==6.155.2",
     "import-linter==2.12",
-    "pytest==9.0.3",
+    "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "pytest-timeout==2.4.0",
     "pytest-xdist==3.8.0",
