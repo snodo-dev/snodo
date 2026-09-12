@@ -29,6 +29,11 @@ def task_inspect(task_id: str) -> str:
     return f"snodo task show {task_id}"
 
 
+def task_inspect_json(task_id: str) -> str:
+    """Command for a task record's untruncated fields, incl. superseded specs."""
+    return f"snodo task show {task_id} --json"
+
+
 def task_watch() -> str:
     """Live surface for a *running* foreground task.
 
@@ -73,5 +78,49 @@ def recon_inspect(recon_id: str) -> str:
 
 
 def task_retry(task_id: str) -> str:
-    """Command to retry a failed task."""
-    return f'snodo run --retry {task_id} "revised spec"'
+    """Command to retry a failed task with its spec unchanged.
+
+    This is the shape the CLI prints: a bare retry keeps what is already
+    written, so pasting the suggestion verbatim is always safe. Revising or
+    annotating the spec is a deliberate act and lives in the two builders
+    below, whose output is only ever offered as an alternative, never as the
+    default.
+    """
+    return f"snodo run --retry {task_id}"
+
+
+def task_retry_annotate(task_id: str, guidance: str = "note for this attempt") -> str:
+    """Command to retry a task with guidance added on top of its existing spec."""
+    return f'snodo run --retry {task_id} --append-spec "{guidance}"'
+
+
+def task_retry_replace(task_id: str, spec: str = "replacement spec") -> str:
+    """Command to retry a task with a spec that *replaces* the existing one."""
+    return f'snodo run --retry {task_id} --replace-spec "{spec}"'
+
+
+def task_retry_restore(task_id: str) -> str:
+    """How to put a superseded spec back, named without a placeholder value.
+
+    Restoring is itself a replacement, so the text can only come from the
+    operator. Printing the option with no argument keeps this line safe to
+    paste: the CLI asks for the value instead of overwriting the live spec with
+    placeholder words.
+    """
+    return f"snodo run --retry {task_id} --replace-spec"
+
+
+def task_retry_options(task_id: str) -> list:
+    """Every retry a task at the retry limit can be given, least drastic first.
+
+    Both exhausted-retry sites (``snodo run --retry`` and ``snodo plan run``)
+    print this list rather than their own wording, so the shapes a retry can
+    take are stated in one place and cannot drift — the drift that made a
+    destructive retry the only suggestion an operator ever saw.
+    """
+    return [
+        f"{task_retry(task_id)} (retry with the spec unchanged)",
+        f"{task_retry_annotate(task_id)} (keep the spec, add guidance)",
+        f"{task_retry_replace(task_id)} (replace the spec)",
+        f"snodo task abandon {task_id} (delete branch)",
+    ]

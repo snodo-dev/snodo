@@ -468,6 +468,10 @@ def test_blocked_task_at_max_retries_not_reexecuted(plan_project_env, capsys):
     assert "[task_1_1] not re-executed (max_retries reached)" in out
     assert "Task task_1_1 has failed 3 times." in out
     assert "snodo run --retry task_1_1" in out
+    # The guidance must never print a retry that rewrites the task it is
+    # suggesting: the placeholder spec used to be pasted as the new spec.
+    assert '"revised spec"' not in out
+    assert 'snodo run --retry task_1_1 "' not in out
     assert "snodo task abandon task_1_1" in out
     status = planner.get_status(plan_name)
     assert status["tasks"]["task_1_1"]["status"] == "blocked"

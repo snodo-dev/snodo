@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from snodo.compiler.models import Protocol
 from snodo.infrastructure.tokens import TokenIssuer, TokenStoreError, ValidationToken
 from snodo.core.interfaces import Task, result_record
+from snodo.core.spec import same_spec, spec_with_guidance
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.tools.git import GitMCP
 from snodo.tools.shell import ShellMCP
@@ -696,14 +697,27 @@ class CoreToolHandler:
         return result
 
     def handle_retry_job(self, arguments: Dict[str, Any]) -> dict:
-        """Look up task_id from a failed job and dispatch a retry."""
+        """Look up task_id from a failed job and dispatch a retry.
+
+        Three shapes, matching ``snodo run --retry``: no spec argument keeps the
+        recorded spec (the default, and what an operational failure wants),
+        ``append_spec`` adds guidance on top of it, and ``revised_spec`` replaces
+        it — the only shape that discards anything, so the spec it discards is
+        audited as ``spec_replaced`` to stay recoverable.
+        """
         from snodo.jobs import JobManager
 
         job_id = arguments.get("job_id", "")
         if not job_id:
             raise MCPError("retry_job requires job_id")
 
-        revised_spec = arguments.get("revised_spec", "")
+        revised_spec = (arguments.get("revised_spec") or "").strip()
+        append_spec = (arguments.get("append_spec") or "").strip()
+        if revised_spec and append_spec:
+            raise MCPError(
+                "retry_job takes either revised_spec (which replaces the recorded "
+                "spec) or append_spec (which adds guidance on top of it), not both"
+            )
 
         job_mgr = JobManager(self.server.project_root)
         job_dir = job_mgr._job_dir(job_id)
@@ -722,7 +736,25 @@ class CoreToolHandler:
         task_id = task_data.get("task_id", "")
         original_spec = task_data.get("description", "")
 
-        description = revised_spec or original_spec
+        if revised_spec and same_spec(revised_spec, original_spec):
+            # Handing back the recorded spec changes nothing; do not book it as
+            # a replacement (which would report a spec as superseded that was
+            # never lost).
+            revised_spec = ""
+
+        if revised_spec:
+            description = revised_spec
+            self.server._audit("spec_replaced", {
+                "op": "spec_replaced",
+                "task_ref": task_id,
+                "previous_spec": original_spec,
+                "new_spec": revised_spec,
+            })
+        elif append_spec:
+            description = spec_with_guidance(original_spec, append_spec)
+        else:
+            description = original_spec
+
         task_args: Dict[str, Any] = {
             "description": description,
             "cwd": self.server.project_root,
@@ -738,6 +770,11 @@ class CoreToolHandler:
             "job_id": new_job_id,
             "task_id": task_id,
             "description": description,
+            "spec_action": (
+                "replaced" if revised_spec
+                else "appended" if append_spec
+                else "unchanged"
+            ),
         }
 
     def tool_handlers(self) -> dict:

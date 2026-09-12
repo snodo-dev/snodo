@@ -60,7 +60,8 @@ def test_retry_prompt_no_wrapping_across_multiple_attempts(tmp_path, monkeypatch
     args = SimpleNamespace(
         protocol=".snodo/protocol.yml",
         model="mock-model",
-        description="add a farewell() function to src/index.js and test it",
+        description=None,
+        replace_spec="add a farewell() function to src/index.js and test it",
     )
 
     res = _retry_task(args, "task_abc", project_root, session_mgr)

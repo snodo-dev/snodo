@@ -11,6 +11,35 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Retrying a task no longer destroys the specification being retried, and the
+  command snodo prints as a follow-up is now the command that does nothing to
+  it. `snodo run --retry <task_id>` takes a positional description that
+  *replaced* the task's spec, and the retry suggestion the CLI printed at three
+  sites (`followup.task_retry`, the exhausted-retry guidance in `run_cmd` and
+  `plan_run`) was `snodo run --retry <task_id> "revised spec"` — so pasting
+  the tool's own advice overwrote the specification with the literal
+  placeholder. On a real project this cost a sixty-line spec written for a task
+  that had failed for an operational reason (a provider rejected the validator's
+  request over a missing header); the spec was never implicated, two attempts
+  later the meta-spec validator correctly called the task underspecified, and
+  the run escalated on a specification that survived only inside old job
+  payloads. Retry is now three distinguishable shapes: a bare `--retry` re-runs
+  against the spec on record and is the only shape the CLI suggests;
+  `--append-spec` (or the positional, which can no longer destroy anything)
+  adds guidance on top of the spec and keeps it; `--replace-spec` replaces it,
+  naming itself as the destructive act. A replaced spec is written to the
+  task's failure record (`superseded_specs`, surfaced by `snodo task show`, and
+  carried forward when the engine rewrites that record on a later attempt) and
+  audited as `spec_replaced`, so the operator's copy outlives the command they
+  were told to run. Contradictory combinations are refused rather than guessed
+  at. `snodo job retry` and the MCP `retry_job` tool take the same three shapes
+  so no surface prints or accepts a destructive default; a resumed background
+  plan task now declares its spec with `--replace-spec` instead of relying on
+  the positional's old meaning. Branches, worktrees, failure context and
+  validator behaviour are unchanged — a genuinely underspecified task is still
+  caught, and the retry prompt still opens with `Original spec:`, which is what
+  the task branch name is derived from.
+
 - A tunnelled MCP server rejected every correctly issued token. The bearer
   verifier called `jwt.decode` without an `audience` argument, on the
   understanding that omitting it skips the audience check. It does the

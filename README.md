@@ -167,6 +167,13 @@ you add waves and tasks (ids are `<wave>.<seq>_<name>`, e.g. `1.1_models`) or
 edit `plan.yml` directly. A plan is re-verified on every load. See
 [docs/runbooks/hand-authored-plan.md](docs/runbooks/hand-authored-plan.md).
 
+Retrying a failed task keeps its specification. `snodo run --retry <task_id>`
+re-runs the task against the spec on record — that bare form is what the CLI
+prints after a failure, so pasting it is safe. `--append-spec "…"` adds guidance
+on top of that spec (a positional description does the same); `--replace-spec
+"…"` replaces it, which is the only retry that discards anything, and the
+discarded spec stays readable with `snodo task show <task_id>`.
+
 ## Architecture
 
 - **Mode-based capability separation.** Each mode declares its tools. WF1

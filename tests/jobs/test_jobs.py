@@ -804,10 +804,79 @@ class TestRunner:
         cmd = build_command("/job", task_args)
         assert "-u" in cmd
 
+    def test_build_command_retry_names_the_spec_action(self):
+        """A resumed task's spec is passed as a replacement, never as a bare positional.
+
+        On the CLI a description beside --retry is guidance added on top of the
+        recorded spec. The plan layer means the opposite — its spec file is the
+        authority for the attempt — so it has to say so with the flag that means
+        it, or a resumed task would be told its own spec twice.
+        """
+        task_args = {
+            "description": "the task's spec from the plan file",
+            "protocol": "proto.yml",
+            "retry": "task_abc",
+        }
+        cmd = build_command("/job", task_args)
+        assert "--retry" in cmd and "task_abc" in cmd
+        assert "--replace-spec" in cmd
+        assert "the task's spec from the plan file" in cmd
+        # Not a positional: the argv element right after "run" is the flag.
+        assert cmd[cmd.index("run") + 1] == "--replace-spec"
+
+    def test_build_command_without_retry_keeps_positional_description(self):
+        task_args = {"description": "do the thing", "protocol": "proto.yml"}
+        cmd = build_command("/job", task_args)
+        assert "--replace-spec" not in cmd
+        assert cmd[cmd.index("run") + 1] == "do the thing"
+
 
 # === CLI Integration Tests ===
 
 class TestJobCLI:
+    def test_resumed_spec_rule_matches_the_cli(self):
+        """Re-dispatching a job follows `snodo run --retry`: text adds, only an
+        explicit replacement discards the recorded spec."""
+        from snodo.cli.commands.job_cmd import _resumed_spec
+
+        assert _resumed_spec("the spec", "", "") == "the spec"
+        assert _resumed_spec("the spec", "and note this", "") == "the spec\n\nand note this"
+        assert _resumed_spec("the spec", "ignored?", "a new spec") == "a new spec"
+        assert _resumed_spec("", "only text", "") == "only text"
+        assert _resumed_spec("the spec", "   ", "   ") == "the spec"
+
+    def test_job_retry_without_task_id_redispatches_the_recorded_spec(
+        self, temp_project, capsys, monkeypatch
+    ):
+        """A job that predates task tracking is re-dispatched with its own spec.
+
+        Text the operator adds is guidance on top of it, not a substitute for it
+        — the rule that holds everywhere else a retry is offered.
+        """
+        import json as _json
+
+        job_dir = temp_project / ".snodo" / "jobs" / "j_old1"
+        job_dir.mkdir(parents=True)
+        (job_dir / "task.json").write_text(_json.dumps({"description": "the old spec"}))
+
+        from snodo.cli.main import main
+
+        monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+        executed = []
+        with patch("snodo.cli.commands.run_cmd._execute_task",
+                   side_effect=lambda a, p, t, m: executed.append(t) or 0):
+            assert main(["job", "retry", "j_old1", "and note this"]) == 0
+
+        assert executed[0].spec == "the old spec\n\nand note this"
+
+    def test_dispatch_as_new_task_refuses_an_empty_spec(self, capsys):
+        from types import SimpleNamespace as NS
+
+        from snodo.cli.commands.job_cmd import _dispatch_as_new_task
+
+        assert _dispatch_as_new_task(NS(description="", replace_spec=""), {}, "j_none") == 1
+        assert "No specification recorded for job j_none" in capsys.readouterr().err
+
     def test_job_list_via_main(self, temp_project):
         """snodo job list works via main()."""
         from snodo.cli.main import main

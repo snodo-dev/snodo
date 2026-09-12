@@ -16,6 +16,7 @@ import typer
 
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
+from snodo.core.spec import same_spec, spec_text, spec_with_guidance
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 from snodo.cli.commands import followup
@@ -94,6 +95,8 @@ class RunArgs:
     sandbox: str = "local"
     resume: Optional[str] = None
     retry: Optional[str] = None
+    append_spec: Optional[str] = None
+    replace_spec: Optional[str] = None
     retain_worktree: bool = False
     no_isolation: bool = False
     audit_log: Optional[Any] = None
@@ -106,7 +109,10 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def run(
         description: Optional[str] = typer.Argument(
-            None, help="Task description (required unless --plan is used)",
+            None,
+            help="Task description (required unless --plan is used). "
+                 "With --retry it is guidance added ON TOP of the task's existing "
+                 "spec; use --replace-spec to change the spec itself.",
         ),
         protocol: str = typer.Option(
             ".snodo/protocol.yml", "--protocol", help="Path to protocol file",
@@ -134,7 +140,16 @@ def register(app: typer.Typer) -> None:
             None, "--resume", help="Resume execution from session ID",
         ),
         retry: Optional[str] = typer.Option(
-            None, "--retry", help="Retry a failed task by ID (requires P0 branch isolation)",
+            None, "--retry", help="Retry a failed task by ID, keeping its spec (requires P0 branch isolation)",
+        ),
+        append_spec: Optional[str] = typer.Option(
+            None, "--append-spec",
+            help="With --retry: add this guidance on top of the task's existing spec",
+        ),
+        replace_spec: Optional[str] = typer.Option(
+            None, "--replace-spec",
+            help="With --retry: replace the task's spec with this one (deliberate; "
+                 "the previous spec stays recoverable)",
         ),
         retain_worktree: bool = _execution_option("retain_worktree"),
         no_isolation: bool = _execution_option("no_isolation"),
@@ -145,6 +160,7 @@ def register(app: typer.Typer) -> None:
             verbose=verbose, mock=mock, plan=plan, wave=wave,
             interactive=interactive, from_pr=from_pr, background=background,
             sandbox=sandbox, resume=resume, retry=retry,
+            append_spec=append_spec, replace_spec=replace_spec,
             retain_worktree=retain_worktree, no_isolation=no_isolation,
         )
         return run_command(args)
@@ -286,6 +302,14 @@ def run_command(args) -> int:
     from snodo.cli.commands.sandbox_run import _run_in_sandbox, _submit_background_job
 
     project_root = require_project_root()
+    # The retry spec flags are only meaningful for a retry, and two of the three
+    # ways to say something about a spec cannot be combined. Refuse before any
+    # session, worktree or job is created rather than silently dropping intent.
+    spec_flag_error = _retry_spec_conflict(args)
+    if spec_flag_error:
+        print(f"Error: {spec_flag_error}", file=sys.stderr)
+        return 1
+
     from snodo.project import get_project_id
     project_id, _ = get_project_id(project_root)
     audit_log = get_audit_log(project_id=project_id)
@@ -437,9 +461,139 @@ def _failure_from_halt_record(session, task_id: str) -> Optional[dict]:
     }
 
 
+def _retry_spec_conflict(args) -> Optional[str]:
+    """Return an error when the retry spec options contradict each other.
+
+    A retry says one of three things about a specification: leave it alone
+    (bare, the default and the only shape snodo prints as a suggestion), add
+    guidance on top of it (``--append-spec``, or the positional description),
+    or replace it (``--replace-spec``). Two at once has no meaning, and
+    ``--append-spec`` / ``--replace-spec`` outside a retry would be silently
+    dropped, so both are refused rather than guessed at.
+    """
+    append = spec_text(getattr(args, "append_spec", None))
+    replace = spec_text(getattr(args, "replace_spec", None))
+    if not append and not replace:
+        return None
+    if not spec_text(getattr(args, "retry", None)):
+        return (
+            "--append-spec and --replace-spec only apply to a retry; "
+            "pass --retry <task_id> (or drop the flag)."
+        )
+    return _retry_spec_ambiguity(args)
+
+
+def _retry_spec_ambiguity(args) -> Optional[str]:
+    """Return an error when a retry is told two incompatible things about its spec."""
+    append = spec_text(getattr(args, "append_spec", None))
+    replace = spec_text(getattr(args, "replace_spec", None))
+    if append and replace:
+        return (
+            "--append-spec adds to the existing spec while --replace-spec "
+            "discards it; pass one or the other, not both."
+        )
+    if replace and spec_text(getattr(args, "description", None)):
+        return (
+            "a task description with --retry is guidance added to the existing "
+            "spec, so it cannot be combined with --replace-spec: pass the new "
+            "spec to --replace-spec alone."
+        )
+    return None
+
+
+def _retry_spec_inputs(args, original_spec: str) -> tuple:
+    """Resolve what this retry does to the spec: ``(guidance, replacement)``.
+
+    ``(None, None)`` — a bare retry — keeps the recorded spec untouched. The
+    positional description counts as guidance, never as a replacement: the
+    destructive reading of it is what destroyed a sixty-line specification
+    someone retried by following snodo's own printed advice. A replacement that
+    says what is already recorded is normalised to a bare retry so a caller
+    that hands back the unchanged spec (the plan layer does) is not booked as
+    having rewritten it.
+    """
+    guidance = spec_text(getattr(args, "append_spec", None)) or spec_text(
+        getattr(args, "description", None)
+    )
+    replacement = spec_text(getattr(args, "replace_spec", None))
+    if replacement and same_spec(replacement, original_spec):
+        replacement = ""
+    if guidance and same_spec(guidance, original_spec):
+        guidance = ""
+    return (guidance or None), (replacement or None)
+
+
+def _record_superseded_spec(
+    session, session_manager, audit_log, task_id: str,
+    superseded_spec: str, new_spec: str,
+) -> None:
+    """Keep the previous spec reachable when a retry replaces it.
+
+    Replacement is the only retry that discards anything, so it is the only one
+    that can lose the operator's copy. The record goes in two places: the
+    session's failure context (surfaced by ``snodo task show``) and an
+    append-only audit event (which survives the context being cleared when the
+    task later completes or is abandoned).
+    """
+    if not superseded_spec:
+        return
+
+    if session is not None and session_manager is not None:
+        try:
+            failures = session.checkpoint.decisions.get("task_failure", {})
+            entry = failures.get(task_id) if isinstance(failures, dict) else None
+            # Only an existing failure record is annotated: a retry resolved
+            # from the halt record has no context of its own to amend, and
+            # inventing a partial one would show up as a phantom failure in
+            # `snodo status`. The audit event below still carries the copy.
+            if isinstance(entry, dict):
+                history = entry.get("superseded_specs")
+                history = list(history) if isinstance(history, list) else []
+                if superseded_spec not in history:
+                    history.append(superseded_spec)
+                entry["superseded_specs"] = history
+                entry["superseded_spec"] = superseded_spec
+                entry["spec"] = new_spec
+                entry["original_spec"] = new_spec
+                failures[task_id] = entry
+                session_manager.update_decision(
+                    session.session_id, "task_failure", failures,
+                )
+        except Exception as e:
+            _logger.warning(
+                "Could not record superseded spec for task %s in session state: %s",
+                task_id, e,
+            )
+
+    if audit_log is not None:
+        try:
+            audit_log.append_event("spec_replaced", {
+                "op": "spec_replaced",
+                "task_ref": task_id,
+                "previous_spec": superseded_spec,
+                "new_spec": new_spec,
+            })
+        except Exception as e:
+            _logger.warning("Could not audit spec_replaced for task %s: %s", task_id, e)
+
+
 def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
-    """Retry a failed task on its existing branch with failure context."""
+    """Retry a failed task on its existing branch with failure context.
+
+    Three shapes, and the default is the one that changes nothing: a bare
+    ``--retry`` re-runs the task against the spec already recorded. Guidance for
+    this attempt is added with ``--append-spec`` (or the positional
+    description), which keeps that spec; replacing the spec is a deliberate act
+    named by ``--replace-spec``, and the spec it discards stays recoverable.
+    Branches, worktrees and the failure context consumed are untouched by all
+    three.
+    """
     from snodo.infrastructure.state import read_state
+
+    ambiguity = _retry_spec_ambiguity(args)
+    if ambiguity:
+        print(f"Error: {ambiguity}", file=sys.stderr)
+        return 1
 
     state = read_state(project_root)
     mode = state.current_mode or "producer"
@@ -471,8 +625,12 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
                 spec = task_data.get("description", "")
             except Exception as e:
                 _logger.debug("Could not read task state from %s: %s", task_state_file, e)
-        if not spec and getattr(args, "description", None):
-            spec = args.description
+        if not spec:
+            spec = (
+                spec_text(getattr(args, "description", None))
+                or spec_text(getattr(args, "append_spec", None))
+                or spec_text(getattr(args, "replace_spec", None))
+            )
 
         if spec:
             audit_log = getattr(args, "audit_log", None)
@@ -512,8 +670,8 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
     if attempt >= max_retries:
         print(f"Task {task_id} has failed {max_retries} times.")
         print(f"  Review branch {failure.get('branch', 'unknown')} and either:")
-        print(f"  - snodo run --retry {task_id} \"revised spec\" (override spec)")
-        print(f"  - snodo task abandon {task_id} (delete branch)")
+        for option in followup.task_retry_options(task_id):
+            print(f"  - {option}")
         return 1
 
     # Clear stale pending_decisions from previous attempt
@@ -526,8 +684,24 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
 
     # Build augmented prompt
     original_spec = failure.get("original_spec") or failure.get("spec", "")
-    revised_spec = args.description
-    authoritative_spec = revised_spec or original_spec
+    guidance, replacement = _retry_spec_inputs(args, original_spec)
+
+    if replacement:
+        # The only retry shape that discards anything. Keep the discarded spec
+        # reachable before the run starts, so a replacement is never the loss
+        # of the operator's only copy.
+        _record_superseded_spec(
+            session, session_manager, getattr(args, "audit_log", None),
+            task_id, original_spec, replacement,
+        )
+        authoritative_spec = replacement
+    elif guidance:
+        # Additive: the spec already written stands, and the note joins it, so
+        # the combined text is what later attempts and the record treat as the
+        # task's specification.
+        authoritative_spec = spec_with_guidance(original_spec, guidance)
+    else:
+        authoritative_spec = original_spec
 
     failed_validators = failure.get("failed_validators", [])
     validator_details = "\n".join(
@@ -548,12 +722,16 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
     else:
         phase_label = "post-validation"
 
-    prompt_parts = []
-    if revised_spec:
-        prompt_parts.append(f"Original spec: {original_spec}")
-        prompt_parts.append(f"Revised spec (replaces original): {revised_spec}")
-    else:
-        prompt_parts.append(f"Original spec: {original_spec}")
+    # The prompt must open with "Original spec: ..." in every shape: the task
+    # branch name is derived from the leading words of the spec, so a retry
+    # that changed the header would move the work onto a different branch.
+    prompt_parts = [f"Original spec: {original_spec}"]
+    if replacement:
+        prompt_parts.append(f"Revised spec (replaces original): {replacement}")
+    elif guidance:
+        prompt_parts.append(
+            f"Added guidance for this attempt (the spec above still stands): {guidance}"
+        )
 
     if validator_details:
         prompt_parts.append(f"Previous attempt {attempt} failed {phase_label}:\n{validator_details}")
@@ -572,6 +750,10 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
 
     task = Task(id=task_id, spec=augmented, root_spec=authoritative_spec)
     print(f"Retrying task {task_id} (attempt {attempt + 1}/{max_retries})")
+    if replacement:
+        print(f"  Spec REPLACED. Previous spec kept: {followup.task_inspect(task_id)}")
+    elif guidance:
+        print("  Spec kept; guidance added on top of it.")
     print()
 
     with provider_env(model) as mgr:

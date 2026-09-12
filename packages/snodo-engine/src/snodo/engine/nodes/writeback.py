@@ -12,6 +12,7 @@ from typing import Any, List, Optional
 from snodo.engine.policy import policy_decision_to_dict
 from snodo.engine.state import _task_branch_name
 from snodo.core.interfaces import result_record
+from snodo.core.spec import same_spec
 
 _logger = logging.getLogger(__name__)
 
@@ -319,6 +320,27 @@ class WritebackMixin:
             "files_changed": list(loop_state.artifacts),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+        # A replaced spec must stay recoverable: this record is rewritten every
+        # attempt and would otherwise drop the spec the previous attempt carried
+        # the moment a retry replaces it. Anything superseded earlier is
+        # carried forward, and a spec that has just been displaced by a new
+        # authoritative one joins the history here too (the CLI records the
+        # same event when it replaces a spec, so this is the backstop for any
+        # path that reached the engine with a changed spec and no CLI).
+        superseded = existing.get("superseded_specs")
+        superseded = list(superseded) if isinstance(superseded, list) else []
+        displaced = existing.get("original_spec") or existing.get("spec")
+        if (
+            isinstance(displaced, str) and displaced
+            and not same_spec(displaced, original_spec)
+            and displaced not in superseded
+        ):
+            superseded.append(displaced)
+        if superseded:
+            failures[task_id]["superseded_specs"] = superseded
+            failures[task_id]["superseded_spec"] = superseded[-1]
+        elif isinstance(existing.get("superseded_spec"), str):
+            failures[task_id]["superseded_spec"] = existing["superseded_spec"]
 
         self._session_manager.update_decision(
             self._session_id, "task_failure", failures,

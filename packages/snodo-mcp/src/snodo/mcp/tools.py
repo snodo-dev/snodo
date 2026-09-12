@@ -600,9 +600,12 @@ TOOL_REGISTRY = {
     "retry_job": {
         "description": (
             "Retry the task associated with a failed job. Looks up the "
-            "task_id from the job's state, reads failure context, and "
-            "dispatches a new run with augmented prompt. Optionally "
-            "provide a revised spec to replace the original."
+            "task_id from the job's state and dispatches a new run. By "
+            "default the task keeps the specification it is recorded with — "
+            "an operational failure needs another attempt, not a new spec. "
+            "Pass append_spec to add guidance on top of that spec; pass "
+            "revised_spec only to replace it (the replaced spec is audited "
+            "as spec_replaced and stays recoverable)."
         ),
         "inputSchema": {
             "type": "object",
@@ -611,9 +614,16 @@ TOOL_REGISTRY = {
                     "type": "string",
                     "description": "Job ID (e.g., j_abc123) to retry",
                 },
+                "append_spec": {
+                    "type": "string",
+                    "description": (
+                        "Guidance added on top of the recorded spec; the "
+                        "spec itself is kept"
+                    ),
+                },
                 "revised_spec": {
                     "type": "string",
-                    "description": "Optional revised specification replacing the original",
+                    "description": "Replacement specification (discards the recorded one)",
                 },
             },
             "required": ["job_id"],
