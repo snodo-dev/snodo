@@ -45,7 +45,8 @@ When no judge is available, a judge call fails, or the judge abstains, the
 deterministic result stands and the judgement is reported as not made.
 
 Test command detection — the marker must actually declare the command:
-- package.json  → npm test, only if scripts.test exists
+- package.json  → npm test, only if scripts.test exists and is not npm's
+  "no test specified" scaffold stub
 - pyproject.toml / setup.cfg / setup.py → pytest, only if pytest is
   configured or declared as a dependency
 - Cargo.toml → cargo test (built into the toolchain that the manifest pins)
@@ -195,13 +196,35 @@ def _read_text_file(path: Path) -> Optional[str]:
 # file alone is never proof.
 # ---------------------------------------------------------------------------
 
+# npm's own scaffold writes this test script (npm init leaves it verbatim):
+#   echo "Error: no test specified" && exit 1
+# The key is present but the command only announces its own absence — it
+# always exits 1. Match the stub so its presence is not read as a test
+# command; reading the script is sufficient, nothing is executed.
+_NPM_NO_TEST_STUB = re.compile(
+    r"""\A
+    echo\b[^&;\n]*\bno\s+test\s+specified[^&;\n]*
+    (?:\s*(?:&&|\|\||;)\s*exit\b\s*\d+)?
+    \s*\Z
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _is_npm_no_test_stub(script: object) -> bool:
+    """True when a test script cannot run tests — only announces its absence."""
+    return isinstance(script, str) and bool(_NPM_NO_TEST_STUB.match(script.strip()))
+
+
 def _confirm_npm_test(marker_path: Path) -> Optional[str]:
-    """npm test is real only if package.json declares a test script."""
+    """npm test is real only if package.json declares a test that can run."""
     data = _read_json_file(marker_path)
     if not isinstance(data, dict):
         return None
     scripts = data.get("scripts")
     if isinstance(scripts, dict) and scripts.get("test"):
+        if _is_npm_no_test_stub(scripts.get("test")):
+            return None
         return "npm test"
     return None
 
