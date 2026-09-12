@@ -444,6 +444,20 @@ class ConfigManager:
         config = self.load()
         return config.get("default_model") or config.get("model", DEFAULT_MODEL)
 
+    def get_coder_model(self) -> str:
+        """Get the model used for coding work.
+
+        Mirrors the engine's role-model chain: ``llm.coder.model`` overrides
+        the top-level default, which in turn falls back to DEFAULT_MODEL.
+
+        Returns:
+            Model identifier
+        """
+        config = self.load()
+        coder = config.get("llm", {}).get("coder", {})
+        coder_model = coder.get("model") if isinstance(coder, dict) else None
+        return coder_model or self.get_model()
+
     def get_engine_value(self, key: str, default: Any = None) -> Any:
         """Get an engine configuration value.
 

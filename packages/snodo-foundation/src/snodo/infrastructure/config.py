@@ -44,6 +44,7 @@ class ConfigLoadError(Exception):
 
 
 class CoderConfig(BaseModel):
+    model: Optional[str] = Field(default=None, description="Coder LLM model. None = use default_model.")
     max_tokens: int = Field(default=_CODER_MAX_TOKENS_DEFAULT, ge=1)
     max_tool_turns: int = Field(default=_CODER_MAX_TOOL_TURNS_DEFAULT, ge=1, le=200)
     timeout_seconds: int = Field(default=_CODER_TIMEOUT_SECONDS_DEFAULT, ge=1)

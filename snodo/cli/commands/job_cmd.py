@@ -544,7 +544,7 @@ def _dispatch_as_new_task(args, task_data: dict, job_id: str) -> int:
         return 1
 
     mgr = ConfigManager()
-    model = getattr(args, "model", None) or mgr.get_model()
+    model = getattr(args, "model", None) or mgr.get_coder_model()
 
     from snodo.paths import derive_task_id
 

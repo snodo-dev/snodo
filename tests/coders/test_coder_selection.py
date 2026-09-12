@@ -141,3 +141,41 @@ def test_create_coder_deleted_has_no_callers():
 
     assert not hasattr(snodo.coders, "create_coder")
     assert not hasattr(snodo.agents.adapter, "create_coder")
+
+
+def test_llm_coder_model_config_drives_built_coder(monkeypatch, tmp_path):
+    """An operator-set llm.coder.model reaches the coder the engine builds.
+
+    Without an explicit model argument the resolution chain is
+    llm.coder.model > DEFAULT_MODEL, so the key is not merely settable —
+    it takes effect (mirrors llm.validator.model / llm.classifier.model).
+    """
+    monkeypatch.setenv("SNODO_HOME", str(tmp_path))
+    (tmp_path / "config.yml").write_text(
+        "model: gpt-4o\n"
+        "llm:\n"
+        "  coder:\n"
+        "    model: ollama/qwen3:32b\n"
+    )
+
+    protocol = _make_protocol()
+    with patch("snodo.engine.loop.GraphBuilder") as mock_gb:
+        build_protocol_graph(protocol=protocol, coder_name="litellm")
+        _, kwargs = mock_gb.call_args
+    assert kwargs["coder"].model == "ollama/qwen3:32b"
+
+
+def test_explicit_model_beats_llm_coder_model(monkeypatch, tmp_path):
+    """The CLI --model flag (resolved by the caller) outranks the config knob."""
+    monkeypatch.setenv("SNODO_HOME", str(tmp_path))
+    (tmp_path / "config.yml").write_text(
+        "llm:\n"
+        "  coder:\n"
+        "    model: ollama/qwen3:32b\n"
+    )
+
+    protocol = _make_protocol()
+    with patch("snodo.engine.loop.GraphBuilder") as mock_gb:
+        build_protocol_graph(protocol=protocol, model="gpt-4o", coder_name="litellm")
+        _, kwargs = mock_gb.call_args
+    assert kwargs["coder"].model == "gpt-4o"

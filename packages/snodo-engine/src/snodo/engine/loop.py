@@ -1042,7 +1042,12 @@ def build_protocol_graph(
         initial_mode_obj = protocol.get_mode(protocol.initial_mode)
         mode_coder = getattr(initial_mode_obj, "coder", None) if initial_mode_obj else None
         mode_coder_config = getattr(initial_mode_obj, "coder_config", {}) if initial_mode_obj else {}
-        resolved_model = model or (mode_coder_config.get("model") if mode_coder_config else None) or DEFAULT_MODEL
+        resolved_model = (
+            model
+            or (mode_coder_config.get("model") if mode_coder_config else None)
+            or llm_cfg.coder.model
+            or DEFAULT_MODEL
+        )
         resolved_name = resolve_coder_name(
             model=resolved_model,
             mode_coder=mode_coder,

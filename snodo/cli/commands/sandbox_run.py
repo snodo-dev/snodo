@@ -140,7 +140,7 @@ def _submit_background_job(args) -> int:
 
     # Set API key env vars so child process inherits them
     mgr = ConfigManager()
-    model = args.model or mgr.get_model()
+    model = args.model or mgr.get_coder_model()
 
     with provider_env(model) as mgr:
         project_root = require_project_root()
