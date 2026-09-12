@@ -241,6 +241,14 @@ def run_validators(
                 )
             ], {}
 
+    # Wrap completion_fn with task-scoped header injection. Headers cannot
+    # be bound at build time (task_id not available yet) but must be resolved
+    # at call time. This wrapper makes headers reach every call site by
+    # construction — no validator can omit them.
+    task_aware_completion_fn = completion_fn
+    if completion_fn is not None and task.id:
+        task_aware_completion_fn = _wrap_completion_fn_with_headers(completion_fn, task.id)
+
     context = ValidatorContext(
         task=task,
         current_mode=mode_obj,
@@ -251,7 +259,7 @@ def run_validators(
         mode_tools=list(mode_obj.tools) if mode_obj else [],
         mode_transitions=dict(mode_obj.transitions) if mode_obj else {},
         mode_validator_refs=list(mode_obj.validators) if mode_obj else [],
-        completion_fn=completion_fn,
+        completion_fn=task_aware_completion_fn,
         model=default_model,
         working_directory=str(Path.cwd()) if not workspace_mcp
         else str(getattr(workspace_mcp, "project_root", Path.cwd())),
@@ -409,6 +417,40 @@ def build_completion_fn(model: str, base_fn: Any) -> Any:
         kwargs["api_key"] = api_key
 
     return functools.partial(base_fn, **kwargs)
+
+
+def _wrap_completion_fn_with_headers(completion_fn: Any, task_id: str) -> Any:
+    """Wrap a completion function to automatically resolve and attach provider headers.
+
+    Headers are task-scoped (e.g., opencode's x-opencode-session), so they must
+    be resolved at call time, not at build time. This wrapper ensures all
+    call sites — including validators that declare no tools and
+    protocol_adherence — automatically receive headers by construction,
+    making it impossible for a new call site to omit them.
+
+    Args:
+        completion_fn: The underlying completion function (typically a partial)
+        task_id: The task's unique identifier for header resolution
+
+    Returns:
+        A wrapper function that intercepts calls and injects resolved headers
+    """
+    from snodo.config import ConfigManager
+
+    def headers_aware_wrapper(**kwargs: Any) -> Any:
+        # Extract the model from call arguments (validator may override the
+        # bound model via per-validator model assignment in run_validators)
+        call_model = kwargs.get("model")
+        if call_model:
+            # Resolve headers for this specific model and task combination
+            extra_headers = ConfigManager.resolve_extra_headers(
+                call_model, task_id=task_id
+            )
+            if extra_headers and "extra_headers" not in kwargs:
+                kwargs["extra_headers"] = extra_headers
+        return completion_fn(**kwargs)
+
+    return headers_aware_wrapper
 
 
 def resolve_validator_completion() -> Tuple[Any, str, Any]:
