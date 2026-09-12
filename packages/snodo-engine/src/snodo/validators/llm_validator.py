@@ -946,6 +946,15 @@ class LLMValidator(ValidatorBase):
         }
         if not _is_gemini3_plus(self.model):
             kwargs["temperature"] = 0.0
+        # Provider headers belong on every call, not only the tool loop. A
+        # validator that declares no tools takes this path, and a provider
+        # that requires a header (opencode Go requires x-opencode-session)
+        # refuses it with a 400 while tool-using validators on the same model
+        # succeed — so one judging model appears to work for some validators
+        # and fail for others.
+        extra_headers = self._resolve_extra_headers()
+        if extra_headers:
+            kwargs["extra_headers"] = extra_headers
         response = self._call_completion_with_retry(**kwargs)
         content = response.choices[0].message.content
         if not content:
