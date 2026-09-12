@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from typing import Optional
 import typer
 
+from snodo.core.spec import spec_text, spec_with_guidance
+
 _logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -104,10 +106,14 @@ def job_unarchive(
 @app.command("retry")
 def job_retry(
     job_id: str = typer.Argument(..., help="Job ID to retry (e.g., j_abc123)"),
-    description: str = typer.Argument("", help="Optional revised spec (replaces original)"),
+    description: str = typer.Argument("", help="Guidance added on top of the task's existing spec (the spec is kept)"),
+    replace_spec: str = typer.Option("", "--replace-spec", help="Replace the task's spec with this (deliberate; the previous spec stays recoverable)"),
 ):
-    """Retry the task associated with a failed job."""
-    args = SimpleNamespace(job_action="retry", job_id=job_id, description=description)
+    """Retry the task associated with a failed job, keeping its spec by default."""
+    args = SimpleNamespace(
+        job_action="retry", job_id=job_id, description=description,
+        replace_spec=replace_spec,
+    )
     return job_command(args)
 
 
@@ -431,7 +437,8 @@ def _job_retry(manager, args) -> int:
     import json
 
     job_id = getattr(args, "job_id", "")
-    revised_spec = getattr(args, "description", "")
+    guidance = getattr(args, "description", "")
+    replace_spec = getattr(args, "replace_spec", "")
     if not job_id:
         print("Error: job_id is required", file=sys.stderr)
         return 1
@@ -480,7 +487,8 @@ def _job_retry(manager, args) -> int:
     from snodo.cli.commands.run_cmd import RunArgs, _retry_task
 
     retry_args = RunArgs(
-        description=revised_spec,
+        description=guidance,
+        replace_spec=replace_spec,
         protocol=getattr(args, "protocol", ".snodo/protocol.yml"),
         model=getattr(args, "model", None),
         audit_log=audit_log,
@@ -488,6 +496,22 @@ def _job_retry(manager, args) -> int:
     )
 
     return _retry_task(retry_args, task_id, project_root, session_manager)
+
+
+def _resumed_spec(original_spec: str, guidance: str, replace_spec: str) -> str:
+    """The specification a re-dispatched job carries.
+
+    The same rule ``snodo run --retry`` follows: text beside a retry adds to the
+    spec on record, and only an explicit replacement discards it. Shared so the
+    two paths cannot disagree about what the operator's words meant.
+    """
+    replace_spec = spec_text(replace_spec)
+    guidance = spec_text(guidance)
+    if replace_spec:
+        return replace_spec
+    if guidance and original_spec:
+        return spec_with_guidance(original_spec, guidance)
+    return guidance or original_spec
 
 
 def _dispatch_as_new_task(args, task_data: dict, job_id: str) -> int:
@@ -499,7 +523,14 @@ def _dispatch_as_new_task(args, task_data: dict, job_id: str) -> int:
     from snodo.cli.commands import load_protocol
     from snodo.core.interfaces import Task
 
-    description = getattr(args, "description", "") or task_data.get("description", "")
+    description = _resumed_spec(
+        task_data.get("description", ""),
+        getattr(args, "description", ""),
+        getattr(args, "replace_spec", ""),
+    )
+    if not description:
+        print(f"No specification recorded for job {job_id}.", file=sys.stderr)
+        return 1
     project_root = require_project_root()
     from snodo.project import get_project_id
     project_id, _ = get_project_id(project_root)

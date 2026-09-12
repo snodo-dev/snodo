@@ -76,10 +76,37 @@ class TestSuggestedCommandsResolve:
             followup.job_followup("j_1", running=False): ["job", "status"],
             followup.recon_inspect("rec_1"): ["logs"],
             followup.task_retry("task_1"): ["run"],
+            followup.task_retry_annotate("task_1"): ["run"],
+            followup.task_retry_replace("task_1"): ["run"],
+            followup.task_retry_restore("task_1"): ["run"],
+            followup.task_inspect_json("task_1"): ["task", "show"],
         }
         for suggested, tokens in paths.items():
             _resolve_command(tokens)  # raises KeyError on 404
             assert suggested.startswith("snodo")
+
+    def test_printed_retry_is_safe_to_paste(self):
+        """The default retry suggestion must not carry a spec argument.
+
+        A suggestion an operator pastes is executed as written, so the printed
+        form can only ever be the one that changes nothing: ``snodo run --retry
+        <id>`` with no positional spec is a bare retry, while the older
+        ``--retry <id> "revised spec"`` overwrote a task's specification with
+        the placeholder text.
+        """
+        from snodo.cli.commands import followup
+
+        suggestion = followup.task_retry("task_1")
+        assert suggestion == "snodo run --retry task_1"
+        assert "spec" not in suggestion.split("--retry")[1]
+
+        # The deliberate shapes are still printed somewhere — as alternatives,
+        # each labelled with what it does to the spec — never as the suggestion.
+        options = followup.task_retry_options("task_1")
+        assert options[0].startswith(suggestion)
+        assert "unchanged" in options[0]
+        assert any("--append-spec" in o and "add guidance" in o for o in options)
+        assert any("--replace-spec" in o and "replace the spec" in o for o in options)
 
     def test_running_and_finished_suggestions_differ(self):
         """A running thing is offered a live surface; a finished one a record.
@@ -478,7 +505,10 @@ class TestHaltFooterSuggestions:
         assert "Follow-up:" in out
         assert "snodo session show sess_xyz" in out
         assert "snodo task show task_abc" in out
-        assert 'snodo run --retry task_abc "revised spec"' in out
+        assert 'snodo run --retry task_abc' in out
+        # The printed retry must be the bare one: a suggestion carrying a spec
+        # argument is a suggestion to rewrite the task when pasted.
+        assert out.strip().endswith("snodo run --retry task_abc")
 
     def test_halt_footer_no_retry_on_completed(self, capsys):
         from snodo.engine.closure import ClosureNode

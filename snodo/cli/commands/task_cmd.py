@@ -581,19 +581,31 @@ def task_show_command(args) -> int:
         if files:
             print(f"  files:   {', '.join(files)}")
 
+    from snodo.cli.commands import followup
+
+    superseded = _superseded_specs(failure_entry)
+    if superseded:
+        # A retry that replaced the spec discards it from the live record. Print
+        # what was discarded, so the copy an operator was told to overwrite is
+        # reachable from the command they were already told to run. The restore
+        # is named as a flag rather than as a complete command: every command
+        # printed here must stay safe to paste, and a restoring retry is the
+        # one act that could overwrite the spec that is live now.
+        print()
+        label = "Superseded spec" if len(superseded) == 1 else "Superseded specs"
+        print(f"{label} (replaced by a later retry):")
+        for index, old_spec in enumerate(superseded, start=1):
+            _print_spec_block(old_spec, task_id=task_id, prefix=f"  [{index}] ")
+        print(f"  Full text: {followup.task_inspect_json(task_id)}")
+        print(f"  To restore one: {followup.task_retry_restore(task_id)}")
+
     if spec:
         print()
         print("Task spec:")
-        _SPEC_DISPLAY_LIMIT = 400
-        if len(spec) > _SPEC_DISPLAY_LIMIT:
-            print(f"  {spec[:_SPEC_DISPLAY_LIMIT]}…")
-            print(f"  (truncated — full spec: snodo task show {task_id} --json)")
-        else:
-            print(f"  {spec}")
+        _print_spec_block(spec, task_id=task_id, prefix="  ")
 
     print()
     print("Inspect:")
-    from snodo.cli.commands import followup
     print(f"  {followup.session_inspect(session.session_id)}")
     if isinstance(failure_entry, dict):
         print(f"  {followup.task_retry(task_id)}")
@@ -965,6 +977,37 @@ def task_report_command(args) -> int:
     return 0
 
 
+def _superseded_specs(failure_entry) -> list:
+    """Return the specs a replacing retry discarded, oldest first.
+
+    ``superseded_specs`` is the history the CLI and the engine keep; the singular
+    ``superseded_spec`` is what older records carry. Reading both means a spec
+    replaced before this field existed is still recoverable.
+    """
+    if not isinstance(failure_entry, dict):
+        return []
+    history = failure_entry.get("superseded_specs")
+    specs = [s for s in (history or []) if isinstance(s, str) and s.strip()]
+    if specs:
+        return specs
+    single = failure_entry.get("superseded_spec")
+    if isinstance(single, str) and single.strip():
+        return [single]
+    return []
+
+
+_SPEC_DISPLAY_LIMIT = 400
+
+
+def _print_spec_block(spec: str, *, task_id: str, prefix: str = "  ") -> None:
+    """Print one specification, truncated the same way everywhere it is shown."""
+    if len(spec) > _SPEC_DISPLAY_LIMIT:
+        print(f"{prefix}{spec[:_SPEC_DISPLAY_LIMIT]}…")
+        print(f"{prefix}(truncated — full spec: snodo task show {task_id} --json)")
+    else:
+        print(f"{prefix}{spec}")
+
+
 def _unwrap_spec(spec: str) -> str:
     """Unwrap engine scaffolding or retry/recovery wrappers to recover the original request."""
     if not spec:
@@ -992,7 +1035,14 @@ def _unwrap_spec(spec: str) -> str:
 
     if spec.startswith("Original spec:"):
         after_orig = spec[len("Original spec:"):].strip()
-        for marker in ("\n\nPrevious attempt", "\nPrevious attempt", "\n\nRevised spec", "\n\nFiles changed", "\n\nFix the issues"):
+        for marker in (
+            "\n\nPrevious attempt", "\nPrevious attempt", "\n\nRevised spec",
+            # The additive retry wrapper (`--append-spec`): guidance riding on
+            # top of the spec is not part of the spec the attempt was asked to
+            # satisfy, so the excerpt stops at the spec.
+            "\n\nAdded guidance",
+            "\n\nFiles changed", "\n\nFix the issues",
+        ):
             if marker in after_orig:
                 after_orig = after_orig.split(marker, 1)[0]
         extracted = after_orig.strip()

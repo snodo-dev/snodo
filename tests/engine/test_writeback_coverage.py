@@ -180,6 +180,78 @@ class TestAutoWriteFailureContext:
         failures = mgr.update_decision.call_args[0][2]
         assert isinstance(failures, dict)
 
+    def test_replaced_spec_is_kept_recoverable(self):
+        """A retry that arrives with a new authoritative spec must not drop the
+        spec the previous attempt was recorded with — the record is rewritten
+        every attempt, so without this the discarded copy would be lost."""
+        builder, mgr, session = _make_builder_with_session()
+        session.checkpoint.decisions = {
+            "task_failure": {
+                "t1": {
+                    "attempt": 1,
+                    "spec": "the long original spec",
+                    "original_spec": "the long original spec",
+                }
+            }
+        }
+        state = _make_loop_state(task=Task(id="t1", spec="prompt", root_spec="a replacement"))
+        builder._auto_write_failure_context(state, [])
+        entry = mgr.update_decision.call_args[0][2]["t1"]
+        assert entry["original_spec"] == "a replacement"
+        assert entry["superseded_specs"] == ["the long original spec"]
+        assert entry["superseded_spec"] == "the long original spec"
+
+    def test_superseded_history_survives_later_failures(self):
+        builder, mgr, session = _make_builder_with_session()
+        session.checkpoint.decisions = {
+            "task_failure": {
+                "t1": {
+                    "attempt": 2,
+                    "spec": "a replacement",
+                    "original_spec": "a replacement",
+                    "superseded_specs": ["the long original spec"],
+                }
+            }
+        }
+        state = _make_loop_state(task=Task(id="t1", spec="prompt", root_spec="a replacement"))
+        builder._auto_write_failure_context(state, [])
+        entry = mgr.update_decision.call_args[0][2]["t1"]
+        assert entry["superseded_specs"] == ["the long original spec"]
+
+    def test_superseded_spec_without_a_history_is_carried_forward(self):
+        """A record written before the history list existed keeps its single
+        superseded spec rather than losing it on the next rewrite."""
+        builder, mgr, session = _make_builder_with_session()
+        session.checkpoint.decisions = {
+            "task_failure": {
+                "t1": {
+                    "attempt": 2,
+                    "spec": "a replacement",
+                    "original_spec": "a replacement",
+                    "superseded_spec": "the long original spec",
+                }
+            }
+        }
+        state = _make_loop_state(task=Task(id="t1", spec="prompt", root_spec="a replacement"))
+        builder._auto_write_failure_context(state, [])
+        entry = mgr.update_decision.call_args[0][2]["t1"]
+        assert entry["superseded_spec"] == "the long original spec"
+        assert "superseded_specs" not in entry
+
+    def test_unchanged_spec_records_no_superseded_entry(self):
+        """A bare retry discards nothing, so nothing is booked as superseded."""
+        builder, mgr, session = _make_builder_with_session()
+        session.checkpoint.decisions = {
+            "task_failure": {
+                "t1": {"attempt": 1, "spec": "do something", "original_spec": "do something"}
+            }
+        }
+        state = _make_loop_state(task=Task(id="t1", spec="prompt", root_spec="do something"))
+        builder._auto_write_failure_context(state, [])
+        entry = mgr.update_decision.call_args[0][2]["t1"]
+        assert "superseded_specs" not in entry
+        assert "superseded_spec" not in entry
+
     def test_pass_severity_not_included(self):
         builder, mgr, session = _make_builder_with_session()
         session.checkpoint.decisions = {}

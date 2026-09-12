@@ -18,12 +18,16 @@ from snodo.cli.commands.run_cmd import register
 # Options only a single path can offer, where parity is meaningless:
 # - `snodo run` executes one task or one plan; `plan run` is the plan subcommand
 #   (plans its own positional `name` and is reached via the plan app).
+# - The retry spec options qualify `--retry`, which only `snodo run` offers;
+#   `plan run` resumes a blocked task from its own spec file instead.
 RUN_ONLY_OPTIONS = {
     frozenset({"--plan", "-p"}),
     frozenset({"--background", "-b"}),
     frozenset({"--sandbox"}),
     frozenset({"--resume"}),
     frozenset({"--retry"}),
+    frozenset({"--append-spec"}),
+    frozenset({"--replace-spec"}),
     frozenset({"--from-pr"}),
 }
 

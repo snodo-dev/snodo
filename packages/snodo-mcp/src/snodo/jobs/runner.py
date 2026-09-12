@@ -15,7 +15,8 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
 
     Args:
         job_dir: Path to the job directory (.snodo/jobs/<job_id>/)
-        task_args: Dict with description, protocol, model, mock, verbose, from_pr
+        task_args: Dict with description, protocol, model, mock, verbose,
+            from_pr, retry
 
     Returns:
         Command list suitable for subprocess.Popen
@@ -23,7 +24,15 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
     cmd = [sys.executable, "-u", "-m", "snodo.jobs.wrapper", job_dir, "run"]
 
     desc = task_args.get("description", "")
-    if desc:
+    retry = task_args.get("retry")
+    if desc and retry:
+        # A description beside --retry is guidance added ON TOP of the recorded
+        # spec, which is not what a resumed plan task means: the plan layer
+        # dispatches the task's own spec as the authority for the attempt. Say
+        # that with the flag that means it, so the two layers cannot disagree
+        # about what the text is.
+        cmd.extend(["--replace-spec", desc])
+    elif desc:
         cmd.append(desc)
 
     protocol = task_args.get("protocol")
@@ -51,7 +60,6 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
     if task_args.get("no_isolation"):
         cmd.append("--no-isolation")
 
-    retry = task_args.get("retry")
     if retry:
         cmd.extend(["--retry", retry])
 

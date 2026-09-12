@@ -352,3 +352,109 @@ class TestHandleRetryJob:
             MockJM.return_value.submit.side_effect = lambda a: (captured.update(a) or "j-mode-retry")
             srv._handle_retry_job({"job_id": "j-mode"})
         assert captured.get("mode") == "full"
+
+    # --- retry spec shapes: the MCP surface must not diverge from the CLI ---
+
+    def test_bare_retry_keeps_the_recorded_spec(self, server, tmp_path):
+        """No spec argument is a bare retry: the spec on record is dispatched."""
+        job_dir = tmp_path / "j-bare"
+        job_dir.mkdir()
+        original = "sixty lines of specification\n- constraint one\n- constraint two"
+        (job_dir / "task.json").write_text(
+            json.dumps({"task_id": "t-bare", "description": original})
+        )
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value._job_dir.return_value = job_dir
+            MockJM.return_value.submit.return_value = "j-bare-2"
+            result = server._handle_retry_job({"job_id": "j-bare"})
+        assert result["description"] == original
+        assert result["spec_action"] == "unchanged"
+
+    def test_append_spec_adds_guidance_on_top(self, server, tmp_path):
+        """append_spec annotates the recorded spec; it never stands in for it."""
+        job_dir = tmp_path / "j-append"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(
+            json.dumps({"task_id": "t-ap", "description": "the original spec"})
+        )
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value._job_dir.return_value = job_dir
+            MockJM.return_value.submit.return_value = "j-append-2"
+            result = server._handle_retry_job({
+                "job_id": "j-append",
+                "append_spec": "also: the provider needs an extra header",
+            })
+        assert result["description"] == "the original spec\n\nalso: the provider needs an extra header"
+        assert result["spec_action"] == "appended"
+
+    def test_revised_spec_replaces_and_is_audited(self, server, protocol, project_dir, tmp_path):
+        """Replacement stays available, and the discarded spec stays recoverable."""
+        from snodo.infrastructure.audit import AuditLog
+
+        audit = AuditLog(str(tmp_path / "audit.log"))
+        srv = ProtocolMCPServer(protocol, project_dir, audit_log=audit)
+        job_dir = tmp_path / "j-rev-audit"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(
+            json.dumps({"task_id": "t-rev", "description": "the original spec"})
+        )
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value._job_dir.return_value = job_dir
+            MockJM.return_value.submit.return_value = "j-rev-2"
+            result = srv._handle_retry_job({
+                "job_id": "j-rev-audit",
+                "revised_spec": "a replacement",
+            })
+        assert result["description"] == "a replacement"
+        assert result["spec_action"] == "replaced"
+        events = audit.get_history("spec_replaced")
+        assert events[0].data["previous_spec"] == "the original spec"
+        assert events[0].data["new_spec"] == "a replacement"
+
+    def test_append_and_revised_together_raises(self, server, tmp_path):
+        """Two contradictory statements about the spec are refused, not guessed."""
+        job_dir = tmp_path / "j-both"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(
+            json.dumps({"task_id": "t-both", "description": "spec"})
+        )
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value._job_dir.return_value = job_dir
+            with pytest.raises(MCPError, match="not both"):
+                server._handle_retry_job({
+                    "job_id": "j-both",
+                    "append_spec": "guidance",
+                    "revised_spec": "replacement",
+                })
+
+    def test_revised_spec_that_matches_the_record_is_no_revision(self, server, protocol, project_dir, tmp_path):
+        """Handing back the recorded spec changes nothing and is not audited as a
+        replacement — otherwise a plain retry reads as a destroyed spec."""
+        from snodo.infrastructure.audit import AuditLog
+
+        audit = AuditLog(str(tmp_path / "audit-match.log"))
+        srv = ProtocolMCPServer(protocol, project_dir, audit_log=audit)
+        job_dir = tmp_path / "j-same"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(
+            json.dumps({"task_id": "t-same", "description": "the   original\nspec"})
+        )
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value._job_dir.return_value = job_dir
+            MockJM.return_value.submit.return_value = "j-same-2"
+            result = srv._handle_retry_job({
+                "job_id": "j-same",
+                "revised_spec": "the original spec",
+            })
+        assert result["spec_action"] == "unchanged"
+        assert result["description"] == "the   original\nspec"
+        assert not audit.get_history("spec_replaced")
+
+    def test_retry_tool_schema_offers_the_three_shapes(self):
+        """The advertised schema matches the CLI: bare, additive, replacing."""
+        from snodo.mcp.tools import TOOL_REGISTRY
+
+        schema = TOOL_REGISTRY["retry_job"]["inputSchema"]["properties"]
+        assert {"job_id", "append_spec", "revised_spec"} <= set(schema)
+        description = TOOL_REGISTRY["retry_job"]["description"]
+        assert "default the task keeps the specification" in description

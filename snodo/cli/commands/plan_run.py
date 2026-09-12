@@ -12,6 +12,7 @@ from typing import Optional
 from snodo.core.interfaces import Task
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
+from snodo.cli.commands import followup
 
 
 def _task_completed(tasks_status: dict, task_id: str) -> bool:
@@ -207,8 +208,8 @@ def _plan_retry_decision(planner, args, protocol, task_id: str) -> str:
     if attempt >= max_retries:
         print(f"Task {task_id} has failed {max_retries} times.")
         print(f"  Review branch {failure.get('branch', 'unknown')} and either:")
-        print(f"  - snodo run --retry {task_id} \"revised spec\" (override spec)")
-        print(f"  - snodo task abandon {task_id} (delete branch)")
+        for option in followup.task_retry_options(task_id):
+            print(f"  - {option}")
         return "exhausted"
     return "retry"
 
