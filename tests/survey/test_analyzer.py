@@ -345,6 +345,44 @@ class TestTestCommandConfirmation:
         assert survey.test_command == "npm test"
         assert survey.test_marker_file == "package.json"
 
+    def test_package_json_npm_default_stub_is_not_claimed(self, tmp_path):
+        """npm init's scaffold test script announces its own absence; it always exits 1."""
+        (tmp_path / "package.json").write_text(
+            json.dumps(
+                {
+                    "name": "core.droptrack.io",
+                    "version": "1.0.0",
+                    "scripts": {"test": 'echo "Error: no test specified" && exit 1'},
+                }
+            )
+        )
+        (tmp_path / "index.js").write_text("// js")
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.test_command is None
+        assert survey.test_marker_file is None
+        serialized = str(survey.to_dict())
+        assert "npm test" not in serialized
+        for finding in survey.findings:
+            lowered = finding.message.lower()
+            assert "violat" not in lowered
+            assert "missing" not in lowered
+            assert "require" not in lowered
+
+    def test_makefile_without_test_target_still_not_claimed(self, tmp_path):
+        """The Makefile confirmer is untouched: no test target, no command."""
+        (tmp_path / "Makefile").write_text(
+            "help:\n\t@echo help\n\ndeploy:\n\tnpm run deploy\n"
+        )
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hi')")
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.test_command is None
+        assert survey.test_marker_file is None
+
     def test_pyproject_without_pytest_is_not_claimed(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text("[project]\nname = 'bare'")
         (tmp_path / "main.py").write_text("print('hi')")
