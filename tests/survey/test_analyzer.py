@@ -633,6 +633,58 @@ class TestAgentBoundaryRole:
         docs_record = next(r for r in survey.judgements if r.subject_path == "docs")
         assert docs_record.cited_files == ["docs/package.json"]
 
+    def test_boundary_count_matches_listed_modules_after_scaffolding(self, tmp_path):
+        """The summary counts what was concluded, and set-asides are stated separately."""
+        self._make_deskflow_shape(tmp_path)
+        judge = _recording_judge([
+            _verdict("boundary-role:app", "product", cited=("app/package.json",)),
+            _verdict("boundary-role:lib", "product", cited=("lib/package.json",)),
+            _verdict(
+                "boundary-role:docs", "scaffolding",
+                reason="a doc site, not shipped",
+                cited=("docs/package.json",),
+            ),
+            _verdict(
+                "boundary-role:tests", "scaffolding",
+                reason="a test harness around the product",
+                cited=("tests/package.json",),
+            ),
+        ])
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        boundary_finding = next(
+            f for f in survey.findings if "module boundary(s)" in f.evidence[0]
+        )
+        stated_count = int(
+            boundary_finding.evidence[0].split()[1]
+        )
+        assert stated_count == len(survey.modules) == 2
+
+        scaffolding_finding = next(
+            f for f in survey.findings
+            if f.message.startswith("Manifest-backed works classified as scaffolding")
+        )
+        assert scaffolding_finding.evidence[0].startswith("2 candidate(s) set aside")
+
+    def test_boundary_count_matches_listed_modules_without_scaffolding(self, tmp_path):
+        """No set-aside line when nothing was judged scaffolding; the count still matches."""
+        self._make_deskflow_shape(tmp_path)
+        judge = _recording_judge([
+            _verdict("boundary-role:app", "product", cited=("app/package.json",)),
+            _verdict("boundary-role:lib", "product", cited=("lib/package.json",)),
+            _verdict("boundary-role:docs", "product", cited=("docs/package.json",)),
+            _verdict("boundary-role:tests", "product", cited=("tests/package.json",)),
+        ])
+
+        survey = analyze_repository(tmp_path, judge=judge)
+
+        boundary_finding = next(
+            f for f in survey.findings if "module boundary(s)" in f.evidence[0]
+        )
+        assert boundary_finding.evidence == ["Found 4 module boundary(s)"]
+        assert len(survey.modules) == 4
+
     def test_dossier_is_grounded_in_gathered_evidence(self, tmp_path):
         """The judge is shown a digest the deterministic pass built — bounded listings,
         manifest summaries, source histograms — not sent to explore."""
