@@ -7,7 +7,80 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.8.3] — 2026-09-12
+
+### Added
+
+- `snodo survey` reads an existing repository and reports the governance it
+  already has, so a retrofit starts from evidence rather than from a
+  questionnaire. It reports module boundaries, the languages each module
+  actually ships, the test command each module can be verified with, where
+  decision records live, and repository-level tooling. Two things it
+  deliberately does not do: it never writes — no `.snodo/`, no
+  `protocol.yml`, no decision records — and it never infers a requirement
+  from an absence, so a repository with no tests is reported as having no
+  test command, not as needing one. Arithmetic and judgement are separated.
+  The deterministic pass reads manifests and counts files: it recognises
+  `.svelte`, `.astro`, `.swift` and `.dart`, treats `pubspec.yaml` as a
+  manifest, prunes `Pods/` and `Carthage/` the way it prunes `node_modules/`
+  so a vendored tree contributes neither a language nor a boundary, and
+  refuses to confirm npm's `echo "Error: no test specified" && exit 1`
+  scaffold as a test command. Source-dense directories with no manifest it
+  parses are *proposed* as candidates with their evidence, never promoted on
+  their own. Judgement is routed to the configured agent, which is asked to
+  classify rather than explore: is this manifest a work product or
+  scaffolding, is this candidate a boundary. A verdict is accepted only when
+  it cites files that exist inside the subject's own source, so every
+  conclusion is attributable to evidence a reader can go and disagree with
+  file by file; a model that cannot decide abstains, and abstentions are
+  reported rather than resolved. Without an agent — none configured, the
+  call failed, or the verdict was unverifiable — the deterministic result
+  stands and the output lists which judgements were not made and why; a
+  deferred gate is never an absent one. `--agent` / `--no-agent` force the
+  choice. Measured on eight real repositories against hand-built ground
+  truth fixed before the run (21 product module boundaries, 36 language
+  occurrences in the repositories' own source): module-boundary recall 90%
+  to 100%, precision 81% to 88% deterministic and 100% with judgement,
+  language recall 67% to 100% with no vendored tree contributing anything.
+  The module count reported is now the count the judgements concluded, not
+  the count before they were applied.
+
+- Planning is on the MCP tool surface, not only on the terminal. A consumer
+  could drive the task loop end to end but could not reach the step above
+  it: nothing exposed plan. An intent can now become a proposed plan
+  (`propose_plan`), the plan is retrievable by its stable name at any time
+  including mid-run (`get_plan`), it can be validated without executing
+  anything (`validate_plan`, now always exposed on the all-modes server),
+  and an approved plan can be run (`run_plan`). Returned shapes carry the
+  plan's own structure — waves with ids, `depends_on`, tasks, statuses from
+  `status.json` — never a terminal rendering, so the CLI's output text does
+  not become a wire format. The files under `.snodo/plans/` stay the source
+  of truth and nothing caches plan state. `run_plan` refuses a plan that
+  fails the same `verify_plan_dir` the CLI gates on, before anything spawns,
+  and the run itself is the CLI's plan-run path in a subprocess, so the
+  engine's validators keep authority over every dispatched task and no route
+  opens around them. WF1 holds: `propose_plan` and `run_plan` require a
+  validation token and `run_plan` consumes it at the run boundary, as
+  `dispatch_task` does. Mode-pinned agent servers stay capability-filtered;
+  only the all-modes consumer surface always exposes planning, and the
+  greenfield `plan` mode gains it through `MODE_TOOL_MAP`. The task loop is
+  untouched. Refs #87.
+
+- Every operator-facing LLM knob can be set from the command line instead of
+  by hand-editing YAML. `snodo config set llm.<key>` now covers the role
+  models themselves (`coder.model`, `validator.model`, alongside the
+  `classifier.model` that was already settable), `num_retries` at the top of
+  the `llm` section, and the recon knobs (`recon.num_agents`,
+  `recon.models`, given as a comma-separated list) — the settable set now
+  mirrors the typed fields of `LlmConfig` rather than a list that had fallen
+  behind it. A model value is deliberately not checked against the provider
+  catalog, because local and self-hosted models are legitimate and appear in
+  no catalog. Unknown keys print the valid set instead of only refusing, and
+  naming a whole sub-section where a value is expected is refused as a
+  mistake rather than answered with a serialized object. `validator_llm.model`
+  joins the moved-key table pointing at `validator.model`, so an operator
+  reaching for the old name is redirected rather than told it does not
+  exist — on `get` as well as on `set`.
 
 ### Fixed
 
@@ -55,6 +128,52 @@ snodo uses [Semantic Versioning](https://semver.org/).
   later SDK is expected to compare against `resource_server_url`. Every
   rejection reason is now logged at debug rather than collapsed: diagnosing
   this took a night because the reason existed and was discarded.
+
+- Provider headers now reach every completion call by construction. Provider
+  headers are task-scoped — opencode Go rejects a request without
+  `x-opencode-session` — so unlike credentials they cannot be bound when the
+  completion function is built; task identity only exists when
+  `run_validators()` is called. The result was a call surface where some
+  paths carried headers and some did not: the LLM validator's tool-loop path
+  resolved them, its single-completion path did not, and neither path of
+  `protocol_adherence` did. Observed on a real project: a task failed twice
+  against a local provider with the console showing only that the validator
+  errored, while the validators that happened to use tools passed — the
+  failing one was `meta-spec`, which asks for a verdict and calls nothing,
+  and the provider's own message, "Request is missing x-opencode-session",
+  was reachable only by setting `LITELLM_LOG=DEBUG`. `run_validators()` now
+  wraps the completion function in a closure over the task id that resolves
+  and injects headers on every call, so a validator cannot forget to pass
+  them and a new call site inherits header support without being modified.
+  Header resolution stays at call time, which is what task-scoping requires.
+
+- A judge that never returns a verdict now abstains rather than blocking.
+  When an LLM validator was asked again for `submit_verdict` and still
+  answered in prose — or did not answer — the validator returned a
+  `blocker` with `error=True` and a justification saying no reliable verdict
+  could be obtained. That is a fabricated fault: it halts the task on a
+  finding the judge never made, and it reports the judge as having issued a
+  verdict. Reaching no verdict is now recorded as what it is — severity
+  `None`, an `abstention_reason` naming the shape of the failure, and the
+  same `examined` / `unexamined_tools` fields the turn-cap path already
+  records — and the protocol's abstention policy decides the consequence.
+  Since that policy defaults to blocking, a protocol that wants to halt
+  still halts; the difference is that the halt is attributed correctly and a
+  protocol that would rather proceed on an abstention now can.
+
+- The job listing is bounded and each row names the work it belongs to.
+  `list_jobs` returned every job's full task description, so a listing's
+  cost scaled with spec prose across all of history and the MCP tool
+  returned specs to a consumer that had only asked what was running. A row
+  is now a bounded summary — id, status, the task it belongs to
+  (`task_ref`), a one-line title clipped to 120 characters, exit code,
+  created, started and completed times, and duration — and the spec itself
+  stays where it belongs, in `get_status`. The title is the first line that
+  reads like prose rather than the first line outright, because specs are
+  templates whose first line is a section label; taking the first line
+  literally would have printed `INTENT` for every row. The terminal listing
+  shows exit code and duration alongside, so a run that ended badly is
+  visible without inspecting it.
 
 ---
 
