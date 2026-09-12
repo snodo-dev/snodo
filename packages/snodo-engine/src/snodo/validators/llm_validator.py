@@ -549,15 +549,28 @@ class LLMValidator(ValidatorBase):
                 })
                 continue
 
-            # Still no valid verdict after retry — fail closed
+            # Still no verdict after being asked again for submit_verdict: the
+            # judge answered in prose (or not at all). Reaching no verdict is
+            # not the same as finding a fault — record it as an abstention with
+            # the same fields (reason / examined / unexamined) as the turn-cap
+            # path below, and let the protocol's abstention policy decide the
+            # consequence (a blocking protocol still halts on it). Recording a
+            # fabricated blocker here would misblock the task and mis-report the
+            # judge as issuing a verdict it never made.
+            unexamined = sorted(active_names - tools_exercised)
             return ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
-                severity="blocker",
+                severity=None,
                 justification=(
                     f"Validator did not call submit_verdict after {turn + 1} turn(s). "
-                    "No reliable verdict could be obtained."
+                    "No verdict was reached."
                 ),
-                error=True,
+                abstention_reason=(
+                    "judge replied without calling submit_verdict after "
+                    "being asked to use it"
+                ),
+                examined=examination or None,
+                unexamined_tools=unexamined or None,
             )
 
         # Hit the turn cap — record as abstention, not error. The record says
