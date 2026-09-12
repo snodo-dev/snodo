@@ -1138,11 +1138,14 @@ def analyze_repository(
         )
     survey.modules = final_modules
 
-    if module_boundaries:
+    if final_modules:
         findings.append(
             SurveyFinding(
-                message="Multiple modules detected from workspace declarations and nested manifests.",
-                evidence=[f"Found {len(module_boundaries)} module boundary(s)"],
+                message=(
+                    "Module boundaries detected from workspace declarations "
+                    "and nested manifests."
+                ),
+                evidence=[f"Found {len(final_modules)} module boundary(s)"],
             )
         )
     if scaffolding_paths:
@@ -1150,10 +1153,13 @@ def analyze_repository(
             SurveyFinding(
                 message="Manifest-backed works classified as scaffolding, not product modules.",
                 evidence=[
-                    f"{record.subject_path}: {record.reason} "
-                    f"(cited: {', '.join(record.cited_files)})"
-                    for record in records
-                    if record.subject_path in scaffolding_paths
+                    f"{len(scaffolding_paths)} candidate(s) set aside as scaffolding",
+                    *(
+                        f"{record.subject_path}: {record.reason} "
+                        f"(cited: {', '.join(record.cited_files)})"
+                        for record in records
+                        if record.subject_path in scaffolding_paths
+                    ),
                 ],
             )
         )
