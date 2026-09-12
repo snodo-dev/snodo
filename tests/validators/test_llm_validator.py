@@ -1165,18 +1165,16 @@ class TestPostExecuteToolLoop:
         assert result.severity == "blocker"
         assert "tool-loop operational error" in result.justification
 
-    def test_tool_loop_no_content_no_tool_calls_fails_closed(self, security_validator):
-        """If model returns neither content nor tool_calls, fail-closed as error."""
+    def test_tool_loop_no_content_no_tool_calls_is_abstention(self, security_validator):
+        """Neither content nor tool_calls, twice over, is no verdict — an
+        abstention, not a fabricated blocker the judge never issued."""
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
         mock_workspace = MagicMock()
 
         # First call: empty response — triggers retry
-        # Second call: same empty response — fail-closed
-        call_count = [0]
-
+        # Second call: same empty response — abstention
         def completion_side_effect(**kwargs):
-            call_count[0] += 1
             resp = MagicMock()
             resp.choices = [MagicMock()]
             resp.choices[0].message.content = None
@@ -1189,9 +1187,115 @@ class TestPostExecuteToolLoop:
 
         result = validator.evaluate(ctx)
 
-        assert result.severity == "blocker"
-        assert result.error
+        assert result.severity is None
+        assert not result.error
+        assert result.abstained()
+        assert result.abstention_reason
         assert "submit_verdict" in result.justification
+        assert "blocker" not in result.justification
+
+    def test_tool_loop_prose_twice_is_abstention_with_reason(self, security_validator):
+        """A judge that narrates instead of calling submit_verdict, asked
+        again and narrating again, reached no verdict: recorded as an
+        abstention with its reason, not a validator_error blocker."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = "The change looks reasonable overall."
+            resp.choices[0].message.tool_calls = []
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity is None
+        assert not result.error
+        assert result.abstained()
+        assert "submit_verdict" in result.abstention_reason
+        # The prose exchange itself is part of what the judge did.
+        assert any("free-text" in e for e in result.examined)
+        # Asked exactly twice: the prose reply and the reply after the nudge.
+        assert call_count[0] == 2
+
+    def test_tool_loop_malformed_verdict_is_not_relabelled_as_abstention(self, security_validator):
+        """A malformed/out-of-range submit_verdict is answered with correction
+        (#53); a self-corrected judge records its verdict unchanged. It never
+        receives the 'answered without calling submit_verdict' abstention
+        reason this round introduced — malformed is a different thing."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        call_count = [0]
+
+        def completing(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = None
+            tc = MagicMock()
+            tc.id = f"tc_{call_count[0]}"
+            tc.function.name = "submit_verdict"
+            if call_count[0] == 1:
+                tc.function.arguments = json.dumps(
+                    {"severity": "catastrophic", "justification": "out of range"}
+                )
+            else:
+                tc.function.arguments = json.dumps(
+                    {"severity": "warn", "justification": "minor issue"}
+                )
+            resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completing)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "warn"
+        assert not result.abstained()
+        assert "submit_verdict" not in (result.abstention_reason or "")
+
+    def test_genuinely_malformed_verdict_stays_an_error_not_abstention(
+        self, security_validator, task, monkeypatch
+    ):
+        """The guardrail for this change: the new prose/no-verdict abstention
+        must not swallow the operational fault that #84 established — a
+        provider-rejected structured call whose prose fallback parses to
+        nothing is error=True, not severity=None."""
+        from litellm.exceptions import BadRequestError
+
+        monkeypatch.setattr(
+            "snodo.validators.llm_validator.supports_response_schema", lambda model: True
+        )
+        reject = BadRequestError(
+            message="This response_format type is unavailable now",
+            model="deepseek/deepseek-chat",
+            llm_provider="deepseek",
+            response=None,
+        )
+        garbage = MagicMock()
+        garbage.choices = [MagicMock()]
+        garbage.choices[0].message.content = "I don't understand the question"
+        completion_fn = MagicMock(side_effect=[reject, garbage])
+
+        validator = LLMValidator(security_validator, completion_fn, model="deepseek/deepseek-chat")
+        result = validator.evaluate(task)
+
+        assert result.error is True
+        assert result.severity == "blocker"
+        assert not result.abstained()
+        assert result.abstention_reason is None
 
     def test_tool_loop_uses_tools_kwarg_in_completion_call(self, security_validator):
         """Tool loop must pass tools=[...] to completion_fn."""
