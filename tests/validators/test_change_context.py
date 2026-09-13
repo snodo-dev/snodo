@@ -1,6 +1,6 @@
 """The produced change reaches post-execute judges because of the PHASE.
 
-FILE: tests/validators/test_change_context.py (Fixes #267)
+FILE: tests/validators/test_change_context.py (Fixes #267, #269)
 
 An acceptance judge that must reconstruct "what did the coder do" by reading
 the repository burns its budget rediscovering the change; an observed judge
@@ -16,6 +16,14 @@ every test here runs a validator that is byte-identical (same id, type,
 criteria, tools, model, artifacts, base_ref) across both phases, so an
 implementation keying on id, name, type, tool grants, or artifact presence
 cannot pass both directions.
+
+The section is also bounded (Fixes #269): waves routinely regenerate a
+lockfile or bundle whose diff runs to tens of thousands of lines, and the
+injected section reaches every post-execute judge — including
+single-completion ones with no turn budget to recover with.  The bound tests
+pin that the section fits for a change of any size, says so when it shows
+only part of the change, and names every changed file even when dropping
+their contents.
 """
 
 import json
@@ -24,6 +32,12 @@ from unittest.mock import MagicMock
 import pytest
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task
+from snodo.validators.change import (
+    CHANGE_SECTION_CHAR_LIMIT,
+    ChangeContext,
+    _fit_diff_body,
+    render_change_block,
+)
 from snodo.validators.runner import run_validators
 
 BASE_REF = "b" * 40
@@ -307,3 +321,202 @@ class TestGrantsStillGovernCapabilities:
         _run("pre_execute", ["read_file", "read_diff_between_refs"],
              _tool_loop_completion(), mock_git, MagicMock())
         mock_git.diff_between_refs.assert_not_called()
+
+
+def _source_diff(path, marker, lines=30):
+    """A git-diff-shaped chunk for a small hand-edited source file."""
+    body = "\n".join(f"+feature work {i} " + "x" * 40 for i in range(lines))
+    return (
+        f"diff --git a/{path} b/{path}\n"
+        f"index 0000000..1111111\n"
+        f"--- /dev/null\n"
+        f"+++ b/{path}\n"
+        f"@@ -0,0 +1,{lines + 1} @@\n"
+        f"+# {marker}\n"
+        f"{body}\n"
+    )
+
+
+def _bulk_diff(path, marker, lines=3000):
+    """A regenerated-bulk file (lockfile, bundle): the sentinel marker rides
+    at the END of a long chunk, deep enough that a bounded rendering cuts
+    before it while the file's name must survive."""
+    body = "\n".join(
+        f'+resolved "https://registry.example/pkg{i}.tar.gz"' for i in range(lines)
+    )
+    return (
+        f"diff --git a/{path} b/{path}\n"
+        f"index 0000000..1111111\n"
+        f"--- a/{path}\n"
+        f"+++ b/{path}\n"
+        f"@@ -1,{lines} +1,{lines + 1} @@\n"
+        f"{body}\n"
+        f"-{marker}-old-version\n"
+    )
+
+
+def _binary_diff(path):
+    """A header-only chunk: a binary file's diff has no ---/+++ lines, so its
+    path can only come from the ``diff --git`` header."""
+    return (
+        f"diff --git a/{path} b/{path}\n"
+        f"index 0000000..1111111\n"
+        f"Binary files a/{path} and b/{path} differ\n"
+    )
+
+
+class TestChangeSectionIsBounded:
+    """A change of any size yields a section within the stated bound; a
+    truncated section says so and still names every changed file (#269)."""
+
+    SOURCE_FILES = ["src/cart.py", "src/checkout.py", "tests/test_cart.py"]
+    BULK_FILES = ["uv.lock", "dist/app.min.js"]
+
+    def _huge_diff(self):
+        diff = "".join(
+            _source_diff(p, f"SOURCE-HUNK-{i}")
+            for i, p in enumerate(self.SOURCE_FILES)
+        )
+        diff += "".join(
+            _bulk_diff(p, f"BULK-{i}") for i, p in enumerate(self.BULK_FILES)
+        )
+        return diff
+
+    def test_section_stays_within_the_stated_bound(self):
+        diff = self._huge_diff()
+        assert len(diff) > 10 * CHANGE_SECTION_CHAR_LIMIT, "test must be far over budget"
+        section = render_change_block(ChangeContext(label="abc123..HEAD", diff=diff))
+        assert len(section) <= CHANGE_SECTION_CHAR_LIMIT
+
+    def test_truncated_section_names_every_changed_file(self):
+        section = render_change_block(
+            ChangeContext(label="abc123..HEAD", diff=self._huge_diff())
+        )
+        for path in self.SOURCE_FILES + self.BULK_FILES:
+            assert f"  - {path}\n" in section, f"{path} must survive truncation"
+
+    def test_truncated_section_says_it_is_part_of_the_change(self):
+        """A judge reading the section can tell 'this is the change' from
+        'this is part of it': the notice is explicit, unlike the wholesale
+        silence of an unbounded silent cut."""
+        diff = self._huge_diff()
+        section = render_change_block(ChangeContext(label="abc123..HEAD", diff=diff))
+        assert "PART OF the change, not the whole of it" in section
+        assert diff not in section
+        assert "CHANGED FILES (5):" in section
+
+    def test_source_content_survives_while_regenerated_bulk_gives_way(self):
+        """The budget spends itself on what the judge most needs: the three
+        source hunks are shown whole (sources take priority over bulk), the
+        lockfile and bundle are named but cut — their deep content is gone
+        and the cut is marked."""
+        section = render_change_block(
+            ChangeContext(label="abc123..HEAD", diff=self._huge_diff())
+        )
+        for i in range(len(self.SOURCE_FILES)):
+            assert f"SOURCE-HUNK-{i}" in section
+        for i in range(len(self.BULK_FILES)):
+            assert f"BULK-{i}-old-version" not in section, "sentinel is past the cut"
+            assert f"  - {self.BULK_FILES[i]}\n" in section, "name survives the cut"
+        assert "more characters of this file's diff are not shown" in section
+
+    def test_fitting_diff_is_shown_verbatim_without_any_notice(self):
+        """Truncation must not disturb the common case: a wave's real source
+        change is small, and a judge reading it sees exactly the diff the
+        repository recorded, with no partial-ness claimed."""
+        section = render_change_block(
+            ChangeContext(label="abc123..HEAD", diff=CHANGE_DIFF)
+        )
+        assert CHANGE_DIFF in section
+        assert "PART OF the change" not in section
+        assert "CHANGED FILES" not in section
+
+    def test_oversized_single_source_file_is_cut_with_a_marker(self):
+        """Even when every file is hand-edited source, the section fits and
+        the cut is marked, never silent."""
+        diff = _bulk_diff("src/big_migration.py", "MIGRATION", lines=800)
+        section = render_change_block(ChangeContext(label="abc123..HEAD", diff=diff))
+        assert len(section) <= CHANGE_SECTION_CHAR_LIMIT
+        assert "src/big_migration.py" in section
+        assert "more characters of this file's diff are not shown" in section
+
+    def test_bound_holds_for_many_files_markerless_and_binary_diffs(self):
+        """The bound is a property of the section, not of a well-formed
+        input: hundreds of files (name list itself bounded), a diff with no
+        ``diff --git`` header at all, and a header-only binary chunk all
+        stay within it, and every name that fits is still named."""
+        many = "".join(
+            _source_diff(f"src/module_{i:04d}.py", f"M{i}", lines=2)
+            for i in range(300)
+        )
+        assert len(many) > CHANGE_SECTION_CHAR_LIMIT
+        markerless = "x" * (50 * CHANGE_SECTION_CHAR_LIMIT)
+        binary = _binary_diff("assets/logo.png") + (self._huge_diff())
+        for diff in (many, markerless, binary):
+            section = render_change_block(ChangeContext(label="a..b", diff=diff))
+            assert len(section) <= CHANGE_SECTION_CHAR_LIMIT
+        assert "src/module_0000.py" in render_change_block(
+            ChangeContext(label="a..b", diff=many)
+        )
+        assert "  - assets/logo.png\n" in render_change_block(
+            ChangeContext(label="a..b", diff=binary)
+        )
+
+    def test_name_list_is_truncated_but_says_so(self):
+        """When even the names exceed the budget the section does not lie:
+        it shows as many as fit and states plainly that more exist."""
+        many = "".join(
+            _source_diff(f"src/module_with_a_rather_long_name_{i:05d}.py", f"M{i}", lines=1)
+            for i in range(1500)
+        )
+        section = render_change_block(ChangeContext(label="a..b", diff=many))
+        assert len(section) <= CHANGE_SECTION_CHAR_LIMIT
+        assert "more changed files (name list truncated)" in section
+
+    def test_fit_diff_body_honours_a_tiny_budget(self):
+        """``_fit_diff_body``'s own contract holds at any budget, including
+        one too small to hold its markers — the clamp is the backstop for
+        exactly that pathological case."""
+        body, truncated = _fit_diff_body(self._huge_diff(), 40)
+        assert truncated
+        assert len(body) <= 40
+
+    def test_giant_label_and_unreadable_diff_cannot_overflow(self):
+        """Framing and the unreadable marker are input too: a pathological
+        ref label or an oversized error string must not push the section
+        past the bound, and the label is clipped so the notice and content
+        are not what gets crowded out."""
+        giant = "L" * 5000
+        readable = render_change_block(
+            ChangeContext(label=giant, diff=self._huge_diff())
+        )
+        unreadable = render_change_block(
+            ChangeContext(label=f"unable to read diff {'L' * 30000}",
+                          diff=f"(unable to read diff {'L' * 30000})",
+                          readable=False)
+        )
+        for section in (readable, unreadable):
+            assert len(section) <= CHANGE_SECTION_CHAR_LIMIT
+        assert "PART OF the change" in readable
+
+    def test_artifact_fallback_list_is_bounded_too(self):
+        """No git view means the engine-recorded artifact list is the
+        section; it gets the same ceiling and the same honesty marker."""
+        artifacts = [f"src/module_{i:05d}.py" for i in range(2000)]
+        section = render_change_block(None, artifacts)
+        assert len(section) <= CHANGE_SECTION_CHAR_LIMIT
+        assert "src/module_00000.py" in section
+        assert "more files (list truncated)" in section
+        assert render_change_block(None, []) == ""
+
+    def test_the_bounded_section_reaches_the_judge_prompt(self):
+        """The bound is not a property of the renderer alone: the injected
+        prompt section a single-completion judge actually receives is the
+        bounded one, notices and names included."""
+        completion = _single_completion()
+        _run("post_execute", [], completion, _git(diff=self._huge_diff()), MagicMock())
+        prompt = _first_prompt(completion)
+        assert "PART OF the change, not the whole of it" in prompt
+        for path in self.SOURCE_FILES + self.BULK_FILES:
+            assert path in prompt
+        assert "BULK-0-old-version" not in prompt
