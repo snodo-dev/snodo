@@ -715,8 +715,9 @@ def test_cockpit_panes_render_liveness_from_fixture_state(tmp_path, monkeypatch)
             assert task_row[5].startswith("15m")  # Ran: live, so timed so far
             assert _stamp(t_run.last_moved()) in task_row[6]  # Last moved
             assert "$0.0300" in task_row[7]  # Cost
-            # Jobs table: ID=0, Task=1 — the owning task is a visible column.
-            assert job_row[1] == "task_alpha"  # Task
+            # Jobs table: ID=0, Task=1 — the owning task is a visible column,
+            # qualified by its plan: a job belonging to a plan says so here.
+            assert job_row[1] == "main:task_alpha"  # Task
             assert job_row[3] == "execute"  # Phase
             assert job_row[4] == _stamp(j_run.started_at)  # Started
             assert _stamp(j_run.last_moved()) in job_row[6]  # Last moved
@@ -840,8 +841,9 @@ def test_cockpit_jobs_pane_lists_jobs_from_multiple_tasks(tmp_path, monkeypatch)
             await pilot.pause(0.2)
             jobs = screen.query_one("#jobs-table")
             rows = [jobs.get_row(rk) for rk in jobs.rows]
-            # Job ID=0, Task=1 — jobs from two tasks, each row names its task.
-            assert {r[0]: r[1] for r in rows} == {"j_alpha": "task_alpha", "j_beta": "task_beta"}
+            # Job ID=0, Task=1 — jobs from two tasks, each row names its task:
+            # the planned one qualified by its plan, the unplanned one bare.
+            assert {r[0]: r[1] for r in rows} == {"j_alpha": "main:task_alpha", "j_beta": "task_beta"}
 
     asyncio.run(_run())
 

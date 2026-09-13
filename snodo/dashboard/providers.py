@@ -510,6 +510,70 @@ class DashboardDataProvider:
             _logger.warning("Could not read plan status files: %s", e)
         return tasks
 
+    def get_plans(self) -> List[Dict[str, Any]]:
+        """One entry per plan under .snodo/plans/, for the plans panel.
+
+        The structure — waves and their dependencies — comes from plan.yml;
+        the task states come from ``get_tasks``, so status.json is read and
+        interpreted exactly once and in exactly one place. A task that plan.yml
+        lists but status.json has no entry for yet is reported as ``pending``
+        — the planner's own default for an unstarted task, not a dashboard
+        invention. A plan that has no status.json renders its waves with those
+        pending tasks; a plan whose plan.yml is missing or unreadable still
+        renders the tasks status.json knows. Pure reads, no locks, no writes.
+        """
+        plans_dir = Path(self.project_root) / ".snodo" / "plans"
+        if not plans_dir.exists():
+            return []
+
+        statuses_by_plan: Dict[str, Dict[str, str]] = {}
+        for t in self.get_tasks(""):
+            statuses_by_plan.setdefault(t["plan_name"], {})[t["task_id"]] = t["status"]
+
+        import yaml
+        plans: List[Dict[str, Any]] = []
+        try:
+            for plan_path in sorted(plans_dir.iterdir()):
+                if not plan_path.is_dir():
+                    continue
+                waves: List[Dict[str, Any]] = []
+                intent = ""
+                plan_file = plan_path / "plan.yml"
+                if plan_file.exists():
+                    try:
+                        with open(plan_file) as f:
+                            data = yaml.safe_load(f) or {}
+                        intent = str(data.get("intent") or "")
+                        for w in data.get("waves") or []:
+                            waves.append({
+                                "id": w.get("id"),
+                                "depends_on": list(w.get("depends_on") or []),
+                                "tasks": list(w.get("tasks") or []),
+                            })
+                    except Exception as e:
+                        _logger.warning(
+                            "Could not read plan.yml for %s: %s: %s",
+                            plan_path.name, type(e).__name__, e,
+                        )
+                tasks = statuses_by_plan.get(plan_path.name, {})
+                if not waves and not tasks:
+                    continue  # an empty plan directory has nothing to show
+                ordered_ids: List[str] = []
+                for w in waves:
+                    for tid in w["tasks"]:
+                        if tid not in ordered_ids:
+                            ordered_ids.append(tid)
+                ordered_ids.extend(t for t in tasks if t not in set(ordered_ids))
+                plans.append({
+                    "name": plan_path.name,
+                    "intent": intent,
+                    "waves": waves,
+                    "tasks": {tid: tasks.get(tid, "pending") for tid in ordered_ids},
+                })
+        except Exception as e:
+            _logger.warning("Could not list plan directories: %s", e)
+        return plans
+
     def get_jobs(self, session_id: str) -> List[Dict[str, Any]]:
         """Return every job the project has, each tagged with its task.
 
