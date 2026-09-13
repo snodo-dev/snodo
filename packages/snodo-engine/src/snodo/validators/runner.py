@@ -14,6 +14,7 @@ Do not fork this logic into a second implementation.
 from __future__ import annotations
 
 import copy
+import hashlib
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -24,6 +25,7 @@ from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.validators.context import ValidatorContext
+from snodo.validators.verdict_cache import compute_verdict_key
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +123,160 @@ def enrich_result_with_criteria(
         abstention_reason=getattr(result, "abstention_reason", None),
         examined=getattr(result, "examined", None),
         unexamined_tools=getattr(result, "unexamined_tools", None),
+        skipped=getattr(result, "skipped", False),
+        reused=getattr(result, "reused", False),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Verdict cache (#246)
+# ---------------------------------------------------------------------------
+
+#: Sentinel types that must never be stored as a verdict: an abstention, an
+#: error, and a pass whose gate was skipped are not judgements.  Persisting
+#: one would turn the absence of a judgement into a durable claim that one
+#: was made — the exact defect the abstention representation exists to
+#: prevent.
+def _is_cacheable_verdict(result: Any) -> bool:
+    """Return True only for a genuine, freshly-computed verdict."""
+    if result is None:
+        return False
+    if getattr(result, "error", False):
+        return False
+    if getattr(result, "severity", None) is None:
+        return False
+    if getattr(result, "skipped", False):
+        return False
+    return True
+
+
+def _spec_subject(context: ValidatorContext) -> str:
+    """Digest the specification a single-completion judge reads."""
+    spec = getattr(getattr(context, "task", None), "spec", "") or ""
+    return "spec:" + hashlib.sha256(spec.encode("utf-8")).hexdigest()
+
+
+def _tree_subject(context: ValidatorContext) -> Optional[str]:
+    """Digest the repository state a tool-using judge reads.
+
+    HEAD names the commit under judgement; the diff anchor and the working
+    diff/status are folded in so an uncommitted change is not silently
+    treated as the commit that was judged.  Returns None when the state
+    cannot be established — the caller must then not cache the verdict.
+    """
+    git = getattr(context, "git_mcp", None)
+    if git is None:
+        return None
+    try:
+        head = git.get_head_sha()
+    except Exception as e:  # noqa: BLE001 — no tree identity, no cache
+        logger.debug("Verdict cache: could not read HEAD for tree subject: %s", e)
+        return None
+    if not isinstance(head, str) or not head.strip():
+        return None
+    parts = [f"head:{head.strip()}"]
+    base = getattr(context, "base_ref", None)
+    if base:
+        parts.append(f"base:{base}")
+    for getter in ("read_diff", "get_status"):
+        fn = getattr(git, getter, None)
+        if fn is None:
+            continue
+        try:
+            value = fn()
+        except Exception as e:  # noqa: BLE001 — partial tree identity is no identity
+            logger.debug(
+                "Verdict cache: %s failed, tree subject unavailable: %s", getter, e
+            )
+            return None
+        if not isinstance(value, str):
+            return None
+        parts.append(f"{getter}:{hashlib.sha256(value.encode('utf-8')).hexdigest()}")
+    return "tree|" + "|".join(parts)
+
+
+def _judge_reads_tree(v: Validator, context: ValidatorContext) -> bool:
+    """True when this dispatch will run the read-only tool loop."""
+    declared = getattr(v, "tools", None) or []
+    return bool(
+        declared
+        and context.workspace_mcp is not None
+        and context.git_mcp is not None
+        and context.completion_fn is not None
+    )
+
+
+def _tree_subject_for(context: ValidatorContext) -> Optional[str]:
+    """Return the tree subject, honouring the once-per-pass precomputation."""
+    if getattr(context, "verdict_tree_subject_ready", False):
+        return context.verdict_tree_subject
+    return _tree_subject(context)
+
+
+def _verdict_subject_kind(
+    v: Validator, context: ValidatorContext, reg: Any
+) -> Optional[str]:
+    """Classify what this judge's answer depends on: ``"tree"``, ``"spec"``, None.
+
+    The classification is structural, not inherited: a judge that reads the
+    tree is tree-keyed, and **every post-execute judge is tree-keyed** because
+    a judgement about produced work is a judgement about the work.  Phase is
+    authoritative here because an inherited class declaration is exactly the
+    thing that fails silently: ``AcceptanceValidator`` inherits ``"spec"``
+    from ``LLMValidator``, yet it judges the artifacts the coder just wrote.
+    Keying it on the unchanged spec would reuse attempt one's verdict about
+    code attempt two rewrote - and because the reused prose is byte-identical,
+    recovery-stall detection would read it as a repeated verdict and halt a
+    loop a judge was never asked about.
+    """
+    if _judge_reads_tree(v, context):
+        return "tree"
+
+    always_register = {"quality", "protocol"}
+    cls = reg.lookup(v.validator_type) if (
+        v.criteria or v.validator_type in always_register
+    ) else None
+    kind = getattr(cls, "cache_subject", None) if cls is not None else None
+    if kind is None and cls is None and context.completion_fn is not None and v.criteria:
+        # The fallback single-completion LLM path.
+        kind = "spec"
+
+    if kind == "tree":
+        return "tree"
+    if kind == "spec":
+        if getattr(context, "phase", "") == "post_execute":
+            return "tree"
+        return "spec"
+    return None
+
+
+def _verdict_subject(
+    v: Validator, context: ValidatorContext, reg: Any
+) -> Tuple[Optional[str], bool]:
+    """Return ``(subject, cacheable)`` for this judge.
+
+    The subject is what the judge's answer actually depends on (see
+    :func:`_verdict_subject_kind`).  A tree subject is precomputed once per
+    validate pass (see :func:`run_validators`); the fallback here is for
+    direct dispatch calls that bypass the runner.
+    """
+    kind = _verdict_subject_kind(v, context, reg)
+    if kind == "tree":
+        subject = _tree_subject_for(context)
+        return subject, subject is not None
+    if kind == "spec":
+        return _spec_subject(context), True
+    return None, False
+
+
+def _result_from_cache(record: Dict[str, Any]) -> ValidatorResult:
+    """Rebuild a stored verdict, marked as reused."""
+    return ValidatorResult(
+        validator_id=record.get("validator_id", ""),
+        severity=record.get("severity"),
+        justification=record.get("justification", ""),
+        cited_criteria=record.get("cited_criteria") or None,
+        reused=True,
     )
 
 
@@ -129,9 +285,62 @@ def dispatch_validator(
 ) -> ValidatorResult:
     """Resolve *v*'s class via the registry and evaluate it.
 
+    The single point where a verdict is produced, and therefore where a
+    verdict is cached (#246).  The cached value is what the judge returned,
+    before any severity cap the protocol applies afterwards, so a reused
+    verdict is capped exactly like a fresh one.
+
     Never raises — failures become ``error=True`` ValidatorResults (which the
     policy evaluator maps to ``validator_error`` / fail-closed).
     """
+    cache = getattr(context, "verdict_cache", None)
+    key: Optional[str] = None
+    if cache is not None:
+        subject, cacheable = _verdict_subject(v, context, reg)
+        if cacheable and subject:
+            mode = getattr(context, "current_mode", None)
+            mode_id = getattr(mode, "mode_id", None) or getattr(context, "mode_name", "")
+            protocol = getattr(context, "protocol", None)
+            try:
+                key = compute_verdict_key(
+                    validator_id=v.validator_id,
+                    validator_type=v.validator_type,
+                    criteria=v.criteria,
+                    tools=v.tools,
+                    model=context.model,
+                    protocol_id=str(getattr(protocol, "protocol_id", "") or ""),
+                    protocol_version=str(getattr(protocol, "version", "") or ""),
+                    mode_id=str(mode_id or ""),
+                    phase=getattr(context, "phase", ""),
+                    subject=subject,
+                    max_tokens=getattr(context, "max_tokens", None),
+                    max_tool_turns=getattr(context, "max_tool_turns", None),
+                )
+                cached = cache.get(key)
+            except Exception as e:  # noqa: BLE001 — cache must never halt a run
+                logger.debug("Verdict cache lookup failed (judging fresh): %s", e)
+                cached = None
+            if cached is not None:
+                logger.debug(
+                    "Verdict cache hit for validator %s (%s)",
+                    v.validator_id, context.phase,
+                )
+                return _result_from_cache(cached)
+
+    result = _evaluate_validator(v, context, reg)
+
+    if cache is not None and key is not None and _is_cacheable_verdict(result):
+        try:
+            cache.put(key, result)
+        except Exception as e:  # noqa: BLE001 — cache writes must never halt
+            logger.debug("Verdict cache store failed (verdict stands): %s", e)
+    return result
+
+
+def _evaluate_validator(
+    v: Validator, context: ValidatorContext, reg: Any
+) -> ValidatorResult:
+    """Evaluate *v* with no cache in the way (the judge itself)."""
     always_register = {"quality", "protocol"}
     cls = reg.lookup(v.validator_type) if (
         v.criteria or v.validator_type in always_register
@@ -214,6 +423,7 @@ def run_validators(
     verdict_cb: Any = None,
     artifacts: Optional[List[str]] = None,
     base_ref: Optional[str] = None,
+    verdict_cache: Any = None,
 ) -> Tuple[List[ValidatorResult], Dict[str, str]]:
     """Run a list of validators against a task and return ordered results.
 
@@ -298,7 +508,18 @@ def run_validators(
         progress_callback=progress_sink,
         verdict_callback=verdict_sink,
         base_ref=base_ref,
+        verdict_cache=verdict_cache,
     )
+
+    # The tree does not move within a validate pass, so digest it once here,
+    # before the pool starts: every tree-keyed judge shares the digest, the
+    # git read happens once rather than once per validator, and it never runs
+    # concurrently under the pool.
+    if verdict_cache is not None and any(
+        _verdict_subject_kind(v, context, reg) == "tree" for v in validators
+    ):
+        context.verdict_tree_subject = _tree_subject(context)
+        context.verdict_tree_subject_ready = True
 
     # Resolve set_model overrides once per pass
     overrides: Dict[str, str] = {}
@@ -366,6 +587,7 @@ def run_validators(
                         cited_criteria=result.cited_criteria,
                         severity_original=original_severity,
                         abstention_reason=getattr(result, "abstention_reason", None),
+                        reused=getattr(result, "reused", False),
                     )
                     if audit_log is not None:
                         _cap_data = {
@@ -394,6 +616,7 @@ def run_validators(
                             cited_criteria=result.cited_criteria,
                             severity_original=original_severity,
                             abstention_reason=getattr(result, "abstention_reason", None),
+                            reused=getattr(result, "reused", False),
                         )
                         cap_originals[result.validator_id] = original_severity
                         if audit_log is not None:

@@ -187,6 +187,11 @@ def _usage_tokens(response: Any, kind: str) -> int:
 class LLMValidator(ValidatorBase):
     """Evaluates tasks against protocol criteria using an LLM judge."""
 
+    #: A single-completion judge of the task spec.  This is the pre-execute
+    #: answer; the runner forces every post-execute judge (including a
+    #: subclass that leaves this inherited) onto the tree subject (#246).
+    cache_subject = "spec"
+
     VALID_SEVERITIES = {"pass", "warn", "blocker"}
 
     HANDLED_TYPES = {

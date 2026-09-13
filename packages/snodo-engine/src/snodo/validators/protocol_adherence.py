@@ -34,6 +34,9 @@ _DEFAULT_MAX_TOKENS = 1500
 class ProtocolAdherenceValidator(ValidatorBase):
     """Validates task-to-mode semantic alignment."""
 
+    #: A single-completion judge of the spec against the mode profile.
+    cache_subject = "spec"
+
     VALID_SEVERITIES = {"pass", "warn", "blocker"}
 
     def __init__(

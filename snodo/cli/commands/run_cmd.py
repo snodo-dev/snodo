@@ -1501,8 +1501,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
         from snodo.compiler.models import Protocol as _Protocol
         mode_coder = None
         if isinstance(protocol, _Protocol):
-            initial_mode_obj = protocol.get_mode(protocol.initial_mode)
-            mode_coder = getattr(initial_mode_obj, "coder", None) if initial_mode_obj else None
+            mode_coder = getattr(_m, "coder", None) if (_m := protocol.get_mode(protocol.initial_mode)) else None
         coder_name = resolve_coder_name(
             model=model,
             mode_coder=mode_coder,
@@ -1510,10 +1509,8 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             use_mock=use_mock,
         )
         print("Building execution graph with MCP services...")
-        print(f"  Project root: {project_root}")
-        print(f"  MCP root: {mcp_root}")
-        print("  MCPs: workspace, git, shell")
-        print(f"  Coder: {coder_name}")
+        print(f"  Project root: {project_root}\n  MCP root: {mcp_root}")
+        print(f"  MCPs: workspace, git, shell\n  Coder: {coder_name}")
         if checkpointer:
             print("  Memory: persistent (SqliteSaver)")
         print()
@@ -1521,6 +1518,13 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
         # Constructed with the same defaults GraphBuilder used for its
         # implicit issuer — only the ownership site moves.
         token_issuer = TokenIssuer()
+
+        # The verdict cache is project state (#246): it lives beside the audit
+        # log under the project's .snodo/, never in the operator's home, so it
+        # cannot cross projects.  An unusable cache degrades to fresh judgement.
+        from snodo.validators.verdict_cache import cache_for_project
+        verdict_cache = cache_for_project(project_root)
+
         graph = build_protocol_graph(
             protocol,
             project_root=project_root,
@@ -1536,6 +1540,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             worktree_degraded=worktree_degraded,
             verbose=getattr(args, "verbose", False),
             token_issuer=token_issuer,
+            verdict_cache=verdict_cache,
         )
         compiled_graph = graph.compile(checkpointer=checkpointer)
         print("✓ Graph compiled with MCP integration")
