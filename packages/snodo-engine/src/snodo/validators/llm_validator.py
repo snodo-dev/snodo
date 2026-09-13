@@ -19,6 +19,10 @@ Tool-loop (capability-grant):
   (pre-execute) or inspecting a finished result (post-execute), so a
   tool-enabled pre-execute judge cannot read "evaluate the task" as "check
   whether this was done" (see ADR 019).
+- The produced change is context, not a capability (Fixes #267): every
+  post-execute judge — tool-loop or single-completion, granted the diff tool
+  or not — begins its turn with the change already in the prompt
+  (snodo.validators.change).  Pre-execute judges never receive it.
 """
 
 import json
@@ -37,6 +41,7 @@ from litellm import supports_response_schema
 
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task, ValidatorResult
+from snodo.validators.change import change_block_for, ensure_change_context
 from snodo.validators.context import ValidatorContext, ValidatorBase
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
@@ -388,31 +393,16 @@ class LLMValidator(ValidatorBase):
         tools = self._build_tool_definitions(active_names)
         tools.append(self._SUBMIT_VERDICT_DEF)
 
-        # Only prepend diff when the diff tool is in the active set. Prefer the
-        # execute-node HEAD anchor (base_ref..HEAD); fall back to HEAD~1..HEAD
-        # only when the anchor is absent, and say so in the prompt the judge
-        # sees — a judge reviewing a fallback range should know it.
-        has_diff = "read_diff_between_refs" in active_names
-        change_diff = ""
-        diff_label = ""
-        diff_is_fallback = False
-        if has_diff:
-            base_ref = getattr(context, "base_ref", None)
-            try:
-                if base_ref:
-                    diff_label = f"{base_ref}..HEAD"
-                    change_diff = git.diff_between_refs(base_ref, "HEAD")
-                else:
-                    diff_label = "HEAD~1..HEAD"
-                    change_diff = git.diff_between_refs("HEAD~1", "HEAD")
-                    diff_is_fallback = True
-            except Exception:
-                change_diff = f"(unable to read diff {diff_label or 'HEAD~1..HEAD'})"
+        # The produced change reaches the judge through its PHASE, not through
+        # a tool grant (Fixes #267): run_validators reads base_ref..HEAD once
+        # per pass and shares it on the context; ensure_change_context covers
+        # direct calls.  When the protocol granted read_diff_between_refs the
+        # judge may still call it — e.g. against another ref — but it never
+        # has to, because the change is already in the prompt.
+        change = ensure_change_context(context)
 
         system_prompt = self._build_tool_loop_prompt(
-            context, active_names, has_diff, change_diff,
-            diff_label=diff_label, diff_is_fallback=diff_is_fallback,
-            total_turns=tool_turns,
+            context, active_names, total_turns=tool_turns,
         )
 
         messages: List[Dict[str, Any]] = [
@@ -436,9 +426,12 @@ class LLMValidator(ValidatorBase):
         # (Fixes #252).
         examination: List[str] = []
         tools_exercised: Set[str] = set()
-        if has_diff and change_diff and not change_diff.startswith("(unable"):
-            examination.append(f"prompt: preloaded diff {diff_label or 'HEAD~1..HEAD'}")
-            tools_exercised.add("read_diff_between_refs")
+        if change is not None and change.readable and change.diff.strip():
+            examination.append(f"prompt: preloaded diff {change.label}")
+            if "read_diff_between_refs" in active_names:
+                # The granted diff tool counts as exercised: the judge
+                # received its output preloaded (Fixes #252).
+                tools_exercised.add("read_diff_between_refs")
 
         for turn in range(tool_turns):
             turn_start = time.monotonic()
@@ -645,10 +638,6 @@ class LLMValidator(ValidatorBase):
         self,
         context: ValidatorContext,
         active_names: Set[str],
-        has_diff: bool,
-        change_diff: str,
-        diff_label: str = "",
-        diff_is_fallback: bool = False,
         total_turns: int = _DEFAULT_MAX_TOOL_TURNS,
     ) -> str:
         """Build the tool-loop judge prompt for this validator.
@@ -657,6 +646,11 @@ class LLMValidator(ValidatorBase):
         evaluate (e.g. the acceptance validator judges the produced
         artifacts against the task's acceptance criteria instead of
         protocol criteria).
+
+        The change section is derived from the context, not passed in: a
+        post-execute judge always begins with the produced change, whatever
+        its protocol granted; a pre-execute judge never sees one
+        (Fixes #267).
         """
         phase = getattr(context, "phase", "")
         criteria_text = "\n".join(
@@ -675,22 +669,8 @@ class LLMValidator(ValidatorBase):
             "\n",
             "## Criteria\n",
             f"{criteria_text}\n",
+            change_block_for(context),
         ]
-
-        if has_diff and change_diff:
-            label = diff_label or "HEAD~1..HEAD"
-            parts = [
-                "\n",
-                f"## Code Change ({label})\n",
-                f"```\n{change_diff}\n```\n",
-            ]
-            if diff_is_fallback:
-                parts.append(
-                    "NOTE: this diff was read against HEAD~1..HEAD because no "
-                    "execute-node HEAD anchor was available — it may show the "
-                    "previous commit rather than this task's produced change.\n"
-                )
-            prompt_parts.extend(parts)
 
         prompt_parts.extend([
             "\n",
@@ -952,9 +932,14 @@ class LLMValidator(ValidatorBase):
         if isinstance(context_or_task, Task):
             task = context_or_task
             phase = ""
+            change_block = ""
         else:
             task = context_or_task.task
             phase = getattr(context_or_task, "phase", "") or ""
+            # The produced change reaches a single-completion post-execute
+            # judge too — the ones with no tools cannot call anything, so a
+            # tool grant could never have helped them (Fixes #267).
+            change_block = change_block_for(context_or_task)
         criteria_text = "\n".join(
             f"  {i+1}. {c}" for i, c in enumerate(self.validator_spec.criteria)
         )
@@ -977,6 +962,7 @@ class LLMValidator(ValidatorBase):
             f"\n"
             f"## Criteria\n"
             f"{criteria_text}\n"
+            f"{change_block}"
             f"\n"
             f"## Instructions\n"
             f"Evaluate the task against EACH criterion.\n"

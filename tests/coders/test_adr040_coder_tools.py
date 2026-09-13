@@ -138,7 +138,7 @@ def test_acceptance_validator_prompt_includes_test_governing_mutations():
         code_artifact=artifact,
     )
 
-    prompt = validator._build_tool_loop_prompt(ctx, active_names=set(), has_diff=False, change_diff="")
+    prompt = validator._build_tool_loop_prompt(ctx, active_names=set())
 
     assert "## Test-Governing File Modifications Detected (ADR 040)" in prompt
     assert "tests/test_auth.py (modified)" in prompt

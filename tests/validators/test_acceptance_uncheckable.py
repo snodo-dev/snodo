@@ -17,7 +17,7 @@ def test_acceptance_prompt_uncheckable_command_instruction():
     task = Task(id="t1", spec="ACCEPTANCE CRITERIA:\n1. make check passes\n2. docs updated")
     context = ValidatorContext(task=task, working_directory="/tmp")
 
-    prompt = val._build_tool_loop_prompt(context, set(), False, "")
+    prompt = val._build_tool_loop_prompt(context, set())
     assert "UNCHECKABLE: the criterion cannot be verified from static tree inspection" in prompt
     assert "make check" in prompt
     assert "NEVER mark a command execution criterion as MET" in prompt

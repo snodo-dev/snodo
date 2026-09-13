@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.infrastructure.config import DEFAULT_MODEL
+from snodo.validators.change import build_change_context
 from snodo.validators.context import ValidatorContext
 from snodo.validators.verdict_cache import compute_verdict_key
 
@@ -510,6 +511,15 @@ def run_validators(
         base_ref=base_ref,
         verdict_cache=verdict_cache,
     )
+
+    # The produced change is read ONCE here, before the validator pool
+    # starts, and shared by every post-execute judge through the context
+    # (Fixes #267): reconstruction of "what did the coder do" is the
+    # engine's job, not the judge's, and it must not depend on whether the
+    # project's protocol happened to grant read_diff_between_refs.
+    # Pre-execute judges review a proposal and get nothing.
+    if phase == "post_execute":
+        context.change_context = build_change_context(git_mcp, base_ref)
 
     # The tree does not move within a validate pass, so digest it once here,
     # before the pool starts: every tree-keyed judge shares the digest, the
