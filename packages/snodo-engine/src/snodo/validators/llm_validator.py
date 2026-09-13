@@ -57,6 +57,7 @@ _READ_ONLY_TOOL_NAMES: Set[str] = {
     "git_show",
     "git_log",
     "read_diff_between_refs",
+    "summarize_directory",
 }
 
 # Tools only meaningful when a change is committed (post-execute).
@@ -534,6 +535,19 @@ class LLMValidator(ValidatorBase):
                         examination.append(
                             f"turn {turn + 1}: submit_verdict (rejected — invalid arguments)"
                         )
+                    elif tool_name not in active_names:
+                        # The judge was not granted this tool. A model can only
+                        # call a tool it was offered, but the boundary is
+                        # enforced here too so a hallucinated or undeclared tool
+                        # can never reach the workspace (Fixes #253).
+                        result = (
+                            f"Tool '{tool_name}' is not available to this "
+                            f"validator. Available tools: "
+                            f"{', '.join(sorted(active_names))}."
+                        )
+                        examination.append(
+                            f"turn {turn + 1}: {tool_name} (refused — not declared)"
+                        )
                     else:
                         prev_turn = read_tracker.check_read(tool_name, args)
                         if prev_turn is not None:
@@ -795,6 +809,28 @@ class LLMValidator(ValidatorBase):
                     },
                 },
             },
+            "summarize_directory": {
+                "type": "function",
+                "function": {
+                    "name": "summarize_directory",
+                    "description": (
+                        "Summarize a directory of documents in one call: one "
+                        "compact record per file with its path, its heading "
+                        "title, and the leading \"Key: value\" lines before the "
+                        "first subheading. Does not read document bodies — open "
+                        "the few records that matter with read_file. Use this "
+                        "instead of listing a directory and reading every file "
+                        "to discover which ones are relevant. The result is "
+                        "bounded and states when it was truncated."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "directory": {"type": "string", "description": "Directory path", "default": "."},
+                        },
+                    },
+                },
+            },
         }
         return [all_defs[name] for name in tool_names if name in all_defs]
 
@@ -900,6 +936,8 @@ class LLMValidator(ValidatorBase):
                 return workspace.read_file_lines(args["path"], args["start"], args["end"])
             elif name == "list_files":
                 return "\n".join(workspace.list_files(args.get("directory", ".")))
+            elif name == "summarize_directory":
+                return workspace.summarize_directory(args.get("directory", "."))
             else:
                 return f"Unknown tool: {name}"
         except Exception as e:
