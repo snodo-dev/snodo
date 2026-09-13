@@ -11,6 +11,7 @@ fault: it must halt under the raw ``execution_error`` (canonical ``blocker``)
 with a config fix target, and recovery must not spawn against it.
 """
 
+import io
 import subprocess
 from unittest import mock
 
@@ -91,9 +92,9 @@ def test_cli_rejects_model_is_execution_error_not_internal_error(git_fixture_rep
         proc = mock.MagicMock()
         proc.pid = 12345
         proc.returncode = 1
-        proc.communicate.return_value = (
-            "",
-            'Error: invalid model selection (--model "gemini-3.7-flash")',
+        proc.stdout = io.StringIO("")
+        proc.stderr = io.StringIO(
+            'Error: invalid model selection (--model "gemini-3.7-flash")'
         )
         return proc
 
