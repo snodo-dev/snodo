@@ -33,6 +33,24 @@ class LLMCallError(AdapterError):
     """LLM API call failed."""
 
 
+class CoderUnavailableError(AdapterError):
+    """The execution environment cannot provide the coder it was told to run.
+
+    A missing binary, a missing container runtime, a backend that cannot be
+    started: nothing about the TASK is wrong, so this must not be folded into
+    the coder-fault family that ``AdapterError`` otherwise names (an
+    operator-fixable configuration halt, #195) and certainly not into a
+    blocker verdict. It carries the operator's remediation — the install
+    command — so the halt message names the fix instead of pointing at the
+    spec, the code or the protocol.
+    """
+
+    def __init__(self, binary: str, remediation: str = ""):
+        self.binary = binary
+        self.remediation = remediation or f"Install {binary} and make sure it is on PATH"
+        super().__init__(f"{binary} not found on PATH. {self.remediation}")
+
+
 class ParseError(AdapterError):
     """Failed to parse LLM output."""
 

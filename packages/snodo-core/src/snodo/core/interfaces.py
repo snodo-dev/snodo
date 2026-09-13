@@ -66,6 +66,20 @@ class Coder(ABC):
     #: Default False: the coder does not observe tests.
     observes_tests: bool = False
 
+    @classmethod
+    def availability_requirements(cls) -> tuple:
+        """Programs this coder needs invokable before a task may be dispatched.
+
+        Pairs of ``(binary, remediation)``, where *remediation* is the
+        operator-facing install command shown when *binary* is not on PATH.
+        Declared on the ABC (empty default) so every adapter states its own
+        environment needs and a dispatcher can check them with one
+        ``shutil.which`` call — in the process that will actually invoke the
+        coder, which is not the shell where readiness ran. A pure-API coder
+        inherits the empty default: nothing to install, nothing to check.
+        """
+        return ()
+
     @abstractmethod
     def implement(self, spec: 'TaskSpec') -> 'CodeArtifact':
         """Generate code from specification."""

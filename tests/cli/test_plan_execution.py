@@ -567,8 +567,9 @@ def _run_plan_with_halt(plan_project_env, plan_name, final_decision):
         ("escalate", "[task_1_1] ESCALATED", "blocked"),
         ("validator_error", "[task_1_1] VALIDATOR ERROR", "errored"),
         ("internal_error", "[task_1_1] INTERNAL ERROR", "errored"),
+        ("environment_error", "[task_1_1] ENVIRONMENT ERROR", "errored"),
     ],
-    ids=["blocker", "escalate", "validator_error", "internal_error"],
+    ids=["blocker", "escalate", "validator_error", "internal_error", "environment_error"],
 )
 def test_plan_report_names_each_engine_outcome(
     plan_project_env, capsys, final_decision, report_line, plan_status
@@ -624,6 +625,55 @@ def test_validator_error_is_not_sent_to_retry_path(plan_project_env, capsys):
 
     # A second plan run treats the errored task as fresh work, not a retry,
     # and hands the next coder a clean spec.
+    executed_specs = []
+
+    def mock_execute_task_2(a, protocol, task, model):
+        executed_specs.append((task.id, task.spec))
+        return 0
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task_2):
+        result = _run_plan(args)
+    assert result == 0
+    first_task_specs = [spec for tid, spec in executed_specs if tid == "task_1_1"]
+    assert first_task_specs == ["Spec for task 1.1"], executed_specs
+
+
+def test_environment_error_is_not_sent_to_retry_path(plan_project_env, capsys):
+    """An environment fault records errored, not blocked, and spawns no recovery.
+
+    The motivating case: the coder's binary is not installed where the run
+    executes while the spec passed every validator. The task must not read as
+    blocked on its content, no task_failure context may exist for it, and a
+    second plan run must re-execute the UNCHANGED spec fresh — not hand a
+    coder a critique of work that was never written.
+    """
+    from snodo.infrastructure.state import read_state
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "envfail_plan")
+    session_mgr = _setup_session_with_halt(
+        plan_project_env, "task_1_1", "environment_error",
+    )
+    args = _make_plan_args(plan_name, session_manager=session_mgr)
+
+    def mock_execute_task(a, protocol, task, model):
+        assert "Previous attempt" not in task.spec
+        return 1 if task.id == "task_1_1" else 0
+
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=mock_execute_task):
+        result = _run_plan(args)
+
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "[task_1_1] ENVIRONMENT ERROR" in err
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_1"]["status"] == "errored", status
+
+    state = read_state(plan_project_env)
+    session = session_mgr.get_active_session(state.current_mode, str(plan_project_env))
+    failures = session.checkpoint.decisions.get("task_failure", {})
+    assert task_failure_for(failures, "task_1_1") is None
+
     executed_specs = []
 
     def mock_execute_task_2(a, protocol, task, model):

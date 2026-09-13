@@ -36,6 +36,11 @@ _HALT_OUTCOME_LABELS = {
     "blocker": "blocked",
     "validator_error": "validator_error",
     "internal_error": "internal_error",
+    # The fifth canonical outcome (see writeback._CANONICAL_HALT): an
+    # environment fault. A consumer that branches on the four must treat it
+    # as a non-verdict operational halt — the same branch as internal_error
+    # — never as a statement about the task.
+    "environment_error": "environment_error",
 }
 
 
@@ -114,12 +119,16 @@ def _task_record_status(planner, plan: str, task_id: str, exit_code: int, sessio
     ``blocked`` (next attempt retries with the failure context), while a task
     that was never judged, or whose judged work could not be merged, is
     ``errored`` — a different state that must not hand its halt reason to a
-    faultless coder as a critique (issue #231).
+    faultless coder as a critique (issue #231). An ``environment_error`` is
+    that same non-verdict shape one level deeper: the program was not
+    installed where the run executed, so the task is recorded ``errored``,
+    not ``blocked`` — no plan retry may re-dispatch a specification that was
+    never at fault.
 
     Returns the status actually recorded.
     """
     outcome = _halt_outcome(session, task_id)
-    if outcome in ("validator_error", "internal_error"):
+    if outcome in ("validator_error", "internal_error", "environment_error"):
         planner.update_status(plan, task_id, "errored")
         return "errored"
     if outcome in ("escalate", "blocker"):
@@ -146,6 +155,7 @@ def _task_outcome_line(task_id: str, outcome: Optional[str]) -> str:
         "blocker": f"[{task_id}] BLOCKED in",
         "validator_error": f"[{task_id}] VALIDATOR ERROR in",
         "internal_error": f"[{task_id}] INTERNAL ERROR in",
+        "environment_error": f"[{task_id}] ENVIRONMENT ERROR in",
     }
     return labels[outcome]
 

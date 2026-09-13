@@ -21,7 +21,7 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from snodo.coders.base import InPlaceCoderAdapter, LLMCallError
+from snodo.coders.base import CoderUnavailableError, InPlaceCoderAdapter, LLMCallError
 from snodo.core.interfaces import CodeArtifact, FileArtifact, TaskSpec
 
 _logger = logging.getLogger(__name__)
@@ -79,6 +79,20 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
                 f"{self.__class__.__name__} requires an explicit workspace or workspace_mcp; "
                 "none was provided. Inferring a containment boundary from Path.cwd() is prohibited (ADR 024/025)."
             )
+
+    @classmethod
+    def availability_requirements(cls) -> tuple:
+        """A host-CLI coder needs its binary on the invoker's PATH.
+
+        Declared from ``binary``/``install_hint`` so every subprocess adapter
+        carries its own requirement without repeating it: a dispatcher checks
+        availability in the process that will run the coder, before any task
+        is dispatched (readiness runs in the operator's shell, which may have
+        a different PATH).
+        """
+        if not cls.binary:
+            return ()
+        return ((cls.binary, cls.install_hint),)
 
     def _bare_model(self) -> str:
         """Return the model to pass to the CLI, or "" to let it choose.
@@ -264,9 +278,11 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         try:
             proc = self._run_subprocess(argv, project_root)
         except FileNotFoundError as e:
-            raise LLMCallError(
-                f"{self.binary} not found on PATH. {self.install_hint}"
-            ) from e
+            # The program is not installed where the run executes. That is an
+            # environment fault, not a coder-configuration fault and never a
+            # verdict about the task: CoderUnavailableError says so in its
+            # type, and carries the install command in its message.
+            raise CoderUnavailableError(self.binary, self.install_hint) from e
         except subprocess.TimeoutExpired as e:
             timed_out = True
             self.last_timed_out = True
