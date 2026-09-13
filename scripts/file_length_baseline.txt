@@ -1,0 +1,14 @@
+# File-length debt list — one entry per file over the 1000-lines-of-code limit.
+#
+# Each line is '<loc> <path>': the file's lines-of-code count when the
+# debt was recorded. The number may fall, never rise. Run
+#   uv run python scripts/enforce_file_length.py --update-baseline
+# to pay down: it lowers counts to current and drops files that came
+# under the limit — once out, a file cannot come back (it is then held
+# to the 1000-line limit itself).
+#
+# There is no suppression mechanism on purpose. If you think you need
+# an exception here, the file wants splitting.
+
+ 1234 snodo/cli/commands/run_cmd.py
+ 1162 packages/snodo-engine/src/snodo/coders/litellm.py
