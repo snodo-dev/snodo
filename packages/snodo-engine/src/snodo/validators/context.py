@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from snodo.core.interfaces import Task, ValidatorResult
+from snodo.validators.change import ChangeContext
 
 
 @dataclass
@@ -47,6 +48,11 @@ class ValidatorContext:
     #: by the execute node before the coder runs so a judge never reviews the
     #: previous unrelated commit when HEAD did not move.
     base_ref: Optional[str] = None
+    #: The produced change (base_ref..HEAD), read ONCE per validate pass by the
+    #: runner and shared by every post-execute judge (Fixes #267).  A
+    #: post-execute judge must begin its turn knowing which files changed;
+    #: a pre-execute judge never gets one.  Phase decides, never tool grants.
+    change_context: Optional[ChangeContext] = None
     #: CodeArtifact produced by coder implementation
     code_artifact: Optional[Any] = None
     #: Metadata dictionary carrying artifact and run properties (e.g. test_governing_mutations)

@@ -32,6 +32,7 @@ import re
 from typing import Set
 
 from snodo.compiler.models import Validator
+from snodo.validators.change import ensure_change_context, render_change_block
 from snodo.validators.context import ValidatorContext
 from snodo.validators.llm_validator import LLMValidator
 from snodo.validators.registry import _default_registry
@@ -158,10 +159,6 @@ class AcceptanceValidator(LLMValidator):
         self,
         context: ValidatorContext,
         active_names: Set[str],
-        has_diff: bool,
-        change_diff: str,
-        diff_label: str = "",
-        diff_is_fallback: bool = False,
         total_turns: int = 20,
     ) -> str:
         """Judge the produced artifacts against the task's acceptance criteria.
@@ -172,6 +169,11 @@ class AcceptanceValidator(LLMValidator):
         "unmet" (verifiable from the tree and demonstrably absent) from
         "uncheckable" (device behaviour, human judgement — not verifiable from
         the tree, and never a finding).
+
+        The produced change rides in on the context, keyed on phase
+        (Fixes #267): the acceptance judge that abstained three times in a
+        row had spent every turn rediscovering which files the coder had
+        touched.
         """
         artifacts = list(getattr(context, "artifacts", None) or [])
         artifact_text = "\n".join(f"  - {a}" for a in artifacts) or "  (none)"
@@ -196,22 +198,11 @@ class AcceptanceValidator(LLMValidator):
             "\n",
             "## Produced Artifacts\n",
             f"{artifact_text}\n",
+            # The diff, when a git range exists.  The artifact-list fallback
+            # is not rendered here: the Produced Artifacts section above is
+            # this prompt's list already (Fixes #267).
+            render_change_block(ensure_change_context(context)),
         ]
-
-        if has_diff and change_diff:
-            label = diff_label or "HEAD~1..HEAD"
-            parts = [
-                "\n",
-                f"## Code Change ({label})\n",
-                f"```\n{change_diff}\n```\n",
-            ]
-            if diff_is_fallback:
-                parts.append(
-                    "NOTE: this diff was read against HEAD~1..HEAD because no "
-                    "execute-node HEAD anchor was available — it may show the "
-                    "previous commit rather than this task's produced change.\n"
-                )
-            prompt_parts.extend(parts)
 
         mutations = []
         if hasattr(context, "code_artifact") and getattr(context.code_artifact, "metadata", None):
