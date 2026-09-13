@@ -216,7 +216,10 @@ class TestAttackScenarios:
 
         hs256_jwt = pyjwt.encode(
             {"iat": 1, "task_ref": "t1", "validator_id": "sec", "decision": "proceed"},
-            "some-secret",
+            # 32+ bytes: PyJWT warns below the RFC 7518 minimum for SHA256, and
+            # the warning is noise here — this test is about the algorithm being
+            # refused, not about the key.
+            "a-secret-long-enough-for-sha256-hmac",
             algorithm="HS256",
         )
         payload = verifier.verify_record(hs256_jwt)
