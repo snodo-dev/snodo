@@ -604,3 +604,249 @@ class TestEvidenceReachesFixTask:
         assert result.severity == "blocker"
         assert "AssertionError: assert 3 == 4" in result.justification
         assert "test_photo FAILED" in result.justification
+
+
+_ACCEPTANCE_CRITERIA = [
+    "Export a single contact to .vcf.",
+    "Photo is embedded when present.",
+    "Company name is preserved.",
+    "Multiple emails are exported.",
+    "The export is reachable from the CLI.",
+]
+
+_ORIGINAL_SPEC = (
+    "Implement vcard export.\n\n"
+    "Acceptance criteria:\n"
+    + "\n".join(f"{i}. {c}" for i, c in enumerate(_ACCEPTANCE_CRITERIA, 1))
+    + "\n"
+)
+
+
+def _partial_success_protocol():
+    """Post-execute quality (passes) + acceptance (warns on one criterion)."""
+    return Protocol(
+        protocol_id="test_partial",
+        name="Test",
+        version="1.0.0",
+        modes=[Mode(mode_id="producer", name="Producer", tools=["edit"],
+                    validators=["quality", "acceptance"])],
+        validators=[
+            Validator(validator_id="quality", validator_type="quality",
+                      evaluation_phase="post_execute", criteria=[],
+                      severity_cap="warn"),
+            Validator(validator_id="acceptance", validator_type="acceptance",
+                      evaluation_phase="post_execute",
+                      criteria=list(_ACCEPTANCE_CRITERIA),
+                      severity_cap="warn"),
+        ],
+        disagreement_policy=DisagreementPolicy.UNANIMOUS,
+        initial_mode="producer",
+    )
+
+
+def _partial_success_results(justification=None):
+    return [
+        ValidatorResult(validator_id="quality", severity="pass",
+                        justification="pytest: 84 passed"),
+        ValidatorResult(
+            validator_id="acceptance",
+            severity="warn",
+            justification=justification or (
+                "Four of five acceptance criteria are met. Criterion 2 "
+                "('Photo is embedded when present') is not: the export never "
+                "carries the photo bytes."
+            ),
+            cited_criteria=["[Criterion 2] Photo is embedded when present."],
+        ),
+    ]
+
+
+class TestRecoveryProportionalFraming:
+    """A recovery attempt must be told it resumes from partial work, which
+    criteria already hold, and what the prior attempt produced — not handed the
+    full intent again as if nothing had been done.
+    """
+
+    def test_spawned_spec_is_materially_different_from_original(self):
+        protocol = _partial_success_protocol()
+        builder = GraphBuilder(
+            protocol, validator_fn=lambda task, validators, shell, **kw: _partial_success_results()
+        )
+        state = _make_state(task_id="root")
+        state["task"]["spec"] = _ORIGINAL_SPEC
+        result = builder._post_validate_node(state)
+        sub = result["spawned_subtasks"][0]
+        spec = sub["spec"]
+
+        # Materially different from the original statement: it is a recovery
+        # brief, not the task restated with a note.
+        assert spec != _ORIGINAL_SPEC
+        assert _ORIGINAL_SPEC in spec
+
+        # The coder is told the prior attempt's work is on disk already.
+        assert "on disk" in spec
+        assert "worktree" in spec
+        assert "do not re-derive" in spec
+
+        # The remainder framing is present and re-judgment is explicit, so the
+        # coder does not treat the settled parts as exempt.
+        assert "remaining work" in spec
+        assert "re-judged" in spec
+        assert "SETTLED" in spec
+
+    def test_settled_only_from_what_a_judge_asserted(self):
+        protocol = _partial_success_protocol()
+        builder = GraphBuilder(
+            protocol, validator_fn=lambda task, validators, shell, **kw: _partial_success_results()
+        )
+        state = _make_state(task_id="root")
+        state["task"]["spec"] = _ORIGINAL_SPEC
+        result = builder._post_validate_node(state)
+        spec = result["spawned_subtasks"][0]["spec"]
+
+        # The passing validator is named as settled, with its own words.
+        assert "quality" in spec
+        assert "pytest: 84 passed" in spec
+
+        # No per-criterion positive is fabricated for the warning judge: the
+        # uncited criteria are not claimed to hold. Only the judge's own prose
+        # (which names the unmet criterion) is carried.
+        settled_section = spec.split("SETTLED", 1)[1].split("FAILURES", 1)[0]
+        for criterion in _ACCEPTANCE_CRITERIA:
+            assert criterion not in settled_section
+        assert "the export never carries the photo bytes" in spec
+
+    def test_prior_attempt_result_is_present(self):
+        protocol = _partial_success_protocol()
+        results = _partial_success_results()
+        builder = GraphBuilder(
+            protocol, validator_fn=lambda task, validators, shell, **kw: results
+        )
+        state = _make_state(task_id="root")
+        state["task"]["spec"] = _ORIGINAL_SPEC
+        result = builder._post_validate_node(state)
+        spec = result["spawned_subtasks"][0]["spec"]
+
+        # The prior attempt's verdict travels with the remainder.
+        assert "PRIOR ATTEMPT" in spec
+        assert "Validators that passed: quality" in spec
+        assert "in each judge's own words" in spec
+        # The failure evidence itself is preserved verbatim, attributed.
+        assert "acceptance (warn): Four of five acceptance criteria are met." in spec
+        assert "the export never carries the photo bytes" in spec
+
+    def test_original_spec_unchanged_over_two_recovery_attempts(self):
+        protocol = _partial_success_protocol()
+
+        builder1 = GraphBuilder(
+            protocol, validator_fn=lambda task, validators, shell, **kw: _partial_success_results()
+        )
+        state1 = _make_state(task_id="root")
+        state1["task"]["spec"] = _ORIGINAL_SPEC
+        fix1 = builder1._post_validate_node(state1)["spawned_subtasks"][0]
+
+        # Second attempt: a distinct verdict (different justification) so the
+        # stall detector does not halt the chain before the second spawn.
+        second = _partial_success_results(
+            "Criterion 2 is still unmet: the photo bytes are dropped before "
+            "the contact is serialised."
+        )
+        builder2 = GraphBuilder(
+            protocol, validator_fn=lambda task, validators, shell, **kw: second
+        )
+        state2 = _make_state(task_id=fix1["id"], depth=1)
+        state2["task"]["spec"] = fix1["spec"]
+        state2["task"]["root_task_ref"] = fix1["root_task_ref"]
+        state2["task"]["root_spec"] = fix1["root_spec"]
+        state2["task"]["prior_failures"] = fix1["prior_failures"]
+        state2["task"]["attempt_provenance"] = fix1["attempt_provenance"]
+        state2["task"]["attempt_reads"] = fix1["attempt_reads"]
+        fix2 = builder2._post_validate_node(state2)["spawned_subtasks"][0]
+
+        # The original specification is unchanged on record: it is still the
+        # root spec, it appears verbatim and exactly once in each spawned spec,
+        # and neither the root nor the first recovery attempt rewrote it.
+        assert fix1["root_spec"] == _ORIGINAL_SPEC
+        assert fix2["root_spec"] == _ORIGINAL_SPEC
+        assert state1["task"]["spec"] == _ORIGINAL_SPEC
+        assert state2["task"]["root_spec"] == _ORIGINAL_SPEC
+        assert fix1["spec"].count(_ORIGINAL_SPEC) == 1
+        assert fix2["spec"].count(_ORIGINAL_SPEC) == 1
+        assert fix2["spec"] != fix1["spec"]
+        assert "PRIOR ATTEMPT (attempt 2)" in fix2["spec"]
+
+
+class TestSettledVerdicts:
+    """The "already holds" side of a recovery brief is derived defensively."""
+
+    def test_skipped_pass_is_not_settled(self):
+        from snodo.engine.loop import _settled_from_results
+
+        results = [ValidatorResult(validator_id="quality", severity="pass",
+                                   justification="gate not configured", skipped=True)]
+        assert _settled_from_results(results) == []
+
+    def test_error_result_is_not_settled(self):
+        from snodo.engine.loop import _settled_from_results
+
+        results = [ValidatorResult(validator_id="quality", severity="blocker",
+                                   justification="boom", error=True)]
+        assert _settled_from_results(results) == []
+
+    def test_result_without_validator_id_is_not_settled(self):
+        from snodo.engine.loop import _settled_from_results
+
+        results = [ValidatorResult(validator_id="", severity="pass",
+                                   justification="passed")]
+        assert _settled_from_results(results) == []
+
+    def test_pass_is_settled_whole(self):
+        from snodo.engine.loop import _settled_from_results
+
+        results = [ValidatorResult(validator_id="architecture", severity="pass",
+                                   justification="all four criteria hold",
+                                   cited_criteria=["[Criterion 1] a",
+                                                   "[Criterion 2] b",
+                                                   "[Criterion 3] c",
+                                                   "[Criterion 4] d"])]
+        assert _settled_from_results(results) == [{
+            "validator_id": "architecture",
+            "justification": "all four criteria hold",
+        }]
+
+    def test_warn_is_never_settled_even_when_it_cites_criteria(self):
+        from snodo.engine.loop import _settled_from_results
+
+        # cited_criteria means "criteria the judge mentioned", not "criteria
+        # that failed": an uncited criterion must never be read as holding.
+        results = [ValidatorResult(
+            validator_id="acceptance", severity="warn",
+            justification="criterion 2 unmet",
+            cited_criteria=["[Criterion 2] b"],
+        )]
+        assert _settled_from_results(results) == []
+
+    def test_settled_entry_without_validator_id_is_dropped(self):
+        from snodo.engine.loop import _normalize_settled
+
+        assert _normalize_settled(["not a dict", {"justification": "x"}]) == []
+
+    def test_pass_without_justification_renders_cleanly(self):
+        from snodo.engine.loop import _build_recovery_spec
+
+        settled = [{"validator_id": "quality", "justification": ""}]
+        spec = _build_recovery_spec("do the thing", [], None, None, settled)
+        assert "- quality: passed" in spec
+
+    def test_spec_without_settled_omits_settled_section(self):
+        from snodo.engine.loop import _build_recovery_spec
+
+        spec = _build_recovery_spec(
+            "do the thing",
+            [{"attempt": 1, "validator_id": "quality", "severity": "blocker",
+              "justification": "broken"}],
+        )
+        assert "SETTLED" not in spec
+        assert "PRIOR ATTEMPT" in spec
+
+
