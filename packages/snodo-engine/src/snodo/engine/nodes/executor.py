@@ -3,6 +3,7 @@
 FILE: snodo/engine/nodes/executor.py
 """
 
+import logging
 from typing import Dict, Any, List, Optional, Union
 from snodo.core.interfaces import Task, TaskSpec, ExecutionError, NoFileOperationsError
 from snodo.coders.base import AdapterError, SnodoMutationError, TurnBudgetExhausted
@@ -11,6 +12,8 @@ from snodo.coders import LiteLLMAdapter, MockAdapter
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.tools.git import GitMCP
 from snodo.engine.state import _task_branch_name, _branch_exists
+
+_logger = logging.getLogger(__name__)
 
 
 class ExecutorMixin:
@@ -100,7 +103,15 @@ class ExecutorMixin:
             repo = git_mcp.repo
             try:
                 branch = repo.active_branch.name
-            except Exception:
+            except Exception as e:
+                # Detached HEAD legitimately yields no branch name, but a git
+                # failure (unreadable ref, lock contention) looks identical to
+                # the caller. The distinction decides whether recoverable work
+                # is silently abandoned, so record why.
+                _logger.warning(
+                    "Work-recovery probe: active branch name unreadable, "
+                    "skipping recovery: %s: %s", type(e).__name__, e,
+                )
                 return None
             # Only task branches hold this task's work; a degraded run on the
             # operator's own branch must never be treated as task work. The
@@ -112,7 +123,15 @@ class ExecutorMixin:
             head = repo.head.commit
             base_branch = resolve_base_branch(str(git_mcp.project_root))
             base_commit = repo.commit(base_branch)
-        except Exception:
+        except Exception as e:
+            # None here lets the run halt as no_file_operations — a verdict
+            # about the coder's output. If the reason is a git failure rather
+            # than an unchanged branch, the verdict is unearned; say so.
+            _logger.warning(
+                "Work-recovery probe: branch/base inspection failed, "
+                "no_file_operations may be misattributed: %s: %s",
+                type(e).__name__, e,
+            )
             return None
 
         # If HEAD is an ancestor (or equal) of the base tip, the branch holds
@@ -129,7 +148,12 @@ class ExecutorMixin:
                 path = d.b_path or d.a_path
                 if path and path not in paths:
                     paths.append(path)
-        except Exception:
+        except Exception as e:
+            _logger.warning(
+                "Work-recovery probe: ancestry/diff inspection failed, "
+                "no_file_operations may be misattributed: %s: %s",
+                type(e).__name__, e,
+            )
             return None
 
         if not paths:
@@ -149,7 +173,14 @@ class ExecutorMixin:
         try:
             execution = getattr(self.protocol, "execution", None)
             prefix = getattr(execution, "branch_prefix", None) or "task"
-        except Exception:
+        except Exception as e:
+            # Falling back to the default prefix is safe for execution, but a
+            # project that configured another prefix loses its recovered-work
+            # guard silently unless the protocol read failure is recorded.
+            _logger.warning(
+                "Could not read execution.branch_prefix, defaulting to 'task': %s: %s",
+                type(e).__name__, e,
+            )
             prefix = "task"
         return str(prefix).strip("/") or "task"
 

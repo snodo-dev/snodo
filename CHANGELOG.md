@@ -84,6 +84,30 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A failure's reason no longer dies at the handler that caught it. The engine
+  had a recurring defect class — an exception is caught, a safe value is
+  returned, and the cause is destroyed at the only point where it existed —
+  costing an hour of operator time per instance (a provider rejection read as
+  a bare `validator_error`, a `git ls-tree` that could not spawn reported as
+  a BLOCKER "path not committed", a recovery probe's git failure misattributed
+  as `no_file_operations`, a canary reporting a missing `ruff` binary as
+  "failed to detect a lint violation"). The handlers on debugging paths —
+  validator dispatch, the LLM and protocol-adherence validators' fault paths,
+  the LiteLLM coder's response parsing, the in-place adapter's HEAD anchor,
+  the container availability probes, the executor's work-recovery git probes,
+  the readiness git checks and the dashboard's state readers — now log the
+  caught exception's type and message before returning the safe value, and
+  where the failure surfaces to an operator the reason travels into the
+  surfaced message (the halt justification, the readiness finding). Readiness
+  distinguishes "git could not answer" (a named tool-failure finding listing
+  the reasons) from "git answered no"; the verification canary distinguishes
+  a ruff that exited 1 (a verdict) from a ruff that exited 2 or could not
+  spawn (  a broken tool, reported as such). Handlers off debugging paths — telemetry
+  extraction, temp-file cleanup, and the deliberate control-flow probes whose
+  negative answer is the point — were left alone. No handling was removed, no
+  crash was introduced, and the halt
+  taxonomy and abstention representation are unchanged.
+
 - Retrying a task no longer destroys the specification being retried, and the
   command snodo prints as a follow-up is now the command that does nothing to
   it. `snodo run --retry <task_id>` takes a positional description that

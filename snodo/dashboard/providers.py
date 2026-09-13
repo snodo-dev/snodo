@@ -443,7 +443,11 @@ class DashboardDataProvider:
                     "last_activity": item.get("last_activity"),
                 })
             return res
-        except Exception:
+        except Exception as e:
+            # An empty wave list must be distinguishable from "wave.json
+            # could not be read/parsed" — the panels show nothing either
+            # way, so the reason lives here.
+            _logger.warning("Could not read wave list %s: %s: %s", wave_path, type(e).__name__, e)
             return []
 
     def get_wave_detail(self, wave_id: str) -> Optional[Dict[str, Any]]:
@@ -470,7 +474,11 @@ class DashboardDataProvider:
                         "last_activity": item.get("last_activity"),
                     }
             return None
-        except Exception:
+        except Exception as e:
+            _logger.warning(
+                "Could not read wave detail for %s from %s: %s: %s",
+                wave_id, wave_path, type(e).__name__, e,
+            )
             return None
 
     def get_tasks(self, session_id: str) -> List[Dict[str, Any]]:
@@ -694,7 +702,11 @@ class DashboardDataProvider:
         try:
             self._audit_log = AuditLog(str(log_path), project_id=project_id)
             return self._audit_log
-        except AuditError:
+        except AuditError as e:
+            # A corrupt/inaccessible audit log empties every panel that reads
+            # it; "no audit data" must be distinguishable from "audit log
+            # failed to load", and only the log can carry the reason.
+            _logger.warning("Could not open audit log %s: %s", log_path, e)
             return None
 
     def _get_mode(self, mode_id: str) -> Optional[Mode]:
@@ -715,7 +727,8 @@ class DashboardDataProvider:
             agents = mgr.list_agents()
             prefix = f"{self._project_name}:{mode}"
             return sum(1 for a in agents if a.get("id") == prefix)
-        except Exception:
+        except Exception as e:
+            _logger.debug("Could not count agents for mode %s: %s: %s", mode, type(e).__name__, e)
             return 0
 
     def _get_agents_for_mode(self, mode: str) -> List[Dict[str, Any]]:
@@ -725,7 +738,8 @@ class DashboardDataProvider:
             agents = mgr.list_agents()
             prefix = f"{self._project_name}:{mode}"
             return [a for a in agents if a.get("id") == prefix]
-        except Exception:
+        except Exception as e:
+            _logger.debug("Could not list agents for mode %s: %s: %s", mode, type(e).__name__, e)
             return []
 
     def _build_validator_data(
