@@ -275,6 +275,23 @@ class TestSubmit:
         assert row["plan"] == ""
 
     @patch("snodo.jobs.runner.spawn_background")
+    def test_get_child_jobs_returns_children_chronologically(self, mock_spawn, manager, sample_task_args):
+        """get_child_jobs returns all jobs spawned by parent_job in chronological order."""
+        mock_spawn.return_value = 99999
+        child1 = {**sample_task_args, "task_id": "1.1_core", "parent_job": "j_plan01"}
+        child2 = {**sample_task_args, "task_id": "1.2_views", "parent_job": "j_plan01"}
+        other = {**sample_task_args, "task_id": "other", "parent_job": "j_other"}
+
+        id1 = manager.submit(child1)
+        id2 = manager.submit(child2)
+        manager.submit(other)
+
+        children = manager.get_child_jobs("j_plan01")
+        assert len(children) == 2
+        assert [c["id"] for c in children] == [id1, id2]
+        assert [c["task_ref"] for c in children] == ["1.1_core", "1.2_views"]
+
+    @patch("snodo.jobs.runner.spawn_background")
     def test_submit_refused_when_worktree_cannot_be_created(self, mock_spawn, manager, sample_task_args):
         """A background job whose worktree cannot be created is refused up front.
 
