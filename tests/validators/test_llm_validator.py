@@ -1620,3 +1620,106 @@ class TestStructuredOutput:
 
         call_kwargs = completion_fn.call_args[1]
         assert call_kwargs["max_tokens"] > 500
+
+
+# === summarize_directory Tool Tests ===
+
+class TestSummarizeDirectoryTool:
+    """The directory-index tool is part of the fixed read-only set, granted
+    only to validators that declare it explicitly."""
+
+    def _context(self, completion_fn):
+        from snodo.validators.context import ValidatorContext
+        return ValidatorContext(
+            task=Task(id="t1", spec="Record the architecture decisions"),
+            completion_fn=completion_fn,
+            model="gpt-4",
+            workspace_mcp=MagicMock(),
+            git_mcp=MagicMock(),
+            phase="pre_execute",
+        )
+
+    def _tool_validator(self, tools):
+        return Validator(
+            validator_id="architecture",
+            validator_type="architecture",
+            evaluation_phase="pre_execute",
+            criteria=["Must not contradict a recorded decision"],
+            tools=tools,
+        )
+
+    @staticmethod
+    def _summarize_then_verdict():
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = None
+            if call_count[0] == 0:
+                tc = MagicMock()
+                tc.id = "tc_index"
+                tc.function.name = "summarize_directory"
+                tc.function.arguments = json.dumps({"directory": "docs/decisions"})
+                resp.choices[0].message.tool_calls = [tc]
+            else:
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
+                    "severity": "pass",
+                    "justification": "Grounded in the records",
+                })
+                resp.choices[0].message.tool_calls = [tc]
+            call_count[0] += 1
+            return resp
+
+        return completion_side_effect
+
+    def test_declared_tool_is_offered_and_dispatched(self):
+        mock_workspace = MagicMock()
+        mock_workspace.summarize_directory.return_value = "docs/decisions/0068.md\n  # Title"
+        validator_spec = self._tool_validator(["summarize_directory"])
+        completion_fn = MagicMock(side_effect=self._summarize_then_verdict())
+        validator = LLMValidator(validator_spec, completion_fn, model="gpt-4")
+        ctx = self._context(completion_fn)
+        ctx.workspace_mcp = mock_workspace
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        tool_names = [t["function"]["name"] for t in completion_fn.call_args_list[0][1]["tools"]]
+        assert "summarize_directory" in tool_names
+        mock_workspace.summarize_directory.assert_called_once_with("docs/decisions")
+
+    def test_undeclared_tool_is_not_offered_and_cannot_run(self):
+        """A validator that did not declare the tool is neither offered it nor
+        permitted to execute a call to it."""
+        mock_workspace = MagicMock()
+        validator_spec = self._tool_validator(["read_file"])
+        completion_fn = MagicMock(side_effect=self._summarize_then_verdict())
+        validator = LLMValidator(validator_spec, completion_fn, model="gpt-4")
+        ctx = self._context(completion_fn)
+        ctx.workspace_mcp = mock_workspace
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        tool_names = [t["function"]["name"] for t in completion_fn.call_args_list[0][1]["tools"]]
+        assert "summarize_directory" not in tool_names
+        mock_workspace.summarize_directory.assert_not_called()
+        # The refused call is answered so the tool_call_id is not left dangling.
+        tool_msgs = [
+            m for m in completion_fn.call_args_list[-1][1]["messages"]
+            if m.get("role") == "tool"
+        ]
+        assert any("not available" in m["content"] for m in tool_msgs)
+
+    def test_tool_definition_excludes_undeclared_names(self):
+        defs = LLMValidator._build_tool_definitions({"read_file"})
+        names = {d["function"]["name"] for d in defs}
+        assert names == {"read_file"}
+
+    def test_summarize_directory_is_not_post_execute_only(self):
+        from snodo.validators.llm_validator import _POST_EXECUTE_ONLY_TOOLS
+        assert "summarize_directory" not in _POST_EXECUTE_ONLY_TOOLS

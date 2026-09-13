@@ -100,6 +100,7 @@ _READ_ONLY_TOOL_NAMES = {
     "git_show",
     "git_log",
     "read_diff_between_refs",
+    "summarize_directory",
 }
 
 
