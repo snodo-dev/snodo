@@ -12,6 +12,7 @@ validators, transitions — not from declared text).
 """
 
 import json
+import logging
 import re
 from typing import Any, Dict, Optional
 
@@ -23,6 +24,8 @@ from snodo.validators.context import ValidatorContext, ValidatorBase
 from snodo.validators.llm_validator import _is_provider_rejection
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
+
+_logger = logging.getLogger(__name__)
 
 
 _DEFAULT_MAX_TOKENS = 1500
@@ -80,6 +83,14 @@ class ProtocolAdherenceValidator(ValidatorBase):
             try:
                 return self._call_llm_structured(prompt)
             except Exception as e:
+                # The rejection's reason is otherwise dropped when the
+                # unstructured path succeeds; a degraded structured call is
+                # something an operator debugging verdict quality will want.
+                _logger.debug(
+                    "Structured output call failed for %s (falling back to "
+                    "unstructured parse): %s: %s",
+                    self.validator_spec.validator_id, type(e).__name__, e,
+                )
                 structured_rejected = _is_provider_rejection(e)
 
         # Legacy: free-text completion + hand-rolled parse
@@ -107,12 +118,19 @@ class ProtocolAdherenceValidator(ValidatorBase):
             # a non-unanimous policy; this is an operational fault, not a
             # judgement (same shape as llm_validator and the provider-
             # rejection branch above, Fixes #84).
+            # The fault's type and message are the diagnosis — log them and
+            # carry the type into the surfaced justification.
+            _logger.warning(
+                "Protocol-adherence validator %s (model=%s) hit an operational "
+                "fault: %s: %s",
+                self.validator_spec.validator_id, self.model, type(e).__name__, e,
+            )
             return ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
                 severity="blocker",
                 justification=(
                     f"Protocol-adherence validator could not execute due to "
-                    f"an operational error: {e}"
+                    f"an operational error ({type(e).__name__}): {e}"
                 ),
                 error=True,
             )
@@ -308,7 +326,8 @@ class ProtocolAdherenceValidator(ValidatorBase):
     def _try_json_parse(text: str) -> Optional[dict]:
         try:
             return json.loads(text.strip())
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError) as e:
+            _logger.debug("Direct JSON parse failed: %s: %s", type(e).__name__, e)
             return None
 
     @staticmethod
@@ -317,14 +336,18 @@ class ProtocolAdherenceValidator(ValidatorBase):
         if match:
             try:
                 return json.loads(match.group(1).strip())
-            except (json.JSONDecodeError, ValueError):
-                pass
+            except (json.JSONDecodeError, ValueError) as e:
+                _logger.debug(
+                    "Code-block JSON parse failed: %s: %s", type(e).__name__, e
+                )
         match = re.search(r'\{[^{}]*"severity"[^{}]*\}', text, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group(0))
-            except (json.JSONDecodeError, ValueError):
-                pass
+            except (json.JSONDecodeError, ValueError) as e:
+                _logger.debug(
+                    "Embedded-object JSON parse failed: %s: %s", type(e).__name__, e
+                )
         return None
 
 

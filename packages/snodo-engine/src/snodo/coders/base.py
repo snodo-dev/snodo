@@ -177,12 +177,19 @@ class InPlaceCoderAdapter(Coder, ABC):
 
         Returns the commit sha or None if the repo cannot be opened.
         """
-        from git import Repo, GitCommandError
+        from git import Repo
 
         try:
             repo = Repo(str(self._workspace), search_parent_directories=True)
             return repo.head.commit.hexsha
-        except (GitCommandError, Exception):
+        except Exception as e:
+            # None here means "no anchor", which the caller cannot distinguish
+            # from a fresh repository; the git failure's type and message are
+            # the diagnosis of why, so they must not vanish.
+            _logger.warning(
+                "Could not record HEAD before coder run (workspace=%s): %s: %s",
+                self._workspace, type(e).__name__, e,
+            )
             return None
 
     @abstractmethod

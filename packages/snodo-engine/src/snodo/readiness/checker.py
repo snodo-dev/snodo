@@ -22,7 +22,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from git import Repo
+from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 
 from snodo.compiler.models import Protocol
 from snodo.readiness.models import (
@@ -59,16 +59,44 @@ _PATH_IGNORE_TOKENS = {
 }
 
 
-def _get_git_repo(project_root: Path) -> Optional[Repo]:
-    """Return GitPython Repo instance if inside a git repository, else None."""
+def _get_git_repo(
+    project_root: Path, problems: Optional[List[str]] = None
+) -> Optional[Repo]:
+    """Return GitPython Repo instance if inside a git repository, else None.
+
+    Not being inside a repository is the ordinary negative answer. A git
+    failure that is NOT that answer (broken install, unreadable config,
+    spawn failure) is recorded in *problems* and logged: "could not ask
+    git" must never masquerade as "git says nothing is committed".
+    """
     try:
         return Repo(str(project_root), search_parent_directories=True)
-    except Exception:
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        # Ordinary negative: this directory is not in a git repository.
+        return None
+    except Exception as e:
+        _logger.debug(
+            "Could not open git repository at %s: %s: %s",
+            project_root, type(e).__name__, e,
+        )
+        if problems is not None:
+            problems.append(
+                f"could not open git repository at {project_root}: "
+                f"{type(e).__name__}: {e}"
+            )
         return None
 
 
-def _is_path_committed(repo: Optional[Repo], rel_path: str) -> bool:
-    """Return True if rel_path (file or directory) has at least one committed file in HEAD."""
+def _is_path_committed(
+    repo: Optional[Repo], rel_path: str, problems: Optional[List[str]] = None
+) -> Optional[bool]:
+    """Return True if rel_path (file or directory) has at least one committed file in HEAD.
+
+    Returns None — not False — when the git check itself failed: the caller
+    can still treat that falsy (the finding it emits is then caveated by the
+    recorded problem), but a failure to ask is distinguishable from an
+    answered "no".
+    """
     if repo is None:
         return False
     try:
@@ -77,12 +105,23 @@ def _is_path_committed(repo: Optional[Repo], rel_path: str) -> bool:
         norm = rel_path.rstrip("/\\")
         output = repo.git.ls_tree("-r", "--name-only", "HEAD", norm)
         return bool(output.strip())
-    except Exception:
-        return False
+    except Exception as e:
+        reason = (
+            f"git ls-tree for '{rel_path}' failed: {type(e).__name__}: {e}"
+        )
+        _logger.debug("Readiness git check failed: %s", reason)
+        if problems is not None:
+            problems.append(reason)
+        return None
 
 
-def _has_committed_markdown_files(repo: Optional[Repo], rel_dir: str) -> bool:
-    """Return True if rel_dir has at least one committed .md file in HEAD."""
+def _has_committed_markdown_files(
+    repo: Optional[Repo], rel_dir: str, problems: Optional[List[str]] = None
+) -> Optional[bool]:
+    """Return True if rel_dir has at least one committed .md file in HEAD.
+
+    None means the git check could not run (see ``_is_path_committed``).
+    """
     if repo is None:
         return False
     try:
@@ -92,8 +131,14 @@ def _has_committed_markdown_files(repo: Optional[Repo], rel_dir: str) -> bool:
         output = repo.git.ls_tree("-r", "--name-only", "HEAD", norm)
         lines = [line.strip() for line in output.splitlines() if line.strip()]
         return any(line.endswith(".md") for line in lines)
-    except Exception:
-        return False
+    except Exception as e:
+        reason = (
+            f"git ls-tree for '{rel_dir}' failed: {type(e).__name__}: {e}"
+        )
+        _logger.debug("Readiness git check failed: %s", reason)
+        if problems is not None:
+            problems.append(reason)
+        return None
 
 
 def _extract_cited_paths(text: str) -> List[str]:
@@ -137,7 +182,11 @@ def assess_readiness(
     Returns a ReadinessAssessment containing the scored repository figure and
     ordered findings (cheapest fix at highest severity first).
     """
-    repo = _get_git_repo(project_root)
+    # Git checks that could not run are collected here so the assessment can
+    # surface "a tool failure, not a verdict" to the operator instead of
+    # letting falsy fallbacks read as confident "not committed" answers.
+    git_problems: List[str] = []
+    repo = _get_git_repo(project_root, git_problems)
     all_mode_ids = [m.mode_id for m in protocol.modes]
 
     # Map each validator to the modes that activate it
@@ -160,7 +209,7 @@ def assess_readiness(
     total_repo_checks += 1
     protocol_rel = ".snodo/protocol.yml"
     protocol_on_disk = (project_root / protocol_rel).exists()
-    protocol_committed = _is_path_committed(repo, protocol_rel)
+    protocol_committed = _is_path_committed(repo, protocol_rel, git_problems)
 
     if not protocol_committed:
         if protocol_on_disk:
@@ -202,7 +251,7 @@ def assess_readiness(
         total_repo_checks += 1
         modes = validator_modes.get(val.validator_id, all_mode_ids)
         decisions_dir = project_root / "docs" / "decisions"
-        has_committed_decisions = _has_committed_markdown_files(repo, "docs/decisions")
+        has_committed_decisions = _has_committed_markdown_files(repo, "docs/decisions", git_problems)
 
         if not has_committed_decisions:
             disk_md_files = (
@@ -256,7 +305,7 @@ def assess_readiness(
         uncommitted_marker_file = None
 
         for marker_file, default_cmd in _TEST_MARKERS:
-            if _is_path_committed(repo, marker_file):
+            if _is_path_committed(repo, marker_file, git_problems):
                 detected_marker_cmd = default_cmd
                 detected_marker_file = marker_file
                 break
@@ -338,7 +387,7 @@ def assess_readiness(
             seen_cited_paths.add(cited_path)
 
             total_repo_checks += 1
-            if _is_path_committed(repo, cited_path):
+            if _is_path_committed(repo, cited_path, git_problems):
                 continue
             elif (project_root / cited_path).exists():
                 repository_findings.append(
@@ -385,7 +434,7 @@ def assess_readiness(
             for agy_cfg in [".agy", ".gemini"]:
                 if (project_root / agy_cfg).exists():
                     total_repo_checks += 1
-                    if not _is_path_committed(repo, agy_cfg):
+                    if not _is_path_committed(repo, agy_cfg, git_problems):
                         repository_findings.append(
                             ReadinessFinding(
                                 id=f"coder_config_uncommitted:{coder_name}",
@@ -415,7 +464,7 @@ def assess_readiness(
             for opencode_cfg in ["opencode.json", "opencode.toml"]:
                 if (project_root / opencode_cfg).exists():
                     total_repo_checks += 1
-                    if not _is_path_committed(repo, opencode_cfg):
+                    if not _is_path_committed(repo, opencode_cfg, git_problems):
                         repository_findings.append(
                             ReadinessFinding(
                                 id=f"coder_config_uncommitted:{coder_name}",
@@ -546,6 +595,36 @@ def assess_readiness(
                     fix_cost=3,
                 )
             )
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Git tool failures: a check that could not run is not a verdict
+    # ──────────────────────────────────────────────────────────────────────────
+    # Any "uncommitted"/"missing" finding produced while git probes were
+    # failing is suspect: the negative answer came from the probe breaking,
+    # not from git. Surface the collected reasons so a broken git install is
+    # reported as a tool failure rather than as scaffold findings about the
+    # project.
+    if git_problems:
+        # A failed probe is a check that did not pass, so it counts against
+        # the score like any other finding rather than shrinking the score
+        # by a finding with no check behind it.
+        total_repo_checks += 1
+        unique_problems = list(dict.fromkeys(git_problems))
+        repository_findings.append(
+            ReadinessFinding(
+                id="git_check_unavailable",
+                kind=ReadinessKind.REPOSITORY,
+                severity=FindingSeverity.WARN,
+                modes=all_mode_ids,
+                description=(
+                    "git could not be queried while assessing readiness; the "
+                    "'uncommitted'/'missing' findings above may be wrong. "
+                    "Reasons: " + "; ".join(unique_problems)
+                ),
+                remediation="Fix the git installation or repository, then re-run 'snodo ready'",
+                fix_cost=2,
+            )
+        )
 
     # ──────────────────────────────────────────────────────────────────────────
     # Score calculation (Repository Scaffolding only)

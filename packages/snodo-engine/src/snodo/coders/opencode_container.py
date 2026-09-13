@@ -53,7 +53,11 @@ class OpenCodeContainer:
         try:
             self.client.ping()
             return True
-        except Exception:
+        except Exception as e:
+            # "Docker is absent" and "Docker is present but erroring" both
+            # fall back to False for the caller; only the log can tell the
+            # operator which world they are in.
+            _logger.debug("Docker ping failed (daemon unreachable?): %s: %s", type(e).__name__, e)
             return False
 
     def image_exists(self) -> bool:
@@ -61,7 +65,8 @@ class OpenCodeContainer:
         try:
             self.client.images.get(self._image)
             return True
-        except Exception:
+        except Exception as e:
+            _logger.debug("Image %s lookup failed: %s: %s", self._image, type(e).__name__, e)
             return False
 
     def build_image(self) -> str:
@@ -158,7 +163,14 @@ class OpenCodeContainer:
                 f"{self.base_url}/global/health", timeout=2.0,
             )
             return resp.status_code == 200
-        except Exception:
+        except Exception as e:
+            # A health endpoint that refuses to answer because the HTTP
+            # client broke is not the same as an unhealthy container;
+            # keep the distinguishing reason.
+            _logger.debug(
+                "OpenCode health check request failed (%s/global/health): %s: %s",
+                self.base_url, type(e).__name__, e,
+            )
             return False
 
     def _wait_ready(self, timeout: float = 60.0) -> None:
@@ -213,7 +225,10 @@ class OpenCodeContainer:
         try:
             self._container.reload()
             return self._container.status == "running"
-        except Exception:
+        except Exception as e:
+            # reload() failing (daemon vanished, container deleted underneath
+            # us) is reported as "not running"; the reason belongs in the log.
+            _logger.debug("Container reload failed: %s: %s", type(e).__name__, e)
             return False
 
     def stop(self) -> None:

@@ -462,7 +462,11 @@ Return ONLY the JSON array, no other text.
                             test_runs_this_turn += 1
                             try:
                                 args = json.loads(tc.function.arguments)
-                            except (json.JSONDecodeError, TypeError):
+                            except (json.JSONDecodeError, TypeError) as e:
+                                _logger.debug(
+                                    "run_tests arguments unparseable, retrying "
+                                    "with empty args: %s: %s", type(e).__name__, e,
+                                )
                                 args = {}
                             test_path = args.get("test_path", "")
                             command_type = args.get("command_type", "pytest")
@@ -479,7 +483,12 @@ Return ONLY the JSON array, no other text.
                     else:
                         try:
                             args = json.loads(tc.function.arguments)
-                        except (json.JSONDecodeError, TypeError):
+                        except (json.JSONDecodeError, TypeError) as e:
+                            _logger.debug(
+                                "Tool %s arguments unparseable, executing with "
+                                "empty args: %s: %s",
+                                tool_name, type(e).__name__, e,
+                            )
                             args = {}
                         prev_turn = read_tracker.check_read(tool_name, args)
                         if prev_turn is not None:
@@ -658,7 +667,13 @@ Return ONLY the JSON array, no other text.
         try:
             raw_args = getattr(target.function, "arguments", "{}")
             args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError) as e:
+            # A submit_files call whose arguments will not parse is a delivery
+            # being dropped; the parse failure's reason must be recoverable
+            # from the log even though the loop keeps going on feedback.
+            _logger.debug(
+                "submit_files arguments unparseable: %s: %s", type(e).__name__, e,
+            )
             return None
 
         files = args.get("files", [])
@@ -735,8 +750,14 @@ Return ONLY the JSON array, no other text.
                     f"were cut off mid-argument. Raise max_tokens or split "
                     f"the task."
                 )
-        except (AttributeError, IndexError):
-            pass
+        except (AttributeError, IndexError) as e:
+            # The check could not run on this response shape. Quietly skipping
+            # it reads to the caller as "not truncated" — say why it was
+            # skipped so a malformed provider response is diagnosable.
+            _logger.debug(
+                "Truncation check skipped (unexpected response shape): %s: %s",
+                type(e).__name__, e,
+            )
 
     @staticmethod
     def _build_tool_definitions() -> List[Dict[str, Any]]:
@@ -1088,8 +1109,10 @@ Return ONLY the JSON array, no other text.
         """
         try:
             return json.loads(response)
-        except (json.JSONDecodeError, TypeError):
-            pass
+        except (json.JSONDecodeError, TypeError) as e:
+            _logger.debug(
+                "Coder JSON strategy 'direct' failed: %s: %s", type(e).__name__, e,
+            )
 
         # Greedy: match from the first ``` fence to the LAST ``` fence,
         # stripping only the outermost pair.  The non-greedy .*? would stop
@@ -1100,8 +1123,11 @@ Return ONLY the JSON array, no other text.
         if match:
             try:
                 return json.loads(match.group(1).strip())
-            except (json.JSONDecodeError, TypeError):
-                pass
+            except (json.JSONDecodeError, TypeError) as e:
+                _logger.debug(
+                    "Coder JSON strategy 'fenced-block' failed: %s: %s",
+                    type(e).__name__, e,
+                )
 
         return None
 

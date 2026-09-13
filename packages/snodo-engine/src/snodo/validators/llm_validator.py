@@ -133,8 +133,15 @@ def _is_transient_error(e: Exception) -> bool:
              InternalServerError, BadGatewayError, ServiceUnavailableError),
         ):
             return True
-    except ImportError:
-        pass
+    except ImportError as e:
+        # The classifier's own degradation must be visible: without these
+        # classes a transient connection error is judged only by status code,
+        # and a caller that carries on should be able to see why the
+        # classification changed shape.
+        _logger.debug(
+            "litellm exception classes unavailable, transient check falls "
+            "back to status code: %s", e,
+        )
 
     # Fall back to the HTTP status code when the exception carries one.
     status = getattr(e, "status_code", None)
@@ -329,10 +336,21 @@ class LLMValidator(ValidatorBase):
                     error=True,
                 )
         except Exception as e:
+            # The operational-fault path: an error=True result halts the run
+            # as validator_error, so the cause must travel with it. The type
+            # distinguishes provider rejections from code defects, and the
+            # message carries the provider's own words.
+            _logger.warning(
+                "Validator %s (model=%s) hit an operational fault: %s: %s",
+                self.validator_spec.validator_id, self.model, type(e).__name__, e,
+            )
             res = ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
                 severity="blocker",
-                justification=f"LLM validation failed due to operational error: {e}",
+                justification=(
+                    f"LLM validation failed due to operational error "
+                    f"({type(e).__name__}): {e}"
+                ),
                 error=True,
             )
         return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
@@ -431,10 +449,22 @@ class LLMValidator(ValidatorBase):
                     kwargs["extra_headers"] = extra_headers
                 response = self._call_completion_with_retry(**kwargs)
             except Exception as e:
+                # Provider fault on the tool-loop path: it halts as
+                # validator_error, so log the cause and carry its type into
+                # the surfaced justification alongside the message.
+                _logger.warning(
+                    "Validator %s tool-loop hit an operational fault on turn %d "
+                    "(model=%s): %s: %s",
+                    self.validator_spec.validator_id, turn + 1, self.model,
+                    type(e).__name__, e,
+                )
                 return ValidatorResult(
                     validator_id=self.validator_spec.validator_id,
                     severity="blocker",
-                    justification=f"LLM tool-loop operational error on turn {turn + 1}: {e}",
+                    justification=(
+                        f"LLM tool-loop operational error on turn {turn + 1} "
+                        f"({type(e).__name__}): {e}"
+                    ),
                     error=True,
                 )
 
@@ -798,7 +828,14 @@ class LLMValidator(ValidatorBase):
                 continue
             try:
                 args = json.loads(tc.function.arguments)
-            except (json.JSONDecodeError, TypeError):
+            except (json.JSONDecodeError, TypeError) as e:
+                # A verdict the judge did deliver is being dropped here
+                # (the model is fed generic feedback instead); keep the
+                # parse failure's reason reachable.
+                _logger.debug(
+                    "submit_verdict arguments unparseable for validator %s: %s: %s",
+                    self.validator_spec.validator_id, type(e).__name__, e,
+                )
                 return None
             severity = str(args.get("severity", "")).lower().strip()
             justification = str(args.get("justification", "No justification provided"))
@@ -1062,7 +1099,11 @@ class LLMValidator(ValidatorBase):
         """Try to parse text as JSON directly."""
         try:
             return json.loads(text.strip())
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError) as e:
+            _logger.debug(
+                "Validator %s: direct JSON parse failed: %s: %s",
+                self.validator_spec.validator_id, type(e).__name__, e,
+            )
             return None
 
     def _try_extract_json(self, text: str) -> Optional[dict]:
@@ -1072,16 +1113,22 @@ class LLMValidator(ValidatorBase):
         if match:
             try:
                 return json.loads(match.group(1).strip())
-            except (json.JSONDecodeError, ValueError):
-                pass
+            except (json.JSONDecodeError, ValueError) as e:
+                _logger.debug(
+                    "Validator %s: code-block JSON parse failed: %s: %s",
+                    self.validator_spec.validator_id, type(e).__name__, e,
+                )
 
         # Try finding JSON object in text
         match = re.search(r'\{[^{}]*"severity"[^{}]*\}', text, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group(0))
-            except (json.JSONDecodeError, ValueError):
-                pass
+            except (json.JSONDecodeError, ValueError) as e:
+                _logger.debug(
+                    "Validator %s: embedded-object JSON parse failed: %s: %s",
+                    self.validator_spec.validator_id, type(e).__name__, e,
+                )
 
         return None
 
