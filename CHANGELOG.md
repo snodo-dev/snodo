@@ -59,6 +59,33 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A recovery attempt is now told it resumes from partial work instead of
+  being handed the whole task again. A recovery subtask's spec carried the
+  original intent verbatim plus the accumulated failures, framed as "implement
+  the intent" — so a coder whose predecessor had satisfied four of five
+  criteria re-established everything, re-ran the diagnosis it had already
+  completed, and reproduced work that was already committed. Observed on a real
+  run: a single unmet acceptance clause produced a recovery attempt whose net
+  change was one test file, after it wrote and ran four probe scripts to
+  re-derive a root cause the earlier attempt had already found, fixed and
+  committed. The spec now states that the prior attempt's work is on disk in
+  the worktree and must not be reproduced, names the verdicts that already hold
+  (a validator that passed, and for a judge that flagged one criterion, the
+  criteria it did not flag), and states that the coder's job is the remaining
+  work. The settled items are framed as "already holds, and will be re-judged"
+  rather than "ignore the rest": validators judge the final state regardless,
+  and a coder told the rest does not matter could still break it. The original
+  intent is still carried verbatim, exactly once, and stays authoritative —
+  nothing truncates, replaces, or rewrites it. The recovery depth cap,
+  stalled-verdict detection, the halt taxonomy, warn/blocker classification,
+  post-execute validation, and per-attempt token issuance are unchanged. The
+  pre-execute quorum still runs in full: a recovery spec is new content (the
+  accumulated failures and the settled summary change every attempt) that
+  validators receive in place of the task spec, and the WF1 token gate is
+  satisfied at dispatch from that quorum's results, so skipping it or reusing a
+  prior token would weaken both the enforcement claim and the single-use token
+  boundary (ADR 021, ADR 013).
+
 - A failure's reason no longer dies at the handler that caught it. The engine
   had a recurring defect class — an exception is caught, a safe value is
   returned, and the cause is destroyed at the only point where it existed —

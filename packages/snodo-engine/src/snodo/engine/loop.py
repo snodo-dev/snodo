@@ -19,6 +19,7 @@ INV3 (non-overridable validation) is structural/emergent — no single site:
   blocks mutation tools → validation cannot be bypassed.
 """
 
+import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -210,11 +211,108 @@ def _combine_attempt_reads(
     return history
 
 
+_CITATION_INDEX = re.compile(r"\[Criterion\s+(\d+)\]", re.IGNORECASE)
+
+
+def _first_line(text: str) -> str:
+    """Return the first non-empty line of *text*, or ``""``."""
+    stripped = (text or "").strip()
+    return stripped.splitlines()[0] if stripped else ""
+
+
+def _cited_indices(cited_criteria: Optional[list]) -> set:
+    """Map a result's legible cited-criteria text back to 1-based indices.
+
+    ``enrich_result_with_criteria`` renders each unmet criterion as
+    ``"[Criterion N] <text>"``.  The index is the only structured handle on
+    which criteria a multi-criterion judge flagged, so the *other* criteria are
+    what already hold (see :func:`_settled_from_results`).
+    """
+    indices = set()
+    for entry in cited_criteria or []:
+        match = _CITATION_INDEX.search(str(entry))
+        if match:
+            indices.add(int(match.group(1)))
+    return indices
+
+
+def _normalize_settled(settled: Optional[list]) -> list:
+    normalized = []
+    for entry in settled or []:
+        if not isinstance(entry, dict):
+            continue
+        validator_id = str(entry.get("validator_id") or "").strip()
+        if not validator_id:
+            continue
+        normalized.append({
+            "validator_id": validator_id,
+            "justification": str(entry.get("justification") or "").strip(),
+            "held_criteria": [
+                str(c).strip()
+                for c in (entry.get("held_criteria") or [])
+                if str(c).strip()
+            ],
+        })
+    return normalized
+
+
+def _settled_from_results(results: Optional[list], find_criteria: Callable[[str], list]) -> list:
+    """Return the prior attempt's verdicts that already hold.
+
+    A validator that returned ``pass`` settled everything it judged; a
+    validator that warned or blocked on *some* of its criteria (signalled by
+    ``cited_criteria``) settled the criteria it did not cite as unmet.  Both
+    become the "already holds" side of the prior attempt's result, carried into
+    a recovery spec so a coder resuming from a partial success can tell what it
+    need not re-establish (see :func:`_build_recovery_spec`).
+
+    A pass whose gate was skipped is excluded: it verified nothing, so it is
+    not evidence (ADR 028).  A warn/blocker with no citable criterion is
+    excluded too — without the judge's citation there is no honest way to say
+    which of its criteria held, and claiming all of them would be a dangerous
+    overstatement.
+    """
+    settled = []
+    for result in results or []:
+        if getattr(result, "error", False):
+            continue
+        severity = getattr(result, "severity", None)
+        validator_id = getattr(result, "validator_id", None)
+        if not validator_id:
+            continue
+        if severity == "pass":
+            if getattr(result, "skipped", False):
+                continue
+            settled.append({
+                "validator_id": validator_id,
+                "justification": getattr(result, "justification", "") or "",
+                "held_criteria": [],
+            })
+        elif severity in ("warn", "blocker"):
+            cited = _cited_indices(getattr(result, "cited_criteria", None))
+            if not cited:
+                continue
+            criteria = list(find_criteria(validator_id) or [])
+            held = [
+                f"{idx}. {str(term).strip()}"
+                for idx, term in enumerate(criteria, 1)
+                if idx not in cited
+            ]
+            if held:
+                settled.append({
+                    "validator_id": validator_id,
+                    "justification": getattr(result, "justification", "") or "",
+                    "held_criteria": held,
+                })
+    return settled
+
+
 def _build_recovery_spec(
     original_spec: str,
     failures: list,
     attempt_provenance: Optional[list] = None,
     attempt_reads: Optional[list] = None,
+    settled: Optional[list] = None,
 ) -> str:
     """Synthesise a recovery spec from the original intent + accumulated failures.
 
@@ -234,6 +332,16 @@ def _build_recovery_spec(
     essentially the whole repository across 48 turns. The intent is the scope
     anchor; the failures tell the coder what went wrong, not what to build.
 
+    A recovery attempt is PROPORTIONATE to what failed, not a fresh run of the
+    whole task. The spec therefore states three things the old framing left
+    out: the prior attempt's work is already on disk in this worktree and must
+    not be reproduced; the verdicts that already hold (``settled``) are named;
+    and the coder's job is the remainder. The settled entries are framed as
+    "already holds, and will be re-judged" — never "ignore the rest" — because
+    validators judge the final state regardless, so a coder told the rest does
+    not matter could still break it. The original intent is not truncated,
+    replaced, or rewritten: it stays on record verbatim and authoritative.
+
     ``attempt_provenance`` identifies files earlier attempts wrote in the same
     cumulative worktree. It is framed as ownership context, not a rewrite
     request: the coder may remove a superseded file from its own earlier
@@ -252,8 +360,22 @@ def _build_recovery_spec(
     """
     provenance = _normalize_attempt_provenance(attempt_provenance)
     reads = _normalize_attempt_reads(attempt_reads)
+    settled_verdicts = _normalize_settled(settled)
+    settled_ids = [entry["validator_id"] for entry in settled_verdicts]
+    prior_attempt = max(
+        (f.get("attempt", 0) for f in failures if isinstance(f, dict)),
+        default=0,
+    )
+
+    opened = (
+        "The task is the INTENT below. This is a recovery attempt, not a fresh "
+        "task."
+    )
+    if settled_ids:
+        opened += " It resumes from a partial success."
+
     lines = [
-        "The task is the INTENT below. Implement it.",
+        opened,
         "",
         "INTENT (unchanged from the original task):",
         original_spec,
@@ -263,7 +385,18 @@ def _build_recovery_spec(
         "- The failures below are diagnostic evidence of what went wrong on "
         "earlier attempts. Use them to diagnose, but they do not change the "
         "task and do not widen its scope.",
+        "- The prior attempt's work is already on disk in this worktree "
+        "(committed on this task's branch). Inspect it before writing; do not "
+        "re-derive or reproduce work that is already present.",
     ]
+
+    if settled_ids:
+        lines.append(
+            "- The SETTLED verdicts below already hold as of the prior attempt. "
+            "They will be re-judged on the final state, so do not break them — "
+            "but you should not need to re-establish them. Your job is the "
+            "remaining work named by the failures."
+        )
 
     if provenance:
         lines.extend(
@@ -301,6 +434,50 @@ def _build_recovery_spec(
             if entry["directories"]:
                 parts.append("dirs: " + ", ".join(entry["directories"]))
             lines.append(f"- attempt {entry['attempt']}: " + "; ".join(parts))
+
+    failed_ids = sorted({
+        str(f.get("validator_id"))
+        for f in failures
+        if isinstance(f, dict)
+        and f.get("attempt") == prior_attempt
+        and f.get("validator_id")
+    })
+    passed_ids = [e["validator_id"] for e in settled_verdicts if not e["held_criteria"]]
+    partial_ids = [e["validator_id"] for e in settled_verdicts if e["held_criteria"]]
+    if prior_attempt:
+        lines.append("")
+        lines.append(f"PRIOR ATTEMPT (attempt {prior_attempt}) — result:")
+        lines.append(
+            "- Its work is committed in this worktree; begin from it rather "
+            "than reproducing it."
+        )
+        if passed_ids:
+            lines.append("- Validators that passed: " + ", ".join(passed_ids))
+        if partial_ids:
+            lines.append(
+                "- Validators partially holding (see SETTLED): "
+                + ", ".join(partial_ids)
+            )
+        if failed_ids:
+            lines.append("- Still failing: " + ", ".join(failed_ids))
+
+    if settled_verdicts:
+        lines.append("")
+        lines.append(
+            "SETTLED (verified as already holding by the prior attempt — will "
+            "be re-judged on the final state):"
+        )
+        for entry in settled_verdicts:
+            detail = _first_line(entry["justification"])
+            if entry["held_criteria"]:
+                lines.append(f"- {entry['validator_id']}: criteria already holding:")
+                for criterion in entry["held_criteria"]:
+                    lines.append(f"    - {criterion}")
+                if detail:
+                    lines.append(f"  (prior verdict: {detail})")
+            else:
+                suffix = f" — {detail}" if detail else ""
+                lines.append(f"- {entry['validator_id']}: passed{suffix}")
 
     if failures:
         lines.append("")
@@ -593,6 +770,12 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         is ``<root>_fix_N`` (linearly numbered by depth) and its spec carries the
         original intent once plus the accumulated failure list.  A repeated
         verdict halts the loop before depth is exhausted (ADR 021).
+
+        The spec is not just the original task with failures appended: it also
+        names the verdicts that already hold and states that the prior attempt's
+        work is on disk, so a recovery attempt is proportionate to the remainder
+        rather than a re-run of the whole task.  The original intent is still
+        carried verbatim and stays authoritative.
         """
         current_depth = loop_state.task.depth or 0
         max_depth = self.protocol.max_recovery_depth_for(loop_state.current_mode)
@@ -671,7 +854,16 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             attempt_no,
             _attempt_read_files(loop_state),
         )
-        spec = _build_recovery_spec(root_spec, accumulated, provenance, read_history)
+        # Verdicts that already hold, drawn from every validator that ran this
+        # attempt (pre- and post-execute). These tell the recovery coder what it
+        # need not re-establish; they are re-judged on the final state anyway.
+        settled = _settled_from_results(
+            loop_state.validation_results or results,
+            lambda vid: getattr(self._find_validator(vid), "criteria", None) or [],
+        )
+        spec = _build_recovery_spec(
+            root_spec, accumulated, provenance, read_history, settled
+        )
 
         # Identify triggering validators (warn / blocker)
         trigger_ids = [f["validator_id"] for f in new_failures]
