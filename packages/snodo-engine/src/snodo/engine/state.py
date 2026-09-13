@@ -42,6 +42,11 @@ class LoopState:
     needs_recovery: bool = False
     needs_spec_authoring: bool = False
     spec_authoring_attempts: int = 0
+    #: How many times a post-execute abstention has re-run the judge in place
+    #: this task. An abstention is no verdict, so the work is untouched and no
+    #: coder is dispatched; the judge is retried instead, bounded by the
+    #: protocol's max_recovery_depth (Fixes #268).
+    abstention_retries: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
     messages: List[Dict[str, Any]] = field(default_factory=list)
     summary: str = ""
