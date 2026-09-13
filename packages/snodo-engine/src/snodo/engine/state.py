@@ -106,6 +106,7 @@ def state_result_dict(r: Any) -> Dict[str, Any]:
         d["unexamined_tools"] = (
             list(r.unexamined_tools) if getattr(r, "unexamined_tools", None) else None
         )
+        d["last_words"] = getattr(r, "last_words", None)
     if getattr(r, "reused", False):
         d["reused"] = True
     return d

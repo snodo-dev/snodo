@@ -410,6 +410,11 @@ class LLMValidator(ValidatorBase):
         ]
 
         retried_free_text = False
+        # The judge's own last words when it answered in prose instead of
+        # calling submit_verdict. The prose is untrusted, unbounded model
+        # output: it is kept only on the abstention path, bounded, and never
+        # read as a finding or converted into a severity (Fixes #270).
+        last_free_text: Optional[str] = None
         # Ongoing-work narration goes to the progress sink — never the verdict
         # sink. Wrapping here keeps a raw callback safe on the direct path too;
         # when the runner already wrapped it, the same sink (and its
@@ -576,6 +581,7 @@ class LLMValidator(ValidatorBase):
 
             if has_content and not retried_free_text:
                 retried_free_text = True
+                last_free_text = _bound_last_words(msg.content)
                 examination.append(
                     f"turn {turn + 1}: free-text response (not a verdict; asked for submit_verdict)"
                 )
@@ -602,6 +608,11 @@ class LLMValidator(ValidatorBase):
             # fabricated blocker here would misblock the task and mis-report the
             # judge as issuing a verdict it never made.
             unexamined = sorted(active_names - tools_exercised)
+            # Prefer the judge's most recent prose — its "last words" — over
+            # the first free-text reply it gave, when it spoke again after the
+            # nudge. An empty/absent second reply leaves the earlier account.
+            if msg.content:
+                last_free_text = _bound_last_words(msg.content)
             return ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
                 severity=None,
@@ -615,6 +626,7 @@ class LLMValidator(ValidatorBase):
                 ),
                 examined=examination or None,
                 unexamined_tools=unexamined or None,
+                last_words=last_free_text,
             )
 
         # Hit the turn cap — record as abstention, not error. The record says
@@ -1174,6 +1186,34 @@ def _truncated_log(raw: str, max_chars: int = 2048) -> str:
     if len(raw) <= max_chars:
         return raw
     return raw[:max_chars] + "...<truncated>"
+
+
+#: Ceiling on an abstaining judge's kept prose, in characters. A judge's
+#: closing account of why it would not commit is a sentence or two — not a
+#: transcript — and it is untrusted model output that must never bloat the
+#: audit payload (Fixes #270).
+_LAST_WORDS_CHAR_LIMIT = 2000
+
+
+def _bound_last_words(
+    raw: Optional[str], max_chars: int = _LAST_WORDS_CHAR_LIMIT
+) -> Optional[str]:
+    """Bound a judge's prose for the abstention record, or None if empty.
+
+    The account is kept as what it is — the words of a judge that did not
+    decide — and returned within *max_chars* exactly, truncation marker
+    included, so the audit payload can never grow past the stated bound.
+    Nothing downstream may parse it into a finding or a severity (Fixes #270).
+    """
+    if not raw:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    if len(text) <= max_chars:
+        return text
+    suffix = "...<truncated>"
+    return text[: max(max_chars - len(suffix), 0)] + suffix
 
 
 _default_registry.register_compound(LLMValidator.HANDLED_TYPES, LLMValidator)

@@ -96,6 +96,8 @@ def authorize_command(args) -> int:
         print(f"  Decision:  {proposal.get('decision', '—')}")
         if proposal.get("abstention_reason"):
             print(f"  Abstention: {proposal['abstention_reason']}")
+        if proposal.get("last_words"):
+            print(f"  Last words: {proposal['last_words']}")
         for examined in (proposal.get("examined") or []):
             print(f"    examined:   {examined}")
         for tool in (proposal.get("unexamined_tools") or []):
