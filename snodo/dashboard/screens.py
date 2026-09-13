@@ -7,6 +7,7 @@ import time as _time
 from typing import Any, Dict, Optional
 
 from rich.markup import escape as _escape
+from rich.style import Style
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -41,6 +42,119 @@ def _relative_time(iso_ts: Optional[str]) -> str:
 def _short_id(session_id: str) -> str:
     """Compact session ID for display: last 12 chars."""
     return session_id[-12:] if len(session_id) > 14 else session_id
+
+
+# ---------------------------------------------------------------------------
+# Status row colouring
+# ---------------------------------------------------------------------------
+
+#: Row style keyed by every status word the dashboard's tables carry — the
+#: planner's status.json vocabulary (pending, in_progress, completed, blocked,
+#: errored, unmerged, escalated), the job state.json vocabulary (queued,
+#: running, completed, failed, unmerged, cancelled), the liveness-corrected
+#: stale, and the session's halted. Deliberate, not defaulted:
+#:
+#: - alive is green; what an operator hunts is what is moving and what is not;
+#: - completed/merged recede to dim — finished work must not compete for the
+#:   eye with work that is live or broken;
+#: - failed/errored is orange, never red: red already means "a person is
+#:   required" (the bold-red status cell for awaiting, halted, escalated,
+#:   stale), and orange keeps the two distinguishable at a glance;
+#: - unmerged is yellow: finished work that has not landed. It needs doing,
+#:   but it did not fail and no human is blocked on it yet;
+#: - cancelled is dim italic — withdrawn, recede further than completed;
+#: - blocked/escalated/halted/stale take the existing red: they all mean the
+#:   row will not move unless a person acts;
+#: - pending/queued stay plain on purpose: neither alive, broken, nor
+#:   finished — nothing should pull the eye to a row that has not started.
+#:
+#: Colour is never the only carrier: the status word stays in its column, so
+#: a row is readable wherever the style does not arrive.
+_STATUS_ROW_STYLES = {
+    "running": "green",
+    "in_progress": "green",
+    "completed": "dim",
+    "merged": "dim",
+    "failed": "color(208)",
+    "errored": "color(208)",
+    "unmerged": "yellow",
+    "cancelled": "dim italic",
+    "blocked": "red",
+    "escalated": "red",
+    "halted": "red",
+    "stale": "red",
+    "pending": "",
+    "queued": "",
+}
+
+
+def status_row_style(status: Optional[str]) -> str:
+    """The whole-row style for a status word; unknown or blank gets plain.
+
+    An unrecognised status renders as an unstyled row rather than raising or
+    borrowing another status's colour: a wrong colour is worse than no
+    colour, because the word in the Status column still reads correctly.
+    """
+    return _STATUS_ROW_STYLES.get((status or "").strip().lower(), "")
+
+
+class StatusRowTable(DataTable):
+    """A DataTable that styles whole rows by status.
+
+    Row-level styling is not a cell's markup problem: colouring every cell
+    would fight the cell styles the status column already carries (a stale
+    row's bold-red word must stay bold red inside a dimmed or green row) and
+    would still leave the row's trailing space unstyled. Textual 8 removed the
+    per-row ``style`` argument from ``add_row``, so this uses the one hook the
+    widget still consults when it renders a row — ``_get_row_style`` — where
+    the row style composes with the cursor's own style rather than replacing
+    it, so selection keeps its look.
+
+    Styles are recorded against row keys, not row indices: the cockpit clears
+    and rebuilds its tables on every refresh, and a style bound to an index
+    would follow the wrong row across a rebuild. The map is cleared with the
+    table, so a stale style can never outlive its row.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._row_styles: Dict[Any, str] = {}
+
+    def add_row(self, *cells, status: Optional[str] = None, **kwargs):  # type: ignore[override]
+        """Add a row; *status* is the raw status word whose row style applies."""
+        row_key = super().add_row(*cells, **kwargs)
+        style = status_row_style(status)
+        if style:
+            self._row_styles[row_key] = style
+        return row_key
+
+    def clear(self, columns: bool = False):  # type: ignore[override]
+        self._row_styles.clear()
+        return super().clear(columns=columns)
+
+    def key_at_row(self, row_index: Optional[int]):
+        """The row key at *row_index*, or None. Public because Textual 8
+        gives a panel no way to ask which row the cursor is on by key — and
+        a table that is cleared and rebuilt must restore selection by key,
+        not by an index that the rebuild reassigns."""
+        if row_index is None:
+            return None
+        return self._row_locations.get_key(row_index)
+
+    def remove_row(self, row_key) -> None:
+        from textual.widgets.data_table import RowKey
+        self._row_styles.pop(row_key if isinstance(row_key, RowKey) else RowKey(row_key), None)
+        super().remove_row(row_key)
+
+    def _get_row_style(self, row_index: int, base_style: Style) -> Style:
+        row_style = super()._get_row_style(row_index, base_style)
+        if row_index < 0:
+            return row_style
+        row_key = self._row_locations.get_key(row_index)
+        style = self._row_styles.get(row_key) if row_key is not None else None
+        if not style:
+            return row_style
+        return row_style + Style.parse(style)
 
 
 # ---------------------------------------------------------------------------
