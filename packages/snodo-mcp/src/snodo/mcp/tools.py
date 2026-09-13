@@ -285,8 +285,8 @@ TOOL_REGISTRY = {
             "Turn an intent into a proposed plan on disk (.snodo/plans/<name>/). "
             "Returns the plan structure (name, intent, waves with ids, "
             "dependencies and tasks) and its validation state — nothing "
-            "executes. Add tasks with generate_spec, gate with validate_plan, "
-            "then run_plan."
+            "executes. Add tasks with generate_spec, check the shape with "
+            "validate_plan while authoring, then run_plan."
         ),
         "inputSchema": {
             "type": "object",
@@ -321,10 +321,16 @@ TOOL_REGISTRY = {
     },
     "run_plan": {
         "description": (
-            "Run an approved plan through the protocol loop. Refuses without "
-            "executing anything if the plan fails validation — the validators "
-            "stay authoritative. Blocks until the run finishes and returns the "
-            "plan's final task statuses read from status.json."
+            "Run a plan through the protocol loop. No validation token is "
+            "needed to call this: the plan's structure is checked here as part "
+            "of the run (calling validate_plan first is a convenience while "
+            "authoring, not a precondition), and every task the run dispatches "
+            "passes the engine's own validator quorum and consumes its own "
+            "token at its own dispatch boundary — so WF1 is satisfied per task, "
+            "where the work actually happens. Refuses without executing "
+            "anything if the plan does not conform. Blocks until the run "
+            "finishes and returns the plan's final task statuses read from "
+            "status.json."
         ),
         "inputSchema": {
             "type": "object",
@@ -338,7 +344,11 @@ TOOL_REGISTRY = {
             },
             "required": ["plan_name"],
         },
-        "requires_token": True,
+        # Not token-gated on purpose: a plan run is not itself a mutation, and
+        # the authority sits with the per-task quorum inside the run. Gating
+        # here would have meant a token issued by validate_task — for one
+        # unrelated task — standing in for authorisation of a whole plan.
+        "requires_token": False,
         "mcp": None,
         "method": None,
     },

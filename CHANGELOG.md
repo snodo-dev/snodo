@@ -57,6 +57,36 @@ snodo uses [Semantic Versioning](https://semver.org/).
   same suite on macOS, since that is the platform CI uses. `GATE_HOST` and
   `GATE_HOME` point it elsewhere.
 
+- A file that grows past a thousand lines of code now fails the gate. Nothing
+  in this repository watched how large a file was getting: ruff implements no
+  module-length rule at all, the selected rule set contains nothing structural,
+  and import-linter watches direction rather than size. A limit believed to be
+  in force had not been, and one command module went from 569 lines in June to
+  1,759 in September with no signal at any point. `scripts/enforce_file_length.py`
+  counts lines of code through the tokenizer, excluding blank lines, comments
+  and docstrings — a file that is mostly explanation is in good health, and a
+  check that punished prose would apply steady pressure to delete the best part
+  of this codebase. Two files exceed the limit today and are recorded in
+  `scripts/file_length_baseline.txt` with the counts they have; those numbers may
+  fall and never rise, a file that drops under the limit leaves the list and is
+  then held to the limit itself, and there is deliberately no suppression
+  mechanism. The check runs in the local gate, the CI gate and the release, and
+  a failure names the file, its overage and its baseline.
+
+- Survey sees markup, stylesheets and schema, reports repository tooling, and
+  no longer contradicts itself about tests. A survey of a real web product
+  reported no HTML, no CSS and no SQL for a repository that ships a static site
+  and ten database migrations; reported no repository tooling for one with a
+  Makefile, CI workflows and a lockfile; and printed "no test command could be
+  resolved" directly beneath six modules whose test commands it had just
+  confirmed. The language table now covers `.html`, `.css` and `.sql`;
+  repository-level build files, CI configuration and lockfiles are reported as
+  tooling; and the test-command summary names the scope it speaks for, so a
+  repository with per-module commands and none at its root says exactly that.
+  A file already identified as a manifest is no longer also counted as a
+  language, which closes the `pubspec.yaml`-counted-as-`yaml` gap the corpus had
+  been recording honestly as a precision loss rather than hiding.
+
 ### Fixed
 
 - A recovery attempt is now told it resumes from partial work instead of
@@ -135,7 +165,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
   configured model name now travels with the call, the wrapper resolves from it,
   and the duplicate resolution is gone. A provider whose config block name
   differs from its litellm provider name is now a test case rather than an
-  assumption.
+  assumption. That consolidation also briefly made the no-tools completion
+  paths pass an explicit `model`, overriding the model and `api_base` already
+  bound together on the completion function (#237) and sending litellm a
+  provider name it has never heard of; those paths carry only the configured
+  name again, which the header wrapper consumes and never forwards.
 
 ---
 
