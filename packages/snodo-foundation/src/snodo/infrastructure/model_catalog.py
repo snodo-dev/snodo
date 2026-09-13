@@ -232,6 +232,10 @@ def _litellm_fallback(model: str, result: dict) -> dict:
     """Fall back to litellm.model_cost for pricing."""
     try:
         import litellm
+        # litellm prints a 'Provider List' banner to stdout whenever it cannot
+        # name a provider. Snodo asks it about models it deliberately routes
+        # itself, so that is the normal case, not an error worth printing.
+        litellm.suppress_debug_info = True
         info = litellm.model_cost.get(model)
         if info:
             inp = info.get("input_cost_per_token")

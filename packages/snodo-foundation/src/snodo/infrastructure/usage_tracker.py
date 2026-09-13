@@ -41,6 +41,10 @@ class UsageTracker(CustomLogger):
 
         try:
             import litellm
+            # litellm prints a 'Provider List' banner to stdout whenever it cannot
+            # name a provider. Snodo asks it about models it deliberately routes
+            # itself, so that is the normal case, not an error worth printing.
+            litellm.suppress_debug_info = True
             cost = litellm.completion_cost(completion_response=response_obj)
         except Exception:
             cost = None
