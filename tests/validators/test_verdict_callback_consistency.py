@@ -44,7 +44,7 @@ def _run(cap, dispatch, *, task=None, progress_seen=None):
         validator_config=MagicMock(max_tokens=1500, max_tool_turns=6),
         current_mode="producer",
         dispatch_fn=dispatch,
-        progress_cb=progress_seen,
+        verdict_cb=progress_seen,
     )
     record = _build_audit_results([v], results, cap_originals)
     return results, cap_originals, record

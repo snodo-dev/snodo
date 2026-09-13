@@ -36,7 +36,13 @@ class ValidatorContext:
     max_tool_turns: Optional[int] = None
     job_id: str = ""
     task_id: str = ""
+    #: Ongoing-work narration: called with a single string (a tool turn, or a
+    #: validator's start/finish). Never a verdict.
     progress_callback: Optional[Any] = None
+    #: A verdict landing: called with ``(validator_id, ValidatorResult)``.
+    #: Deliberately a separate field from ``progress_callback`` so a call site
+    #: never has to guess which shape it holds.
+    verdict_callback: Optional[Any] = None
     #: Git ref the post-execute judges diff against (base_ref..HEAD). Captured
     #: by the execute node before the coder runs so a judge never reviews the
     #: previous unrelated commit when HEAD did not move.

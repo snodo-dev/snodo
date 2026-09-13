@@ -211,6 +211,7 @@ def run_validators(
     audit_log: Any = None,
     dispatch_fn: Any = None,
     progress_cb: Any = None,
+    verdict_cb: Any = None,
     artifacts: Optional[List[str]] = None,
     base_ref: Optional[str] = None,
 ) -> Tuple[List[ValidatorResult], Dict[str, str]]:
@@ -219,6 +220,13 @@ def run_validators(
     This is the shared multi-validator runner.  *dispatch_fn* defaults to
     :func:`dispatch_validator`; the engine passes its own ``_dispatch_one``
     method so tests can monkey-patch it (see tests/engine/test_validator_model_override.py).
+
+    Two callbacks carry two different things and never share a signature:
+    *progress_cb* receives ongoing-work narration as a single string (a
+    validator starting, a tool turn, a validator finishing); *verdict_cb*
+    receives a landed verdict as ``(validator_id, ValidatorResult)``.  Each is
+    wrapped in a :class:`ProgressSink` before any validator sees it, so a
+    broken sink is reported once and can never halt the quorum.
 
     *artifacts* is the list of produced file paths (post-execute only; empty
     for pre-execute).  It is carried on the ValidatorContext so a validator
@@ -233,10 +241,14 @@ def run_validators(
     error flag and bypass the fail-closed ``error_count > 0 → HALT`` path in
     ``PolicyEvaluator.evaluate``.
     """
+    from snodo.engine.progress import ensure_progress_sink
     from snodo.validators.registry import _default_registry as reg
 
     if dispatch_fn is None:
         dispatch_fn = dispatch_validator
+
+    progress_sink = ensure_progress_sink(progress_cb, "validator progress")
+    verdict_sink = ensure_progress_sink(verdict_cb, "validator verdict")
 
     mode_obj = protocol.get_mode(current_mode)
     _vcfg = validator_config
@@ -283,7 +295,8 @@ def run_validators(
         max_tool_turns=_vcfg.max_tool_turns,
         job_id=session_id,
         task_id=task.id,
-        progress_callback=progress_cb,
+        progress_callback=progress_sink,
+        verdict_callback=verdict_sink,
         base_ref=base_ref,
     )
 
@@ -300,6 +313,14 @@ def run_validators(
     results_by_id: Dict[str, ValidatorResult] = {}
     cap_originals: Dict[str, str] = {}
 
+    def _dispatch_with_progress(v: Validator, ctx: ValidatorContext) -> ValidatorResult:
+        # Emitted from inside the worker, not at submit time: with a bounded
+        # pool a queued validator has not started yet, and an operator watching
+        # "which are still out" must not be told otherwise.
+        if progress_sink is not None:
+            progress_sink(f"    {v.validator_id}: started")
+        return dispatch_fn(v, ctx, reg)
+
     with ThreadPoolExecutor(max_workers=min(len(validators), 4)) as executor:
         futures = {}
         for v in validators:
@@ -307,7 +328,7 @@ def run_validators(
             effective_model = override_model or v.model or default_model or DEFAULT_MODEL
             ctx = copy.copy(context)
             ctx.model = effective_model
-            future = executor.submit(dispatch_fn, v, ctx, reg)
+            future = executor.submit(_dispatch_with_progress, v, ctx)
             futures[future] = v.validator_id
 
         for future in as_completed(futures):
@@ -325,6 +346,8 @@ def run_validators(
                     justification=f"Validator error ({type(e).__name__}): {e}",
                     error=True,
                 )
+            if progress_sink is not None:
+                progress_sink(f"    {vid}: finished")
             if result is not None:
                 v_obj = next((v for v in validators if v.validator_id == vid), None)
                 is_recovery = (getattr(task, "depth", 0) > 0 or bool(getattr(task, "prior_failures", None)))
@@ -384,11 +407,9 @@ def run_validators(
                             audit_log.append_event("severity_cap_applied", _cap_data)
                 # Report the *final* (post-cap) severity so the operator's view
                 # matches the audit record; carry the pre-cap value alongside it.
-                if progress_cb is not None:
-                    try:
-                        progress_cb(vid, result)
-                    except Exception as e:
-                        logger.debug("Progress callback error for validator %s: %s", vid, e)
+                # The sink already swallows and reports its own failure once.
+                if verdict_sink is not None:
+                    verdict_sink(vid, result)
                 results_by_id[vid] = result
 
     results = [results_by_id[v.validator_id] for v in validators]

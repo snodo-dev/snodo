@@ -1022,7 +1022,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             session_id=self._session_id or "",
             audit_log=self._audit_log,
             dispatch_fn=self._dispatch_one,
-            progress_cb=self._progress_cb_handler,
+            progress_cb=self._progress,
+            verdict_cb=self._validator_verdict_cb,
             artifacts=artifacts,
             base_ref=base_ref,
         )
@@ -1061,13 +1062,6 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         if verbose and not self._verbose:
             return
         print(message, flush=True)
-
-    def _progress_cb_handler(self, arg1: Any, arg2: Any = None) -> None:
-        """Dual-purpose progress handler for messages (1 arg) and validator verdicts (2 args)."""
-        if arg2 is not None:
-            self._validator_verdict_cb(arg1, arg2)
-        elif isinstance(arg1, str):
-            self._progress(arg1)
 
     def _validator_verdict_cb(self, validator_id: str, result: Any) -> None:
         """Print a per-validator verdict as it lands (warn/blocker/error always; pass in verbose).
