@@ -26,7 +26,8 @@ Decision Records:
   • docs/decisions
 
 Test Command Resolution:
-  No test command could be resolved from marker files or explicit configuration.
+  No repository-level test command could be resolved from marker files or explicit configuration.
+  Module-level test commands were confirmed for 1 module(s); see Discovered Modules.
 
 Observable Findings:
   • Module boundaries detected from workspace declarations and nested manifests.

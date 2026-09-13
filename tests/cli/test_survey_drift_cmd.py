@@ -290,7 +290,19 @@ class TestSurveyWritesNothing:
 
 
 class TestUngovernedReportIsUnchanged:
-    """Today's ungoverned report is the baseline: identical bytes, no drift field."""
+    """Today's ungoverned report is the baseline: identical bytes, no drift field.
+
+    When the ungoverned report changes on purpose — a wording fix, a new
+    section — this test fails, which is the point: the baseline exists so an
+    accidental change cannot pass unnoticed. Re-capture it deliberately, and
+    read the diff before committing it:
+
+        SNODO_UPDATE_SURVEY_BASELINE=1 uv run pytest tests/cli/test_survey_drift_cmd.py -q
+        git diff tests/survey/baseline/
+
+    A baseline with no documented way to re-capture it is a trap; a baseline
+    re-captured without reading the diff is no baseline at all.
+    """
 
     @staticmethod
     def _normalise_human(text: str) -> str:
@@ -308,6 +320,9 @@ class TestUngovernedReportIsUnchanged:
         rc = run_survey(root, files=UNGOVERNED_FIXTURE)
         out = self._normalise_human(capsys.readouterr().out)
         assert rc == 0
+        if os.environ.get("SNODO_UPDATE_SURVEY_BASELINE"):
+            (BASELINE_DIR / "ungoverned_human.txt").write_text(out)
+            pytest.skip("baseline re-captured; read `git diff` before committing it")
         assert out == (BASELINE_DIR / "ungoverned_human.txt").read_text()
 
     def test_json_payload_is_identical_to_the_captured_baseline(
@@ -319,6 +334,11 @@ class TestUngovernedReportIsUnchanged:
         payload = json.loads(capsys.readouterr().out)
         payload["project_root"] = "<ROOT>"
         payload["project_id"] = "<ID>"
+        if os.environ.get("SNODO_UPDATE_SURVEY_BASELINE"):
+            (BASELINE_DIR / "ungoverned_json.json").write_text(
+                json.dumps({"exit_code": rc, "payload": payload}, indent=2, sort_keys=True) + "\n"
+            )
+            pytest.skip("baseline re-captured; read `git diff` before committing it")
         expected = json.loads((BASELINE_DIR / "ungoverned_json.json").read_text())
         assert rc == expected["exit_code"]
         assert payload == expected["payload"]
