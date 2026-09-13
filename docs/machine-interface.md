@@ -81,6 +81,12 @@ record on disk) the command answers `ok: true` with `status: "running"`, null
 a record. This distinguishes a running task from an unknown one, which keeps
 returning the `No record for task <id>` error.
 
+The `halt` payload carries an `attempts` summary alongside the final
+`validator_results`: `total`, `non_verdicts`, `coder_dispatches`, and a bounded
+`history` of `{attempt, outcome}` entries (ADR 043). A consumer can therefore
+tell a first-time pass from a hard-won one, and count non-verdicts and coder
+dispatches, without parsing prose. The summary is additive to the payload.
+
 ### `snodo worktree list --json`
 
 Schema: `snodo.worktree.v1`
