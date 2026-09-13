@@ -28,6 +28,8 @@ Every fixture is a real failure before it was a fixture:
 - a static site of HTML/CSS with no manifest, once invisible as source
 - a migrations directory whose .sql files are the storage model
 - a repository whose only tooling is a Makefile and a workflows directory
+- a coverage report of HTML/CSS, output the module is not written in
+- a small manifest-less page directory with its own tests, once dropped
 """
 
 from __future__ import annotations
@@ -148,6 +150,33 @@ def _build_static_site(root: Path) -> None:
     _write(root, "web/tests/test_pages.py", "def test_pages():\n    assert True\n")
 
 
+def _build_coverage_report(root: Path) -> None:
+    """A module whose coverage/ report holds HTML and CSS it is not written in.
+
+    The report is output a tool rendered from the module's own source, so it
+    must contribute neither language nor boundary; the module is TypeScript.
+    """
+    _write(root, "app/package.json", _package("app"))
+    _write(root, "app/src/index.ts", "export const served = true\n")
+    for i in range(7):
+        _write(root, f"app/coverage/p{i}.html", "<!doctype html>\n")
+    _write(root, "app/coverage/base.css", "body { margin: 0; }\n")
+
+
+def _build_handwritten_site(root: Path) -> None:
+    """A small manifest-less directory of hand-written pages and its own tests.
+
+    Three pages are not source-dense, but the directory carries its own test
+    suite, so it must reach judgement as a candidate without being promoted
+    to a boundary on arithmetic alone.
+    """
+    for i in range(3):
+        _write(root, f"web/page{i}.html", f"<h1>Page {i}</h1>\n")
+    _write(root, "web/assets/site.css", "h1 { color: black; }\n")
+    _write(root, "web/requirements-test.txt", "pytest\n")
+    _write(root, "web/tests/test_pages.py", "def test_pages():\n    assert True\n")
+
+
 def _build_sql_migrations(root: Path) -> None:
     """A module whose storage model lives in .sql migration files."""
     _write(root, "api/pyproject.toml", "[project]\nname = \"api\"\n")
@@ -172,6 +201,8 @@ FIXTURES: Dict[str, Callable[[Path], None]] = {
     "tests_playwright": _build_tests_playwright,
     "nested_example": _build_nested_example,
     "static_site": _build_static_site,
+    "handwritten_site": _build_handwritten_site,
+    "coverage_report": _build_coverage_report,
     "sql_migrations": _build_sql_migrations,
     "makefile_tooling": _build_makefile_tooling,
 }
@@ -236,6 +267,17 @@ GROUND_TRUTH: List[ExpectedRepository] = [
         boundaries=frozenset({"web"}),
         languages=frozenset({"html", "css", "python"}),
         undeclared_modules=frozenset({"web"}),
+    ),
+    ExpectedRepository(
+        name="handwritten_site",
+        boundaries=frozenset({"web"}),
+        languages=frozenset({"html", "css", "python"}),
+        undeclared_modules=frozenset({"web"}),
+    ),
+    ExpectedRepository(
+        name="coverage_report",
+        boundaries=frozenset({"app"}),
+        languages=frozenset({"typescript"}),
     ),
     ExpectedRepository(
         name="sql_migrations",
@@ -336,7 +378,7 @@ class TestFixtureCorpus:
     def test_judged_pass_reproduces_the_claim(self, tmp_path):
         corpus = _measure(tmp_path, judged=True)
 
-        assert corpus.boundary_score.true_positives == 10
+        assert corpus.boundary_score.true_positives == 12
         assert corpus.boundary_score.false_positives == 0
         assert corpus.boundary_score.false_negatives == 0
         assert corpus.boundary_score.precision == 1.0
@@ -344,8 +386,9 @@ class TestFixtureCorpus:
 
         # Language recall and precision are both exact now: the pubspec.yaml
         # manifest is identified as a manifest, so it is no longer counted as
-        # a `yaml` source file of the language it declares.
-        assert corpus.language_score.true_positives == 17
+        # a `yaml` source file of the language it declares, and the generated
+        # coverage report's HTML and CSS are output, not the module's language.
+        assert corpus.language_score.true_positives == 21
         assert corpus.language_score.false_positives == 0
         assert corpus.language_score.false_negatives == 0
         assert corpus.language_score.precision == 1.0
@@ -358,13 +401,14 @@ class TestFixtureCorpus:
 
         # The deterministic pass recalls every manifest-backed boundary; the
         # manifest of a scaffolding work is a proposal that judgement then
-        # withdraws. The manifest-less static site is only ever a candidate,
-        # so it takes judgement to recall it at all.
-        assert deterministic.boundary_score.true_positives == 9
+        # withdraws. The manifest-less sites are only ever candidates — the
+        # source-dense one and the small one with its own tests — so it takes
+        # judgement to recall them at all.
+        assert deterministic.boundary_score.true_positives == 10
         assert deterministic.boundary_score.false_positives == 3
-        assert deterministic.boundary_score.false_negatives == 1
-        assert deterministic.boundary_score.recall == pytest.approx(9 / 10)
-        assert deterministic.boundary_score.precision == pytest.approx(9 / 12)
+        assert deterministic.boundary_score.false_negatives == 2
+        assert deterministic.boundary_score.recall == pytest.approx(10 / 12)
+        assert deterministic.boundary_score.precision == pytest.approx(10 / 13)
         assert judged.boundary_score.precision > deterministic.boundary_score.precision
 
     def test_a_broken_expectation_fails_for_the_right_reason(self, tmp_path):
