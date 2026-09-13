@@ -253,6 +253,10 @@ def _apply_discrete_filters(
         def get_cost_per_1m(cost_type: str) -> Optional[float]:
             try:
                 import litellm
+                # litellm prints a 'Provider List' banner to stdout whenever it cannot
+                # name a provider. Snodo asks it about models it deliberately routes
+                # itself, so that is the normal case, not an error worth printing.
+                litellm.suppress_debug_info = True
                 info = litellm.model_cost.get(m.get("full_string", ""))
                 if info:
                     val = info.get(f"{cost_type}_cost_per_token")
