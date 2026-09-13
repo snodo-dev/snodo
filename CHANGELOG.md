@@ -7,6 +7,30 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- A post-execute abstention no longer spawns a coder recovery. An abstention is
+  a judge reporting that it did not reach a verdict, not a finding about the
+  code, so routing it to the recovery machinery re-ran the coder at work no
+  judge faulted and handed it a recovery spec describing a failure that was
+  never diagnosed. Observed on a real project: a task completed, its acceptance
+  judge abstained, and the engine spawned three recovery attempts over
+  thirty-five minutes; each dispatched the coder, found nothing to change
+  ("git add staged nothing"), and on the fourth acceptance run the judge passed
+  on that same untouched code. Four coder dispatches, one of which mattered. An
+  abstention now re-runs the abstaining judges in place on the unchanged work —
+  the coder is not dispatched and no recovery subtask is created. The retry is
+  bounded by the mode's `max_recovery_depth` (a protocol that permits no
+  recovery permits no re-judging), and a repeated abstention is treated as a
+  stall whatever prose accompanies it: the verdict signature canonicalises an
+  abstention to a single marker, so a judge that abstains twice with different
+  justifications no longer looks like progress. When the bound is spent the
+  task halts as `abstention_exhausted` / `abstention_stalled` and the CLI
+  follow-up offers `snodo authorize` rather than a coder retry. `abstention_policy`
+  is unchanged, and an abstention is never converted into a pass.
+
 ## [0.8.4] — 2026-09-13
 
 ### Added

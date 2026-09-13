@@ -102,6 +102,7 @@ class SerdeMixin:
             needs_recovery=d.get("needs_recovery", False),
             needs_spec_authoring=d.get("needs_spec_authoring", False),
             spec_authoring_attempts=d.get("spec_authoring_attempts", 0),
+            abstention_retries=d.get("abstention_retries", 0),
         )
 
     def _state_to_dict(self, state: LoopState) -> Dict[str, Any]:
@@ -161,4 +162,5 @@ class SerdeMixin:
             "needs_recovery": state.needs_recovery,
             "needs_spec_authoring": state.needs_spec_authoring,
             "spec_authoring_attempts": state.spec_authoring_attempts,
+            "abstention_retries": state.abstention_retries,
         }

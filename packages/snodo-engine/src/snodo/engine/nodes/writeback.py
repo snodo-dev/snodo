@@ -51,6 +51,12 @@ _CANONICAL_HALT = {
     "environment_error": "environment_error",
     "recovery_exhausted": "blocker",
     "recovery_stalled": "blocker",
+    # A post-execute judge that never reached a verdict, and the re-judging
+    # bound (or a repeated abstention) is exhausted. Not a finding about the
+    # code, so it is not "blocked" in the coder-recovery sense — but it is a
+    # failure to reach consensus, which is a blocker-class halt (Fixes #268).
+    "abstention_exhausted": "blocker",
+    "abstention_stalled": "blocker",
     "head_not_moved": "blocker",
     "no_file_operations": "blocker",
 }
@@ -109,6 +115,12 @@ def _blocker_fix_targets(
         return ["config"]
     if halt_type in ("max_iterations", "turn_budget_exhausted", "recovery_exhausted", "recovery_stalled"):
         return ["spec", "policy"]
+    if halt_type in ("abstention_exhausted", "abstention_stalled"):
+        # The code was never faulted — a judge could not decide. The fix target
+        # is the judge and its policy: the criteria or tool grant it needs, its
+        # budget, or the abstention_policy the operator chose. Not the code,
+        # which no verdict named (Fixes #268).
+        return ["policy"]
     if halt_type == "head_not_moved":
         # The coder claimed a commit it did not make — the produced code is
         # what must change (the adapter must actually commit), so this is a
@@ -190,6 +202,24 @@ def _build_hint(
             "protocol needs fixing, and no recovery attempt is warranted: "
             "install the program where the run executes, then re-run the "
             "task unchanged."
+        )
+    if halt_type in ("abstention_exhausted", "abstention_stalled"):
+        # The code was never faulted: a judge could not reach a verdict and the
+        # bounded re-judging is done. Re-running the coder cannot help — no
+        # verdict named anything for it to change — so the operator is sent to
+        # adjudicate the missing verdict, or to change the judge or its policy.
+        stalled = halt_type == "abstention_stalled"
+        lead = (
+            "A judge abstained again on unchanged work"
+            if stalled
+            else "A judge could not reach a verdict within its retry budget"
+        )
+        return (
+            f"{lead}. Nothing about the code was found at fault, so no coder "
+            "recovery is warranted. Use `snodo authorize <task_id>` to adjudicate "
+            "the missing verdict, or change the judge or its policy in "
+            ".snodo/protocol.yml — a criterion, a tool grant, its budget, or "
+            "`abstention_policy`."
         )
     if halt == "blocker":
         return _build_blocker_hint(halt_type, phase, results)

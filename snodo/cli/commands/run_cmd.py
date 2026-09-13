@@ -1665,7 +1665,9 @@ def _print_halt_followup(halt_payload: dict, session_id: Optional[str]) -> None:
     if task_id:
         commands.append(followup.task_followup(task_id, running=False))
         if final_decision not in ("completed", None):
-            commands.append(followup.task_retry(task_id))
+            # followup.halt_followup owns the abstention-vs-fault distinction,
+            # shared with `snodo task show` so the two cannot disagree (#268).
+            commands.extend(followup.halt_followup(halt_payload, task_id))
 
     if not commands:
         return
