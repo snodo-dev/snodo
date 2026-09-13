@@ -7,9 +7,64 @@ prevents directory traversal attacks.
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import os
 import re
+
+
+# Bounds for summarize_directory: a judge must be able to read the whole
+# response in one turn, so each record stays small and the response says
+# plainly when it stopped early rather than silently returning a prefix.
+_MAX_SUMMARY_FILES = 200
+_MAX_SUMMARY_CHARS = 8000
+_MAX_LEADING_FIELDS = 6
+_MAX_TITLE_CHARS = 160
+
+# Markdown conventions the documents actually use: a heading line, then plain
+# "Key: value" lines. There is deliberately no YAML front-matter handling —
+# these documents have none, and a front-matter parser would return nothing on
+# a real corpus while passing against a fixture nobody checked against reality.
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
+_KEY_VALUE_RE = re.compile(r"^([A-Za-z][A-Za-z0-9 _./-]{0,40}):\s*(\S.*?)\s*$")
+
+
+def _parse_document(text: str) -> Tuple[str, List[str], bool]:
+    """Extract a document's title and leading key-value lines.
+
+    Returns ``(title, fields, capped)`` where ``title`` is the first heading,
+    ``fields`` are the contiguous "Key: value" lines before the first
+    subheading (blank lines between them are transparent), and ``capped`` says
+    the field cap was reached. A document with no heading and no leading
+    key-value lines yields ``("", [], False)``.
+    """
+    lines = text.splitlines()
+    title = ""
+    title_idx = -1
+    for i, raw in enumerate(lines):
+        heading = _HEADING_RE.match(raw)
+        if heading:
+            title = heading.group(2).strip()[:_MAX_TITLE_CHARS]
+            title_idx = i
+            break
+
+    fields: List[str] = []
+    capped = False
+    start = title_idx + 1 if title_idx >= 0 else 0
+    for raw in lines[start:]:
+        if _HEADING_RE.match(raw):
+            break  # first subheading ends the leading block
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        if _KEY_VALUE_RE.match(stripped):
+            if len(fields) < _MAX_LEADING_FIELDS:
+                fields.append(stripped)
+            else:
+                capped = True
+            continue
+        break  # first non-key-value content ends the leading block
+
+    return title, fields, capped
 
 
 class PathValidationError(Exception):
@@ -191,6 +246,89 @@ class WorkspaceMCP:
             if item.name != ".git"
         ]
     
+    def summarize_directory(self, directory: str = ".") -> str:
+        """Summarize a directory of markdown documents in one call.
+
+        Returns one compact record per regular file directly in *directory*:
+        the path, the first heading (its title), and the leading "Key: value"
+        lines before the first subheading. Document bodies are not read — the
+        existing read tools do that. This is computed from the files at call
+        time, so there is nothing to maintain and nothing that can go stale.
+
+        Ordering is alphabetical, never by relevance: ordering is the judge's
+        inference to make. The response is bounded and states when it was
+        truncated. A directory that does not exist is an answer, not an error.
+        A path outside the workspace is refused like the other read tools.
+
+        Args:
+            directory: Directory path (relative to project root or absolute)
+
+        Returns:
+            A bounded, human-readable index of the directory's documents.
+
+        Raises:
+            PathValidationError: If path escapes project root or is under .git/
+        """
+        validated_path = self.validate_path(directory)
+
+        if not validated_path.exists():
+            return (
+                f"No documents found in '{directory}' "
+                "(directory does not exist)."
+            )
+        if not validated_path.is_dir():
+            return f"Not a directory: '{directory}'."
+
+        entries = sorted(
+            (
+                item
+                for item in validated_path.iterdir()
+                if item.is_file() and not item.name.startswith(".")
+            ),
+            key=lambda item: item.name,
+        )
+        total = len(entries)
+
+        records: List[str] = []
+        used = 0
+        truncated = False
+        for item in entries:
+            if len(records) >= _MAX_SUMMARY_FILES:
+                truncated = True
+                break
+            try:
+                text = item.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                # A file that is not readable UTF-8 text is not a document
+                # this tool can summarize; it is not an error either.
+                continue
+            title, fields, capped = _parse_document(text)
+            rel_path = item.relative_to(self.project_root).as_posix()
+            block = [rel_path]
+            if title:
+                block.append(f"  # {title}")
+            block.extend(f"  {field}" for field in fields)
+            if capped:
+                block.append("  ...")
+            record = "\n".join(block)
+            cost = len(record) + 2
+            if records and used + cost > _MAX_SUMMARY_CHARS:
+                truncated = True
+                break
+            records.append(record)
+            used += cost
+
+        if not records:
+            return f"No documents found in '{directory}'."
+
+        body = "\n\n".join(records)
+        if truncated:
+            body += (
+                f"\n\n[truncated: showing {len(records)} of {total} documents; "
+                "narrow the directory or read specific files]"
+            )
+        return body
+
     def file_exists(self, path: str) -> bool:
         """Check if file exists.
         

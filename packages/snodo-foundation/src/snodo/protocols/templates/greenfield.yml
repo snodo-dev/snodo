@@ -109,8 +109,9 @@ validators:
     tools:
       - "read_file"
       - "list_files"
+      - "summarize_directory"
     criteria:
-      - "Read docs/decisions/. Every decision the build will depend on must be recorded there before this phase ends: language and runtime, hosting and deployment target, repository layout, verification command, and the boundary of the first release. A decision that exists only in the task description is not recorded."
+      - "Call summarize_directory on docs/decisions/ first: it returns each record's path, title and leading status lines in one turn, so you can see what every record is about before opening the few that matter. Then read docs/decisions/. Every decision the build will depend on must be recorded there before this phase ends: language and runtime, hosting and deployment target, repository layout, verification command, and the boundary of the first release. A decision that exists only in the task description is not recorded."
       - "Each record must state the alternatives that were considered and why they were rejected. A record that presents one option as inevitable has documented an outcome, not a decision, and is a blocker."
       - "Each record must state its consequences, including what it makes harder. A record with only benefits has not been thought through."
       - "No record may contradict another. Where two interact, the later one must say so explicitly."
@@ -139,8 +140,9 @@ validators:
     tools:
       - "read_file"
       - "list_files"
+      - "summarize_directory"
     criteria:
-      - "REVIEW FRAME — read this first. You are reviewing a PROPOSAL before any of it has been built. The repository will NOT contain the described work; that is expected and is never a finding. Absence of implementation, tooling, tests, or a passing build is out of scope for this review and must never be cited. Judge only this: if the proposal were carried out as described, would it violate a criterion below? Use the tools to read docs/decisions/ so your judgement is grounded in the recorded decisions rather than assumption. If nothing below is violated, return pass."
+      - "REVIEW FRAME — read this first. You are reviewing a PROPOSAL before any of it has been built. The repository will NOT contain the described work; that is expected and is never a finding. Absence of implementation, tooling, tests, or a passing build is out of scope for this review and must never be cited. Judge only this: if the proposal were carried out as described, would it violate a criterion below? Call summarize_directory on docs/decisions/ first to see, in one turn, what every record is about; then read the few records that matter so your judgement is grounded in the recorded decisions rather than assumption. If nothing below is violated, return pass."
       - "Must not contradict a decision recorded in docs/decisions/. Cite the record when raising this. Do not require capabilities a record has explicitly deferred."
       - "Output claiming conformance to a published specification must satisfy that specification's mandatory requirements. Cite the section. A documented rationale for omitting a mandatory element is not compliance — it is a deviation, and it belongs in docs/decisions/, not in a source comment."
       - "Respect the dependency direction the decisions establish. A change that inverts or bypasses it is a blocker even when it compiles."
