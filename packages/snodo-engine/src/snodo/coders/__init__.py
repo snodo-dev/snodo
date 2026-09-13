@@ -10,10 +10,12 @@ from typing import Any, Dict, Optional, Type
 from snodo.coders.base import (
     CoderAdapter,
     AdapterError as AdapterError,
+    CoderUnavailableError as CoderUnavailableError,
     LLMCallError as LLMCallError,
     ParseError as ParseError,
     TurnBudgetExhausted as TurnBudgetExhausted,
 )
+from snodo.coders.availability import check_coder_available as check_coder_available
 from snodo.coders.litellm import LiteLLMAdapter
 from snodo.coders.mock import MockAdapter
 from snodo.coders.openai_adapter import OpenAIAdapter

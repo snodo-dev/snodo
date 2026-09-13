@@ -25,11 +25,13 @@ from typing import Any, Optional
 import httpx
 
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact
-from snodo.coders.base import InPlaceCoderAdapter, LLMCallError
+from snodo.coders.base import CoderUnavailableError, InPlaceCoderAdapter, LLMCallError
 
 _logger = logging.getLogger(__name__)
 
 _SESSION_TIMEOUT = 300.0  # 5 minutes
+
+_DOCKER_REMEDIATION = "Install and start Docker: https://docs.docker.com/get-docker/"
 
 
 class OpenCodeAdapter(InPlaceCoderAdapter):
@@ -44,6 +46,11 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
     coder_name: str = "opencode"
     skip_engine_commit: bool = True
     skip_workspace_write: bool = True
+
+    @classmethod
+    def availability_requirements(cls) -> tuple:
+        """The container coder needs a Docker runtime, not a host CLI."""
+        return (("docker", _DOCKER_REMEDIATION),)
 
     def __init__(
         self,
@@ -170,9 +177,10 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
         from snodo.coders.opencode_container import OpenCodeContainerError
 
         if not self._container.is_available():
-            raise LLMCallError(
-                "Docker is not available. The opencode adapter requires Docker."
-            )
+            # The container runtime is not reachable — an environment fault
+            # (a missing/unstarted Docker), not a coder-configuration fault
+            # and not a verdict about the task.
+            raise CoderUnavailableError("docker", _DOCKER_REMEDIATION)
         if not self._container.image_exists():
             _logger.info("Building opencode Docker image (first run)...")
             try:

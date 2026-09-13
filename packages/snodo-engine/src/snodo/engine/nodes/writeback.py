@@ -30,7 +30,31 @@ class JobStateError(Exception):
 # are the SAME canonical value, so the payload is self-consistent (final_decision
 # always equals halt_type). The engine's specific halt_type is preserved in
 # ``raw_halt_type``; the coarse outcome is one of the four-status vocabulary
-# (escalate / blocker / validator_error / internal_error) plus "completed".
+# (escalate / blocker / validator_error / internal_error) plus "completed" —
+# and plus ``environment_error``, the fifth value, deliberately:
+#
+#   An environment fault (the coder binary is absent, the container runtime
+#   is missing, the backend cannot be started) means none of the four.
+#   ``blocker`` is a verdict about the task's content — nothing here blocks
+#   the task; that laundering is exactly what #195 was written against, and
+#   the fold ``execution_error -> blocker`` reintroduced it one layer down.
+#   ``escalate`` asks a human to ADJUDICATE a verdict about the work
+#   (``snodo authorize``); no adjudication installs a program.
+#   ``validator_error`` claims a validator failed to produce a verdict; the
+#   validators unanimously produced one — of the task, about the task.
+#   ``internal_error`` claims an engine defect; #195 explicitly refuses to
+#   launder an operator-fixable coder fault into that.
+#   So it is none of the four, and naming it is the honest taxonomy — a fifth
+#   canonical value rather than a lie inside an existing one.
+#
+#   Consumers that branch on the four: handle ``environment_error`` the way
+#   you handle ``internal_error`` — a non-verdict operational halt: stop the
+#   run, surface the payload's ``hint`` (it carries the install command), do
+#   NOT retry the task against its recorded failure, and do NOT treat it as
+#   authorisation state. Any canonical value outside the four must fall into
+#   that same non-verdict branch, never into the blocker branch: defaulting
+#   an unknown outcome to "a verdict about the work" is the error class this
+#   mapping is made of.
 _CANONICAL_HALT = {
     "escalated": "escalate",
     "blocked": "blocker",
@@ -40,7 +64,15 @@ _CANONICAL_HALT = {
     "wf3": "blocker",
     "max_iterations": "blocker",
     "turn_budget_exhausted": "blocker",
+    # A coder fault the operator fixes in configuration (model string,
+    # backend choice) stays a config-targeted blocker (#195); the missing-
+    # program case split out to ``environment_error`` below and is no longer
+    # folded through this key.
     "execution_error": "blocker",
+    # The raw type and its canonical outcome are the same value: an
+    # environment fault is not a verdict, so it maps to nothing that reads
+    # as one.
+    "environment_error": "environment_error",
     "recovery_exhausted": "blocker",
     "recovery_stalled": "blocker",
     "head_not_moved": "blocker",
@@ -154,6 +186,7 @@ def _build_hint(
     halt_type: Optional[str] = "",
     phase: str = "",
     results: Optional[List[Any]] = None,
+    reason: Optional[str] = None,
 ) -> str:
     if halt == "escalate":
         return (
@@ -166,6 +199,21 @@ def _build_hint(
         return (
             "A validator or the engine failed internally (not an authorisation "
             "problem). Retry the task or inspect the logs."
+        )
+    if halt == "environment_error":
+        # The reason carries the coder's own message, which includes the
+        # install command the adapter declares — the operator must see THAT
+        # here, not a fix hint about a spec that passed every validator.
+        detail = reason or (
+            "the program the coder needs could not be invoked in the "
+            "execution environment"
+        )
+        return (
+            "This halt is about the execution environment, not about the "
+            f"task: {detail} Nothing about the spec, the code or the "
+            "protocol needs fixing, and no recovery attempt is warranted: "
+            "install the program where the run executes, then re-run the "
+            "task unchanged."
         )
     if halt == "blocker":
         return _build_blocker_hint(halt_type, phase, results)
@@ -517,7 +565,10 @@ class WritebackMixin:
                 result_record(r) for r in loop_state.validation_results
             ],
             "policy_decision": policy_decision_to_dict(loop_state.policy_decision),
-            "hint": _build_hint(halt, loop_state.halt_type, phase, loop_state.validation_results),
+            "hint": _build_hint(
+                halt, loop_state.halt_type, phase,
+                loop_state.validation_results, reason=blocker_reason,
+            ),
             "pre_validation": meta.get("pre_validation"),
             "post_validation": meta.get("post_validation"),
             "spec_authoring": meta.get("spec_authoring"),

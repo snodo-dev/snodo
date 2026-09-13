@@ -92,14 +92,23 @@ def test_agy_custom_timeout_sets_print_timeout_in_argv(temp_workspace: Path):
 
 
 def test_agy_binary_missing_raises_actionable_error(temp_workspace: Path):
-    """Missing agy binary raises LLMCallError naming tool and install url."""
+    """Missing agy binary raises CoderUnavailableError naming tool and install url.
+
+    A program that is not installed is an ENVIRONMENT fault, typed apart from
+    the coder-configuration family (LLMCallError) so the engine never records
+    it as a verdict about the task.
+    """
+    from snodo.coders.base import AdapterError, CoderUnavailableError
+
     adapter = AGYAdapter(workspace=temp_workspace)
     spec = TaskSpec(description="Implement feature X", constraints=[])
 
     with mock.patch("subprocess.Popen", side_effect=FileNotFoundError):
-        with pytest.raises(LLMCallError) as exc_info:
+        with pytest.raises(CoderUnavailableError) as exc_info:
             adapter.implement(spec)
 
+    assert issubclass(CoderUnavailableError, AdapterError)
+    assert exc_info.value.binary == "agy"
     msg = str(exc_info.value)
     assert "agy not found on PATH" in msg
     assert "https://antigravity.google/docs/cli" in msg
