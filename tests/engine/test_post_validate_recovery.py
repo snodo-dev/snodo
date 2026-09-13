@@ -694,7 +694,7 @@ class TestRecoveryProportionalFraming:
         assert "re-judged" in spec
         assert "SETTLED" in spec
 
-    def test_settled_criteria_are_present(self):
+    def test_settled_only_from_what_a_judge_asserted(self):
         protocol = _partial_success_protocol()
         builder = GraphBuilder(
             protocol, validator_fn=lambda task, validators, shell, **kw: _partial_success_results()
@@ -704,15 +704,17 @@ class TestRecoveryProportionalFraming:
         result = builder._post_validate_node(state)
         spec = result["spawned_subtasks"][0]["spec"]
 
-        # The passing validator is named as settled.
+        # The passing validator is named as settled, with its own words.
         assert "quality" in spec
         assert "pytest: 84 passed" in spec
 
-        # The criteria that already hold are named; the unmet one is not.
+        # No per-criterion positive is fabricated for the warning judge: the
+        # uncited criteria are not claimed to hold. Only the judge's own prose
+        # (which names the unmet criterion) is carried.
         settled_section = spec.split("SETTLED", 1)[1].split("FAILURES", 1)[0]
-        for held in (1, 3, 4, 5):
-            assert f"{held}. {_ACCEPTANCE_CRITERIA[held - 1]}" in settled_section
-        assert "2. Photo is embedded when present." not in settled_section
+        for criterion in _ACCEPTANCE_CRITERIA:
+            assert criterion not in settled_section
+        assert "the export never carries the photo bytes" in spec
 
     def test_prior_attempt_result_is_present(self):
         protocol = _partial_success_protocol()
@@ -728,8 +730,9 @@ class TestRecoveryProportionalFraming:
         # The prior attempt's verdict travels with the remainder.
         assert "PRIOR ATTEMPT" in spec
         assert "Validators that passed: quality" in spec
-        assert "Still failing: acceptance" in spec
-        # The failure evidence itself is preserved verbatim.
+        assert "in each judge's own words" in spec
+        # The failure evidence itself is preserved verbatim, attributed.
+        assert "acceptance (warn): Four of five acceptance criteria are met." in spec
         assert "the export never carries the photo bytes" in spec
 
     def test_original_spec_unchanged_over_two_recovery_attempts(self):
@@ -781,42 +784,47 @@ class TestSettledVerdicts:
 
         results = [ValidatorResult(validator_id="quality", severity="pass",
                                    justification="gate not configured", skipped=True)]
-        assert _settled_from_results(results, lambda vid: []) == []
+        assert _settled_from_results(results) == []
 
     def test_error_result_is_not_settled(self):
         from snodo.engine.loop import _settled_from_results
 
         results = [ValidatorResult(validator_id="quality", severity="blocker",
                                    justification="boom", error=True)]
-        assert _settled_from_results(results, lambda vid: []) == []
+        assert _settled_from_results(results) == []
 
     def test_result_without_validator_id_is_not_settled(self):
         from snodo.engine.loop import _settled_from_results
 
         results = [ValidatorResult(validator_id="", severity="pass",
                                    justification="passed")]
-        assert _settled_from_results(results, lambda vid: []) == []
+        assert _settled_from_results(results) == []
 
-    def test_warn_without_citation_is_not_partially_settled(self):
+    def test_pass_is_settled_whole(self):
         from snodo.engine.loop import _settled_from_results
 
-        results = [ValidatorResult(validator_id="acceptance", severity="warn",
-                                   justification="something is off")]
-        assert _settled_from_results(results, lambda vid: ["a", "b"]) == []
+        results = [ValidatorResult(validator_id="architecture", severity="pass",
+                                   justification="all four criteria hold",
+                                   cited_criteria=["[Criterion 1] a",
+                                                   "[Criterion 2] b",
+                                                   "[Criterion 3] c",
+                                                   "[Criterion 4] d"])]
+        assert _settled_from_results(results) == [{
+            "validator_id": "architecture",
+            "justification": "all four criteria hold",
+        }]
 
-    def test_warn_with_citation_settles_uncited_criteria(self):
+    def test_warn_is_never_settled_even_when_it_cites_criteria(self):
         from snodo.engine.loop import _settled_from_results
 
+        # cited_criteria means "criteria the judge mentioned", not "criteria
+        # that failed": an uncited criterion must never be read as holding.
         results = [ValidatorResult(
             validator_id="acceptance", severity="warn",
             justification="criterion 2 unmet",
             cited_criteria=["[Criterion 2] b"],
         )]
-        assert _settled_from_results(results, lambda vid: ["a", "b", "c"]) == [{
-            "validator_id": "acceptance",
-            "justification": "criterion 2 unmet",
-            "held_criteria": ["1. a", "3. c"],
-        }]
+        assert _settled_from_results(results) == []
 
     def test_settled_entry_without_validator_id_is_dropped(self):
         from snodo.engine.loop import _normalize_settled
@@ -826,7 +834,7 @@ class TestSettledVerdicts:
     def test_pass_without_justification_renders_cleanly(self):
         from snodo.engine.loop import _build_recovery_spec
 
-        settled = [{"validator_id": "quality", "justification": "", "held_criteria": []}]
+        settled = [{"validator_id": "quality", "justification": ""}]
         spec = _build_recovery_spec("do the thing", [], None, None, settled)
         assert "- quality: passed" in spec
 

@@ -19,7 +19,6 @@ INV3 (non-overridable validation) is structural/emergent — no single site:
   blocks mutation tools → validation cannot be bypassed.
 """
 
-import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -211,29 +210,10 @@ def _combine_attempt_reads(
     return history
 
 
-_CITATION_INDEX = re.compile(r"\[Criterion\s+(\d+)\]", re.IGNORECASE)
-
-
 def _first_line(text: str) -> str:
     """Return the first non-empty line of *text*, or ``""``."""
     stripped = (text or "").strip()
     return stripped.splitlines()[0] if stripped else ""
-
-
-def _cited_indices(cited_criteria: Optional[list]) -> set:
-    """Map a result's legible cited-criteria text back to 1-based indices.
-
-    ``enrich_result_with_criteria`` renders each unmet criterion as
-    ``"[Criterion N] <text>"``.  The index is the only structured handle on
-    which criteria a multi-criterion judge flagged, so the *other* criteria are
-    what already hold (see :func:`_settled_from_results`).
-    """
-    indices = set()
-    for entry in cited_criteria or []:
-        match = _CITATION_INDEX.search(str(entry))
-        if match:
-            indices.add(int(match.group(1)))
-    return indices
 
 
 def _normalize_settled(settled: Optional[list]) -> list:
@@ -247,63 +227,42 @@ def _normalize_settled(settled: Optional[list]) -> list:
         normalized.append({
             "validator_id": validator_id,
             "justification": str(entry.get("justification") or "").strip(),
-            "held_criteria": [
-                str(c).strip()
-                for c in (entry.get("held_criteria") or [])
-                if str(c).strip()
-            ],
         })
     return normalized
 
 
-def _settled_from_results(results: Optional[list], find_criteria: Callable[[str], list]) -> list:
-    """Return the prior attempt's verdicts that already hold.
+def _settled_from_results(results: Optional[list]) -> list:
+    """Return the verdicts that a judge positively asserted.
 
-    A validator that returned ``pass`` settled everything it judged; a
-    validator that warned or blocked on *some* of its criteria (signalled by
-    ``cited_criteria``) settled the criteria it did not cite as unmet.  Both
-    become the "already holds" side of the prior attempt's result, carried into
-    a recovery spec so a coder resuming from a partial success can tell what it
-    need not re-establish (see :func:`_build_recovery_spec`).
+    Only a ``pass`` claims a positive — that the validator judged its remit and
+    found it holding.  A ``warn`` or ``blocker`` asserts no per-criterion
+    positive at all, so none is derived: ``cited_criteria`` is built by scraping
+    criterion numbers from the justification (including a bare-number fallback),
+    so it means "criteria the judge mentioned", not "criteria that failed", and
+    a passing judge can cite criteria too.  Reading an uncited criterion as
+    settled would turn a judge's silence into evidence and do so in the one
+    section whose job is to be honest about what is established.  The warning
+    judge's own prose — "four of five criteria hold and criterion two does not"
+    — is carried verbatim instead, in the only party entitled to state it.
 
     A pass whose gate was skipped is excluded: it verified nothing, so it is
-    not evidence (ADR 028).  A warn/blocker with no citable criterion is
-    excluded too — without the judge's citation there is no honest way to say
-    which of its criteria held, and claiming all of them would be a dangerous
-    overstatement.
+    not evidence (ADR 028).
     """
     settled = []
     for result in results or []:
         if getattr(result, "error", False):
             continue
-        severity = getattr(result, "severity", None)
+        if getattr(result, "severity", None) != "pass":
+            continue
+        if getattr(result, "skipped", False):
+            continue
         validator_id = getattr(result, "validator_id", None)
         if not validator_id:
             continue
-        if severity == "pass":
-            if getattr(result, "skipped", False):
-                continue
-            settled.append({
-                "validator_id": validator_id,
-                "justification": getattr(result, "justification", "") or "",
-                "held_criteria": [],
-            })
-        elif severity in ("warn", "blocker"):
-            cited = _cited_indices(getattr(result, "cited_criteria", None))
-            if not cited:
-                continue
-            criteria = list(find_criteria(validator_id) or [])
-            held = [
-                f"{idx}. {str(term).strip()}"
-                for idx, term in enumerate(criteria, 1)
-                if idx not in cited
-            ]
-            if held:
-                settled.append({
-                    "validator_id": validator_id,
-                    "justification": getattr(result, "justification", "") or "",
-                    "held_criteria": held,
-                })
+        settled.append({
+            "validator_id": validator_id,
+            "justification": getattr(result, "justification", "") or "",
+        })
     return settled
 
 
@@ -435,15 +394,11 @@ def _build_recovery_spec(
                 parts.append("dirs: " + ", ".join(entry["directories"]))
             lines.append(f"- attempt {entry['attempt']}: " + "; ".join(parts))
 
-    failed_ids = sorted({
-        str(f.get("validator_id"))
-        for f in failures
-        if isinstance(f, dict)
-        and f.get("attempt") == prior_attempt
-        and f.get("validator_id")
-    })
-    passed_ids = [e["validator_id"] for e in settled_verdicts if not e["held_criteria"]]
-    partial_ids = [e["validator_id"] for e in settled_verdicts if e["held_criteria"]]
+    prior_failures = [
+        f for f in failures
+        if isinstance(f, dict) and f.get("attempt") == prior_attempt
+    ]
+    passed_ids = [e["validator_id"] for e in settled_verdicts]
     if prior_attempt:
         lines.append("")
         lines.append(f"PRIOR ATTEMPT (attempt {prior_attempt}) — result:")
@@ -453,13 +408,16 @@ def _build_recovery_spec(
         )
         if passed_ids:
             lines.append("- Validators that passed: " + ", ".join(passed_ids))
-        if partial_ids:
+        if prior_failures:
             lines.append(
-                "- Validators partially holding (see SETTLED): "
-                + ", ".join(partial_ids)
+                "- The prior attempt's outstanding verdicts, in each judge's "
+                "own words:"
             )
-        if failed_ids:
-            lines.append("- Still failing: " + ", ".join(failed_ids))
+            for f in prior_failures:
+                lines.append(
+                    f"    - {f.get('validator_id', '?')} "
+                    f"({f.get('severity', '?')}): {f.get('justification', '')}"
+                )
 
     if settled_verdicts:
         lines.append("")
@@ -469,15 +427,8 @@ def _build_recovery_spec(
         )
         for entry in settled_verdicts:
             detail = _first_line(entry["justification"])
-            if entry["held_criteria"]:
-                lines.append(f"- {entry['validator_id']}: criteria already holding:")
-                for criterion in entry["held_criteria"]:
-                    lines.append(f"    - {criterion}")
-                if detail:
-                    lines.append(f"  (prior verdict: {detail})")
-            else:
-                suffix = f" — {detail}" if detail else ""
-                lines.append(f"- {entry['validator_id']}: passed{suffix}")
+            suffix = f" — {detail}" if detail else ""
+            lines.append(f"- {entry['validator_id']}: passed{suffix}")
 
     if failures:
         lines.append("")
@@ -854,13 +805,12 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             attempt_no,
             _attempt_read_files(loop_state),
         )
-        # Verdicts that already hold, drawn from every validator that ran this
-        # attempt (pre- and post-execute). These tell the recovery coder what it
-        # need not re-establish; they are re-judged on the final state anyway.
-        settled = _settled_from_results(
-            loop_state.validation_results or results,
-            lambda vid: getattr(self._find_validator(vid), "criteria", None) or [],
-        )
+        # Verdicts a judge positively asserted, drawn from every validator that
+        # ran this attempt (pre- and post-execute). Only a pass claims a
+        # positive; a warning judge's own prose stays in the failure evidence.
+        # These tell the recovery coder what it need not re-establish; they are
+        # re-judged on the final state anyway.
+        settled = _settled_from_results(loop_state.validation_results or results)
         spec = _build_recovery_spec(
             root_spec, accumulated, provenance, read_history, settled
         )

@@ -69,10 +69,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
   change was one test file, after it wrote and ran four probe scripts to
   re-derive a root cause the earlier attempt had already found, fixed and
   committed. The spec now states that the prior attempt's work is on disk in
-  the worktree and must not be reproduced, names the verdicts that already hold
-  (a validator that passed, and for a judge that flagged one criterion, the
-  criteria it did not flag), and states that the coder's job is the remaining
-  work. The settled items are framed as "already holds, and will be re-judged"
+  the worktree and must not be reproduced, names the validators that passed as
+  the settled part, and carries each warning judge's own justification verbatim
+  as the prior attempt's outstanding verdict — "four of five criteria hold and
+  criterion 2 does not" is stated by the judge, not inferred from silence. No
+  per-criterion positive is derived: `cited_criteria` means "criteria the judge
+  mentioned" (it is scraped from the justification, including a bare-number
+  fallback) and a passing judge can cite criteria too, so treating an uncited
+  criterion as settled would turn a judge's silence into evidence. The spec
+  states that the coder's job is the remaining work. The settled items are
+  framed as "already holds, and will be re-judged"
   rather than "ignore the rest": validators judge the final state regardless,
   and a coder told the rest does not matter could still break it. The original
   intent is still carried verbatim, exactly once, and stays authoritative —
