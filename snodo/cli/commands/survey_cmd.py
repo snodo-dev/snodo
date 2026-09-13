@@ -2,14 +2,23 @@
 
 FILE: snodo/cli/commands/survey_cmd.py
 
-Survey reads an existing repository and proposes what governing it would mean,
+Survey reads an existing repository and reports what governance means for it,
 based on observable evidence: languages, service boundaries, test commands,
 documentation locations, decision records.
 
-The report distinguishes two kinds of findings:
-1. Observable: languages, module boundaries, test commands, docs locations
-2. NOT inferred: what the protocol SHOULD demand (absence of a practice is not
-   a requirement to drop it from the protocol)
+Two closing questions, depending on what is already there:
+
+* No protocol yet: what would governing this repository mean? The report
+  distinguishes two kinds of finding — observable (languages, module
+  boundaries, test commands, docs locations) and NOT inferred (what a protocol
+  SHOULD demand; absence of a practice is not a requirement to drop it from the
+  protocol).
+* A protocol already exists: does that protocol still describe this code? The
+  same analysis runs, and its result is compared with what the protocol
+  declares — where the two agree, and where they have diverged (see
+  snodo.survey.drift). Agreement is reported as plainly as divergence, and
+  every comparison the protocol's shape does not support is listed as not made
+  with its reason.
 
 Two boundary questions are not arithmetic and are put to the configured agent
 as classifications over evidence the deterministic pass already gathered —
@@ -23,8 +32,10 @@ Survey works without an agent: with no model configured, with the call
 failing, or on --no-agent, the deterministic result stands and every
 judgement that was not made is listed in the output.
 
-Never writes to the repository. Never infers governance requirements from
-absence of current practices. Never clobbers existing protocols.
+Never writes to the repository — not the protocol, not a proposal file, not a
+suggested diff, and it offers no reconciliation: drift is reported to a person
+who decides. Never infers governance requirements from absence of practices.
+Never treats a protocol's ungoverned code as code that needs a validator.
 """
 
 import json
@@ -53,7 +64,7 @@ def register(app: typer.Typer) -> None:
             ),
         ),
     ):
-        """Analyze repository and propose what governance would mean."""
+        """Analyze repository: propose governance, or report protocol drift."""
         return survey_command(
             SimpleNamespace(json=json, agent=agent if agent is not None else "auto")
         )
@@ -191,7 +202,7 @@ def _extract_json_object(text: str) -> Optional[dict]:
 
 
 def survey_command(args) -> int:
-    """Analyze repository and propose governance based on observable evidence."""
+    """Analyze a repository: propose governance, or compare the protocol to the code."""
     from snodo.cli.json_output import (
         emit_error,
         emit_json,
@@ -201,6 +212,7 @@ def survey_command(args) -> int:
     )
     from snodo.project import get_project_id, scope_for_project_id
     from snodo.survey.analyzer import analyze_repository
+    from snodo.survey.drift import compare_protocol
 
     json_out = getattr(args, "json", False)
     agent_mode = getattr(args, "agent", None)
@@ -226,22 +238,25 @@ def survey_command(args) -> int:
         print("Error: Could not find git repository root.", file=sys.stderr)
         return EXIT_INTERNAL_ERROR
 
-    # Check if a protocol already exists
+    # A protocol already in place changes the closing question, not the
+    # analysis: the report compares what the protocol claims with what the code
+    # shows. A protocol that exists but cannot be loaded is the one governed
+    # case that is a genuine failure — there is nothing to compare against.
     protocol_path = project_root / ".snodo" / "protocol.yml"
+    protocol = None
     if protocol_path.exists():
-        if not json_out:
-            print(
-                f"This repository already has a protocol at {protocol_path}.",
-                file=sys.stderr,
+        from snodo.protocols import load_protocol
+
+        protocol = load_protocol(protocol_path)
+        if protocol is None:
+            message = (
+                f"The protocol at {protocol_path} could not be loaded, so there "
+                "is nothing to compare the code against."
             )
-            print("Survey proposes governance for repositories without a declared protocol.", file=sys.stderr)
-        if json_out:
-            return emit_error(
-                "survey",
-                f"Protocol already exists at {protocol_path}",
-                EXIT_INTERNAL_ERROR,
-            )
-        return EXIT_INTERNAL_ERROR
+            if json_out:
+                return emit_error("survey", message, EXIT_INTERNAL_ERROR)
+            print(f"Error: {message}", file=sys.stderr)
+            return EXIT_INTERNAL_ERROR
 
     # Boundary judgements go to the configured agent when one is reachable;
     # without one the deterministic pass stands and the gaps are reported.
@@ -267,6 +282,9 @@ def survey_command(args) -> int:
     if judge is not None and analysis.agent_consulted:
         analysis.agent_model = getattr(judge, "model", None)
 
+    if protocol is not None:
+        analysis.drift = compare_protocol(project_root, analysis, protocol)
+
     # Resolve project identity
     project_id, _ = get_project_id(str(project_root))
     scope = scope_for_project_id(project_id)
@@ -289,6 +307,12 @@ def survey_command(args) -> int:
     # Human-readable output
     print(f"Repository Analysis: {display_name}")
     print(f"Project ID: {project_id} ({scope})")
+    if analysis.drift is not None:
+        print(
+            f"Protocol: .snodo/protocol.yml ({analysis.drift.protocol_id}) — "
+            "this repository is governed; the closing question is whether the "
+            "protocol still describes the code."
+        )
     print()
 
     # Display module findings
@@ -387,10 +411,66 @@ def survey_command(args) -> int:
         print("  No significant findings.")
     print()
 
-    print("Next Steps:")
-    print("  1. Review this analysis — edit modules, tooling, and paths as needed")
-    print("  2. Create governance records for architectural decisions")
-    print("  3. Run: snodo init --template=<choice> to set up your protocol")
-    print("  4. Run: snodo ready to assess readiness")
+    # Display the protocol-versus-code relationship, when there is a protocol
+    if analysis.drift is not None:
+        _print_drift(analysis.drift)
+
+    if analysis.drift is None:
+        print("Next Steps:")
+        print("  1. Review this analysis — edit modules, tooling, and paths as needed")
+        print("  2. Create governance records for architectural decisions")
+        print("  3. Run: snodo init --template=<choice> to set up your protocol")
+        print("  4. Run: snodo ready to assess readiness")
+    else:
+        print("Next Steps:")
+        print("  1. Read the comparisons above against the repository itself")
+        print("  2. Where they diverge, decide which side moved — the code, or the")
+        print("     protocol's claim about it. Survey does not decide, and writes")
+        print("     nothing: neither the protocol nor a proposal file.")
+        print("  3. Run: snodo ready to assess readiness")
 
     return EXIT_PASS
+
+
+def _print_drift(drift) -> None:
+    """Print the protocol-versus-code report.
+
+    Agreement first and at equal length: a page of findings alone reads as an
+    indictment of a healthy project, when the ordinary result of this
+    comparison is that the two still line up.
+    """
+    print("Protocol Versus Code:")
+    print(f"  {drift.summary}")
+    print(f"  Shape: {drift.shape}")
+    print()
+
+    print(f"  Agreements ({len(drift.agreements)}):")
+    if drift.agreements:
+        for item in drift.agreements:
+            subject = f" [{item.subject}]" if item.subject else ""
+            print(f"  • [{item.check}]{subject} {item.statement}")
+            for evidence in item.evidence:
+                print(f"      {evidence}")
+    else:
+        print("    None: no comparison both applied to this protocol's shape and agreed.")
+    print()
+
+    print(f"  Divergences ({len(drift.divergences)}):")
+    if drift.divergences:
+        for finding in drift.divergences:
+            print(f"  • [{finding.check}] {finding.subject}")
+            print(f"      protocol claims: {finding.claim}")
+            print(f"      code shows:      {finding.observation}")
+            for evidence in finding.evidence:
+                print(f"      {evidence}")
+    else:
+        print("    None among the comparisons that applied.")
+    print()
+
+    print("  Comparisons not made:")
+    if drift.not_compared:
+        for gap in drift.not_compared:
+            print(f"  • [{gap.check}] {gap.reason}")
+    else:
+        print("    None: every comparison this shape supports was made.")
+    print()
