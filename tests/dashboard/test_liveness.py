@@ -1069,3 +1069,116 @@ def test_cockpit_orders_jobs_by_recent_start_with_start_less_job_last(tmp_path, 
             assert rows[3][4] == "—"
 
     asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
+# 9. Silence warns only where it can mean trouble
+# ---------------------------------------------------------------------------
+
+
+def test_finished_row_last_is_not_a_warning_but_silent_running_is(tmp_path):
+    """A finished row's Last reads like any other timestamp; a run that is
+    supposed to be alive and has gone quiet is still the one that warns."""
+    from snodo.dashboard.liveness import PhaseMarker
+
+    now = time.time()
+    provider = DashboardDataProvider(str(tmp_path))
+
+    finished = RunRow(
+        kind="task", run_id="t_done", description="", status="completed",
+        pid=None, started_at=now - 4 * 86400,
+        markers=[PhaseMarker(ts=now - 4 * 86400, source="audit", label="task_complete")],
+    )
+    running = RunRow(
+        kind="task", run_id="t_live", description="", status="running",
+        pid=None, started_at=now - 4 * 86400,
+        markers=[PhaseMarker(ts=now - 3600, source="audit", label="coder")],
+    )
+
+    finished_last = provider.liveness_cells(finished)[3]
+    assert finished_last == fmt_when(
+        finished.last_moved(), provider.get_liveness_snapshot()["now"]
+    )
+    assert "red" not in finished_last and "[" not in finished_last
+
+    running_last = provider.liveness_cells(running)[3]
+    assert "bold red" in running_last
+
+
+# ---------------------------------------------------------------------------
+# 10. What the spend bought: completed / failed / uncounted
+# ---------------------------------------------------------------------------
+
+
+def test_cost_rollup_splits_outcomes_and_names_the_uncounted(tmp_path):
+    """The split reports known spend per outcome, and a run whose cost was
+    never recorded is named, never folded in as a zero."""
+    from snodo.dashboard.liveness import cost_rollup
+
+    now = time.time()
+
+    def _row(rid, status, cost):
+        return RunRow(
+            kind="task", run_id=rid, description="", status=status,
+            pid=None, started_at=now, cost_total=cost,
+        )
+
+    runs = [
+        _row("t_done", "completed", 1.0),
+        _row("t_failed", "failed", 0.25),
+        _row("t_errored", "errored", 0.75),
+        _row("t_live", "running", 2.0),
+        _row("t_unknown", "failed", None),  # no record — not a zero
+    ]
+    rollup = cost_rollup(runs, {})
+
+    assert rollup["total"] == pytest.approx(4.0)  # unknown excluded
+    assert rollup["completed_cost"] == pytest.approx(1.0)
+    assert rollup["failed_cost"] == pytest.approx(1.0)  # 0.25 + 0.75
+    assert rollup["completed_runs"] == 1
+    assert rollup["failed_runs"] == 2  # the uncounted failure is not one of them
+    assert rollup["ratio"] == pytest.approx(1.0)
+    assert rollup["runs_with_cost"] == 4
+    assert rollup["runs_without_cost"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 11. The Live Log can be taken out without the dashboard writing to the project
+# ---------------------------------------------------------------------------
+
+
+def test_live_log_can_be_copied_without_writing_to_the_project(tmp_path, monkeypatch):
+    """A reader can obtain the Live Log's text from the app's clipboard, and
+    the copy puts nothing on disk — the dashboard stays an observer."""
+    import asyncio
+
+    from snodo.dashboard.app import SnodoDashboard
+    from snodo.dashboard.panels.cockpit import CockpitScreen
+
+    project = _cockpit_fixture(tmp_path, monkeypatch)
+
+    def _snapshot():
+        out = {}
+        for dirpath, _, files in os.walk(project / ".snodo"):
+            for name in files:
+                p = os.path.join(dirpath, name)
+                with open(p, "rb") as fh:
+                    out[p] = (os.path.getmtime(p), fh.read())
+        return out
+
+    async def _run():
+        app = SnodoDashboard(project_root=str(project))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, CockpitScreen)
+            await pilot.pause(0.3)
+            assert "building" in _log_plain(screen.query_one("#log-pane"))
+
+            before = _snapshot()
+            await pilot.press("c")
+            await pilot.pause(0.1)
+            assert "building" in app.clipboard
+            assert before == _snapshot()
+
+    asyncio.run(_run())
