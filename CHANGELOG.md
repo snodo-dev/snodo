@@ -7,6 +7,44 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- The survey's accuracy claim is reproducible. Precision and recall were
+  measured once, by hand, against eight private repositories, and nothing in
+  the repository could re-run that measurement or notice if a refactor moved
+  it. There are now two artefacts instead of a memory. `snodo.survey.measure`
+  turns a survey and a declared ground truth into true/false counts and the
+  precision and recall derived from them, for module boundaries, languages and
+  confirmed test commands — one arithmetic shared by every caller, calling no
+  model and reaching no network. `scripts/measure_survey.py` runs that
+  arithmetic over real repositories named in a ground-truth file that stays
+  outside this repository, so re-checking the published figures is one command
+  rather than an evening. And a fixture corpus in `tests/survey` holds the nine
+  synthetic trees that actually discriminated between right and wrong answers
+  during the original evaluation: a documentation directory with its own static
+  site manifest, a test directory with a playwright config, a nested example
+  package, a vendored `Pods` tree, a `pubspec.yaml` project, sibling manifests
+  with no root workspace declaration, npm's no-test scaffold, source trees in
+  `.svelte`, `.astro`, `.swift` and `.dart`, and a manifest that does not parse.
+  The expected answer lives in one declared ground truth rather than in
+  case-by-case assertions, so the test reports figures — judged boundaries at
+  100% precision and recall, the deterministic pass at 8/11 precision with full
+  recall, language recall at 100% — and a regression appears as a figure moving
+  rather than as an example that happens to still pass. A deliberately wrong
+  entry in the ground truth fails, naming the repository and the boundary.
+  Judgement behaviour is exercised offline through the judge callable the
+  analyzer already accepts: a verdict citing a file that does not exist is
+  refused, an abstention is reported and leaves the deterministic answer
+  standing, and a reply cut off mid-object neither promotes nor drops a
+  subject. One honest gap is recorded rather than papered over: a `pubspec.yaml`
+  manifest is still counted as a `yaml` source file, so language precision in
+  the corpus is 13/14, and the expectation says so instead of being adjusted to
+  match.
+
+---
+
 ## [0.8.3] — 2026-09-12
 
 ### Added
