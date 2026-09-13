@@ -1,0 +1,58 @@
+# Documentation debt list — one entry per invokable surface item that
+# no page under docs/ (minus decisions/specs) mentions.
+#
+# Each line is '<kind> <name>': command <path words>, tool <name>, or
+# config <dotted.key>. The list can only shrink: run
+#   uv run python scripts/enforce_docs_coverage.py --update-baseline
+# after documenting one of these — the entry leaves for good and an
+# undocumented item can never join it. There is no suppression comment
+# on purpose: an undocumented user-facing surface is a docs bug, not a
+# style choice.
+
+command audit verify
+command cache clear
+command cloud connect
+command cloud disconnect
+command cloud status
+command cloud sync
+command job archive
+command job prune
+command job retry
+command job unarchive
+command logs
+command models
+command plan add-task
+command plan delete
+command session new
+command session switch
+command task abandon
+command task list
+command task prune
+command worktree prune
+command worktree remove
+config llm.classifier.max_tokens
+config llm.classifier.model
+config llm.classifier.temperature
+config llm.coder.concurrency
+config llm.coder.model
+config llm.coder.timeout_seconds
+config llm.num_retries
+config llm.recon.models
+config llm.validator.max_tokens
+config llm.validator.max_tool_turns
+config llm.wave.max_age_days
+config llm.wave.max_idle_days
+tool delete_file
+tool get_job_logs
+tool get_job_status
+tool get_plan
+tool get_recon_results
+tool get_recon_status
+tool list_jobs
+tool list_models
+tool propose_adjudicate
+tool propose_plan
+tool propose_set_model
+tool resolve_model
+tool retry_job
+tool run_plan

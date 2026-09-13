@@ -93,12 +93,10 @@ snodo init --template solo
 
 `init` asks for consent before writing anything:
 
-```
-snodo runs AI agents that execute code in this repository — including your test
-and build commands. Only continue if this repository is yours or you trust its
-contents.
-Continue? [y/N] y
-```
+> snodo runs AI agents that execute code in this repository — including your test
+> and build commands. Only continue if this repository is yours or you trust its
+> contents.
+> Continue? [y/N] y
 
 This is the trusted-repository boundary (ADR 014): snodo assumes the repo it is
 initialised in is yours. Do not point it at untrusted third-party code.
