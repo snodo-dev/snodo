@@ -14,6 +14,14 @@ Verify:
 snodo --version
 ```
 
+From source (a [`uv`](https://docs.astral.sh/uv/) workspace):
+
+```bash
+git clone https://github.com/snodo-dev/snodo.git
+cd snodo
+uv sync --all-extras
+```
+
 ## Configure
 
 ### API keys
@@ -66,6 +74,101 @@ JWT validation tokens are HS256-signed. The signing secret is randomly generated
 export SNODO_TOKEN_SECRET=$(openssl rand -hex 32)
 ```
 
+### The full configuration file
+
+Configuration lives in `~/.snodo/config.yml` (`$SNODO_HOME` overrides the
+location). Manage it with `snodo config` rather than editing by hand; the file
+below is the whole surface, with the defaults and ranges shown.
+
+```yaml
+model: deepseek/deepseek-v4                   # default for all roles
+
+llm:
+  num_retries: 3                              # 0-10, litellm retry count
+  coder:
+    model: null                               # null = the default model
+    max_tokens: 16000
+    max_tool_turns: 6                         # 1-200
+    timeout_seconds: 1800
+    concurrency: 1                            # coders this operator can carry
+  validator:
+    model: null                               # role-specific override
+    max_tokens: 1500
+    max_tool_turns: 6                         # 1-200
+  classifier:
+    model: null
+    max_tokens: 500
+    temperature: 0.0                          # 0.0-2.0
+  recon:
+    num_agents: 1
+    models: []                                # ordered priority list
+  wave:
+    max_age_days: 14
+    max_idle_days: 5
+
+engine:
+  max_subtask_depth: 3                        # 1-10
+  max_session_age_days: 30                    # 1-365
+  token_ttl_seconds: 600                      # 60-86400
+
+providers:
+  anthropic:
+    api_key: sk-ant-...
+    api_key_env: ANTHROPIC_API_KEY            # injected at runtime when a matching model runs
+  ollama:
+    base_url: https://ollama.com/v1
+    api_key_env: OLLAMA_API_KEY
+    litellm_provider: openai                  # route ollama/<model> through the OpenAI protocol
+
+cloud:
+  api_url: https://api.snodo.dev
+  sync_enabled: false
+```
+
+Every key is settable without hand-editing:
+
+```bash
+snodo config set model deepseek/deepseek-v4
+snodo config set llm.coder.max_tokens 32000
+snodo config set llm.validator.model openai/@cf/google/gemma-4
+snodo config set llm.recon.num_agents 2
+snodo config get llm.coder.max_tool_turns
+```
+
+Anthropic, OpenAI, Google, OpenRouter, DeepSeek and Cloudflare Workers AI have
+built-in provider configuration. `litellm_provider: openai` is what makes an
+arbitrary compatible endpoint work: snodo rewrites `ollama/<model>` to
+`openai/<model>` and sends it to `base_url`. Omit `api_key_env` for a local
+server that needs no key. This covers Ollama Cloud, a local Ollama or
+`llama.cpp` server, vLLM, LM Studio, and self-hosted gateways.
+
+Read from the environment, never stored in the config file: `SNODO_HOME`,
+`SNODO_TOKEN_SECRET`, `GITHUB_TOKEN` (for `--from-pr`), and any
+`<PROVIDER>_API_KEY`.
+
+## Check readiness before you spend
+
+`snodo ready` is worth running first on an existing repository. It checks,
+deterministically and without an LLM, whether every artefact the protocol
+demands is **committed** — decision records, a resolvable test command, coder
+configs, paths cited in criteria — and scores what is missing by how cheap it
+is to fix. Task worktrees only see `HEAD`, so "present on disk" is not enough.
+
+```
+$ snodo ready
+Method Scaffolding Readiness: 80% (4/5 checks satisfied)
+
+Repository Readiness (Scored — travels with git repository):
+  ❌ [warn] Path 'authentication/authorization' cited in criteria of validator
+     'security' does not exist in repository.
+     Fix: Create and commit 'authentication/authorization'
+```
+
+Repository findings are scored and travel with the repository; workstation
+findings (missing binaries, plaintext keys) are reported but unscored. `--mode`
+filters the displayed findings to one mode; `--json` emits the machine-readable
+form.
+
 ## Quickstart
 
 ```bash
@@ -80,7 +183,10 @@ snodo config add anthropic sk-ant-...
 snodo run "add password reset flow"
 ```
 
-The `--mock` flag uses a stub coder — no API call, no files created. Useful for testing protocol configuration and validator behaviour.
+The `--mock` flag uses a deterministic stub coder — no API call is made and no
+key is spent. It still returns artifacts, so the protocol's gates, the worktree
+isolation and the merge path are exercised end to end; useful for testing
+protocol configuration and validator behaviour without a provider.
 
 ### Templates
 
@@ -98,15 +204,64 @@ The template list is derived from `snodo/protocols/templates/` — drop in a YAM
 
 Run `snodo init --template <name>` to pick one directly, or `snodo init` to choose from the menu.
 
+### Coders
+
+The coder writes; snodo governs, gates and records. `--coder` selects one:
+
+| `--coder` | Mechanism | Needs | Auth |
+|---|---|---|---|
+| `litellm` *(default)* | In-process completions via LiteLLM | built-in | provider API keys |
+| `opencode-cli` | Host `opencode run` | `opencode` on PATH | `opencode auth login` |
+| `agy` | Antigravity CLI (`agy -p`) | `agy` on PATH | `agy login` |
+| `opencode` *(experimental)* | OpenCode server in Docker over HTTP | Docker, `opencode:latest` | container env |
+| `mock` | Deterministic stub | nothing | none |
+
+Three things are worth knowing up front:
+
+- **`-m` sets the *judging* model, not the coder's.** Validators and the
+  classifier run on it. Host CLIs keep their own model catalogs; to pin a
+  coder's model, namespace it — `--coder agy --model agy/gemini-2.5-pro`.
+- **In-place coders own their commit.** `opencode`, `opencode-cli` and `agy`
+  edit the worktree directly and commit, so post-execute validators judge the
+  exact change. Any attempt to touch `.snodo/` halts as a blocker (ADR 027).
+- **Selection order:** `--mock`, then `--coder`, then a mode's `coder:` field,
+  then a model prefix (`agy/`, `opencode-cli/`, `claude`, `gpt`…), then
+  `litellm`.
+
+To add one, see the [coder adapter contract](architecture/coder-adapter-contract.md).
+
+### Retrying a failed task
+
+Retrying a failed task keeps its specification. `snodo run --retry <task_id>`
+re-runs the task against the spec on record — that bare form is what the CLI
+prints after a failure, so pasting it is safe. `--append-spec "…"` adds guidance
+on top of that spec (a positional description does the same); `--replace-spec
+"…"` replaces it, which is the only retry that discards anything, and the
+discarded spec stays readable with `snodo task show <task_id>`.
+
 ## CLI Reference
 
-### Core commands
+`snodo <command> --help` is authoritative; the table below is the map.
 
-| Command | Description | Key flags |
-|---------|-------------|-----------|
-| `snodo init` | Create `.snodo/` with a protocol | `--template <name>` (list with `--template nonexistent` or the interactive menu), `--force` |
-| `snodo run <desc>` | Execute a task through the protocol | `--mock`, `--model`, `--from-pr <N>`, `--background`, `--sandbox docker` |
-| `snodo serve` | Start MCP server(s) | `--mode <id>` (single mode), `--port <N>` |
+| | |
+|---|---|
+| `init` | Scaffold `.snodo/` from a template |
+| `run` | Execute a task, a plan (`--plan`), or a single wave (`--wave`). `--background`, `--resume`, `--retry`, `--from-pr`, `--interactive`, `--no-isolation` |
+| `ready` | Score method-scaffolding readiness against the protocol |
+| `plan` | `list`, `status`, `create`, `validate`, `add-wave`, `add-task`, `run`, `delete` |
+| `status` / `mode` | Active session and mode; `mode change` to switch |
+| `session` | `list`, `show`, `new`, `switch`, `delete`, `prune` |
+| `authorize` | Adjudicate escalated disagreements and `set_model` proposals |
+| `validate` | Run a phase's validators without a coder and return the structured result |
+| `audit verify` | Verify the hash chain |
+| `job` / `logs` / `meta` | Background jobs: `list`, `status`, `logs`, `wait`, `cancel`; log streaming; usage |
+| `task` / `worktree` | Task branches and the git worktrees used for isolation |
+| `recon` | Fan out read-only agents to answer a question about the codebase |
+| `models` / `config` | Model discovery; keys and settings |
+| `serve` | Run the protocol as an MCP server (stdio or SSE) |
+| `cloud` | `connect`, `disconnect`, `status` for audit sync |
+| `dashboard` | TUI (`snop`) |
+| `agent` / `sandbox` / `install` / `uninstall` | Agent memory; Docker sandbox; Claude Desktop MCP entries |
 
 ### Plan
 
@@ -118,8 +273,10 @@ Run `snodo init --template <name>` to pick one directly, or `snodo init` to choo
 | `snodo plan validate <name>` | Verify plan structure and task spec files (`--json`) |
 | `snodo run --plan <name>` | Execute a plan by name (`--wave N`, `--interactive`) |
 
-See [runbooks/hand-authored-plan.md](runbooks/hand-authored-plan.md) for
-authoring and running a plan by hand.
+Plans are authored, not generated: `plan create` scaffolds one empty wave, and
+you add waves and tasks (ids are `<wave>.<seq>_<name>`, e.g. `1.1_models`) or
+edit `plan.yml` directly. A plan is re-verified on every load. See
+[runbooks/hand-authored-plan.md](runbooks/hand-authored-plan.md).
 
 ### Session
 
