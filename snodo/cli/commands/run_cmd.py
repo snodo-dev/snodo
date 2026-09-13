@@ -421,7 +421,11 @@ def _failure_from_halt_record(session, task_id: str) -> Optional[dict]:
     record = halt.get(task_id)
     if not isinstance(record, dict) or record.get("task_id") != task_id:
         return None
-    if record.get("status") != "blocked":
+    # A blocked-shaped record, but an environment halt is not a verdict: the
+    # task was never the problem, and synthesising failure context from the
+    # install error would hand a retry a critique of work that was never
+    # written. No context — a post-install retry runs the task fresh.
+    if record.get("status") != "blocked" or (record.get("final_decision") or record.get("halt_type")) == "environment_error":
         return None
 
     spec = record.get("task_spec", "")

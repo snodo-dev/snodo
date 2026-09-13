@@ -164,3 +164,29 @@ def test_retry_rejects_non_matching_halt_records(tmp_path, monkeypatch, capsys, 
     assert res == 1
     assert len(executed) == 0
     assert "No failure context for task_halt1. Cannot retry." in capsys.readouterr().err
+
+
+def test_environment_error_halt_seeds_no_retry_context(tmp_path, monkeypatch, capsys):
+    """An environment halt is not a verdict: the fallback must synthesise nothing.
+
+    The record is blocked-shaped (the run did stop), so a plain status check
+    cannot tell it apart from a work verdict. If the fallback synthesised
+    failure context from it, a retry would feed "opencode not found on PATH"
+    to a coder as a critique of a specification that passed every validator —
+    recovery against work that was never written.
+    """
+    project_root, session_mgr, session, args, executed = _setup(tmp_path, monkeypatch)
+    record = _halt_record(
+        halt_type="environment_error",
+        final_decision="environment_error",
+        raw_halt_type="environment_error",
+        reason="opencode not found on PATH. Install opencode: curl -fsSL https://opencode.ai/install | bash",
+        validator_results=[],
+    )
+    session_mgr.update_decision(session.session_id, "halt", {"task_halt1": record})
+
+    res = _retry_task(args, "task_halt1", project_root, session_mgr)
+
+    assert res == 1
+    assert len(executed) == 0
+    assert "No failure context for task_halt1. Cannot retry." in capsys.readouterr().err

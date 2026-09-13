@@ -1,7 +1,12 @@
 from typing import Dict, Any, List
 from snodo.engine.state import LoopStage, LoopState, _build_audit_results
 from snodo.core.interfaces import ValidatorResult, ExecutionError, NoFileOperationsError, result_record
-from snodo.coders.base import AdapterError, SnodoMutationError, TurnBudgetExhausted
+from snodo.coders.base import (
+    AdapterError,
+    CoderUnavailableError,
+    SnodoMutationError,
+    TurnBudgetExhausted,
+)
 from snodo.infrastructure.tokens import TokenStoreError
 from snodo.engine.policy import PolicyAction, policy_decision_to_dict
 from snodo.engine.nodes.writeback import _coder_registry_name
@@ -281,15 +286,44 @@ class ValidationNodeMixin:
                 })
                 self._auto_write_failure_context(loop_state, [])
                 return self._state_to_dict(loop_state)
+            except CoderUnavailableError as e:
+                # The ENVIRONMENT, not the task: the coder's binary (or the
+                # container runtime it needs) cannot be invoked in the process
+                # that ran. This halts loudly, but under the raw AND canonical
+                # ``environment_error`` — deliberately not the
+                # ``execution_error`` family, whose operator-fixable coder
+                # faults remain config-fixable blockers (#195). Nothing about
+                # the task blocked, so no blocker verdict is recorded and no
+                # ``task_failure`` context is written: a retry after the
+                # install is a fresh execution of the unchanged spec, never a
+                # recovery critique of work that was never written.
+                loop_state.is_blocked = True
+                loop_state.halt_type = "environment_error"
+                loop_state.constraint_violations.append(str(e))
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "skipped",
+                    "reason": str(e),
+                }
+                self._audit("coder_unavailable", {
+                    "op": "coder_unavailable",
+                    "task_ref": loop_state.task.id,
+                    "mode": loop_state.current_mode,
+                    "binary": e.binary,
+                    "error": str(e),
+                })
+                return self._state_to_dict(loop_state)
             except AdapterError as e:
-                # The coder backend itself failed — a binary missing from PATH,
-                # a CLI that rejected the arguments (e.g. a model string the
-                # tool does not accept), an LLM call that errored, output that
-                # could not be parsed. This is an operator-fixable coder fault,
-                # not an engine fault: it halts under the ``execution_error``
-                # raw type (canonical ``blocker``) with a config fix target, so
-                # the operator is told to fix the coder configuration rather
-                # than inspect engine logs (Fixes #195).
+                # The coder backend itself failed — a CLI that rejected the
+                # arguments (e.g. a model string the tool does not accept), an
+                # LLM call that errored, output that could not be parsed. This
+                # is an operator-fixable coder fault, not an engine fault: it
+                # halts under the ``execution_error`` raw type (canonical
+                # ``blocker``) with a config fix target, so the operator is
+                # told to fix the coder configuration rather than inspect
+                # engine logs (Fixes #195). A binary absent from PATH is NOT
+                # here — it is an environment fault and halts above, under
+                # ``environment_error``, which is no one's verdict about the
+                # task.
                 loop_state.is_blocked = True
                 loop_state.halt_type = "execution_error"
                 loop_state.constraint_violations.append(str(e))
