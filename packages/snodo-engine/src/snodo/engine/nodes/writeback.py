@@ -29,32 +29,10 @@ class JobStateError(Exception):
 # Canonical halt outcome. The halt payload's ``halt_type`` and ``final_decision``
 # are the SAME canonical value, so the payload is self-consistent (final_decision
 # always equals halt_type). The engine's specific halt_type is preserved in
-# ``raw_halt_type``; the coarse outcome is one of the four-status vocabulary
-# (escalate / blocker / validator_error / internal_error) plus "completed" —
-# and plus ``environment_error``, the fifth value, deliberately:
-#
-#   An environment fault (the coder binary is absent, the container runtime
-#   is missing, the backend cannot be started) means none of the four.
-#   ``blocker`` is a verdict about the task's content — nothing here blocks
-#   the task; that laundering is exactly what #195 was written against, and
-#   the fold ``execution_error -> blocker`` reintroduced it one layer down.
-#   ``escalate`` asks a human to ADJUDICATE a verdict about the work
-#   (``snodo authorize``); no adjudication installs a program.
-#   ``validator_error`` claims a validator failed to produce a verdict; the
-#   validators unanimously produced one — of the task, about the task.
-#   ``internal_error`` claims an engine defect; #195 explicitly refuses to
-#   launder an operator-fixable coder fault into that.
-#   So it is none of the four, and naming it is the honest taxonomy — a fifth
-#   canonical value rather than a lie inside an existing one.
-#
-#   Consumers that branch on the four: handle ``environment_error`` the way
-#   you handle ``internal_error`` — a non-verdict operational halt: stop the
-#   run, surface the payload's ``hint`` (it carries the install command), do
-#   NOT retry the task against its recorded failure, and do NOT treat it as
-#   authorisation state. Any canonical value outside the four must fall into
-#   that same non-verdict branch, never into the blocker branch: defaulting
-#   an unknown outcome to "a verdict about the work" is the error class this
-#   mapping is made of.
+# ``raw_halt_type``. The canonical vocabulary is five values — escalate,
+# blocker, validator_error, internal_error, and ``environment_error``, the fifth,
+# which is not a verdict about the task. ADR 015 is the home of the taxonomy and
+# the reasoning for the fifth; this map only applies it.
 _CANONICAL_HALT = {
     "escalated": "escalate",
     "blocked": "blocker",
@@ -66,12 +44,10 @@ _CANONICAL_HALT = {
     "turn_budget_exhausted": "blocker",
     # A coder fault the operator fixes in configuration (model string,
     # backend choice) stays a config-targeted blocker (#195); the missing-
-    # program case split out to ``environment_error`` below and is no longer
-    # folded through this key.
+    # program case is ``environment_error`` below.
     "execution_error": "blocker",
-    # The raw type and its canonical outcome are the same value: an
-    # environment fault is not a verdict, so it maps to nothing that reads
-    # as one.
+    # An environment fault is not a verdict, so its raw and canonical values
+    # are the same (ADR 015).
     "environment_error": "environment_error",
     "recovery_exhausted": "blocker",
     "recovery_stalled": "blocker",
@@ -505,8 +481,8 @@ class WritebackMixin:
         This is the SINGLE authoritative halt payload, emitted by the CLI and
         persisted to job state / session.  ``final_decision`` always equals
         ``halt_type``, which always equals ``raw_halt_type`` (canonical
-        four-status vocabulary). The engine's specific reason (e.g. which
-        constraint, or which validator) is preserved in ``reason`` /
+        outcome vocabulary; see ADR 015). The engine's specific reason (e.g.
+        which constraint, or which validator) is preserved in ``reason`` /
         ``constraint_violations``, never silently remapped to another member of
         the vocabulary.
         """

@@ -111,5 +111,5 @@ noticing that nothing was produced.
   fail loudly at the branch, which is cheaper and simpler than a runtime
   protocol.
 - **Keep the audit note but make it a warn/escalate:** rejected — a no-op run
-  is a fault, not a judgement about the work; the four-outcome vocabulary
+  is a fault, not a judgement about the work; the outcome vocabulary (ADR 015)
   already has `internal_error` for execution faults.

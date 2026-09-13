@@ -30,12 +30,14 @@ a way for a caller to branch on the outcome without parsing prose.
    suite rather than a downstream consumer.
 
 3. **`snodo validate`** runs a phase's validators through the shared engine
-   runner (`snodo.validators.runner`) and returns the four-outcome result as
-   JSON — the halt-payload shape, reachable directly, with no coder. It reuses
-   the same runner the engine and the MCP server use, so the three paths cannot
-   drift apart.
+   runner (`snodo.validators.runner`) and returns the validation-outcome result
+   as JSON — the halt-payload shape, reachable directly, with no coder. It
+   reuses the same runner the engine and the MCP server use, so the three paths
+   cannot drift apart. The engine's canonical outcome vocabulary is five
+   (ADR 015); `environment_error` is an execution halt, and because `snodo
+   validate` never invokes a coder, it is not an outcome this command returns.
 
-4. **Exit codes distinguish the four outcomes.** `pass`=0, `blocker`=1,
+4. **Exit codes distinguish the validation outcomes.** `pass`=0, `blocker`=1,
    `escalate`=2, `validator_error`=3, `internal_error`=4. A caller branches on
    the exit code without parsing prose.
 
@@ -49,8 +51,8 @@ This is snodo's first committed machine interface. Its stability is a promise:
 a consumer (the opencode plugin, and any future agent integration) will build
 against these field names and exit codes. Breaking them silently would break
 that consumer. The schema field is the mechanism that makes a breaking change
-detectable rather than silent — the same principle as the four-outcome
-vocabulary: each outcome means one thing, and nothing is silently remapped.
+detectable rather than silent — the same principle as the outcome vocabulary
+of ADR 015: each outcome means one thing, and nothing is silently remapped.
 
 ## Consequences
 

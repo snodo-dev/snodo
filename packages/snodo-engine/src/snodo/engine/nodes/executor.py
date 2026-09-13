@@ -316,14 +316,14 @@ class ExecutorMixin:
             # The coder backend itself failed: a CLI that rejected the
             # arguments, an LLM call that errored, output that could not be
             # parsed — and, in its CoderUnavailableError subclass, a binary
-            # missing from PATH. These are operator-fixable coder faults (the
-            # model string, the backend, the install), not engine faults — so
-            # they propagate unchanged and the engine reports them under their
-            # own halt outcome (``execution_error`` for coder faults,
-            # ``environment_error`` for a missing program) instead of
-            # laundering them into ``internal_error`` (Fixes #195). The
-            # environment subclass must survive this catch intact: it is what
-            # keeps a missing install from being recorded as a blocker verdict.
+            # missing from PATH. These are operator-fixable coder faults, not
+            # engine faults, so they propagate unchanged and the engine reports
+            # them under their own halt outcomes (``execution_error`` for coder
+            # faults, ``environment_error`` for a missing program) instead of
+            # laundering them into ``internal_error`` (Fixes #195; taxonomy in
+            # ADR 015). The environment subclass must survive this catch
+            # intact: it is what keeps a missing install from being recorded as
+            # a blocker verdict.
             raise
         except ExecutionError:
             raise

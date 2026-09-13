@@ -103,8 +103,8 @@ where a secret is actually at stake, and nowhere else.
 
 ### Error taxonomy discipline — **mixed**
 
-The four-outcome contract (`halt_type == final_decision == raw_halt_type`) is a good
-piece of design. It is also violated in practice: three times in one day a run emitted
+The outcome contract (`halt_type == final_decision == raw_halt_type`; five
+values, ADR 015) is a good piece of design. It is also violated in practice: three times in one day a run emitted
 a complete structured payload and then printed `✗ Internal error during execution:
 unknown internal error`. One run, two outcomes, the second unclassified.
 

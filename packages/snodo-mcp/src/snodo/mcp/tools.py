@@ -418,7 +418,12 @@ TOOL_REGISTRY = {
         "method": None,
     },
     "validate_task": {
-        "description": "Run validators and obtain a validation token (WF1)",
+        "description": (
+            "Run validators and obtain a validation token (WF1). Returns one of "
+            "four validation outcomes (pass/escalate/blocker/validator_error); an "
+            "execution halt can additionally be environment_error, a non-verdict "
+            "operational fault — see ADR 015."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {

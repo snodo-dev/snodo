@@ -807,7 +807,7 @@ disagreement_policy: "unanimous"
 
 
 def test_task_outcome_line_labels():
-    """The report line labels each of the four outcomes and the no-record fallback."""
+    """The report line labels each mapped outcome and the no-record fallback."""
     from snodo.cli.commands.plan_run import _task_outcome_line
 
     assert _task_outcome_line("t1", "blocker") == "[t1] BLOCKED in"
