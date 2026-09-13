@@ -475,6 +475,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         worktree_path: Optional[str] = None,
         worktree_degraded: bool = False,
         verbose: bool = False,
+        verdict_cache: Any = None,
     ):
         """Initialize graph builder with real MCP services.
 
@@ -576,6 +577,10 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             session_manager=session_manager,
         )
         self._validator_runner._session_id = self._session_id or ""
+        # The verdict cache is an injected optimisation (#246): None means
+        # judge fresh every time, exactly as before the cache existed.
+        self._verdict_cache = verdict_cache
+        self._validator_runner._verdict_cache = verdict_cache
 
         self.governance_fn = governance_fn or self._default_governance
         self.validator_fn = validator_fn or self._validator_runner.run
@@ -1026,6 +1031,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             verdict_cb=self._validator_verdict_cb,
             artifacts=artifacts,
             base_ref=base_ref,
+            verdict_cache=self._verdict_cache,
         )
         self._validator_runner.last_cap_originals = cap_originals
         return results
@@ -1081,12 +1087,13 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
 
         original = getattr(result, "severity_original", None)
         cap_note = f" (from {original})" if original and original != severity else ""
+        reuse_note = " (reused)" if getattr(result, "reused", False) else ""
 
         if severity is None:
             snippet = f" — {first_line}" if first_line else ""
             self._progress(f"    ◐ {validator_id}: abstained{cap_note}{snippet}")
         elif severity == "pass" and not getattr(result, "skipped", False):
-            self._progress(f"    ✓ {validator_id}: pass{cap_note}", verbose=True)
+            self._progress(f"    ✓ {validator_id}: pass{cap_note}{reuse_note}", verbose=True)
         elif severity == "pass":
             # A pass that skipped its gate (e.g. the quality validator ran the
             # no-op default because no test command is configured) is visible
@@ -1096,13 +1103,13 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             self._progress(f"    ✓ {validator_id}: pass (skipped){cap_note}{snippet}")
         elif severity == "warn":
             snippet = f" — {first_line}" if first_line else ""
-            self._progress(f"    ⚠️ {validator_id}: warn{cap_note}{snippet}")
+            self._progress(f"    ⚠️ {validator_id}: warn{cap_note}{reuse_note}{snippet}")
         elif severity == "blocker":
             snippet = f" — {first_line}" if first_line else ""
-            self._progress(f"    ❌ {validator_id}: blocker{cap_note}{snippet}")
+            self._progress(f"    ❌ {validator_id}: blocker{cap_note}{reuse_note}{snippet}")
         else:
             snippet = f" — {first_line}" if first_line else ""
-            self._progress(f"    💥 {validator_id}: {severity}{cap_note}{snippet}")
+            self._progress(f"    💥 {validator_id}: {severity}{cap_note}{reuse_note}{snippet}")
 
 
 def build_protocol_graph(
@@ -1124,6 +1131,7 @@ def build_protocol_graph(
     worktree_degraded: bool = False,
     verbose: bool = False,
     token_issuer: Optional[TokenIssuer] = None,
+    verdict_cache: Any = None,
     **custom_functions
 ) -> StateGraph:
     """Convenience function to build graph with MCP integration.
@@ -1226,6 +1234,7 @@ def build_protocol_graph(
         worktree_degraded=worktree_degraded,
         verbose=verbose,
         token_issuer=token_issuer,
+        verdict_cache=verdict_cache,
         **custom_functions
     )
     return builder.build_graph()

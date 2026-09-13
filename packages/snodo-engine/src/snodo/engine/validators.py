@@ -41,6 +41,7 @@ class ValidatorRunner:
         self._session_manager = session_manager
         self._validator_config = validator_config
         self._session_id: str = ""
+        self._verdict_cache: Any = None
         self.last_cap_originals: dict = {}
 
     def resolve_validators(
@@ -82,6 +83,7 @@ class ValidatorRunner:
             verdict_cb=verdict_cb,
             artifacts=artifacts,
             base_ref=base_ref,
+            verdict_cache=self._verdict_cache,
         )
         self.last_cap_originals = cap_originals
         return results

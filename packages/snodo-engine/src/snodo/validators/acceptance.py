@@ -136,6 +136,12 @@ class AcceptanceValidator(LLMValidator):
     Reuses the LLMValidator tool loop unchanged; only the judge prompt differs.
     """
 
+    #: It judges the produced work, not the spec, so it is keyed on the tree
+    #: even when configured without tools — an explicit answer rather than an
+    #: inherited ``"spec"`` (#246).  The runner also forces every post-execute
+    #: judge to the tree subject structurally.
+    cache_subject = "tree"
+
     def __init__(
         self,
         validator_spec: Validator,

@@ -132,6 +132,13 @@ class ValidatorResult(BaseModel):
     #: Read-only tools the judge was granted but never exercised when its budget
     #: ran out — the honest "what was NOT examined" half of an abstention.
     unexamined_tools: Optional[List[str]] = None
+    #: True when this verdict was served from the project's verdict cache
+    #: rather than freshly judged (#246).  The verdict is still that
+    #: validator's verdict and counts toward the quorum as such; the flag
+    #: exists only so the operator's view and the audit trail can say the
+    #: judgement was reused instead of presenting it as newly made.  An
+    #: abstention, an error and a skipped pass are never stored or reused.
+    reused: bool = False
 
     def abstained(self) -> bool:
         """True when this result carries no verdict (severity is None).
@@ -170,6 +177,10 @@ def result_record(result: Any) -> Dict[str, Any]:
         unexamined = getattr(result, "unexamined_tools", None)
         if unexamined:
             out["unexamined_tools"] = list(unexamined)
+    # A reused verdict is a real verdict; the flag marks how it was obtained
+    # so an audit reader can tell a reused judgement from a fresh one (#246).
+    if getattr(result, "reused", False):
+        out["reused"] = True
     return out
 
 
