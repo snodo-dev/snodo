@@ -2,12 +2,12 @@
 
 ## Root cause
 
-The engine classifies every halt as **escalate**, **blocker**, **validator_error**
-or **internal_error** and persists that in the halt payload (`halt_type`,
-`final_decision`, `raw_halt_type` — a self-consistent four-outcome vocabulary, see
-`engine/nodes/writeback.py:_CANONICAL_HALT` and the audit log). The plan runner
-(`snodo/cli/commands/plan_run.py`) did not read any of it: it branches on the exit
-code, prints `FAILED`, and records the task `blocked` — for every outcome.
+The engine classifies every halt as **escalate**, **blocker**, **validator_error**,
+**internal_error** or **environment_error** and persists that in the halt payload
+(`halt_type`, `final_decision`, `raw_halt_type` — a self-consistent five-outcome
+vocabulary, see ADR 015 and `engine/nodes/writeback.py:_CANONICAL_HALT`). The plan
+runner (`snodo/cli/commands/plan_run.py`) did not read any of it: it branches on
+the exit code, prints `FAILED`, and records the task `blocked` — for every outcome.
 
 Three distinct faults reached an operator that way in one day:
 
@@ -43,6 +43,7 @@ print it in operator-actionable terms:
 | `escalate`      | `[<id>] ESCALATED in …`          |
 | `validator_error` | `[<id>] VALIDATOR ERROR in …`  |
 | `internal_error`  | `[<id>] INTERNAL ERROR in …`   |
+| `environment_error` | `[<id>] ENVIRONMENT ERROR in …` |
 
 The outcome is resolved from the job's `state.json` halt record first (the engine's
 own write), falling back to the session checkpoint's `decisions["halt"]`, and only
@@ -53,11 +54,12 @@ a task with no recorded outcome keeps a sensible fallback.
 
 `PlannerMCP.update_status` gains the status value `errored`. The plan runner
 records `blocked` only for tasks that failed judgement (the engine decided
-`blocker` or `escalate`). A task whose halt was `validator_error` or
-`internal_error` is recorded `errored` and never routes the next attempt through
-the retry path with failure context: the next plan run starts it fresh with the
-original spec, not with a critique of work that was never judged. A failed task
-with no recorded halt outcome keeps today's `blocked` status.
+`blocker` or `escalate`). A task whose halt was `validator_error`,
+`internal_error`, or `environment_error` is recorded `errored` and never routes
+the next attempt through the retry path with failure context: the next plan run
+starts it fresh with the original spec, not with a critique of work that was
+never judged. A failed task with no recorded halt outcome keeps today's
+`blocked` status.
 
 `plan_cmd.py` renders `errored` tasks distinctly (`?` marker) and reports their
 count in the plan summary.
@@ -71,16 +73,16 @@ untouched (it already records `halt_type` / `final_decision`).
 
 ## Tests
 
-- A run to each of the four outcomes prints the named line and records the status
-  (`blocker`, `escalate` → `blocked`; `validator_error`, `internal_error` →
-  `errored`).
+- A run to each of the five outcomes prints the named line and records the status
+  (`blocker`, `escalate` → `blocked`; `validator_error`, `internal_error`,
+  `environment_error` → `errored`).
 - A `validator_error` run records `errored`, never consumes failure context, and
   hands the next attempt the original spec (not "Previous attempt failed …").
 - The outcome resolves from the engine's job state.json before the session
   fallback.
 - The concurrent job path names the engine outcome and records `errored`, never a
   generic `FAILED`/`blocked`.
-- The outcome label helper maps all four outcomes and the no-record fallback.
+- The outcome label helper maps all five outcomes and the no-record fallback.
 - Existing plan execution, planner, run-cmd and status suites pass.
 
 ## Verify

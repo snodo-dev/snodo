@@ -72,7 +72,7 @@ An agent writing to `.snodo/` is either confused or attempting to widen its
 own capability; both are worth a blocker. A warn or a silent revert would let
 the task continue to post-validation and potentially complete — a green result
 on work that attempted to mutate the rules it is judged by. Halt is the honest
-outcome in the four-outcome vocabulary: a `.snodo/` mutation is a
+outcome in the outcome vocabulary (ADR 015): a `.snodo/` mutation is a
 non-overridable, structural violation, not a judgement about the work and not
 an operational fault.
 

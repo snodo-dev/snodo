@@ -1,4 +1,4 @@
-"""Shared helpers for exercising the four-outcome validate_task contract.
+"""Shared helpers for exercising the validate_task contract (ADR 015).
 
 FILE: tests/mcp/_validate_helpers.py
 

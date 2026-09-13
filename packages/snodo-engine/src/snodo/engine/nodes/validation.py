@@ -287,16 +287,14 @@ class ValidationNodeMixin:
                 self._auto_write_failure_context(loop_state, [])
                 return self._state_to_dict(loop_state)
             except CoderUnavailableError as e:
-                # The ENVIRONMENT, not the task: the coder's binary (or the
+                # The environment, not the task: the coder's binary (or the
                 # container runtime it needs) cannot be invoked in the process
-                # that ran. This halts loudly, but under the raw AND canonical
-                # ``environment_error`` — deliberately not the
-                # ``execution_error`` family, whose operator-fixable coder
-                # faults remain config-fixable blockers (#195). Nothing about
-                # the task blocked, so no blocker verdict is recorded and no
+                # that ran. Halt under the raw AND canonical
+                # ``environment_error`` (ADR 015) — not the
+                # ``execution_error``/blocker family. Nothing about the task
+                # blocked, so no blocker verdict is recorded and no
                 # ``task_failure`` context is written: a retry after the
-                # install is a fresh execution of the unchanged spec, never a
-                # recovery critique of work that was never written.
+                # install is a fresh execution of the unchanged spec.
                 loop_state.is_blocked = True
                 loop_state.halt_type = "environment_error"
                 loop_state.constraint_violations.append(str(e))
@@ -321,9 +319,7 @@ class ValidationNodeMixin:
                 # ``blocker``) with a config fix target, so the operator is
                 # told to fix the coder configuration rather than inspect
                 # engine logs (Fixes #195). A binary absent from PATH is NOT
-                # here — it is an environment fault and halts above, under
-                # ``environment_error``, which is no one's verdict about the
-                # task.
+                # here — it halts above under ``environment_error`` (ADR 015).
                 loop_state.is_blocked = True
                 loop_state.halt_type = "execution_error"
                 loop_state.constraint_violations.append(str(e))

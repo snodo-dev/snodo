@@ -36,10 +36,8 @@ _HALT_OUTCOME_LABELS = {
     "blocker": "blocked",
     "validator_error": "validator_error",
     "internal_error": "internal_error",
-    # The fifth canonical outcome (see writeback._CANONICAL_HALT): an
-    # environment fault. A consumer that branches on the four must treat it
-    # as a non-verdict operational halt — the same branch as internal_error
-    # — never as a statement about the task.
+    # The fifth canonical outcome (ADR 015): an environment fault is a
+    # non-verdict operational halt, not a statement about the task.
     "environment_error": "environment_error",
 }
 
@@ -49,8 +47,9 @@ def _halt_outcome_from_task_state(session, task_id: str) -> Optional[str]:
 
     Reads the job state.json records (the engine's own writes, produced by
     ``WritebackMixin._auto_write_halt_payload``) for the task. The outcome is
-    the canonical ``final_decision`` / ``halt_type`` — one of the four-outcome
-    vocabulary (escalate, blocker, validator_error, internal_error). Returns
+    the canonical ``final_decision`` / ``halt_type`` — one of the five-outcome
+    vocabulary (escalate, blocker, validator_error, internal_error,
+    environment_error; ADR 015). Returns
     None when no matching job halt was recorded.
     """
     project_root = str(getattr(session, "project_root", "") or "")
@@ -102,7 +101,7 @@ def _halt_outcome(session, task_id: str) -> Optional[str]:
     """Return the engine's canonical halt outcome for *task_id*.
 
     Prefers the persisted job state, then the session checkpoint. None when no
-    halt was recorded — an outcome that is not one of the four (e.g. the halt
+    halt was recorded — an outcome that is not one of the five (e.g. the halt
     record is entirely absent) keeps today's generic classification.
     """
     outcome = _halt_outcome_from_task_state(session, task_id)
@@ -141,12 +140,13 @@ def _task_record_status(planner, plan: str, task_id: str, exit_code: int, sessio
 def _task_outcome_line(task_id: str, outcome: Optional[str]) -> str:
     """Render the named outcome for *task_id*, in operator-actionable terms.
 
-    Backs onto the engine's four-outcome vocabulary so the label can never
-    disagree with what the engine classified: ``blocked`` (failed judgement —
-    re-run after addressing the concerns), ``escalated`` (needs a human
-    decision — authorize), ``validator_error`` / ``internal_error``
-    (operational faults — re-run, do not retry the task), and a missing-halt
-    fallback that says the run failed without a recorded outcome.
+    Backs onto the engine's five-outcome vocabulary (ADR 015) so the label can
+    never disagree with what the engine classified: ``blocked`` (failed
+    judgement — re-run after addressing the concerns), ``escalated`` (needs a
+    human decision — authorize), ``validator_error`` / ``internal_error`` /
+    ``environment_error`` (operational faults — re-run, do not retry the task),
+    and a missing-halt fallback that says the run failed without a recorded
+    outcome.
     """
     if outcome is None:
         return f"[{task_id}] FAILED in"

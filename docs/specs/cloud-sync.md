@@ -169,8 +169,9 @@ the run prints "Classifier failed after N attempts, leaving task unwaved".
 `feature_description`.
 
 `halt` distinguishes *why* a task stopped and *who* stopped it. `halt_type` is
-the canonical four-outcome name (`escalate`, `blocker`, `validator_error`,
-`internal_error`); `raw_halt_type` is the specific value the loop actually set
+the canonical five-outcome name (`escalate`, `blocker`, `validator_error`,
+`internal_error`, `environment_error`; ADR 015); `raw_halt_type` is the specific
+value the loop actually set
 (e.g. `turn_budget_exhausted`, `recovery_stalled`), preserved next to the
 canonical one so the coarse outcome never erases the precise cause. The
 judges are split into two disjoint lists: `blocker_validators` names those that
