@@ -7,7 +7,52 @@ coders and validators without visual noise or control characters.
 """
 
 import json
+import sys
 from typing import Any, List, Optional
+
+
+class ProgressSink:
+    """Guard around an operator-facing callback (progress narration or verdict).
+
+    A sink is an observer: a bug in it must not kill the work it watches, and
+    it must not fail silently either. The first failure is reported once on
+    stderr — where an operator watching the run will see it — and every later
+    call is dropped, so one broken sink cannot flood the terminal or slow the
+    loop. This is the single place a callback is made safe; call sites never
+    wrap their own ``try/except`` and never guess which callback they hold.
+    """
+
+    def __init__(self, callback: Any, label: str = "progress") -> None:
+        self._callback = callback
+        self._label = label
+        self._failed = False
+
+    def __call__(self, *args: Any) -> None:
+        if self._callback is None or self._failed:
+            return
+        try:
+            self._callback(*args)
+        except Exception as exc:  # noqa: BLE001 — an observer must not kill its subject
+            self._failed = True
+            print(
+                f"[snodo] {self._label} sink failed and is now suppressed for "
+                f"the rest of the run: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+
+def ensure_progress_sink(callback: Any, label: str = "progress") -> Optional[ProgressSink]:
+    """Wrap *callback* in a :class:`ProgressSink`, unless it already is one.
+
+    Returning the existing sink keeps its "reported once" state shared across
+    every emitter instead of resetting it at each call site.
+    """
+    if callback is None:
+        return None
+    if isinstance(callback, ProgressSink):
+        return callback
+    return ProgressSink(callback, label)
 
 
 def format_elapsed(seconds: float) -> str:

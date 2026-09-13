@@ -79,7 +79,8 @@ class ValidationNodeMixin:
                                     phase="pre_execute",
                                     authorized_decisions=getattr(self, '_authorized_decisions', []),
                                     decision_issuer=self._decision_issuer,
-                                    progress_cb=self._validator_verdict_cb)
+                                    progress_cb=self._progress,
+                                    verdict_cb=self._validator_verdict_cb)
         loop_state.validation_results = results
 
         is_recovery = (loop_state.task.depth > 0 or bool(loop_state.task.prior_failures))
@@ -489,7 +490,8 @@ class ValidationNodeMixin:
                                     phase="post_execute",
                                     authorized_decisions=getattr(self, '_authorized_decisions', []),
                                     decision_issuer=self._decision_issuer,
-                                    progress_cb=self._validator_verdict_cb,
+                                    progress_cb=self._progress,
+                                    verdict_cb=self._validator_verdict_cb,
                                     artifacts=list(loop_state.artifacts),
                                     base_ref=loop_state.base_ref)
 

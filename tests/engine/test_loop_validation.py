@@ -556,7 +556,7 @@ class TestProgressOutput:
         """Per-validator pass verdicts are printed only when verbose is set; warnings surface on normal path."""
         def mock_pass_fn(task, validators, shell_mcp, **kwargs):
             result = ValidatorResult(validator_id="security", severity="pass", justification="pass")
-            cb = kwargs.get("progress_cb")
+            cb = kwargs.get("verdict_cb")
             if cb is not None:
                 cb("security", result)
             return [result]
