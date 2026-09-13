@@ -284,6 +284,25 @@ did; signing that proposal mints a `DecisionRecord` with
 (it is never converted into a pass vote). A `blocker` halt is never described
 in terms of blockers that do not exist: the halt record names the abstainers.
 
+### An abstention re-judges the judge, not the coder
+
+A post-execute abstention is not a finding about the code, so it is not routed
+to the recovery machinery: there is no fault for a coder to fix, and the work
+on the branch is already correct. The judge is retried **in place** on the
+unchanged work — the coder is not dispatched and no recovery subtask is
+created. The retry is bounded two ways: by the mode's `max_recovery_depth` (a
+protocol that permits no recovery permits no re-judging), and by a repeated
+verdict. An abstention repeated on unchanged code is a stall whatever prose
+accompanies it — every abstention hashes to the same signature — so a judge
+that abstains twice stops the retry rather than looping.
+
+`abstention_policy` is unchanged: `"blocking"` still halts, `"non_blocking"`
+still excludes the abstention from the counts. When the policy halts or
+escalates *solely* because a judge abstained and the retry budget is spent, the
+halt is `abstention_exhausted` (or `abstention_stalled` for the repeated case).
+Neither names a code fault, so both are adjudicated with `snodo authorize
+<task_id>` rather than retried with a coder.
+
 ---
 
 ## `DisagreementPolicy` — validator consensus

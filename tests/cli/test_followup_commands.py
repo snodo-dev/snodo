@@ -80,6 +80,7 @@ class TestSuggestedCommandsResolve:
             followup.task_retry_replace("task_1"): ["run"],
             followup.task_retry_restore("task_1"): ["run"],
             followup.task_inspect_json("task_1"): ["task", "show"],
+            followup.task_authorize("task_1"): ["authorize"],
         }
         for suggested, tokens in paths.items():
             _resolve_command(tokens)  # raises KeyError on 404
@@ -509,6 +510,72 @@ class TestHaltFooterSuggestions:
         # The printed retry must be the bare one: a suggestion carrying a spec
         # argument is a suggestion to rewrite the task when pasted.
         assert out.strip().endswith("snodo run --retry task_abc")
+
+    def test_abstention_halt_offers_authorize_not_a_coder_retry(self, capsys):
+        """A halt caused only by a judge reaching no verdict must not suggest a
+        coder retry — that would re-run work no judge faulted. It offers human
+        adjudication instead (Fixes #268)."""
+        from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
+
+        payload = {
+            "halt_type": "blocker",
+            "final_decision": "blocker",
+            "raw_halt_type": "blocker",
+            "status": "blocked",
+            "reason": "Post-execute validation reached no verdict: "
+                      "1 validator(s) abstained",
+            "task_id": "task_abstain",
+            "task_spec": "do stuff",
+            "validator_results": [
+                {"validator_id": "acceptance", "severity": None,
+                 "justification": "no verdict"},
+            ],
+            "policy_decision": {
+                "action": "halt", "abstain_count": 1,
+                "warn_count": 0, "blocker_count": 0,
+            },
+        }
+        tree = ClosureNode(task_id="task_abstain", depth=0, outcome="blocker",
+                           halt_payload=payload)
+        _report_closure(tree, {}, session_id="sess_xyz")
+
+        out = capsys.readouterr().out
+        assert "snodo authorize task_abstain" in out
+        assert "snodo run --retry task_abstain" not in out
+
+    def test_blocker_halt_still_offers_a_retry(self, capsys):
+        """A genuine blocker — a judge faulted the code — keeps the coder retry
+        suggestion; only an abstention-only halt changes it (Fixes #268)."""
+        from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
+
+        payload = {
+            "halt_type": "blocker",
+            "final_decision": "blocker",
+            "raw_halt_type": "blocker",
+            "status": "blocked",
+            "reason": "1 blocker(s) present",
+            "task_id": "task_blocked",
+            "task_spec": "do stuff",
+            "validator_results": [
+                {"validator_id": "quality", "severity": "blocker",
+                 "justification": "tests failed"},
+            ],
+            "policy_decision": {
+                "action": "halt", "abstain_count": 0,
+                "warn_count": 0, "blocker_count": 1,
+            },
+        }
+        tree = ClosureNode(task_id="task_blocked", depth=0, outcome="blocker",
+                           halt_payload=payload)
+        _report_closure(tree, {}, session_id="sess_xyz")
+
+        out = capsys.readouterr().out
+        assert "snodo run --retry task_blocked" in out
+        assert "snodo authorize task_blocked" not in out
 
     def test_halt_footer_no_retry_on_completed(self, capsys):
         from snodo.engine.closure import ClosureNode

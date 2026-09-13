@@ -77,6 +77,52 @@ def recon_inspect(recon_id: str) -> str:
     return f"snodo logs {recon_id}"
 
 
+def task_authorize(task_id: str) -> str:
+    """Command to adjudicate a missing verdict, rather than re-run the coder.
+
+    A halt caused solely by an abstention has nothing for a coder to fix — no
+    verdict named a fault — so the next step is a human deciding whether to
+    proceed without the judge. ``snodo run --retry`` would re-dispatch the
+    coder at work no judge faulted (Fixes #268).
+    """
+    return f"snodo authorize {task_id}"
+
+
+def is_abstention_halt(halt_payload: dict) -> bool:
+    """True when the only reason consensus failed is a judge reaching no verdict.
+
+    Detected from the policy decision the payload carries rather than from
+    ``raw_halt_type``, which is canonicalised to ``blocker`` for every
+    blocker-class halt (ADR 015) and so cannot name the non-converging case. A
+    halt with an abstention and no warn/blocker faulted nothing in the code
+    (Fixes #268).
+    """
+    payload = halt_payload or {}
+    if payload.get("final_decision") not in ("blocker", "escalate"):
+        return False
+    decision = payload.get("policy_decision") or {}
+    if not isinstance(decision, dict):
+        return False
+    return (
+        int(decision.get("abstain_count") or 0) > 0
+        and not decision.get("warn_count")
+        and not decision.get("blocker_count")
+    )
+
+
+def halt_followup(halt_payload: dict, task_id: str) -> list:
+    """The next-step commands for a halted task, matched to *why* it halted.
+
+    An abstention-only halt has no fault for a coder to fix, so it is offered
+    human adjudication; every other halt keeps the bare coder retry. Defined
+    here so ``snodo run`` and ``snodo task show`` cannot disagree about what a
+    halted task should be told to do (Fixes #268).
+    """
+    if is_abstention_halt(halt_payload):
+        return [task_authorize(task_id)]
+    return [task_retry(task_id)]
+
+
 def task_retry(task_id: str) -> str:
     """Command to retry a failed task with its spec unchanged.
 
