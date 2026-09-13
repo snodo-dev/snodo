@@ -979,7 +979,12 @@ class LLMValidator(ValidatorBase):
             Exception: If the LLM call fails
         """
         kwargs = {
-            "model": self.model,
+            # No "model" here on purpose: the completion function is a partial
+            # with model AND api_base already bound together (#237). Passing a
+            # model kwarg overrides the bound model without its api_base, and
+            # the raw configured name ("ocgo/...") is not a litellm provider.
+            # _configured_model is popped by the header wrapper and never
+            # reaches litellm.
             "_configured_model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.completion_tokens,
@@ -1013,7 +1018,12 @@ class LLMValidator(ValidatorBase):
         Zero free-text parsing.
         """
         kwargs = {
-            "model": self.model,
+            # No "model" here on purpose: the completion function is a partial
+            # with model AND api_base already bound together (#237). Passing a
+            # model kwarg overrides the bound model without its api_base, and
+            # the raw configured name ("ocgo/...") is not a litellm provider.
+            # _configured_model is popped by the header wrapper and never
+            # reaches litellm.
             "_configured_model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.completion_tokens,
