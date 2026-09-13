@@ -442,7 +442,13 @@ def build_completion_fn(model: str, base_fn: Any) -> Any:
 
     from snodo.config import ConfigManager
 
-    kwargs: Dict[str, Any] = {"model": model}
+    # The BOUND model must be litellm's routing name, not snodo's configured
+    # one: a provider block named for itself ("ocgo/...") is not a provider
+    # litellm knows, and binding the raw name makes every call through this
+    # partial fail with "LLM Provider NOT provided" unless the caller happens
+    # to override it. api_base and api_key are resolved from the CONFIGURED
+    # name, which is the key the provider block is stored under.
+    kwargs: Dict[str, Any] = {"model": ConfigManager.resolve_litellm_model(model)}
     api_base = ConfigManager.resolve_api_base(model)
     if api_base:
         kwargs["api_base"] = api_base
