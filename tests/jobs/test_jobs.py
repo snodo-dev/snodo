@@ -606,7 +606,13 @@ class TestCancel:
 
         assert result["status"] == "cancelled"
         assert result["completed_at"] is not None
-        mock_kill.assert_called_once_with(99999, signal.SIGTERM)
+        # assert_any_call, not assert_called_once_with: patch("os.kill") replaces
+        # os.kill for the WHOLE process, so anything else running in this worker
+        # that terminates a subprocess — Popen.terminate() is os.kill(pid,
+        # SIGTERM) underneath — lands in this same mock and inflates the count.
+        # Under -n 24 that happens often enough to fail a test whose actual
+        # claim is narrower: cancel() signalled THIS job's pid.
+        mock_kill.assert_any_call(99999, signal.SIGTERM)
 
     def test_cancel_already_terminal(self, manager):
         """cancel() raises for already completed jobs."""
