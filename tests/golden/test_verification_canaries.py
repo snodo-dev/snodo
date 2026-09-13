@@ -5,7 +5,8 @@ FILE: tests/golden/test_verification_canaries.py (Fixes #58)
 A gate that has never been observed failing is not known to gate.
 This module provides explicit canary tests for each verification gate:
 - import-linter: a deliberate forbidden upward import in a fixture package must break a contract
-- ruff: a fixture file with a known lint violation (unused import) must fail linting
+- ruff: a fixture file with a known lint violation (unused import) must fail linting;
+  a ruff that cannot run is reported as a tool failure, never as a lint verdict
 - toolchain pin: a dependency declared with a range ('>=') instead of '==' must be rejected
 """
 
@@ -14,6 +15,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
 from importlinter.api import use_cases
 
 
@@ -51,19 +53,48 @@ forbidden_modules = canary_pkg.mod_b
 
 
 def test_ruff_canary_detects_lint_violation():
-    """Canary: ruff check must fail (non-zero exit code) when a file contains lint errors."""
+    """Canary: ruff check must fail (exit 1) when a file contains lint errors.
+
+    A non-zero exit is only a lint verdict when ruff actually ran. Ruff
+    exits 1 for "violations found" and 2 for "the tool itself broke"
+    (mis-invocation, or "Failed to spawn: ruff" when the binary is absent);
+    an uv-level failure to launch ruff exits elsewhere and names the spawn
+    on stderr. The old assertion ("exit != 0 and F401 in stdout") collapsed
+    a missing binary into "ruff failed to detect a lint violation" and
+    aborted a release over a broken environment. Tool failure must be
+    reported as tool failure, never as a verdict about the fixture.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         bad_file = Path(tmp) / "bad_fixture.py"
         # Deliberate lint violation: unused imports F401
         bad_file.write_text("import sys\nimport os\n")
 
-        proc = subprocess.run(
-            ["uv", "run", "ruff", "check", str(bad_file)],
-            capture_output=True,
-            text=True,
+        try:
+            proc = subprocess.run(
+                ["uv", "run", "ruff", "check", str(bad_file)],
+                capture_output=True,
+                text=True,
+            )
+        except OSError as exc:
+            pytest.fail(f"canary could not run: 'uv' is not executable: {exc}")
+
+        combined = f"{proc.stdout}\n{proc.stderr}"
+        if proc.returncode not in (0, 1):
+            # Exit 2 (or any launcher failure) is the tool being broken, not
+            # a judgement on the fixture — surface its own error text.
+            pytest.fail(
+                "ruff could not run (tool failure, exit "
+                f"{proc.returncode}, not a lint verdict): "
+                f"{combined.strip()[:500]}"
+            )
+        assert proc.returncode != 0, (
+            "ruff check failed to detect a lint violation: it ran (exit 0) "
+            f"and found nothing in a file with unused imports. Output: {combined[:500]}"
         )
-        assert proc.returncode != 0, "ruff check failed to detect a lint violation"
-        assert "F401" in proc.stdout or "unused import" in proc.stdout.lower()
+        assert "F401" in combined or "unused import" in combined.lower(), (
+            "ruff exited 1 without naming the injected F401 violation — the "
+            f"gate is not judging what it claims to. Output: {combined[:500]}"
+        )
 
 
 def test_toolchain_pin_canary_detects_unpinned_dependency():

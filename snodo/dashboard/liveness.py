@@ -451,7 +451,10 @@ def _iso_to_epoch(value: Any) -> Optional[float]:
         return None
     try:
         return datetime.fromisoformat(value).timestamp()
-    except ValueError:
+    except ValueError as e:
+        # A timestamp that will not parse silently removes the age from the
+        # panel; the offending value and reason must stay findable.
+        _logger.debug("dashboard: unparseable timestamp %r: %s: %s", value[:80], type(e).__name__, e)
         return None
 
 
