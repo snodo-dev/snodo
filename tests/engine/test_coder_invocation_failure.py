@@ -5,10 +5,15 @@ FILE: tests/engine/test_coder_invocation_failure.py (Fixes #195)
 The motivating case: an operator passes a model string the coder's CLI does not
 accept. The run used to halt with ``internal_error`` and a hint telling the
 operator to inspect engine logs — nothing failed internally, and the reason
-field already held the exact answer. A coder backend that cannot be started, a
-binary that is missing, or arguments it rejects is an operator-fixable coder
-fault: it must halt under the raw ``execution_error`` (canonical ``blocker``)
-with a config fix target, and recovery must not spawn against it.
+field already held the exact answer. A coder backend that rejects its
+arguments is an operator-fixable coder fault: it halts under the raw
+``execution_error`` (canonical ``blocker``, config fix target).
+
+A program that is NOT INSTALLED is a different fault and does not join that
+family: nothing about the task is blocking. A missing coder binary (or
+container runtime) halts under ``environment_error`` — raw AND canonical —
+with the install command in the operator-facing message, and it produces no
+blocker verdict and no recovery against the unchanged spec.
 """
 
 import io
@@ -131,18 +136,65 @@ def test_cli_rejects_model_is_execution_error_not_internal_error(git_fixture_rep
     assert tree.subtasks == []
 
 
-def test_missing_binary_is_execution_error(git_fixture_repo):
-    """A coder binary missing from PATH is a config-fixable halt, not an engine error."""
+def test_missing_binary_is_environment_error_not_a_verdict(git_fixture_repo):
+    """A coder binary absent from PATH halts as an environment fault.
+
+    The distinction the taxonomy must keep: the SAME graph, a coder whose
+    binary exists but rejects the arguments, halts as a config-fixable
+    blocker (test above); a coder whose binary is not installed must NOT —
+    its outcome is not one of the four verdicts, the operator message carries
+    the install command, no recovery spawns against the unchanged
+    specification, and the recorded outcome does not read as blocked.
+    """
     coder = AGYAdapter(workspace=git_fixture_repo)
     with mock.patch("subprocess.Popen", side_effect=FileNotFoundError):
         tree = _run_with_coder(coder, git_fixture_repo)
 
-    assert tree.outcome == "execution_error"
+    assert tree.outcome == "environment_error"
+
     payload = tree.halt_payload
-    assert payload["halt_type"] == "blocker"
-    assert payload["raw_halt_type"] == "blocker"
+    assert payload is not None
+    # Raw and canonical are BOTH the environment outcome: it is no one's
+    # verdict about the task.
+    assert payload["halt_type"] == "environment_error"
+    assert payload["final_decision"] == "environment_error"
+    assert payload["raw_halt_type"] == "environment_error"
+    assert payload["final_decision"] != "blocker"
+    assert payload["artifacts_count"] == 0
+
+    # The reason names the missing program; the hint carries the INSTALL
+    # COMMAND — not a fix hint about a spec that passed every validator.
     assert "agy not found on PATH" in (payload["reason"] or "")
-    assert "coder configuration" in payload["hint"]
+    assert "https://antigravity.google/docs/cli" in payload["hint"]
+    assert "Revise the task spec" not in payload["hint"]
+    assert "Fix the produced code" not in payload["hint"]
+
+    # Post-validation was skipped (nothing to validate).
+    assert payload["post_validation"]["outcome"] == "skipped"
+
+    # Recovery is not spawned against an unchanged specification.
+    assert tree.spawned_subtasks == 0
+    assert tree.subtasks == []
+
+
+def test_container_runtime_missing_is_environment_error(git_fixture_repo):
+    """A coder whose container runtime cannot be reached is also an
+    environment fault, not a coder-configuration blocker."""
+    from snodo.coders.opencode_adapter import OpenCodeAdapter
+
+    container = mock.MagicMock()
+    container.is_running.return_value = False
+    container.is_available.return_value = False
+    coder = OpenCodeAdapter(workspace=git_fixture_repo, container=container)
+    tree = _run_with_coder(coder, git_fixture_repo)
+
+    assert tree.outcome == "environment_error"
+    payload = tree.halt_payload
+    assert payload["final_decision"] == "environment_error"
+    assert payload["final_decision"] != "blocker"
+    assert "docker" in (payload["reason"] or "").lower()
+    assert "Docker" in payload["hint"]
+    assert tree.spawned_subtasks == 0
 
 
 def test_llm_call_error_is_execution_error(git_fixture_repo):

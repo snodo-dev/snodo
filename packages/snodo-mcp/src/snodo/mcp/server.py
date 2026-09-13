@@ -637,12 +637,67 @@ class CoreToolHandler:
             logger.warning("Failed to persist disagreement escalation for %s: %s", task_id, e)
         return task_id
 
+    def _guard_coder_available(self, coding_model: str) -> None:
+        """Refuse dispatch when the coder about to be invoked cannot be invoked HERE.
+
+        Readiness checks the configured coder's PATH in the operator's shell;
+        this dispatch spawns the job as a child of *this* process, and the two
+        environments differ — the check was made where it is not needed and
+        not made where it is, which is how a task whose spec passed every
+        validator died at execute on a missing binary. Resolve it where it
+        bites: one ``shutil.which`` per declared requirement, before the job
+        is submitted, before any post-dispatch validation cost is spent.
+        Refusing is not a verdict on the task — the validation token stays
+        unconsumed, so installing the program and dispatching again does not
+        require re-validating a specification that never changed.
+        """
+        server = self.server
+        protocol = server.protocol
+        mode_id = server.mode_id or protocol.initial_mode
+        mode_obj = protocol.get_mode(mode_id) if mode_id else None
+        mode_coder = getattr(mode_obj, "coder", None) if mode_obj else None
+        mode_coder_config = getattr(mode_obj, "coder_config", None) or {}
+
+        from snodo.coders import check_coder_available, resolve_coder_name
+
+        resolved_model = coding_model or mode_coder_config.get("model") or ""
+        if not resolved_model:
+            try:
+                from snodo.infrastructure.config import load_llm_config
+                resolved_model = load_llm_config().coder.model or ""
+            except Exception:  # noqa: BLE001 — model resolution is best-effort here
+                resolved_model = ""
+
+        coder_name = resolve_coder_name(model=resolved_model, mode_coder=mode_coder)
+        problem = check_coder_available(coder_name)
+        if problem is None:
+            return
+        binary, remediation = problem
+        server._audit("dispatch_refused_coder_unavailable", {
+            "op": "dispatch_refused_coder_unavailable",
+            "coder": coder_name,
+            "binary": binary,
+            "mode": server._active_mode(),
+        })
+        raise MCPError(
+            f"dispatch_task refused: coder '{coder_name}' needs '{binary}' "
+            f"on the PATH of the process that runs jobs, and it is not there. "
+            f"{remediation} Install it and dispatch again — nothing about the "
+            "task failed; the validation token is untouched."
+        )
+
     def handle_dispatch_task(self, arguments: Dict[str, Any]) -> dict:
         """Submit a task spec to JobManager for background execution."""
         task_spec = arguments.get("task_spec")
         if not task_spec:
             raise MCPError("dispatch_task requires task_spec")
         coding_model = arguments.get("coding_model", "")
+
+        # Establish in THIS process that the coder can be invoked at all
+        # before a task is dispatched (the halt taxonomy calls the
+        # after-the-fact version ``environment_error``; refusing here means
+        # the run never starts and no validation cost is spent on it).
+        self._guard_coder_available(coding_model)
 
         from snodo.jobs import JobManager
 
