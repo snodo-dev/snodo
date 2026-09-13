@@ -43,6 +43,67 @@ snodo uses [Semantic Versioning](https://semver.org/).
   the corpus is 13/14, and the expectation says so instead of being adjusted to
   match.
 
+- A remote verification gate. The suite is IO-bound and parallelises well, but
+  a dev Mac has four cores, and the reduced local run had grown to well over
+  two minutes — long enough that it stopped being run before every merge, which
+  is the only way a gate protects anything. `make gate` pushes the current HEAD
+  to a large Linux host and runs the same checks there in about half a minute;
+  `make gate-ci` runs what CI actually decides on, the full suite with coverage.
+  Each working copy gets its own directory on that host, named after the
+  directory it runs from, so several worktrees can gate at the same time without
+  sharing a checkout or a virtual environment. The gate refuses a dirty tree
+  rather than testing HEAD while the operator believes it is testing their
+  changes. Running on Linux also makes the local result more predictive than the
+  same suite on macOS, since that is the platform CI uses. `GATE_HOST` and
+  `GATE_HOME` point it elsewhere.
+
+### Fixed
+
+- A failure's reason no longer dies at the handler that caught it. The engine
+  had a recurring defect class — an exception is caught, a safe value is
+  returned, and the cause is destroyed at the only point where it existed —
+  costing an hour of operator time per instance (a provider rejection read as
+  a bare `validator_error`, a `git ls-tree` that could not spawn reported as
+  a BLOCKER "path not committed", a recovery probe's git failure misattributed
+  as `no_file_operations`, a canary reporting a missing `ruff` binary as
+  "failed to detect a lint violation"). The handlers on debugging paths —
+  validator dispatch, the LLM and protocol-adherence validators' fault paths,
+  the LiteLLM coder's response parsing, the in-place adapter's HEAD anchor,
+  the container availability probes, the executor's work-recovery git probes,
+  the readiness git checks and the dashboard's state readers — now log the
+  caught exception's type and message before returning the safe value, and
+  where the failure surfaces to an operator the reason travels into the
+  surfaced message (the halt justification, the readiness finding). Readiness
+  distinguishes "git could not answer" (a named tool-failure finding listing
+  the reasons) from "git answered no"; the verification canary distinguishes
+  a ruff that exited 1 (a verdict) from a ruff that exited 2 or could not
+  spawn (a broken tool, reported as such). Handlers off debugging paths — telemetry
+  extraction, temp-file cleanup, and the deliberate control-flow probes whose
+  negative answer is the point — were left alone. No handling was removed, no
+  crash was introduced, and the halt taxonomy and abstention representation
+  are unchanged.
+
+- Provider headers are resolved from one string by one mechanism. Two
+  independent mechanisms had been added days apart for the same defect: one
+  resolving headers inside the LLM validator at each call site, the other
+  wrapping the completion function in `run_validators` so that every call would
+  receive them by construction. Both were in the tree, and they resolved the
+  provider from different strings. The per-call-site path used the model as
+  written in the protocol; the wrapper used the model string in the call's
+  kwargs, which the validator had already rewritten into litellm's routing form
+  — `openai/<model>` for anything reached through the OpenAI-compatible driver.
+  So for exactly the providers that need headers, a self-hosted or gateway
+  provider whose config block is not named after its litellm provider, the
+  wrapper looked up the wrong block and injected nothing. It never showed,
+  because the wrapper declines to inject when headers are already present and
+  the per-call-site path had put them there: the guarantee was never exercised
+  on the path that motivated it, and the obvious cleanup — deleting the
+  duplicate — would have silently reintroduced the original defect. The
+  configured model name now travels with the call, the wrapper resolves from it,
+  and the duplicate resolution is gone. A provider whose config block name
+  differs from its litellm provider name is now a test case rather than an
+  assumption.
+
 ---
 
 ## [0.8.3] — 2026-09-12
@@ -121,30 +182,6 @@ snodo uses [Semantic Versioning](https://semver.org/).
   exist — on `get` as well as on `set`.
 
 ### Fixed
-
-- A failure's reason no longer dies at the handler that caught it. The engine
-  had a recurring defect class — an exception is caught, a safe value is
-  returned, and the cause is destroyed at the only point where it existed —
-  costing an hour of operator time per instance (a provider rejection read as
-  a bare `validator_error`, a `git ls-tree` that could not spawn reported as
-  a BLOCKER "path not committed", a recovery probe's git failure misattributed
-  as `no_file_operations`, a canary reporting a missing `ruff` binary as
-  "failed to detect a lint violation"). The handlers on debugging paths —
-  validator dispatch, the LLM and protocol-adherence validators' fault paths,
-  the LiteLLM coder's response parsing, the in-place adapter's HEAD anchor,
-  the container availability probes, the executor's work-recovery git probes,
-  the readiness git checks and the dashboard's state readers — now log the
-  caught exception's type and message before returning the safe value, and
-  where the failure surfaces to an operator the reason travels into the
-  surfaced message (the halt justification, the readiness finding). Readiness
-  distinguishes "git could not answer" (a named tool-failure finding listing
-  the reasons) from "git answered no"; the verification canary distinguishes
-  a ruff that exited 1 (a verdict) from a ruff that exited 2 or could not
-  spawn (  a broken tool, reported as such). Handlers off debugging paths — telemetry
-  extraction, temp-file cleanup, and the deliberate control-flow probes whose
-  negative answer is the point — were left alone. No handling was removed, no
-  crash was introduced, and the halt
-  taxonomy and abstention representation are unchanged.
 
 - Retrying a task no longer destroys the specification being retried, and the
   command snodo prints as a follow-up is now the command that does nothing to
