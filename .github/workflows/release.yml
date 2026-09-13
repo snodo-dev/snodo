@@ -37,6 +37,8 @@ jobs:
         run: uv run ruff check .
       - name: Architecture (import-linter)
         run: uv run lint-imports
+      - name: File-length ratchet
+        run: uv run python scripts/enforce_file_length.py
       - name: Build all packages
         run: uv build --all-packages
       - name: Publish all artifacts
