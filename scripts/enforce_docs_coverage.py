@@ -304,7 +304,11 @@ def iter_doc_files(repo_root: Path) -> list[Path]:
 
 
 _WORD = re.compile(r"(?:--)?[A-Za-z0-9][A-Za-z0-9_.|<>/{}-]*")
-_TRIM = "`'\"[](){}<>,;:!?.= "
+# Angle and curly brackets are NOT trimmed: they are what marks a
+# metavariable ("snodo <command> --help", "snodo run <task_id>"), and a
+# stripped "<command>" is indistinguishable from a real subcommand.
+# Keeping the brackets lets _is_command_word reject the placeholder.
+_TRIM = "`'\"[](),;:!?.= "
 _FENCE = re.compile(r"^\s*(?:```|~~~)")
 _INLINE_CODE = re.compile(r"`+([^`\n]+)`+")
 _FENCE_COMMENT = re.compile(r"(?:^|\s)#.*$")

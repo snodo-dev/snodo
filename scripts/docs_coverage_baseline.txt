@@ -23,7 +23,6 @@ command logs
 command models
 command plan add-task
 command plan delete
-command ready
 command session new
 command session switch
 command task abandon
@@ -35,16 +34,12 @@ config llm.classifier.max_tokens
 config llm.classifier.model
 config llm.classifier.temperature
 config llm.coder.concurrency
-config llm.coder.max_tokens
-config llm.coder.max_tool_turns
 config llm.coder.model
 config llm.coder.timeout_seconds
 config llm.num_retries
 config llm.recon.models
-config llm.recon.num_agents
 config llm.validator.max_tokens
 config llm.validator.max_tool_turns
-config llm.validator.model
 config llm.wave.max_age_days
 config llm.wave.max_idle_days
 tool delete_file
