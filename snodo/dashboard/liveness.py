@@ -195,6 +195,20 @@ def attention_analysis(events: List[dict], now: float) -> dict:
     }
 
 
+#: Statuses whose spend bought a finished run, and statuses whose spend did
+#: not. Everything else is still in flight, so its spend is part of the total
+#: but belongs to neither side of the completed/failed split.
+_COST_SUCCESS_STATUSES = {"completed", "merged"}
+_COST_FAILURE_STATUSES = {
+    "failed",
+    "errored",
+    "unmerged",
+    "blocked",
+    "cancelled",
+    "halted",
+}
+
+
 def cost_rollup(runs: List["RunRow"], task_rows: dict) -> dict:
     """Aggregate the per-call cost the usage records already carry.
 
@@ -204,23 +218,49 @@ def cost_rollup(runs: List["RunRow"], task_rows: dict) -> dict:
     a task records the same usage twice (dual-written); its cost is counted
     once, on the task row, so the total is a true project cost, not a doubled
     one.
+
+    The total alone says how much was spent, not what it bought, so the rollup
+    also splits the spend into what completed and what failed — the ratio
+    between the two is the loop's own report card. A run whose cost was never
+    recorded is counted in ``runs_without_cost`` and left out of every total:
+    an absent figure is not a zero, and folding it in would flatter the failed
+    side this split exists to expose.
     """
     total = 0.0
     partial = False
     runs_with_cost = 0
+    runs_without_cost = 0
+    completed_cost = 0.0
+    failed_cost = 0.0
+    completed_runs = 0
+    failed_runs = 0
     for row in runs:
         if row.kind == "job" and row.linked_ref and row.linked_ref in task_rows:
             continue  # its cost is already counted on the task row
         if row.cost_total is None:
+            runs_without_cost += 1
             continue
         total += row.cost_total
         runs_with_cost += 1
         partial = partial or row.cost_partial
+        status = (row.status or "").strip().lower()
+        if status in _COST_SUCCESS_STATUSES:
+            completed_cost += row.cost_total
+            completed_runs += 1
+        elif status in _COST_FAILURE_STATUSES:
+            failed_cost += row.cost_total
+            failed_runs += 1
     return {
         "total": total,
         "partial": partial,
         "runs_with_cost": runs_with_cost,
         "runs_total": len(runs),
+        "runs_without_cost": runs_without_cost,
+        "completed_cost": completed_cost,
+        "failed_cost": failed_cost,
+        "completed_runs": completed_runs,
+        "failed_runs": failed_runs,
+        "ratio": (completed_cost / failed_cost) if failed_cost else None,
     }
 
 
