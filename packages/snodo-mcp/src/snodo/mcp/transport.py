@@ -18,15 +18,20 @@ FastMCP handles:
 - Server instructions and resources (self-description)
 """
 
+import asyncio
 import inspect
 import json
+import logging
+import re
 from typing import Any, Optional
 
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 from snodo.mcp.server import ProtocolMCPServer
+
+logger = logging.getLogger(__name__)
 
 
 _JSON_TYPE_MAP = {
@@ -37,6 +42,126 @@ _JSON_TYPE_MAP = {
     "array": list,
     "object": dict,
 }
+
+
+# ── Progress notifications ──────────────────────────────────────────────
+#
+# The SDK already owns both ends of this wire and nothing here reinvents
+# them: a client that passes a progress_callback to tools/call has the SDK
+# stamp params._meta.progressToken on the request, and Context.report_progress
+# emits notifications/progress — or returns WITHOUT sending when no token was
+# supplied, which is the "emit nothing when unasked" rule enforced by the
+# protocol layer, not re-implemented here. What this module adds is a
+# DESTINATION for narration that already exists: the validator runner's
+# progress lines, bridged from worker threads onto the event loop. Only
+# tools with real in-call narration join (server._PROGRESS_TOOLS); a call
+# that returns a job id immediately has nothing to carry, and keeps no
+# mechanism for its own sake.
+#
+# Invariants held here:
+# - Progress is not a result. The emitter only sends notifications; the
+#   tool's final response is produced exactly as before, and a caller that
+#   ignores every notification gets today's response byte for byte.
+# - A notification carries what a human would want to READ (a validator
+#   beginning, a turn taken, a wave's task completing) — never payloads.
+#   Bodies are single-line, length-capped, secret-redacted, and
+#   diff-framing-shaped lines are dropped outright.
+# - A notification is an observer's job: an emit that raises (loop closing,
+#   transport dying, SDK bug) is logged and dropped, never propagated into
+#   the run being narrated.
+
+#: Trailing characters of a narration line that survive into a notification.
+_PROGRESS_MAX_CHARS = 240
+
+#: Lines shaped like diff framing are payload, not narration — dropped.
+_PROGRESS_DROP_PREFIXES = ("diff --git ", "@@", "+++", "--- ", "---\n", "index ")
+
+#: JWT-ish ("eyJ..." with at least one dot segment) and common API-key /
+#: bearer forms. Redaction is defense-in-depth over the narration sources
+#: (which never intend to print a secret); a coder that echoes one into its
+#: stdout still cannot leak it through a progress notification.
+_PROGRESS_SECRET_RES = (
+    re.compile(r"\beyJ[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-.]{4,}"),
+    re.compile(r"\b(?:sk|pat|ghp|gho|ghu|ghs|gho|glpat|xox[baprse])-[A-Za-z0-9][A-Za-z0-9\-]{6,}\b"),
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9\-_\.=+/]{10,}"),
+)
+
+
+def _sanitize_progress_line(line: str) -> Optional[str]:
+    """Reduce one narration line to a safe single-line notification body.
+
+    Returns None when the line carries nothing a caller should see (blank,
+    diff framing) or nothing left after redaction.
+    """
+    text = " ".join((line or "").split())
+    if not text:
+        return None
+    if text.startswith(_PROGRESS_DROP_PREFIXES):
+        return None
+    for pattern in _PROGRESS_SECRET_RES:
+        text = pattern.sub("[redacted]", text)
+    if not text:
+        return None
+    if len(text) > _PROGRESS_MAX_CHARS:
+        text = "…" + text[-_PROGRESS_MAX_CHARS:]
+    return text
+
+
+def _make_progress_emitter(ctx: Optional[Context]) -> tuple:
+    """Return ``(emit, drain)`` bridging narration to MCP progress notifications.
+
+    *emit* is a plain ``callable(line: str)`` usable from ANY thread — the
+    validator runner narrates from its own thread pool, not the event
+    loop's thread, so each notification is scheduled onto the loop with
+    ``run_coroutine_threadsafe`` (fire-and-forget, FIFO-ordered). *drain* is
+    awaited by the handler before returning so every queued notification
+    lands while the request is still in flight — notifications never race
+    the response they describe.
+
+    Returns ``(None, noop)`` when the caller supplied no progress token: the
+    handlers then behave exactly as they do today, with no sink to feed.
+    """
+    async def _no_drain() -> None:
+        return None
+
+    meta = getattr(getattr(ctx, "request_context", None), "meta", None)
+    if meta is None or getattr(meta, "progressToken", None) is None:
+        return None, _no_drain
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # pragma: no cover — the handler always runs on a loop
+        return None, _no_drain
+
+    state = {"n": 0}
+    futures: list = []
+
+    def emit(line: str) -> None:
+        message = _sanitize_progress_line(line)
+        if message is None:
+            return
+        state["n"] += 1
+        try:
+            futures.append(asyncio.run_coroutine_threadsafe(
+                ctx.report_progress(float(state["n"]), None, message),
+                loop,
+            ))
+        except Exception as e:  # noqa: BLE001 — an observer must not kill its subject
+            logger.debug("progress notification dropped: %s: %s", type(e).__name__, e)
+
+    async def drain() -> None:
+        if not futures:
+            return
+        pending = list(futures)
+        del futures[:]
+        try:
+            await asyncio.gather(
+                *(asyncio.wrap_future(f) for f in pending),
+                return_exceptions=True,
+            )
+        except Exception as e:  # noqa: BLE001 — same rule: never fatal
+            logger.debug("progress drain failed: %s: %s", type(e).__name__, e)
+
+    return emit, drain
 
 
 def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
@@ -115,6 +240,16 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         f"\n"
         f"**ALWAYS poll `get_job_status` after dispatch. NEVER infer completion from the\n"
         f"dispatch response.** The dispatch response only confirms the job was queued.\n"
+        f"\n"
+        f"## Progress on slow calls\n"
+        f"`validate_task` can take minutes. It honours MCP progress notifications:\n"
+        f"include `\"_meta\": {{\"progressToken\": \"<your-token>\"}}` in the tools/call\n"
+        f"params and the server narrates validators starting/finishing and their\n"
+        f"per-turn tool lines as `notifications/progress` while the call is in\n"
+        f"flight, so a slow call is distinguishable from a dead server. Callers that\n"
+        f"do not request progress receive nothing extra and the same final response.\n"
+        f"(`run_plan` needs no progress stream: it returns a job_id at once, and the\n"
+        f"run's narration lands in the job's stdout.log as it is produced.)\n"
         f"\n"
         f"## WF1 token lifecycle\n"
         f"- `validate_task` issues a single-use JWT token with a short TTL — only when\n"
@@ -343,8 +478,27 @@ def _make_tool_handler(
 
     # Create handler closure that delegates to protocol server
     is_slow = protocol_server.is_slow_tool(tool_name)
+    narrates = is_slow and protocol_server.accepts_progress(tool_name)
 
-    if is_slow:
+    if narrates:
+        # FastMCP finds the context parameter through the function's type
+        # hints (mcp.server.fastmcp.utilities.context_injection): declaring
+        # ``ctx`` in __annotations__ below makes the SDK pass the request
+        # Context as a keyword argument AFTER schema validation — it never
+        # touches the client-visible input schema, which is built from the
+        # synthesized __signature__ that carries only the tool's own params.
+        async def handler(**kwargs) -> str:
+            emit, drain = _make_progress_emitter(kwargs.pop("ctx", None))
+            try:
+                result = await protocol_server.call_tool_async(
+                    tool_name, kwargs, progress_sink=emit,
+                )
+            finally:
+                await drain()
+            if isinstance(result, str):
+                return result
+            return json.dumps(result, default=str)
+    elif is_slow:
         async def handler(**kwargs) -> str:
             result = await protocol_server.call_tool_async(tool_name, kwargs)
             if isinstance(result, str):
@@ -359,6 +513,8 @@ def _make_tool_handler(
 
     handler.__name__ = tool_name
     handler.__doc__ = tool_info["description"]
+    if narrates:
+        annotations["ctx"] = Context
     handler.__signature__ = inspect.Signature(params, return_annotation=str)  # type: ignore[attr-defined]
     handler.__annotations__ = annotations
 
