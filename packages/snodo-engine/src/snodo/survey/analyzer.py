@@ -6,11 +6,16 @@ Discovers observable facts about an existing repository:
 - Module boundaries from manifests that are actually present (workspace
   declarations plus nested package.json / pyproject.toml / Cargo.toml /
   go.mod / pom.xml files, even when nothing upstream declares them)
-- Languages per module, read from the repository's own files only
+- Languages per module, read from the repository's own files only. Markup,
+  stylesheets and schema are languages: HTML, CSS and SQL are reported when
+  the source is there. A file identified as a manifest is evidence of a
+  module, never also a source file of the language its extension suggests
+  (pubspec.yaml is not `yaml`).
 - Test commands, confirmed by the contents of the marker file rather than
   assumed from the marker file's mere presence
 - Documentation and decision record locations
-- Repository-level tooling
+- Repository-level tooling: build files, CI configuration and lockfiles at
+  the repository root, reported as facts about the root
 
 Marker files used for module boundary discovery:
 - package.json (Node.js)
@@ -142,6 +147,9 @@ _LANGUAGE_EXTS = {
     "astro": {".astro"},
     "swift": {".swift"},
     "dart": {".dart"},
+    "html": {".html", ".htm"},
+    "css": {".css"},
+    "sql": {".sql"},
 }
 
 # Reverse map: extension → languages it can indicate
@@ -149,6 +157,71 @@ _EXT_TO_LANGUAGES: Dict[str, List[str]] = {}
 for _lang, _exts in _LANGUAGE_EXTS.items():
     for _ext in _exts:
         _EXT_TO_LANGUAGES.setdefault(_ext, []).append(_lang)
+
+
+def _is_manifest_name(name: str) -> bool:
+    """A manifest is evidence of a module, not source written in a language.
+
+    pubspec.yaml is the case that exposed this: its ``.yaml`` extension made
+    the manifest itself a source file of the language it declares. A file
+    already identified as a manifest must never also be counted as source.
+    """
+    return name in _MODULE_MANIFEST_NAMES
+
+
+# Repository-level tooling is a fact about the repository root: a build or
+# task definition, a CI configuration, or a dependency lockfile.  It is
+# reported as tooling, never as a module or as a language.  A directory like
+# .github/workflows is hidden from the source walk on purpose, so it is
+# checked by name here rather than discovered by walking.
+_REPO_BUILD_FILES: Dict[str, str] = {
+    "Makefile": "build tooling",
+    "Justfile": "build tooling",
+    "justfile": "build tooling",
+    "Taskfile.yml": "build tooling",
+    "Taskfile.yaml": "build tooling",
+    "Rakefile": "build tooling",
+    "CMakeLists.txt": "build tooling",
+    "meson.build": "build tooling",
+    "build.gradle": "build tooling",
+    "build.gradle.kts": "build tooling",
+    "settings.gradle": "build tooling",
+    "settings.gradle.kts": "build tooling",
+    "tox.ini": "build tooling",
+    "Dockerfile": "container build",
+    "Containerfile": "container build",
+    "docker-compose.yml": "container orchestration",
+    "docker-compose.yaml": "container orchestration",
+    "compose.yml": "container orchestration",
+    "compose.yaml": "container orchestration",
+}
+
+_REPO_CI_PATHS: Dict[str, str] = {
+    ".github/workflows": "CI configuration",
+    ".gitlab-ci.yml": "CI configuration",
+    ".circleci": "CI configuration",
+    ".travis.yml": "CI configuration",
+    "azure-pipelines.yml": "CI configuration",
+    "Jenkinsfile": "CI configuration",
+    ".buildkite": "CI configuration",
+    "bitbucket-pipelines.yml": "CI configuration",
+}
+
+_REPO_LOCKFILES: Dict[str, str] = {
+    "package-lock.json": "dependency lockfile",
+    "yarn.lock": "dependency lockfile",
+    "pnpm-lock.yaml": "dependency lockfile",
+    "bun.lockb": "dependency lockfile",
+    "poetry.lock": "dependency lockfile",
+    "uv.lock": "dependency lockfile",
+    "Pipfile.lock": "dependency lockfile",
+    "Cargo.lock": "dependency lockfile",
+    "Gemfile.lock": "dependency lockfile",
+    "go.sum": "dependency lockfile",
+    "composer.lock": "dependency lockfile",
+    "pubspec.lock": "dependency lockfile",
+    "packages.lock.json": "dependency lockfile",
+}
 
 
 def _read_json_file(path: Path) -> Optional[dict]:
@@ -527,7 +600,8 @@ def _count_own_source_files(dirpath: Path, skip_dirs: Optional[Set[Path]] = None
         ]
         count += sum(
             1 for name in filenames
-            if Path(name).suffix.lower() in _EXT_TO_LANGUAGES
+            if not _is_manifest_name(name)
+            and Path(name).suffix.lower() in _EXT_TO_LANGUAGES
         )
     return count
 
@@ -610,6 +684,8 @@ def _detect_languages(project_root: Path, paths: Optional[List[str]] = None) -> 
             continue
         for dirpath, _dirnames, filenames in _iter_own_source_dirs(search_path):
             for filename in filenames:
+                if _is_manifest_name(filename):
+                    continue
                 langs = _EXT_TO_LANGUAGES.get(Path(filename).suffix.lower())
                 if langs:
                     found.update(langs)
@@ -666,6 +742,29 @@ def _detect_decision_paths(project_root: Path) -> List[str]:
                 paths.append(candidate)
 
     return paths
+
+
+def _detect_repository_tooling(project_root: Path) -> Dict[str, str]:
+    """Repository-level tooling: build files, CI configuration, lockfiles.
+
+    These are facts about the repository root, not about any one module, so
+    they are reported as tooling whether or not the root declares a manifest.
+    Returns a mapping of repo-relative path to a short human label.
+    """
+    found: Dict[str, str] = {}
+
+    for path, label in _REPO_BUILD_FILES.items():
+        if (project_root / path).is_file():
+            found[path] = label
+    for path, label in _REPO_CI_PATHS.items():
+        target = project_root / path
+        if target.is_dir() or target.is_file():
+            found[path] = label
+    for path, label in _REPO_LOCKFILES.items():
+        if (project_root / path).is_file():
+            found[path] = label
+
+    return dict(sorted(found.items()))
 
 
 # ---------------------------------------------------------------------------
@@ -762,6 +861,8 @@ def _extension_histogram(dirpath: Path) -> Dict[str, int]:
         return histogram
     for _current, _dirs, files in _iter_own_source_dirs(dirpath):
         for name in files:
+            if _is_manifest_name(name):
+                continue
             ext = Path(name).suffix.lower() or "(no extension)"
             histogram[ext] = histogram.get(ext, 0) + 1
     return dict(sorted(histogram.items(), key=lambda item: (-item[1], item[0]))[:25])
@@ -1232,6 +1333,20 @@ def analyze_repository(
                     evidence=[f"Command: {test_cmd}"],
                 )
             )
+
+    # Repository-level tooling is a fact about the root, independent of
+    # whether the root declares a manifest or is a single package.
+    survey.repository_tooling = _detect_repository_tooling(project_root)
+    if survey.repository_tooling:
+        findings.append(
+            SurveyFinding(
+                message="Repository-level tooling detected.",
+                evidence=[
+                    f"{path}: {label}"
+                    for path, label in survey.repository_tooling.items()
+                ],
+            )
+        )
 
     # Detect decision paths
     decision_paths = _detect_decision_paths(project_root)

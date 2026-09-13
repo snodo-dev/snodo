@@ -353,14 +353,26 @@ def survey_command(args) -> int:
         print("  No decision records directory found (docs/decisions or docs/adr).")
     print()
 
-    # Display test command findings
+    # Display test command findings. The summary speaks for the repository
+    # root only: a monorepo can confirm a command on every module and still
+    # have no repository-level command, and saying so about the wrong scope
+    # reads as "this project has no tests".
     print("Test Command Resolution:")
     if analysis.test_command:
-        print(f"  Detected: {analysis.test_command}")
+        print(f"  Repository-level: {analysis.test_command}")
         if analysis.test_marker_file:
             print(f"  From: {analysis.test_marker_file} (command confirmed in that file)")
     else:
-        print("  No test command could be resolved from marker files or explicit configuration.")
+        print(
+            "  No repository-level test command could be resolved from marker "
+            "files or explicit configuration."
+        )
+        modules_with_commands = [m for m in analysis.modules if m.test_command]
+        if modules_with_commands:
+            print(
+                f"  Module-level test commands were confirmed for "
+                f"{len(modules_with_commands)} module(s); see Discovered Modules."
+            )
     print()
 
     # Display observable findings
