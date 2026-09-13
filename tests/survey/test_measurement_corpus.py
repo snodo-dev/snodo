@@ -25,6 +25,9 @@ Every fixture is a real failure before it was a fixture:
 - npm's "no test specified" scaffold, which is not a test command
 - .svelte, .astro, .swift and .dart source trees, each once invisible
 - a manifest that does not parse, which must not crash the pass
+- a static site of HTML/CSS with no manifest, once invisible as source
+- a migrations directory whose .sql files are the storage model
+- a repository whose only tooling is a Makefile and a workflows directory
 """
 
 from __future__ import annotations
@@ -132,6 +135,32 @@ def _build_nested_example(root: Path) -> None:
     _write(root, "app/example/index.js", "// the example\n")
 
 
+def _build_static_site(root: Path) -> None:
+    """A deployed static site with no manifest: markup, styles, its own tests.
+
+    HTML and CSS are source, so this directory must reach the judgement as a
+    candidate. It is never promoted to a boundary on the file count alone.
+    """
+    for i in range(30):
+        _write(root, f"web/page{i:02d}.html", f"<h1>Page {i}</h1>\n")
+    _write(root, "web/assets/site.css", "h1 { color: black; }\n")
+    _write(root, "web/requirements-test.txt", "pytest\n")
+    _write(root, "web/tests/test_pages.py", "def test_pages():\n    assert True\n")
+
+
+def _build_sql_migrations(root: Path) -> None:
+    """A module whose storage model lives in .sql migration files."""
+    _write(root, "api/pyproject.toml", "[project]\nname = \"api\"\n")
+    for i in range(10):
+        _write(root, f"api/migrations/{i:04d}_step.sql", "SELECT 1;\n")
+
+
+def _build_makefile_tooling(root: Path) -> None:
+    """Only repository-level tooling: a Makefile and a CI workflows directory."""
+    _write(root, "Makefile", "build:\n\tnpm run build\n")
+    _write(root, ".github/workflows/ci.yml", "name: ci\non: [push]\n")
+
+
 FIXTURES: Dict[str, Callable[[Path], None]] = {
     "multi_worker": _build_multi_worker,
     "flutter_pubspec": _build_flutter_pubspec,
@@ -142,6 +171,9 @@ FIXTURES: Dict[str, Callable[[Path], None]] = {
     "docs_static_site": _build_docs_static_site,
     "tests_playwright": _build_tests_playwright,
     "nested_example": _build_nested_example,
+    "static_site": _build_static_site,
+    "sql_migrations": _build_sql_migrations,
+    "makefile_tooling": _build_makefile_tooling,
 }
 
 
@@ -198,6 +230,22 @@ GROUND_TRUTH: List[ExpectedRepository] = [
         boundaries=frozenset({"app"}),
         languages=frozenset({"javascript"}),
         scaffolding=frozenset({"app/example"}),
+    ),
+    ExpectedRepository(
+        name="static_site",
+        boundaries=frozenset({"web"}),
+        languages=frozenset({"html", "css", "python"}),
+        undeclared_modules=frozenset({"web"}),
+    ),
+    ExpectedRepository(
+        name="sql_migrations",
+        boundaries=frozenset({"api"}),
+        languages=frozenset({"sql"}),
+    ),
+    ExpectedRepository(
+        name="makefile_tooling",
+        boundaries=frozenset(),
+        languages=frozenset(),
     ),
 ]
 
@@ -288,31 +336,35 @@ class TestFixtureCorpus:
     def test_judged_pass_reproduces_the_claim(self, tmp_path):
         corpus = _measure(tmp_path, judged=True)
 
-        assert corpus.boundary_score.true_positives == 8
+        assert corpus.boundary_score.true_positives == 10
         assert corpus.boundary_score.false_positives == 0
         assert corpus.boundary_score.false_negatives == 0
         assert corpus.boundary_score.precision == 1.0
         assert corpus.boundary_score.recall == 1.0
 
-        # Language recall is the promise; the one precision gap is the
-        # pubspec.yaml manifest itself being read as a `yaml` language.
-        assert corpus.language_score.true_positives == 13
+        # Language recall and precision are both exact now: the pubspec.yaml
+        # manifest is identified as a manifest, so it is no longer counted as
+        # a `yaml` source file of the language it declares.
+        assert corpus.language_score.true_positives == 17
+        assert corpus.language_score.false_positives == 0
         assert corpus.language_score.false_negatives == 0
+        assert corpus.language_score.precision == 1.0
         assert corpus.language_score.recall == 1.0
-        assert corpus.language_score.false_positives == 1
-        assert corpus.language_score.precision == pytest.approx(13 / 14)
-        assert any("yaml" in problem for problem in corpus.mismatches())
+        assert corpus.mismatches() == []
 
     def test_deterministic_pass_shows_the_scaffolding_false_positives(self, tmp_path):
         deterministic = _measure(tmp_path, judged=False)
         judged = _measure(tmp_path, judged=True)
 
-        # The deterministic pass already recalls every boundary; judgement
-        # earns its keep by withdrawing proposals that are scaffolding.
-        assert deterministic.boundary_score.recall == 1.0
-        assert deterministic.boundary_score.true_positives == 8
+        # The deterministic pass recalls every manifest-backed boundary; the
+        # manifest of a scaffolding work is a proposal that judgement then
+        # withdraws. The manifest-less static site is only ever a candidate,
+        # so it takes judgement to recall it at all.
+        assert deterministic.boundary_score.true_positives == 9
         assert deterministic.boundary_score.false_positives == 3
-        assert deterministic.boundary_score.precision == pytest.approx(8 / 11)
+        assert deterministic.boundary_score.false_negatives == 1
+        assert deterministic.boundary_score.recall == pytest.approx(9 / 10)
+        assert deterministic.boundary_score.precision == pytest.approx(9 / 12)
         assert judged.boundary_score.precision > deterministic.boundary_score.precision
 
     def test_a_broken_expectation_fails_for_the_right_reason(self, tmp_path):

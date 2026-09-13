@@ -490,6 +490,69 @@ class TestManifestsTheWalkKnows:
         ]
 
 
+class TestManifestIsNotSource:
+    """A file identified as a manifest is not also a language of the module."""
+
+    def test_pubspec_manifest_is_not_counted_as_yaml(self, tmp_path):
+        (tmp_path / "pubspec.yaml").write_text("name: x\n")
+        (tmp_path / "main.dart").write_text("void main() {}\n")
+
+        survey = analyze_repository(tmp_path)
+
+        assert "dart" in survey.languages
+        assert "yaml" not in survey.languages
+
+
+class TestMarkupStylesAndSchemaAreSource:
+    """Markup, stylesheets and schema are languages when the source is there."""
+
+    def test_html_css_and_sql_are_detected(self, tmp_path):
+        (tmp_path / "index.html").write_text("<h1>hi</h1>\n")
+        (tmp_path / "site.css").write_text("h1 { color: black; }\n")
+        (tmp_path / "migrations").mkdir()
+        (tmp_path / "migrations" / "0001_init.sql").write_text("SELECT 1;\n")
+
+        survey = analyze_repository(tmp_path)
+
+        assert {"html", "css", "sql"} <= set(survey.languages)
+
+
+class TestRepositoryTooling:
+    """Repository-level facts are reported as tooling, not as source or modules."""
+
+    def test_makefile_and_workflows_directory_are_reported(self, tmp_path):
+        (tmp_path / "Makefile").write_text("build:\n\tnpm run build\n")
+        workflows = tmp_path / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "ci.yml").write_text("name: ci\non: [push]\n")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hi')\n")
+
+        survey = analyze_repository(tmp_path)
+
+        assert "Makefile" in survey.repository_tooling
+        assert ".github/workflows" in survey.repository_tooling
+        # tooling is a repository-level fact, never a language or a module
+        assert ".github/workflows" not in survey.languages
+        assert not any(m.paths for m in survey.modules)
+
+    def test_root_lockfile_is_reported_as_tooling(self, tmp_path):
+        (tmp_path / "package-lock.json").write_text("{}\n")
+        (tmp_path / "index.js").write_text("// js\n")
+
+        survey = analyze_repository(tmp_path)
+
+        assert "package-lock.json" in survey.repository_tooling
+
+    def test_no_tooling_reports_nothing(self, tmp_path):
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "main.py").write_text("print('hi')\n")
+
+        survey = analyze_repository(tmp_path)
+
+        assert survey.repository_tooling == {}
+
+
 class TestUndeclaredBoundaries:
     """A boundary is a boundary whether or not it declares itself in a format we parse."""
 
