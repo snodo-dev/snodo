@@ -7,7 +7,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.8.4] — 2026-09-13
 
 ### Added
 
@@ -123,6 +123,86 @@ snodo uses [Semantic Versioning](https://semver.org/).
   language, which closes the `pubspec.yaml`-counted-as-`yaml` gap the corpus had
   been recording honestly as a precision loss rather than hiding.
 
+- A validator can index a directory of documents in one call. A judge that must
+  reason about a project's recorded decisions was discovering what those
+  decisions are by reading them: across 97 runs on a real project the
+  architecture validator took a median of 14 tool turns and a maximum of 44,
+  opening records one after another because 68 accepted decision records at
+  480KB do not fit an 8,000-token budget. It had begun to cost more than time —
+  on one task the judge read eight records and ten source files, reached its
+  conclusion, and then answered in prose instead of calling `submit_verdict`,
+  an abstention that halts the task under the default policy. Two different
+  judging models did the same thing at the same depth, so the cause was the
+  length of the loop rather than the model. `summarize_directory` returns one
+  compact record per document — path, title, and the leading key-and-value lines
+  before the first subheading — computed from the files at call time, so there
+  is nothing to maintain and nothing that can go stale. It reads the convention
+  real documents use rather than assuming YAML front matter, which most decision
+  records do not have. The engine learns nothing about decision records: which
+  directory to index is the protocol's business, and what `Status` or
+  `Supersedes` mean stays in the validator's criteria. The tool set stays
+  closed, because a validator that can only read cannot mutate.
+
+- `snodo models --stats` reports what the models on this project have actually
+  done. Every LLM call was already recorded — model, tokens, cost, duration and
+  the role that made it — and nothing showed an operator what those records
+  said. Per model: calls, output tokens, the rate they came out at, the mean
+  duration of a call, cost, and the roles served. Per coder: jobs, how many
+  reached completion, and how long a typical one took. Two things it refuses to
+  do. A model whose provider publishes no price is reported as unpriced, never
+  as free, and an absent cost is never summed as a zero — the cheapest-looking
+  model would otherwise be the one nobody has priced. And a figure resting on
+  few observations says so, because a hundred percent across five runs is not a
+  rate. Where a cost can be derived from the catalog it is labelled as an
+  estimate and kept apart from measured spend.
+
+- A long call says what it is doing. An orchestrator driving snodo over MCP had
+  no way to tell work in progress from a server that had died, so it reported a
+  timeout on every plan run and invented its own polling loop — while the engine
+  knew exactly what was happening and could not say. `validate_task` now emits
+  progress notifications when the caller supplies a progress token, carrying the
+  narration the validators already produce. Nothing is emitted when no token was
+  supplied, bodies are sanitised and single-line, and a caller that ignores
+  every notification receives the identical response. `run_plan` is deliberately
+  not included: it returns a job id in a second and has nothing to narrate.
+
+- The dashboard shows plans, and a row wears its status. Tasks dispatched under
+  a plan appeared as unrelated job rows with nothing saying which plan they
+  belonged to or which wave they were. There is now a plans panel — each plan's
+  waves and dependencies, every task with the status `status.json` records, and
+  for a running task the job carrying it — and a job that belongs to a plan says
+  so where it is listed. Rows are coloured by status: alive green, finished
+  dimmed, failed orange, blocked or escalated red, with the status word always
+  staying in its column so colour is never the only carrier. The panel remains
+  an observer and offers no action.
+
+- A verdict is bought once for a given question. Every recovery attempt was
+  re-buying every verdict, including the unanimous ones about something that had
+  not changed: on one real task, five validators ran twice against a
+  specification that never moved. A verdict is now cached against what it
+  judged — the validator, the exact text of its criteria, the model, the
+  protocol, the phase and the subject — where a pre-execute single-completion
+  judge keys on the specification and any judge that reads the tree, or any
+  post-execute judge at all, keys on the work. That last part is the one that
+  matters: a post-execute judgement keyed on an unchanged spec would reuse
+  attempt one's verdict about code attempt two had rewritten, and because the
+  prose would be byte-identical the loop would then halt as stalled on a
+  judgement nobody made. Abstentions, errors and skipped passes are never
+  stored, because none of them is a verdict. A reused verdict says so in the run
+  output and in the audit trail, and a cold or unwritable cache behaves exactly
+  as the engine behaved before it existed.
+
+- A running coder is visible while it runs. The subprocess adapter captured both
+  pipes and then blocked on a single call, so everything a coder narrated sat
+  unread until it exited: a fifty-eight minute run showed one line and then
+  nothing. Both pipes are now drained concurrently on reader threads — which is
+  what the blocking call was doing for a reason, since a process writing heavily
+  to one pipe while the reader waits on the other will deadlock — and each line
+  is forwarded to the caller's progress sink as it is read. Foreground runs see
+  the narration on the terminal; a background job's goes to its log, where the
+  dashboard and `snodo job logs --watch` already tail it. Timeout still kills
+  the process group and still raises with whatever output had been produced.
+
 ### Fixed
 
 - `run_plan` starts a plan run as a background job and returns its job id
@@ -226,6 +306,68 @@ snodo uses [Semantic Versioning](https://semver.org/).
   bound together on the completion function (#237) and sending litellm a
   provider name it has never heard of; those paths carry only the configured
   name again, which the header wrapper consumes and never forwards.
+
+- An environment fault is no longer a verdict about the task. A coder binary
+  that is not installed was reported as a blocker: on a real project a
+  specification passed every pre-execute validator unanimously and the run then
+  died at execute with "opencode not found on PATH", and the plan recorded that
+  task as blocked. The distinction existed in the code and was destroyed one
+  layer below where it was made — the executor deliberately re-raised the fault
+  as `execution_error` so it would not be laundered into an engine defect, and
+  the canonical map then flattened `execution_error` to `blocker`. Three things
+  followed: the status an operator read was wrong, the fix hints pointed at the
+  specification and the code when the fix was an install command, and a recovery
+  attempt would have handed a coder a specification that was fine and asked it
+  to repair code that was never written. There is now a fifth canonical outcome,
+  `environment_error`, recorded in ADR 015 along with why it is none of the four
+  and what a consumer written against four should do with it — treat it as an
+  operational halt, as it would `internal_error`, never as a blocker. The MCP
+  validation contract still returns four outcomes; the fifth is execution-only.
+  Dispatch now also checks that the configured coder can actually be invoked, in
+  the process that will invoke it, before a task is dispatched — the readiness
+  check for this already existed but ran in the operator's shell rather than in
+  the server's.
+
+- The cockpit tells the truth about plans, silence and cost. A job's plan label
+  was derived from what a plan's `status.json` recorded, and that file does not
+  list every task a plan ran, so two tasks dispatched minutes apart under one
+  plan appeared one labelled and one not; membership now comes from the plan's
+  own definition of its tasks. The "Last" column was red on every row — the
+  colour marks a long silence, which may mean a dead run, but it fired for
+  settled jobs too, and a job that finished four days ago has a long silence by
+  definition; only a run that is supposed to be alive is coloured now, so the
+  warning keeps its meaning and stops spending the one colour reserved for real
+  trouble. The cost line reported a total across N runs, which does not say what
+  the spend bought: it now splits completed against failed spend with the ratio
+  between them, and names the runs whose cost was never recorded rather than
+  counting them as zero. And the live log can be copied, so a failure can be
+  pasted into an issue instead of screenshotted.
+
+- Generated output is not source. Once markup became a language, a rendered
+  coverage report made modules report languages they do not contain: one module
+  reported HTML and CSS of which every file was in its `coverage/` directory,
+  another two thirds. The rule is now named rather than the incident patched —
+  a directory whose contents a tool generated from other inputs is output, so
+  coverage and test reports, generated sites and the other conventional output
+  trees are pruned alongside the dependency and build trees they resemble, while
+  hand-written markup elsewhere is still source. Separately, a manifest-less
+  directory of hand-written pages with its own test suite had appeared nowhere,
+  because candidates were proposed on file count alone and three pages never
+  reached the threshold: a directory carrying its own tests is a work in its own
+  right and is now offered for judgement however few files it holds. Candidates
+  are still never promoted on arithmetic, only by judgement.
+
+- Validator progress reaches the operator, and a broken observer cannot stop a
+  run. The LLM validator has always emitted a line per tool turn, and not one of
+  them ever arrived: the context field carrying it held the engine's
+  per-validator verdict handler, which takes two arguments, so every turn line
+  raised a TypeError that was caught three lines below and written to a debug
+  log. One field held two callbacks with different shapes, and the mismatch was
+  swallowed. Narration and verdicts now have separate fields, every validator
+  reports starting and finishing so an operator can see which of several running
+  concurrently is still out, and both sinks are wrapped so that an observer that
+  fails is reported once and then suppressed rather than taking down the work it
+  was watching.
 
 ---
 
