@@ -50,7 +50,12 @@ def main():
     os.environ["SNODO_JOB_ID"] = Path(job_dir).name
     os.environ["SNODO_PROJECT_ROOT"] = str(Path(job_dir).parent.parent.parent)
 
-    # Export worktree_path if the job was set up with one
+    # Export worktree_path if the job was set up with one, and mark a plan-run
+    # job distinctly: its SNODO_JOB_ID names the run, not a task, so the CLI's
+    # inline plan-run children must not adopt it as their own task's job id.
+    # The flag is set or cleared explicitly per job: a task job spawned by a
+    # plan inherits the plan job's environment, and would otherwise believe it
+    # is the plan run.
     try:
         task_path = Path(job_dir) / "task.json"
         if task_path.exists():
@@ -59,6 +64,10 @@ def main():
             wt = task_data.get("worktree_path")
             if wt:
                 os.environ["SNODO_WORKTREE_PATH"] = wt
+            if task_data.get("plan_name"):
+                os.environ["SNODO_PLAN_JOB"] = "1"
+            else:
+                os.environ.pop("SNODO_PLAN_JOB", None)
     except Exception as e:
         _logger.debug("Failed to set SNODO_WORKTREE_PATH from task.json: %s", e)
 

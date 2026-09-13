@@ -641,3 +641,26 @@ class TestJobCommandRouting:
         assert result == 1
         err = capsys.readouterr().err
         assert "Error: Job not found: j_missing" in err
+
+
+class TestJobRetryRefusesPlanRun:
+    def test_plan_run_job_is_not_retried_as_a_task(self, tmp_path, capsys):
+        """A plan run carries no task spec; `job retry` refuses it."""
+        import json as _json
+
+        from snodo.cli.commands.job_cmd import _job_retry
+
+        job_dir = tmp_path / "j_planrun"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(_json.dumps({"plan_name": "ship"}))
+
+        manager = MagicMock()
+        manager._job_dir.return_value = job_dir
+
+        args = SimpleNamespace(
+            job_id="j_planrun", description="", replace_spec="",
+        )
+        result = _job_retry(manager, args)
+
+        assert result == 1
+        assert "plan run, not a task" in capsys.readouterr().err

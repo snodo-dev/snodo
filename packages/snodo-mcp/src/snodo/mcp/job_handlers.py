@@ -33,6 +33,7 @@ class JobToolHandler:
             raise MCPError(f"Job not found or error: {e}") from e
 
         task = full.get("task") if isinstance(full.get("task"), dict) else {}
+        plan = task.get("plan_name") or ""
         return {
             "id": full.get("id", job_id),
             "status": full.get("status", "unknown"),
@@ -41,7 +42,14 @@ class JobToolHandler:
             "created_at": full.get("created_at"),
             "started_at": full.get("started_at"),
             "completed_at": full.get("completed_at"),
-            "task_ref": task.get("task_id") or task.get("retry_task_id") or "",
+            # A plan run is not one task: it names its plan and leaves task_ref
+            # empty. A task spawned by a plan names that plan-run job so the
+            # two never read as the same kind of row (Fixes #254).
+            "plan": plan,
+            "parent_job": task.get("parent_job", "") or "",
+            "task_ref": "" if plan else (
+                task.get("task_id") or task.get("retry_task_id") or ""
+            ),
             "task_spec": task.get("description", ""),
         }
 

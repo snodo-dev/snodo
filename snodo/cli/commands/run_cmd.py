@@ -807,7 +807,13 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     # Set up agent memory
     memory_mgr, checkpointer, thread_config = _setup_memory(project_root, protocol, mode)
 
-    job_id = os.environ.get("SNODO_JOB_ID") or None
+    # A plan-run job's SNODO_JOB_ID names the run, not a task: the plan loop
+    # dispatches its child tasks inline in this same process, and each child
+    # writes its own plan status. Adopting the plan-run id here would make the
+    # plan-run job masquerade as the last task's job — its state.json would
+    # receive a task's halt payload, its usage would be attributed as a task,
+    # and a task retry could target it. The plan job's record stays its own.
+    job_id = (os.environ.get("SNODO_JOB_ID") or None) if os.environ.get("SNODO_PLAN_JOB") != "1" else None
 
     # Background job only: prefer stored task_id over hash-computed one.
     # Guard against leaked env var (test isolation gap) — skip silently when
