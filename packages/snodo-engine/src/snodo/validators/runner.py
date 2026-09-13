@@ -748,7 +748,8 @@ def resolve_validator_completion() -> Tuple[Any, str, Any]:
 
 
 def classify_outcome(results: List[ValidatorResult], decision: Any) -> str:
-    """Map (validator results, policy decision) to one of the four statuses:
+    """Map (validator results, policy decision) to one of the four validation
+    statuses (ADR 015):
 
     ``pass`` | ``escalate`` | ``blocker`` | ``validator_error``
     """

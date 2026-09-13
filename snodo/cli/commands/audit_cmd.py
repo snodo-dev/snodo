@@ -129,8 +129,8 @@ def _report_invalid(
 
     if json_out:
         # ok=True: the check ran and produced a verdict; valid=False is the
-        # verdict itself, mirroring how validate_cmd separates running from the
-        # four-outcome status. A consumer branches on "valid".
+        # verdict itself, mirroring how validate_cmd separates running from its
+        # validation-outcome status (ADR 015). A consumer branches on "valid".
         return emit_json({
             "schema": schema_name("audit_verify"),
             "ok": True,

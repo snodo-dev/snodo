@@ -180,7 +180,7 @@ def test_auto_write_halt_payload_scenarios(sample_protocol, sample_task):
 
 
 def test_build_halt_payload_final_decision_equals_halt_type(sample_protocol, sample_task):
-    """final_decision always equals halt_type (canonical four-status vocabulary)."""
+    """final_decision always equals halt_type (canonical outcome vocabulary; ADR 015)."""
     from snodo.engine.loop import LoopState
 
     builder = GraphBuilder(sample_protocol)

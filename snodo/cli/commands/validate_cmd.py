@@ -4,8 +4,10 @@ FILE: snodo/cli/commands/validate_cmd.py
 
 The machine-interface entry point for validation (ADR 022).  It runs the same
 shared validator runner the engine and the MCP server use, evaluates the
-disagreement policy, and returns the four-outcome result as JSON with an exit
-code a caller can branch on — without running a coder.
+disagreement policy, and returns the validation-outcome result as JSON with an
+exit code a caller can branch on — without running a coder.  The engine's
+canonical vocabulary is five; `environment_error` is an execution halt and,
+because this command never invokes a coder, is not one of its outcomes (ADR 015).
 
 The JSON shape mirrors the engine's halt payload: ``status`` (one of pass /
 escalate / blocker / validator_error), ``results`` (per-validator verdicts),
@@ -48,7 +50,7 @@ def register(app: typer.Typer) -> None:
 
 
 def validate_command(args) -> int:
-    """Run validators for a phase and return the four-outcome result."""
+    """Run validators for a phase and return the validation-outcome result."""
     from snodo.cli.json_output import (
         emit_json, emit_error, schema_name, OUTCOME_EXIT_CODES, EXIT_INTERNAL_ERROR,
     )

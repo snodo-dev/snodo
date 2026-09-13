@@ -16,7 +16,7 @@ Two human-in-control roles — **producer** (code generation) and **reviewer** (
 
 `--json` on `status`, `mode show`, `session show`, `task show`, and `worktree
 list`, plus `snodo validate` for running a phase's validators without a coder.
-Versioned with a `schema` field and four-outcome exit codes.
+Versioned with a `schema` field and validation-outcome exit codes (ADR 022).
 
 [Machine interface →](machine-interface.md)
 
