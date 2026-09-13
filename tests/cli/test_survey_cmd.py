@@ -429,3 +429,39 @@ class TestSurveyHumanOutputSections:
         assert "Not made" in out
         # declared workspace modules carry no manifest: origin is shown
         assert "Origin: declaration" in out
+
+
+class TestTestCommandSummaryScope:
+    """The summary names the scope it speaks for: repository root, not modules."""
+
+    def test_monorepo_summary_does_not_read_as_no_tests(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        import json as json_mod
+        from types import SimpleNamespace
+
+        from git import Repo
+
+        from snodo.cli.commands import survey_cmd
+        Repo.init(str(tmp_path))
+        (tmp_path / "package.json").write_text(json_mod.dumps(
+            {"name": "mono", "workspaces": ["app", "lib"]}
+        ))
+        for name in ("app", "lib"):
+            d = tmp_path / name
+            d.mkdir()
+            (d / "package.json").write_text(json_mod.dumps(
+                {"name": name, "scripts": {"test": "vitest run"}}
+            ))
+            (d / "main.ts").write_text("export const x = 1")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(survey_cmd, "build_survey_judge", lambda root, mode: None)
+
+        rc = survey_cmd.survey_command(SimpleNamespace(json=False, agent="off"))
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert "No repository-level test command" in out
+        assert "Module-level test commands were confirmed" in out
+        # and the module commands themselves are still shown
+        assert "Test: npm test" in out
