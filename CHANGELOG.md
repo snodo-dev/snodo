@@ -11,6 +11,42 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `snodo survey` now reads a governed repository instead of refusing to look at
+  one. Survey printed "This repository already has a protocol" and exited with
+  the code that means something broke inside the tool, so a caller could not
+  tell "this repository is governed" from "the survey crashed", and the more
+  valuable question went unasked: a repository without a protocol asks what
+  governing it would mean, and one with a protocol asks whether that protocol
+  still describes the code. The analysis is the same analysis; only the closing
+  question differs. `snodo.survey.drift` compares what the protocol declares
+  with what the survey observed — a module path the protocol governs that no
+  longer exists, a boundary the code shows that no declared module reaches, a
+  `decisions_path` that has moved or emptied, a `tooling.test_command` whose
+  runner the repository no longer declares — and reports each subject once
+  however many modules name it. Agreement is reported as plainly as divergence:
+  `agreements` sits beside `divergences` in `--json`, and a healthy governed
+  repository's summary says so rather than listing only problems. Every
+  comparison the protocol's shape does not support is listed under
+  `not_compared` with its reason. Two shapes of protocol are tested because one
+  of them is the common case: modules are optional (ADR 041) and most real
+  protocols declare none, so for a module-less protocol the three module
+  comparisons are reported as not made rather than as a page of findings that
+  mean nothing, and no discovered boundary is called ungoverned. A validator's
+  `tooling` map is not a set of paths: only the `test_command` key is read, its
+  tokens are matched against a closed runner vocabulary rather than resolved as
+  filenames, and the report names the keys it left alone —
+  `openai/gpt-4o-mini` contains a slash and denotes a model. A drift report is
+  a successful run: survey exits 0 whether or not it found drift, and a caller
+  reads `analysis.drift.has_divergences` rather than the exit code; 4 is now
+  reserved for the governed case that really is a failure, a protocol that
+  exists but will not load. Survey still writes nothing — not the protocol, not
+  a proposal file, not a suggested diff — and offers no reconciliation: drift is
+  reported to a person who decides. Observed on a real project: a governed
+  repository of six modules, seven validators and no `modules:` section could
+  not be surveyed at all, and holding the protocol file aside was the only way
+  to see what survey would have said. An ungoverned repository's report is
+  unchanged, byte for byte, and is pinned that way by a captured baseline in
+  `tests/survey/baseline/`.
 - The survey's accuracy claim is reproducible. Precision and recall were
   measured once, by hand, against eight private repositories, and nothing in
   the repository could re-run that measurement or notice if a refactor moved

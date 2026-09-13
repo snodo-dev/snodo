@@ -1,0 +1,45 @@
+Repository Analysis: <NAME>
+Project ID: <ID> (<SCOPE>)
+
+Discovered Modules:
+  • api
+    Paths: packages/api
+    Languages: typescript
+    Test: npm test
+      [evidence] Languages: typescript
+      [evidence] Test command confirmed from package.json
+  • web
+    Paths: packages/web
+    Languages: typescript
+      [evidence] Languages: typescript
+
+Boundary Judgements:
+  No agent consulted; deterministic result stands.
+  Not made (deterministic result kept for each):
+  • packages/api (boundary-role): no agent was configured or reachable for survey judgements
+  • packages/web (boundary-role): no agent was configured or reachable for survey judgements
+
+Repository Tooling:
+  No repository-level tooling detected.
+
+Decision Records:
+  • docs/decisions
+
+Test Command Resolution:
+  No repository-level test command could be resolved from marker files or explicit configuration.
+  Module-level test commands were confirmed for 1 module(s); see Discovered Modules.
+
+Observable Findings:
+  • Module boundaries detected from workspace declarations and nested manifests.
+      Found 2 module boundary(s)
+  • Boundary judgements were not made for every candidate; the deterministic result stands for the subjects listed.
+      packages/api (boundary-role): no agent was configured or reachable for survey judgements
+      packages/web (boundary-role): no agent was configured or reachable for survey judgements
+  • Decision records directory found
+      docs/decisions
+
+Next Steps:
+  1. Review this analysis — edit modules, tooling, and paths as needed
+  2. Create governance records for architectural decisions
+  3. Run: snodo init --template=<choice> to set up your protocol
+  4. Run: snodo ready to assess readiness

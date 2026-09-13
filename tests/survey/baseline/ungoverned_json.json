@@ -1,0 +1,93 @@
+{
+  "exit_code": 0,
+  "payload": {
+    "analysis": {
+      "agent_consulted": false,
+      "agent_model": null,
+      "decision_paths": [
+        "docs/decisions"
+      ],
+      "findings": [
+        {
+          "evidence": [
+            "Found 2 module boundary(s)"
+          ],
+          "message": "Module boundaries detected from workspace declarations and nested manifests."
+        },
+        {
+          "evidence": [
+            "packages/api (boundary-role): no agent was configured or reachable for survey judgements",
+            "packages/web (boundary-role): no agent was configured or reachable for survey judgements"
+          ],
+          "message": "Boundary judgements were not made for every candidate; the deterministic result stands for the subjects listed."
+        },
+        {
+          "evidence": [
+            "docs/decisions"
+          ],
+          "message": "Decision records directory found"
+        }
+      ],
+      "judgements": [],
+      "languages": [],
+      "modules": [
+        {
+          "decisions_path": null,
+          "evidence": [
+            "Languages: typescript",
+            "Test command confirmed from package.json"
+          ],
+          "languages": [
+            "typescript"
+          ],
+          "module_id": "api",
+          "origin": "manifest",
+          "paths": [
+            "packages/api"
+          ],
+          "test_command": "npm test",
+          "test_marker_file": "package.json"
+        },
+        {
+          "decisions_path": null,
+          "evidence": [
+            "Languages: typescript"
+          ],
+          "languages": [
+            "typescript"
+          ],
+          "module_id": "web",
+          "origin": "manifest",
+          "paths": [
+            "packages/web"
+          ],
+          "test_command": null,
+          "test_marker_file": null
+        }
+      ],
+      "repository_tooling": {},
+      "test_command": null,
+      "test_marker_file": null,
+      "unmade_judgements": [
+        {
+          "kind": "boundary-role",
+          "reason": "no agent was configured or reachable for survey judgements",
+          "subject_id": "boundary-role:packages/api",
+          "subject_path": "packages/api"
+        },
+        {
+          "kind": "boundary-role",
+          "reason": "no agent was configured or reachable for survey judgements",
+          "subject_id": "boundary-role:packages/web",
+          "subject_path": "packages/web"
+        }
+      ]
+    },
+    "display_name": "baseline-repo",
+    "ok": true,
+    "project_id": "<ID>",
+    "project_root": "<ROOT>",
+    "schema": "snodo.survey.v1",
+    "scope": "local"
+  }
+}

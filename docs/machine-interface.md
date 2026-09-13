@@ -112,6 +112,62 @@ halt payload.
 | `policy_decision` | object \| null | the policy decision |
 | `instruction` | string | follow-up instruction |
 
+### `snodo survey --json`
+
+Schema: `snodo.survey.v1`
+
+Reports one repository in one of two shapes, depending on whether a protocol
+already exists. The `analysis` object is the same in both; `analysis.drift` is
+present **only** for a repository that already has a protocol.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.survey.v1` |
+| `ok` | bool | `true` on success |
+| `project_root` | string | absolute project root |
+| `project_id` | string | project identity |
+| `scope` | string | `remote` \| `local` \| `override` |
+| `display_name` | string | repository directory name |
+| `analysis` | object | discovered modules, languages, tooling, decision records, test command, findings, agent judgements and the judgements not made |
+| `analysis.drift` | object | **governed repositories only** — what the protocol claims against what the code shows |
+
+`analysis.drift`:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `protocol_id` | string | the protocol surveyed |
+| `uses_modules` | bool | whether the protocol declares `modules:` at all |
+| `shape` | string | which shape the report is reading, in prose |
+| `summary` | string | one-line account of what was weighed |
+| `checks_made` | int | comparisons that were actually carried out (agreements + divergences) |
+| `has_divergences` | bool | whether any comparison diverged |
+| `agreements` | array | `[{check, statement, subject, evidence}]` — comparisons that agreed |
+| `divergences` | array | `[{check, subject, claim, observation, evidence}]` — where the two differ; `claim` restates the protocol, `observation` restates the code, and neither names a fault |
+| `not_compared` | array | `[{check, reason}]` — comparisons this protocol's shape does not support, and why |
+
+`check` is one of `protocol-module-paths`, `module-coverage`,
+`decision-records`, `test-commands`, `validator-tooling`. A protocol that
+declares no modules (the common shape) gets no module-level comparisons at all:
+the three module checks appear in `not_compared` with their reason, and no
+discovered boundary is reported as ungoverned.
+
+`snodo survey` **exits 0 whenever it produced a report**, including a report
+that found drift: a comparison that diverged is a true observation, not a
+judgement that either side is at fault, and survey adjudicates nothing. A
+caller distinguishes the outcomes from the payload, not the exit code:
+
+| Situation | Exit | Payload |
+|-----------|------|---------|
+| ungoverned repository | 0 | `analysis` without a `drift` field |
+| governed, no divergence | 0 | `analysis.drift.has_divergences: false` |
+| governed, divergence found | 0 | `analysis.drift.has_divergences: true` |
+| no git repository, or a protocol that will not load | 4 | `ok: false`, `error` |
+
+Code 4 therefore means "no report was produced" and nothing else. Surveying a
+governed repository is not an error state, and `1`/`2`/`3` are validation
+outcomes that survey does not emit: survey proposes and reports, it does not
+judge work.
+
 ## Exit codes
 
 `snodo validate` (and any command that returns a validation outcome) uses exit
@@ -125,6 +181,13 @@ parsing prose:
 | 2 | `escalate` |
 | 3 | `validator_error` |
 | 4 | `internal_error` |
+
+No command adds a sixth code. `snodo survey` deliberately uses none of the
+judgement codes (1–3): it adjudicates nothing, so a governed repository whose
+protocol has diverged from its code exits **0** like any other successful run
+and reports the divergence in its payload
+(`analysis.drift.has_divergences`). A non-zero exit from survey means no report
+was produced at all — see `snodo survey --json` above.
 
 ## Error shape
 
