@@ -303,6 +303,28 @@ halt is `abstention_exhausted` (or `abstention_stalled` for the repeated case).
 Neither names a code fault, so both are adjudicated with `snodo authorize
 <task_id>` rather than retried with a coder.
 
+### The halt payload records the attempts, not only the result
+
+The halt payload's `validator_results` are the final verdicts. Alongside them,
+`attempts` states how the task got there, so a clean pass and a hard-won one are
+distinguishable without reading the logs:
+
+| Field | Meaning |
+|-------|---------|
+| `attempts.total` | How many judged attempts the task took (root + recovery subtasks + in-place re-judges) |
+| `attempts.non_verdicts` | How many attempts ended without a verdict (abstentions) |
+| `attempts.coder_dispatches` | How many coder runs the chain cost |
+| `attempts.history` | `{attempt, outcome}` per attempt, most recent `_MAX_ATTEMPT_HISTORY` entries |
+| `attempts.omitted` | Count dropped from the front of a truncated `history` |
+
+Each `outcome` is one of `passed`, `warned`, `blocked`, `abstained`, or
+`error` — canonical tokens, not prose, so payloads aggregate across projects. A
+task that abstained three times and passed on the fourth reports four attempts
+and three non-verdicts; a task that passed first time reports one attempt and
+zero. The pre-execute `pre_validation` verdicts feed the outcome only when a
+task halted before execution. Halt types and `validator_results` are unchanged:
+`attempts` is the history that precedes them.
+
 ---
 
 ## `DisagreementPolicy` — validator consensus
