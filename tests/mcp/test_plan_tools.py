@@ -15,12 +15,17 @@ snodo CLI); the rest patches the spawn so the gate semantics are checked
 without execution cost.
 """
 
+import contextlib
 import json
+import os
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -229,60 +234,80 @@ class TestRunPlanGate:
         validation = server.call_tool("validate_plan", {"plan_name": "broken"})
         assert validation["valid"] is False
 
-        with patch("snodo.mcp.plan_handlers.subprocess.run") as mock_run:
+        with patch("snodo.jobs.JobManager") as MockJM:
             with pytest.raises(MCPError, match="failed validation and was not run"):
                 server.call_tool("run_plan", {"plan_name": "broken"})
-            # The refusal happens before anything spawns — no spend.
-            mock_run.assert_not_called()
+            # The refusal happens before anything is submitted — no spend.
+            MockJM.return_value.submit.assert_not_called()
 
         status = json.loads(
             (Path(project_dir) / ".snodo" / "plans" / "broken" / "status.json").read_text()
         )
         assert status["tasks"]["1.1_ghost"] == "pending"
+        jobs_dir = Path(project_dir) / ".snodo" / "jobs"
+        assert not jobs_dir.exists() or not list(jobs_dir.iterdir())
 
-    def test_valid_plan_runs_through_the_cli_plan_loop_and_reports_status(self, server, project_dir):
-        """Tool surface → same authoritative plan-run path, structured result back."""
+    def test_valid_plan_starts_a_job_and_returns_its_id(self, server, project_dir):
+        """run_plan submits the run as a job and returns immediately (Fixes #254)."""
         _propose(server, name="runner")
         _add_task(server, "runner", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
 
-        fake_proc = MagicMock()
-        fake_proc.returncode = 0
-        fake_proc.stdout = "Wave 1:\n  [1.1_x] completed in 0.1s\n"
-        fake_proc.stderr = ""
-
-        with patch("snodo.mcp.plan_handlers.subprocess.run", return_value=fake_proc) as mock_run:
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value.submit.return_value = "j_runner1"
             result = server.call_tool("run_plan", {"plan_name": "runner", "mock": True})
 
-        cmd = mock_run.call_args.args[0]
-        assert cmd[1:6] == ["-u", "-m", "snodo", "plan", "run"]
-        assert "runner" in cmd
-        assert "--mock" in cmd
-
-        assert result["status"] == "completed"
-        assert result["exit_code"] == 0
+        assert result["status"] == "accepted"
+        assert result["job_id"] == "j_runner1"
         assert result["plan"] == "runner"
+        assert "get_job_status" in result["instruction"]
 
-    def test_failed_run_reports_failure_with_structured_task_state(self, server, project_dir):
-        _propose(server, name="failing")
-        _add_task(server, "failing", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
-        _token(server)
+        submitted = MockJM.return_value.submit.call_args.args[0]
+        assert submitted["plan_name"] == "runner"
+        assert submitted["mock"] is True
 
-        # The run left one task blocked on disk — status.json is the truth.
-        status_path = Path(project_dir) / ".snodo" / "plans" / "failing" / "status.json"
+    def test_wait_true_blocks_and_reports_the_final_status(self, server, project_dir):
+        """The opt-in wait returns the run's end state, not merely its start."""
+        _propose(server, name="waited")
+        _add_task(server, "waited", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
+
+        status_path = (
+            Path(project_dir) / ".snodo" / "plans" / "waited" / "status.json"
+        )
         status_path.write_text(json.dumps({"tasks": {"1.1_x": "blocked"}}))
 
-        fake_proc = MagicMock()
-        fake_proc.returncode = 1
-        fake_proc.stdout = "Wave 1:\n  [1.1_x] BLOCKED in 3.0s\n"
-        fake_proc.stderr = "validators halted"
+        with patch("snodo.jobs.JobManager") as MockJM:
+            mgr = MockJM.return_value
+            mgr.submit.return_value = "j_waited1"
+            mgr.wait_for.return_value = {
+                "id": "j_waited1", "status": "failed", "exit_code": 1,
+            }
+            mgr.get_logs.return_value = "Wave 1:\n  [1.1_x] BLOCKED in 3.0s\n"
+            result = server.call_tool(
+                "run_plan", {"plan_name": "waited", "mock": True, "wait": True}
+            )
 
-        with patch("snodo.mcp.plan_handlers.subprocess.run", return_value=fake_proc):
-            result = server.call_tool("run_plan", {"plan_name": "failing", "mock": True})
-
+        mgr.wait_for.assert_called_once()
         assert result["status"] == "failed"
         assert result["exit_code"] == 1
+        assert result["job_id"] == "j_waited1"
         assert result["tasks"] == {"1.1_x": "blocked"}
         assert "BLOCKED" in result["output_tail"]
+
+    def test_wait_true_timeout_names_the_still_running_job(self, server, project_dir):
+        """A wait that expires reports the job, never a phantom failure."""
+        from snodo.jobs import JobError
+
+        _propose(server, name="slow")
+        _add_task(server, "slow", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
+
+        with patch("snodo.jobs.JobManager") as MockJM:
+            mgr = MockJM.return_value
+            mgr.submit.return_value = "j_slow1"
+            mgr.wait_for.side_effect = JobError("Timeout waiting for job j_slow1")
+            with pytest.raises(MCPError, match="still running"):
+                server.call_tool(
+                    "run_plan", {"plan_name": "slow", "mock": True, "wait": True}
+                )
 
 
 # === Retrieval by name ===
@@ -318,30 +343,149 @@ class TestGetPlan:
         assert fetched["waves"]  # the plan structure still comes back
 
 
-class TestRunPlanSpawnFailures:
+class TestRunPlanSubmissionFailures:
     def _valid_plan_server(self, server):
         _propose(server, name="spawnfail")
         _add_task(server, "spawnfail", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
         _token(server)
         return server
 
-    def test_timeout_is_reported_as_error(self, server):
+    def test_submit_failure_is_reported_as_error(self, server):
         self._valid_plan_server(server)
-        with patch(
-            "snodo.mcp.plan_handlers.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="snodo", timeout=1),
-        ):
-            with pytest.raises(MCPError, match="exceeded"):
-                server.call_tool("run_plan", {"plan_name": "spawnfail", "mock": True})
+        from snodo.jobs import JobError
 
-    def test_oserror_on_spawn_is_reported(self, server):
-        self._valid_plan_server(server)
-        with patch(
-            "snodo.mcp.plan_handlers.subprocess.run",
-            side_effect=OSError("exec failed"),
-        ):
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value.submit.side_effect = JobError("exec failed")
             with pytest.raises(MCPError, match="Failed to start plan run"):
                 server.call_tool("run_plan", {"plan_name": "spawnfail", "mock": True})
+
+
+# === The run is a job: liveness, terminal status, distinct rows ===
+
+def _wait_terminal(job_mgr, job_id, timeout=60.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = job_mgr.get_status(job_id)
+        if status["status"] in ("completed", "failed", "unmerged", "cancelled"):
+            return status
+        time.sleep(0.05)
+    raise AssertionError(f"job {job_id} did not reach a terminal status")
+
+
+def _reap(pid):
+    """Reap a killed child so it stops answering ``os.kill(pid, 0)``.
+
+    In production the process that spawned the job reaps it; in this test the
+    spawning process is the test itself, so it must do the same or a zombie
+    would keep the pid "alive" and mask reconciliation.
+    """
+    with contextlib.suppress(ChildProcessError, ProcessLookupError):
+        os.waitpid(pid, 0)
+
+
+class TestPlanRunAsJob:
+    def test_run_plan_returns_while_the_child_is_still_alive(self, server, project_dir):
+        """The call returns before the run finishes — the current-code bug.
+
+        Against the blocking implementation this fails at once: run_plan would
+        sit through the whole run and never submit a job. Here the spawned
+        child is a real process that outlives the call, so a returned job_id
+        whose pid is still alive is the whole claim.
+        """
+        from snodo.jobs import JobManager
+
+        _propose(server, name="longrun")
+        _add_task(server, "longrun", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
+
+        def spawn_sleeper(cmd, stdout_path, stderr_path, cwd):
+            return subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(30)"],
+                stdout=open(stdout_path, "w"), stderr=open(stderr_path, "w"),
+            ).pid
+
+        with patch("snodo.jobs.runner.spawn_background", side_effect=spawn_sleeper):
+            result = server.call_tool("run_plan", {"plan_name": "longrun", "mock": True})
+
+        assert result["status"] == "accepted"
+        job_id = result["job_id"]
+
+        mgr = JobManager(project_dir)
+        status = mgr.get_status(job_id)
+        pid = status["pid"]
+        assert pid is not None, "the plan run should have been spawned"
+        os.kill(pid, 0)  # raises if it exited before the call returned
+
+        # Clean up the long-running child so the test does not leak a process.
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGTERM)
+        _reap(pid)
+
+    def test_plan_run_reaches_a_terminal_status_when_the_run_ends(self, server, project_dir):
+        """A plan-run job records how the run ended, like any other job."""
+        from snodo.jobs import JobManager
+
+        _propose(server, name="finishes")
+        _add_task(server, "finishes", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
+
+        result = server.call_tool("run_plan", {"plan_name": "finishes", "mock": True})
+        job_id = result["job_id"]
+
+        mgr = JobManager(project_dir)
+        final = _wait_terminal(mgr, job_id)
+        assert final["status"] in ("completed", "failed")
+        assert final["exit_code"] is not None
+
+    def test_killed_plan_run_is_reconciled_not_left_running(self, server, project_dir):
+        """A run killed without reporting is reconciled, never left live forever."""
+        from snodo.jobs import JobManager
+
+        _propose(server, name="killed")
+        _add_task(server, "killed", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
+
+        result = server.call_tool("run_plan", {"plan_name": "killed", "mock": True})
+        job_id = result["job_id"]
+
+        mgr = JobManager(project_dir)
+        pid = mgr.get_status(job_id)["pid"]
+        assert pid is not None
+        os.kill(pid, signal.SIGKILL)  # no chance to write a final state
+        _reap(pid)
+
+        # The process is gone; reconciliation must mark the job terminal.
+        deadline = time.monotonic() + 10.0
+        status = None
+        while time.monotonic() < deadline:
+            status = mgr.get_status(job_id)
+            if status["status"] in ("failed", "completed", "cancelled", "unmerged"):
+                break
+            time.sleep(0.05)
+        assert status is not None
+        assert status["status"] == "failed"
+        assert status["exit_code"] == -1
+
+    def test_list_jobs_distinguishes_a_plan_run_from_its_tasks(self, server, project_dir):
+        """A plan row names the plan; its child rows name the plan run."""
+        from snodo.jobs import JobManager
+
+        _propose(server, name="distinct")
+        _add_task(server, "distinct", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
+
+        result = server.call_tool("run_plan", {"plan_name": "distinct", "mock": True})
+        job_id = result["job_id"]
+        mgr = JobManager(project_dir)
+        _wait_terminal(mgr, job_id)
+
+        rows = mgr.list_jobs()
+        plan_row = next(r for r in rows if r["id"] == job_id)
+        assert plan_row["plan"] == "distinct"
+        assert plan_row["task_ref"] == ""
+
+        child_rows = [r for r in rows if r["id"] != job_id]
+        # Any task spawned by the plan names the plan run as its parent.
+        for row in child_rows:
+            assert row["plan"] == ""
+            assert row["parent_job"] == job_id
+            assert row["task_ref"]
 
 
 # === End-to-end over the real tool surface ===
@@ -349,6 +493,8 @@ class TestRunPlanSpawnFailures:
 @pytest.mark.e2e
 def test_propose_validate_run_lifecycle_through_the_tool_surface(server, project_dir):
     """Full lifecycle with the mock coder: the CLI plan loop runs for real."""
+    from snodo.jobs import JobManager
+
     result = _propose(server, name="lifecycle", waves=2)
     assert result["validation"]["valid"] is True
 
@@ -360,12 +506,14 @@ def test_propose_validate_run_lifecycle_through_the_tool_surface(server, project
     validation = server.call_tool("validate_plan", {"plan_name": "lifecycle"})
     assert validation["valid"] is True
 
-    run = server.call_tool("run_plan", {
+    started = server.call_tool("run_plan", {
         "plan_name": "lifecycle", "mock": True, "no_isolation": True,
     })
-    assert run["status"] == "completed", run.get("stderr_tail") or run.get("output_tail")
-    assert run["exit_code"] == 0
-    assert set(run["tasks"].values()) == {"completed"}
+    assert started["status"] == "accepted"
+
+    mgr = JobManager(project_dir)
+    final = _wait_terminal(mgr, started["job_id"], timeout=90.0)
+    assert final["status"] == "completed", mgr.get_logs(started["job_id"], stream="stderr")
 
     # A fresh server retrieves the completed plan by its stable name.
     later = ProtocolMCPServer(Protocol(**_PROTOCOL_DATA), project_dir)

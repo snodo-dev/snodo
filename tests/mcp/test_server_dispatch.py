@@ -458,3 +458,20 @@ class TestHandleRetryJob:
         assert {"job_id", "append_spec", "revised_spec"} <= set(schema)
         description = TOOL_REGISTRY["retry_job"]["description"]
         assert "default the task keeps the specification" in description
+
+    def test_plan_run_job_is_refused_by_the_task_retry_path(self, server, tmp_path):
+        """A plan run has no task spec; retrying it as a task is refused.
+
+        It is a whole-plan action, not one task's spec, so the retry path
+        says so rather than re-running the plan as though it were a task.
+        """
+        job_dir = tmp_path / "j-plan"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(
+            json.dumps({"plan_name": "ship", "cwd": str(tmp_path)})
+        )
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value._job_dir.return_value = job_dir
+            with pytest.raises(MCPError, match="plan run, not a task"):
+                server._handle_retry_job({"job_id": "j-plan"})
+            MockJM.return_value.submit.assert_not_called()

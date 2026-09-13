@@ -160,9 +160,18 @@ class JobManager:
     def submit(self, task_args: dict) -> str:
         """Submit a new background job.
 
+        Two kinds travel this one path. A task job (the default) gets its own
+        git worktree before spawn and runs ``snodo run`` with the dispatched
+        spec. A plan-run job (``plan_name`` set) runs ``snodo plan run`` and
+        gets no worktree of its own: the plan loop isolates each task it
+        dispatches, and those child jobs are jobs in their own right, so a
+        plan-level worktree would be a second, empty isolation layer.
+
         Args:
             task_args: Dict with description, protocol, model, mock, verbose,
-                      from_pr, cwd (all the args needed to reconstruct the run command)
+                      from_pr, cwd (all the args needed to reconstruct the run
+                      command); a plan-run job carries plan_name (and wave)
+                      instead of description.
 
         Returns:
             Job ID string
@@ -171,6 +180,8 @@ class JobManager:
         from snodo.infrastructure.worktree import (
             create_worktree, remove_worktree,
         )
+
+        is_plan_run = bool(task_args.get("plan_name"))
 
         job_id = self._generate_id()
         job_dir = self.jobs_dir / job_id
@@ -190,24 +201,30 @@ class JobManager:
             "completed_at": None,
             "exit_code": None,
         }
+        if is_plan_run:
+            state["job_type"] = "plan"
         self._save_state(job_dir, state)
 
         # Create git worktree for isolation BEFORE spawn. A background job has
         # no operator at a console to read a warning: if isolation cannot be
         # established (e.g. unborn HEAD on a greenfield repo), the job is
         # refused up front rather than silently running un-isolated in the
-        # project working tree (Fixes #29).
-        try:
-            task_desc = task_args.get("description", "")
-            wt_path = str(create_worktree(self.project_root, job_id, task_desc))
-            task_args["worktree_path"] = wt_path
-        except Exception as e:
-            state["status"] = "failed"
-            state["exit_code"] = 1
-            state["completed_at"] = time.time()
-            state["error"] = str(e)
-            self._save_state(job_dir, state)
-            raise JobError(f"Cannot submit job: {e}") from e
+        # project working tree (Fixes #29). A plan-run job is exempt: the plan
+        # loop creates each task's worktree as it dispatches, so there is no
+        # single tree to prepare here.
+        wt_path = None
+        if not is_plan_run:
+            try:
+                task_desc = task_args.get("description", "")
+                wt_path = str(create_worktree(self.project_root, job_id, task_desc))
+                task_args["worktree_path"] = wt_path
+            except Exception as e:
+                state["status"] = "failed"
+                state["exit_code"] = 1
+                state["completed_at"] = time.time()
+                state["error"] = str(e)
+                self._save_state(job_dir, state)
+                raise JobError(f"Cannot submit job: {e}") from e
 
         # Build command and spawn
         stdout_path = job_dir / "stdout.log"
@@ -238,9 +255,16 @@ class JobManager:
         how it ended at a glance — never the task spec itself.  The spec is
         a detail of one job; get_status carries it.
 
+        A plan run and the task jobs it spawns are different rows and must
+        read as such: a plan row names its plan (``plan`` set, ``task_ref``
+        empty), while a task spawned by a plan names the plan job it belongs
+        to (``parent_job``), so a parent and its children are never
+        indistinguishable.
+
         Returns:
             List of dicts with id, status, task_ref, title, exit_code,
-            created_at, started_at, completed_at, duration_seconds.
+            created_at, started_at, completed_at, duration_seconds, plan,
+            parent_job.
         """
         jobs: list[dict] = []
         if not self.jobs_dir.exists():
@@ -262,18 +286,33 @@ class JobManager:
 
     @staticmethod
     def _summarize_job(job_id: str, state: dict, task: dict) -> dict:
-        """Bounded one-job summary: which work it was, and how it ended."""
+        """Bounded one-job summary: which work it was, and how it ended.
+
+        A task row carries ``task_ref``; a plan-run row carries ``plan`` and
+        leaves ``task_ref`` empty, because a plan run is not one task. A task
+        a plan spawned carries ``parent_job`` — the plan-run job that owns it
+        — so the two never blur together in a listing.
+        """
         started = state.get("started_at")
         completed = state.get("completed_at")
         duration = None
         if started:
             end = completed if completed else time.time()
             duration = round(max(0.0, end - started), 1)
+        plan = task.get("plan_name") or ""
+        if plan:
+            title = f"plan: {plan}"
+        else:
+            title = _title_from_description(task.get("description", ""))
         return {
             "id": job_id,
             "status": state.get("status", "unknown"),
-            "task_ref": task.get("task_id") or task.get("retry_task_id") or "",
-            "title": _title_from_description(task.get("description", "")),
+            "task_ref": "" if plan else (
+                task.get("task_id") or task.get("retry_task_id") or ""
+            ),
+            "title": title,
+            "plan": plan,
+            "parent_job": task.get("parent_job", "") or "",
             "exit_code": state.get("exit_code"),
             "created_at": state.get("created_at", 0),
             "started_at": started,

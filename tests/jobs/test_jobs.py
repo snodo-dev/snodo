@@ -233,6 +233,48 @@ class TestSubmit:
         assert stderr_path.endswith("stderr.log")
 
     @patch("snodo.jobs.runner.spawn_background")
+    def test_submit_plan_run_is_a_job_with_its_own_kind(self, mock_spawn, manager):
+        """A plan run submits as a background job, marked as a plan run.
+
+        The run is not a task: it gets no worktree of its own (the plan loop
+        isolates each task it dispatches), and its row must say it is a plan
+        so a listing can tell it from the tasks it spawns (Fixes #254).
+        """
+        mock_spawn.return_value = 99999
+        task_args = {
+            "plan_name": "ship",
+            "protocol": ".snodo/protocol.yml",
+            "mock": True,
+            "cwd": "/tmp/test",
+        }
+
+        with patch("snodo.infrastructure.worktree.create_worktree") as mock_wt:
+            job_id = manager.submit(task_args)
+
+        mock_wt.assert_not_called()
+        state = manager._load_state(manager.jobs_dir / job_id)
+        assert state["status"] == "running"
+        assert state["job_type"] == "plan"
+
+        jobs = manager.list_jobs()
+        row = next(j for j in jobs if j["id"] == job_id)
+        assert row["plan"] == "ship"
+        assert row["task_ref"] == ""
+        assert row["parent_job"] == ""
+        assert "task_id" not in manager._load_task(manager.jobs_dir / job_id)
+
+    @patch("snodo.jobs.runner.spawn_background")
+    def test_child_task_row_names_its_parent_plan_run(self, mock_spawn, manager, sample_task_args):
+        """A task a plan spawned is distinguishable from the plan run itself."""
+        mock_spawn.return_value = 99999
+        child_args = {**sample_task_args, "task_id": "1.1_core", "parent_job": "j_plan01"}
+        manager.submit(child_args)
+
+        row = next(j for j in manager.list_jobs() if j["task_ref"] == "1.1_core")
+        assert row["parent_job"] == "j_plan01"
+        assert row["plan"] == ""
+
+    @patch("snodo.jobs.runner.spawn_background")
     def test_submit_refused_when_worktree_cannot_be_created(self, mock_spawn, manager, sample_task_args):
         """A background job whose worktree cannot be created is refused up front.
 
@@ -373,6 +415,7 @@ class TestBoundedListing:
         assert set(jobs[0]) == {
             "id", "status", "task_ref", "title", "exit_code",
             "created_at", "started_at", "completed_at", "duration_seconds",
+            "plan", "parent_job",
         }
 
     def test_running_job_duration_advances_queued_job_none(self, manager):
