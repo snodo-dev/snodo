@@ -333,6 +333,13 @@ class ConfigManager:
 
         # 3. litellm.get_llm_provider()
         try:
+            import litellm
+            # litellm prints a 'Provider List' banner to stdout when it cannot
+            # name a provider. Asking about a model snodo routes itself is the
+            # normal case here, not an error worth printing — and this is the
+            # earliest litellm call in a CLI run, so the flag has to be set here
+            # or the banner escapes before any other site sets it.
+            litellm.suppress_debug_info = True
             from litellm import get_llm_provider
             _model, provider_name, _, _ = get_llm_provider(model)
         except Exception:
