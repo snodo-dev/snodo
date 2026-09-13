@@ -146,11 +146,41 @@ def _verdict_signature(failures: list) -> tuple:
     Two lists with the same (validator_id, severity, justification) tuples in
     the same multiset produce the same signature.  Used to detect a repeated
     verdict across two recovery attempts (ADR 021).
+
+    An abstention (severity ``None``) is canonicalised to a single marker with
+    no prose. An abstention is "no verdict" however the judge phrased running
+    out: two abstentions on the same judge describe the same stall, and
+    comparing their justifications let three different excuses disguise an
+    unchanging situation and spend three coder dispatches (Fixes #268).
     """
-    return tuple(sorted(
-        (f.get("validator_id"), f.get("severity"), f.get("justification"))
-        for f in failures
-    ))
+    def _canonical(f: dict) -> tuple:
+        validator_id = f.get("validator_id")
+        severity = f.get("severity")
+        if severity is None:
+            return (validator_id, "abstain", "")
+        return (validator_id, severity, f.get("justification"))
+
+    return tuple(sorted(_canonical(f) for f in failures))
+
+
+def verdict_signature_from_results(results: list) -> tuple:
+    """Canonical failure signature of a validator-result list.
+
+    The one signature implementation, shared by the recovery stall check and
+    the post-execute abstention re-judge, so the two cannot disagree about what
+    "nothing changed" means. Only failures participate (warn / blocker /
+    abstention); a pass is not a failure and its prose is not load-bearing.
+    """
+    return _verdict_signature([
+        {
+            "validator_id": getattr(r, "validator_id", ""),
+            "severity": getattr(r, "severity", None),
+            "justification": getattr(r, "justification", "") or "",
+        }
+        for r in results
+        if getattr(r, "severity", None) in ("warn", "blocker")
+        or getattr(r, "severity", None) is None
+    ])
 
 
 def _normalize_attempt_provenance(provenance: Optional[list]) -> list:
