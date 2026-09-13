@@ -141,10 +141,19 @@ def dispatch_validator(
             instance = cls(validator_spec=v)
             result = instance.evaluate(context)
         except Exception as e:  # noqa: BLE001 — validator isolation boundary
+            # Isolation must not destroy the cause: the halt will say
+            # validator_error, and the operator needs the failure's type and
+            # message without re-running under a debug switch. The type names
+            # the class of fault (an auth rejection is not a syntax error);
+            # it goes into the log and into the surfaced justification.
+            logger.warning(
+                "Validator %s (%s) raised: %s: %s",
+                v.validator_id, v.validator_type, type(e).__name__, e,
+            )
             result = ValidatorResult(
                 validator_id=v.validator_id,
                 severity="blocker",
-                justification=f"Validator error: {e}",
+                justification=f"Validator error ({type(e).__name__}): {e}",
                 error=True,
             )
         return enrich_result_with_criteria(result, v.criteria)
@@ -156,10 +165,14 @@ def dispatch_validator(
             instance = LLMValidator(validator_spec=v)
             result = instance.evaluate(context)
         except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "LLM validation for %s failed: %s: %s",
+                v.validator_id, type(e).__name__, e,
+            )
             result = ValidatorResult(
                 validator_id=v.validator_id,
                 severity="blocker",
-                justification=f"LLM validation failed: {e}",
+                justification=f"LLM validation failed ({type(e).__name__}): {e}",
                 error=True,
             )
         return enrich_result_with_criteria(result, v.criteria)
@@ -302,10 +315,14 @@ def run_validators(
             try:
                 result = future.result()
             except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "Validator %s failed outside the dispatch boundary: %s: %s",
+                    vid, type(e).__name__, e,
+                )
                 result = ValidatorResult(
                     validator_id=vid,
                     severity="blocker",
-                    justification=f"Validator error: {e}",
+                    justification=f"Validator error ({type(e).__name__}): {e}",
                     error=True,
                 )
             if result is not None:
