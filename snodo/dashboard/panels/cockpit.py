@@ -136,6 +136,7 @@ class CockpitScreen(Screen):
         Binding("n", "search_next", "Next"),
         Binding(":", "command_mode", "Command"),
         Binding("w", "open_wave", "Wave"),
+        Binding("c", "copy_log", "Copy log"),
     ]
 
     CSS = """
@@ -334,6 +335,23 @@ class CockpitScreen(Screen):
             WaveDetailScreen(wave_data, {t["task_id"]: t for t in flat})
         )
 
+    def action_copy_log(self) -> None:
+        """Put the Live Log's rendered text on the operator's clipboard.
+
+        RichLog paints text the terminal's own selection cannot reach, so a
+        reader who wants to paste a failure into an issue has no way to get it
+        out. The pane's lines are plain text here — no markup, no escape
+        sequences — and they go to the clipboard through the app. Nothing is
+        written to disk, so the dashboard stays an observer.
+        """
+        pane = self.query_one("#log-pane", RichLog)
+        text = "\n".join(strip.text for strip in pane.lines)
+        if not text.strip():
+            self.notify("Live Log is empty — nothing to copy", severity="warning")
+            return
+        self.app.copy_to_clipboard(text)
+        self.notify("Live Log copied to clipboard")
+
     def on_input_submitted(self, event: Input.Submitted):
         if event.input.id == "command-bar":
             raw = event.value.strip()
@@ -510,8 +528,15 @@ class CockpitScreen(Screen):
         all_tasks = self.provider.get_tasks(session_id)
         # Remember which plan owns which task, so the Jobs pane (built right
         # after this one) can name a job's plan instead of leaving the operator
-        # to infer it from the task name.
+        # to infer it from the task name. The plan's own definition is the
+        # authority: status.json is a progress file that can lag the plan and
+        # omit a task the plan actually ran, so membership is read from the
+        # plan's tasks as a whole (plan.yml plus whatever status adds), never
+        # from the status file alone.
         self._plan_of_task = {}
+        for plan in self.provider.get_plans():
+            for tid in (plan.get("tasks") or {}):
+                self._plan_of_task.setdefault(tid, plan["name"])
         for t in all_tasks:
             self._plan_of_task[t["task_id"]] = t["plan_name"]
             self._plan_of_task[t["task_ref"]] = t["plan_name"]
@@ -643,13 +668,28 @@ class CockpitScreen(Screen):
 
         pane.write("")
         cost = att.get("cost") or {}
-        total = cost.get("total")
-        if total and cost.get("runs_with_cost"):
+        if cost.get("runs_with_cost"):
             prefix = "~" if cost.get("partial") else ""
-            pane.write(
-                f"[bold]Cost[/]  {prefix}${total:.4f}  "
-                f"[dim]across {cost['runs_with_cost']} run(s)[/]"
+            completed = cost.get("completed_cost", 0.0)
+            failed = cost.get("failed_cost", 0.0)
+            ratio = cost.get("ratio")
+            line = (
+                f"[bold]Cost[/]  {prefix}${cost['total']:.4f}  "
+                f"[dim]across {cost['runs_with_cost']} run(s)[/]  ·  "
+                f"[green]completed[/] ${completed:.4f} "
+                f"({cost.get('completed_runs', 0)})  /  "
+                f"[color(208)]failed[/] ${failed:.4f} "
+                f"({cost.get('failed_runs', 0)})"
             )
+            if ratio is not None:
+                line += f"  [dim]{ratio:.2f}:1[/]"
+            without = cost.get("runs_without_cost", 0)
+            if without:
+                line += (
+                    f"  ·  [yellow]{without} run(s) without a recorded cost, "
+                    f"not counted[/]"
+                )
+            pane.write(line)
         else:
             pane.write("[bold]Cost[/]  [dim]no usage recorded[/]")
 
@@ -779,5 +819,6 @@ class CockpitScreen(Screen):
             f"|  Data: [dim]{age_str} ago[/]"
         )
         self.app.sub_title = (
-            "  /:search  n:next  :plans  :protocol  :settings  :sessions  |  r:refresh  q:quit"
+            "  /:search  n:next  :plans  :protocol  :settings  :sessions  "
+            "|  c:copy log  r:refresh  q:quit"
         )

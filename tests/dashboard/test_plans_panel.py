@@ -281,6 +281,37 @@ def test_cockpit_job_row_names_its_plan(tmp_path, monkeypatch):
     asyncio.run(_run())
 
 
+def test_cockpit_job_row_names_its_plan_even_when_status_omits_the_task(
+    tmp_path, monkeypatch
+):
+    """Plan membership does not hinge on which file is consulted.
+
+    A task the plan's own definition lists but whose status entry was never
+    written still belongs to the plan; the job carrying it must say so, not
+    fall back to a bare task id because status.json is an incomplete list.
+    """
+    import asyncio
+
+    project = _plan_project(tmp_path, monkeypatch, statuses={"task_a": "completed"})
+
+    async def _run():
+        app = SnodoDashboard(project_root=str(project))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, CockpitScreen)
+            await pilot.pause(0.3)
+            jobs = screen.query_one("#jobs-table")
+            tasks_by_job = {
+                str(jobs.get_row(rk)[0]): str(jobs.get_row(rk)[1])
+                for rk in jobs.rows
+            }
+            # task_b is absent from status.json but present in plan.yml.
+            assert tasks_by_job["j_b"] == "orch:task_b"
+
+    asyncio.run(_run())
+
+
 # ---------------------------------------------------------------------------
 # 3. Rows wear their status
 # ---------------------------------------------------------------------------
