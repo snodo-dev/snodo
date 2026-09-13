@@ -5,7 +5,8 @@ FILE: snodo/coders/subprocess_adapter.py
 Abstracts host CLI tools (opencode-cli, agy) that execute in-place edits in the
 working tree via subprocess invocation. Base class handles:
 - Prompt formatting (_build_prompt)
-- Subprocess invocation and error handling (missing binary, timeout, non-zero returncode)
+- Subprocess invocation with live output streaming and error handling
+  (missing binary, timeout, non-zero returncode)
 - Git working tree readback (_read_changes_from_disk)
 - Artifact construction (_diff_to_artifact)
 - .snodo/ mutation protection and git commit (inherited from InPlaceCoderAdapter)
@@ -15,9 +16,10 @@ import logging
 import os
 import signal
 import subprocess
+import threading
 from abc import abstractmethod
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from snodo.coders.base import InPlaceCoderAdapter, LLMCallError
 from snodo.core.interfaces import CodeArtifact, FileArtifact, TaskSpec
@@ -115,42 +117,106 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         """Construct the subprocess argument list for the specific CLI tool."""
 
     def _run_subprocess(self, argv: list[str], project_root: str) -> subprocess.CompletedProcess:
-        """Run CLI subprocess with process-group isolation and clean timeout termination."""
+        """Run CLI subprocess with process-group isolation and live output streaming.
+
+        Output is consumed while the process runs, not only after it exits. The
+        old single blocking ``proc.communicate(timeout=...)`` hid a 58-minute
+        coder narration behind one "Coder dispatched" line: everything the CLI
+        wrote sat unread in a pipe until the run was over.
+
+        The deadlock trap that made ``communicate`` look mandatory is real:
+        a process writing heavily to stderr while the reader is blocked on
+        stdout fills the OS pipe buffer and stalls the writer — and the reader
+        with it. That is handled here by draining BOTH pipes concurrently, one
+        reader thread per stream, so neither can ever fill up. Each line is
+        appended to its stream's capture list (the full text is still returned
+        for the diagnostic tail machinery) and, when the caller has supplied a
+        ``progress_callback``, emitted to it at the moment it is read.
+
+        The choice of whether a human sees the stream belongs to the caller,
+        not the adapter: the engine wires ``progress_callback`` to its
+        ``_progress`` sink, which prints to the foreground terminal or, for a
+        background job, to the job's stdout.log that the dashboard and
+        ``snodo job logs --watch`` tail. No callback means silent capture,
+        exactly the pre-streaming behaviour.
+        """
         proc = subprocess.Popen(  # noqa: S603
             argv,
             cwd=project_root,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            errors="replace",
             start_new_session=True,
         )
+        emit = getattr(self, "progress_callback", None)
+        out_chunks: list[str] = []
+        err_chunks: list[str] = []
+
+        def _reader(stream: Any, sink: list[str]) -> None:
+            try:
+                for line in iter(stream.readline, ""):
+                    sink.append(line)
+                    if emit is not None:
+                        self._emit_coder_line(emit, line)
+            except (ValueError, OSError):
+                # Pipe closed underneath us (kill/EOF race); keep what was read.
+                pass
+            finally:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+
+        readers = [
+            threading.Thread(target=_reader, args=(proc.stdout, out_chunks), daemon=True),
+            threading.Thread(target=_reader, args=(proc.stderr, err_chunks), daemon=True),
+        ]
+        for t in readers:
+            t.start()
+
         try:
-            stdout, stderr = proc.communicate(timeout=self.timeout_seconds)
+            proc.wait(timeout=self.timeout_seconds)
         except subprocess.TimeoutExpired as e:
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except (ProcessLookupError, OSError):
                 proc.kill()
-            try:
-                out, err = proc.communicate()
-                stdout = (e.stdout or e.output or "") + (out or "")
-                stderr = (e.stderr or "") + (err or "")
-            except Exception:
-                stdout = e.stdout or e.output or ""
-                stderr = e.stderr or ""
+            # The group is dead, so both pipes hit EOF; the bounded join keeps
+            # the timeout path from hanging on a detached grandchild that the
+            # kill never reached — partial output still beats no output.
+            for t in readers:
+                t.join(timeout=5)
             raise subprocess.TimeoutExpired(
                 cmd=argv,
                 timeout=self.timeout_seconds,
-                output=stdout,
-                stderr=stderr,
+                output="".join(out_chunks),
+                stderr="".join(err_chunks),
             ) from e
+
+        for t in readers:
+            t.join()
 
         return subprocess.CompletedProcess(
             args=argv,
             returncode=proc.returncode,
-            stdout=stdout,
-            stderr=stderr,
+            stdout="".join(out_chunks),
+            stderr="".join(err_chunks),
         )
+
+    def _emit_coder_line(self, emit: Callable[[str], None], line: str) -> None:
+        """Forward one raw output line to the caller's progress sink.
+
+        The line is forwarded verbatim (minus its newline, which the sink's
+        own printing supplies) — coder output is narration for a human, never
+        a wire format, and nothing here inspects or rewrites it. A sink that
+        fails must not kill the run it is watching, so errors are swallowed
+        with a debug log rather than propagated.
+        """
+        try:
+            emit(line.rstrip("\n"))
+        except Exception:
+            _logger.debug("%s: progress sink failed on coder output", self.binary, exc_info=True)
 
     @staticmethod
     def _combined_output_tail(stdout: str, stderr: str) -> str:
