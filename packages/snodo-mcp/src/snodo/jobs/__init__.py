@@ -284,6 +284,19 @@ class JobManager:
         jobs.sort(key=lambda j: j["created_at"], reverse=True)
         return jobs
 
+    def get_child_jobs(self, parent_job_id: str) -> list[dict]:
+        """Return all jobs spawned by parent_job_id, ordered chronologically.
+
+        Each child task job spawned by a plan carries ``parent_job`` pointing
+        to the orchestrating plan job.
+        """
+        children = [
+            j for j in self.list_jobs()
+            if j.get("parent_job") == parent_job_id
+        ]
+        children.sort(key=lambda j: j.get("created_at", 0))
+        return children
+
     @staticmethod
     def _summarize_job(job_id: str, state: dict, task: dict) -> dict:
         """Bounded one-job summary: which work it was, and how it ended.
