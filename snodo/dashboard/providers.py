@@ -716,7 +716,16 @@ class DashboardDataProvider:
             phase = f"{phase} [dim](blind: ADR 034)[/dim]"
         idle = row.idle_seconds(now)
         last = row.last_moved()
-        last_cell = f"[{idle_style(idle)}]{fmt_when(last, now)}[/]" if last is not None else "—"
+        if last is None:
+            last_cell = "—"
+        elif row.is_terminal():
+            # A finished run's silence is not a warning — it is finished, and
+            # four days of quiet is what that looks like. The warning colour is
+            # reserved for a run that is supposed to be alive and has gone
+            # quiet; spending it on settled work would mark everything.
+            last_cell = fmt_when(last, now)
+        else:
+            last_cell = f"[{idle_style(idle)}]{fmt_when(last, now)}[/]"
         return [
             phase,
             fmt_when(row.started_at, now),

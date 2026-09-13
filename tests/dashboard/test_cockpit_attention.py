@@ -249,6 +249,72 @@ def test_nothing_waiting_says_so_plainly(tmp_path, monkeypatch):
     asyncio.run(_run())
 
 
+def _cost_split_fixture(tmp_path, monkeypatch):
+    """Three finished runs: one completed, one failed, one with no cost record."""
+    snodo = tmp_path / ".snodo"
+    (snodo / "tasks").mkdir(parents=True)
+    (snodo / "jobs").mkdir(parents=True)
+    (snodo / "plans" / "main").mkdir(parents=True)
+    now = time.time()
+    _write_audit(tmp_path, [])
+    _write_task_state(tmp_path, "task_done", {
+        "task_id": "task_done", "status": "completed", "started_at": now - 100,
+        "usage": [{"timestamp": now - 50, "role": "coder", "cost": 1.0}],
+    })
+    _write_task_state(tmp_path, "task_failed", {
+        "task_id": "task_failed", "status": "failed", "started_at": now - 100,
+        "usage": [{"timestamp": now - 50, "role": "coder", "cost": 0.25}],
+    })
+    _write_task_state(tmp_path, "task_unknown", {
+        "task_id": "task_unknown", "status": "failed", "started_at": now - 100,
+        "usage": [],
+    })
+    (snodo / "plans" / "main" / "status.json").write_text(json.dumps({
+        "tasks": {
+            "task_done": {"status": "completed", "parent_task_ref": None, "depth": 0},
+            "task_failed": {"status": "failed", "parent_task_ref": None, "depth": 0},
+            "task_unknown": {"status": "failed", "parent_task_ref": None, "depth": 0},
+        }
+    }))
+    (snodo / "wave.json").write_text(json.dumps([]))
+
+    monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+    from snodo.infrastructure.session import SessionManager
+    mgr = SessionManager()
+    sess = mgr.create_session("producer", str(tmp_path))
+    (snodo / "state.json").write_text(json.dumps({
+        "current_mode": "producer",
+        "active_session": {"producer": sess.session_id},
+        "metadata": {},
+    }))
+    return tmp_path
+
+
+def test_cost_line_splits_known_spend_and_names_the_uncounted(tmp_path, monkeypatch):
+    """The cost line says what the spend bought — completed vs failed and the
+    ratio between them — and names the runs it could not count."""
+    import asyncio
+
+    project = _cost_split_fixture(tmp_path, monkeypatch)
+
+    async def _run():
+        app = SnodoDashboard(project_root=str(project))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            await pilot.pause(0.3)
+            text = _pane_plain(screen.query_one("#attention-pane"))
+
+            assert "$1.2500" in text  # known total: completed 1.00 + failed 0.25
+            assert "completed" in text and "$1.0000" in text
+            assert "failed" in text and "$0.2500" in text
+            assert "4.00:1" in text  # 1.00 completed / 0.25 failed
+            # The uncosted run is named, not counted as a zero on either side.
+            assert "1 run(s) without a recorded cost, not counted" in text
+
+    asyncio.run(_run())
+
+
 # ---------------------------------------------------------------------------
 # 3. One search finds a task, a job and an audit event, and moves the operator
 # ---------------------------------------------------------------------------
