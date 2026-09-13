@@ -9,6 +9,7 @@ Transport is handled by FastMCP (see transport.py).
 """
 
 import asyncio
+import functools
 import hashlib
 import logging
 import threading
@@ -89,6 +90,17 @@ class ProtocolMCPServer:
 
         # Tools whose handlers may block the event loop — dispatched async
         self._SLOW_TOOLS = {"validate_task", "run_tests", "run_plan"}
+
+        # Tools whose handlers already narrate their work and can accept a
+        # per-call progress sink (narration only — the response is identical
+        # whether or not a sink is supplied). validate_task reaches the
+        # validator runner's progress_cb. run_plan is NOT here: it starts the
+        # run as a job and returns a job_id at once, so the call has nothing
+        # to report — the job's stdout.log carries the narration as it is
+        # produced (get_job_logs, `snodo job logs --watch`). run_tests has no
+        # narration sink to route. A tool with nothing to narrate gets no
+        # sink plumbed to it, rather than a mechanism kept for its own sake.
+        self._PROGRESS_TOOLS = {"validate_task"}
 
         # Initialize backing MCPs
         self.workspace = WorkspaceMCP(project_root)
@@ -233,12 +245,23 @@ class ProtocolMCPServer:
             })
         return result
 
-    def call_tool(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Any:
+    def call_tool(
+        self,
+        name: str,
+        arguments: Optional[Dict[str, Any]] = None,
+        progress_sink: Optional[Any] = None,
+    ) -> Any:
         """Execute a tool call with WF1 enforcement.
 
         Args:
             name: Tool name
             arguments: Tool arguments
+            progress_sink: Optional narration callback (a single string). It
+                is offered only to the handlers in ``_PROGRESS_TOOLS``, which
+                already route existing progress through it; a handler's
+                result is identical whether or not one is supplied. The sink
+                is an observer: handlers wrap it so a failure in it cannot
+                take the run down (snodo.engine.progress.ProgressSink).
 
         Returns:
             Tool result
@@ -269,7 +292,9 @@ class ProtocolMCPServer:
             if instance is not None and func_name is not None:
                 current_attr = getattr(instance, func_name, None)
                 if current_attr is not handler:
-                    return current_attr(arguments)
+                    handler = current_attr
+            if progress_sink is not None and name in self._PROGRESS_TOOLS:
+                return handler(arguments, progress_sink=progress_sink)
             return handler(arguments)
 
         # Dispatch to backing MCP
@@ -279,13 +304,27 @@ class ProtocolMCPServer:
         """Return True if *name* is a tool whose handler may block the event loop."""
         return name in self._SLOW_TOOLS
 
-    async def call_tool_async(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Any:
+    def accepts_progress(self, name: str) -> bool:
+        """Return True if *name*'s handler narrates work to a progress sink."""
+        return name in self._PROGRESS_TOOLS
+
+    async def call_tool_async(
+        self,
+        name: str,
+        arguments: Optional[Dict[str, Any]] = None,
+        progress_sink: Optional[Any] = None,
+    ) -> Any:
         """Async wrapper for slow tools — runs the blocking work in a thread.
 
         FastMCP natively awaits async tool functions, so the event loop
-        stays free to serve other calls while the slow subprocess runs.
+        stays free to serve other calls while the slow subprocess runs. The
+        progress sink (if any) is handed to the handler and called from the
+        worker thread; the transport's emitter marshals notifications back
+        onto the event loop, so it works from whichever thread narrates.
         """
-        return await asyncio.to_thread(self.call_tool, name, arguments)
+        return await asyncio.to_thread(
+            functools.partial(self.call_tool, name, arguments, progress_sink)
+        )
 
     def _enforce_wf1(self, name: str, schema: dict) -> None:
         """Enforce WF1: mutating tools require a valid validation token.
@@ -373,8 +412,8 @@ class ProtocolMCPServer:
         except Exception as e:
             raise MCPError(f"Tool execution failed: {e}") from e
 
-    def _handle_validate_task(self, arguments: Dict[str, Any]) -> dict:
-        return self._core_handler.handle_validate_task(arguments)
+    def _handle_validate_task(self, arguments: Dict[str, Any], progress_sink: Optional[Any] = None) -> dict:
+        return self._core_handler.handle_validate_task(arguments, progress_sink=progress_sink)
 
     def _handle_dispatch_task(self, arguments: Dict[str, Any]) -> dict:
         return self._core_handler.handle_dispatch_task(arguments)
@@ -388,7 +427,11 @@ class CoreToolHandler:
     def __init__(self, server: "ProtocolMCPServer"):
         self.server = server
 
-    def handle_validate_task(self, arguments: Dict[str, Any]) -> dict:
+    def handle_validate_task(
+        self,
+        arguments: Dict[str, Any],
+        progress_sink: Optional[Any] = None,
+    ) -> dict:
         """Run the real validators and return one of four discriminated outcomes.
 
         The four validation outcomes are ``pass`` / ``escalate`` / ``blocker`` /
@@ -397,6 +440,10 @@ class CoreToolHandler:
         (see ADR 015).
         A validation token is minted ONLY on ``pass`` (or on ``escalate`` after a
         human has adjudicated via ``snodo authorize`` and the agent re-calls).
+
+        *progress_sink* (optional) receives the validator runner's existing
+        narration (started / finished / per-turn lines). It changes nothing
+        about the outcome, the token, or the response shape.
         """
         task_id = arguments.get("task_id")
         if not task_id:
@@ -454,6 +501,7 @@ class CoreToolHandler:
             current_mode=mode_id,
             session_id="",
             audit_log=server._audit_log,
+            progress_cb=progress_sink,
         )
         results.extend(protocol_results)
 
