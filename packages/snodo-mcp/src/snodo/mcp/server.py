@@ -792,6 +792,16 @@ class CoreToolHandler:
         except Exception as e:
             raise MCPError(f"Error reading task.json: {e}") from e
 
+        if task_data.get("plan_name"):
+            # A plan run is not a task and has no task spec to re-dispatch.
+            # Retrying it would re-run an entire plan under a retry path that
+            # means "the same task's spec, again" — start a fresh plan run
+            # instead (run_plan), which is a deliberate whole-plan action.
+            raise MCPError(
+                f"Job {job_id} is a plan run, not a task; retry_job re-dispatches "
+                f"a task. Start the plan again with run_plan."
+            )
+
         task_id = task_data.get("task_id", "")
         original_spec = task_data.get("description", "")
 

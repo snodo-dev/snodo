@@ -4,6 +4,7 @@ Extracted from cli/commands/run_cmd.py to isolate plan execution logic.
 """
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -648,6 +649,11 @@ def _execute_wave_tasks_concurrent(
             "no_isolation": getattr(args, "no_isolation", False),
             "cwd": project_root,
         }
+        # Name the plan-run job that spawned this task, when there is one, so
+        # list_jobs can tell a plan run from the tasks it spawned (Fixes #254).
+        parent_job = os.environ.get("SNODO_JOB_ID")
+        if parent_job:
+            task_args["parent_job"] = parent_job
         if is_retry:
             task_args["retry"] = task_id
         if getattr(args, "resume", None):

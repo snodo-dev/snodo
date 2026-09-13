@@ -125,6 +125,26 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `run_plan` starts a plan run as a background job and returns its job id
+  immediately, instead of blocking until the whole wave finishes. A wave takes
+  five to forty minutes and an MCP call caps at 180 seconds, so every real run
+  timed out while the run itself carried on — the caller was told the call
+  failed and had to infer from `list_jobs` that work was progressing. A plan
+  run is now a job like any other: it travels the same wrapper, is followed
+  with `get_job_status` / `list_jobs` / `get_job_logs`, gets the same liveness
+  reconciliation for a process that died without reporting, reaches the same
+  terminal statuses and archiving, and writes the same log the dashboard and
+  `snodo job logs --watch` already tail. A plan-run job spawns child task jobs,
+  so a listing must not blur parent and children: a plan row names its plan and
+  leaves `task_ref` empty, while a child task row names the plan-run job in
+  `parent_job`. `run_plan` still refuses a malformed plan synchronously, before
+  anything spawns; the per-task validator quorum and the token each dispatched
+  task consumes at its own boundary are unchanged; `get_plan` is unchanged; and
+  `retry_job` / `snodo job retry` refuse a plan-run job rather than re-running
+  a whole plan as though it were one task. The ability to block stays, but as
+  an explicit `wait=true` (with an optional `timeout`) that a test or script
+  opts into — never what a plain call does. (Fixes #254)
+
 - A recovery attempt is now told it resumes from partial work instead of
   being handed the whole task again. A recovery subtask's spec carried the
   original intent verbatim plus the accumulated failures, framed as "implement

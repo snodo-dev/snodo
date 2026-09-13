@@ -15,17 +15,18 @@ nothing here caches a plan or keeps a second copy of plan state.
 
 run_plan refuses, before executing anything, a plan that fails the same
 verifier ``snodo plan run`` uses (snodo.compiler.verifier.verify_plan_dir).
-The run itself spawns the CLI's plan-run path — the engine loop keeps its
-authority over every dispatched task; this opens no route around it. The
-mcp layer may not import the app layer, so the plan runs as a subprocess,
+The run itself is a background job: it spawns the CLI's plan-run path through
+the same job wrapper every dispatched unit uses, returns a job id at once, and
+is followed with get_job_status / list_jobs / get_job_logs. Blocking on the
+run was the defect — a wave outlives any MCP call, so a blocking run is
+reported as a timeout while the run continues (Fixes #254). The engine loop
+keeps its authority over every dispatched task; this opens no route around it.
+The mcp layer may not import the app layer, so the plan runs as a subprocess,
 mirroring how snodo.jobs.wrapper invokes the CLI.
 """
 
 import json
 import logging
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any, Dict
 
@@ -36,16 +37,13 @@ from snodo.mcp.planner import PlannerError
 
 logger = logging.getLogger(__name__)
 
-#: Bound on run output echoed back to the caller; the plan directory and
-#: job logs hold the full trail — a tool response must not scale with it.
-_MAX_OUTPUT_TAIL_LINES = 50
-
-#: Safety ceiling on one plan run. Real runs dispatch real coders; the
-#: ceiling exists only so a wedged subprocess cannot pin a tool call forever.
-_RUN_TIMEOUT_SECONDS = 3600.0
+#: Default ceiling on the opt-in blocking wait for a plan run. A wave takes
+#: minutes, not milliseconds, so this is deliberately generous: it exists to
+#: bound a test/script that asked to block, not to make blocking the norm.
+_DEFAULT_WAIT_SECONDS = 3600.0
 
 
-def _tail(text: str, lines: int = _MAX_OUTPUT_TAIL_LINES) -> str:
+def _tail(text: str, lines: int = 50) -> str:
     """Last *lines* lines of *text*."""
     return "\n".join(text.splitlines()[-lines:])
 
@@ -157,7 +155,7 @@ class PlanToolHandler:
         }
 
     def handle_run_plan(self, arguments: Dict[str, Any]) -> dict:
-        """Run a plan through the protocol loop.
+        """Start a plan run as a job and return its id, without blocking.
 
         The plan's structure is verified here, at the run boundary, rather
         than being merely encouraged earlier: a plan that does not conform
@@ -165,6 +163,15 @@ class PlanToolHandler:
         conformance check and exists so a plan can be checked while it is
         being authored; it is not an authorisation step and calling it is not
         a precondition for running.
+
+        Starting the run is all this does. It hands the CLI's plan-run path to
+        the job system and returns the job id at once — the caller follows it
+        with ``get_job_status`` / ``list_jobs`` / ``get_job_logs``, the same
+        machinery every other dispatched unit uses, while per-task detail stays
+        in ``get_plan``. Blocking here was the bug: a wave takes five to forty
+        minutes, an MCP call caps at 180 seconds, so a blocking run is reported
+        as a timeout while the run itself carries on — a caller told nothing
+        about work that is going fine.
 
         No validation token is required to reach this handler, and none is
         consumed. A plan run is not itself a mutation — it starts the CLI's
@@ -175,6 +182,11 @@ class PlanToolHandler:
         ``validate_task`` for one unrelated task standing in for authorisation
         of an entire plan, which gates nothing while refusing callers who have
         no coherent way to comply.
+
+        A caller that genuinely wants to block — a test, a script — may pass
+        ``wait`` true (with an optional ``timeout``); that is opt-in and never
+        the default. ``wait`` returns the run's final status once it ends, or
+        raises naming the still-running job if the wait itself expires.
         """
         from snodo.mcp.server import MCPError
 
@@ -189,56 +201,100 @@ class PlanToolHandler:
                 + ". Fix the plan, call validate_plan, then run_plan again."
             )
 
-        cmd = [
-            sys.executable, "-u", "-m", "snodo", "plan", "run", plan_name,
-            "--protocol", str(arguments.get("protocol") or ".snodo/protocol.yml"),
-        ]
+        from snodo.jobs import JobError, JobManager
+
+        task_args: Dict[str, Any] = {
+            "plan_name": plan_name,
+            "cwd": self.server.project_root,
+        }
+        protocol = arguments.get("protocol")
+        if protocol:
+            task_args["protocol"] = str(protocol)
         wave = arguments.get("wave")
         if wave is not None:
-            cmd.extend(["--wave", str(wave)])
+            task_args["wave"] = wave
         model = arguments.get("model")
         if model:
-            cmd.extend(["--model", str(model)])
+            task_args["model"] = str(model)
         if arguments.get("no_isolation"):
-            cmd.append("--no-isolation")
+            task_args["no_isolation"] = True
         if arguments.get("mock"):
-            cmd.append("--mock")
+            task_args["mock"] = True
 
-        env = {**os.environ, "SNODO_PROJECT_ROOT": self.server.project_root}
+        job_mgr = JobManager(self.server.project_root)
         try:
-            proc = subprocess.run(  # noqa: S603 - argv list (no shell); plan name/model are single argv elements, never interpreted
-                cmd,
-                cwd=self.server.project_root,
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=_RUN_TIMEOUT_SECONDS,
-            )
-        except subprocess.TimeoutExpired as e:
+            job_id = job_mgr.submit(task_args)
+        except (JobError, ValueError, OSError) as e:
             raise MCPError(
-                f"Plan run for '{plan_name}' exceeded {_RUN_TIMEOUT_SECONDS:.0f}s "
-                f"and was terminated; check plan status with get_plan."
+                f"Failed to start plan run for '{plan_name}': {e}"
             ) from e
-        except OSError as e:
-            raise MCPError(f"Failed to start plan run for '{plan_name}': {e}") from e
 
         self.server._audit("plan_run", {
             "op": "plan_run",
             "plan_name": plan_name,
-            "exit_code": proc.returncode,
+            "job_id": job_id,
             "mode": self.server._active_mode(),
         })
 
+        if arguments.get("wait"):
+            return self._wait_for_plan_run(
+                job_mgr, job_id, plan_name, validation, arguments,
+            )
+
+        return {
+            "plan": plan_name,
+            "status": "accepted",
+            "job_id": job_id,
+            "validation": validation,
+            "instruction": (
+                "Plan run started. Poll get_job_status(job_id) until its status "
+                "is completed / failed / unmerged; read output with "
+                "get_job_logs(job_id). Per-task detail stays in get_plan(plan_name)."
+            ),
+        }
+
+    def _wait_for_plan_run(
+        self, job_mgr, job_id: str, plan_name: str,
+        validation: dict, arguments: Dict[str, Any],
+    ) -> dict:
+        """Opt-in blocking wait for a plan-run job (used by tests/scripts)."""
+        from snodo.jobs import JobError
+        from snodo.mcp.server import MCPError
+
+        raw_timeout = arguments.get("timeout")
+        try:
+            timeout = (
+                float(raw_timeout) if raw_timeout is not None
+                else _DEFAULT_WAIT_SECONDS
+            )
+        except (TypeError, ValueError):
+            timeout = _DEFAULT_WAIT_SECONDS
+
+        try:
+            final = job_mgr.wait_for(job_id, timeout=timeout)
+        except JobError as e:
+            raise MCPError(
+                f"Plan run '{plan_name}' (job {job_id}) was still running after "
+                f"{timeout:.0f}s; follow it with get_job_status({job_id}) and "
+                f"get_plan('{plan_name}')."
+            ) from e
+
+        exit_code = final.get("exit_code")
         result: Dict[str, Any] = {
             "plan": plan_name,
-            "status": "completed" if proc.returncode == 0 else "failed",
-            "exit_code": proc.returncode,
+            "job_id": job_id,
+            "status": final.get("status", "unknown"),
+            "exit_code": exit_code,
             "tasks": self._task_statuses(plan_name),
             "validation": validation,
         }
-        if proc.returncode != 0:
-            result["output_tail"] = _tail(proc.stdout or "")
-            result["stderr_tail"] = _tail(proc.stderr or "")
+        if exit_code != 0:
+            result["output_tail"] = _tail(
+                job_mgr.get_logs(job_id, stream="stdout") or ""
+            )
+            result["stderr_tail"] = _tail(
+                job_mgr.get_logs(job_id, stream="stderr") or ""
+            )
         return result
 
     def tool_handlers(self) -> dict:
