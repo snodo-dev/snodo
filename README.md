@@ -10,248 +10,128 @@
 [![Coverage](https://img.shields.io/codecov/c/github/snodo-dev/snodo/main)](https://codecov.io/gh/snodo-dev/snodo)
 [![Security Policy](https://img.shields.io/badge/security-policy-brightgreen)](SECURITY.md)
 
-**AI-SDLC Protocol Engine** — a governance layer for AI-assisted software development.
+**Enforce your development process around whichever AI agent writes the code.**
 
 ![Three coder mechanisms — an in-process LLM client, a host CLI subprocess, and an opencode server in a Docker container — write into the same task worktree and converge on one identical gate and merge path.](https://raw.githubusercontent.com/snodo-dev/snodo/main/docs/assets/coder-paths.svg)
 
-You define a *protocol* — a YAML specification of operational modes, validators
-and constraints — and snodo executes tasks through it. Every task passes
-validation gates before and after execution; a disagreement policy decides
-whether the work proceeds, escalates to a human, or halts. What lands is what
-your standards admitted, and the hash-chained audit log says why.
+AI coding agents are fast, confident and non-deterministic. They will report a
+task as finished while a test is failing, while the change has drifted outside
+the task, or while it contradicts a decision your team recorded months ago.
+Asking the agent again does not settle any of that. snodo is built for the gap:
+you describe your development process as a *protocol*, and the engine enforces
+it around whichever agent writes the code.
 
-The coder is interchangeable and separate from the judge. An in-process LLM
-client, a host CLI running on your own subscription, or a containerised server
-all converge on the same gate and the same merge path.
+The protocol is a YAML file. It declares **modes** — the stages of your process,
+each with an explicit tool set — **validators** that must agree before work
+proceeds, and the **policy** for when they disagree. Enforcement is structural,
+not advisory: mutations are gated behind a signed validation token, a single
+`blocker` halts execution before any vote (so a critical finding cannot be
+outvoted), and every governance decision is written to a hash-chained audit log.
+snodo does not make an agent more reliable. It makes the process hold whether or
+not the agent cooperates.
 
-**Preprint:** [*Specifying AI-SDLC Processes: A Protocol Language for Human-Agent Boundaries*](https://arxiv.org/abs/2606.20615) — arXiv:2606.20615.
+That makes snodo an **AI-SDLC protocol engine**: a governance layer over the
+software development lifecycle, for teams where AI agents are first-class
+contributors. The coder is interchangeable and separate from the judge — an
+in-process LLM client, a host CLI authenticated against your own subscription,
+or a containerised server all converge on the same gate and the same merge path.
 
-## Project status
-
-Actively-developed research implementation (beta).
-
-| | |
-|---|---|
-| Code | ~39,400 lines across 5 packages (`snodo-core`, `snodo-tools`, `snodo-foundation`, `snodo-engine`, `snodo-mcp`) |
-| Complexity | average cyclomatic complexity **A (4.9)** |
-| Lint / architecture | `ruff` clean; package layering enforced in CI by `import-linter` |
-| Python | 3.12 and 3.13 (CI matrix) |
-
-The enforcement invariants — token integrity, capability boundaries,
-non-overridable blockers, audit completeness — are verified by property-based
-tests over randomized inputs.
-
-## Install
+## Install and first run
 
 ```bash
 pip install snodo
-```
-
-From source (a [`uv`](https://docs.astral.sh/uv/) workspace):
-
-```bash
-git clone https://github.com/snodo-dev/snodo.git
-cd snodo
-uv sync --all-extras
-```
-
-You need Python 3.12+, a model for the **validators** (always routed through
-LiteLLM), and a **coder**, which need not be the same thing. Anthropic, OpenAI,
-Google, OpenRouter, DeepSeek and Cloudflare Workers AI have built-in provider
-configuration; any other OpenAI-compatible endpoint works by declaring a
-provider block with `base_url` and `litellm_provider: openai` — Ollama, vLLM,
-LM Studio, `llama.cpp`, self-hosted gateways. A local endpoint that needs no
-key is not asked for one. `--coder opencode-cli` and `--coder agy` delegate
-code generation to a CLI authenticated against your own subscription, so no
-provider key is spent writing code. `--mock` needs nothing at all.
-
-## Quickstart
-
-```bash
-snodo init --template solo                              # writes .snodo/protocol.yml
-snodo config add anthropic sk-ant-...                   # store a provider key
-snodo config set model claude-sonnet-4                  # default model
-snodo ready                                             # is this project set up for the protocol?
-snodo run "implement a hello world function"
-```
-
-A key already exported in your environment (`ANTHROPIC_API_KEY` and friends) is
-auto-detected. To try the loop without spending anything, add `--mock`.
-
-`snodo ready` is worth running first on an existing repository: it checks,
-deterministically and without an LLM, whether every artefact the protocol
-demands is **committed** — decision records, a resolvable test command, coder
-configs, paths cited in criteria — and scores what is missing by how cheap it
-is to fix. Task worktrees only see `HEAD`, so "present on disk" is not enough.
-
-## Protocol language
-
-| Concept | Description |
-|---|---|
-| **Mode** | An operational stage with a declared set of tools and validators. Disjoint tool sets enforce separation of duties — a producer cannot merge, a reviewer cannot edit. |
-| **Validator** | An evaluation applied to a task. Has a `validator_type` (security, architecture, quality, conventions, planning…), an `evaluation_phase` (`pre_execute` or `post_execute`), and criteria — LLM prompt strings, or tooling config for deterministic checks. |
-| **Disagreement policy** | How validator results combine: `unanimous`, `majority`, `quorum` (default 2/3), or `any`. |
-| **Severity** | A result is `pass`, `warn` or `blocker`. A blocker halts regardless of policy. |
-| **Constraint** | A rule enforced over execution artifacts through a predicate framework — deterministic, not judged. |
-| **Transition** | A declarative event-to-mode mapping documenting intended handoffs. |
-
-Seven templates ship with snodo:
-
-| Template | Modes | For |
-|---|---|---|
-| `solo` | producer | A single developer with full access |
-| `team` | producer, reviewer, planner | Three-mode team workflow |
-| `2+n` | producer, reviewer | Paper reference configuration |
-| `greenfield` | plan, decide, scaffold, build | A new project, from decisions to first code |
-| `intent` | producer | Intent-driven authoring |
-| `feature-warden` | producer | Feature development with a strict review gate |
-| `bugfix-surgeon` | producer | Narrow, surgical defect work |
-
-## Coders
-
-The coder writes; snodo governs, gates, and records. Which one you pick does
-not change what is enforced.
-
-| `--coder` | Mechanism | Needs | Auth |
-|---|---|---|---|
-| `litellm` *(default)* | In-process completions via LiteLLM | built-in | provider API keys |
-| `opencode-cli` | Host `opencode run` | `opencode` on PATH | `opencode auth login` |
-| `agy` | Antigravity CLI (`agy -p`) | `agy` on PATH | `agy login` |
-| `opencode` | OpenCode server in Docker over HTTP | Docker, `opencode:latest` | container env |
-| `mock` | Deterministic stub | nothing | none |
-
-Three things about them are worth knowing up front:
-
-- **`-m` sets the *judging* model, not the coder's.** Validators and the
-  classifier run on it. Host CLIs keep their own model catalogs; to pin a
-  coder's model, namespace it — `--coder agy --model agy/gemini-2.5-pro`.
-- **In-place coders own their commit.** `opencode`, `opencode-cli` and `agy`
-  edit the worktree directly and commit, so post-execute validators judge the
-  exact change. Any attempt to touch `.snodo/` halts as a blocker (ADR 027).
-- **Selection order:** `--mock`, then `--coder`, then a mode's `coder:` field,
-  then a model prefix (`agy/`, `opencode-cli/`, `claude`, `gpt`…), then
-  `litellm`.
-
-To add one, subclass `SubprocessCoderAdapter`, set `binary`, `model_prefix` and
-`install_hint`, implement `_build_argv`, and register it in `CODER_REGISTRY`
-(`snodo/coders/__init__.py`) — that alone exposes it to `--coder`, enables
-prefix routing, and enrolls it in the adapter conformance suite.
-
-## Commands
-
-`snodo <command> --help` is authoritative; full reference at
-[docs.snodo.dev](https://docs.snodo.dev).
-
-| | |
-|---|---|
-| `init` | Scaffold `.snodo/` from a template |
-| `run` | Execute a task, a plan (`--plan`), or a single wave (`--wave`). `--background`, `--resume`, `--retry`, `--from-pr`, `--interactive`, `--no-isolation` |
-| `ready` | Score method-scaffolding readiness against the protocol |
-| `plan` | `list`, `status`, `create`, `validate`, `add-wave`, `add-task`, `run`, `delete` |
-| `status` / `mode` | Active session and mode; `mode change` to switch |
-| `session` | `list`, `show`, `new`, `switch`, `delete`, `prune` |
-| `authorize` | Adjudicate escalated disagreements and `set_model` proposals |
-| `validate` | Check the protocol against the well-formedness rules |
-| `audit verify` | Verify the hash chain |
-| `job` / `logs` / `meta` | Background jobs: `list`, `status`, `logs`, `wait`, `cancel`; log streaming; usage |
-| `task` / `worktree` | Task branches and the git worktrees used for isolation |
-| `recon` | Fan out read-only agents to answer a question about the codebase |
-| `models` / `config` | Model discovery; keys and settings |
-| `serve` | Run the protocol as an MCP server (stdio or SSE) |
-| `cloud` | `connect`, `disconnect`, `status` for audit sync |
-| `dashboard` | TUI (`snop`) |
-| `agent` / `sandbox` / `install` / `uninstall` | Agent memory; Docker sandbox; Claude Desktop MCP entries |
-
-Plans are authored, not generated: `plan create` scaffolds one empty wave, and
-you add waves and tasks (ids are `<wave>.<seq>_<name>`, e.g. `1.1_models`) or
-edit `plan.yml` directly. A plan is re-verified on every load. See
-[docs/runbooks/hand-authored-plan.md](docs/runbooks/hand-authored-plan.md).
-
-Retrying a failed task keeps its specification. `snodo run --retry <task_id>`
-re-runs the task against the spec on record — that bare form is what the CLI
-prints after a failure, so pasting it is safe. `--append-spec "…"` adds guidance
-on top of that spec (a positional description does the same); `--replace-spec
-"…"` replaces it, which is the only retry that discards anything, and the
-discarded spec stays readable with `snodo task show <task_id>`.
-
-## Architecture
-
-- **Mode-based capability separation.** Each mode declares its tools. WF1
-  well-formedness forbids an approval-conferring tool from appearing in two
-  modes, so separation of duties is structural rather than advisory.
-- **Validator gates with disagreement policies.** `pre_execute` validators run
-  before the coder, `post_execute` after. Results combine under the declared
-  policy; a blocker halts immediately and cannot be overridden.
-- **JWT validation tokens.** Agreement issues a signed token, and mutating MCP
-  tools require a valid one — validation is non-overridable at the capability
-  boundary, not just in the engine.
-- **Hash-chained audit log.** Append-only, tamper-evident, and the record of
-  every governance decision and verification. Optionally synced to snodo cloud.
-- **Session resumability.** State is checkpointed under `$SNODO_HOME/sessions/`.
-  Resume with `snodo run --resume <session_id>`; escalations are adjudicated
-  with `snodo authorize` and the session continues.
-- **Coder adapter pattern.** The backend sits behind a `CoderAdapter`
-  interface, so a new one plugs in without touching the engine.
-- **LangGraph execution engine.** The protocol compiles to a `StateGraph` built
-  dynamically from the YAML — any arrangement of modes and validators.
-- **Modular packages.** `snodo-core` (kernel: config, predicates, sandbox) →
-  `snodo-tools` (workspace, git, shell, code hosts) → `snodo-foundation`
-  (infrastructure, compiler, protocols) → `snodo-engine` (engine, validators,
-  coders) → `snodo-mcp` (MCP servers, recon, jobs), with the root `snodo`
-  package as CLI and dashboard. Layering is enforced in CI by `import-linter`.
-
-## Configuration
-
-Configuration lives in `~/.snodo/config.yml` (`$SNODO_HOME` overrides the
-location). Manage it with `snodo config` rather than editing by hand:
-
-```bash
+snodo init --template solo
 snodo config add anthropic sk-ant-...
-snodo config set model deepseek/deepseek-v4
-snodo config show
+snodo run "add a hello() function that returns the string 'world', with a test"
 ```
 
-```yaml
-model: deepseek/deepseek-v4                   # default for all roles
+Python 3.12+. A key already exported in your environment (`ANTHROPIC_API_KEY`
+and friends) is auto-detected. `snodo run ... --mock` needs no key and no
+network at all.
 
-llm:
-  coder:
-    max_tokens: 64000
-    temperature: 0.1
-  validator:
-    model: openai/@cf/google/gemma-4          # role-specific override
-    max_tokens: 25000
-  recon:
-    num_agents: 2
+Make an initial commit before the first run: each task executes in a git
+worktree on a branch off `HEAD`, and on a repository with no commits snodo
+refuses to run rather than silently dropping isolation (ADR 025).
 
-engine:
-  max_subtask_depth: 3
-  max_session_age_days: 30
-  token_ttl_seconds: 1200
+Before spending anything on an existing repository, run `snodo ready`. Without
+an LLM, it checks whether the artefacts the protocol expects — decision records,
+a resolvable test command, coder configs — are **committed**, and scores what is
+missing by how cheap it is to fix. Task worktrees only see `HEAD`, so "present
+on disk" is not enough. See the [runbook](docs/runbook.md) for readiness, the
+full configuration surface, and the command reference.
 
-providers:
-  anthropic:
-    api_key: sk-ant-...
-    api_key_env: ANTHROPIC_API_KEY            # injected at runtime when a matching model runs
-  ollama:
-    base_url: https://ollama.com/v1
-    api_key_env: OLLAMA_API_KEY
-    litellm_provider: openai                  # route ollama/<model> through the OpenAI protocol
+## What a run looks like
 
-cloud:
-  api_url: https://api.snodo.dev
-  sync_enabled: true
+A project initialised from the `solo` template with its test command declared
+(`--test-command "python -m pytest -q"`), then:
+
+```bash
+$ snodo run "add a hello() function that returns the string 'world', with a test" --mock
+
+✓ Loaded protocol: Solo Developer Protocol
+  Validators: security, architecture, quality, meta-spec, acceptance
+  Policy: unanimous
+
+  Validating (pre-execute): security, architecture, meta-spec
+    meta-spec: finished
+    architecture: finished
+    security: finished
+  Coder dispatched
+  Coder returned (3 artifact(s))
+  Post-validating: quality, acceptance
+    acceptance: finished
+    quality: finished
+✓ Verified merge for task/task_ca8fd940fe5d/add-a-hello-function-that: task
+  task_ca8fd940fe5d verified at commit 3e144ca (python -m pytest -q).
+
+task_ca8fd940fe5d  resolved  (depth=0)
 ```
 
-`litellm_provider: openai` is what makes an arbitrary compatible endpoint work:
-snodo rewrites `ollama/<model>` to `openai/<model>` and sends it to `base_url`.
-Omit `api_key_env` for a local server that needs no key.
+`--mock` swaps in a deterministic stub coder, so no key is spent and no network
+call is made. The gates are not stubbed: the post-execute
+`quality` validator ran this project's declared test command
+(`python -m pytest -q`) against the change and passed it. Replace `--mock` with
+a configured provider or `--coder opencode-cli` and the same gates judge the
+real change. The transcript is trimmed for length; the protocol language is in
+the [protocol reference](docs/protocol.md) and the coder backends are in
+[Coder backends](docs/coders.md).
 
-Read from the environment, never stored in the config file: `SNODO_HOME`,
-`SNODO_TOKEN_SECRET` (HMAC secret for token signing; random per process by
-default), `GITHUB_TOKEN` (for `--from-pr`), and any `<PROVIDER>_API_KEY`.
+## Project status
+
+Actively-developed research implementation (beta). The enforcement invariants —
+token integrity, capability boundaries, non-overridable blockers, audit
+completeness — are verified by property-based tests over randomised inputs.
+Measured size, complexity and the CI gates are on the [docs home](docs/index.md).
+
+Three honest boundaries, so you meet them here rather than an hour in:
+
+- **The `opencode` coder paths are experimental.** `litellm` (the default),
+  `agy` and `mock` are supported. The built-in `litellm` coder exists so snodo
+  works with nothing else installed; if an expert CLI is available, prefer it.
+- **The repository is trusted, not sandboxed.** snodo runs your test and build
+  commands, and a protocol file is executable input, like a `Makefile` or a CI
+  config. [ADR 014](docs/decisions/014-trusted-repository-threat-model.md) is the
+  threat model; do not point it at untrusted code.
+- **This is a preprint-stage research artifact.** The paper is under review;
+  treat the code as a working implementation of the ideas, not a finished
+  product.
+
+## Where to go next
+
+| Page | What it covers |
+|---|---|
+| [Protocol reference](docs/protocol.md) | The full `protocol.yml` language: modes, validators, constraints, disagreement policies, well-formedness, templates |
+| [Coder backends](docs/coders.md) | Every `--coder`, how selection works, and how adapters are added |
+| [Runbook](docs/runbook.md) | Install, configure, the CLI reference, MCP serving, troubleshooting |
+| [Architecture](docs/architecture.md) | How enforcement works end to end, the package map, the invariant-to-mechanism table |
+| [Machine interface](docs/machine-interface.md) | The versioned `--json` contract and validation-outcome exit codes |
+| [Authoring a plan](docs/authoring-a-plan.md) | The contract for hand- and orchestrator-authored multi-wave plans |
+| [Design decisions](docs/decisions/README.md) | Every ADR, from PyJWT over custom HMAC to module-scoped governance |
+| [Docs home](https://docs.snodo.dev) | The published site |
 
 ## Research
+
+**Preprint:** [*Specifying AI-SDLC Processes: A Protocol Language for Human-Agent Boundaries*](https://arxiv.org/abs/2606.20615) — arXiv:2606.20615.
 
 > Prifti, Y. (2026). *Specifying AI-SDLC Processes: A Protocol Language for
 > Human-Agent Boundaries.* arXiv:2606.20615.
@@ -269,15 +149,8 @@ default), `GITHUB_TOKEN` (for `--from-pr`), and any `<PROVIDER>_API_KEY`.
 }
 ```
 
-Empirical studies live in `studies/`:
-
-```bash
-uv sync --extra studies
-make studies
-```
-
-Architecture decisions are recorded in
-[docs/decisions/](docs/decisions/README.md).
+Empirical studies live in [`studies/`](studies/), and the paper's claims are
+mapped to code and tests in [Research](docs/research/README.md).
 
 ## Contributing
 

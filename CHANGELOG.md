@@ -11,6 +11,21 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The README is now a two-minute introduction instead of a 289-line manual. A
+  reader arriving at the repository met the protocol language, the coder
+  catalogue, the full command reference, the architecture and the configuration
+  surface before learning what the project was for. The introduction states the
+  problem, shows the shortest install-to-run path, and gives one real
+  reproducible transcript: four sentences of what snodo is, a mock run whose
+  gates are not mocked, and honest status and threat-model boundaries up front,
+  including that the container `opencode` path is experimental. The reference
+  material did not disappear — it moved to the pages that own it, each leaving a
+  sentence and a link where it was. The configuration surface had no home and
+  now lives in the runbook; `snodo ready`, the retry/`--append-spec` semantics
+  and the command map moved there too. `docs/index.md` became the authoritative
+  hub rather than an overflow bin, carrying the measured project status
+  (code size, `radon` complexity, the CI gates) and the coder-backend summary.
+
 - `snodo survey` now reads a governed repository instead of refusing to look at
   one. Survey printed "This repository already has a protocol" and exited with
   the code that means something broke inside the tool, so a caller could not
