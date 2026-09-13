@@ -62,6 +62,7 @@ release:
 	}
 	uv run ruff check . || { echo "Lint failed. Aborting release."; exit 1; }
 	uv run lint-imports || { echo "Import contracts broken. Aborting release."; exit 1; }
+	uv run python scripts/enforce_file_length.py || { echo "File-length ratchet failed. Aborting release."; exit 1; }
 	$(MAKE) bump PART=$(PART)
 	@# Read the version in the SHELL, after bump has run. A make-level eval here
 	@# would be expanded when make expands this recipe — before any line of it runs —
@@ -140,7 +141,8 @@ deploy-docs: docs
 # directory it is run from, so agent worktrees can gate concurrently without
 # clobbering each other's checkout or venv.
 #
-#   make gate        the fast loop: non-e2e suite, ruff, import contracts
+#   make gate        the fast loop: non-e2e suite, ruff, import contracts,
+#                    file-length ratchet
 #   make gate-ci     what CI decides on: full suite with coverage
 #   make gate-init   one-time (implied by the above): create the remote repo
 #
@@ -172,7 +174,7 @@ _gate-push:
 	@git push -q -f $(GATE_URL) HEAD:refs/heads/main
 
 gate: gate-init _gate-push
-	@ssh $(GATE_HOST) '$(GATE_PATH); cd $(GATE_DIR) && uv sync --all-extras -q && uv run pytest tests/ -q -n $(GATE_JOBS) && uv run ruff check . && uv run lint-imports'
+	@ssh $(GATE_HOST) '$(GATE_PATH); cd $(GATE_DIR) && uv sync --all-extras -q && uv run pytest tests/ -q -n $(GATE_JOBS) && uv run ruff check . && uv run lint-imports && uv run python scripts/enforce_file_length.py'
 
 gate-ci: gate-init _gate-push
-	@ssh $(GATE_HOST) '$(GATE_PATH); cd $(GATE_DIR) && uv sync --all-extras -q && uv run pytest tests/ -m "" -n $(GATE_JOBS) --tb=short --timeout=60 --cov --cov-report=term-missing --cov-fail-under=75 && uv run ruff check . && uv run lint-imports'
+	@ssh $(GATE_HOST) '$(GATE_PATH); cd $(GATE_DIR) && uv sync --all-extras -q && uv run pytest tests/ -m "" -n $(GATE_JOBS) --tb=short --timeout=60 --cov --cov-report=term-missing --cov-fail-under=75 && uv run ruff check . && uv run lint-imports && uv run python scripts/enforce_file_length.py'
