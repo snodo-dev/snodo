@@ -26,6 +26,7 @@ are compared on equal footing.
 """
 
 import json
+import io
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -130,7 +131,8 @@ def _drive_subprocess_cli_adapter(name: str, workspace: Path, spec: TaskSpec):
         proc = mock.MagicMock()
         proc.pid = 12345
         proc.returncode = 0
-        proc.communicate.return_value = ("", "")
+        proc.stdout = io.StringIO("")
+        proc.stderr = io.StringIO("")
         return proc
 
     with mock.patch("subprocess.Popen", side_effect=fake_popen):

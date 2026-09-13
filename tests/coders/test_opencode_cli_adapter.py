@@ -11,6 +11,7 @@ Covers:
 - adapter registration
 """
 
+import io
 import subprocess
 import tempfile
 from pathlib import Path
@@ -83,7 +84,8 @@ class TestWorkspaceResolution:
             proc = Mock()
             proc.pid = 12345
             proc.returncode = 0
-            proc.communicate.return_value = ("Success", "")
+            proc.stdout = io.StringIO("Success")
+            proc.stderr = io.StringIO("")
             return proc
 
         spec = TaskSpec(description="test task", constraints=[])
@@ -243,7 +245,8 @@ class TestSubprocessInvocation:
         mock_proc = Mock()
         mock_proc.pid = 12345
         mock_proc.returncode = 0
-        mock_proc.communicate.return_value = ("", "")
+        mock_proc.stdout = io.StringIO("")
+        mock_proc.stderr = io.StringIO("")
 
         with patch.object(adapter, "_build_prompt", return_value="test prompt"):
             with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
@@ -280,7 +283,8 @@ class TestSubprocessInvocation:
         mock_proc = Mock()
         mock_proc.pid = 12345
         mock_proc.returncode = 1
-        mock_proc.communicate.return_value = ("", "something went wrong")
+        mock_proc.stdout = io.StringIO("")
+        mock_proc.stderr = io.StringIO("something went wrong")
 
         with patch("subprocess.Popen", return_value=mock_proc):
             with pytest.raises(Exception, match="opencode run failed"):
