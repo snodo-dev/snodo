@@ -130,11 +130,19 @@ class TestPlanningSurface:
             with pytest.raises(MCPError, match="Unknown tool"):
                 producer_server.call_tool(tool, {"plan_name": "p", "intent": "i"})
 
-    def test_run_plan_requires_validation_token(self, server, project_dir):
-        """WF1 holds for the plan run as it does for dispatch."""
+    def test_run_plan_needs_no_validation_token(self, server, project_dir):
+        """A plan run is not a mutation: WF1 is satisfied per task, inside the run.
+
+        Gating here would have meant a token issued by validate_task, for one
+        unrelated task, standing in for authorisation of a whole plan. The plan
+        below is malformed, so it is refused on its own conformance - never for
+        want of a token.
+        """
         _write_broken_plan(project_dir, name="tokenless")
-        with pytest.raises(MCPError, match="WF1 violation"):
+        with pytest.raises(MCPError) as excinfo:
             server.call_tool("run_plan", {"plan_name": "tokenless"})
+        assert "WF1" not in str(excinfo.value)
+        assert "failed validation" in str(excinfo.value)
 
 
 # === Propose → structure ===
@@ -236,7 +244,6 @@ class TestRunPlanGate:
         """Tool surface → same authoritative plan-run path, structured result back."""
         _propose(server, name="runner")
         _add_task(server, "runner", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
-        _token(server)  # run_plan consumes its single-use token at the boundary
 
         fake_proc = MagicMock()
         fake_proc.returncode = 0

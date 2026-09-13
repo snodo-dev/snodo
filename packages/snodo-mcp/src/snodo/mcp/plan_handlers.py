@@ -157,17 +157,26 @@ class PlanToolHandler:
         }
 
     def handle_run_plan(self, arguments: Dict[str, Any]) -> dict:
-        """Run an approved plan through the protocol loop.
+        """Run a plan through the protocol loop.
 
-        The plan must pass verification first — re-checked here at the run
-        boundary, not merely encouraged earlier. A failing plan raises
-        before anything spawns. Mutating-tool WF1 already requires a
-        validation token to reach this handler at all; that token is
-        consumed here, the point where the authorisation becomes
-        irreversible work (mirroring dispatch_task).
+        The plan's structure is verified here, at the run boundary, rather
+        than being merely encouraged earlier: a plan that does not conform
+        raises before anything spawns. ``validate_plan`` performs the same
+        conformance check and exists so a plan can be checked while it is
+        being authored; it is not an authorisation step and calling it is not
+        a precondition for running.
+
+        No validation token is required to reach this handler, and none is
+        consumed. A plan run is not itself a mutation — it starts the CLI's
+        plan-run path, and every task that path dispatches passes the engine's
+        validator quorum and consumes its own token at its own dispatch
+        boundary. WF1 therefore holds per task, where irreversible work
+        actually begins. Gating here would have meant a token issued by
+        ``validate_task`` for one unrelated task standing in for authorisation
+        of an entire plan, which gates nothing while refusing callers who have
+        no coherent way to comply.
         """
         from snodo.mcp.server import MCPError
-        from snodo.infrastructure.tokens import TokenStoreError
 
         plan_name = str(arguments.get("plan_name") or "")
         plan_dir = self._plan_dir(plan_name)
@@ -212,27 +221,6 @@ class PlanToolHandler:
             ) from e
         except OSError as e:
             raise MCPError(f"Failed to start plan run for '{plan_name}': {e}") from e
-
-        # Single-use: consume the token at the run boundary — the point where
-        # the authorisation starts irreversible work (same contract as
-        # dispatch_task).
-        with self.server._token_lock:
-            token = self.server._validation_token
-            if token is not None:
-                try:
-                    consumed = self.server.token_issuer.consume_token(token)
-                except TokenStoreError as e:
-                    raise MCPError(
-                        f"run_plan failed: token store unavailable: {e}"
-                    ) from e
-                self.server._validation_token = None
-            else:
-                consumed = False
-        if consumed:
-            self.server._audit("token_consumed", {
-                "op": "token_consumed",
-                "plan_name": plan_name,
-            })
 
         self.server._audit("plan_run", {
             "op": "plan_run",
