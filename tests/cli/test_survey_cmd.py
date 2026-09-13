@@ -95,12 +95,19 @@ class TestSurveyCommand:
                 os.chdir(old_cwd)
                 sys.stdout = old_stdout
 
-    def test_survey_refuses_existing_protocol(self):
-        """Test that survey refuses to run on repos with existing protocol."""
+    def test_survey_fails_when_the_protocol_cannot_be_loaded(self):
+        """A protocol that cannot be parsed is a failure: there is nothing to compare.
+
+        This is the one governed case that still exits non-zero. An *unreadable*
+        protocol is not "a repository that is governed" — reporting it with the
+        pass code would hide a real fault, and reporting a healthy governed
+        repository with the fault code was the misclassification this command
+        used to make (see tests/cli/test_survey_drift_cmd.py).
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
 
-            # Create .snodo directory with protocol
+            # Create .snodo directory with an unloadable protocol
             snodo_dir = project_root / ".snodo"
             snodo_dir.mkdir()
             (snodo_dir / "protocol.yml").write_text("protocol: exists")
@@ -118,7 +125,6 @@ class TestSurveyCommand:
                 from types import SimpleNamespace
                 args = SimpleNamespace(json=False)
 
-                # Should exit with error
                 exit_code = survey_command(args)
                 assert exit_code == 4  # EXIT_INTERNAL_ERROR
             finally:
