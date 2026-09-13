@@ -29,7 +29,11 @@ A manifest inside a dotted directory (for example .opencode/) is tooling
 configuration, not a module of the product, and is excluded. Files under
 dependency and build trees (node_modules, dist, vendor, Pods, ...) are
 vendored, not the repository's own source, and are excluded from language
-detection.
+detection. The same rule covers generated output a tool writes without being
+asked — a rendered coverage report, a test report, a generated site — because
+output is not source whatever language its files happen to be written in. The
+directory that is excluded is the one the tool owns; a hand-written
+stylesheets or markup directory is not excluded for containing markup.
 
 Division of labour: everything above is arithmetic and runs unconditionally.
 Two questions are not arithmetic and go to a judge only when one is provided:
@@ -97,27 +101,45 @@ _WORKSPACE_MARKERS: List[Tuple[str, str]] = [
 # Manifest file names that mark a module boundary when found nested in the tree
 _MODULE_MANIFEST_NAMES: Set[str] = {name for name, _ in _WORKSPACE_MARKERS}
 
-# Directory names that are dependency, build, or cache trees — never the
-# repository's own source.  Anything starting with "." is excluded too
-# (hidden tooling directories such as .opencode, .venv, .git).
-_EXCLUDED_DIR_NAMES: Set[str] = {
+# Directory names that are never the repository's own source.  The rule is
+# one rule, not a list of incidents: a directory whose contents a tool
+# generated from other inputs — an installed dependency tree, compiled or
+# bundled build output, a rendered coverage or test report, a cache or a
+# virtual environment — is output, and the repository is not written in it.
+# A coverage report full of HTML and CSS is therefore not markup this
+# repository is written in, while hand-written markup elsewhere still is.
+# Anything starting with "." is excluded too (hidden tooling directories
+# such as .opencode, .venv, .git).
+_GENERATED_DIR_NAMES: Set[str] = {
+    # Installed dependency trees
     "node_modules",
     "bower_components",
     "vendor",
+    "Pods",      # iOS dependency tree, installed alongside the app it serves
+    "Carthage",  # iOS dependency checkouts, same
+    # Compiled, bundled or otherwise generated build output
     "dist",
     "build",
     "out",
     "target",
+    "_build",
+    "_site",
+    # Reports a tool renders from other files, HTML and CSS included
+    "coverage",
+    "htmlcov",
+    "lcov-report",
+    "test-results",
+    "test-reports",
+    "allure-results",
+    # Caches and virtual environments
     "venv",
     "__pycache__",
-    "Pods",      # iOS dependency tree, installed alongside the app it serves
-    "Carthage",  # iOS dependency checkouts, same
 }
 
 
 def _is_excluded_dir(name: str) -> bool:
     """A directory whose contents are not the repository's own source."""
-    return name.startswith(".") or name in _EXCLUDED_DIR_NAMES
+    return name.startswith(".") or name in _GENERATED_DIR_NAMES
 
 
 def _iter_own_source_dirs(root: Path):
@@ -580,6 +602,14 @@ def _discover_module_boundaries(project_root: Path) -> List[Tuple[str, List[str]
 # about (a handful of scripts is not a boundary).
 _CANDIDATE_MIN_SOURCE_FILES = 25
 
+# A directory that carries its own test suite is a work in its own right,
+# however few source files it holds: a test tree is the signature of a
+# self-contained boundary, so a manifest-less directory of hand-written
+# pages with its own tests is offered for judgement even below the density
+# threshold.  Fewer than the threshold and no tests is loose files, not a
+# boundary.
+_TEST_DIR_NAMES: Set[str] = {"tests", "test", "spec", "specs", "__tests__"}
+
 
 def _count_own_source_files(dirpath: Path, skip_dirs: Optional[Set[Path]] = None) -> int:
     """Count files with a recognised source extension, pruning vendored trees.
@@ -604,6 +634,21 @@ def _count_own_source_files(dirpath: Path, skip_dirs: Optional[Set[Path]] = None
             and Path(name).suffix.lower() in _EXT_TO_LANGUAGES
         )
     return count
+
+
+def _has_own_test_suite(dirpath: Path) -> bool:
+    """True when a directory holds a test tree of the repository's own source.
+
+    Only the test-directory convention is consulted; a source file that
+    happens to be named like a test is not enough to call a handful of loose
+    files a boundary.  The tests count only if they are own source, so a
+    vendored test tree cannot make its parent look like one.
+    """
+    for name in _TEST_DIR_NAMES:
+        test_dir = dirpath / name
+        if test_dir.is_dir() and _count_own_source_files(test_dir) > 0:
+            return True
+    return False
 
 
 # Declarations a directory may make in formats the deterministic pass does
@@ -633,11 +678,15 @@ def _discover_undeclared_candidates(
     project_root: Path,
     claimed_paths: Set[str],
 ) -> List[Tuple[str, List[str]]]:
-    """Source-dense directories that declare no manifest this walk recognises.
+    """Source-bearing directories that declare no manifest this walk recognises.
 
     Only applies when the root itself declares no manifest: a root package
     declaration covers its whole tree, and the directories inside it are
     that package's internals, not sibling boundaries.
+
+    A directory qualifies when it is source-dense or carries its own test
+    suite, so a small hand-written work with tests is offered for judgement
+    rather than dropped for being small.
 
     The walk skips dependency/build/hidden trees and directories already
     claimed as modules. The first directory that qualifies is recorded and
@@ -653,7 +702,11 @@ def _discover_undeclared_candidates(
         dirpath = project_root / rel if rel else project_root
         if rel and rel in claimed_paths:
             return
-        if rel and _count_own_source_files(dirpath, skip_dirs=claimed_abs) >= _CANDIDATE_MIN_SOURCE_FILES:
+        if rel and (
+            _count_own_source_files(dirpath, skip_dirs=claimed_abs)
+            >= _CANDIDATE_MIN_SOURCE_FILES
+            or _has_own_test_suite(dirpath)
+        ):
             candidates.append((dirpath.name, [rel]))
             return
         try:
