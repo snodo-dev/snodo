@@ -35,7 +35,7 @@ from textual.widgets.data_table import RowDoesNotExist
 
 from snodo.dashboard.liveness import fmt_age, fmt_when
 from snodo.dashboard.panels import register_panel, get_panel
-from snodo.dashboard.screens import _short_id
+from snodo.dashboard.screens import _short_id, StatusRowTable
 
 
 def _ansi_to_text(content: str) -> Text:
@@ -206,6 +206,10 @@ class CockpitScreen(Screen):
         # settled records: not re-read as the operator moves inside them.
         self._tasks_built_for: Optional[str] = None
 
+        # task_id (and task_ref) → plan name, from the plan status records the
+        # Tasks pane already reads, so a job can say which plan it carries.
+        self._plan_of_task: Dict[str, str] = {}
+
         # Search state: the last query and the current position in its hits,
         # so pressing 'n' cycles matches without a second disk read.
         self._search_query: str = ""
@@ -225,19 +229,19 @@ class CockpitScreen(Screen):
                 yield RichLog(id="attention-pane", highlight=False, markup=True)
             with Vertical(classes="pane"):
                 yield Static("Tasks Tree", classes="pane-title")
-                yield DataTable(id="tasks-table", cursor_type="row")
+                yield StatusRowTable(id="tasks-table", cursor_type="row")
 
         # Bottom row: Jobs | Live Log
         with Horizontal(classes="cockpit-row"):
             with Vertical(classes="pane"):
                 yield Static("Jobs", classes="pane-title")
-                yield DataTable(id="jobs-table", cursor_type="row")
+                yield StatusRowTable(id="jobs-table", cursor_type="row")
             with Vertical(classes="pane"):
                 yield Static("Live Log", classes="pane-title")
                 yield RichLog(id="log-pane", highlight=True, markup=True)
 
         yield Input(id="search-bar", placeholder="/  find a task, job, or audit event (n: next)  — output not searched")
-        yield Input(id="command-bar", placeholder=":command  (e.g. :protocol, :settings, :sessions)")
+        yield Input(id="command-bar", placeholder=":command  (e.g. :plans, :protocol, :settings, :sessions)")
         yield Footer()
 
     def on_mount(self):
@@ -350,7 +354,7 @@ class CockpitScreen(Screen):
             self.query_one("#tasks-table", DataTable).focus()
 
     def _handle_command(self, cmd: str):
-        known = {"sessions", "protocol", "settings"}
+        known = {"sessions", "protocol", "settings", "plans"}
         if cmd in known:
             self.app.push_screen(get_panel(cmd, self.provider))
         elif cmd in ("cockpit", "dashboard"):
@@ -463,6 +467,7 @@ class CockpitScreen(Screen):
         session_id = self.selected_session
         if not session_id:
             self._tasks_built_for = None
+            self._plan_of_task = {}
             self.query_one("#tasks-table", DataTable).clear()
             self.query_one("#jobs-table", DataTable).clear()
             self._update_live_log(None, None, None)
@@ -474,6 +479,16 @@ class CockpitScreen(Screen):
             self._populate_jobs()
 
         self._update_live_log(session_id, self.selected_task, self.selected_job)
+
+    def _row_status(self, status: str, liveness: Any) -> str:
+        """The word that decides a row's colour — the record's status, as
+        liveness corrects it: a row claiming to run with no sign of life is
+        stale (needs a person, reads red) and must not be painted the green
+        of work that is actually alive.
+        """
+        if liveness is not None and self.provider.is_stale_row(liveness):
+            return "stale"
+        return status
 
     def _populate_tasks(self, session_id: str) -> None:
         """Read and render the Tasks pane for the selected session."""
@@ -493,6 +508,13 @@ class CockpitScreen(Screen):
             self._programmatic_move = False
 
         all_tasks = self.provider.get_tasks(session_id)
+        # Remember which plan owns which task, so the Jobs pane (built right
+        # after this one) can name a job's plan instead of leaving the operator
+        # to infer it from the task name.
+        self._plan_of_task = {}
+        for t in all_tasks:
+            self._plan_of_task[t["task_id"]] = t["plan_name"]
+            self._plan_of_task[t["task_ref"]] = t["plan_name"]
         # Timing comes from the run records on disk (the whole set, not the
         # snapshot's truncated display list): a settled task that just
         # finished must still show when it ran and sort to the top.
@@ -513,7 +535,10 @@ class CockpitScreen(Screen):
                 cells = [display_id, wave_id, status] + self.provider.liveness_cells(liveness)
             else:
                 cells = [display_id, wave_id, status, "—", "—", "—", "—", "—"]
-            tasks_table.add_row(*cells, key=t["task_ref"])
+            tasks_table.add_row(
+                *cells, key=t["task_ref"],
+                status=self._row_status(t["status"], liveness),
+            )
 
         # Restore cursor position for tasks
         if self.selected_task and flat_tasks:
@@ -551,6 +576,13 @@ class CockpitScreen(Screen):
         for j in jobs:
             job_id = j["job_id"]
             task_ref = j.get("task_ref", "") or "—"
+            # A job that belongs to a plan says so here, in the shape the
+            # Tasks pane keys its rows by — not left to be inferred from the
+            # task name. An unknown task stays exactly as recorded.
+            if task_ref != "—":
+                plan = self._plan_of_task.get(task_ref)
+                if plan and ":" not in task_ref:
+                    task_ref = f"{plan}:{task_ref}"
             status = j["status"]
             liveness = job_runs.get(job_id)
             if liveness is not None:
@@ -559,7 +591,10 @@ class CockpitScreen(Screen):
             else:
                 dur_str = fmt_age(j["duration"]) if j["duration"] else "—"
                 cells = [job_id, task_ref, status, "—", fmt_when(_started(j), now), dur_str, "—", "—"]
-            jobs_table.add_row(*cells, key=job_id)
+            jobs_table.add_row(
+                *cells, key=job_id,
+                status=self._row_status(j["status"], liveness),
+            )
 
         # Restore cursor position for jobs
         if self.selected_job and jobs:
@@ -744,5 +779,5 @@ class CockpitScreen(Screen):
             f"|  Data: [dim]{age_str} ago[/]"
         )
         self.app.sub_title = (
-            "  /:search  n:next  :protocol  :settings  :sessions  |  r:refresh  q:quit"
+            "  /:search  n:next  :plans  :protocol  :settings  :sessions  |  r:refresh  q:quit"
         )
