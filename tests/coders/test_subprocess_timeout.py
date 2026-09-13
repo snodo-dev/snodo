@@ -3,6 +3,7 @@
 FILE: tests/coders/test_subprocess_timeout.py
 """
 
+import io
 import signal
 import subprocess
 from pathlib import Path
@@ -158,11 +159,12 @@ class TestSubprocessTimeout:
         mock_proc = mock.MagicMock()
         mock_proc.pid = 12345
         mock_proc.returncode = 0
-        mock_proc.communicate.return_value = ("", "")
+        mock_proc.stdout = io.StringIO("")
+        mock_proc.stderr = io.StringIO("")
 
         with mock.patch("subprocess.Popen", return_value=mock_proc):
             adapter._run_subprocess(["agy", "-p", "test"], str(temp_workspace))
-            mock_proc.communicate.assert_called_once_with(timeout=120)
+            mock_proc.wait.assert_called_once_with(timeout=120)
 
     def test_timed_out_run_records_timeout_in_audit_and_terminal_facts(self, temp_workspace: Path):
         """A timed-out run that produced work records the timeout in audit log and terminal facts."""
@@ -291,10 +293,9 @@ class TestSubprocessTimeout:
 
         mock_proc = mock.MagicMock()
         mock_proc.pid = 99999
-        mock_proc.communicate.side_effect = [
-            subprocess.TimeoutExpired(cmd=["agy"], timeout=1),
-            ("partial stdout", "partial stderr"),
-        ]
+        mock_proc.wait.side_effect = subprocess.TimeoutExpired(cmd=["agy"], timeout=1)
+        mock_proc.stdout = io.StringIO("partial stdout\n")
+        mock_proc.stderr = io.StringIO("partial stderr\n")
 
         with mock.patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
             with mock.patch("os.killpg") as mock_killpg:
@@ -305,5 +306,8 @@ class TestSubprocessTimeout:
                     mock_popen.assert_called_once()
                     assert mock_popen.call_args.kwargs.get("start_new_session") is True
                     mock_killpg.assert_called_once_with(99999, signal.SIGKILL)
-                    assert exc_info.value.output == "partial stdout"
-                    assert exc_info.value.stderr == "partial stderr"
+                    # Output already read while the process ran survives into
+                    # the raised timeout, because that partial record is often
+                    # the only evidence of why a run stalled.
+                    assert exc_info.value.output == "partial stdout\n"
+                    assert exc_info.value.stderr == "partial stderr\n"

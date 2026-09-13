@@ -10,6 +10,7 @@ PROVES:
 - Mutating protected .snodo/ paths raises SnodoMutationError
 """
 
+import io
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -43,7 +44,10 @@ def _make_fake_popen(returncode=0, stdout="Success", stderr="", side_effect=None
         proc = mock.MagicMock()
         proc.pid = 12345
         proc.returncode = returncode
-        proc.communicate.return_value = (stdout, stderr)
+        # The adapter drains pipes on reader threads, so the fake streams must
+        # be real file-likes (readline -> "" at EOF), not MagicMocks.
+        proc.stdout = io.StringIO(stdout)
+        proc.stderr = io.StringIO(stderr)
         return proc
     return fake_popen
 
