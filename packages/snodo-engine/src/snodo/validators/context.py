@@ -51,6 +51,18 @@ class ValidatorContext:
     code_artifact: Optional[Any] = None
     #: Metadata dictionary carrying artifact and run properties (e.g. test_governing_mutations)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    #: Project-local verdict cache (#246), or None to judge fresh every time.
+    #: An optimisation only: a miss or a cache failure is a fresh judgement,
+    #: never a halt and never a governance change.
+    verdict_cache: Optional[Any] = None
+    #: Tree subject for verdict caching, computed ONCE per validate pass
+    #: before the validator pool starts (#246).  The tree does not move within
+    #: a pass, so every tree-reading judge must share one digest rather than
+    #: each cost a git diff.  ``verdict_tree_subject_ready`` distinguishes
+    #: "not computed" from a computed None (the tree identity could not be
+    #: established, so tree-reading verdicts are not cached).
+    verdict_tree_subject: Optional[str] = None
+    verdict_tree_subject_ready: bool = False
 
 
 class ValidatorBase(ABC):
@@ -58,6 +70,16 @@ class ValidatorBase(ABC):
 
     Subclasses implement evaluate(context) → ValidatorResult.
     """
+
+    #: How this validator's verdict depends on its inputs, for verdict
+    #: caching (#246).  ``"spec"`` = a single-completion judge of the task
+    #: specification; ``"tree"`` = a judge of repository state (tool-using or
+    #: post-execute).  ``None`` = the dependency is not established, so the
+    #: verdict is never cached.  A judge that reads the tree must never be
+    #: keyed on the spec alone; the runner forces the tree subject whenever the
+    #: tool loop is active and for EVERY post-execute judge, so an inherited
+    #: ``"spec"`` cannot key a judgement of produced work.
+    cache_subject: Optional[str] = None
 
     @abstractmethod
     def evaluate(self, context: ValidatorContext) -> ValidatorResult:
