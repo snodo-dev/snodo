@@ -128,3 +128,51 @@ docs-serve:
 
 deploy-docs: docs
 	npx wrangler pages deploy site --project-name=snodo-docs
+
+# ──────────────────────────────────────────────
+# Remote verification gate
+# ──────────────────────────────────────────────
+# The suite is IO-bound and parallelises well, but the dev Macs have four
+# cores.  `make gate` pushes the current HEAD to a big Linux box and runs the
+# checks there: same suite, ~5x faster, and on the same platform CI uses.
+#
+# Each working copy gets its own directory on the gate host, named after the
+# directory it is run from, so agent worktrees can gate concurrently without
+# clobbering each other's checkout or venv.
+#
+#   make gate        the fast loop: non-e2e suite, ruff, import contracts
+#   make gate-ci     what CI decides on: full suite with coverage
+#   make gate-init   one-time (implied by the above): create the remote repo
+#
+# Override GATE_HOST / GATE_HOME to point somewhere else.
+
+GATE_HOST ?= yprift01@192.168.0.104
+GATE_HOME ?= /home/yprift01
+GATE_ROOT ?= $(GATE_HOME)/Dev/gates
+GATE_NAME ?= $(notdir $(CURDIR))
+GATE_DIR   = $(GATE_ROOT)/$(GATE_NAME)
+GATE_URL   = ssh://$(GATE_HOST)$(GATE_DIR)
+GATE_JOBS ?= 24
+GATE_PATH  = export PATH=$(GATE_HOME)/.local/bin:$$PATH
+
+.PHONY: gate gate-ci gate-init _gate-push
+
+gate-init:
+	@ssh $(GATE_HOST) 'mkdir -p $(GATE_DIR) && cd $(GATE_DIR) && { [ -d .git ] || { git init -q && git config receive.denyCurrentBranch updateInstead; }; }'
+	@ssh $(GATE_HOST) '[ -x $(GATE_HOME)/.local/bin/uv ] || command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh'
+
+_gate-push:
+	@# Refuse rather than silently test the wrong tree: the gate runs what is
+	@# committed, so uncommitted work would pass a check it never faced.
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Working tree is dirty. The gate tests HEAD, not your changes — commit first:"; \
+		git status --short; \
+		exit 1; \
+	fi
+	@git push -q -f $(GATE_URL) HEAD:refs/heads/main
+
+gate: gate-init _gate-push
+	@ssh $(GATE_HOST) '$(GATE_PATH); cd $(GATE_DIR) && uv sync --all-extras -q && uv run pytest tests/ -q -n $(GATE_JOBS) && uv run ruff check . && uv run lint-imports'
+
+gate-ci: gate-init _gate-push
+	@ssh $(GATE_HOST) '$(GATE_PATH); cd $(GATE_DIR) && uv sync --all-extras -q && uv run pytest tests/ -m "" -n $(GATE_JOBS) --tb=short --timeout=60 --cov --cov-report=term-missing --cov-fail-under=75 && uv run ruff check . && uv run lint-imports'
