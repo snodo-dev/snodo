@@ -58,6 +58,7 @@ class ValidatorRunner:
         authorized_decisions: Optional[List[str]] = None,
         decision_issuer: Any = None,
         progress_cb: Any = None,
+        verdict_cb: Any = None,
         artifacts: Optional[List[str]] = None,
         base_ref: Optional[str] = None,
     ) -> List[ValidatorResult]:
@@ -78,6 +79,7 @@ class ValidatorRunner:
             audit_log=self._audit_log,
             dispatch_fn=self._dispatch_one,
             progress_cb=progress_cb,
+            verdict_cb=verdict_cb,
             artifacts=artifacts,
             base_ref=base_ref,
         )

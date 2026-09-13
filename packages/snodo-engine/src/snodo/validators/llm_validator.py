@@ -27,7 +27,11 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Set
 
-from snodo.engine.progress import format_elapsed, format_tool_call_summary
+from snodo.engine.progress import (
+    ensure_progress_sink,
+    format_elapsed,
+    format_tool_call_summary,
+)
 
 from litellm import supports_response_schema
 
@@ -410,7 +414,15 @@ class LLMValidator(ValidatorBase):
         ]
 
         retried_free_text = False
-        cb = getattr(context, "progress_callback", None) or getattr(self, "progress_callback", None)
+        # Ongoing-work narration goes to the progress sink — never the verdict
+        # sink. Wrapping here keeps a raw callback safe on the direct path too;
+        # when the runner already wrapped it, the same sink (and its
+        # report-once state) is reused.
+        cb = ensure_progress_sink(
+            getattr(context, "progress_callback", None)
+            or getattr(self, "progress_callback", None),
+            f"validator {self.validator_spec.validator_id} progress",
+        )
         start_time = time.monotonic()
         read_tracker = ReadMemoryTracker(getattr(workspace, "project_root", None))
         # What the judge examined, in order. Carried into the abstention record
@@ -467,10 +479,7 @@ class LLMValidator(ValidatorBase):
             if cb:
                 elapsed_str = format_elapsed(time.monotonic() - start_time)
                 tools_str = format_tool_call_summary(tool_calls)
-                try:
-                    cb(f"    [{elapsed_str}] Turn {turn + 1}: {tools_str}")
-                except Exception as e:
-                    _logger.debug("Telemetry callback error: %s", e)
+                cb(f"    [{elapsed_str}] Turn {turn + 1}: {tools_str}")
 
             # Check for submit_verdict before anything else
             verdict = self._extract_submit_verdict(tool_calls)
