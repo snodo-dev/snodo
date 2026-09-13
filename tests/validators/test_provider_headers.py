@@ -296,6 +296,46 @@ class TestProtocolAdherenceWithHeaders:
         assert "extra_headers" in call_kwargs or "response_format" in call_kwargs
 
 
+class TestSelfHostedProviderResolution:
+    """Test that self-hosted providers resolve correctly.
+
+    Self-hosted and gateway providers often have snodo config block names
+    that differ from their litellm provider names. The wrapper must resolve
+    headers using _configured_model (the snodo config name), not the model
+    kwarg (which may be litellm-resolved).
+    """
+
+    @patch('snodo.config.ConfigManager.resolve_extra_headers')
+    def test_wrapper_resolves_from_configured_model_not_litellm_name(self, mock_resolve_headers):
+        """Wrapper uses _configured_model for resolution, not litellm-resolved model."""
+        mock_resolve_headers.return_value = {"x-custom": "value"}
+
+        mock_completion = MagicMock(return_value=_make_mock_response())
+        wrapped = _wrap_completion_fn_with_headers(mock_completion, "task_123")
+
+        # Simulate llm_validator's behavior: pass both the litellm-resolved name
+        # and the configured model name
+        wrapped(
+            model="openai/my-custom-model",  # litellm-resolved
+            _configured_model="mycompany-gpt",  # configured in snodo
+            messages=[]
+        )
+
+        # Verify headers were resolved using the configured model, not the litellm name
+        mock_resolve_headers.assert_called_once()
+        call_args = mock_resolve_headers.call_args
+        # Should resolve using "mycompany-gpt", not "openai/my-custom-model"
+        assert call_args[0][0] == "mycompany-gpt"
+        assert call_args[1]["task_id"] == "task_123"
+
+        # Verify headers were passed to completion
+        call_kwargs = mock_completion.call_args[1]
+        assert "extra_headers" in call_kwargs
+        assert call_kwargs["extra_headers"] == {"x-custom": "value"}
+        # Verify _configured_model was removed before calling underlying function
+        assert "_configured_model" not in call_kwargs
+
+
 class TestNewCallSiteGetsHeaders:
     """Test that new call sites automatically receive headers without modification."""
 

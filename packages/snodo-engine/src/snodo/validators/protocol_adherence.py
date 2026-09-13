@@ -270,6 +270,7 @@ class ProtocolAdherenceValidator(ValidatorBase):
     def _call_llm(self, prompt: str) -> str:
         response = self._completion_fn(
             model=self.model,
+            _configured_model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             max_tokens=self.completion_tokens,
@@ -285,6 +286,7 @@ class ProtocolAdherenceValidator(ValidatorBase):
         """
         response = self._completion_fn(
             model=self.model,
+            _configured_model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             max_tokens=self.completion_tokens,

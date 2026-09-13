@@ -445,6 +445,10 @@ def _wrap_completion_fn_with_headers(completion_fn: Any, task_id: str) -> Any:
     protocol_adherence — automatically receive headers by construction,
     making it impossible for a new call site to omit them.
 
+    Header resolution uses the configured model name (passed via _configured_model),
+    not the model key which may be litellm-resolved. This ensures self-hosted and
+    gateway providers with custom snodo config block names resolve correctly.
+
     Args:
         completion_fn: The underlying completion function (typically a partial)
         task_id: The task's unique identifier for header resolution
@@ -455,15 +459,16 @@ def _wrap_completion_fn_with_headers(completion_fn: Any, task_id: str) -> Any:
     from snodo.config import ConfigManager
 
     def headers_aware_wrapper(**kwargs: Any) -> Any:
-        # Extract the model from call arguments (validator may override the
-        # bound model via per-validator model assignment in run_validators)
-        call_model = kwargs.get("model")
-        if call_model:
+        # Use _configured_model (set by validators) for header resolution, not
+        # the "model" kwarg which may be litellm-resolved. Call sites that don't
+        # set _configured_model fall back to the "model" kwarg (for compatibility).
+        resolution_model = kwargs.pop("_configured_model", None) or kwargs.get("model")
+        if resolution_model and "extra_headers" not in kwargs:
             # Resolve headers for this specific model and task combination
             extra_headers = ConfigManager.resolve_extra_headers(
-                call_model, task_id=task_id
+                resolution_model, task_id=task_id
             )
-            if extra_headers and "extra_headers" not in kwargs:
+            if extra_headers:
                 kwargs["extra_headers"] = extra_headers
         return completion_fn(**kwargs)
 

@@ -205,11 +205,6 @@ class LLMValidator(ValidatorBase):
         self._depth: int = 0
         self._attempt: int = 1
 
-    def _resolve_extra_headers(self) -> Optional[dict]:
-        """Return extra_headers for the model's provider."""
-        from snodo.config import ConfigManager
-        return ConfigManager.resolve_extra_headers(self.model, task_id=self._task_id)
-
     def _emit_turn_telemetry(
         self,
         turn_index: int,
@@ -433,6 +428,7 @@ class LLMValidator(ValidatorBase):
                 from snodo.config import ConfigManager
                 kwargs = {
                     "model": ConfigManager.resolve_litellm_model(self.model),
+                    "_configured_model": self.model,
                     "messages": messages,
                     "tools": tools,
                     "max_tokens": completion_tokens,
@@ -444,9 +440,6 @@ class LLMValidator(ValidatorBase):
                 }
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = 0.0
-                extra_headers = self._resolve_extra_headers()
-                if extra_headers:
-                    kwargs["extra_headers"] = extra_headers
                 response = self._call_completion_with_retry(**kwargs)
             except Exception as e:
                 # Provider fault on the tool-loop path: it halts as
@@ -986,6 +979,8 @@ class LLMValidator(ValidatorBase):
             Exception: If the LLM call fails
         """
         kwargs = {
+            "model": self.model,
+            "_configured_model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.completion_tokens,
             "metadata": {
@@ -996,15 +991,6 @@ class LLMValidator(ValidatorBase):
         }
         if not _is_gemini3_plus(self.model):
             kwargs["temperature"] = 0.0
-        # Provider headers belong on every call, not only the tool loop. A
-        # validator that declares no tools takes this path, and a provider
-        # that requires a header (opencode Go requires x-opencode-session)
-        # refuses it with a 400 while tool-using validators on the same model
-        # succeed — so one judging model appears to work for some validators
-        # and fail for others.
-        extra_headers = self._resolve_extra_headers()
-        if extra_headers:
-            kwargs["extra_headers"] = extra_headers
         response = self._call_completion_with_retry(**kwargs)
         content = response.choices[0].message.content
         if not content:
@@ -1027,6 +1013,8 @@ class LLMValidator(ValidatorBase):
         Zero free-text parsing.
         """
         kwargs = {
+            "model": self.model,
+            "_configured_model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.completion_tokens,
             "response_format": ValidatorResult,
