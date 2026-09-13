@@ -46,3 +46,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [040](040-coder-observes-declared-test-runner.md) | The coder observes the declared test runner; the validators still judge | 2026-09-01 | `coders/litellm.py` + `tools/shell.py` + `validators/acceptance.py` |
 | [041](041-modules-scope-tooling-not-modes.md) | A module is a scope, not a mode | 2026-09-07 | `compiler/models.py` (`Module`) + `compiler/verifier.py` (`check_modules`) |
 | [042](042-abstention-rejudges-not-recovers.md) | An abstention re-judges the judge, not the coder | 2026-09-13 | `engine/nodes/validation.py` + `engine/loop.py` (`_verdict_signature`) |
+| [043](043-halt-payload-attempt-history.md) | A halt payload records the attempts that produced the result | 2026-09-13 | `engine/nodes/writeback.py` (`_build_attempt_summary`) |
