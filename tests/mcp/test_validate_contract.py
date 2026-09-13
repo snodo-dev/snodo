@@ -1,9 +1,10 @@
-"""Four-outcome validate_task contract tests (ADR 015).
+"""The validate_task contract tests (ADR 015).
 
 FILE: tests/mcp/test_validate_contract.py
 
-Covers:
-- unit: each of the four outcomes (pass / escalate / blocker / validator_error)
+The tool returns four validation outcomes; the engine's canonical halt
+vocabulary is five (ADR 015). Covers:
+- unit: each of the four validation outcomes (pass / escalate / blocker / validator_error)
 - regression: a failing test suite yields `blocker`, never `warn`
 - parity: engine and MCP produce the same validator severities
 - integration: escalate → authorize → re-validate → token issued
@@ -89,7 +90,7 @@ def _patch_completion(fn):
 
 
 # ---------------------------------------------------------------------------
-# Four outcomes
+# Validation outcomes (ADR 015)
 # ---------------------------------------------------------------------------
 
 class TestFourOutcomes:

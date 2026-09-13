@@ -6,7 +6,7 @@ schema field to detect a breaking change before parsing the rest.  Field names
 are stable and asserted by the test suite — a rename fails the suite rather
 than a downstream consumer.
 
-Exit codes distinguish the four validation outcomes so a caller can branch
+Exit codes distinguish the validation outcomes so a caller can branch
 without parsing prose:
 
     pass            0
@@ -16,6 +16,8 @@ without parsing prose:
     internal_error  4
 
 Human output is unchanged: ``--json`` is additive and only affects stdout.
+The engine's canonical halt vocabulary is five (ADR 015); ``environment_error``
+is an execution halt, not a validation outcome, and has no exit code here.
 """
 
 import json
@@ -25,7 +27,7 @@ import sys
 # field is renamed, removed, or changes meaning — never silently.
 SCHEMA_VERSION = 1
 
-# Exit codes for the four validation outcomes (plus internal error).
+# Exit codes for the validation outcomes (plus internal error).
 EXIT_PASS = 0
 EXIT_BLOCKER = 1
 EXIT_ESCALATE = 2

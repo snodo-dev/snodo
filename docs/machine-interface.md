@@ -97,8 +97,10 @@ Schema: `snodo.worktree.v1`
 Schema: `snodo.validate.v1`
 
 Runs the phase's validators through the shared engine runner and returns the
-four-outcome result **without running a coder**. The shape mirrors the engine's
-halt payload.
+validation-outcome result **without running a coder**. The shape mirrors the
+engine's halt payload. The engine's canonical vocabulary is five (ADR 015);
+`environment_error` is an execution halt, and because this command never
+invokes a coder, it is not one of the outcomes returned here.
 
 | Field | Type | Meaning |
 |-------|------|---------|
@@ -171,7 +173,7 @@ judge work.
 ## Exit codes
 
 `snodo validate` (and any command that returns a validation outcome) uses exit
-codes that distinguish the four outcomes, so a caller can branch without
+codes that distinguish the validation outcomes, so a caller can branch without
 parsing prose:
 
 | Exit code | Outcome |
@@ -182,7 +184,8 @@ parsing prose:
 | 3 | `validator_error` |
 | 4 | `internal_error` |
 
-No command adds a sixth code. `snodo survey` deliberately uses none of the
+No command adds a sixth code. `environment_error` is an engine execution halt
+(ADR 015), not a validation outcome, so it has no code here. `snodo survey` deliberately uses none of the
 judgement codes (1–3): it adjudicates nothing, so a governed repository whose
 protocol has diverged from its code exits **0** like any other successful run
 and reports the divergence in its payload

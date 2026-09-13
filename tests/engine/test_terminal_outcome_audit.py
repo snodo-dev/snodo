@@ -3,7 +3,7 @@
 FILE: tests/engine/test_terminal_outcome_audit.py
 
 Asserts that:
-1. Every task ending in each of the four coarse outcomes (escalate, blocker,
+1. Every task ending in each coarse outcome it exercises (escalate, blocker,
    validator_error, internal_error) produces an audit event naming that outcome.
 2. The specific halt type survives alongside the canonical coarse outcome in
    `raw_halt_type` so the specific cause (e.g. no_file_operations, head_not_moved,

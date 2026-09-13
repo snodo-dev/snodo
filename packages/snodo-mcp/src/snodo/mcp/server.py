@@ -69,7 +69,8 @@ class ProtocolMCPServer:
         self._validation_token: Optional[ValidationToken] = None
         self._token_lock = threading.Lock()
 
-        # Four-outcome validate_task state (pass | escalate | blocker | validator_error)
+        # Validation outcomes validate_task can set
+        # (pass | escalate | blocker | validator_error; see ADR 015).
         self._validation_status: Optional[str] = None
 
         from snodo.engine.policy import PolicyEvaluator
@@ -390,7 +391,10 @@ class CoreToolHandler:
     def handle_validate_task(self, arguments: Dict[str, Any]) -> dict:
         """Run the real validators and return one of four discriminated outcomes.
 
-        ``pass`` / ``escalate`` / ``blocker`` / ``validator_error`` — see ADR 015.
+        The four validation outcomes are ``pass`` / ``escalate`` / ``blocker`` /
+        ``validator_error`` — the engine's canonical vocabulary is five, but
+        ``environment_error`` is an execution halt and is not reachable here
+        (see ADR 015).
         A validation token is minted ONLY on ``pass`` (or on ``escalate`` after a
         human has adjudicated via ``snodo authorize`` and the agent re-calls).
         """
@@ -542,7 +546,7 @@ class CoreToolHandler:
         )
 
     def _outcome(self, status: str, task_id: str, results: list, instruction: str) -> dict:
-        """Build a no-token four-outcome response."""
+        """Build a no-token validation-outcome response."""
         return {
             "status": status,
             "token_issued": False,
@@ -695,8 +699,8 @@ class CoreToolHandler:
 
         # Establish in THIS process that the coder can be invoked at all
         # before a task is dispatched (the halt taxonomy calls the
-        # after-the-fact version ``environment_error``; refusing here means
-        # the run never starts and no validation cost is spent on it).
+        # after-the-fact version ``environment_error``; ADR 015). Refusing here
+        # means the run never starts and no validation cost is spent on it.
         self._guard_coder_available(coding_model)
 
         from snodo.jobs import JobManager

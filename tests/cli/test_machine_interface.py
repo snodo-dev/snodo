@@ -6,7 +6,7 @@ Every ``--json`` command must:
 - use stable field names (asserted here, so a rename fails the suite).
 
 ``snodo validate`` must additionally return exit codes that distinguish the
-four outcomes.
+validation outcomes (the engine's canonical vocabulary is five; ADR 015).
 """
 
 import json

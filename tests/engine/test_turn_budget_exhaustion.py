@@ -114,8 +114,9 @@ def test_turn_budget_exhaustion_is_a_blocker_not_internal_error(
     payload = tree.halt_payload
     assert payload is not None
     assert payload["status"] == "blocked"
-    # Canonical four-outcome vocabulary (a blocker), with the specific reason
-    # carried in ``reason`` and the closure tree's raw ``turn_budget_exhausted``.
+    # Canonical outcome vocabulary (a blocker; ADR 015), with the specific
+    # reason carried in ``reason`` and the closure tree's raw
+    # ``turn_budget_exhausted``.
     assert payload["halt_type"] == "blocker"
     assert payload["final_decision"] == "blocker"
     assert payload["raw_halt_type"] == "blocker"
