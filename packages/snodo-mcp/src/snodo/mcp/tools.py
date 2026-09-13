@@ -321,16 +321,21 @@ TOOL_REGISTRY = {
     },
     "run_plan": {
         "description": (
-            "Run a plan through the protocol loop. No validation token is "
-            "needed to call this: the plan's structure is checked here as part "
-            "of the run (calling validate_plan first is a convenience while "
-            "authoring, not a precondition), and every task the run dispatches "
-            "passes the engine's own validator quorum and consumes its own "
-            "token at its own dispatch boundary — so WF1 is satisfied per task, "
-            "where the work actually happens. Refuses without executing "
-            "anything if the plan does not conform. Blocks until the run "
-            "finishes and returns the plan's final task statuses read from "
-            "status.json."
+            "Start a plan run as a background job and return its job_id "
+            "immediately — a plan run is a job like any other. A wave takes "
+            "minutes, so do NOT expect this call to carry the run: follow the "
+            "returned job_id with get_job_status (poll until completed / "
+            "failed / unmerged), list_jobs, and get_job_logs. Per-task detail "
+            "stays available from get_plan at any time. No validation token is "
+            "needed to call this: the plan's structure is checked before "
+            "anything spawns (calling validate_plan first is a convenience "
+            "while authoring, not a precondition), and every task the run "
+            "dispatches passes the engine's own validator quorum and consumes "
+            "its own token at its own dispatch boundary — so WF1 is satisfied "
+            "per task, where the work actually happens. Refuses without "
+            "executing anything if the plan does not conform. Pass wait=true "
+            "(with optional timeout, default 3600s) only when you genuinely "
+            "want to block until the run finishes."
         ),
         "inputSchema": {
             "type": "object",
@@ -341,6 +346,8 @@ TOOL_REGISTRY = {
                 "mock": {"type": "boolean", "description": "Use the mock coder instead of a real LLM"},
                 "no_isolation": {"type": "boolean", "description": "Run tasks in the working tree instead of isolated worktrees"},
                 "protocol": {"type": "string", "description": "Protocol file path (default: .snodo/protocol.yml)"},
+                "wait": {"type": "boolean", "description": "Opt in to blocking until the run finishes (default false); returns final status or names the still-running job on timeout"},
+                "timeout": {"type": "number", "description": "Seconds to wait when wait=true (default 3600)"},
             },
             "required": ["plan_name"],
         },

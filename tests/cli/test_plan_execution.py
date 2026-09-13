@@ -956,6 +956,7 @@ disagreement_policy: "unanimous"
     args = _make_plan_args(plan_name)
 
     submitted_job_ids = []
+    submitted_args = []
 
     real_submit = JobManager.submit
 
@@ -964,6 +965,7 @@ disagreement_policy: "unanimous"
             with patch("snodo.jobs.runner.spawn_background", return_value=99999):
                 job_id = real_submit(self, task_args)
                 submitted_job_ids.append(job_id)
+                submitted_args.append(task_args)
                 # Write a completed state so polling sees it finished
                 self._save_state(self._job_dir(job_id), {
                     "status": "completed",
@@ -975,11 +977,14 @@ disagreement_policy: "unanimous"
     custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
     with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
         with patch.object(JobManager, "submit", tracking_submit):
-            result = _run_plan(args)
+            with patch.dict("os.environ", {"SNODO_JOB_ID": "j_planparent"}):
+                result = _run_plan(args)
 
     assert result == 0
     assert len(submitted_job_ids) == 2
     assert submitted_job_ids[0] != submitted_job_ids[1]
+    # Each task a plan run spawns names the plan-run job that owns it.
+    assert all(a.get("parent_job") == "j_planparent" for a in submitted_args)
 
     # Verify each job exists in .snodo/jobs/ with task.json
     manager = JobManager(str(plan_project_env))
@@ -988,6 +993,7 @@ disagreement_policy: "unanimous"
         assert job_dir.is_dir()
         task_info = manager._load_task(job_dir)
         assert task_info["task_id"] in ("task_1_a", "task_1_b")
+        assert task_info["parent_job"] == "j_planparent"
 
 
 def test_task_output_is_retrievable_per_task_after_wave(plan_project_env):

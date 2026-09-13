@@ -184,8 +184,12 @@ def _job_list(manager) -> int:
             f"{(f'{duration:.0f}s' if duration is not None else '-'):<9} "
             f"{created:<20} {title}"
         )
+        if job.get("plan"):
+            print(f"  plan: {job['plan']}")
         if job.get("task_ref"):
             print(f"  task: {job['task_ref']}")
+        if job.get("parent_job"):
+            print(f"  plan job: {job['parent_job']}")
         print(f"  inspect: snodo job status {job['id']}")
     return 0
 
@@ -454,6 +458,17 @@ def _job_retry(manager, args) -> int:
             task_data = json.load(f)
     except Exception as e:
         print(f"Error reading task.json: {e}", file=sys.stderr)
+        return 1
+
+    if task_data.get("plan_name"):
+        # A plan run is not a task and carries no task spec to re-dispatch.
+        # Retrying it would re-run a whole plan under the task retry path;
+        # start a fresh plan run instead (`snodo plan run <name>`).
+        print(
+            f"Error: job {job_id} is a plan run, not a task; `job retry` "
+            "re-dispatches a task. Start the plan again with `snodo plan run`.",
+            file=sys.stderr,
+        )
         return 1
 
     task_id = task_data.get("task_id", "")

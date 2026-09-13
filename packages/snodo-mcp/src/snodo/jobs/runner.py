@@ -13,27 +13,41 @@ from typing import List
 def build_command(job_dir: str, task_args: dict) -> List[str]:
     """Construct command to run the wrapper process.
 
+    Two shapes share one wrapper: a task job runs ``snodo run`` with the
+    dispatched spec, while a plan-run job (``plan_name`` set) runs
+    ``snodo plan run <name>``. A plan run is a job like any other — it is
+    started, recorded and followed with the same machinery — so it travels
+    the same wrapper rather than a second spawn path that could drift.
+
     Args:
         job_dir: Path to the job directory (.snodo/jobs/<job_id>/)
         task_args: Dict with description, protocol, model, mock, verbose,
-            from_pr, retry
+            from_pr, retry (task jobs) or plan_name, wave (plan jobs)
 
     Returns:
         Command list suitable for subprocess.Popen
     """
-    cmd = [sys.executable, "-u", "-m", "snodo.jobs.wrapper", job_dir, "run"]
-
-    desc = task_args.get("description", "")
+    plan_name = task_args.get("plan_name")
     retry = task_args.get("retry")
-    if desc and retry:
-        # A description beside --retry is guidance added ON TOP of the recorded
-        # spec, which is not what a resumed plan task means: the plan layer
-        # dispatches the task's own spec as the authority for the attempt. Say
-        # that with the flag that means it, so the two layers cannot disagree
-        # about what the text is.
-        cmd.extend(["--replace-spec", desc])
-    elif desc:
-        cmd.append(desc)
+
+    if plan_name:
+        cmd = [
+            sys.executable, "-u", "-m", "snodo.jobs.wrapper", job_dir,
+            "plan", "run", str(plan_name),
+        ]
+    else:
+        cmd = [sys.executable, "-u", "-m", "snodo.jobs.wrapper", job_dir, "run"]
+
+        desc = task_args.get("description", "")
+        if desc and retry:
+            # A description beside --retry is guidance added ON TOP of the
+            # recorded spec, which is not what a resumed plan task means: the
+            # plan layer dispatches the task's own spec as the authority for
+            # the attempt. Say that with the flag that means it, so the two
+            # layers cannot disagree about what the text is.
+            cmd.extend(["--replace-spec", desc])
+        elif desc:
+            cmd.append(desc)
 
     protocol = task_args.get("protocol")
     if protocol:
@@ -59,6 +73,12 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
 
     if task_args.get("no_isolation"):
         cmd.append("--no-isolation")
+
+    if plan_name:
+        wave = task_args.get("wave")
+        if wave is not None:
+            cmd.extend(["--wave", str(wave)])
+        return cmd
 
     if retry:
         cmd.extend(["--retry", retry])
