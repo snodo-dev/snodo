@@ -38,9 +38,27 @@ from pathlib import Path
 LIMIT = 1000
 BASELINE_RELATIVE_PATH = Path("scripts") / "file_length_baseline.txt"
 
-# Directories the walk never enters. ``tests`` excluded on purpose (see the
-# module docstring); the rest are environments, caches and build residue.
-EXCLUDED_DIR_NAMES = {"__pycache__", "node_modules", "tests"}
+# Directories the walk never enters. ``tests`` is excluded on purpose (see the
+# module docstring); the rest are output — a directory whose contents a tool
+# generated from other inputs is not source this repository is written in, and
+# holding generated copies to a source limit fails the release over files
+# nobody wrote. Editable installs leave ``build/lib`` copies of every module
+# behind, which is how this was found: the ratchet reported two files over the
+# limit that were stale duplicates of files already under it. Hidden
+# directories are skipped too, which covers .venv and the tooling caches.
+EXCLUDED_DIR_NAMES = {
+    "__pycache__",
+    "node_modules",
+    "tests",
+    # Generated or installed output
+    "build",
+    "dist",
+    "out",
+    "target",
+    "site-packages",
+    "venv",
+    ".venv",
+}
 
 
 def count_loc(source: str) -> int:
