@@ -16,6 +16,21 @@ Never infers governance requirements from absence of practices.
 """
 
 from snodo.survey.analyzer import analyze_repository
+from snodo.survey.measure import (
+    CorpusMeasurement,
+    ExpectedRepository,
+    RepositoryMeasurement,
+    Score,
+    SurveyMeasurementError,
+    discovered_boundaries,
+    discovered_languages,
+    load_ground_truth,
+    measure_repository,
+    render_measurement,
+    reported_test_commands,
+    score_sets,
+    score_survey,
+)
 from snodo.survey.models import (
     JudgementRecord,
     ModuleInfo,
@@ -26,9 +41,22 @@ from snodo.survey.models import (
 
 __all__ = [
     "analyze_repository",
+    "CorpusMeasurement",
+    "ExpectedRepository",
     "JudgementRecord",
     "ModuleInfo",
+    "RepositoryMeasurement",
     "RepositorySurvey",
+    "Score",
     "SurveyFinding",
+    "SurveyMeasurementError",
     "UnmadeJudgement",
+    "discovered_boundaries",
+    "discovered_languages",
+    "load_ground_truth",
+    "measure_repository",
+    "render_measurement",
+    "reported_test_commands",
+    "score_sets",
+    "score_survey",
 ]
