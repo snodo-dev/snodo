@@ -8,7 +8,7 @@ import logging
 import os as _os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from snodo.engine.policy import policy_decision_to_dict
 from snodo.engine.state import _task_branch_name
 from snodo.core.interfaces import result_record
@@ -64,6 +64,157 @@ _CANONICAL_HALT = {
 
 def _canonical_halt(halt_type: Optional[str]) -> str:
     return _CANONICAL_HALT.get(halt_type or "", halt_type or "unknown")
+
+
+# Canonical per-attempt outcomes. Unlike the prose in ``validator_results``,
+# these tokens mean the same thing in every project, so a consumer can count a
+# task's attempts and non-verdicts from payloads alone.
+_ATTEMPT_PASSED = "passed"
+_ATTEMPT_WARNED = "warned"
+_ATTEMPT_BLOCKED = "blocked"
+_ATTEMPT_ABSTAINED = "abstained"
+_ATTEMPT_ERROR = "error"
+
+# Raw halt types where the coder never ran or never returned work — an engine or
+# environment fault, not a judge's verdict. The final attempt is an error rather
+# than a pass-by-absence (Fixes #271).
+_ATTEMPT_ERROR_HALTS = frozenset({
+    "validator_error",
+    "internal_error",
+    "execution_error",
+    "environment_error",
+    "turn_budget_exhausted",
+})
+
+# The most attempts a halt payload enumerates. The counts stay exact however
+# long the chain; only the list is capped, keeping the most recent entries, so a
+# pathological run cannot grow the payload without bound. Recovery is already
+# bounded by the protocol, but the payload owns its own guard.
+_MAX_ATTEMPT_HISTORY = 20
+
+
+def _verdict_outcome(results: Optional[List[Any]]) -> str:
+    """Reduce one attempt's verdicts to a single canonical outcome.
+
+    Ordering is deliberate: an engine error outranks a finding, a blocker
+    outranks a warning, a warning outranks an abstention, and a pass is only
+    reported when nothing else was observed. A pass alongside an abstention
+    still counts as passed — a verdict was reached and carried the attempt; the
+    abstention belongs to the retry history, not to this attempt's outcome.
+    """
+    has_error = has_blocker = has_warn = has_abstain = has_pass = False
+    for r in results or []:
+        if isinstance(r, dict):
+            severity = r.get("severity")
+            error = bool(r.get("error", False))
+        else:
+            severity = getattr(r, "severity", None)
+            error = bool(getattr(r, "error", False))
+        if error:
+            has_error = True
+        elif severity == "blocker":
+            has_blocker = True
+        elif severity == "warn":
+            has_warn = True
+        elif severity == "pass":
+            has_pass = True
+        elif severity is None:
+            has_abstain = True
+    if has_error:
+        return _ATTEMPT_ERROR
+    if has_blocker:
+        return _ATTEMPT_BLOCKED
+    if has_warn:
+        return _ATTEMPT_WARNED
+    if has_abstain and not has_pass:
+        return _ATTEMPT_ABSTAINED
+    return _ATTEMPT_PASSED
+
+
+def _attempt_verdicts(loop_state: Any) -> Optional[List[Any]]:
+    """The verdicts that concluded the attempt in hand.
+
+    The post-execute run is the one that judges the produced work, so it is
+    preferred; a task blocked before execution falls back to its pre-execute
+    verdicts. The values may be records (dicts, as persisted in metadata) or
+    result objects.
+    """
+    meta = getattr(loop_state, "metadata", {}) or {}
+    for key in ("post_validation", "pre_validation"):
+        phase = meta.get(key)
+        if not isinstance(phase, dict):
+            continue
+        results = phase.get("validator_results")
+        if isinstance(results, list) and results:
+            return results
+    return getattr(loop_state, "validation_results", None)
+
+
+def _build_attempt_summary(loop_state: Any, phase: str) -> dict:
+    """Summarise every attempt the task took, from the accumulated history.
+
+    The final validator results say what happened last; this says how the task
+    got there. Two attempts are invisible in the results and are recovered
+    here:
+
+    - the recovery subtasks that preceded this one, carried on the task as
+      ``prior_failures`` tagged with their 1-based attempt number (abstentions
+      included); and
+    - the in-place abstention re-judges of the task in hand, counted by
+      ``abstention_retries``, each of which re-ran a judge on unchanged work
+      and dispatched no coder (Fixes #268).
+
+    An attempt is one judged pass over a code state. The root is attempt 1, each
+    recovery subtask is the next attempt, and each in-place re-judge is an
+    attempt of its own. ``total`` and ``non_verdicts`` are exact at any length;
+    ``history`` is capped at ``_MAX_ATTEMPT_HISTORY`` most-recent entries with
+    the omitted count reported.
+    """
+    depth = getattr(loop_state.task, "depth", 0) or 0
+    prior = getattr(loop_state.task, "prior_failures", None) or []
+
+    by_attempt: Dict[Any, List[Any]] = {}
+    for failure in prior:
+        if isinstance(failure, dict):
+            by_attempt.setdefault(failure.get("attempt"), []).append(failure)
+
+    history: List[dict] = []
+
+    # Attempts 1..depth are the recovery subtasks that preceded this one; each
+    # produced the failures (abstentions included) that spawned the next.
+    for number in range(1, depth + 1):
+        history.append({
+            "attempt": number,
+            "outcome": _verdict_outcome(by_attempt.get(number, [])),
+        })
+
+    # Every in-place re-judge was an all-abstention pass on unchanged work; it
+    # dispatched no coder and created no subtask.
+    for _ in range(max(0, getattr(loop_state, "abstention_retries", 0) or 0)):
+        history.append({
+            "attempt": len(history) + 1,
+            "outcome": _ATTEMPT_ABSTAINED,
+        })
+
+    if getattr(loop_state, "halt_type", None) in _ATTEMPT_ERROR_HALTS:
+        final_outcome = _ATTEMPT_ERROR
+    else:
+        final_outcome = _verdict_outcome(_attempt_verdicts(loop_state))
+    history.append({"attempt": len(history) + 1, "outcome": final_outcome})
+
+    non_verdicts = sum(
+        1 for entry in history if entry["outcome"] == _ATTEMPT_ABSTAINED
+    )
+    summary: Dict[str, Any] = {
+        "total": len(history),
+        "non_verdicts": non_verdicts,
+        "coder_dispatches": depth + (0 if phase == "pre_execute" else 1),
+        "history": history,
+    }
+    if len(history) > _MAX_ATTEMPT_HISTORY:
+        summary["omitted"] = len(history) - _MAX_ATTEMPT_HISTORY
+        summary["history"] = history[-_MAX_ATTEMPT_HISTORY:]
+    return summary
 
 
 # The three fix targets a blocker can have.  The hint names only the ones that
@@ -570,6 +721,11 @@ class WritebackMixin:
             "validator_results": [
                 result_record(r) for r in loop_state.validation_results
             ],
+            # The history that precedes the results above: every attempt the
+            # task took, canonical-outcome encoded so a clean pass and a
+            # hard-won one are distinguishable without reading the logs
+            # (Fixes #271).
+            "attempts": _build_attempt_summary(loop_state, phase),
             "policy_decision": policy_decision_to_dict(loop_state.policy_decision),
             "hint": _build_hint(
                 halt, loop_state.halt_type, phase,
