@@ -379,3 +379,74 @@ def list_worktrees(project_root: str) -> list:
     entries = [p for p in d.iterdir() if p.is_dir() and not p.name.startswith(".")]
     entries.sort(key=lambda p: p.stat().st_mtime)
     return [p.name for p in entries]
+
+
+def list_task_branches(project_root: str) -> Tuple[bool, dict]:
+    """Return (git_available, task_branches) for all task/* branches in project_root.
+
+    task_branches maps branch task_id/prefix to {name, commit_date, is_merged}.
+    Containment in the resolved base branch is evaluated as ground truth via git.
+    """
+    from datetime import datetime, timezone
+    from snodo.tools.git import GitMCP, resolve_base_branch
+
+    git_task_branches: dict = {}
+    try:
+        git = GitMCP(project_root)
+        base_branch = resolve_base_branch(project_root)
+        git_merged_branches = set()
+        try:
+            raw = git.repo.git.branch("--merged", base_branch)
+            if isinstance(raw, str):
+                git_merged_branches = {
+                    line.strip().lstrip("*+ ").strip()
+                    for line in raw.splitlines()
+                    if line.strip().lstrip("*+ ").strip()
+                }
+        except Exception as e:
+            _logger.debug("Could not read merged branches: %s", e)
+
+        base_commit = None
+        try:
+            base_commit = git.repo.commit(base_branch)
+        except Exception as e:
+            _logger.debug("Could not resolve base commit for %s: %s", base_branch, e)
+
+        for head in git.repo.heads:
+            if head.name.startswith("task/"):
+                branch_suffix = head.name[5:]
+                task_id = branch_suffix.split("/")[0] if "/" in branch_suffix else branch_suffix
+                try:
+                    commit_ts = datetime.fromtimestamp(head.commit.committed_date, tz=timezone.utc)
+                except Exception:
+                    commit_ts = None
+
+                is_contained = head.name in git_merged_branches
+                if not is_contained and base_commit is not None and hasattr(git.repo, "is_ancestor"):
+                    try:
+                        anc = git.repo.is_ancestor(head.commit, base_commit)
+                        if isinstance(anc, bool) and anc is True:
+                            is_contained = True
+                    except Exception as e:
+                        _logger.debug("Could not check is_ancestor for %s: %s", head.name, e)
+
+                branch_info = {
+                    "name": head.name,
+                    "commit_date": commit_ts,
+                    "is_merged": is_contained,
+                }
+                if task_id in git_task_branches:
+                    existing = git_task_branches[task_id]
+                    if existing.get("is_merged") and not is_contained:
+                        git_task_branches[task_id] = branch_info
+                    elif not existing.get("is_merged") and is_contained:
+                        pass
+                    elif commit_ts and (not existing.get("commit_date") or commit_ts > existing["commit_date"]):
+                        git_task_branches[task_id] = branch_info
+                else:
+                    git_task_branches[task_id] = branch_info
+        return True, git_task_branches
+    except Exception as e:
+        _logger.warning("Could not inspect git task branches: %s", e)
+        return False, {}
+
