@@ -377,6 +377,7 @@ def _get_system_tmp_roots() -> set[Path]:
 
 def pytest_sessionstart(session):
     _E2E_DESELECTED[0] = 0
+    _WORKER_E2E_DESELECTED[0] = 0
     for root in _get_system_tmp_roots():
         target = root / ".snodo"
         if target.is_dir():
@@ -467,6 +468,12 @@ def _guard_no_env_leak(request):
 # start so a reused process reports a per-session number, not a running total.
 _E2E_DESELECTED: list[int] = [0]
 
+# Under xdist the marker filter runs in the workers, so the controller's tally
+# above stays zero. Each worker sees the *whole* deselected set (filtering is
+# deterministic and precedes distribution), so the controller keeps the largest
+# count any worker reported — summing would multiply it by the worker count.
+_WORKER_E2E_DESELECTED: list[int] = [0]
+
 
 def _e2e_excluded_by_markexpr(config: pytest.Config) -> bool:
     """True when the effective marker filter excludes the e2e suite.
@@ -498,25 +505,53 @@ def pytest_deselected(items: list) -> None:
             _E2E_DESELECTED[0] += 1
 
 
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error) -> None:
+    """Collect the worker's e2e-deselected count on the xdist controller.
+
+    The marker filter runs inside each worker, so this controller's own
+    :data:`_E2E_DESELECTED` stays zero under ``-n``. Every worker sees the whole
+    deselected set, so the counts agree and the largest is the session's count;
+    summing would multiply it by the worker count.
+    """
+    output = getattr(node, "workeroutput", None) or {}
+    count = output.get("e2e_deselected")
+    if isinstance(count, int) and count > _WORKER_E2E_DESELECTED[0]:
+        _WORKER_E2E_DESELECTED[0] = count
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    """Publish this process's e2e-deselected count to the xdist controller."""
+    config = session.config
+    if hasattr(config, "workerinput") and hasattr(config, "workeroutput"):
+        config.workeroutput["e2e_deselected"] = _E2E_DESELECTED[0]
+
+
+def _e2e_deselected_count() -> int:
+    """The number of e2e tests this session deselected, across xdist workers.
+
+    The controller's own tally covers a serial run; the worker-reported maximum
+    covers ``-n``, where the marker filter ran in the workers. Zero means
+    nothing was reduced — which is exactly when the banner must stay silent.
+    """
+    return _E2E_DESELECTED[0] or _WORKER_E2E_DESELECTED[0]
+
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
     """Announce the reduced local gate so a passing local run cannot be mistaken
     for the CI gate (Refs #87).
 
-    Fires only when the effective marker filter excluded e2e — so it prints for
-    the documented ``pytest tests/`` local command, and stays silent for CI's
-    ``-m ""`` full run and for ``-m e2e``.
+    Prints only when the effective marker filter excluded e2e *and* this run
+    actually deselected at least one e2e test — so it speaks for the documented
+    ``pytest tests/`` local command, and stays silent for CI's ``-m ""`` full
+    run, for ``-m e2e``, and for a scoped run (``pytest tests/jobs``) that
+    happens to contain no e2e tests to reduce (#257).
     """
     if not _e2e_excluded_by_markexpr(config):
         return
-    count = _E2E_DESELECTED[0] or None
-    if count is None:
-        # Under xdist the deselection happened in workers, so this controller
-        # has no marker-level count. For the documented reduction every
-        # deselected item is an e2e test, so the aggregated count is exact.
-        deselected = terminalreporter.stats.get("deselected") or []
-        markexpr = (config.getoption("markexpr", default="") or "").strip()
-        if markexpr == "not e2e" and deselected:
-            count = len(deselected)
+    count = _e2e_deselected_count()
+    if not count:
+        return
     for line in build_notice(count).splitlines():
         terminalreporter.write_line(line)
 
