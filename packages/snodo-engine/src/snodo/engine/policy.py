@@ -16,6 +16,15 @@ it represents a validator that didn't pass, so it does not count toward
 the threshold.  Policies differ on how many pass votes they require;
 warn affects only the PROCEED_WITH_LOG sub-classification.
 
+Abstentions (severity None) are judges that reached no verdict.  Under
+the default ``blocking`` they halt.  Under ``non_blocking`` they are
+excluded from the counts: ``total_count`` shrinks to the judges that
+returned a verdict, so the threshold applies to the judges that decided.
+An abstention is never a pass vote — it is reported in ``abstain_count``
+and nowhere else.  A run in which no judge decided has no verdict to
+found a decision on and halts, so an empty denominator never reads as
+unanimity.
+
 Blocker → HALT is a hard invariant across all policies (tested
 before the policy dispatch).
 """
@@ -106,7 +115,9 @@ class PolicyEvaluator:
             abstention_policy: How to treat validator abstentions. "blocking" (default,
                                safe for existing protocols) means an abstention always
                                halts. "non_blocking" excludes abstentions from policy
-                               evaluation so the policy applies to non-abstaining validators.
+                               evaluation — the denominator is the judges that returned
+                               a verdict, so the threshold applies to those who decided.
+                               An abstention is never converted into a pass.
         """
         if not 0.0 <= quorum_threshold <= 1.0:
             raise ValueError("quorum_threshold must be between 0.0 and 1.0")
@@ -211,7 +222,28 @@ class PolicyEvaluator:
                     abstain_count=abstain_count,
                     justification=f"{abstain_count} validator(s) abstained: could not produce verdicts within budget (abstention_policy=blocking)"
                 )
-            # else: non_blocking — abstentions excluded from counts, policy applies to non-abstaining validators (handled below)
+            # non_blocking: an abstention is excluded from the policy counts, so
+            # the denominator shrinks to the judges that returned a verdict and
+            # the policy reads it as "of those who decided". The abstainer is
+            # reported in abstain_count; it is never converted into a pass. If
+            # no judge decided there is no verdict to found a decision on, and
+            # an empty denominator must not read as unanimity: halt instead.
+            total_count -= abstain_count
+            if total_count == 0:
+                return PolicyDecision(
+                    action=PolicyAction.HALT,
+                    consensus_achieved=False,
+                    pass_count=pass_count,
+                    warn_count=warn_count,
+                    blocker_count=blocker_count,
+                    total_count=0,
+                    abstain_count=abstain_count,
+                    justification=(
+                        f"{abstain_count} validator(s) abstained and no judge "
+                        "returned a verdict: nothing to decide "
+                        "(abstention_policy=non_blocking)"
+                    ),
+                )
 
         # Pre-execute findings about existing tree state during recovery (is_recovery=True)
         # must not block the recovery attempt from running the coder.

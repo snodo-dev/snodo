@@ -302,3 +302,150 @@ def test_run_validators_pre_execute_recovery_caps_severity():
     assert results[0].severity == "pass"
     assert "Pre-execute recovery finding (warn)" in results[0].justification
     assert cap_originals["arch"] == "warn"
+
+
+def make_abstention(validator_id: str) -> ValidatorResult:
+    """Create an abstention: a judge that reached no verdict (severity None)."""
+    return ValidatorResult(
+        validator_id=validator_id,
+        severity=None,
+        justification="Validator could not reach a verdict within its turn budget.",
+        abstention_reason="exhausted budget",
+    )
+
+
+# ========== ABSTENTION POLICY TESTS (Fixes #277) ==========
+#
+# The documented contract: `non_blocking` excludes abstentions from the policy
+# counts, so the threshold applies to the judges that decided. The denominator
+# shrinks; abstainers are reported in abstain_count, never converted to a pass.
+
+# One abstainer, the rest passing. Under non_blocking every policy must proceed
+# on the judges that decided; under blocking every policy must halt.
+
+_POLICIES = [
+    DisagreementPolicy.UNANIMOUS,
+    DisagreementPolicy.MAJORITY,
+    DisagreementPolicy.QUORUM,
+    DisagreementPolicy.ANY,
+]
+
+
+@pytest.mark.parametrize("policy", _POLICIES)
+def test_non_blocking_abstention_excluded_from_denominator(policy):
+    """One abstainer, two passing: non_blocking proceeds under every policy, and
+    the counts honestly report only the two judges that voted."""
+    evaluator = PolicyEvaluator(abstention_policy="non_blocking")
+    results = [
+        make_result("v1", "pass"),
+        make_result("v2", "pass"),
+        make_abstention("v3"),
+    ]
+
+    decision = evaluator.evaluate(results, policy, phase="post_execute")
+
+    assert decision.action in (PolicyAction.PROCEED, PolicyAction.PROCEED_WITH_LOG)
+    assert decision.consensus_achieved
+    assert decision.pass_count == 2
+    assert decision.total_count == 2
+    assert decision.abstain_count == 1
+
+
+@pytest.mark.parametrize("policy", _POLICIES)
+def test_blocking_abstention_halts_every_policy(policy):
+    """The same quorum under the default blocking policy halts: the abstention
+    is not escapable by the disagreement policy."""
+    evaluator = PolicyEvaluator(abstention_policy="blocking")
+    results = [
+        make_result("v1", "pass"),
+        make_result("v2", "pass"),
+        make_abstention("v3"),
+    ]
+
+    decision = evaluator.evaluate(results, policy, phase="post_execute")
+
+    assert decision.action == PolicyAction.HALT
+    assert not decision.consensus_achieved
+    assert decision.abstain_count == 1
+    # Blocking reports the full quorum it halted: the abstainer is in the
+    # denominator because it is precisely what stopped the run.
+    assert decision.total_count == 3
+
+
+def test_unanimous_non_blocking_single_abstainer_alone_proceeds():
+    """The exact observed defect: a unanimous protocol whose only non-pass
+    result is an abstention proceeds under non_blocking."""
+    evaluator = PolicyEvaluator(abstention_policy="non_blocking")
+    results = [make_result("meta-spec", "pass"),
+               make_result("security", "pass"),
+               make_abstention("arch")]
+
+    decision = evaluator.evaluate(results, DisagreementPolicy.UNANIMOUS,
+                                  phase="pre_execute")
+
+    assert decision.action == PolicyAction.PROCEED
+    assert decision.total_count == 2
+    assert decision.pass_count == 2
+
+
+def test_abstention_is_never_counted_as_a_pass():
+    """An abstention moves no count except abstain_count — in particular it is
+    never a pass, under either abstention policy."""
+    results = [make_result("v1", "pass"), make_abstention("v2")]
+
+    for policy_name in ("blocking", "non_blocking"):
+        evaluator = PolicyEvaluator(abstention_policy=policy_name)
+        decision = evaluator.evaluate(results, DisagreementPolicy.UNANIMOUS,
+                                      phase="post_execute")
+        assert decision.pass_count == 1
+        assert decision.abstain_count == 1
+        assert decision.abstain_count + decision.pass_count + decision.warn_count \
+            + decision.blocker_count == len(results)
+        if policy_name == "non_blocking":
+            assert decision.total_count == 1
+        else:
+            assert decision.total_count == 2
+
+
+def test_non_blocking_all_abstain_halts_not_unanimous():
+    """An empty denominator must not read as unanimity: with no judge deciding
+    there is no verdict to found a decision on, so the run halts."""
+    evaluator = PolicyEvaluator(abstention_policy="non_blocking")
+    results = [make_abstention("v1"), make_abstention("v2")]
+
+    decision = evaluator.evaluate(results, DisagreementPolicy.UNANIMOUS,
+                                  phase="post_execute")
+
+    assert decision.action == PolicyAction.HALT
+    assert not decision.consensus_achieved
+    assert decision.pass_count == 0
+    assert decision.total_count == 0
+    assert decision.abstain_count == 2
+
+
+def test_non_blocking_blocker_still_halts():
+    """A genuine blocker is not made escapable by non_blocking."""
+    evaluator = PolicyEvaluator(abstention_policy="non_blocking")
+    results = [make_result("v1", "pass"), make_result("v2", "blocker"),
+               make_abstention("v3")]
+
+    decision = evaluator.evaluate(results, DisagreementPolicy.ANY,
+                                  phase="post_execute")
+
+    assert decision.action == PolicyAction.HALT
+    assert decision.blocker_count == 1
+
+
+def test_non_blocking_validator_error_still_halts():
+    """A validator error remains fail-closed under non_blocking."""
+    evaluator = PolicyEvaluator(abstention_policy="non_blocking")
+    err = ValidatorResult(validator_id="v1", severity=None,
+                          justification="internal error", error=True)
+    results = [make_result("v2", "pass"), err, make_abstention("v3")]
+
+    decision = evaluator.evaluate(results, DisagreementPolicy.UNANIMOUS,
+                                  phase="post_execute")
+
+    assert decision.action == PolicyAction.HALT
+    assert "fail-closed" in decision.justification
+
