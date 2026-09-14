@@ -665,31 +665,35 @@ def resolve_model_for_role(config: dict, role: str, fallback: str) -> str:
 
 
 def build_completion_fn(model: str, base_fn: Any) -> Any:
-    """Build a ``functools.partial`` of *base_fn* bound to *model* and credentials.
+    """Bind *base_fn* to *model*'s routing name and resolved credentials.
 
-    Binds model and api_base so the call routes to the correct endpoint and
-    uses the correct provider configuration. Binds api_key directly to avoid
-    credential collision when multiple OpenAI-compatible providers exist in
-    one run (#237).
+    THE single home of the completion-binding rule: the name bound to a
+    completion must be litellm's routing name, and its api_base (and api_key)
+    must be resolved alongside it from the configured name. Every call site —
+    the engine loop, the validator runner, and the MCP server — reaches the
+    rule here; there is deliberately no second implementation.
+
+    A provider block named for itself ("ocgo/...") is not a provider litellm
+    knows, so binding the raw configured name makes every call through this
+    partial fail with "LLM Provider NOT provided" unless the caller happens to
+    override it. api_base and api_key are resolved from the CONFIGURED name,
+    which is the key the provider block is stored under.
+
+    The api_key is bound directly to avoid credential collision when multiple
+    OpenAI-compatible providers exist in one run (#237). Call sites pass the
+    configured name through ``_configured_model`` (for task-scoped headers)
+    and never a ``model`` kwarg, which would override this binding without its
+    api_base.
     """
     import functools
 
     from snodo.config import ConfigManager
 
-    # The BOUND model must be litellm's routing name, not snodo's configured
-    # one: a provider block named for itself ("ocgo/...") is not a provider
-    # litellm knows, and binding the raw name makes every call through this
-    # partial fail with "LLM Provider NOT provided" unless the caller happens
-    # to override it. api_base and api_key are resolved from the CONFIGURED
-    # name, which is the key the provider block is stored under.
     kwargs: Dict[str, Any] = {"model": ConfigManager.resolve_litellm_model(model)}
     api_base = ConfigManager.resolve_api_base(model)
     if api_base:
         kwargs["api_base"] = api_base
 
-    # Get API key for this model's provider and bind it directly to avoid
-    # credential collision via os.environ when two OpenAI-compatible providers
-    # are used in the same run. This carries the credential with the call.
     api_key = ConfigManager().get_key_for_model(model)
     if api_key:
         kwargs["api_key"] = api_key
