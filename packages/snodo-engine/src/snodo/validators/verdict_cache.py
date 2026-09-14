@@ -154,8 +154,8 @@ class VerdictCache:
     def put(self, key: str, result: Any) -> None:
         """Store *result* under *key*, evicting and flushing as needed.
 
-        Only a genuine verdict reaches here (the caller filters abstentions,
-        errors and skipped passes); this method does not re-validate that.
+        Only a genuine verdict reaches here (the caller filters errors and
+        skipped passes); this method does not re-validate that.
         """
         now = time.time()
         record = {

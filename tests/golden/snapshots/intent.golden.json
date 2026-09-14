@@ -1,5 +1,4 @@
 {
-  "abstention_policy": "blocking",
   "disagreement_policy": "unanimous",
   "exclusive_tools": [
     "approve",

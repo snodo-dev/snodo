@@ -27,7 +27,7 @@ The section is bounded (Fixes #269): ``render_change_block`` returns at most
 routinely regenerates a lockfile or a bundle beside the source files that
 matter, and that one file runs to tens of thousands of diff lines; the section
 now reaches every post-execute judge, including single-completion ones with no
-turn budget to recover with.  The unbounded failure is not a clean abstention
+turn budget to recover with.  The unbounded failure is not a clean failure
 — it is a provider context-length error, or a silent mid-hunk cut that leaves
 the judge reading half a change it was told is whole, both worse to recognise
 from a log than the wandering #267 removed.  So the bound is honest instead:

@@ -47,7 +47,6 @@ This declares one mode (producer) with one tool (edit) and one validator (securi
 | `roles` | list[Role] | no | Participant roles |
 | `validators` | list[Validator] | yes | One or more validator configurations |
 | `disagreement_policy` | string | no | How to resolve validator conflicts: `"unanimous"`, `"majority"`, `"quorum"`, `"any"` (default `"unanimous"`) |
-| `abstention_policy` | string | no | How to treat validators that ran out of budget without a verdict: `"blocking"` halts on any abstention, `"non_blocking"` excludes abstentions from the policy counts (default `"blocking"`) |
 | `initial_mode` | string | yes | Mode ID to start in |
 | `global_constraints` | list[Constraint] | no | Protocol-wide constraints (see Constraints) |
 | `execution` | ExecutionConfig | no | Execution and recovery configuration (see Execution configuration) |
@@ -257,69 +256,24 @@ Every validator result carries one of three severities, ordered `pass < warn < b
 | `warn` | Advisory concern | Withholds approval — does NOT count toward policy threshold (post-policy-fix: warn ≠ approval) |
 | `blocker` | Critical issue | Halts execution unconditionally (INV3) — bypasses all policy thresholds |
 
-### Abstention (no verdict)
+### A judge is made to decide
 
-A tool-loop judge that exhausts its turn budget without calling
-`submit_verdict` has not passed, warned, or blocked — it has not decided. Its
-result carries **no severity** (`severity` is absent) plus an
-`abstention_reason`, the record of what it did and did not examine
-(`examined`, `unexamined_tools`), and — when the judge answered in prose
-instead of calling `submit_verdict` — its own closing account (`last_words`).
-That account is bounded, untrusted model output, kept because it is the single
-most useful artefact of a failed judgement: it says what the judge concluded,
-or why it would not commit. It is never a verdict and nothing derives a
-finding or a severity from it. Because the absence lives in the severity
-itself, no consumer comparing severities can mistake an abstention for a
-verdict: audit events, checkpoints, escalation payloads, the halt payload,
-run output, and the dashboard all say "abstained", and a validation token
-never signs one.
+A validator returns a verdict: `pass`, `warn`, or `blocker`. There is no
+fourth thing it can return.
 
-How abstentions affect the decision is set by the protocol's
-`abstention_policy`:
+At the boundary of its tool budget a judge is asked for a verdict and given no
+way to keep reading — the final turn offers `submit_verdict` alone, and the
+read tools are withdrawn. A verdict reached on incomplete reading is a real
+verdict: `warn` exists for exactly that, and a `warn` escalating to a human is
+the flow working, not failing. The judge is told to say in its justification
+that its view was partial.
 
-| `abstention_policy` | Effect |
-|---------------------|--------|
-| `"blocking"` (default) | Any unadjudicated abstention halts — consensus cannot be presumed while a judge is silent |
-| `"non_blocking"` | Abstentions are excluded from the policy counts; the threshold applies to the judges that decided |
-
-Under `non_blocking` the denominator is the judges that returned a verdict,
-not every judge invoked. An abstention is never converted into a pass: it is
-reported in `abstain_count` and the pass/warn/blocker counts are untouched. If
-no judge returned a verdict there is nothing to decide on, so the run halts
-rather than reading an empty denominator as unanimity. Concretely, with one
-abstainer and the rest passing:
-
-- `"unanimous"`: every judge that decided passed — proceeds.
-- `"majority"`: more than half of the judges that decided passed — proceeds.
-- `"quorum"`: the pass count meets the threshold over the judges that decided — proceeds.
-- `"any"`: at least one judge that decided passed — proceeds.
-
-An abstention is the case a human is asked about. `snodo authorize <task_id>`
-renders which judge abstained, why it ran out, what it examined before it
-did, and its last words when it spoke without deciding; signing that proposal
-mints a `DecisionRecord` with
-`adjudicated_severity: "abstain"`, which retires that judge from the quorum
-(it is never converted into a pass vote). A `blocker` halt is never described
-in terms of blockers that do not exist: the halt record names the abstainers.
-
-### An abstention re-judges the judge, not the coder
-
-A post-execute abstention is not a finding about the code, so it is not routed
-to the recovery machinery: there is no fault for a coder to fix, and the work
-on the branch is already correct. The judge is retried **in place** on the
-unchanged work — the coder is not dispatched and no recovery subtask is
-created. The retry is bounded two ways: by the mode's `max_recovery_depth` (a
-protocol that permits no recovery permits no re-judging), and by a repeated
-verdict. An abstention repeated on unchanged code is a stall whatever prose
-accompanies it — every abstention hashes to the same signature — so a judge
-that abstains twice stops the retry rather than looping.
-
-`abstention_policy` is unchanged: `"blocking"` still halts, `"non_blocking"`
-still excludes the abstention from the counts. When the policy halts or
-escalates *solely* because a judge abstained and the retry budget is spent, the
-halt is `abstention_exhausted` (or `abstention_stalled` for the repeated case).
-Neither names a code fault, so both are adjudicated with `snodo authorize
-<task_id>` rather than retried with a coder.
+A judge that still returns nothing — prose, an empty reply, or a read tool call
+on the final turn — is an error. It takes the path errors already take:
+fail-closed. An engine that cannot get a verdict out of its quorum must not
+proceed, and nothing new is added to express this. The record of what a failing
+judge examined travels on the error result (`examined`), so a human can still
+see how far the inspection got.
 
 ### The halt payload records the attempts, not only the result
 
@@ -329,19 +283,16 @@ distinguishable without reading the logs:
 
 | Field | Meaning |
 |-------|---------|
-| `attempts.total` | How many judged attempts the task took (root + recovery subtasks + in-place re-judges) |
-| `attempts.non_verdicts` | How many attempts ended without a verdict (abstentions) |
+| `attempts.total` | How many judged attempts the task took (root + recovery subtasks) |
 | `attempts.coder_dispatches` | How many coder runs the chain cost |
 | `attempts.history` | `{attempt, outcome}` per attempt, most recent `_MAX_ATTEMPT_HISTORY` entries |
 | `attempts.omitted` | Count dropped from the front of a truncated `history` |
 
-Each `outcome` is one of `passed`, `warned`, `blocked`, `abstained`, or
-`error` — canonical tokens, not prose, so payloads aggregate across projects. A
-task that abstained three times and passed on the fourth reports four attempts
-and three non-verdicts; a task that passed first time reports one attempt and
-zero. The pre-execute `pre_validation` verdicts feed the outcome only when a
-task halted before execution. Halt types and `validator_results` are unchanged:
-`attempts` is the history that precedes them.
+Each `outcome` is one of `passed`, `warned`, `blocked`, or `error` — canonical
+tokens, not prose, so payloads aggregate across projects. A task that passed
+first time reports one attempt. The pre-execute `pre_validation` verdicts feed
+the outcome only when a task halted before execution. Halt types and
+`validator_results` are unchanged: `attempts` is the history that precedes them.
 
 ---
 

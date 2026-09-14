@@ -16,14 +16,9 @@ it represents a validator that didn't pass, so it does not count toward
 the threshold.  Policies differ on how many pass votes they require;
 warn affects only the PROCEED_WITH_LOG sub-classification.
 
-Abstentions (severity None) are judges that reached no verdict.  Under
-the default ``blocking`` they halt.  Under ``non_blocking`` they are
-excluded from the counts: ``total_count`` shrinks to the judges that
-returned a verdict, so the threshold applies to the judges that decided.
-An abstention is never a pass vote — it is reported in ``abstain_count``
-and nowhere else.  A run in which no judge decided has no verdict to
-found a decision on and halts, so an empty denominator never reads as
-unanimity.
+A validator always carries a verdict.  A judge that reached no verdict is
+an operational error (``error=True``), and an error halts fail-closed —
+there is no separate no-verdict state in the counts.
 
 Blocker → HALT is a hard invariant across all policies (tested
 before the policy dispatch).
@@ -66,10 +61,6 @@ class PolicyDecision:
     blocker_count: int
     total_count: int
     justification: str
-    #: Judges that abstained (no verdict within budget). Recorded so the
-    #: decision itself — not only prose — says that consensus was missing a
-    #: verdict; abstentions never inflate pass/warn/blocker counts.
-    abstain_count: int = 0
 
 
 def policy_decision_to_dict(pd: Any) -> Optional[Dict[str, Any]]:
@@ -104,7 +95,6 @@ class PolicyEvaluator:
         self,
         quorum_threshold: float = 0.67,
         decision_issuer: Optional[Any] = None,
-        abstention_policy: str = "blocking",
     ):
         """Initialize policy evaluator.
 
@@ -112,21 +102,12 @@ class PolicyEvaluator:
             quorum_threshold: Fraction of validators required for QUORUM policy (0.0-1.0)
             decision_issuer: Optional DecisionRecordIssuer for verifying
                              DecisionRecords. Uses default issuer if None.
-            abstention_policy: How to treat validator abstentions. "blocking" (default,
-                               safe for existing protocols) means an abstention always
-                               halts. "non_blocking" excludes abstentions from policy
-                               evaluation — the denominator is the judges that returned
-                               a verdict, so the threshold applies to those who decided.
-                               An abstention is never converted into a pass.
         """
         if not 0.0 <= quorum_threshold <= 1.0:
             raise ValueError("quorum_threshold must be between 0.0 and 1.0")
-        if abstention_policy not in ("blocking", "non_blocking"):
-            raise ValueError("abstention_policy must be 'blocking' or 'non_blocking'")
 
         self.quorum_threshold = quorum_threshold
         self._decision_issuer = decision_issuer
-        self.abstention_policy = abstention_policy
     
     def evaluate(
         self,
@@ -162,16 +143,15 @@ class PolicyEvaluator:
                 justification="No validator results provided"
             )
 
-        # Count severities (abstentions have severity=None)
+        # Count severities (a validator always carries one)
         pass_count = sum(1 for r in results if r.severity == "pass")
         warn_count = sum(1 for r in results if r.severity == "warn")
         blocker_count = sum(1 for r in results if r.severity == "blocker")
         error_count = sum(1 for r in results if getattr(r, 'error', False))
-        abstain_count = sum(1 for r in results if r.severity is None)
         total_count = len(results)
 
-        # Validator error always halts fail-closed (hard invariant)
-        # Abstention is distinct from error: an exhausted judge is not an engine fault
+        # Validator error always halts fail-closed (hard invariant). A judge
+        # that could not reach a verdict is an error, so it takes this path.
         if error_count > 0:
             return PolicyDecision(
                 action=PolicyAction.HALT,
@@ -180,70 +160,8 @@ class PolicyEvaluator:
                 warn_count=warn_count,
                 blocker_count=blocker_count,
                 total_count=total_count,
-                abstain_count=abstain_count,
                 justification=f"{error_count} validator(s) produced operational errors — fail-closed"
             )
-
-        # Adjudicated abstentions: a human-signed DecisionRecord(proceed) for
-        # an abstaining validator retires that judge from the quorum
-        # (Fixes #252). An abstention is never converted into a pass vote —
-        # the human consented to proceed WITHOUT that verdict, so total_count
-        # shrinks. With no matching record, abstentions behave exactly as
-        # before (blocking → HALT, non_blocking → excluded from the counts).
-        adjudicated_abstainers: List[str] = []
-        if decision_records and task_ref and abstain_count > 0:
-            from snodo.infrastructure.decisions import (
-                verify_only_issuer,
-            )
-            issuer = self._decision_issuer or verify_only_issuer()
-            for r in results:
-                if r.severity is not None:
-                    continue
-                payload = issuer.find_adjudicated(
-                    decision_records, task_ref, r.validator_id, "abstain"
-                )
-                if payload is not None:
-                    adjudicated_abstainers.append(r.validator_id)
-                    abstain_count -= 1
-                    total_count -= 1
-
-        # Abstain count: judges that could not reach a verdict within budget
-        # Policy behavior depends on abstention_policy configuration.
-        if abstain_count > 0:
-            if self.abstention_policy == "blocking":
-                # Blocking (default, safe for existing protocols): any abstention halts
-                return PolicyDecision(
-                    action=PolicyAction.HALT,
-                    consensus_achieved=False,
-                    pass_count=pass_count,
-                    warn_count=warn_count,
-                    blocker_count=blocker_count,
-                    total_count=total_count,
-                    abstain_count=abstain_count,
-                    justification=f"{abstain_count} validator(s) abstained: could not produce verdicts within budget (abstention_policy=blocking)"
-                )
-            # non_blocking: an abstention is excluded from the policy counts, so
-            # the denominator shrinks to the judges that returned a verdict and
-            # the policy reads it as "of those who decided". The abstainer is
-            # reported in abstain_count; it is never converted into a pass. If
-            # no judge decided there is no verdict to found a decision on, and
-            # an empty denominator must not read as unanimity: halt instead.
-            total_count -= abstain_count
-            if total_count == 0:
-                return PolicyDecision(
-                    action=PolicyAction.HALT,
-                    consensus_achieved=False,
-                    pass_count=pass_count,
-                    warn_count=warn_count,
-                    blocker_count=blocker_count,
-                    total_count=0,
-                    abstain_count=abstain_count,
-                    justification=(
-                        f"{abstain_count} validator(s) abstained and no judge "
-                        "returned a verdict: nothing to decide "
-                        "(abstention_policy=non_blocking)"
-                    ),
-                )
 
         # Pre-execute findings about existing tree state during recovery (is_recovery=True)
         # must not block the recovery attempt from running the coder.
@@ -255,7 +173,6 @@ class PolicyEvaluator:
                 warn_count=warn_count + blocker_count,
                 blocker_count=0,
                 total_count=total_count,
-                abstain_count=abstain_count,
                 justification=f"Pre-execute recovery finding(s) ({warn_count + blocker_count}) passed to coder as evidence"
             )
 
@@ -270,7 +187,6 @@ class PolicyEvaluator:
                 warn_count=warn_count,
                 blocker_count=blocker_count,
                 total_count=total_count,
-                abstain_count=abstain_count,
                 justification=f"{blocker_count} blocker(s) present"
             )
 
@@ -299,14 +215,6 @@ class PolicyEvaluator:
         decision = getattr(self, evaluator)(
             pass_count, warn_count, blocker_count, total_count
         )
-        # The decision record itself must say that a verdict was missing and
-        # how it was resolved, so no consumer has to re-derive it from prose.
-        decision.abstain_count = abstain_count + len(adjudicated_abstainers)
-        if adjudicated_abstainers:
-            decision.justification += (
-                f" [abstention(s) retired by human DecisionRecord: "
-                f"{', '.join(adjudicated_abstainers)}]"
-            )
         return decision
     
     def _evaluate_unanimous(
@@ -484,7 +392,6 @@ def evaluate_policy(
     task_ref: str = "",
     is_recovery: bool = False,
     phase: str = "pre_execute",
-    abstention_policy: str = "blocking",
 ) -> PolicyDecision:
     """Evaluate policy (convenience function).
 
@@ -496,15 +403,11 @@ def evaluate_policy(
         task_ref: Task ID for matching DecisionRecords
         is_recovery: Whether this task is in a recovery cycle (depth > 0)
         phase: Validation phase ("pre_execute" or "post_execute")
-        abstention_policy: How to treat abstentions ("blocking" or "non_blocking")
 
     Returns:
         PolicyDecision
     """
-    evaluator = PolicyEvaluator(
-        quorum_threshold=quorum_threshold,
-        abstention_policy=abstention_policy,
-    )
+    evaluator = PolicyEvaluator(quorum_threshold=quorum_threshold)
     return evaluator.evaluate(
         results, policy,
         phase=phase,

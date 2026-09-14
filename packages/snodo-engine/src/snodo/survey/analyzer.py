@@ -50,8 +50,8 @@ dossier it gathered from the filesystem; the judge only classifies. Its
 verdicts are accepted only when they cite files that exist inside the
 subject's own (non-vendored, non-hidden) source, so a conclusion is
 attributable to evidence a reader can go and look at and disagree with.
-When no judge is available, a judge call fails, or the judge abstains, the
-deterministic result stands and the judgement is reported as not made.
+When no judge is available or a judge call fails, the deterministic result
+stands and the judgement is reported as not made.
 
 Test command detection — the marker must actually declare the command:
 - package.json  → npm test, only if scripts.test exists and is not npm's
@@ -827,8 +827,8 @@ def _detect_repository_tooling(project_root: Path) -> Dict[str, str]:
 # machinery's read-only agent dispatch.  It receives the evidence dossier
 # (subjects plus what the deterministic walk already gathered) and returns
 # verdicts, or signals that no verdicts came.  The analyzer never imports an
-# agent itself: survey works with no model configured, and a failed or
-# abstained judgement degrades to the deterministic result, reported plainly.
+# agent itself: survey works with no model configured, and a failed judgement
+# degrades to the deterministic result, reported plainly.
 # ---------------------------------------------------------------------------
 
 # Judge contract: takes the dossier dict, returns either
@@ -1104,9 +1104,6 @@ def _apply_verdict(
         return gap("the agent returned no verdict for this subject")
 
     verdict = entry.get("verdict")
-    if verdict == "abstain":
-        reason = _clip(entry.get("reason"))
-        return gap("the agent abstained" + (f": {reason}" if reason else ""))
     if verdict not in _VERDICTS_BY_KIND[kind]:
         return gap(f"unrecognized verdict for this question: {verdict!r}")
 

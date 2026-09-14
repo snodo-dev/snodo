@@ -70,10 +70,8 @@ _AUDIT_TAIL_BYTES = 512 * 1024
 
 #: Events that stop a task until a person acts. A task awaiting one of these
 #: is the only thing on the cockpit that will not progress on its own: an
-#: escalated disagreement or a merge conflict needs a human, and a halt whose
-#: judges abstained — "could not reach a verdict" — has already spent its
-#: budget and will retry forever without intervention. Operator actions are
-#: taken in ``snodo cloud``/``snodo authorize``, never from the viewer.
+#: escalated disagreement or a merge conflict needs a human. Operator actions
+#: are taken in ``snodo cloud``/``snodo authorize``, never from the viewer.
 _AWAITING_EVENTS = {
     "halt",
     "disagreement_escalated",
@@ -101,9 +99,7 @@ def _halt_event_fields(event: dict) -> Tuple[str, str]:
     """Return ``(outcome_label, awaits_text)`` for a halt/escalation event.
 
     The recorded outcome is what groups a wave that failed the same way six
-    times into one fact: ``halt_type`` is the canonical vocabulary, and an
-    abstention (a judge that could not reach a verdict) is named as such rather
-    than folded into a generic blocker.
+    times into one fact: ``halt_type`` is the canonical vocabulary.
     """
     event_type = event.get("event_type", "")
     data = event.get("data") if isinstance(event.get("data"), dict) else {}
@@ -112,15 +108,6 @@ def _halt_event_fields(event: dict) -> Tuple[str, str]:
         "_escalated", ""
     ).replace("unverified_merge_", "merge ")
 
-    # An abstention — a judge that exhausted its budget without a verdict — is
-    # the halt that will not resolve on its own. It is recorded across the
-    # reason text and the validator/failure payloads, so scan them all rather
-    # than trusting one field, and name it distinctly from a plain blocker.
-    abstain_signal = "abstain" in reason.lower() or "abstain" in str(
-        data.get("raw_halt_type", "")
-    ).lower() or "abstain" in json.dumps(data, default=str).lower()
-    if abstain_signal:
-        return ("abstention", "a verdict the judges could not reach")
     if halt_type == "escalate" or event_type == "disagreement_escalated":
         return ("escalate", "authorization (snodo authorize)")
     if event_type == "merge_conflict_escalated":

@@ -517,9 +517,6 @@ class CoreToolHandler:
         status = classify_outcome(results, decision)
         server._validation_status = status
 
-        # result_record(): abstentions carry their absent severity plus reason
-        # and examination into the tool response and the audit event, so
-        # neither can read a silent judge as a pass (Fixes #252).
         serialized = [result_record(r) for r in results]
 
         server._audit("validator_results", {
@@ -527,10 +524,7 @@ class CoreToolHandler:
             "task_id": task_id,
             "status": status,
             "validator_outcomes": [
-                {"validator_id": r.validator_id, "severity": r.severity,
-                 **({"abstention_reason": r.abstention_reason,
-                     **({"last_words": r.last_words} if r.last_words else {})}
-                    if r.severity is None else {})}
+                {"validator_id": r.validator_id, "severity": r.severity}
                 for r in results
             ],
         })
@@ -568,24 +562,10 @@ class CoreToolHandler:
             }
 
         if status == "blocker":
-            blocker_instruction = (
-                "Blockers present. Fix the code and re-validate; "
-                "if exhausted, revise the spec."
-            )
-            # A HALT with no blockers but abstaining judges must name the
-            # silence, not claim blockers that do not exist (Fixes #252).
-            if not any(r["severity"] == "blocker" for r in serialized):
-                abstainers = [r["validator_id"] for r in serialized if r["severity"] is None]
-                if abstainers:
-                    blocker_instruction = (
-                        f"No blockers; {len(abstainers)} validator(s) abstained "
-                        f"({', '.join(abstainers)}): no verdict within budget. "
-                        "Raise the validator turn budget, revise the spec, or "
-                        f"run: snodo authorize {task_id}."
-                    )
             return self._outcome(
                 "blocker", task_id, serialized,
-                blocker_instruction,
+                "Blockers present. Fix the code and re-validate; "
+                "if exhausted, revise the spec.",
             )
 
         # validator_error
@@ -653,7 +633,7 @@ class CoreToolHandler:
 
             now = datetime.now(timezone.utc).isoformat()
             for r in results:
-                if r.severity not in ("warn", "blocker") and r.severity is not None:
+                if r.severity not in ("warn", "blocker"):
                     continue
                 entry = {
                     "type": "adjudicate",
@@ -665,19 +645,6 @@ class CoreToolHandler:
                     "timestamp": now,
                     "policy_decision": policy_decision_to_dict(decision),
                 }
-                if r.severity is None:
-                    # The human must be able to see that a judge abstained,
-                    # why it ran out, and what it did and did not examine
-                    # (Fixes #252).
-                    entry["abstention_reason"] = r.abstention_reason or (
-                        "judge did not reach a verdict"
-                    )
-                    if r.examined:
-                        entry["examined"] = list(r.examined)
-                    if r.unexamined_tools:
-                        entry["unexamined_tools"] = list(r.unexamined_tools)
-                    if r.last_words:
-                        entry["last_words"] = r.last_words
                 pending[task_id] = entry
 
             mgr.update_decision(session.session_id, "pending_decisions", pending)

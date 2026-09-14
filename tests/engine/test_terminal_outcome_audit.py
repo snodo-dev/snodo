@@ -180,35 +180,6 @@ def _documented_halt_keys():
 
 
 class TestHaltEventShape:
-    def test_abstention_only_halt_names_judges_and_reports_no_blockers(self):
-        """A halt caused entirely by abstentions names the judges that reached
-        no verdict and reports zero blockers, and separates the canonical
-        outcome from the raw value the loop set."""
-        protocol = _make_protocol()
-        audit = MagicMock(spec=AuditLog)
-        builder = GraphBuilder(protocol, audit_log=audit)
-
-        state = _make_loop_state_dict(
-            halt_type="turn_budget_exhausted",
-            violations=[],
-            results=[
-                {"validator_id": "v1", "severity": None,
-                 "justification": "ran out of turns"},
-            ],
-        )
-
-        builder._blocked_node(state)
-
-        _, data = audit.append_event.call_args[0]
-        assert data["abstained_validators"] == ["v1"]
-        assert data["blocker_validators"] == []
-        assert "abstained" in data["reason"].lower()
-        assert "blocker" not in data["reason"].lower()
-        # halt_type is canonical; raw_halt_type preserves the loop's own value.
-        assert data["halt_type"] == "blocker"
-        assert data["raw_halt_type"] == "turn_budget_exhausted"
-        assert "final_decision" not in data
-
     def test_emitted_halt_keys_match_documented_shape(self):
         """The keys on the emitted halt event are exactly the documented shape
         (minus the ``op`` routing field present on every event)."""
