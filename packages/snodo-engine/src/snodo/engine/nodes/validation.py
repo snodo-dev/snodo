@@ -3,6 +3,7 @@ from snodo.engine.state import LoopStage, LoopState, _build_audit_results
 from snodo.core.interfaces import ValidatorResult, ExecutionError, NoFileOperationsError, result_record
 from snodo.coders.base import (
     AdapterError,
+    CoderTimeoutError,
     CoderUnavailableError,
     SnodoMutationError,
     TurnBudgetExhausted,
@@ -210,6 +211,12 @@ class ValidationNodeMixin:
             self._last_execution_writes = []
             self._last_execution_reads = {"files": [], "directories": []}
             self._last_output_tail = ""
+            # A timeout is a per-run fact. Reset it here, with the other
+            # per-attempt facts, so a halt payload built for THIS run can never
+            # carry a previous attempt's timeout or output (Fixes #281).
+            self._last_timed_out = False
+            self._last_timeout_seconds = None
+            self._last_timeout_tail = ""
             self._last_existing_work_base_ref = None
             try:
                 self._progress("  Coder dispatched")
@@ -240,6 +247,14 @@ class ValidationNodeMixin:
                         "artifacts_count": len(artifacts),
                         "output_tail": getattr(self, "_last_timeout_tail", ""),
                     })
+                    # A run that ran out of time is worth knowing about even
+                    # when its work passes: say so rather than letting it
+                    # proceed silently (Fixes #281).
+                    self._progress(
+                        "  Coder timed out after "
+                        f"{getattr(self, '_last_timeout_seconds', None)}s; "
+                        f"judging the {len(artifacts)} artifact(s) it produced."
+                    )
             except SnodoMutationError as e:
                 # An in-place-writing coder mutated protected .snodo/ state.
                 # This is a governance violation (INV3-class), not an
@@ -282,6 +297,42 @@ class ValidationNodeMixin:
                 })
                 self._auto_write_failure_context(loop_state, [])
                 return self._state_to_dict(loop_state)
+            except CoderTimeoutError as e:
+                # A run that ended on the clock. This is an operational fact
+                # about the run, not a finding about the code: the coder was
+                # invoked and did not finish in time — the same kind of thing as
+                # a coder that could not be invoked at all — so it halts under
+                # the raw AND canonical ``environment_error`` (ADR 015), never
+                # the ``execution_error``/blocker family. The produced work (if
+                # any) was already carried into post-execute validation by the
+                # executor; here nothing recoverable was left, so no blocker
+                # verdict is recorded and no ``task_failure`` context is
+                # written. The timeout itself is recorded, because a run that
+                # ran out of time is worth knowing about even when it did not
+                # block (Fixes #281).
+                loop_state.is_blocked = True
+                loop_state.halt_type = "environment_error"
+                loop_state.constraint_violations.append(str(e))
+                loop_state.metadata["timed_out"] = True
+                loop_state.metadata["timeout_seconds"] = (
+                    getattr(e, "timeout_seconds", None)
+                    or getattr(self, "_last_timeout_seconds", None)
+                )
+                if getattr(self, "_last_timeout_tail", ""):
+                    loop_state.metadata["output_tail"] = getattr(self, "_last_timeout_tail", "")
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "skipped",
+                    "reason": str(e),
+                }
+                self._audit("coder_timed_out", {
+                    "op": "coder_timed_out",
+                    "task_ref": loop_state.task.id,
+                    "mode": loop_state.current_mode,
+                    "timeout_seconds": loop_state.metadata["timeout_seconds"],
+                    "artifacts_count": 0,
+                    "output_tail": getattr(self, "_last_timeout_tail", ""),
+                })
+                return self._state_to_dict(loop_state)
             except CoderUnavailableError as e:
                 # The environment, not the task: the coder's binary (or the
                 # container runtime it needs) cannot be invoked in the process
@@ -323,6 +374,9 @@ class ValidationNodeMixin:
                     "outcome": "skipped",
                     "reason": str(e),
                 }
+                output_tail = getattr(self, "_last_output_tail", "")
+                if output_tail:
+                    loop_state.metadata["output_tail"] = output_tail
                 self._audit("execution_failed", {
                     "op": "execution_failed",
                     "task_ref": loop_state.task.id,

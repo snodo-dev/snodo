@@ -51,6 +51,25 @@ class CoderUnavailableError(AdapterError):
         super().__init__(f"{binary} not found on PATH. {self.remediation}")
 
 
+class CoderTimeoutError(LLMCallError):
+    """The coder was invoked but did not finish within its time budget.
+
+    A run that ends on the clock is an operational fact about the run, not a
+    finding about the code: the coder was invoked and did not finish in time,
+    the same kind of thing as a coder that could not be invoked at all. The
+    engine halts it under ``environment_error`` (ADR 015) — the operational-halt
+    family — never as a blocker verdict about work no judge faulted.
+
+    Subclasses :class:`LLMCallError` so the captured output tail still travels
+    the same path to the record; the type is what lets the engine tell "the run
+    ran out of time" from "the call failed" without parsing prose.
+    """
+
+    def __init__(self, message: str, timeout_seconds: Optional[int] = None):
+        self.timeout_seconds = timeout_seconds
+        super().__init__(message)
+
+
 class ParseError(AdapterError):
     """Failed to parse LLM output."""
 
