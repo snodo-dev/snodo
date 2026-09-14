@@ -3,7 +3,7 @@
 Verifies that under --mock / use_mock_coder=True:
 - No provider calls escape to litellm.completion across coder, validators,
   classifier, and spec authoring rewriter.
-- _build_completion_fn returns mock_completion_fn when mock mode is active,
+- build_completion_fn returns mock_completion_fn when mock mode is active,
   preventing future call sites from bypassing hermeticity.
 - MockAdapter provides a hermetic _completion_fn.
 """
@@ -22,7 +22,8 @@ from snodo.coders.mock import (
 )
 from snodo.compiler.models import Mode, Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
-from snodo.engine.loop import _build_completion_fn, build_protocol_graph
+from snodo.engine.loop import build_protocol_graph
+from snodo.validators.runner import build_completion_fn
 from snodo.validators.context import ValidatorContext
 from snodo.validators.llm_validator import LLMValidator
 
@@ -45,14 +46,14 @@ def test_mock_adapter_provides_mock_completion_fn():
 
 
 def test_build_completion_fn_preserves_hermetic_mock():
-    """_build_completion_fn returns mock_completion_fn without live binding when mock active."""
+    """build_completion_fn returns mock_completion_fn without live binding when mock active."""
     set_mock_mode(True)
     try:
-        fn = _build_completion_fn("gpt-4o", mock_completion_fn)
+        fn = build_completion_fn("gpt-4o", mock_completion_fn)
         assert is_mock_completion_fn(fn)
 
         # Even with a non-mock base_fn, when global mock mode is active, it returns a mock fn
-        fn_any = _build_completion_fn("claude-3-5-sonnet", lambda *a, **k: None)
+        fn_any = build_completion_fn("claude-3-5-sonnet", lambda *a, **k: None)
         assert is_mock_completion_fn(fn_any)
     finally:
         set_mock_mode(False)

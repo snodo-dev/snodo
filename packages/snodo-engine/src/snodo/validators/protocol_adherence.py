@@ -272,7 +272,12 @@ class ProtocolAdherenceValidator(ValidatorBase):
 
     def _call_llm(self, prompt: str) -> str:
         response = self._completion_fn(
-            model=self.model,
+            # No "model" here on purpose: the completion function is a partial
+            # with model AND api_base already bound together (#237). Passing a
+            # model kwarg overrides the bound model without its api_base, and
+            # the raw configured name ("ocgo/...") is not a litellm provider
+            # (#255). _configured_model is popped by the header wrapper and
+            # never reaches litellm.
             _configured_model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
@@ -288,7 +293,7 @@ class ProtocolAdherenceValidator(ValidatorBase):
         Zero free-text parsing.
         """
         response = self._completion_fn(
-            model=self.model,
+            # No "model" here on purpose — see _call_llm (#255).
             _configured_model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,

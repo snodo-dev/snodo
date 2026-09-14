@@ -74,37 +74,6 @@ def _resolve_model_for_role(config: dict, role: str, fallback: str) -> str:
     )
 
 
-def _build_completion_fn(model: str, base_fn: Optional[Callable]) -> Optional[Callable]:
-    """Build a ``functools.partial`` of *base_fn* bound to *model* and credentials.
-
-    Binds model and api_base so the call routes to the correct endpoint and
-    uses the correct provider configuration. Binds api_key directly to avoid
-    credential collision when multiple OpenAI-compatible providers exist in
-    one run (#237).
-    """
-    if base_fn is None:
-        return None
-
-    import functools
-
-    from snodo.config import ConfigManager
-    resolver = getattr(ConfigManager, "resolve_litellm_model", None)
-    litellm_model = resolver(model) if resolver else model
-    kwargs: dict[str, Any] = {"model": litellm_model}
-    api_base = ConfigManager.resolve_api_base(model)
-    if api_base:
-        kwargs["api_base"] = api_base
-
-    # Get API key for this model's provider and bind it directly to avoid
-    # credential collision via os.environ when two OpenAI-compatible providers
-    # are used in the same run. This carries the credential with the call.
-    api_key = ConfigManager().get_key_for_model(model)
-    if api_key:
-        kwargs["api_key"] = api_key
-
-    return functools.partial(base_fn, **kwargs)
-
-
 def _attempt_written_files(loop_state: "LoopState") -> List[str]:
     """Return file paths written by the current attempt.
 
@@ -570,6 +539,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
 
         from litellm import completion as litellm_completion
         from snodo.config import ConfigManager, provider_env
+        from snodo.validators.runner import build_completion_fn
 
         config = ConfigManager().load()
 
@@ -579,12 +549,12 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         if is_mock_mode_active() or isinstance(self.coder, MockAdapter):
             from snodo.coders.mock import mock_completion_fn
             mock_base = _base_fn or mock_completion_fn
-            validator_completion_fn = _build_completion_fn(validator_model, mock_base)
-            classifier_completion_fn = _build_completion_fn(classifier_model, mock_base)
+            validator_completion_fn = build_completion_fn(validator_model, mock_base)
+            classifier_completion_fn = build_completion_fn(classifier_model, mock_base)
         else:
             with provider_env(validator_model), provider_env(classifier_model):
-                validator_completion_fn = _build_completion_fn(validator_model, _base_fn or litellm_completion)
-                classifier_completion_fn = _build_completion_fn(classifier_model, _base_fn or litellm_completion)
+                validator_completion_fn = build_completion_fn(validator_model, _base_fn or litellm_completion)
+                classifier_completion_fn = build_completion_fn(classifier_model, _base_fn or litellm_completion)
 
         if classifier_model == validator_model and not (is_mock_mode_active() or isinstance(self.coder, MockAdapter)):
             classifier_completion_fn = validator_completion_fn
