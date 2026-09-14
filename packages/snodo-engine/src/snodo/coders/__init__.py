@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, Type
 from snodo.coders.base import (
     CoderAdapter,
     AdapterError as AdapterError,
+    CoderTimeoutError as CoderTimeoutError,
     CoderUnavailableError as CoderUnavailableError,
     LLMCallError as LLMCallError,
     ParseError as ParseError,

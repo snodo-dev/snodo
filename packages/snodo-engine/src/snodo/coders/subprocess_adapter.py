@@ -21,7 +21,12 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from snodo.coders.base import CoderUnavailableError, InPlaceCoderAdapter, LLMCallError
+from snodo.coders.base import (
+    CoderTimeoutError,
+    CoderUnavailableError,
+    InPlaceCoderAdapter,
+    LLMCallError,
+)
 from snodo.core.interfaces import CodeArtifact, FileArtifact, TaskSpec
 
 _logger = logging.getLogger(__name__)
@@ -305,10 +310,16 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             _logger.warning(msg)
             diff_entries = self._read_changes_from_disk()
             if not diff_entries:
-                raise LLMCallError(msg)
+                # Nothing the adapter can see in the worktree. The run may
+                # still have committed its work earlier in this run, or a
+                # previous attempt's commit may already be on the branch: the
+                # engine consults the branch before declaring a fault. Raise the
+                # operational timeout — not a generic coder failure — so the
+                # engine can look and classify honestly (Fixes #281).
+                raise CoderTimeoutError(msg, timeout_seconds=self.timeout_seconds)
             artifact = self._diff_to_artifact(diff_entries)
             if not artifact.files:
-                raise LLMCallError(msg)
+                raise CoderTimeoutError(msg, timeout_seconds=self.timeout_seconds)
             if artifact and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
                 artifact.metadata["timed_out"] = True
                 artifact.metadata["timeout_seconds"] = self.timeout_seconds

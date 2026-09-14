@@ -285,6 +285,7 @@ def _build_hint(
     phase: str = "",
     results: Optional[List[Any]] = None,
     reason: Optional[str] = None,
+    timed_out: bool = False,
 ) -> str:
     if halt == "escalate":
         return (
@@ -306,6 +307,18 @@ def _build_hint(
             "the program the coder needs could not be invoked in the "
             "execution environment"
         )
+        if timed_out:
+            # A timeout is an operational halt too, but the fix is not an
+            # install: the program ran and the run ended on the clock. Say what
+            # actually happened instead of pointing at an install (Fixes #281).
+            return (
+                "This halt is about the run, not about the task: the coder was "
+                "invoked and did not finish within its time budget. "
+                f"{detail} Nothing about the spec, the code or the protocol "
+                "needs fixing, and no recovery attempt is warranted: re-run the "
+                "task unchanged. Any work the run produced was judged before "
+                "this halt."
+            )
         return (
             "This halt is about the execution environment, not about the "
             f"task: {detail} Nothing about the spec, the code or the "
@@ -623,6 +636,12 @@ class WritebackMixin:
         # Prefer original / root spec for task_spec in the halt payload
         authoritative_spec = getattr(loop_state.task, "root_spec", None) or loop_state.task.spec
 
+        # Every field below is read from THIS run's state. The builder's
+        # ``_last_*`` attributes are per-run scratch and must not be consulted
+        # here: a halt payload a human reads must never carry a previous
+        # attempt's output (Fixes #281).
+        timed_out = bool(meta.get("timed_out"))
+
         payload = {
             "status": "blocked" if loop_state.is_blocked else "completed",
             "halt_type": halt,
@@ -652,6 +671,7 @@ class WritebackMixin:
             "hint": _build_hint(
                 halt, loop_state.halt_type, phase,
                 loop_state.validation_results, reason=blocker_reason,
+                timed_out=timed_out,
             ),
             "pre_validation": meta.get("pre_validation"),
             "post_validation": meta.get("post_validation"),
@@ -659,12 +679,12 @@ class WritebackMixin:
             "blocker_reason": blocker_reason,
             "artifacts_count": len(loop_state.artifacts),
         }
-        if meta.get("timed_out") or getattr(self, "_last_timed_out", False):
+        if timed_out:
             payload["timed_out"] = True
-            payload["timeout_seconds"] = meta.get("timeout_seconds") or getattr(self, "_last_timeout_seconds", None)
+            payload["timeout_seconds"] = meta.get("timeout_seconds")
         if commit_reason is not None:
             payload["commit_reason"] = commit_reason
-        output_tail = meta.get("output_tail") or getattr(self, "_last_output_tail", "") or getattr(self, "_last_timeout_tail", "")
+        output_tail = meta.get("output_tail")
         if output_tail:
             payload["output_tail"] = output_tail
         return payload
