@@ -179,3 +179,75 @@ gate: gate-init _gate-push
 
 gate-ci: gate-init _gate-push
 	@ssh $(GATE_HOST) '$(GATE_PATH); cd $(GATE_DIR) && uv sync --all-extras -q && uv run pytest tests/ -m "" -n $(GATE_JOBS) --tb=short --timeout=60 --cov --cov-report=term-missing --cov-fail-under=75 && uv run ruff check . && uv run lint-imports && uv run python scripts/enforce_file_length.py && uv run python scripts/enforce_docs_coverage.py'
+
+# ──────────────────────────────────────────────
+# Agent worktrees
+# ──────────────────────────────────────────────
+# The agent worktrees are siblings of this checkout: ../snodo-a … ../snodo-e,
+# each on its own agent-<x> branch.  Make has no "--flags" of its own to lend a
+# target, so the selection travels in W — a comma or space separated list of
+# worktree letters, defaulting to all of them.
+#
+#   make wt-check                what is unmerged, stale or uncommitted
+#   make wt-rebase W=a,d         rebase those worktrees onto origin/main
+#   make wt-merge  W=a,c         rebase, gate, merge, push — one at a time
+#
+# wt-merge stops at the first failure rather than carrying on: a worktree whose
+# gate fails must not be followed by another merge on top of it.
+
+WT_ROOT   ?= $(abspath $(CURDIR)/..)
+WT_PREFIX ?= snodo-
+WT_BRANCH ?= agent-
+W         ?= a b c d e
+_comma    := ,
+_empty    :=
+_space    := $(_empty) $(_empty)
+_W         = $(subst $(_comma),$(_space),$(W))
+
+.PHONY: wt-check wt-rebase wt-merge
+
+wt-check:
+	@git fetch -q origin
+	@for w in $(_W); do \
+		b=$(WT_BRANCH)$$w; d=$(WT_ROOT)/$(WT_PREFIX)$$w; \
+		if [ ! -d "$$d" ]; then printf '%-10s (missing)\n' "$(WT_PREFIX)$$w"; continue; fi; \
+		printf '%-10s ahead:%-3s behind:%-3s dirty:%-3s %s\n' \
+			"$(WT_PREFIX)$$w" \
+			"$$(git rev-list --count main..$$b 2>/dev/null || echo ?)" \
+			"$$(git rev-list --count $$b..main 2>/dev/null || echo ?)" \
+			"$$(git -C $$d status --porcelain 2>/dev/null | wc -l | tr -d ' ')" \
+			"$$(git --no-pager log --format=%s -1 $$b 2>/dev/null)"; \
+	done
+
+wt-rebase:
+	@git fetch -q origin
+	@for w in $(_W); do \
+		d=$(WT_ROOT)/$(WT_PREFIX)$$w; \
+		echo "── $(WT_PREFIX)$$w"; \
+		if [ ! -d "$$d" ]; then echo "   missing, skipped"; continue; fi; \
+		if [ -n "$$(git -C $$d status --porcelain)" ]; then \
+			echo "   DIRTY — refusing to rebase over uncommitted work:"; \
+			git -C $$d status --short; exit 1; \
+		fi; \
+		git -C $$d rebase origin/main || { echo "   rebase failed"; exit 1; }; \
+	done
+
+wt-merge:
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "This checkout is dirty — commit or stash before merging."; exit 1; fi
+	@git fetch -q origin
+	@for w in $(_W); do \
+		b=$(WT_BRANCH)$$w; d=$(WT_ROOT)/$(WT_PREFIX)$$w; \
+		echo "── $(WT_PREFIX)$$w"; \
+		if [ ! -d "$$d" ]; then echo "   missing, skipped"; continue; fi; \
+		if [ -n "$$(git -C $$d status --porcelain)" ]; then \
+			echo "   DIRTY — commit it first:"; git -C $$d status --short; exit 1; fi; \
+		if [ "$$(git rev-list --count main..$$b)" = "0" ]; then \
+			echo "   nothing to merge"; continue; fi; \
+		git -C $$d rebase origin/main || { echo "   rebase failed"; exit 1; }; \
+		$(MAKE) -C $$d gate || { echo "   gate failed — stopping before merge"; exit 1; }; \
+		git checkout -q main && git pull -q --ff-only || exit 1; \
+		git merge --no-ff $$b -m "Merge $$b: $$(git --no-pager log --format=%s -1 $$b)" || exit 1; \
+		git push -q origin main || exit 1; \
+		echo "   merged and pushed"; \
+	done
