@@ -50,16 +50,18 @@ def main():
     os.environ["SNODO_JOB_ID"] = Path(job_dir).name
     os.environ["SNODO_PROJECT_ROOT"] = str(Path(job_dir).parent.parent.parent)
 
-    # Export worktree_path if the job was set up with one, and mark a plan-run
-    # job distinctly: its SNODO_JOB_ID names the run, not a task, so the CLI's
-    # inline plan-run children must not adopt it as their own task's job id.
-    # The flag is set or cleared explicitly per job: a task job spawned by a
-    # plan inherits the plan job's environment, and would otherwise believe it
-    # is the plan run.
+    # Export worktree_path if the job was set up with one, mark a plan-run job
+    # distinctly, and resolve the task identity through the same function that
+    # submit() used to name the worktree. The wrapper must not derive the name
+    # on its own: two call sites computing it is how creation and teardown came
+    # apart and left debris behind a clean merge (Fixes #276).
+    job_id = Path(job_dir).name
+    task_id = None
     try:
         task_path = Path(job_dir) / "task.json"
         if task_path.exists():
             import json as _json
+            from snodo.jobs import resolve_task_identity
             task_data = _json.loads(task_path.read_text())
             wt = task_data.get("worktree_path")
             if wt:
@@ -68,6 +70,7 @@ def main():
                 os.environ["SNODO_PLAN_JOB"] = "1"
             else:
                 os.environ.pop("SNODO_PLAN_JOB", None)
+            task_id = resolve_task_identity(task_data, job_id)
     except Exception as e:
         _logger.debug("Failed to set SNODO_WORKTREE_PATH from task.json: %s", e)
 
@@ -93,16 +96,15 @@ def main():
         # Belt-and-suspenders cleanup on success only. A failed task keeps its
         # worktree for inspection (the CLI already tears down a cleanly
         # completed task), so the wrapper must not delete the evidence.
-        if exit_code == 0:
+        if exit_code == 0 and task_id:
             wt = os.environ.get("SNODO_WORKTREE_PATH")
             if wt:
                 try:
-                    from snodo.infrastructure.worktree import remove_worktree
+                    from snodo.infrastructure.worktree import teardown_task_worktree
                     project_root = str(Path(job_dir).parent.parent.parent)
-                    job_id = Path(job_dir).name
-                    remove_worktree(project_root, job_id)
+                    teardown_task_worktree(project_root, task_id)
                 except Exception as e:
-                    _logger.debug("Failed to remove worktree for completed job %s: %s", job_id, e)
+                    _logger.debug("Failed to tear down worktree for completed job %s: %s", job_id, e)
 
     # Write final state
     state = _load_state(job_dir)
