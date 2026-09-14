@@ -58,13 +58,25 @@ def build_notice(deselected: int | None) -> str:
     the e2e tests, the coverage floor, and the patch-coverage check — together
     with the commands that reproduce the full gate. ``deselected`` is the number
     of e2e tests skipped, or ``None`` when it cannot be determined.
+
+    Every form reads as a complete sentence: a known count is stated with the
+    matching singular/plural verb, and an unknown count falls back to a
+    subject-only clause that needs no number rather than interpolating a blank
+    into a plural phrase (the #257 defect).
     """
     if deselected is None:
-        skipped = "the end-to-end (e2e) suite"
+        skipped = "The end-to-end (e2e) suite was deselected by the default marker filter"
         skipped_item = "1. the e2e suite deselected above (not part of this result),"
     else:
-        skipped = f"{deselected} e2e test(s)"
-        skipped_item = f"1. the {deselected} e2e tests deselected above (not part of this result),"
+        noun = "test" if deselected == 1 else "tests"
+        verb = "was" if deselected == 1 else "were"
+        skipped = (
+            f"{deselected} e2e {noun} {verb} deselected by the default marker filter"
+        )
+        skipped_item = (
+            f"1. the {deselected} e2e {noun} deselected above "
+            "(not part of this result),"
+        )
 
     bar = "=" * 78
     return "\n".join(
@@ -73,7 +85,7 @@ def build_notice(deselected: int | None) -> str:
             bar,
             f"  {NOTICE_SENTINEL} — this is NOT the gate CI runs",
             bar,
-            f"  {skipped} were deselected by the default marker filter",
+            f"  {skipped}",
             f"  `-m {LOCAL_ADDOPTS_MARKER!r}` in pyproject.toml [tool.pytest.ini_options].addopts.",
             "",
             "  You just ran the FAST LOCAL loop. It is not the check that decides. CI",

@@ -17,6 +17,7 @@ CI-only fact and asserted to report the gap, so the guard can actually fail.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import tomllib
@@ -41,6 +42,7 @@ PYPROJECT = ROOT / "pyproject.toml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 CONTRIBUTING = ROOT / "CONTRIBUTING.md"
 PROBE_PATH = "tests/gate_notice_probe"
+PLAIN_PROBE_PATH = "tests/gate_notice_probe_plain"
 
 
 # --- parsing the artifacts --------------------------------------------------
@@ -126,6 +128,55 @@ def test_notice_states_every_ci_only_gate():
     assert not gaps, "reduced-run notice fails to state: " + "; ".join(gaps)
 
 
+def _subject_line(count: int | None) -> str:
+    """Return the banner line carrying the deselection count."""
+    return next(
+        ln
+        for ln in build_notice(count).splitlines()
+        if "deselected by the default marker filter" in ln
+    )
+
+
+def test_notice_never_renders_an_empty_count():
+    """No form of the notice interpolates a blank into the sentence (#257).
+
+    The original defect read "the end-to-end (e2e) suite were deselected": the
+    count was missing, leaving a hole where the only quantitative fact belonged
+    and a plural verb agreeing with a singular subject. A numeric count must
+    carry its number and agree with it; an unknown count must fall back to a
+    complete, grammatical sentence rather than an empty slot.
+    """
+    # The exact shapes the empty count produced, anywhere in the subject line.
+    empty_count_patterns = [
+        re.compile(r"^\s+e2e\b"),          # "  e2e test(s) were..."
+        re.compile(r"\btest\(s\)"),        # the placeholder that never resolved
+        re.compile(r"^\s+(was|were)\b"),   # verb with no subject at all
+        re.compile(r"\s{2,}$"),            # a trailing hole
+    ]
+
+    for count, expected in [
+        (1, "1 e2e test was deselected"),
+        (2, "2 e2e tests were deselected"),
+        (17, "17 e2e tests were deselected"),
+    ]:
+        line = _subject_line(count)
+        assert expected in line, f"count {count} not stated correctly: {line!r}"
+        for pattern in empty_count_patterns:
+            assert not pattern.search(line), (
+                f"count {count} rendered an empty slot: {line!r}"
+            )
+
+    # Unknown count: no number, no hole, subject and verb agree.
+    unknown = _subject_line(None)
+    assert "The end-to-end (e2e) suite was deselected" in unknown, (
+        f"unknown count rendered ungrammatically: {unknown!r}"
+    )
+    for pattern in empty_count_patterns:
+        assert not pattern.search(unknown), (
+            f"unknown count rendered an empty slot: {unknown!r}"
+        )
+
+
 def test_decision_table_for_marker_filter():
     """e2e is reported 'excluded' only when the marker filter drops e2e.
 
@@ -170,9 +221,11 @@ def test_divergence_guard_can_fail():
 # --- wiring: the real local run prints the notice ---------------------------
 
 
-def _run_pytest(extra_args: list[str]) -> subprocess.CompletedProcess:
+def _run_pytest(
+    extra_args: list[str], target: str = PROBE_PATH
+) -> subprocess.CompletedProcess:
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", PROBE_PATH, *extra_args,
+        [sys.executable, "-m", "pytest", target, *extra_args,
          "-p", "no:cacheprovider"],
         cwd=ROOT,
         capture_output=True,
@@ -180,6 +233,14 @@ def _run_pytest(extra_args: list[str]) -> subprocess.CompletedProcess:
         timeout=300,
     )
     return proc
+
+
+def _banner_line(proc: subprocess.CompletedProcess) -> str:
+    """Return the banner's '... deselected by the default marker filter' line."""
+    for line in proc.stdout.splitlines():
+        if "deselected by the default marker filter" in line:
+            return line
+    return ""
 
 
 def test_reduced_local_run_announces_the_reduction():
@@ -205,3 +266,37 @@ def test_full_suite_run_does_not_announce():
         + proc.stdout
     )
     assert "1 passed" in proc.stdout or "2 passed" in proc.stdout
+
+
+def test_scoped_run_that_reduces_nothing_stays_silent():
+    """A scoped run with no e2e test to deselect prints no banner (#257).
+
+    The banner's claim is that a reduction happened; over a path that holds no
+    e2e test, none did, so printing it would be false — the exact failure that
+    taught readers to skip it.
+    """
+    proc = _run_pytest([], target=PLAIN_PROBE_PATH)
+    assert NOTICE_SENTINEL not in proc.stdout, (
+        "a run that deselected no e2e test must not announce a reduction:\n"
+        + proc.stdout
+    )
+    assert "1 passed" in proc.stdout
+
+
+def test_xdist_run_announces_the_count():
+    """Under -n the controller reports the worker-side deselection count (#257).
+
+    The marker filter runs in the workers, so the controller's own tally is
+    zero; the count must cross the xdist boundary or the banner loses the one
+    quantitative thing it says.
+    """
+    proc = _run_pytest(["-n", "2"])
+    assert NOTICE_SENTINEL in proc.stdout, (
+        "the xdist reduced run did not announce the reduction:\n"
+        + proc.stdout
+        + proc.stderr
+    )
+    line = _banner_line(proc)
+    assert re.search(r"\b1 e2e test\b", line), (
+        f"the xdist banner must state the count; got: {line!r}\n" + proc.stdout
+    )
