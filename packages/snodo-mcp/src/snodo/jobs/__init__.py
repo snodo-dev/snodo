@@ -182,8 +182,19 @@ class JobManager:
         )
 
         is_plan_run = bool(task_args.get("plan_name"))
-
         job_id = self._generate_id()
+        task_id = None
+        if not is_plan_run:
+            task_id = task_args.get("task_id") or task_args.get("retry")
+            if not task_id:
+                task_desc = task_args.get("description", "")
+                if task_desc:
+                    from snodo.paths import derive_task_id
+                    task_id = derive_task_id(task_desc)
+                else:
+                    task_id = job_id
+            task_args["task_id"] = task_id
+
         job_dir = self.jobs_dir / job_id
         job_dir.mkdir()
 
@@ -216,8 +227,10 @@ class JobManager:
         if not is_plan_run:
             try:
                 task_desc = task_args.get("description", "")
-                wt_path = str(create_worktree(self.project_root, job_id, task_desc))
+                wt_path = str(create_worktree(self.project_root, task_id, task_desc))
                 task_args["worktree_path"] = wt_path
+                with open(task_path, "w") as f:
+                    json.dump(task_args, f, indent=2)
             except Exception as e:
                 state["status"] = "failed"
                 state["exit_code"] = 1
@@ -236,8 +249,8 @@ class JobManager:
             pid = spawn_background(cmd, str(stdout_path), str(stderr_path), cwd)
         except BaseException:
             # Spawn failed — clean up worktree before re-raising
-            if wt_path:
-                remove_worktree(self.project_root, job_id)
+            if wt_path and task_id:
+                remove_worktree(self.project_root, task_id)
             raise
 
         # Update state with PID
