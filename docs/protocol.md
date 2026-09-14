@@ -262,8 +262,13 @@ Every validator result carries one of three severities, ordered `pass < warn < b
 A tool-loop judge that exhausts its turn budget without calling
 `submit_verdict` has not passed, warned, or blocked — it has not decided. Its
 result carries **no severity** (`severity` is absent) plus an
-`abstention_reason` and the record of what it did and did not examine
-(`examined`, `unexamined_tools`). Because the absence lives in the severity
+`abstention_reason`, the record of what it did and did not examine
+(`examined`, `unexamined_tools`), and — when the judge answered in prose
+instead of calling `submit_verdict` — its own closing account (`last_words`).
+That account is bounded, untrusted model output, kept because it is the single
+most useful artefact of a failed judgement: it says what the judge concluded,
+or why it would not commit. It is never a verdict and nothing derives a
+finding or a severity from it. Because the absence lives in the severity
 itself, no consumer comparing severities can mistake an abstention for a
 verdict: audit events, checkpoints, escalation payloads, the halt payload,
 run output, and the dashboard all say "abstained", and a validation token
@@ -278,8 +283,9 @@ How abstentions affect the decision is set by the protocol's
 | `"non_blocking"` | Abstentions are excluded from the policy counts; the threshold applies to the judges that decided |
 
 An abstention is the case a human is asked about. `snodo authorize <task_id>`
-renders which judge abstained, why it ran out, and what it examined before it
-did; signing that proposal mints a `DecisionRecord` with
+renders which judge abstained, why it ran out, what it examined before it
+did, and its last words when it spoke without deciding; signing that proposal
+mints a `DecisionRecord` with
 `adjudicated_severity: "abstain"`, which retires that judge from the quorum
 (it is never converted into a pass vote). A `blocker` halt is never described
 in terms of blockers that do not exist: the halt record names the abstainers.
@@ -302,6 +308,28 @@ escalates *solely* because a judge abstained and the retry budget is spent, the
 halt is `abstention_exhausted` (or `abstention_stalled` for the repeated case).
 Neither names a code fault, so both are adjudicated with `snodo authorize
 <task_id>` rather than retried with a coder.
+
+### The halt payload records the attempts, not only the result
+
+The halt payload's `validator_results` are the final verdicts. Alongside them,
+`attempts` states how the task got there, so a clean pass and a hard-won one are
+distinguishable without reading the logs:
+
+| Field | Meaning |
+|-------|---------|
+| `attempts.total` | How many judged attempts the task took (root + recovery subtasks + in-place re-judges) |
+| `attempts.non_verdicts` | How many attempts ended without a verdict (abstentions) |
+| `attempts.coder_dispatches` | How many coder runs the chain cost |
+| `attempts.history` | `{attempt, outcome}` per attempt, most recent `_MAX_ATTEMPT_HISTORY` entries |
+| `attempts.omitted` | Count dropped from the front of a truncated `history` |
+
+Each `outcome` is one of `passed`, `warned`, `blocked`, `abstained`, or
+`error` — canonical tokens, not prose, so payloads aggregate across projects. A
+task that abstained three times and passed on the fourth reports four attempts
+and three non-verdicts; a task that passed first time reports one attempt and
+zero. The pre-execute `pre_validation` verdicts feed the outcome only when a
+task halted before execution. Halt types and `validator_results` are unchanged:
+`attempts` is the history that precedes them.
 
 ---
 
