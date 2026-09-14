@@ -843,7 +843,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
     # Set up git worktree — shared helper used by BOTH CLI inline and background
     from snodo.infrastructure.worktree import (
-        WorktreeIsolationError, setup_for_task, remove_worktree, delete_task_branch,
+        WorktreeIsolationError, setup_for_task, remove_worktree,
+        teardown_task_worktree,
     )
     existing_wt = os.environ.get("SNODO_WORKTREE_PATH")
     no_isolation = bool(getattr(args, "no_isolation", False))
@@ -1036,21 +1037,20 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                     "Could not save session checkpoint %s on exit: %s",
                     session_id, e,
                 )
-        # Clean up worktree, or leave it for inspection.
+        # Clean up worktree, or leave it for inspection. Teardown is the one
+        # shared sequence (worktree first, then its merged branches) so the
+        # identity used here is the identity the worktree was created under.
+        # Branches whose work is not in the base are left alone by the helper.
         if worktree_path_val:
             if preserve_worktree:
                 _print_worktree_retained(project_root, task, worktree_path_val)
             else:
                 try:
-                    remove_worktree(project_root, task.id)
+                    teardown_task_worktree(project_root, task.id)
                 except Exception as e:
                     _logger.warning(
                         "Could not remove worktree for task %s: %s", task.id, e,
                     )
-        # Delete the task branch after the worktree is gone (a branch checked
-        # out in a worktree cannot be deleted until that worktree is removed).
-        if merged_branch:
-            delete_task_branch(project_root, merged_branch)
         _close_token_issuer(token_issuer)
         _close_checkpointer(checkpointer)
 
@@ -1312,8 +1312,7 @@ def _try_merge_unmerged_task(
     """
     from snodo.infrastructure.worktree import (
         task_branch_name,
-        remove_worktree,
-        delete_task_branch,
+        teardown_task_worktree,
     )
     from snodo.tools.git import open_repo
 
@@ -1353,10 +1352,9 @@ def _try_merge_unmerged_task(
     )
     if merge_result == 0 and merged_branch:
         try:
-            remove_worktree(project_root, task_id)
+            teardown_task_worktree(project_root, task_id)
         except Exception as e:
-            _logger.debug("Could not remove worktree after merge for %s: %s", task_id, e)
-        delete_task_branch(project_root, merged_branch)
+            _logger.debug("Could not tear down worktree after merge for %s: %s", task_id, e)
         _record_task_completion(project_root, task_id, "completed")
         return True
     else:

@@ -34,6 +34,35 @@ TERMINAL_STATUSES = {"completed", "failed", "cancelled", "unmerged"}
 LISTING_TITLE_MAX_CHARS = 120
 
 
+def resolve_task_identity(task_args: dict, job_id: str) -> Optional[str]:
+    """The ONE place that decides a job's task identity.
+
+    A task job's identity is, in order: an explicit ``task_id`` (a
+    plan-dispatched child names it), the task it is retrying, a digest of the
+    description, and failing that the job id. A plan-run job owns no task and
+    yields None.
+
+    The worktree is created and torn down under this identity. It lived in two
+    call sites once — creation derived a name, teardown used the job id — and
+    they drifted: a completed job's worktree, created under the task identity,
+    was never found by the teardown looking for the job id, so both the
+    worktree and the branch it held survived a clean merge (Fixes #276).
+
+    ``JobManager.submit`` persists the result before spawn; the wrapper reads
+    it back and calls this same function, so the two can never disagree.
+    """
+    if task_args.get("plan_name"):
+        return None
+    task_id = task_args.get("task_id") or task_args.get("retry")
+    if task_id:
+        return task_id
+    description = task_args.get("description", "")
+    if description:
+        from snodo.paths import derive_task_id
+        return derive_task_id(description)
+    return job_id
+
+
 def _title_from_description(description: object) -> str:
     """One-line bounded title from a job's task description.
 
@@ -183,16 +212,8 @@ class JobManager:
 
         is_plan_run = bool(task_args.get("plan_name"))
         job_id = self._generate_id()
-        task_id = None
-        if not is_plan_run:
-            task_id = task_args.get("task_id") or task_args.get("retry")
-            if not task_id:
-                task_desc = task_args.get("description", "")
-                if task_desc:
-                    from snodo.paths import derive_task_id
-                    task_id = derive_task_id(task_desc)
-                else:
-                    task_id = job_id
+        task_id = resolve_task_identity(task_args, job_id)
+        if task_id is not None:
             task_args["task_id"] = task_id
 
         job_dir = self.jobs_dir / job_id
