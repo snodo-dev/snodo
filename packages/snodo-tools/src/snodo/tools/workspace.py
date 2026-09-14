@@ -331,11 +331,11 @@ class WorkspaceMCP:
             return self._git_repo_cache
         self._git_repo_checked = True
         try:
-            from git import Repo
+            from snodo.tools.git import open_repo
         except ImportError:
             return None
         try:
-            repo = Repo(str(self.project_root), search_parent_directories=True)
+            repo = open_repo(str(self.project_root))
         except Exception:
             self._git_repo_cache = None
             return None

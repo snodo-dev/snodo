@@ -1194,9 +1194,9 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
         # Resolve target commit on the branch to be merged
         target_commit = ""
         try:
-            from git import Repo
-            repo = Repo(str(Path(project_root)), search_parent_directories=True)
-            target_commit = repo.commit(branch).hexsha
+            from snodo.tools.git import open_repo
+            with open_repo(str(Path(project_root))) as repo:
+                target_commit = repo.commit(branch).hexsha
         except Exception as e:
             _logger.debug("Could not resolve commit for branch %s: %s", branch, e)
 
@@ -1315,14 +1315,14 @@ def _try_merge_unmerged_task(
         remove_worktree,
         delete_task_branch,
     )
-    from git import Repo
+    from snodo.tools.git import open_repo
 
     branch = task_branch_name(task_id, spec)
     try:
-        repo = Repo(str(Path(project_root)), search_parent_directories=True)
-        if branch not in repo.heads:
-            return None
-        target_commit = repo.commit(branch).hexsha
+        with open_repo(str(Path(project_root))) as repo:
+            if branch not in repo.heads:
+                return None
+            target_commit = repo.commit(branch).hexsha
     except Exception as e:
         _logger.debug("Could not resolve branch %s for fast-path merge: %s", branch, e)
         return None

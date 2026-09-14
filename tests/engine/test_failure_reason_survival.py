@@ -184,17 +184,20 @@ class TestReadinessGitProbes:
         subprocess.run(["git", "add", "."], cwd=repo_dir, check=True)
         subprocess.run(["git", "commit", "-qm", "init"], cwd=repo_dir, check=True)
 
-        from git import Repo
+        from snodo.tools.git import open_repo
 
         problems: list[str] = []
-        assert checker._is_path_committed(Repo(str(repo_dir)), "never/committed.txt", problems) is False
+        with open_repo(str(repo_dir)) as repo:
+            assert checker._is_path_committed(repo, "never/committed.txt", problems) is False
         assert problems == []
 
     def test_repo_open_failure_reason_recorded_not_confused_with_absent(self, monkeypatch, tmp_path, caplog):
         def boom(*args, **kwargs):
             raise OSError(_SPAWN_MSG)
 
-        monkeypatch.setattr(checker, "Repo", boom)
+        # The seam is the central repo opener (a non-persistent-child Repo);
+        # the readiness checker must still record that git could not be asked.
+        monkeypatch.setattr("snodo.tools.git.open_repo", boom)
         problems: list[str] = []
         with caplog.at_level(logging.DEBUG, logger="snodo.readiness.checker"):
             assert checker._get_git_repo(tmp_path, problems) is None
@@ -213,7 +216,7 @@ class TestReadinessSurfacesToolFailure:
         self, monkeypatch, tmp_path
     ):
         monkeypatch.setattr(
-            checker, "Repo", lambda *a, **k: _BrokenGitRepo()
+            "snodo.tools.git.open_repo", lambda *a, **k: _BrokenGitRepo()
         )
         assessment = checker.assess_readiness(tmp_path, _minimal_protocol())
 

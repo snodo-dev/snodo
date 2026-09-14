@@ -131,6 +131,25 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Opening a git repository no longer leaves a persistent `git cat-file` child
+  behind to be terminated later. GitPython's default object DB starts a
+  long-lived `git cat-file --batch-check` subprocess on the first object read
+  and ends it only from `Repo.__del__`; because `Repo`/`Git` form reference
+  cycles, that finalizer runs on a later cyclic-GC pass — an unbounded time
+  after the work that needed it, and possibly inside an unrelated task or test.
+  The child dies by `Popen.terminate()`, i.e. `os.kill(pid, SIGTERM)`, which is
+  how a test suite came to signal a process it never created: under `-n 24`,
+  `test_cancel_running_job` patched `os.kill` process-wide and intermittently
+  recorded extra SIGTERMs from a `git cat-file` child that another test had
+  orphaned earlier. Every repository open now goes through
+  `snodo.tools.git.open_repo`, which uses GitPython's in-process object DB and
+  is used as a context manager where the work is function-scoped, so no such
+  child exists to outlive its work. A new autouse guard (`Fixes #258`) fails any
+  test that leaves a live child process or non-daemon thread running into the
+  next one, so a future leak is caught where it is introduced. The
+  `test_cancel_running_job` assertion stays `assert_any_call` — that is the
+  correct statement of its intent, independent of this leak.
+
 - Read tools can no longer reach above the workspace root, and no longer offer
   version-control internals or derived build output as though they were the
   work. Two problems wore the same clothes. Containment: direct `../` escapes

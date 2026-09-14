@@ -242,9 +242,11 @@ def test_inplace_adapter_git_add_failure_names_cause_in_halt_payload(
         token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
     )
 
-    with patch("git.Repo") as mock_repo_cls:
+    # Patch the central repo opener, not git.Repo: the codebase routes every
+    # open through snodo.tools.git.open_repo so no persistent git child leaks.
+    with patch("snodo.tools.git.open_repo") as mock_open:
         mock_repo = MagicMock()
-        mock_repo_cls.return_value = mock_repo
+        mock_open.return_value = mock_repo
         mock_repo.git.add.side_effect = GitCommandError("git add", "fatal: pathspec failed")
         graph = builder.build_graph().compile()
         result = graph.invoke(_state())
@@ -300,7 +302,9 @@ def test_inplace_adapter_cannot_open_repo_names_cause_in_halt_payload(
         token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
     )
 
-    with patch("git.Repo", side_effect=Exception("Invalid repo")):
+    # Patch the central repo opener, not git.Repo: the codebase routes every
+    # open through snodo.tools.git.open_repo so no persistent git child leaks.
+    with patch("snodo.tools.git.open_repo", side_effect=Exception("Invalid repo")):
         graph = builder.build_graph().compile()
         result = graph.invoke(_state())
 
@@ -351,9 +355,10 @@ def test_inplace_adapter_nothing_staged_names_cause_in_halt_payload(
         token_issuer=TokenIssuer(secret=TEST_SECRET, ttl_seconds=3600),
     )
 
-    with patch("git.Repo") as mock_repo_cls:
+    # Patch the central repo opener, not git.Repo (see note on the git_add test).
+    with patch("snodo.tools.git.open_repo") as mock_open:
         mock_repo = MagicMock()
-        mock_repo_cls.return_value = mock_repo
+        mock_open.return_value = mock_repo
         # diff --cached --quiet exits with 0 when nothing is staged
         mock_repo.git.diff.return_value = ""
         graph = builder.build_graph().compile()

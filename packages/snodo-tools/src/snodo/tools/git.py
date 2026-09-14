@@ -15,10 +15,40 @@ from pathlib import Path
 from typing import List, Optional
 
 from git import Repo, GitCommandError, InvalidGitRepositoryError
+from git.db import GitDB
 
 from snodo.tools.workspace import PathValidationError
 
 _logger = logging.getLogger(__name__)
+
+
+def open_repo(
+    project_root: str,
+    *,
+    search_parent_directories: bool = True,
+) -> Repo:
+    """Open a repository without spawning a persistent git child.
+
+    GitPython's default object DB (:class:`git.db.GitCmdObjectDB`) lazily
+    starts a long-lived ``git cat-file --batch-check`` subprocess the first
+    time an object is read, and ends it only from ``Repo.__del__``. Because
+    GitPython's ``Repo``/``Git`` graph contains reference cycles, that
+    finalizer runs on a later cyclic-GC pass — an unbounded time after the
+    work that needed the object, and possibly in an unrelated test or task.
+    The child dies by ``Popen.terminate()``, i.e. ``os.kill(pid, SIGTERM)``,
+    which is how a test suite came to signal a process it never created.
+
+    Opening with the pure-Python :class:`git.db.GitDB` reads objects in this
+    process, so no persistent child exists to be reaped later. Every code path
+    that merely needs a ref, a diff, or a worktree operation gets the same
+    answers; the only cost is that large object reads are not pipelined
+    through a helper process.
+    """
+    return Repo(
+        str(Path(project_root)),
+        odbt=GitDB,
+        search_parent_directories=search_parent_directories,
+    )
 
 
 class GitError(Exception):
@@ -61,7 +91,7 @@ class GitMCP:
             raise ValueError(f"Project root is not a directory: {self.project_root}")
 
         try:
-            self.repo = Repo(str(self.project_root), search_parent_directories=True)
+            self.repo = open_repo(str(self.project_root))
         except InvalidGitRepositoryError as e:
             raise ValueError(f"Not a git repository: {self.project_root}") from e
 
@@ -381,16 +411,15 @@ def resolve_base_branch(project_root: str) -> str:
     diverge from and merge back into" — never assume ``main`` unconditionally.
     """
     try:
-        repo = Repo(str(Path(project_root)), search_parent_directories=True)
+        with open_repo(str(Path(project_root))) as repo:
+            # Remote default branch (e.g. origin/HEAD -> refs/remotes/origin/main).
+            try:
+                remote_head = repo.git.symbolic_ref("refs/remotes/origin/HEAD")
+                return remote_head.split("/")[-1]
+            except GitCommandError:
+                pass
     except InvalidGitRepositoryError:
         return "main"
-
-    # Remote default branch (e.g. origin/HEAD -> refs/remotes/origin/main).
-    try:
-        remote_head = repo.git.symbolic_ref("refs/remotes/origin/HEAD")
-        return remote_head.split("/")[-1]
-    except GitCommandError:
-        pass
 
     return "main"
 

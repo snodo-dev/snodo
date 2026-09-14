@@ -389,8 +389,10 @@ def init_command(args) -> int:
 
     # Git requirement: check .git exists in project root or any parent
     try:
-        from git import Repo, InvalidGitRepositoryError
-        Repo(str(Path.cwd()), search_parent_directories=True)
+        from git import InvalidGitRepositoryError
+        from snodo.tools.git import open_repo
+        with open_repo(str(Path.cwd())):
+            pass
     except (InvalidGitRepositoryError, ImportError):
         print("Error: snodo requires a git repository. Run 'git init' first.",
               file=sys.stderr)
@@ -469,9 +471,10 @@ def init_command(args) -> int:
     # it, the second removes the now-unignored .snodo/ (project id, sessions,
     # audit chain). Committing makes the ignore durable.
     try:
-        from git import Repo
-        repo = Repo(str(Path.cwd()), search_parent_directories=True)
-        if not _commit_gitignore(repo, Path(".gitignore")):
+        from snodo.tools.git import open_repo
+        with open_repo(str(Path.cwd())) as repo:
+            committed = _commit_gitignore(repo, Path(".gitignore"))
+        if not committed:
             print(
                 "Warning: Could not commit .gitignore — .snodo/ is ignored but "
                 "the ignore is not yet durable. Commit .gitignore (or run "
