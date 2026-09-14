@@ -118,6 +118,10 @@ dev = [
     "pytest-cov==7.1.0",
     "pytest-timeout==2.4.0",
     "pytest-xdist==3.8.0",
+    # The test-time leak guard (tests/conftest.py) enumerates the pytest
+    # process's child processes to prove none outlives its test. psutil is the
+    # portable way to read the process tree (status, name, cmdline).
+    "psutil>=7.0.0",
     "radon>=6.0.1",
     "swebench>=4.0.0",
     "paramiko>=3.0.0",

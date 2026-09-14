@@ -69,8 +69,9 @@ def _get_git_repo(
     spawn failure) is recorded in *problems* and logged: "could not ask
     git" must never masquerade as "git says nothing is committed".
     """
+    from snodo.tools.git import open_repo
     try:
-        return Repo(str(project_root), search_parent_directories=True)
+        return open_repo(str(project_root))
     except (InvalidGitRepositoryError, NoSuchPathError):
         # Ordinary negative: this directory is not in a git repository.
         return None
