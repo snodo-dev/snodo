@@ -440,3 +440,61 @@ def test_plan_delete_missing_plan(plan_env, capsys):
     assert result == 1
     err = capsys.readouterr().err
     assert "plan not found: nope" in err
+
+
+# ============================================================================
+# plan status — reachable thread from a blocked row
+# ============================================================================
+
+def _write_job(project_dir, job_id, task_json, state_json):
+    job_dir = project_dir / ".snodo" / "jobs" / job_id
+    job_dir.mkdir(parents=True)
+    import json
+    (job_dir / "task.json").write_text(json.dumps(task_json))
+    (job_dir / "state.json").write_text(json.dumps(state_json))
+    return job_dir
+
+
+def test_plan_status_blocked_row_carries_the_command_that_reaches_its_logs(plan_env, capsys):
+    """A blocked row names the real child job id, so one copied command reaches
+    that task's logs (Fixes #279)."""
+    _create_plan(plan_env, "p_watch")
+    planner = _planner(plan_env)
+    planner.generate_spec("p_watch", "1.1_gate", "spec")
+    planner.generate_spec("p_watch", "1.2_models", "spec")
+    planner.update_status("p_watch", "1.1_gate", "blocked")
+    planner.update_status("p_watch", "1.2_models", "completed")
+
+    _write_job(
+        plan_env, "j_planrun",
+        {"plan_name": "p_watch"},
+        {"status": "running", "job_type": "plan", "created_at": 900},
+    )
+    _write_job(
+        plan_env, "j_childgate",
+        {"task_id": "1.1_gate", "parent_job": "j_planrun"},
+        {"status": "blocked", "created_at": 901},
+    )
+    # A completed child that never needs a look must not grow an id column.
+    _write_job(
+        plan_env, "j_childmodels",
+        {"task_id": "1.2_models", "parent_job": "j_planrun"},
+        {"status": "completed", "created_at": 902},
+    )
+
+    result = plan_command(SimpleNamespace(plan_action="status", name="p_watch"))
+
+    assert result == 0
+    out = capsys.readouterr().out
+    blocked_line = next(
+        line for line in out.splitlines() if "1.1_gate" in line
+    )
+    assert "snodo logs j_childgate" in blocked_line
+    # The healthy row carries no id.
+    completed_line = next(
+        line for line in out.splitlines() if "1.2_models" in line
+    )
+    assert "j_childmodels" not in completed_line
+    # Following the plan is one command that already exists.
+    assert "snodo logs j_planrun --watch" in out
+
