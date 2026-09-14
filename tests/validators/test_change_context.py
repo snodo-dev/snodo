@@ -384,9 +384,43 @@ class TestChangeSectionIsBounded:
 
     def test_section_stays_within_the_stated_bound(self):
         diff = self._huge_diff()
-        assert len(diff) > 10 * CHANGE_SECTION_CHAR_LIMIT, "test must be far over budget"
+        # _huge_diff() is ~315k chars; the new 64k limit means it is still
+        # well over budget (≈5×), even though 10× no longer holds.
+        assert len(diff) > 4 * CHANGE_SECTION_CHAR_LIMIT, "test must be far over budget"
         section = render_change_block(ChangeContext(label="abc123..HEAD", diff=diff))
         assert len(section) <= CHANGE_SECTION_CHAR_LIMIT
+
+    def test_median_commit_for_this_repository_is_not_truncated(self):
+        """A change of median size for this repository fits without truncation.
+
+        Measured on the last 40 non-merge commits on main: median is 21,444
+        characters (p50).  At the new 64,000-character limit, 95 % of commits
+        (38/40) fit verbatim.  This test pins the common case: a commit near
+        the median must never trigger the truncation path.
+        """
+        # Build a realistic median-sized diff: several source files totalling
+        # ~21,444 chars, mirroring what a typical commit in this repository
+        # looks like (a handful of modified Python files, no bulk output).
+        median_size = 21_444
+        # Three source-file chunks of roughly equal weight.
+        chunk_lines = 140  # ~2,380 chars each × 3 files → ~7,100 chars of diff body
+        diff = "".join(
+            _source_diff(f"src/module_{i}.py", f"MEDIAN-{i}", lines=chunk_lines)
+            for i in range(3)
+        )
+        # Pad with a few more files to reach the target size.
+        while len(diff) < median_size:
+            n = len(diff)
+            diff += _source_diff(f"src/extra_{n}.py", f"PAD-{n}", lines=20)
+        diff = diff[:median_size]  # trim to exactly the measured median
+
+        assert len(diff) == median_size
+        assert len(diff) < CHANGE_SECTION_CHAR_LIMIT, "precondition: diff must fit"
+        section = render_change_block(ChangeContext(label="abc123..HEAD", diff=diff))
+        assert "PART OF the change" not in section, (
+            "a median-sized commit must not trigger truncation"
+        )
+        assert "CHANGED FILES" not in section
 
     def test_truncated_section_names_every_changed_file(self):
         section = render_change_block(
@@ -433,8 +467,13 @@ class TestChangeSectionIsBounded:
 
     def test_oversized_single_source_file_is_cut_with_a_marker(self):
         """Even when every file is hand-edited source, the section fits and
-        the cut is marked, never silent."""
-        diff = _bulk_diff("src/big_migration.py", "MIGRATION", lines=800)
+        the cut is marked, never silent.
+
+        1500 lines is ~77k chars, well over the 64k section limit.  800 lines
+        (~47k) was the original value; it was below the new limit and the test
+        no longer exercises the truncation path at the old line count.
+        """
+        diff = _bulk_diff("src/big_migration.py", "MIGRATION", lines=1500)
         section = render_change_block(ChangeContext(label="abc123..HEAD", diff=diff))
         assert len(section) <= CHANGE_SECTION_CHAR_LIMIT
         assert "src/big_migration.py" in section
@@ -501,8 +540,13 @@ class TestChangeSectionIsBounded:
 
     def test_artifact_fallback_list_is_bounded_too(self):
         """No git view means the engine-recorded artifact list is the
-        section; it gets the same ceiling and the same honesty marker."""
-        artifacts = [f"src/module_{i:05d}.py" for i in range(2000)]
+        section; it gets the same ceiling and the same honesty marker.
+
+        3000 entries is ~72k chars, over the 64k limit.  2000 entries (~48k)
+        was the original count; it fits within the new limit and no longer
+        exercises the truncation path.
+        """
+        artifacts = [f"src/module_{i:05d}.py" for i in range(3000)]
         section = render_change_block(None, artifacts)
         assert len(section) <= CHANGE_SECTION_CHAR_LIMIT
         assert "src/module_00000.py" in section
