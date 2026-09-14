@@ -169,6 +169,38 @@ findings (missing binaries, plaintext keys) are reported but unscored. `--mode`
 filters the displayed findings to one mode; `--json` emits the machine-readable
 form.
 
+## Propose criteria from your own decisions
+
+A governed repository's records often state, in prose, the very rules the
+protocol encodes by hand — that an id is derived server-side, that every query
+carries a tenant filter. `snodo intake` reads those records and offers each
+rule as a validator criterion, one at a time, each naming the record it came
+from. The operator accepts or rejects each, and the protocol is written only
+after an acceptance:
+
+```
+$ snodo intake
+Intake: decision records under /path/to/repo
+  1 criterion proposal(s), each citing the record it came from.
+  • The org_id is derived server-side from the API key lookup, never accepted
+    from the request.
+      from: docs/decisions/001-derive-org-id-server-side.md
+
+[1/1] The org_id is derived server-side from the API key lookup, never
+      accepted from the request.
+    from: docs/decisions/001-derive-org-id-server-side.md — Derive org_id server-side
+Accept? [y/N]
+```
+
+Only a record's **Decision** section is proposable. Context is background,
+Consequences are effects a reader can observe rather than rules to violate,
+Alternatives considered names the road not taken, and Status is metadata —
+none of them is offered. A record with no Decision section proposes nothing.
+Use `--validator <id>` to choose the target validator (the default is the
+protocol's `architecture` validator, then its first), `--reject-all` to see the
+proposals and write nothing, or `--json` to have a machine read them without a
+write. With no flag and no terminal, intake refuses rather than guessing.
+
 ## Quickstart
 
 ```bash
@@ -248,6 +280,7 @@ discarded spec stays readable with `snodo task show <task_id>`.
 | `init` | Scaffold `.snodo/` from a template |
 | `run` | Execute a task, a plan (`--plan`), or a single wave (`--wave`). `--background`, `--resume`, `--retry`, `--from-pr`, `--interactive`, `--no-isolation` |
 | `ready` | Score method-scaffolding readiness against the protocol |
+| `intake` | Propose validator criteria from decision records; accept or reject each |
 | `plan` | `list`, `status`, `create`, `validate`, `add-wave`, `add-task`, `run`, `delete` |
 | `status` / `mode` | Active session and mode; `mode change` to switch |
 | `session` | `list`, `show`, `new`, `switch`, `delete`, `prune` |
