@@ -219,9 +219,10 @@ def survey_command(args) -> int:
 
     # Find the git repository root (even if not a snodo project yet)
     project_root = Path.cwd()
+    from snodo.tools.git import open_repo
     try:
-        from git import Repo
-        Repo(str(project_root), search_parent_directories=True)
+        with open_repo(str(project_root)):
+            pass
     except Exception:
         if json_out:
             return emit_error("survey", "Not inside a git repository.", EXIT_INTERNAL_ERROR)
@@ -230,8 +231,8 @@ def survey_command(args) -> int:
 
     # Walk up to find the git root
     try:
-        repo = Repo(str(project_root), search_parent_directories=True)
-        project_root = Path(repo.working_dir)
+        with open_repo(str(project_root)) as repo:
+            project_root = Path(repo.working_dir)
     except Exception:
         if json_out:
             return emit_error("survey", "Could not find git repository root.", EXIT_INTERNAL_ERROR)
