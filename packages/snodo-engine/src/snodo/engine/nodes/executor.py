@@ -6,7 +6,12 @@ FILE: snodo/engine/nodes/executor.py
 import logging
 from typing import Dict, Any, List, Optional, Union
 from snodo.core.interfaces import Task, TaskSpec, ExecutionError, NoFileOperationsError
-from snodo.coders.base import AdapterError, SnodoMutationError, TurnBudgetExhausted
+from snodo.coders.base import (
+    AdapterError,
+    CoderTimeoutError,
+    SnodoMutationError,
+    TurnBudgetExhausted,
+)
 from snodo.infrastructure.tokens import ValidationToken
 from snodo.coders import LiteLLMAdapter, MockAdapter
 from snodo.tools.workspace import WorkspaceMCP
@@ -36,6 +41,29 @@ class ExecutorMixin:
         coder._depth = getattr(task, "depth", 0) or 0
         coder._attempt = (getattr(task, "depth", 0) or 0) + 1
         coder.progress_callback = getattr(self, "_progress", None)
+
+    def _record_coder_run_facts(self, coder: Any, code_artifact: Any = None) -> None:
+        """Record the coder run's own facts on the builder for the halt payload.
+
+        These are per-run facts, overwritten on every dispatch so a field a
+        human reads to understand a halt can never carry a previous attempt's
+        output (Fixes #281). ``code_artifact`` is absent when the coder raised;
+        the coder's own attributes then carry whatever it produced.
+        """
+        metadata = getattr(code_artifact, "metadata", None)
+        metadata = metadata if isinstance(metadata, dict) else {}
+        self._last_commit_reason = getattr(coder, "last_commit_reason", None)
+        self._last_timed_out = bool(
+            getattr(coder, "last_timed_out", False) or metadata.get("timed_out", False)
+        )
+        self._last_timeout_seconds = (
+            getattr(coder, "last_timeout_seconds", None)
+            or metadata.get("timeout_seconds", None)
+        )
+        self._last_timeout_tail = getattr(coder, "last_timeout_tail", "") or ""
+        self._last_output_tail = (
+            getattr(coder, "last_output_tail", "") or metadata.get("output_tail", "")
+        )
 
     def _ensure_task_branch(self, git_mcp: Optional[Any], task: Task) -> None:
         """Ensure task branch is created and checked out for isolation."""
@@ -235,11 +263,7 @@ class ExecutorMixin:
 
         try:
             code_artifact = coder.implement(spec)
-            self._last_commit_reason = getattr(coder, "last_commit_reason", None)
-            self._last_timed_out = getattr(coder, "last_timed_out", False) or getattr(code_artifact, "metadata", {}).get("timed_out", False)
-            self._last_timeout_seconds = getattr(coder, "last_timeout_seconds", None) or getattr(code_artifact, "metadata", {}).get("timeout_seconds", None)
-            self._last_timeout_tail = getattr(coder, "last_timeout_tail", "")
-            self._last_output_tail = getattr(coder, "last_output_tail", "") or getattr(code_artifact, "metadata", {}).get("output_tail", "")
+            self._record_coder_run_facts(coder, code_artifact)
 
             # If workspace available, process file operations
             self._last_execution_writes = [
@@ -312,6 +336,23 @@ class ExecutorMixin:
             # anticipated outcome. Propagate unchanged so the engine reports it
             # under its own halt outcome instead of as a generic execution fault.
             raise
+        except CoderTimeoutError:
+            # A run that ended on the clock. Whatever it produced is not lost:
+            # record the timeout facts and, before declaring a fault, ask
+            # whether the work already exists on the task branch — an earlier
+            # attempt (or this run's own commit, if the adapter's readback
+            # missed it) may have committed it. If it does, carry it into
+            # post-execute validation exactly as freshly produced work would be,
+            # so the judges decide (Fixes #281). If not, re-raise: the engine
+            # reports the operational timeout, never a blocker verdict.
+            self._record_coder_run_facts(coder)
+            existing = self._existing_task_branch_work(git_mcp)
+            if existing is not None:
+                self._last_existing_work_base_ref = existing[0]
+                self._last_execution_writes = list(existing[1])
+                artifacts.extend(existing[1])
+                return artifacts
+            raise
         except AdapterError:
             # The coder backend itself failed: a CLI that rejected the
             # arguments, an LLM call that errored, output that could not be
@@ -323,7 +364,10 @@ class ExecutorMixin:
             # laundering them into ``internal_error`` (Fixes #195; taxonomy in
             # ADR 015). The environment subclass must survive this catch
             # intact: it is what keeps a missing install from being recorded as
-            # a blocker verdict.
+            # a blocker verdict. The coder's own output tail is recorded first
+            # so THIS run's ending, not a previous attempt's, reaches the
+            # payload (Fixes #281).
+            self._record_coder_run_facts(coder)
             raise
         except ExecutionError:
             raise
