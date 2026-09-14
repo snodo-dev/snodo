@@ -59,6 +59,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
   follow-up offers `snodo authorize` rather than a coder retry. `abstention_policy`
   is unchanged, and an abstention is never converted into a pass.
 
+- Halt payloads now record the attempts a task took, not only its final
+  verdicts. A task that passed first time and one that passed on the fourth
+  attempt after three silent judges previously produced payloads a reader could
+  not tell apart — observed on a real project whose completed payload reported
+  a unanimous pass and `abstain_count: 0` despite four attempts over
+  forty-five minutes. The payload gains an `attempts` summary: `total`,
+  `non_verdicts`, `coder_dispatches`, and a bounded `history` of
+  `{attempt, outcome}` entries using canonical outcomes (`passed`, `warned`,
+  `blocked`, `abstained`, `error`). It recovers the two categories the final
+  results hide — prior recovery attempts (from `prior_failures`) and the
+  in-place abstention re-judges that dispatch no coder and create no subtask.
+  Halt types and the final `validator_results` are unchanged; the summary is
+  the history that precedes them.
+
 ## [0.8.4] — 2026-09-13
 
 ### Added
