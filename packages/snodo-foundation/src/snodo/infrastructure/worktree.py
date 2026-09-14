@@ -364,6 +364,96 @@ def delete_task_branch(project_root: str, branch: str) -> None:
             _logger.debug("Failed to delete task branch %s: %s", branch, e)
 
 
+def _delete_branch(repo, name: str) -> bool:
+    """Delete one branch via git; return True when it was removed."""
+    from git import GitCommandError
+    try:
+        repo.git.branch("-D", name)
+        return True
+    except GitCommandError as e:
+        _logger.debug("Failed to delete branch %s: %s", name, e)
+        return False
+
+
+def delete_task_branches(project_root: str, task_id: str) -> List[str]:
+    """Delete every branch for *task_id*.
+
+    The worktree must already be removed: git refuses to delete a branch that
+    is checked out in a worktree. This is the discard path (``snodo task
+    abandon``/``prune``), where the operator has explicitly given up on the
+    work — unlike the success-path teardown, it deletes unmerged branches too.
+    Returns the branch names deleted.
+    """
+    deleted: List[str] = []
+    with merge_lock(project_root):
+        try:
+            from snodo.tools.git import open_repo
+            with open_repo(project_root) as repo:
+                prefix = f"task/{task_id}"
+                for name in [
+                    head.name for head in repo.heads
+                    if head.name == prefix or head.name.startswith(f"{prefix}/")
+                ]:
+                    if _delete_branch(repo, name):
+                        deleted.append(name)
+        except Exception as e:
+            _logger.debug("Could not delete task branches for %s: %s", task_id, e)
+    return deleted
+
+
+def delete_merged_task_branches(project_root: str, task_id: str) -> List[str]:
+    """Delete branches for *task_id* whose work is already contained in the base.
+
+    A branch that is not in the base holds work the operator has not merged;
+    deleting it would discard that work, so it is left alone. This is the
+    success-path rule: a clean merge is the only reason a completed task's
+    branch may be removed. The worktree must be gone first. Returns the branch
+    names deleted.
+    """
+    deleted: List[str] = []
+    with merge_lock(project_root):
+        try:
+            from snodo.tools.git import open_repo, resolve_base_branch
+            base = resolve_base_branch(project_root)
+            with open_repo(project_root) as repo:
+                try:
+                    raw = repo.git.branch("--merged", base)
+                    merged = {
+                        line.strip().lstrip("*+ ").strip()
+                        for line in raw.splitlines()
+                        if line.strip().lstrip("*+ ").strip()
+                    } if isinstance(raw, str) else set()
+                except Exception as e:
+                    _logger.debug("Could not read merged branches: %s", e)
+                    merged = set()
+                prefix = f"task/{task_id}"
+                for head in list(repo.heads):
+                    if not (head.name == prefix or head.name.startswith(f"{prefix}/")):
+                        continue
+                    if head.name not in merged:
+                        continue
+                    if _delete_branch(repo, head.name):
+                        deleted.append(head.name)
+        except Exception as e:
+            _logger.debug("Could not delete merged branches for %s: %s", task_id, e)
+    return deleted
+
+
+def teardown_task_worktree(project_root: str, task_id: str) -> None:
+    """Tear down a task's isolation: worktree first, then its merged branches.
+
+    The single home for this sequence. A branch checked out in a worktree
+    cannot be deleted until that worktree is removed, so the order is
+    load-bearing and must not be re-implemented elsewhere. Only branches whose
+    work is already in the base are deleted: a completed run that did not merge
+    is not silently discarded.
+
+    Both the CLI inline path and the background job wrapper route through this
+    helper, so the two cannot disagree about the identity or the order.
+    """
+    remove_worktree(project_root, task_id)
+    delete_merged_task_branches(project_root, task_id)
+
 
 def list_worktrees(project_root: str) -> list:
     """Return the retained worktree directory names, newest last.

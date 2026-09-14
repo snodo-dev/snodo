@@ -16,6 +16,8 @@ from snodo.infrastructure.worktree import (
     merge_task_branch,
     surface_untracked_files,
     task_branch_name,
+    teardown_task_worktree,
+    worktree_path,
 )
 from snodo.tools.git import GitError, resolve_base_branch
 
@@ -204,6 +206,39 @@ def test_delete_task_branch(repo):
 
     delete_task_branch(str(repo), branch)
     assert branch not in _branches(repo)
+
+
+# === teardown_task_worktree: worktree first, then only merged branches ===
+
+def test_teardown_removes_worktree_and_merged_branch(repo):
+    branch = task_branch_name("task_1", "add feature")
+    create_worktree(str(repo), "task_1", "add feature")
+    _commit_in_worktree(repo, "feature.txt")
+    merge_task_branch(str(repo), branch)
+
+    teardown_task_worktree(str(repo), "task_1")
+
+    assert not worktree_path(str(repo), "task_1").exists()
+    assert branch not in _branches(repo)
+
+
+def test_teardown_keeps_unmerged_branch(repo):
+    """A branch whose work is not in the base is the only copy — it survives."""
+    branch = task_branch_name("task_1", "add feature")
+    create_worktree(str(repo), "task_1", "add feature")
+    _commit_in_worktree(repo, "feature.txt")
+
+    teardown_task_worktree(str(repo), "task_1")
+
+    assert not worktree_path(str(repo), "task_1").exists()
+    assert branch in _branches(repo)
+
+
+def _commit_in_worktree(repo, filename):
+    wt = worktree_path(str(repo), "task_1")
+    (wt / filename).write_text("work\n")
+    subprocess.run(["git", "add", filename], cwd=wt, check=True)
+    subprocess.run(["git", "commit", "-qm", "work"], cwd=wt, check=True)
 
 
 # === spec-referenced paths must exist in the worktree (issue #93) ===
