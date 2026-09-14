@@ -303,8 +303,8 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
             print(f"Intent: {intent}")
         print("Output is produced by child task jobs.\n")
         _print_status_view(tasks_status, child_jobs)
-        print(f"  Use 'snodo logs {job_id} --watch' to follow the plan run live.")
-        print("  Use 'snodo logs <child_job_id>' to inspect logs for an individual child task.")
+        _print_child_log_hints(child_jobs)
+        print(f"  Follow this plan live: snodo logs {job_id} --watch")
         return 0
 
     print(f"Following plan run {job_id} (plan: {plan_name or 'unnamed'})")
@@ -370,6 +370,28 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
     except KeyboardInterrupt:
         pass
     return 0
+
+
+def _print_child_log_hints(child_jobs: list[dict]) -> None:
+    """Name the real command that reaches a child task's logs.
+
+    A generic "use snodo logs <child_job_id>" leaves the reader to find the id
+    themselves. Every child's record carries its id, so print the command with
+    it. Hints stay off healthy children: only a child that needs a look
+    (blocked, failed, errored, unmerged, running) earns a line, so a wave with
+    one task and a wave with six both stay readable.
+    """
+    interesting = ("blocked", "failed", "errored", "unmerged", "running")
+    hinted = [
+        cj for cj in child_jobs
+        if cj.get("id") and cj.get("status") in interesting
+    ]
+    if not hinted:
+        return
+    print()
+    for cj in hinted:
+        ref = cj.get("task_ref") or "task"
+        print(f"  logs for {ref} ({cj.get('status')}): snodo logs {cj['id']}")
 
 
 def _show_job(project_root: str, job_id: str, args) -> int:

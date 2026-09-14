@@ -3,6 +3,7 @@
 FILE: snodo/cli/commands/plan_cmd.py
 """
 
+import logging
 import re
 import shutil
 import sys
@@ -11,6 +12,8 @@ from types import SimpleNamespace
 from typing import Optional
 
 import typer
+
+_logger = logging.getLogger(__name__)
 
 
 def exec_option(name: str):
@@ -234,9 +237,44 @@ def _plan_status(planner, name: str) -> int:
     print(f"Intent: {plan_data.get('intent', 'N/A')}")
     print()
 
-    _print_plan_waves(plan_data.get("waves", []), tasks)
+    plan_job_id, task_jobs = _plan_job_index(planner.project_root, name)
+    _print_plan_waves(plan_data.get("waves", []), tasks, task_jobs)
     _print_plan_summary(tasks)
+
+    # Status is a snapshot; following the plan is one command that already
+    # exists. Point at it rather than growing a second way to watch here.
+    if plan_job_id:
+        print()
+        print(f"Follow this plan live: snodo logs {plan_job_id} --watch")
     return 0
+
+
+def _plan_job_index(project_root, plan_name: str) -> tuple[Optional[str], dict]:
+    """Map a plan to its run job and each task to the child job that ran it.
+
+    The status view reads task state from disk, which never mentions that a
+    job exists: a blocked row gave the reader no thread to pull. The engine
+    already records it — the plan's run job carries ``plan``, each child
+    carries ``parent_job`` — so read those records back and hand the ids to
+    the row that needs them. Returns ``(latest_plan_job_id, {task_id: job_id})``
+    or ``(None, {})`` when no job ran.
+    """
+    try:
+        from snodo.jobs import JobManager
+        jobs = JobManager(str(project_root)).list_jobs()
+    except Exception as e:
+        _logger.debug("Could not list jobs for plan %s: %s", plan_name, e)
+        return None, {}
+
+    plan_jobs = [j for j in jobs if j.get("plan") == plan_name]
+    plan_job_id = plan_jobs[0]["id"] if plan_jobs else None
+
+    task_jobs: dict[str, str] = {}
+    for job in jobs:
+        ref = job.get("task_ref")
+        if ref and job.get("parent_job") == plan_job_id:
+            task_jobs[ref] = job["id"]
+    return plan_job_id, task_jobs
 
 
 def _plan_create(planner, args) -> int:
@@ -269,11 +307,18 @@ def _plan_create(planner, args) -> int:
     return 0
 
 
-def _print_plan_waves(waves: list, tasks: dict) -> None:
-    """Print wave and task details."""
+def _print_plan_waves(waves: list, tasks: dict,
+                      task_jobs: Optional[dict] = None) -> None:
+    """Print wave and task details.
+
+    A row that needs a look (blocked, errored, unmerged, in progress) carries
+    the real command that reaches its logs, so the id a reader needs is beside
+    the row it describes. Healthy and never-run rows stay free of that noise.
+    """
     _STATUS_MARKERS = {"completed": "+", "in_progress": "~",
                        "blocked": "!", "errored": "?",
                        "unmerged": "u", "pending": " "}
+    task_jobs = task_jobs or {}
     for wave in waves:
         wave_id = wave.get("id")
         deps = wave.get("depends_on", [])
@@ -283,7 +328,11 @@ def _print_plan_waves(waves: list, tasks: dict) -> None:
             raw = tasks.get(task_id, "pending")
             state = raw["status"] if isinstance(raw, dict) else raw
             marker = _STATUS_MARKERS.get(state, "?")
-            print(f"    [{marker}] {task_id}: {state}")
+            job_id = task_jobs.get(task_id)
+            if job_id and state not in ("completed", "pending"):
+                print(f"    [{marker}] {task_id}: {state}  ->  snodo logs {job_id}")
+            else:
+                print(f"    [{marker}] {task_id}: {state}")
     print()
 
 

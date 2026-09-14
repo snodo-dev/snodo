@@ -275,3 +275,108 @@ def test_plan_job_without_watch_explains_output_in_children(capsys):
             assert "Output is produced by child task jobs" in out
             assert "1.1_tokens" in out
             assert "j_token_task" in out
+            # A completed child needs no look, so it grows no per-child hint —
+            # but the generic placeholder must never appear either.
+            assert "snodo logs <child_job_id>" not in out
+
+
+def test_plan_job_logs_name_the_real_child_job_instead_of_a_placeholder(capsys):
+    """A plan job's log output spells out the command with the real child id,
+    never a generic placeholder the reader would have to resolve themselves."""
+    import json
+    import yaml
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        snodo_dir = Path(tmp_dir) / ".snodo"
+        jobs_dir = snodo_dir / "jobs"
+        plans_dir = snodo_dir / "plans"
+
+        plan_dir = plans_dir / "sweep"
+        plan_dir.mkdir(parents=True)
+        plan_yml = {
+            "name": "sweep",
+            "intent": "Sweep the contradiction",
+            "waves": [
+                {"id": 1, "depends_on": [],
+                 "tasks": ["1.1_no-control", "1.2_models", "1.3_routes"]},
+            ],
+        }
+        (plan_dir / "plan.yml").write_text(yaml.dump(plan_yml))
+        (plan_dir / "status.json").write_text(json.dumps({
+            "tasks": {
+                "1.1_no-control": {"status": "blocked"},
+                "1.2_models": {"status": "completed"},
+                "1.3_routes": {"status": "completed"},
+            }
+        }))
+
+        plan_job_dir = jobs_dir / "j_plan_sweep"
+        plan_job_dir.mkdir(parents=True)
+        (plan_job_dir / "task.json").write_text(json.dumps({"plan_name": "sweep"}))
+        (plan_job_dir / "state.json").write_text(json.dumps({"status": "running", "job_type": "plan"}))
+        (plan_job_dir / "stdout.log").write_text("")
+
+        children = [
+            ("j_blocked01", "1.1_no-control", "blocked"),
+            ("j_models02", "1.2_models", "completed"),
+            ("j_routes03", "1.3_routes", "completed"),
+        ]
+        for cid, ref, status in children:
+            cdir = jobs_dir / cid
+            cdir.mkdir(parents=True)
+            (cdir / "task.json").write_text(json.dumps({
+                "task_id": ref, "parent_job": "j_plan_sweep",
+            }))
+            (cdir / "state.json").write_text(json.dumps({
+                "status": status, "duration_seconds": 3.0, "created_at": 1000,
+            }))
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            args = SimpleNamespace(composite_id="j_plan_sweep", watch=False)
+            res = logs_command(args)
+
+            assert res == 0
+            out = capsys.readouterr().out
+            assert "snodo logs j_blocked01" in out
+            assert "snodo logs <child_job_id>" not in out
+            # A wave with six tasks or one stays readable: only the row that
+            # needs a look earns a hint; healthy children do not.
+            assert "snodo logs j_models02" not in out
+            assert "snodo logs j_routes03" not in out
+
+
+def test_plan_job_watch_hint_points_at_the_command_that_follows(capsys):
+    """Following a plan is one command that already exists; the non-watch view
+    points at it rather than offering a second way to watch."""
+    import json
+    import yaml
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        snodo_dir = Path(tmp_dir) / ".snodo"
+        jobs_dir = snodo_dir / "jobs"
+        plans_dir = snodo_dir / "plans"
+
+        plan_dir = plans_dir / "sweep"
+        plan_dir.mkdir(parents=True)
+        (plan_dir / "plan.yml").write_text(yaml.dump({
+            "name": "sweep", "intent": "Sweep",
+            "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_x"]}],
+        }))
+        (plan_dir / "status.json").write_text(json.dumps({
+            "tasks": {"1.1_x": {"status": "completed"}}
+        }))
+
+        plan_job_dir = jobs_dir / "j_plan_w"
+        plan_job_dir.mkdir(parents=True)
+        (plan_job_dir / "task.json").write_text(json.dumps({"plan_name": "sweep"}))
+        (plan_job_dir / "state.json").write_text(json.dumps({"status": "completed", "job_type": "plan"}))
+        (plan_job_dir / "stdout.log").write_text("")
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            args = SimpleNamespace(composite_id="j_plan_w", watch=False)
+            res = logs_command(args)
+
+            assert res == 0
+            out = capsys.readouterr().out
+            assert "Follow this plan live: snodo logs j_plan_w --watch" in out
+
