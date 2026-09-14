@@ -176,6 +176,30 @@ governed repository is not an error state, and `1`/`2`/`3` are validation
 outcomes that survey does not emit: survey proposes and reports, it does not
 judge work.
 
+### `snodo intake --json`
+
+Schema: `snodo.intake.v1`
+
+Reports the validator criteria `snodo intake` would offer, drawn from the
+repository's decision records. It **writes nothing** and prompts for nothing —
+a machine can see the proposals, but acceptance stays a human act; the write
+path is entered only by the interactive command or an explicit `--accept-all`.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.intake.v1` |
+| `ok` | bool | `true` on success |
+| `project_root` | string | absolute project root |
+| `protocol_id` | string | the protocol the criteria would be added to |
+| `proposals` | array | `[{criterion, record_path, record_title, record_section}]` — each rule and the record it came from |
+| `written` | bool | always `false` |
+
+`record_path` is a repository-relative citation resolved against the
+repository before the proposal is built; a criterion whose record cannot be
+found is never proposed. A non-zero exit from `intake --json` means no
+proposals could be produced (no git repository, no protocol, or an unloadable
+one), and it writes nothing.
+
 ## Exit codes
 
 `snodo validate` (and any command that returns a validation outcome) uses exit

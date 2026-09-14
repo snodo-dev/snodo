@@ -21,6 +21,13 @@ Never infers governance requirements from absence of practices.
 """
 
 from snodo.survey.analyzer import analyze_repository
+from snodo.survey.criteria import (
+    CriterionProposal,
+    UnknownValidatorError,
+    append_criteria,
+    propose_criteria,
+    select_validator,
+)
 from snodo.survey.drift import compare_protocol
 from snodo.survey.measure import (
     CorpusMeasurement,
@@ -51,10 +58,15 @@ from snodo.survey.models import (
 
 __all__ = [
     "ComparisonNotMade",
+    "CriterionProposal",
     "DriftAgreement",
     "DriftFinding",
     "ProtocolDrift",
+    "UnknownValidatorError",
     "analyze_repository",
+    "append_criteria",
+    "propose_criteria",
+    "select_validator",
     "CorpusMeasurement",
     "ExpectedRepository",
     "JudgementRecord",
