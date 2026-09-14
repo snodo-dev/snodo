@@ -434,16 +434,10 @@ def _failure_from_halt_record(session, task_id: str) -> Optional[dict]:
         {
             "validator_id": v.get("validator_id", "unknown"),
             "severity": v.get("severity", "blocker"),
-            "justification": (
-                f"[judge could not decide: {v['abstention_reason']}] " + v.get("justification", "")
-                if v.get("severity") is None and v.get("abstention_reason")
-                else v.get("justification", "")
-            ),
+            "justification": v.get("justification", ""),
         }
         for v in (validator_results or [])
-        if isinstance(v, dict) and (
-            v.get("severity") in ("blocker", "warn") or v.get("severity") is None
-        )
+        if isinstance(v, dict) and v.get("severity") in ("blocker", "warn")
     ]
     if not failed_validators and record.get("reason"):
         failed_validators = [
@@ -1663,9 +1657,7 @@ def _print_halt_followup(halt_payload: dict, session_id: Optional[str]) -> None:
     if task_id:
         commands.append(followup.task_followup(task_id, running=False))
         if final_decision not in ("completed", None):
-            # followup.halt_followup owns the abstention-vs-fault distinction,
-            # shared with `snodo task show` so the two cannot disagree (#268).
-            commands.extend(followup.halt_followup(halt_payload, task_id))
+            commands.append(followup.task_retry(task_id))
 
     if not commands:
         return

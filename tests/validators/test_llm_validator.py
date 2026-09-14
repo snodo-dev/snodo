@@ -1076,8 +1076,9 @@ class TestPostExecuteToolLoop:
         assert any("derived build output" in m for m in tool_msgs), tool_msgs
         assert not any("canary_bundle_contents" in m for m in tool_msgs)
 
-    def test_tool_loop_bounded_at_max_turns(self, security_validator):
-        """Tool loop should record abstention after max turns without submit_verdict."""
+    def test_tool_loop_never_submitting_is_an_error_that_fails_closed(self, security_validator):
+        """A judge that never calls submit_verdict produces an error, not a
+        fabricated verdict, and the engine fails closed on it."""
         from snodo.validators.llm_validator import _DEFAULT_MAX_TOOL_TURNS
 
         mock_git = MagicMock()
@@ -1102,27 +1103,34 @@ class TestPostExecuteToolLoop:
 
         result = validator.evaluate(ctx)
 
-        # Exhausted judges record as abstention, not error
-        assert result.severity is None
-        assert not result.error
-        assert "exhausted" in result.abstention_reason.lower()
+        assert result.error is True
+        assert result.severity == "blocker"
+        assert "did not return a verdict" in result.justification
+        # The record of what the judge examined travels on the error result.
+        assert any("preloaded diff" in e for e in result.examined)
+        assert any("read_file x.py" in e for e in result.examined)
         assert completion_fn.call_count == _DEFAULT_MAX_TOOL_TURNS
 
-    def test_tool_loop_abstention_records_examination(self, security_validator):
-        """An abstention tells the human what the judge examined and which
-        granted tools it never got to use (Fixes #252)."""
+    def test_final_turn_offers_no_read_tool(self, security_validator):
+        """At the boundary of its budget the judge is asked for a verdict and
+        given no way to keep reading: the final request offers submit_verdict
+        only (Fixes #278)."""
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
         mock_workspace = MagicMock()
-        mock_workspace.read_file.return_value = "print(1)"
+
+        offered_per_turn = []
 
         def completion_side_effect(**kwargs):
+            offered_per_turn.append(
+                {t["function"]["name"] for t in kwargs.get("tools", [])}
+            )
             resp = MagicMock()
             resp.choices = [MagicMock()]
             tool_call = MagicMock()
             tool_call.id = "tc_1"
             tool_call.function.name = "read_file"
-            tool_call.function.arguments = '{"path": "app.py"}'
+            tool_call.function.arguments = '{"path": "x.py"}'
             resp.choices[0].message.content = None
             resp.choices[0].message.tool_calls = [tool_call]
             return resp
@@ -1131,20 +1139,52 @@ class TestPostExecuteToolLoop:
         validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
         ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
 
+        validator.evaluate(ctx)
+
+        assert "read_file" in offered_per_turn[0]
+        assert offered_per_turn[-1] == {"submit_verdict"}
+
+    def test_judge_that_decides_late_returns_a_real_verdict(self, security_validator):
+        """A judge that reads for many turns and then decides still returns a
+        real verdict — a verdict on partial reading is a real verdict."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if call_count[0] < 5:
+                tool_call = MagicMock()
+                tool_call.id = f"tc_{call_count[0]}"
+                tool_call.function.name = "read_file"
+                tool_call.function.arguments = json.dumps({"path": f"f{call_count[0]}.py"})
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tool_call]
+            else:
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
+                    "severity": "warn",
+                    "justification": "Partial reading; criterion 2 may not hold.",
+                })
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
         result = validator.evaluate(ctx)
 
-        assert result.severity is None
-        assert result.abstention_reason == "exhausted budget after 20 turns"
-        # What WAS examined: the preloaded diff plus every read it made.
-        assert any("preloaded diff" in e for e in result.examined)
-        assert any("turn" in e and "read_file app.py" in e for e in result.examined)
-        # What was NOT examined: granted read-only tools never exercised.
-        assert set(result.unexamined_tools) == {
-            "read_file_lines", "git_show", "git_log", "list_files",
-        }
-        # read_diff_between_refs counts as exercised: the judge received the
-        # diff in its prompt.
-        assert "read_diff_between_refs" not in result.unexamined_tools
+        assert result.severity == "warn"
+        assert result.error is False
+        assert "Partial reading" in result.justification
 
     def test_tool_loop_invalid_submit_verdict_gets_tool_response(self, security_validator):
         """A submit_verdict with an invalid severity is answered with a tool
@@ -1287,15 +1327,16 @@ class TestPostExecuteToolLoop:
         assert result.severity == "blocker"
         assert "tool-loop operational error" in result.justification
 
-    def test_tool_loop_no_content_no_tool_calls_is_abstention(self, security_validator):
-        """Neither content nor tool_calls, twice over, is no verdict — an
-        abstention, not a fabricated blocker the judge never issued."""
+    def test_tool_loop_no_content_no_tool_calls_is_an_error(self, security_validator):
+        """Neither content nor tool_calls, twice over, is no verdict: the judge
+        that never calls submit_verdict produces an error, not a fabricated
+        verdict it never issued."""
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
         mock_workspace = MagicMock()
 
-        # First call: empty response — triggers retry
-        # Second call: same empty response — abstention
+        # First call: empty response — triggers the nudge
+        # Second call: same empty response — no verdict, so an error
         def completion_side_effect(**kwargs):
             resp = MagicMock()
             resp.choices = [MagicMock()]
@@ -1309,25 +1350,18 @@ class TestPostExecuteToolLoop:
 
         result = validator.evaluate(ctx)
 
-        assert result.severity is None
-        assert not result.error
-        assert result.abstained()
-        assert result.abstention_reason
+        assert result.error is True
+        assert result.severity == "blocker"
         assert "submit_verdict" in result.justification
-        assert "blocker" not in result.justification
 
-    def test_tool_loop_prose_twice_is_abstention_with_reason(self, security_validator):
-        """A judge that narrates instead of calling submit_verdict, asked
-        again and narrating again, reached no verdict: recorded as an
-        abstention with its reason, not a validator_error blocker."""
+    def test_tool_loop_prose_twice_is_an_error(self, security_validator):
+        """A judge that narrates instead of calling submit_verdict, asked again
+        and narrating again, reached no verdict: an error that fails closed."""
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
         mock_workspace = MagicMock()
 
-        call_count = [0]
-
         def completion_side_effect(**kwargs):
-            call_count[0] += 1
             resp = MagicMock()
             resp.choices = [MagicMock()]
             resp.choices[0].message.content = "The change looks reasonable overall."
@@ -1340,82 +1374,16 @@ class TestPostExecuteToolLoop:
 
         result = validator.evaluate(ctx)
 
-        assert result.severity is None
-        assert not result.error
-        assert result.abstained()
-        assert "submit_verdict" in result.abstention_reason
+        assert result.error is True
+        assert result.severity == "blocker"
+        assert "did not return a verdict" in result.justification
         # The prose exchange itself is part of what the judge did.
         assert any("free-text" in e for e in result.examined)
-        # Asked exactly twice: the prose reply and the reply after the nudge.
-        assert call_count[0] == 2
 
-    def test_free_text_abstention_records_the_judges_last_words(self, security_validator):
-        """A judge that answers in prose and never calls submit_verdict keeps
-        its own closing account: the abstention's record carries the text,
-        bounded, so an audit reader can see what it said when it declined."""
-        from snodo.validators.llm_validator import _LAST_WORDS_CHAR_LIMIT
-
-        mock_git = MagicMock()
-        mock_git.diff_between_refs.return_value = "+def login():"
-        mock_workspace = MagicMock()
-
-        prose = "I could not tell whether criterion 2 holds; I am still looking."
-
-        def completion_side_effect(**kwargs):
-            resp = MagicMock()
-            resp.choices = [MagicMock()]
-            resp.choices[0].message.content = prose
-            resp.choices[0].message.tool_calls = []
-            return resp
-
-        completion_fn = MagicMock(side_effect=completion_side_effect)
-        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
-        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
-
-        result = validator.evaluate(ctx)
-
-        assert result.abstained()
-        assert result.last_words == prose
-        # The canonical audit record must carry the same account, bounded.
-        record = result.record()
-        assert record["last_words"] == prose
-        assert "severity" in record and record["severity"] is None
-        assert len(record["last_words"]) <= _LAST_WORDS_CHAR_LIMIT
-
-    def test_free_text_is_kept_within_the_bound(self, security_validator):
-        """Prose is untrusted model output: an over-long account is truncated
-        to the stated ceiling rather than stored whole (Fixes #270)."""
-        from snodo.validators.llm_validator import _LAST_WORDS_CHAR_LIMIT
-
-        mock_git = MagicMock()
-        mock_git.diff_between_refs.return_value = "+def login():"
-        mock_workspace = MagicMock()
-
-        prose = "cannot decide. " * (_LAST_WORDS_CHAR_LIMIT // 4)
-
-        def completion_side_effect(**kwargs):
-            resp = MagicMock()
-            resp.choices = [MagicMock()]
-            resp.choices[0].message.content = prose
-            resp.choices[0].message.tool_calls = []
-            return resp
-
-        completion_fn = MagicMock(side_effect=completion_side_effect)
-        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
-        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
-
-        result = validator.evaluate(ctx)
-
-        assert result.abstained()
-        assert result.last_words is not None
-        assert len(result.last_words) <= _LAST_WORDS_CHAR_LIMIT
-        assert result.last_words.endswith("...<truncated>")
-
-    def test_free_text_is_never_derived_into_a_severity(self, security_validator):
-        """Prose is an account, not a verdict: a judge that wrote the word
-        "blocker" but never called submit_verdict is still an abstention.
-        Nothing may read a finding out of the text, and no severity may be
-        derived from it (Fixes #270, cf. #252)."""
+    def test_prose_is_never_derived_into_a_verdict(self, security_validator):
+        """Prose is not a verdict: a judge that wrote the word "blocker" but
+        never called submit_verdict gets an operational error, and no finding
+        is read out of its text."""
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
         mock_workspace = MagicMock()
@@ -1438,20 +1406,15 @@ class TestPostExecuteToolLoop:
 
         result = validator.evaluate(ctx)
 
-        # The words are kept verbatim but carry no authority.
-        assert result.last_words == prose
-        assert result.severity is None
-        assert result.abstained()
+        # The error severity is the fail-closed error, not a finding mined
+        # from the prose; no criterion is cited from it.
+        assert result.error is True
+        assert result.severity == "blocker"
         assert result.cited_criteria is None
-        record = result.record()
-        assert record["severity"] is None
-        assert "blocker" not in record.get("abstention_reason", "")
 
-    def test_tool_loop_malformed_verdict_is_not_relabelled_as_abstention(self, security_validator):
+    def test_tool_loop_malformed_verdict_is_corrected(self, security_validator):
         """A malformed/out-of-range submit_verdict is answered with correction
-        (#53); a self-corrected judge records its verdict unchanged. It never
-        receives the 'answered without calling submit_verdict' abstention
-        reason this round introduced — malformed is a different thing."""
+        (#53); a self-corrected judge records its verdict unchanged."""
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
         mock_workspace = MagicMock()
@@ -1483,16 +1446,13 @@ class TestPostExecuteToolLoop:
         result = validator.evaluate(ctx)
 
         assert result.severity == "warn"
-        assert not result.abstained()
-        assert "submit_verdict" not in (result.abstention_reason or "")
+        assert result.error is False
 
-    def test_genuinely_malformed_verdict_stays_an_error_not_abstention(
+    def test_genuinely_malformed_verdict_stays_an_error(
         self, security_validator, task, monkeypatch
     ):
-        """The guardrail for this change: the new prose/no-verdict abstention
-        must not swallow the operational fault that #84 established — a
-        provider-rejected structured call whose prose fallback parses to
-        nothing is error=True, not severity=None."""
+        """The guardrail: a provider-rejected structured call whose prose
+        fallback parses to nothing is error=True, not a fabricated verdict."""
         from litellm.exceptions import BadRequestError
 
         monkeypatch.setattr(
@@ -1514,8 +1474,6 @@ class TestPostExecuteToolLoop:
 
         assert result.error is True
         assert result.severity == "blocker"
-        assert not result.abstained()
-        assert result.abstention_reason is None
 
     def test_tool_loop_uses_tools_kwarg_in_completion_call(self, security_validator):
         """Tool loop must pass tools=[...] to completion_fn."""

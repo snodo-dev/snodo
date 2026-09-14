@@ -5,9 +5,9 @@ FILE: tests/dashboard/test_cockpit_attention.py
 The cockpit was spending half its height on a Sessions pane whose only fact —
 which session is active — is already printed in the header. That space is
 returned to what requires a human: a task that escalated, or that halted on a
-judge which could not reach a verdict, is the only thing on the screen that
-will not progress unless a person acts. The operator used to have to remember
-to run `snodo authorize` to learn such a task existed.
+blocking verdict, is the only thing on the screen that will not progress unless
+a person acts. The operator used to have to remember to run `snodo authorize`
+to learn such a task existed.
 
 These tests pin:
 - the header carries the active session and the Sessions pane is gone;
@@ -69,7 +69,7 @@ def _attention_fixture(tmp_path, monkeypatch, *, awaiting=True):
     """A session, one task, one job, an audit tail.
 
     With ``awaiting=True`` the tail records an escalated task and a task that
-    halted on an abstaining judge — the two things that will not move without a
+    halted on a blocking verdict — the two things that will not move without a
     person. The escalate event is deliberately old so 'how long' is visible.
     """
     snodo = tmp_path / ".snodo"
@@ -86,8 +86,8 @@ def _attention_fixture(tmp_path, monkeypatch, *, awaiting=True):
         lines += [
             _audit_line(2, "disagreement_escalated", "task_needs_human", now - 7200,
                         phase="post_execute", detail="uniqueterm-escalate"),
-            _audit_line(3, "halt", "task_abstained", now - 300,
-                        reason="1 validator(s) abstained: could not produce verdicts within budget",
+            _audit_line(3, "halt", "task_blocked", now - 300,
+                        reason="1 blocker(s) present",
                         halt_type="blocker", final_decision="blocker"),
         ]
     _write_audit(tmp_path, lines)
@@ -201,9 +201,9 @@ def test_awaiting_task_shown_with_what_and_how_long(tmp_path, monkeypatch):
             # Both waiting tasks, what each awaits, and how long it has waited.
             assert "waiting on a person" in text
             assert "task_needs_human" in text
-            assert "task_abstained" in text
+            assert "task_blocked" in text
             assert "authorize" in text            # the escalated one
-            assert "judges could not reach" in text  # the abstention one
+            assert "blocker to fix" in text        # the blocker one
             assert "2h" in text                    # the escalated one has waited ~2h
 
     asyncio.run(_run())
@@ -223,8 +223,8 @@ def test_halts_grouped_by_outcome_and_cost_aggregated(tmp_path, monkeypatch):
             await pilot.pause(0.2)
             text = _pane_plain(screen.query_one("#attention-pane"))
             assert "Halts by outcome" in text
-            # escalate×1, abstention×1, blocker×1 grouped as outcome counts.
-            assert "escalate" in text and "abstention" in text
+            # escalate×1, blocker×1 grouped as outcome counts.
+            assert "escalate" in text and "blocker" in text
             assert "Cost" in text
             # task (0.03) and its wrapping job (0.10) are not summed to 0.13.
             assert "0.0300" in text

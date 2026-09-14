@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted.
+Superseded by [045](045-a-judge-is-made-to-decide.md). The abstention state
+this record handles was removed: a judge is now made to decide at the boundary
+of its budget, and a judge that still returns nothing is an error. See 045 for
+why the remedy here was wrong.
 
 ## Context
 

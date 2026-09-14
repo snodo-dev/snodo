@@ -1,5 +1,11 @@
 # An abstention re-judges the judge, not the coder
 
+> **Superseded by [ADR 045](../decisions/045-a-judge-is-made-to-decide.md).**
+> This spec describes the abstention state, which has been removed. A judge is
+> now made to decide at the boundary of its budget, and a judge that still
+> returns nothing is an error that fails closed. Kept as the historical record
+> of the remedy that was wrong.
+
 ## Root cause
 
 `_post_validate_node` (`engine/nodes/validation.py`) routes a HALT or ESCALATE

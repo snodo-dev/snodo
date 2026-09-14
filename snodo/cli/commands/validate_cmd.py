@@ -168,8 +168,6 @@ def validate_command(args) -> int:
     )
     status = classify_outcome(results, decision)
 
-    # result_record(): an abstention serialises with its absent severity plus
-    # the reason and examination, never as a pass (Fixes #252).
     serialized = [result_record(r) for r in results]
 
     payload = {
@@ -190,8 +188,7 @@ def validate_command(args) -> int:
     # Human output: a compact summary of the same result.
     print(f"Validation ({phase}, mode={mode_id}): {status}")
     for r in serialized:
-        sev = r["severity"] if r["severity"] is not None else "abstain"
-        print(f"  {r['validator_id']} [{sev}]: {r['justification']}")
+        print(f"  {r['validator_id']} [{r['severity']}]: {r['justification']}")
     return OUTCOME_EXIT_CODES.get(status, EXIT_INTERNAL_ERROR)
 
 
@@ -202,18 +199,6 @@ def _instruction(status: str, results: Optional[List[Any]] = None) -> str:
     if status == "escalate":
         return "Human review required. Run: snodo authorize <task_id>."
     if status == "blocker":
-        # A HALT with no blockers but abstaining judges must not be
-        # described as "Blockers present" — name the silence instead
-        # (Fixes #252).
-        blockers = [r for r in (results or []) if r.severity == "blocker"]
-        abstainers = [r.validator_id for r in (results or []) if r.severity is None]
-        if not blockers and abstainers:
-            return (
-                f"No blockers; {len(abstainers)} validator(s) abstained "
-                f"({', '.join(abstainers)}): no verdict within budget. "
-                "Raise the validator turn budget, revise the spec, or run: "
-                "snodo authorize <task_id>."
-            )
         return "Blockers present. Fix the code and re-validate; if exhausted, revise the spec."
     if status == "validator_error":
         return "A validator failed to produce a verdict. Retry or inspect logs."

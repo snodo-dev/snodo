@@ -32,18 +32,12 @@ class SerdeMixin:
         
         results = []
         for r in d.get("validation_results", []):
-            # severity is restored exactly as stored: None means the judge
-            # abstained. It must never default to "pass" — an abstention that
-            # cannot be recovered from a checkpoint becomes a false record
-            # (Fixes #252).
             results.append(ValidatorResult(
                 validator_id=r.get("validator_id", ""),
-                severity=r.get("severity"),
+                severity=r.get("severity", "blocker"),
                 justification=r.get("justification", ""),
-                abstention_reason=r.get("abstention_reason"),
+                error=bool(r.get("error", False)),
                 examined=r.get("examined"),
-                unexamined_tools=r.get("unexamined_tools"),
-                last_words=r.get("last_words"),
                 reused=bool(r.get("reused", False)),
             ))
         
@@ -103,7 +97,6 @@ class SerdeMixin:
             needs_recovery=d.get("needs_recovery", False),
             needs_spec_authoring=d.get("needs_spec_authoring", False),
             spec_authoring_attempts=d.get("spec_authoring_attempts", 0),
-            abstention_retries=d.get("abstention_retries", 0),
         )
 
     def _state_to_dict(self, state: LoopState) -> Dict[str, Any]:
@@ -123,9 +116,6 @@ class SerdeMixin:
                 "wave_id": state.task.wave_id,
             },
             "current_mode": state.current_mode,
-            # state_result_dict(): an abstention (severity None + reason +
-            # examination) must survive a checkpoint and be recoverable from
-            # it (Fixes #252).
             "validation_results": [state_result_dict(r) for r in state.validation_results],
             "validation_token": {
                 "jwt": state.validation_token.jwt,
@@ -163,5 +153,4 @@ class SerdeMixin:
             "needs_recovery": state.needs_recovery,
             "needs_spec_authoring": state.needs_spec_authoring,
             "spec_authoring_attempts": state.spec_authoring_attempts,
-            "abstention_retries": state.abstention_retries,
         }

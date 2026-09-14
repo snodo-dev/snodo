@@ -187,7 +187,6 @@ def test_validate_node_escalate_spec_authoring(sample_task):
             "warn_count": 1,
             "blocker_count": 0,
             "total_count": 1,
-            "abstain_count": 0,
             "justification": "Unanimous policy requires all validators to pass"
         }
     })
@@ -494,6 +493,65 @@ def test_post_validate_node_halt(sample_task):
     assert result["is_blocked"] is True
     assert result["halt_type"] == "blocked"
     assert "Post-execute validation failed" in result["constraint_violations"][0]
+
+
+def test_post_validate_node_no_verdict_error_halts(sample_task):
+    """A judge that could not return a verdict produces an error result and the
+    task halts as validator_error — fail-closed (Fixes #278)."""
+    protocol = Protocol(
+        protocol_id="test_protocol",
+        name="Test Protocol",
+        version="1.0.0",
+        modes=[
+            Mode(
+                mode_id="producer",
+                name="Producer Mode",
+                tools=["edit"],
+                validators=["security"],
+            )
+        ],
+        validators=[
+            Validator(
+                validator_id="security",
+                validator_type="security",
+                criteria=["Check OWASP Top 10"],
+                evaluation_phase="post_execute",
+            )
+        ],
+        disagreement_policy=DisagreementPolicy.UNANIMOUS,
+        initial_mode="producer",
+    )
+
+    def mock_validator_fn(task, validators, shell_mcp, **kwargs):
+        return [ValidatorResult(
+            validator_id="security",
+            severity="blocker",
+            justification=(
+                "Validator did not return a verdict after 20 turn(s). "
+                "Fail-closed."
+            ),
+            error=True,
+        )]
+
+    builder = GraphBuilder(protocol, validator_fn=mock_validator_fn)
+    result = builder._post_validate_node({
+        "task": {"id": sample_task.id, "spec": sample_task.spec},
+        "current_mode": "producer",
+        "iteration": 0,
+        "stage": "validate",
+        "validation_results": [],
+        "validation_token": None,
+        "artifacts": [],
+        "constraints_passed": True,
+        "constraint_violations": [],
+        "policy_decision": None,
+        "is_complete": False,
+        "is_blocked": False,
+        "metadata": {},
+    })
+
+    assert result["is_blocked"] is True
+    assert result["halt_type"] == "validator_error"
 
 
 class TestProgressOutput:
