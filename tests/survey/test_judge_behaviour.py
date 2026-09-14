@@ -8,7 +8,6 @@ that matter most are the ones where a confident but unattributable or partial
 answer must not be trusted:
 
 - a verdict citing a file that does not exist is refused;
-- an abstention is reported and leaves the deterministic answer standing;
 - a reply cut off mid-object promotes and drops nothing.
 """
 
@@ -57,23 +56,6 @@ class TestJudgementsOffline:
         assert all(r.verdict != "scaffolding" for r in survey.judgements)
         gap = next(u for u in survey.unmade_judgements if u.subject_path == "docs")
         assert "own source" in gap.reason
-
-    def test_abstention_is_reported_and_deterministic_answer_stands(self, tmp_path):
-        _make_app_and_docs(tmp_path)
-
-        def judge(dossier):
-            return {
-                "verdicts": [
-                    _verdict("boundary-role:docs", "abstain", "cannot tell", [])
-                ]
-            }
-
-        survey = analyze_repository(tmp_path, judge=judge)
-
-        assert {m.module_id for m in survey.modules} == {"app", "docs"}
-        assert survey.judgements == []
-        gap = next(u for u in survey.unmade_judgements if u.subject_path == "docs")
-        assert "abstained" in gap.reason
 
     def test_truncated_reply_is_not_read_as_a_partial_verdict(self):
         from snodo.cli.commands.survey_cmd import _parse_verdicts

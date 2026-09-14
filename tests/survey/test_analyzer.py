@@ -649,21 +649,6 @@ class TestUndeclaredBoundaries:
             "trival-app/src/feature0.ts", "trival-app/ios/Podfile",
         ]
 
-    def test_abstention_is_honest_not_guessed(self, tmp_path):
-        self._make_repo(tmp_path)
-        judge = _recording_judge([
-            _verdict(
-                "undeclared-boundary:trival-app", "abstain",
-                reason="cannot tell from a file listing alone",
-            ),
-        ])
-
-        survey = analyze_repository(tmp_path, judge=judge)
-
-        assert survey.modules == []
-        assert survey.judgements == []
-        assert "abstained" in survey.unmade_judgements[0].reason
-
     def test_root_manifest_means_no_candidates(self, tmp_path):
         """A root package declaration covers its tree; src/ is internals, not a boundary."""
         (tmp_path / "package.json").write_text('{"name": "site"}')

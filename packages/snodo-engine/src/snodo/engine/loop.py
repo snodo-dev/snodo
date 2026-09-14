@@ -115,19 +115,9 @@ def _verdict_signature(failures: list) -> tuple:
     Two lists with the same (validator_id, severity, justification) tuples in
     the same multiset produce the same signature.  Used to detect a repeated
     verdict across two recovery attempts (ADR 021).
-
-    An abstention (severity ``None``) is canonicalised to a single marker with
-    no prose. An abstention is "no verdict" however the judge phrased running
-    out: two abstentions on the same judge describe the same stall, and
-    comparing their justifications let three different excuses disguise an
-    unchanging situation and spend three coder dispatches (Fixes #268).
     """
     def _canonical(f: dict) -> tuple:
-        validator_id = f.get("validator_id")
-        severity = f.get("severity")
-        if severity is None:
-            return (validator_id, "abstain", "")
-        return (validator_id, severity, f.get("justification"))
+        return (f.get("validator_id"), f.get("severity"), f.get("justification"))
 
     return tuple(sorted(_canonical(f) for f in failures))
 
@@ -135,10 +125,8 @@ def _verdict_signature(failures: list) -> tuple:
 def verdict_signature_from_results(results: list) -> tuple:
     """Canonical failure signature of a validator-result list.
 
-    The one signature implementation, shared by the recovery stall check and
-    the post-execute abstention re-judge, so the two cannot disagree about what
-    "nothing changed" means. Only failures participate (warn / blocker /
-    abstention); a pass is not a failure and its prose is not load-bearing.
+    Only failures participate (warn / blocker); a pass is not a failure and its
+    prose is not load-bearing.
     """
     return _verdict_signature([
         {
@@ -148,7 +136,6 @@ def verdict_signature_from_results(results: list) -> tuple:
         }
         for r in results
         if getattr(r, "severity", None) in ("warn", "blocker")
-        or getattr(r, "severity", None) is None
     ])
 
 
@@ -596,7 +583,6 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         )
         self.policy_evaluator = PolicyEvaluator(
             decision_issuer=self._decision_issuer,
-            abstention_policy=getattr(protocol, "abstention_policy", "blocking"),
         )
         self._summary_model = self._init_summary_model()
         self._project_root = project_root or ""
@@ -758,8 +744,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         root_spec = loop_state.task.root_spec or loop_state.task.spec
 
         # Failures produced by THIS attempt, tagged with the 1-based attempt
-        # number (root = 1, fix_1 = 2, ...). Include abstentions (severity=None)
-        # so the audit trail shows which judges did not reach verdicts.
+        # number (root = 1, fix_1 = 2, ...).
         attempt_no = current_depth + 1
         new_failures = [
             {
@@ -767,10 +752,9 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                 "validator_id": r.validator_id,
                 "severity": r.severity,
                 "justification": r.justification,
-                "abstention_reason": getattr(r, "abstention_reason", None),
             }
             for r in results
-            if r.severity in ("warn", "blocker") or r.severity is None
+            if r.severity in ("warn", "blocker")
         ]
 
         # Identical repeated verdict: this attempt's failures match the previous
@@ -893,26 +877,13 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             r.validator_id for r in loop_state.validation_results
             if r.severity == "blocker"
         ]
-        # Judges that reached no verdict. A halt caused by abstentions must
-        # not name blockers that do not exist (Fixes #252).
-        abstained_validators = [
-            r.validator_id for r in loop_state.validation_results
-            if r.severity is None and not getattr(r, "error", False)
-        ]
-        default_reason = "blocker"
-        if not blocker_validators and abstained_validators:
-            default_reason = (
-                f"{len(abstained_validators)} validator(s) abstained: "
-                "no verdict reached within budget"
-            )
         canonical_halt = _canonical_halt(loop_state.halt_type)
         raw_halt = loop_state.halt_type or canonical_halt
         halt_audit = {
             "op": "halt",
             "task_ref": loop_state.task.id,
-            "reason": "; ".join(loop_state.constraint_violations) or default_reason,
+            "reason": "; ".join(loop_state.constraint_violations) or "blocker",
             "blocker_validators": blocker_validators,
-            "abstained_validators": abstained_validators,
             "halt_type": canonical_halt,
             "raw_halt_type": raw_halt,
         }
@@ -1075,9 +1046,6 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         Reports the *stored* (post-cap) severity so this line never contradicts
         the audit record; when a severity_cap was applied the pre-cap value is
         shown alongside it rather than hidden.
-
-        An abstention (severity=None) is always visible as an abstention so
-        operators see that consensus was not reached.
         """
         severity = getattr(result, "severity", "?")
         justification = getattr(result, "justification", "") or ""
@@ -1089,9 +1057,9 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         cap_note = f" (from {original})" if original and original != severity else ""
         reuse_note = " (reused)" if getattr(result, "reused", False) else ""
 
-        if severity is None:
+        if getattr(result, "error", False):
             snippet = f" — {first_line}" if first_line else ""
-            self._progress(f"    ◐ {validator_id}: abstained{cap_note}{snippet}")
+            self._progress(f"    💥 {validator_id}: error ({severity}){cap_note}{snippet}")
         elif severity == "pass" and not getattr(result, "skipped", False):
             self._progress(f"    ✓ {validator_id}: pass{cap_note}{reuse_note}", verbose=True)
         elif severity == "pass":

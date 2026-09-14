@@ -554,7 +554,7 @@ def task_show_command(args) -> int:
         if validator_results:
             print("  validators:")
             for r in validator_results:
-                print(f"    {r.get('validator_id', '?')} [{r.get('severity') or 'abstain'}]: {r.get('justification', '')}")
+                print(f"    {r.get('validator_id', '?')} [{r.get('severity')}]: {r.get('justification', '')}")
 
     if isinstance(failure_entry, dict):
         print()
@@ -593,14 +593,7 @@ def task_show_command(args) -> int:
     print()
     print("Inspect:")
     print(f"  {followup.session_inspect(session.session_id)}")
-    if isinstance(halt_entry, dict):
-        # The next step depends on *why* the task stopped: an abstention-only
-        # halt is adjudicated (no coder dispatch), every other halt is retried.
-        # The distinction lives in followup.halt_followup, shared with
-        # `snodo run` so the two cannot disagree (Fixes #268).
-        for cmd in followup.halt_followup(halt_entry, task_id):
-            print(f"  {cmd}")
-    elif isinstance(failure_entry, dict):
+    if isinstance(halt_entry, dict) or isinstance(failure_entry, dict):
         print(f"  {followup.task_retry(task_id)}")
     return 0
 

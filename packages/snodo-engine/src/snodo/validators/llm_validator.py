@@ -410,11 +410,6 @@ class LLMValidator(ValidatorBase):
         ]
 
         retried_free_text = False
-        # The judge's own last words when it answered in prose instead of
-        # calling submit_verdict. The prose is untrusted, unbounded model
-        # output: it is kept only on the abstention path, bounded, and never
-        # read as a finding or converted into a severity (Fixes #270).
-        last_free_text: Optional[str] = None
         # Ongoing-work narration goes to the progress sink — never the verdict
         # sink. Wrapping here keeps a raw callback safe on the direct path too;
         # when the runner already wrapped it, the same sink (and its
@@ -426,19 +421,37 @@ class LLMValidator(ValidatorBase):
         )
         start_time = time.monotonic()
         read_tracker = ReadMemoryTracker(getattr(workspace, "project_root", None))
-        # What the judge examined, in order. Carried into the abstention record
-        # so a human adjudicating it can see how far the inspection got
-        # (Fixes #252).
+        # What the judge examined, in order. If the judge fails without ever
+        # deciding, this record of how far the inspection got travels on the
+        # error result rather than a state invented to hold it.
         examination: List[str] = []
-        tools_exercised: Set[str] = set()
         if change is not None and change.readable and change.diff.strip():
             examination.append(f"prompt: preloaded diff {change.label}")
-            if "read_diff_between_refs" in active_names:
-                # The granted diff tool counts as exercised: the judge
-                # received its output preloaded (Fixes #252).
-                tools_exercised.add("read_diff_between_refs")
 
         for turn in range(tool_turns):
+            is_final_turn = turn == tool_turns - 1
+            # Time is up on the final turn: the read tools are removed and the
+            # judge is asked for a verdict from the evidence it has. A verdict
+            # reached on incomplete reading is a real verdict — "warn" exists
+            # for exactly that — and the judge is given no way to keep reading.
+            if is_final_turn:
+                offered_names: Set[str] = set()
+                turn_tools = [self._SUBMIT_VERDICT_DEF]
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Your time is up. The read tools are no longer "
+                        "available. State your verdict now from the evidence "
+                        "you have gathered; a verdict reached on partial "
+                        "reading is a real verdict. If your view is partial, "
+                        "say so in the justification and use \"warn\". Call "
+                        "submit_verdict(severity, justification)."
+                    ),
+                })
+            else:
+                offered_names = active_names
+                turn_tools = tools
+
             turn_start = time.monotonic()
             try:
                 from snodo.config import ConfigManager
@@ -446,7 +459,7 @@ class LLMValidator(ValidatorBase):
                     "model": ConfigManager.resolve_litellm_model(self.model),
                     "_configured_model": self.model,
                     "messages": messages,
-                    "tools": tools,
+                    "tools": turn_tools,
                     "max_tokens": completion_tokens,
                     "metadata": {
                         "job_id": self._job_id or "unknown",
@@ -499,6 +512,32 @@ class LLMValidator(ValidatorBase):
                 )
                 return verdict
 
+            # On the final turn the judge was offered submit_verdict alone.
+            # Anything else is a judge that did not decide — an error that
+            # fails closed. It is not given another turn, and a read call
+            # cannot be honoured: the tools were withdrawn precisely so it
+            # would state what it found on what it has.
+            if is_final_turn:
+                if tool_calls:
+                    attempted = ", ".join(
+                        tc.function.name for tc in tool_calls
+                    )
+                    examination.append(
+                        f"turn {turn + 1}: {attempted} (not a verdict; no read "
+                        "tools offered on the final turn)"
+                    )
+                return ValidatorResult(
+                    validator_id=self.validator_spec.validator_id,
+                    severity="blocker",
+                    justification=(
+                        f"Validator did not return a verdict after {turn + 1} "
+                        "turn(s): the judge did not call submit_verdict. "
+                        "Fail-closed."
+                    ),
+                    error=True,
+                    examined=examination or None,
+                )
+
             # If any tool calls (read tools), execute them and continue
             if tool_calls:
                 messages.append({
@@ -533,15 +572,16 @@ class LLMValidator(ValidatorBase):
                         examination.append(
                             f"turn {turn + 1}: submit_verdict (rejected — invalid arguments)"
                         )
-                    elif tool_name not in active_names:
-                        # The judge was not granted this tool. A model can only
-                        # call a tool it was offered, but the boundary is
-                        # enforced here too so a hallucinated or undeclared tool
-                        # can never reach the workspace (Fixes #253).
+                    elif tool_name not in offered_names:
+                        # The judge was not granted this tool (or it was
+                        # withdrawn on the final turn). A model can only call a
+                        # tool it was offered, but the boundary is enforced here
+                        # too so a hallucinated or undeclared tool can never
+                        # reach the workspace (Fixes #253).
+                        available = ", ".join(sorted(offered_names)) or "(none)"
                         result = (
                             f"Tool '{tool_name}' is not available to this "
-                            f"validator. Available tools: "
-                            f"{', '.join(sorted(active_names))}."
+                            f"validator. Available tools: {available}."
                         )
                         examination.append(
                             f"turn {turn + 1}: {tool_name} (refused — not declared)"
@@ -555,7 +595,6 @@ class LLMValidator(ValidatorBase):
                             read_tracker.record_read(tool_name, args, turn + 1)
                         target = _normalize_path_arg(args) or json.dumps(args)[:60]
                         examination.append(f"turn {turn + 1}: {tool_name} {target}".rstrip())
-                        tools_exercised.add(tool_name)
                         self._emit_turn_telemetry(
                             turn_index=turn + 1,
                             tool=tool_name,
@@ -579,9 +618,10 @@ class LLMValidator(ValidatorBase):
                 msg.content = ""  # normalise so the retry path picks it up
                 has_content = True
 
+            # A judge that narrated on an ordinary turn is asked once more to
+            # use the tool, and may keep reading.
             if has_content and not retried_free_text:
                 retried_free_text = True
-                last_free_text = _bound_last_words(msg.content)
                 examination.append(
                     f"turn {turn + 1}: free-text response (not a verdict; asked for submit_verdict)"
                 )
@@ -599,51 +639,35 @@ class LLMValidator(ValidatorBase):
                 })
                 continue
 
-            # Still no verdict after being asked again for submit_verdict: the
-            # judge answered in prose (or not at all). Reaching no verdict is
-            # not the same as finding a fault — record it as an abstention with
-            # the same fields (reason / examined / unexamined) as the turn-cap
-            # path below, and let the protocol's abstention policy decide the
-            # consequence (a blocking protocol still halts on it). Recording a
-            # fabricated blocker here would misblock the task and mis-report the
-            # judge as issuing a verdict it never made.
-            unexamined = sorted(active_names - tools_exercised)
-            # Prefer the judge's most recent prose — its "last words" — over
-            # the first free-text reply it gave, when it spoke again after the
-            # nudge. An empty/absent second reply leaves the earlier account.
-            if msg.content:
-                last_free_text = _bound_last_words(msg.content)
+            # A judge that still returns nothing is an error, not a verdict.
+            # It takes the path errors already take — fail-closed — because an
+            # engine that cannot get a verdict out of its quorum must not
+            # proceed. What the judge examined before it failed travels with
+            # the error result; no state is invented to hold a missing verdict.
             return ValidatorResult(
                 validator_id=self.validator_spec.validator_id,
-                severity=None,
+                severity="blocker",
                 justification=(
-                    f"Validator did not call submit_verdict after {turn + 1} turn(s). "
-                    "No verdict was reached."
+                    f"Validator did not return a verdict after {turn + 1} "
+                    "turn(s): the judge did not call submit_verdict. "
+                    "Fail-closed."
                 ),
-                abstention_reason=(
-                    "judge replied without calling submit_verdict after "
-                    "being asked to use it"
-                ),
+                error=True,
                 examined=examination or None,
-                unexamined_tools=unexamined or None,
-                last_words=last_free_text,
             )
 
-        # Hit the turn cap — record as abstention, not error. The record says
-        # what happened (no verdict), why it ran out (budget), and how far the
-        # inspection got (examined / not examined) so a human can adjudicate it
-        # (Fixes #252).
-        unexamined = sorted(active_names - tools_exercised)
+        # Unreachable: the final turn always returns above when no verdict is
+        # submitted. Kept as the same fail-closed error so a change to the loop
+        # bounds can never turn "no verdict" into a pass.
         return ValidatorResult(
             validator_id=self.validator_spec.validator_id,
-            severity=None,
+            severity="blocker",
             justification=(
                 f"Validator could not reach a verdict within the "
-                f"allocated {tool_turns} turns."
+                f"allocated {tool_turns} turns. Fail-closed."
             ),
-            abstention_reason=f"exhausted budget after {tool_turns} turns",
+            error=True,
             examined=examination or None,
-            unexamined_tools=unexamined or None,
         )
 
     def _build_tool_loop_prompt(
@@ -1186,34 +1210,6 @@ def _truncated_log(raw: str, max_chars: int = 2048) -> str:
     if len(raw) <= max_chars:
         return raw
     return raw[:max_chars] + "...<truncated>"
-
-
-#: Ceiling on an abstaining judge's kept prose, in characters. A judge's
-#: closing account of why it would not commit is a sentence or two — not a
-#: transcript — and it is untrusted model output that must never bloat the
-#: audit payload (Fixes #270).
-_LAST_WORDS_CHAR_LIMIT = 2000
-
-
-def _bound_last_words(
-    raw: Optional[str], max_chars: int = _LAST_WORDS_CHAR_LIMIT
-) -> Optional[str]:
-    """Bound a judge's prose for the abstention record, or None if empty.
-
-    The account is kept as what it is — the words of a judge that did not
-    decide — and returned within *max_chars* exactly, truncation marker
-    included, so the audit payload can never grow past the stated bound.
-    Nothing downstream may parse it into a finding or a severity (Fixes #270).
-    """
-    if not raw:
-        return None
-    text = raw.strip()
-    if not text:
-        return None
-    if len(text) <= max_chars:
-        return text
-    suffix = "...<truncated>"
-    return text[: max(max_chars - len(suffix), 0)] + suffix
 
 
 _default_registry.register_compound(LLMValidator.HANDLED_TYPES, LLMValidator)

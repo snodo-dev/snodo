@@ -411,12 +411,6 @@ def sentinel_registry():
     [
         ValidatorResult(
             validator_id="sentinel",
-            severity=None,
-            justification="no verdict",
-            abstention_reason="exhausted budget",
-        ),
-        ValidatorResult(
-            validator_id="sentinel",
             severity="blocker",
             justification="operational fault",
             error=True,
@@ -428,7 +422,7 @@ def sentinel_registry():
             skipped=True,
         ),
     ],
-    ids=["abstention", "error", "skipped_pass"],
+    ids=["error", "skipped_pass"],
 )
 def test_non_verdicts_are_never_stored(tmp_path, sentinel_registry, result):
     sentinel_registry._result = result
@@ -464,15 +458,6 @@ def test_non_verdicts_are_never_stored(tmp_path, sentinel_registry, result):
                 validator_id="v", severity="blocker", justification="no"
             ),
             True,
-        ),
-        (
-            ValidatorResult(
-                validator_id="v",
-                severity=None,
-                justification="abstained",
-                abstention_reason="budget",
-            ),
-            False,
         ),
         (
             ValidatorResult(

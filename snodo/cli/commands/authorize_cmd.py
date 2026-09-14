@@ -92,16 +92,8 @@ def authorize_command(args) -> int:
     print(f"  Type:   {proposal_type}")
     if proposal_type == "adjudicate":
         print(f"  Validator: {proposal.get('validator_id', '—')}")
-        print(f"  Severity:  {proposal.get('severity') or 'abstain (no verdict reached)'}")
+        print(f"  Severity:  {proposal.get('severity')}")
         print(f"  Decision:  {proposal.get('decision', '—')}")
-        if proposal.get("abstention_reason"):
-            print(f"  Abstention: {proposal['abstention_reason']}")
-        if proposal.get("last_words"):
-            print(f"  Last words: {proposal['last_words']}")
-        for examined in (proposal.get("examined") or []):
-            print(f"    examined:   {examined}")
-        for tool in (proposal.get("unexamined_tools") or []):
-            print(f"    not examined: {tool}")
     elif proposal_type == "set_model":
         print(f"  Model:  {proposal.get('proposed_model', '—')}")
         print(f"  Scope:  {proposal.get('scope', '—')}")
@@ -130,12 +122,8 @@ def authorize_command(args) -> int:
     issuer = signing_issuer()
 
     if proposal_type == "adjudicate":
-        # Mint against the severity actually proposed. A None severity is an
-        # abstention — the issuer records it as "abstain" so the policy layer
-        # can retire the missing verdict (Fixes #252). Entries predating this
-        # field (agent proposals) carry no severity key and keep their
-        # historical warn semantics; a blocker proposal is refused at mint
-        # (INV3) instead of being laundered into a warn record.
+        # Mint against the severity actually proposed. A blocker proposal is
+        # refused at mint (INV3) instead of being laundered into a warn record.
         validator_result = ValidatorResult(
             validator_id=proposal["validator_id"],
             severity=proposal.get("severity", "warn"),

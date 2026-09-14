@@ -321,11 +321,8 @@ def _replay_judge(expected: ExpectedRepository):
                 verdict = "module" if path in expected.undeclared_modules else "not-module"
             cite = _cite_file(subject)
             if cite is None:
-                verdicts.append({
-                    "subject": subject["id"],
-                    "verdict": "abstain",
-                    "reason": "no file inside the subject to cite",
-                })
+                # No file to cite: omit the subject, so it is reported as not
+                # judged and the deterministic answer stands.
                 continue
             verdicts.append({
                 "subject": subject["id"],
