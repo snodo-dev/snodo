@@ -104,6 +104,30 @@ snodo uses [Semantic Versioning](https://semver.org/).
   bounded, alongside `severity=None`. It is never mined for a finding or a
   severity — a judge that did not submit a verdict did not reach one.
   (Fixes #270)
+### Added
+
+- `snodo intake` proposes validator criteria from a repository's own decision
+  records, one at a time, each naming the record it came from, and writes the
+  protocol only after the operator accepts. Survey derives the extension of
+  governance from code — which modules exist, how each is verified, where
+  decisions live — and deliberately does not derive the protocol's normative
+  content, because that content is prose a human wrote. But the prose is often
+  in the repository: a real project's decision records stated the very rules
+  its protocol encoded by hand. The boundary is not "a human must author the
+  normative part" — it is that intake never opened the records. Intake does,
+  and offers what they state. A sentence is proposable only from a record's
+  **Decision** section: Context is background, Consequences are effects rather
+  than rules, Alternatives considered is the road not taken, and Status is
+  metadata, so none of them is offered and a record with no Decision section
+  proposes nothing. The citation discipline is the one a boundary judge
+  already uses on source files — every proposal cites its record, resolved
+  against the repository before the proposal is built, so a criterion without
+  a record is never proposed. `snodo intake --json` reports the proposals and
+  writes nothing; `--reject-all` writes nothing; `--validator <id>` chooses the
+  target (default: the protocol's architecture validator, else its first).
+  This is a sibling of survey rather than part of it: survey's contract is that
+  it writes nothing, and making that conditional would weaken it for every
+  caller (Fixes #259).
 
 ### Fixed
 
