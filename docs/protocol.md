@@ -282,6 +282,18 @@ How abstentions affect the decision is set by the protocol's
 | `"blocking"` (default) | Any unadjudicated abstention halts — consensus cannot be presumed while a judge is silent |
 | `"non_blocking"` | Abstentions are excluded from the policy counts; the threshold applies to the judges that decided |
 
+Under `non_blocking` the denominator is the judges that returned a verdict,
+not every judge invoked. An abstention is never converted into a pass: it is
+reported in `abstain_count` and the pass/warn/blocker counts are untouched. If
+no judge returned a verdict there is nothing to decide on, so the run halts
+rather than reading an empty denominator as unanimity. Concretely, with one
+abstainer and the rest passing:
+
+- `"unanimous"`: every judge that decided passed — proceeds.
+- `"majority"`: more than half of the judges that decided passed — proceeds.
+- `"quorum"`: the pass count meets the threshold over the judges that decided — proceeds.
+- `"any"`: at least one judge that decided passed — proceeds.
+
 An abstention is the case a human is asked about. `snodo authorize <task_id>`
 renders which judge abstained, why it ran out, what it examined before it
 did, and its last words when it spoke without deciding; signing that proposal
