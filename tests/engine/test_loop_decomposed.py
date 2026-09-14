@@ -84,6 +84,9 @@ def test_init_api_base_set(sample_protocol):
         def _provider_for_model(model):
             return "openai"
         @staticmethod
+        def resolve_litellm_model(model):
+            return model
+        @staticmethod
         def resolve_api_base(model):
             return "https://custom-api.openai.com/v1"
         def get_key_for_model(self, model):
