@@ -975,3 +975,118 @@ def test_task_prune_skips_untimestamped_tasks_with_message(tmp_path, monkeypatch
     assert "Skipped 1 task(s) with unknown timestamp." in out
     assert "No task branches older than 7 days." in out
 
+
+def test_task_list_merged_branch_without_audit_event_is_merged(tmp_path, monkeypatch, capsys):
+    """A task branch that is contained in main but has no task_merged audit event reads as merged, not in_progress."""
+    import subprocess
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    subprocess.run(["git", "init", "-b", "main", "-q"], cwd=repo_root, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo_root, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo_root, check=True)
+    (repo_root / "README.md").write_text("init\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo_root, check=True)
+
+    # Create task branch and commit work
+    branch_name = "task/task_merged_no_event/implement-feature"
+    subprocess.run(["git", "checkout", "-qb", branch_name], cwd=repo_root, check=True)
+    (repo_root / "feature.txt").write_text("feature work\n")
+    subprocess.run(["git", "add", "feature.txt"], cwd=repo_root, check=True)
+    subprocess.run(["git", "commit", "-qm", "feature work"], cwd=repo_root, check=True)
+
+    # Merge branch into main (clean merge)
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=repo_root, check=True)
+    subprocess.run(["git", "merge", "--no-ff", "-qm", "merge feature", branch_name], cwd=repo_root, check=True)
+
+    # Note: audit log is empty / has no task_merged event
+    (repo_root / ".snodo").mkdir(exist_ok=True)
+    (repo_root / ".snodo" / "state.json").write_text('{"current_mode": "dev"}')
+
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(repo_root))
+
+    tasks = _get_all_task_branches(str(repo_root))
+    assert "task_merged_no_event" in tasks
+    assert tasks["task_merged_no_event"]["status"] == "merged"
+    assert tasks["task_merged_no_event"]["status"] != "in_progress"
+
+    res = task_list_command(SimpleNamespace())
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "task_merged_no_event" in out
+    for line in out.splitlines():
+        if "task_merged_no_event" in line:
+            assert "merged" in line
+            assert "in_progress" not in line
+
+
+def test_task_list_job_executed_task_produces_single_row_under_task_identity(tmp_path, monkeypatch, capsys):
+    """A task executed via a background job produces a single row under its task identity, not duplicate job/task rows."""
+    import subprocess
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    subprocess.run(["git", "init", "-b", "main", "-q"], cwd=repo_root, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo_root, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo_root, check=True)
+    (repo_root / "README.md").write_text("init\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo_root, check=True)
+
+    # Set up .snodo and job manager
+    snodo_dir = repo_root / ".snodo"
+    snodo_dir.mkdir(exist_ok=True)
+    (snodo_dir / "state.json").write_text('{"current_mode": "dev"}')
+
+    task_id = "1.1_the-shell-is-a-fixed-frame"
+    spec = "the shell is a fixed frame and each region scrolls itself"
+
+    from snodo.jobs import JobManager
+    mgr = JobManager(str(repo_root))
+
+    # 1. Verify submit names the worktree branch for the task, not the job
+    with monkeypatch.context() as m:
+        m.setattr("snodo.jobs.runner.spawn_background", lambda *a, **kw: 12345)
+        job_id = mgr.submit({"task_id": task_id, "description": spec, "mock": True})
+
+    # The branch created in git should start with task/<task_id>/, NOT task/<job_id>/
+    from snodo.tools.git import open_repo
+    with open_repo(str(repo_root)) as repo:
+        branch_names = [h.name for h in repo.heads]
+        assert any(b.startswith(f"task/{task_id}/") for b in branch_names)
+        assert not any(b.startswith(f"task/{job_id}/") for b in branch_names)
+
+    # 2. Also simulate legacy branch named for a job: task/j_aa1108/...
+    legacy_job_id = "j_aa1108"
+    legacy_dir = mgr.jobs_dir / legacy_job_id
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_dir / "task.json").write_text(json.dumps({
+        "task_id": task_id,
+        "description": spec,
+    }))
+    (legacy_dir / "state.json").write_text(json.dumps({
+        "status": "completed",
+    }))
+
+    legacy_branch = f"task/{legacy_job_id}/the-shell-frame"
+    subprocess.run(["git", "branch", legacy_branch, "main"], cwd=repo_root, check=True)
+
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(repo_root))
+
+    tasks = _get_all_task_branches(str(repo_root))
+    assert task_id in tasks
+    assert legacy_job_id not in tasks
+    assert job_id not in tasks
+
+    res = task_list_command(SimpleNamespace())
+    assert res == 0
+    out = capsys.readouterr().out
+    assert task_id in out
+    assert legacy_job_id not in out
+    assert job_id not in out
+
+    # Exactly one task table row for this piece of work
+    task_rows = [line for line in out.splitlines() if line.startswith(f" {task_id}")]
+    assert len(task_rows) == 1
+    assert len(tasks) == 1
+
+
