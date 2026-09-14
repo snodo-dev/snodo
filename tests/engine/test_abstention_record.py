@@ -143,13 +143,16 @@ class TestAdjudicationPathCarriesTheAbstention:
         assert "git_show" in entry["unexamined_tools"]
 
     def test_non_blocking_escalation_payload_shows_abstainer_as_no_verdict(self):
-        """Under non_blocking the same quorum escalates; the pending
-        disagreement and its audit event must show severity None plus the
-        abstention story — never 'pass'."""
+        """When non_blocking still escalates — here on an independent warn — the
+        pending disagreement and its audit event must show the abstainer as
+        severity None plus the abstention story, never 'pass'."""
         audit = _RecordingAudit()
         builder = _builder(
-            _protocol(abstention_policy="non_blocking"),
-            [_passing_result(), _abstaining_result()],
+            _protocol(abstention_policy="non_blocking",
+                      validators=("security", "budget_judge", "quality")),
+            [_passing_result(), _abstaining_result(),
+             ValidatorResult(validator_id="quality", severity="warn",
+                             justification="tests flaky")],
             audit=audit,
         )
         result = builder._validate_node(_initial_state())
@@ -161,7 +164,10 @@ class TestAdjudicationPathCarriesTheAbstention:
         assert abstainer["severity"] is None
         assert "exhausted budget" in abstainer["abstention_reason"]
         assert any("git_log" in e for e in abstainer["examined"])
+        # The abstainer is excluded from the denominator; the warn is why the
+        # quorum escalated. The counts say only two judges returned a verdict.
         assert pd["policy_decision"]["abstain_count"] == 1
+        assert pd["policy_decision"]["total_count"] == 2
 
         escalated = [d for e, d in audit.events
                      if e == "disagreement_escalated"]
