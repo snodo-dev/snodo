@@ -11,6 +11,34 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Read tools can no longer reach above the workspace root, and no longer offer
+  version-control internals or derived build output as though they were the
+  work. Two problems wore the same clothes. Containment: direct `../` escapes
+  were refused, but a symlink the tree-walking tools met was not — a workspace
+  containing `src/escape -> /etc/hosts` let `search_string` and
+  `summarize_directory` read `/etc/hosts` — and `validate_path` compared path
+  parts against `".git"` case-sensitively, so on a case-insensitive filesystem
+  `.GIT/logs/HEAD` opened the real reflog. Judgement: `.git` internals and
+  derived output are inside the workspace and readable by design, but they are
+  not the work; a judge that read them spent budget to learn nothing, and in
+  the `.git` case reasoned about history it was never meant to see. Observed on
+  a real project: a judge called `list_files("..")`, read `.git/logs/HEAD` to
+  reconstruct the branch history, then read `dist/styles/card.css` and
+  `dist/scripts/render.js` at length — compiled copies of source it had already
+  read. Every read tool now funnels through the one boundary; a refused path
+  raises `PathValidationError` naming the reason (version-control bookkeeping /
+  derived build output) rather than returning content or silence, and a listing
+  simply does not offer what is not the work. Derived output is distinguished by
+  what the project already declares about itself — its git ignore rules: a path
+  git ignores and does not track is derived output, read once per tool call
+  (`git ls-files --others --ignored`). The cost is recorded where the choice is
+  made: a project that does not use git declares nothing and gets no
+  derived-output filtering; a project that gitignores source it wants read must
+  track it; a gitignored-but-force-added file stays readable because git tracks
+  it. `.snodo/` remains readable (ADR 026). An in-place source tree that keeps
+  tracked files under an ignored-looking directory name — the case a fixed
+  directory-name list would have hidden — is unaffected. (Fixes #273).
+
 - A post-execute abstention no longer spawns a coder recovery. An abstention is
   a judge reporting that it did not reach a verdict, not a finding about the
   code, so routing it to the recovery machinery re-ran the coder at work no
