@@ -52,17 +52,40 @@ from typing import Any, List, Optional, Tuple
 #: The one evaluation phase that has a produced change to show.
 POST_EXECUTE_PHASE = "post_execute"
 
-#: Hard ceiling on the rendered change section, in characters — roughly 6k
-#: tokens at a pessimistic 4 chars/token.  A wave's genuine source changes
-#: fit well inside it; a regenerated lockfile does not, and must not be
-#: allowed to push them out.  The rest of a judge's prompt (task spec,
-#: criteria, other sections) has to fit alongside this.
-CHANGE_SECTION_CHAR_LIMIT = 24_000
+#: Hard ceiling on the rendered change section, in characters.
+#:
+#: Measured on the last 40 non-merge commits on main (Fixes #274):
+#:
+#:   min       786    p50    21,444    p75    34,004
+#:   p90    53,487    p95    67,981    max   103,626
+#:
+#: At 24,000 characters, 18/40 commits (45 %) triggered truncation —
+#: truncation was nearly the norm, not the exception a judge routinely told
+#: its view is partial tends to read the tree to fill the gap, which is the
+#: behaviour the change section was introduced to remove.
+#:
+#: At 64,000 characters, 38/40 commits (95 %) fit without truncation.  The
+#: two that do not (67,981 and 103,626 chars) are the large-commit tail; the
+#: truncation machinery handles them correctly, and the 100k+ outlier is why
+#: the bound must not be removed.  The rest of a judge's prompt (task spec,
+#: criteria, other sections) sits comfortably alongside 64k on any modern
+#: context window.
+CHANGE_SECTION_CHAR_LIMIT = 64_000
 
-#: Ceiling on one file's diff inside the section.  A multi-hundred-line
-#: change to a single source file fits; a lockfile rewrite does not, so no
-#: one file can consume the whole budget.
-CHANGE_FILE_CHAR_CAP = 8_000
+#: Ceiling on one file's diff inside the section.
+#:
+#: Measured on 241 non-bulk source-file diff chunks from the same 40 commits:
+#:
+#:   median  1,909    p75   4,765    p90  10,703
+#:   p95    14,301    max   31,030  (drift.py — a large hand-edited file)
+#:
+#: At 8,000 characters, 34/241 chunks (14 %) were cut, including large
+#: hand-edited source files — a cap that evicts a legitimately large source
+#: file is the wrong kind of protection.  At 16,000 characters, only 10/241
+#: chunks (4.1 %) exceed the cap; all ten are real, large source files that
+#: the judge may need to read directly if the criterion demands detail.
+#: No one file can consume the whole section budget.
+CHANGE_FILE_CHAR_CAP = 16_000
 
 #: Ceiling on the ref label in the section's framing.  The bound must be
 #: input-agnostic — render_change_block cannot assume the shape of a label
