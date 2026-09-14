@@ -171,9 +171,8 @@ class AcceptanceValidator(LLMValidator):
         the tree, and never a finding).
 
         The produced change rides in on the context, keyed on phase
-        (Fixes #267): the acceptance judge that abstained three times in a
-        row had spent every turn rediscovering which files the coder had
-        touched.
+        (Fixes #267): without it a judge spends every turn rediscovering which
+        files the coder had touched.
         """
         artifacts = list(getattr(context, "artifacts", None) or [])
         artifact_text = "\n".join(f"  - {a}" for a in artifacts) or "  (none)"

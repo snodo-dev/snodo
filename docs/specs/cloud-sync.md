@@ -110,7 +110,7 @@ All 24 event types are transmitted.
 | `wave_created` | wave_id, feature_description |
 | `task_complete` | task_ref, artifacts, session_id |
 | `task_merged` | task_ref, branch, merge_sha, spec, session_id |
-| `halt` | task_ref, reason, blocker_validators, abstained_validators, halt_type, raw_halt_type |
+| `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type |
 | `transition` | from_mode, to_mode, task_ref |
 | `token_consumed` | task_ref, session_id |
 | `post_validation_route` | decision, task_ref |
@@ -173,14 +173,11 @@ the canonical five-outcome name (`escalate`, `blocker`, `validator_error`,
 `internal_error`, `environment_error`; ADR 015); `raw_halt_type` is the specific
 value the loop actually set
 (e.g. `turn_budget_exhausted`, `recovery_stalled`), preserved next to the
-canonical one so the coarse outcome never erases the precise cause. The
-judges are split into two disjoint lists: `blocker_validators` names those that
-returned a blocking verdict, and `abstained_validators` names those that reached
-no verdict within budget (severity `null`, not an error) since abstention became
-representable (#252). A halt caused entirely by abstentions therefore reports an
-empty `blocker_validators` and populates `abstained_validators` — a consumer
-distinguishing an abstention halt from a blocker halt keys on those two lists,
-not on `reason` prose. The `halt` event carries a single outcome field
+canonical one so the coarse outcome never erases the precise cause.
+`blocker_validators` names the judges that returned a blocking verdict. A judge
+that could not reach a verdict is an operational error (``error=True``) and is
+counted there like any other blocker; there is no separate no-verdict list.
+The `halt` event carries a single outcome field
 (`halt_type`); the legacy duplicate `final_decision`, which always equalled
 `halt_type`, was retired from the event once consumers read `halt_type`
 (the persisted job/session halt *payload* still carries it and is a different

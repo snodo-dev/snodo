@@ -85,10 +85,10 @@ def enrich_result_with_criteria(
     """Enrich ValidatorResult with legible cited criteria text."""
     if not result or not criteria:
         return result
-    if result.severity is None:
-        # No verdict — nothing was cited, and the numeric fallback in
-        # extract_cited_indices could otherwise turn "after 20 turns" into a
-        # fabricated criterion citation (Fixes #252).
+    if getattr(result, "error", False):
+        # An operational error is not a verdict and cites no criterion; the
+        # numeric fallback in extract_cited_indices would otherwise turn
+        # "after 2 turns" into a fabricated criterion citation.
         return result
 
     total_criteria = len(criteria)
@@ -121,10 +121,7 @@ def enrich_result_with_criteria(
         justification=justification,
         error=result.error,
         cited_criteria=cited_list,
-        abstention_reason=getattr(result, "abstention_reason", None),
         examined=getattr(result, "examined", None),
-        unexamined_tools=getattr(result, "unexamined_tools", None),
-        last_words=getattr(result, "last_words", None),
         skipped=getattr(result, "skipped", False),
         reused=getattr(result, "reused", False),
     )
@@ -134,18 +131,14 @@ def enrich_result_with_criteria(
 # Verdict cache (#246)
 # ---------------------------------------------------------------------------
 
-#: Sentinel types that must never be stored as a verdict: an abstention, an
-#: error, and a pass whose gate was skipped are not judgements.  Persisting
-#: one would turn the absence of a judgement into a durable claim that one
-#: was made — the exact defect the abstention representation exists to
-#: prevent.
+#: Sentinel types that must never be stored as a verdict: an error and a pass
+#: whose gate was skipped are not judgements.  Persisting one would turn the
+#: absence of a judgement into a durable claim that one was made.
 def _is_cacheable_verdict(result: Any) -> bool:
     """Return True only for a genuine, freshly-computed verdict."""
     if result is None:
         return False
     if getattr(result, "error", False):
-        return False
-    if getattr(result, "severity", None) is None:
         return False
     if getattr(result, "skipped", False):
         return False
@@ -597,7 +590,6 @@ def run_validators(
                         justification=f"[Pre-execute recovery finding ({original_severity}): non-blocking evidence for coder] {result.justification}",
                         cited_criteria=result.cited_criteria,
                         severity_original=original_severity,
-                        abstention_reason=getattr(result, "abstention_reason", None),
                         reused=getattr(result, "reused", False),
                     )
                     if audit_log is not None:
@@ -626,7 +618,6 @@ def run_validators(
                             justification=result.justification,
                             cited_criteria=result.cited_criteria,
                             severity_original=original_severity,
-                            abstention_reason=getattr(result, "abstention_reason", None),
                             reused=getattr(result, "reused", False),
                         )
                         cap_originals[result.validator_id] = original_severity

@@ -151,8 +151,8 @@ def _judgement_prompt(dossier: Dict[str, Any]) -> str:
         + json.dumps(dossier, indent=2, default=str)
         + "\n\n"
         "For every subject, answer with a verdict:\n"
-        "- kind \"boundary-role\": one of \"product\", \"scaffolding\", \"abstain\"\n"
-        "- kind \"undeclared-boundary\": one of \"module\", \"not-module\", \"abstain\"\n"
+        "- kind \"boundary-role\": one of \"product\", \"scaffolding\"\n"
+        "- kind \"undeclared-boundary\": one of \"module\", \"not-module\"\n"
         "\n"
         'Reply with exactly one JSON object and nothing else:\n'
         '{"judgements": [{"subject": "<subject id, verbatim>", "verdict": "...", '
@@ -164,8 +164,9 @@ def _judgement_prompt(dossier: Dict[str, Any]) -> str:
         "   means \"app/src/index.ts\"). Every citation is checked against the\n"
         "   filesystem; one that cannot be found there discards the verdict.\n"
         "2. Cite at least one file for every verdict.\n"
-        "3. When the evidence is not enough to decide, answer \"abstain\" with a\n"
-        "   reason. Abstaining honestly beats guessing.\n"
+        "3. When the evidence is not enough to decide, do not guess: omit that\n"
+        "   subject from your judgements. It is reported as not judged and the\n"
+        "   deterministic answer stands.\n"
         "4. \"scaffolding\" means the work has no purpose beyond the product: it\n"
         "   exists to document, test, or operate it (a doc site, a test harness,\n"
         "   tooling). A console, admin app, or API that is itself deployed and\n"

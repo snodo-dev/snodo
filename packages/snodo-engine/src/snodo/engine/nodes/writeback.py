@@ -51,12 +51,6 @@ _CANONICAL_HALT = {
     "environment_error": "environment_error",
     "recovery_exhausted": "blocker",
     "recovery_stalled": "blocker",
-    # A post-execute judge that never reached a verdict, and the re-judging
-    # bound (or a repeated abstention) is exhausted. Not a finding about the
-    # code, so it is not "blocked" in the coder-recovery sense — but it is a
-    # failure to reach consensus, which is a blocker-class halt (Fixes #268).
-    "abstention_exhausted": "blocker",
-    "abstention_stalled": "blocker",
     "head_not_moved": "blocker",
     "no_file_operations": "blocker",
 }
@@ -68,11 +62,10 @@ def _canonical_halt(halt_type: Optional[str]) -> str:
 
 # Canonical per-attempt outcomes. Unlike the prose in ``validator_results``,
 # these tokens mean the same thing in every project, so a consumer can count a
-# task's attempts and non-verdicts from payloads alone.
+# task's attempts from payloads alone.
 _ATTEMPT_PASSED = "passed"
 _ATTEMPT_WARNED = "warned"
 _ATTEMPT_BLOCKED = "blocked"
-_ATTEMPT_ABSTAINED = "abstained"
 _ATTEMPT_ERROR = "error"
 
 # Raw halt types where the coder never ran or never returned work — an engine or
@@ -97,12 +90,10 @@ def _verdict_outcome(results: Optional[List[Any]]) -> str:
     """Reduce one attempt's verdicts to a single canonical outcome.
 
     Ordering is deliberate: an engine error outranks a finding, a blocker
-    outranks a warning, a warning outranks an abstention, and a pass is only
-    reported when nothing else was observed. A pass alongside an abstention
-    still counts as passed — a verdict was reached and carried the attempt; the
-    abstention belongs to the retry history, not to this attempt's outcome.
+    outranks a warning, and a pass is only reported when nothing else was
+    observed.
     """
-    has_error = has_blocker = has_warn = has_abstain = has_pass = False
+    has_error = has_blocker = has_warn = False
     for r in results or []:
         if isinstance(r, dict):
             severity = r.get("severity")
@@ -116,18 +107,12 @@ def _verdict_outcome(results: Optional[List[Any]]) -> str:
             has_blocker = True
         elif severity == "warn":
             has_warn = True
-        elif severity == "pass":
-            has_pass = True
-        elif severity is None:
-            has_abstain = True
     if has_error:
         return _ATTEMPT_ERROR
     if has_blocker:
         return _ATTEMPT_BLOCKED
     if has_warn:
         return _ATTEMPT_WARNED
-    if has_abstain and not has_pass:
-        return _ATTEMPT_ABSTAINED
     return _ATTEMPT_PASSED
 
 
@@ -154,21 +139,13 @@ def _build_attempt_summary(loop_state: Any, phase: str) -> dict:
     """Summarise every attempt the task took, from the accumulated history.
 
     The final validator results say what happened last; this says how the task
-    got there. Two attempts are invisible in the results and are recovered
-    here:
+    got there. The recovery subtasks that preceded this one are carried on the
+    task as ``prior_failures`` tagged with their 1-based attempt number.
 
-    - the recovery subtasks that preceded this one, carried on the task as
-      ``prior_failures`` tagged with their 1-based attempt number (abstentions
-      included); and
-    - the in-place abstention re-judges of the task in hand, counted by
-      ``abstention_retries``, each of which re-ran a judge on unchanged work
-      and dispatched no coder (Fixes #268).
-
-    An attempt is one judged pass over a code state. The root is attempt 1, each
-    recovery subtask is the next attempt, and each in-place re-judge is an
-    attempt of its own. ``total`` and ``non_verdicts`` are exact at any length;
-    ``history`` is capped at ``_MAX_ATTEMPT_HISTORY`` most-recent entries with
-    the omitted count reported.
+    An attempt is one judged pass over a code state. The root is attempt 1 and
+    each recovery subtask is the next attempt. ``total`` is exact; ``history``
+    is capped at ``_MAX_ATTEMPT_HISTORY`` most-recent entries with the omitted
+    count reported.
     """
     depth = getattr(loop_state.task, "depth", 0) or 0
     prior = getattr(loop_state.task, "prior_failures", None) or []
@@ -181,19 +158,11 @@ def _build_attempt_summary(loop_state: Any, phase: str) -> dict:
     history: List[dict] = []
 
     # Attempts 1..depth are the recovery subtasks that preceded this one; each
-    # produced the failures (abstentions included) that spawned the next.
+    # produced the failures that spawned the next.
     for number in range(1, depth + 1):
         history.append({
             "attempt": number,
             "outcome": _verdict_outcome(by_attempt.get(number, [])),
-        })
-
-    # Every in-place re-judge was an all-abstention pass on unchanged work; it
-    # dispatched no coder and created no subtask.
-    for _ in range(max(0, getattr(loop_state, "abstention_retries", 0) or 0)):
-        history.append({
-            "attempt": len(history) + 1,
-            "outcome": _ATTEMPT_ABSTAINED,
         })
 
     if getattr(loop_state, "halt_type", None) in _ATTEMPT_ERROR_HALTS:
@@ -202,12 +171,8 @@ def _build_attempt_summary(loop_state: Any, phase: str) -> dict:
         final_outcome = _verdict_outcome(_attempt_verdicts(loop_state))
     history.append({"attempt": len(history) + 1, "outcome": final_outcome})
 
-    non_verdicts = sum(
-        1 for entry in history if entry["outcome"] == _ATTEMPT_ABSTAINED
-    )
     summary: Dict[str, Any] = {
         "total": len(history),
-        "non_verdicts": non_verdicts,
         "coder_dispatches": depth + (0 if phase == "pre_execute" else 1),
         "history": history,
     }
@@ -266,12 +231,6 @@ def _blocker_fix_targets(
         return ["config"]
     if halt_type in ("max_iterations", "turn_budget_exhausted", "recovery_exhausted", "recovery_stalled"):
         return ["spec", "policy"]
-    if halt_type in ("abstention_exhausted", "abstention_stalled"):
-        # The code was never faulted — a judge could not decide. The fix target
-        # is the judge and its policy: the criteria or tool grant it needs, its
-        # budget, or the abstention_policy the operator chose. Not the code,
-        # which no verdict named (Fixes #268).
-        return ["policy"]
     if halt_type == "head_not_moved":
         # The coder claimed a commit it did not make — the produced code is
         # what must change (the adapter must actually commit), so this is a
@@ -354,24 +313,6 @@ def _build_hint(
             "install the program where the run executes, then re-run the "
             "task unchanged."
         )
-    if halt_type in ("abstention_exhausted", "abstention_stalled"):
-        # The code was never faulted: a judge could not reach a verdict and the
-        # bounded re-judging is done. Re-running the coder cannot help — no
-        # verdict named anything for it to change — so the operator is sent to
-        # adjudicate the missing verdict, or to change the judge or its policy.
-        stalled = halt_type == "abstention_stalled"
-        lead = (
-            "A judge abstained again on unchanged work"
-            if stalled
-            else "A judge could not reach a verdict within its retry budget"
-        )
-        return (
-            f"{lead}. Nothing about the code was found at fault, so no coder "
-            "recovery is warranted. Use `snodo authorize <task_id>` to adjudicate "
-            "the missing verdict, or change the judge or its policy in "
-            ".snodo/protocol.yml — a criterion, a tool grant, its budget, or "
-            "`abstention_policy`."
-        )
     if halt == "blocker":
         return _build_blocker_hint(halt_type, phase, results)
     return ""
@@ -400,14 +341,7 @@ class WritebackMixin:
     """Mixin providing payload persistence and decision writeback capabilities."""
 
     def _auto_write_pending_decisions(self, loop_state: Any, results: list) -> None:
-        """Write pending_decision entries for every blocking/escalating validator.
-
-        Abstentions (severity=None) are exactly the case a human must be able
-        to adjudicate: the entry carries that a judge abstained, which judge,
-        why it ran out, and what it did and did not examine — so `snodo
-        authorize` renders something actionable instead of showing nothing
-        about the silent judge (Fixes #252).
-        """
+        """Write pending_decision entries for every blocking/escalating validator."""
         if not self._session_manager or not self._session_id:
             return
 
@@ -424,7 +358,7 @@ class WritebackMixin:
         now = datetime.now(timezone.utc).isoformat()
 
         for r in results:
-            if r.severity not in ("blocker", "warn") and r.severity is not None:
+            if r.severity not in ("blocker", "warn"):
                 continue
             entry = {
                 "type": "adjudicate",
@@ -435,17 +369,6 @@ class WritebackMixin:
                 "proposed_by": "engine",
                 "timestamp": now,
             }
-            if r.severity is None:
-                entry["abstention_reason"] = (
-                    getattr(r, "abstention_reason", None)
-                    or "judge did not reach a verdict"
-                )
-                if getattr(r, "examined", None):
-                    entry["examined"] = list(r.examined)
-                if getattr(r, "unexamined_tools", None):
-                    entry["unexamined_tools"] = list(r.unexamined_tools)
-                if getattr(r, "last_words", None):
-                    entry["last_words"] = r.last_words
             pending[task_id] = entry
 
         self._session_manager.update_decision(
@@ -499,13 +422,10 @@ class WritebackMixin:
             {
                 "validator_id": r.validator_id,
                 "severity": r.severity,
-                "justification": (
-                    f"[judge could not decide: {r.abstention_reason or 'no verdict within budget'}] "
-                    + r.justification
-                ) if r.severity is None else r.justification,
+                "justification": r.justification,
             }
             for r in (results or [])
-            if hasattr(r, "severity") and (r.severity in ("blocker", "warn") or r.severity is None)
+            if hasattr(r, "severity") and r.severity in ("blocker", "warn")
         ]
 
         if not failed_validators and loop_state.constraint_violations:

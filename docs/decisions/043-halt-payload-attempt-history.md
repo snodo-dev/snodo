@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted.
+Superseded by [045](045-a-judge-is-made-to-decide.md). The attempt summary
+survives; the `non_verdicts` count and the `abstained` outcome were removed
+with the abstention state. See 045.
 
 ## Context
 

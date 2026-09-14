@@ -42,11 +42,6 @@ class LoopState:
     needs_recovery: bool = False
     needs_spec_authoring: bool = False
     spec_authoring_attempts: int = 0
-    #: How many times a post-execute abstention has re-run the judge in place
-    #: this task. An abstention is no verdict, so the work is untouched and no
-    #: coder is dispatched; the judge is retried instead, bounded by the
-    #: protocol's max_recovery_depth (Fixes #268).
-    abstention_retries: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
     messages: List[Dict[str, Any]] = field(default_factory=list)
     summary: str = ""
@@ -74,10 +69,6 @@ def _build_audit_results(
     validators_by_id = {v.validator_id: v for v in validators}
     audit_results = []
     for r in results:
-        # result_record(): the abstention truth (absent severity, reason,
-        # examined / not-examined) flows into every audit event from one
-        # representation — the trail can never log an abstention as a pass
-        # (Fixes #252).
         entry = result_record(r)
         v = validators_by_id.get(r.validator_id)
         if v is not None and cap_originals and r.validator_id in cap_originals:
@@ -88,25 +79,22 @@ def _build_audit_results(
 
 
 def state_result_dict(r: Any) -> Dict[str, Any]:
-    """Checkpoint-safe dict for one validator result, lossless for abstentions.
+    """Checkpoint-safe dict for one validator result.
 
-    An abstention must survive the graph-state round trip and be recoverable
-    from it: severity None plus the abstention story are carried explicitly.
+    An error result keeps the record of what the judge examined before it
+    failed, so a partial inspection survives the graph-state round trip.
     Attribute-based so result-carrying test doubles round-trip like real
-    instances (Fixes #252).
+    instances.
     """
     d: Dict[str, Any] = {
         "validator_id": r.validator_id,
         "severity": r.severity,
         "justification": r.justification,
     }
-    if r.severity is None:
-        d["abstention_reason"] = getattr(r, "abstention_reason", None)
-        d["examined"] = list(r.examined) if getattr(r, "examined", None) else None
-        d["unexamined_tools"] = (
-            list(r.unexamined_tools) if getattr(r, "unexamined_tools", None) else None
-        )
-        d["last_words"] = getattr(r, "last_words", None)
+    if getattr(r, "error", False):
+        d["error"] = True
+    if getattr(r, "examined", None):
+        d["examined"] = list(r.examined)
     if getattr(r, "reused", False):
         d["reused"] = True
     return d

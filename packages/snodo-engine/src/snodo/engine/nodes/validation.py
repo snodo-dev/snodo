@@ -22,16 +22,12 @@ class ValidationNodeMixin:
         pending_disagreement = {
             "phase": phase,
             "policy": self.protocol.disagreement_policy.value,
-            # record() carries the abstention truth (absent severity, why it
-            # ran out, what was and was not examined) into the human-facing
-            # escalation payload and its audit event (Fixes #252).
             "validator_results": [result_record(r) for r in results],
             "policy_decision": {
                 "pass_count": decision.pass_count,
                 "warn_count": decision.warn_count,
                 "blocker_count": decision.blocker_count,
                 "total_count": decision.total_count,
-                "abstain_count": getattr(decision, "abstain_count", 0),
                 "justification": decision.justification,
             },
         }
@@ -513,8 +509,7 @@ class ValidationNodeMixin:
         """Flag a read-only acceptance pass that contradicts a failing gate.
 
         A quality/test-runner failure and an acceptance judge claiming the work
-        passes cannot both stand; the mechanical failure wins. Extracted so the
-        same detection runs after an abstention re-judge as after the first pass.
+        passes cannot both stand; the mechanical failure wins.
         """
         quality_failing = [
             r for r in results
@@ -542,119 +537,6 @@ class ValidationNodeMixin:
                     f"[CONTRADICTION DETECTED: execution validator '{q_res.validator_id}' failed "
                     f"({q_res.justification}). Acceptance claim superseded.] {a_just}"
                 )
-
-    @staticmethod
-    def _abstention_only(results: List[ValidatorResult], decision: Any) -> bool:
-        """True when the only reason consensus failed is a judge reaching no verdict.
-
-        An error is an engine fault and a warn/blocker is a finding about the
-        code; in either case a recovery attempt has something to act on. An
-        abstention has neither, so there is nothing for a coder to fix — the
-        judgement is what must be retried (Fixes #268).
-        """
-        if getattr(decision, "action", None) not in (
-            PolicyAction.HALT, PolicyAction.ESCALATE
-        ):
-            return False
-        if any(getattr(r, "error", False) for r in results):
-            return False
-        if any(r.severity in ("warn", "blocker") for r in results):
-            return False
-        return any(r.severity is None for r in results)
-
-    @staticmethod
-    def _merge_rejudged(
-        prior: List[ValidatorResult], fresh: List[ValidatorResult]
-    ) -> List[ValidatorResult]:
-        """Replace each prior result with its fresh re-judgement, keyed by judge."""
-        by_id = {r.validator_id: r for r in fresh}
-        seen = {r.validator_id for r in prior}
-        merged = [by_id.get(r.validator_id, r) for r in prior]
-        merged.extend(r for r in fresh if r.validator_id not in seen)
-        return merged
-
-    def _rejudge_abstentions(
-        self,
-        loop_state: LoopState,
-        post_validators: List[Any],
-        results: List[ValidatorResult],
-        decision: Any,
-    ) -> tuple:
-        """Re-run abstaining post-execute judges on the unchanged work.
-
-        An abstention is "no verdict", not a finding about the code. The
-        recovery machinery exists to change code, so routing an abstention
-        there re-runs the coder against work no judge faulted and manufactures
-        a failure that was never diagnosed (Fixes #268). Instead the judging is
-        retried in place: the committed work is not touched and no task branch
-        is created for a missing verdict. The retry lives *before* the recovery
-        machinery, in this node, precisely because recovery is the wrong tool.
-
-        Bounded two ways. The protocol's per-mode ``max_recovery_depth`` is the
-        retry ceiling the operator already sets — a protocol that permits no
-        recovery permits no re-judging. And a repeated canonical verdict is a
-        stall: the signature treats every abstention as one unchanging marker,
-        so a judge that abstains again with different prose has not moved and
-        re-judging stops. ``abstention_policy`` is untouched — it still decides
-        whether an abstention halts, escalates or is excluded; this only
-        changes what a halt or escalation *caused solely by abstentions* does
-        next.
-
-        Returns ``(decision, results, stalled)``.
-        """
-        if not self._abstention_only(results, decision):
-            return decision, results, False
-
-        from snodo.engine.loop import verdict_signature_from_results
-
-        max_rejudges = self.protocol.max_recovery_depth_for(loop_state.current_mode)
-        previous_sig = verdict_signature_from_results(results)
-        stalled = False
-        while (
-            self._abstention_only(results, decision)
-            and loop_state.abstention_retries < max_rejudges
-        ):
-            loop_state.abstention_retries += 1
-            abstained = [r.validator_id for r in results if r.severity is None]
-            retry_validators = [
-                v for v in post_validators if v.validator_id in abstained
-            ]
-            self._progress(
-                f"  Re-judging (abstention retry "
-                f"{loop_state.abstention_retries}/{max_rejudges}): "
-                f"{', '.join(abstained)} — no coder dispatch; the work is unchanged"
-            )
-            fresh = self._run_post_validators(loop_state, retry_validators)
-            results = self._merge_rejudged(results, fresh)
-            self._detect_validator_contradictions(loop_state, results)
-            decision = self.policy_evaluator.evaluate(
-                results,
-                self.protocol.disagreement_policy,
-                "post_execute",
-                decision_records=getattr(self, '_decision_records', []),
-                task_ref=loop_state.task.id,
-                is_recovery=(loop_state.task.depth > 0 or bool(loop_state.task.prior_failures)),
-            )
-            current_sig = verdict_signature_from_results(results)
-            # An abstention repeated on unchanged code is a stall, whatever
-            # prose accompanies it: the canonical signature ignores an
-            # abstention's justification, so a second silent verdict is the
-            # same verdict. Stop before spending another judge call.
-            stalled = self._abstention_only(results, decision) and current_sig == previous_sig
-            self._audit("abstention_rejudged", {
-                "op": "abstention_rejudged",
-                "task_ref": loop_state.task.id,
-                "retry": loop_state.abstention_retries,
-                "max_retries": max_rejudges,
-                "validator_ids": abstained,
-                "still_abstained": [r.validator_id for r in results if r.severity is None],
-                "stalled": stalled,
-            })
-            if stalled:
-                break
-            previous_sig = current_sig
-
-        return decision, results, stalled
 
     def _post_validate_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Stage 3b: Run post_execute validators (quality gate)."""
@@ -696,32 +578,11 @@ class ValidationNodeMixin:
             is_recovery=is_recovery,
         )
 
-        # An abstention is no verdict, not a code fault: retry the judge in
-        # place (bounded) instead of spawning a coder recovery (Fixes #268).
-        decision, results, abstention_stalled = self._rejudge_abstentions(
-            loop_state, post_validators, results, decision
-        )
-
         # Commit the phase's final results once, after any re-judging.
         loop_state.validation_results = loop_state.validation_results + results
 
         post_outcome = "passed"
-        if self._abstention_only(results, decision):
-            # The only failure is a missing verdict: no judge faulted the work,
-            # so no recovery subtask is spawned — there is nothing for a coder
-            # to fix. Halt for human adjudication; a human decides, not a
-            # coder. `abstention_stalled` names the non-converging case.
-            loop_state.is_blocked = True
-            loop_state.halt_type = (
-                "abstention_stalled" if abstention_stalled
-                else "abstention_exhausted"
-            )
-            loop_state.constraint_violations.append(
-                "Post-execute validation reached no verdict: "
-                + decision.justification
-            )
-            post_outcome = "blocked"
-        elif decision.action == PolicyAction.HALT:
+        if decision.action == PolicyAction.HALT:
             has_errors = any(getattr(r, 'error', False) for r in results)
             if has_errors:
                 # Validator error — TERMINAL (INV3)

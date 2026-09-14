@@ -119,12 +119,16 @@ class Task(BaseModel):
 
 
 class ValidatorResult(BaseModel):
-    """Output from a single validator."""
+    """Output from a single validator.
+
+    A validator returns a verdict. ``severity`` is required: there is no
+    fourth thing a validator can return. A judge that cannot reach a verdict
+    is an operational error (``error=True``, severity ``blocker``) and fails
+    closed like every other error, rather than inventing a state to describe
+    a verdict nobody gave.
+    """
     validator_id: str
-    #: Severity of the verdict, or None if no verdict (abstained). This is the
-    #: only safe way to determine whether a verdict exists — abstentions make
-    #: severity architecturally absent, not hidden behind a flag.
-    severity: Optional[Literal["pass", "warn", "blocker"]] = None
+    severity: Literal["pass", "warn", "blocker"]
     justification: str
     error: bool = False
     cited_criteria: Optional[List[str]] = None
@@ -136,37 +140,18 @@ class ValidatorResult(BaseModel):
     #: but a skipped result is surfaced in normal run output and must never be
     #: mistaken for real verification evidence.
     skipped: bool = False
-    #: Reason for abstention (e.g., "exhausted budget after 20 turns"). Empty if not abstained.
-    abstention_reason: Optional[str] = None
-    #: What an abstaining judge examined before its budget ran out — an ordered
-    #: summary of the tool calls it made ("turn 3: read_file src/auth.py").
-    #: Only ever set alongside severity=None; a judge that decided has no
-    #: unfinished inspection to report.
+    #: What a judge that failed operationally examined before it failed — an
+    #: ordered summary of the tool calls it made ("turn 3: read_file
+    #: src/auth.py"). Carried on the error result so a human can see how far a
+    #: failing inspection got, without inventing a state to hold it.
     examined: Optional[List[str]] = None
-    #: Read-only tools the judge was granted but never exercised when its budget
-    #: ran out — the honest "what was NOT examined" half of an abstention.
-    unexamined_tools: Optional[List[str]] = None
-    #: The judge's own last words when it answered in prose instead of calling
-    #: submit_verdict — an account of why it would not commit, never a verdict.
-    #: Bounded, untrusted model output, and only ever set alongside
-    #: severity=None: a judge that decided has no closing account to keep, and
-    #: nothing may derive a finding or a severity from this text (Fixes #270).
-    last_words: Optional[str] = None
     #: True when this verdict was served from the project's verdict cache
     #: rather than freshly judged (#246).  The verdict is still that
     #: validator's verdict and counts toward the quorum as such; the flag
     #: exists only so the operator's view and the audit trail can say the
-    #: judgement was reused instead of presenting it as newly made.  An
-    #: abstention, an error and a skipped pass are never stored or reused.
+    #: judgement was reused instead of presenting it as newly made.  An error
+    #: and a skipped pass are never stored or reused.
     reused: bool = False
-
-    def abstained(self) -> bool:
-        """True when this result carries no verdict (severity is None).
-
-        A method, not a field: abstention is the absence of a verdict, so it
-        cannot be a value any severity comparison could confuse with one.
-        """
-        return self.severity is None and not self.error
 
     def record(self) -> Dict[str, Any]:
         """The canonical audit/display record for this result. See result_record."""
@@ -177,32 +162,19 @@ def result_record(result: Any) -> Dict[str, Any]:
     """The canonical audit/display record for a validator result.
 
     Every site that records, serialises or displays what a validator concluded
-    goes through this one function, so an abstention reads as "no verdict,
-    here is why, and here is what was and was not examined" everywhere at
-    once — never as a pass (Fixes #252).  Attribute-based so faithful test
-    doubles of ValidatorResult serialise identically to real instances.
+    goes through this one function.  Attribute-based so faithful test doubles
+    of ValidatorResult serialise identically to real instances.
     """
     out: Dict[str, Any] = {
         "validator_id": getattr(result, "validator_id", ""),
         "severity": getattr(result, "severity", None),
         "justification": getattr(result, "justification", ""),
     }
-    if out["severity"] is None:
-        reason = getattr(result, "abstention_reason", None)
-        if reason:
-            out["abstention_reason"] = reason
-        examined = getattr(result, "examined", None)
-        if examined:
-            out["examined"] = list(examined)
-        unexamined = getattr(result, "unexamined_tools", None)
-        if unexamined:
-            out["unexamined_tools"] = list(unexamined)
-        # The judge's own closing account, bounded and stored as what it is:
-        # the words of a judge that did not decide. It is never mined for a
-        # finding and is carried beside severity=None (Fixes #270).
-        last_words = getattr(result, "last_words", None)
-        if last_words:
-            out["last_words"] = last_words
+    # What a failing judge examined travels with the failure, so the record of
+    # a partial inspection is kept without a state to hold a missing verdict.
+    examined = getattr(result, "examined", None)
+    if examined:
+        out["examined"] = list(examined)
     # A reused verdict is a real verdict; the flag marks how it was obtained
     # so an audit reader can tell a reused judgement from a fresh one (#246).
     if getattr(result, "reused", False):
