@@ -528,7 +528,8 @@ class CoreToolHandler:
             "status": status,
             "validator_outcomes": [
                 {"validator_id": r.validator_id, "severity": r.severity,
-                 **({"abstention_reason": r.abstention_reason}
+                 **({"abstention_reason": r.abstention_reason,
+                     **({"last_words": r.last_words} if r.last_words else {})}
                     if r.severity is None else {})}
                 for r in results
             ],
@@ -675,6 +676,8 @@ class CoreToolHandler:
                         entry["examined"] = list(r.examined)
                     if r.unexamined_tools:
                         entry["unexamined_tools"] = list(r.unexamined_tools)
+                    if r.last_words:
+                        entry["last_words"] = r.last_words
                 pending[task_id] = entry
 
             mgr.update_decision(session.session_id, "pending_decisions", pending)

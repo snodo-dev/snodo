@@ -146,6 +146,12 @@ class ValidatorResult(BaseModel):
     #: Read-only tools the judge was granted but never exercised when its budget
     #: ran out — the honest "what was NOT examined" half of an abstention.
     unexamined_tools: Optional[List[str]] = None
+    #: The judge's own last words when it answered in prose instead of calling
+    #: submit_verdict — an account of why it would not commit, never a verdict.
+    #: Bounded, untrusted model output, and only ever set alongside
+    #: severity=None: a judge that decided has no closing account to keep, and
+    #: nothing may derive a finding or a severity from this text (Fixes #270).
+    last_words: Optional[str] = None
     #: True when this verdict was served from the project's verdict cache
     #: rather than freshly judged (#246).  The verdict is still that
     #: validator's verdict and counts toward the quorum as such; the flag
@@ -191,6 +197,12 @@ def result_record(result: Any) -> Dict[str, Any]:
         unexamined = getattr(result, "unexamined_tools", None)
         if unexamined:
             out["unexamined_tools"] = list(unexamined)
+        # The judge's own closing account, bounded and stored as what it is:
+        # the words of a judge that did not decide. It is never mined for a
+        # finding and is carried beside severity=None (Fixes #270).
+        last_words = getattr(result, "last_words", None)
+        if last_words:
+            out["last_words"] = last_words
     # A reused verdict is a real verdict; the flag marks how it was obtained
     # so an audit reader can tell a reused judgement from a fresh one (#246).
     if getattr(result, "reused", False):
