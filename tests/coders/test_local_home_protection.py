@@ -34,11 +34,11 @@ def git_project_with_local_home(tmp_path, monkeypatch):
     (repo_dir / "src" / "app.py").write_text("print('initial')\n")
     (repo_dir / ".gitignore").write_text(".snodo/\n.custom-home/\n")
 
-    repo = Repo.init(str(repo_dir))
-    repo.git.config("user.name", "Test User")
-    repo.git.config("user.email", "test@snodo.exp")
-    repo.git.add("-A")
-    repo.git.commit("-m", "initial commit")
+    with Repo.init(str(repo_dir)) as repo:
+        repo.git.config("user.name", "Test User")
+        repo.git.config("user.email", "test@snodo.exp")
+        repo.git.add("-A")
+        repo.git.commit("-m", "initial commit")
 
     local_home = repo_dir / ".custom-home"
     local_home.mkdir()
@@ -61,8 +61,8 @@ def test_coder_staging_and_readback_excludes_repository_local_home(git_project_w
     # Commit changes via coder adapter
     coder._commit_changes()
 
-    repo = Repo(str(repo_dir))
-    committed_files = [item.path for item in repo.head.commit.tree.traverse() if item.type == "blob"]
+    with Repo(str(repo_dir)) as repo:
+        committed_files = [item.path for item in repo.head.commit.tree.traverse() if item.type == "blob"]
 
     # src/app.py is committed
     assert "src/app.py" in committed_files

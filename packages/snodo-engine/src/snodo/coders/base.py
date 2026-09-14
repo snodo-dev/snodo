@@ -195,10 +195,10 @@ class InPlaceCoderAdapter(Coder, ABC):
 
         Returns the commit sha or None if the repo cannot be opened.
         """
-        from git import Repo
+        from snodo.tools.git import open_repo
 
         try:
-            repo = Repo(str(self._workspace), search_parent_directories=True)
+            repo = open_repo(str(self._workspace))
             return repo.head.commit.hexsha
         except Exception as e:
             # None here means "no anchor", which the caller cannot distinguish
@@ -231,10 +231,11 @@ class InPlaceCoderAdapter(Coder, ABC):
         several commits, (c) coder did nothing (empty diff, not a false positive
         from main's last commit).
         """
-        from git import Repo, GitCommandError
+        from git import GitCommandError
+        from snodo.tools.git import open_repo
 
         try:
-            repo = Repo(str(self._workspace), search_parent_directories=True)
+            repo = open_repo(str(self._workspace))
         except (GitCommandError, Exception) as exc:
             _logger.warning("git readback: cannot open repo at %s: %s", self._workspace, exc)
             return []
@@ -317,10 +318,11 @@ class InPlaceCoderAdapter(Coder, ABC):
         the post-execute diff would then be empty. Failure reasons are stored in
         ``self.last_commit_reason`` for diagnostic reporting.
         """
-        from git import Repo, GitCommandError
+        from git import GitCommandError
+        from snodo.tools.git import open_repo
 
         try:
-            repo = Repo(str(self._workspace), search_parent_directories=True)
+            repo = open_repo(str(self._workspace))
         except Exception as exc:
             self.last_commit_reason = f"cannot_open_repo: {exc}"
             _logger.warning(

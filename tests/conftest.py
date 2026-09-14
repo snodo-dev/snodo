@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import warnings
 from pathlib import Path
 
@@ -349,6 +350,151 @@ def _reset_global_mock_mode():
     set_mock_mode(False)
     yield
     set_mock_mode(False)
+
+
+def _live_child_processes() -> dict:
+    """Return ``{pid: psutil.Process}`` for live descendants of this process.
+
+    Zombies are excluded: a child that has already exited is not a running
+    process (and CPython's :mod:`subprocess` bookkeeping reaps it on the next
+    spawn), so it raises no "signal an unrelated process" risk. A live child
+    is one the test started and did not end — the leak this guard exists for.
+
+    Returns an empty map (rather than raising) if psutil is unavailable, so a
+    minimal environment degrades to the thread check instead of breaking.
+    """
+    try:
+        import psutil
+    except ImportError:
+        return {}
+    try:
+        proc = psutil.Process()
+        return {
+            child.pid: child
+            for child in proc.children(recursive=True)
+            if child.status() != psutil.STATUS_ZOMBIE
+        }
+    except Exception:  # noqa: BLE001 — an observer must never break the suite
+        return {}
+
+
+def _live_non_daemon_threads() -> dict:
+    """Return ``{ident: Thread}`` for non-daemon threads other than main.
+
+    Daemon threads are process-scoped helpers (cloud sync, SSE listeners,
+    stream readers) whose lifetime the interpreter is allowed to end; a
+    non-daemon thread keeps the process alive after the test returns, which is
+    the leak.
+    """
+    import threading
+
+    return {
+        t.ident: t
+        for t in threading.enumerate()
+        if t is not threading.main_thread() and not t.daemon
+    }
+
+
+def _describe_process(proc) -> str:
+    try:
+        cmdline = " ".join(proc.cmdline())[:100]
+        return f"pid={proc.pid} {proc.name()!r} {cmdline}"
+    except Exception:  # noqa: BLE001
+        return f"pid={getattr(proc, 'pid', '?')}"
+
+
+#: How long a newly-seen child is given to finish exiting on its own before it
+#: is called a leak. A background job wrapper writes its terminal state and
+#: then exits; a waiter can observe the state a few milliseconds before the
+#: process is gone. The drain keeps that ordinary hand-off from reading as a
+#: leak while still catching a child that is genuinely still running.
+_LEAK_DRAIN_SECONDS = 2.0
+
+
+@pytest.fixture(autouse=True)
+def _guard_no_leaked_work(request):
+    """Fail a test that leaves a live child process or non-daemon thread.
+
+    The leak that motivated this (Fixes #258): GitPython's default object DB
+    lazily starts a persistent ``git cat-file --batch-check`` child, and ends
+    it only from ``Repo.__del__`` during a later cyclic-GC pass. A test that
+    opened a repo without closing it could therefore have the child terminated
+    — ``Popen.terminate()`` is ``os.kill(pid, SIGTERM)`` — *after its own test
+    had returned*, while another test's process-wide ``patch("os.kill")`` was
+    active. The extra recorded signal looked like a flaky assertion; it was
+    really a test signalling a process it never created.
+
+    A test may not leave work running: whatever it starts must be given a
+    defined end before it returns. This is a no-dependency autouse fixture, so
+    it is set up before the test's own fixtures and torn down after they have
+    released what they held; the live process/thread set at that point is the
+    baseline plus only genuine leaks.
+
+    Leaked children are terminated and reaped so one leak cannot poison later
+    tests; the failure is reported against the test that introduced it.
+    """
+    before_children = set(_live_child_processes())
+    before_threads = set(_live_non_daemon_threads())
+    yield
+
+    leaked_children = {
+        pid: proc
+        for pid, proc in _live_child_processes().items()
+        if pid not in before_children
+    }
+    if leaked_children:
+        # Give an already-exiting child a bounded moment to finish; only one
+        # still alive after the drain is a leak.
+        deadline = time.monotonic() + _LEAK_DRAIN_SECONDS
+        while time.monotonic() < deadline:
+            time.sleep(0.05)
+            leaked_children = {
+                pid: proc
+                for pid, proc in _live_child_processes().items()
+                if pid not in before_children
+            }
+            if not leaked_children:
+                break
+
+    leaked_threads = {
+        ident: t
+        for ident, t in _live_non_daemon_threads().items()
+        if ident not in before_threads
+    }
+    if not leaked_children and not leaked_threads:
+        return
+
+    details = []
+    if leaked_children:
+        details.append(
+            "live child process(es): " + "; ".join(
+                _describe_process(p) for p in leaked_children.values()
+            )
+        )
+        for proc in leaked_children.values():
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:  # noqa: BLE001 — best-effort cleanup
+                try:
+                    proc.kill()
+                except Exception:  # noqa: BLE001
+                    pass
+    if leaked_threads:
+        details.append(
+            "non-daemon thread(s): " + ", ".join(
+                f"{t.name} (ident={ident})" for ident, t in leaked_threads.items()
+            )
+        )
+
+    pytest.fail(
+        f"TEST LEAKED running work into later tests in {request.node.nodeid}: "
+        + "; ".join(details)
+        + ". End whatever the test started before it returns — close git repos "
+        "through snodo.tools.git.open_repo (which spawns no persistent child), "
+        "join or daemonise threads, and kill+reap subprocesses (Fixes #258).",
+        pytrace=False,
+    )
 
 
 def _get_system_tmp_roots() -> set[Path]:

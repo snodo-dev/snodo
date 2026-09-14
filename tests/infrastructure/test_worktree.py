@@ -285,3 +285,31 @@ def test_surface_untracked_files_lists_untracked(repo):
     untracked = surface_untracked_files(str(repo))
     assert "untracked.txt" in untracked
     assert "tracked.txt" not in untracked
+
+
+def test_create_worktree_leaves_no_persistent_git_child(repo):
+    """The worktree path must not leak a `git cat-file` child into later tests.
+
+    GitPython's default object DB lazily starts a persistent
+    ``git cat-file --batch-check`` subprocess on first object read and ends it
+    only from ``Repo.__del__`` during a later cyclic-GC pass. `create_worktree`
+    reads ``repo.head.commit``, so an unclosed Repo left that child running
+    after its test returned — terminated by SIGTERM whenever GC happened to run,
+    possibly under another test's process-wide ``patch("os.kill")`` (Fixes #258).
+    Opening through ``open_repo`` uses the in-process object DB, so no such
+    child exists. This pins the mechanism rather than trusting the guard alone.
+    """
+    import psutil
+
+    def children():
+        return {
+            p.pid: " ".join(p.cmdline())
+            for p in psutil.Process().children(recursive=True)
+            if p.status() != psutil.STATUS_ZOMBIE
+        }
+
+    before = children()
+    create_worktree(str(repo), "task_leakcheck", "a task that must not leak")
+
+    leaked = {pid: cmd for pid, cmd in children().items() if pid not in before}
+    assert not leaked, f"create_worktree leaked child processes: {leaked}"

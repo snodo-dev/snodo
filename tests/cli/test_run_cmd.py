@@ -1337,7 +1337,8 @@ class TestAutoMerge:
         (repo / "feature1.txt").write_text("feature 1\n")
         subprocess_run(["git", "add", "feature1.txt"], cwd=repo, check=True)
         subprocess_run(["git", "commit", "-qm", "feature 1 commit"], cwd=repo, check=True)
-        commit1 = Repo(str(repo)).commit(branch1).hexsha
+        with Repo(str(repo)) as _r:
+            commit1 = _r.commit(branch1).hexsha
         audit_log.append_event("verification_executed", {
             "op": "verification_executed",
             "task_ref": task1.id,
@@ -1354,7 +1355,8 @@ class TestAutoMerge:
         (repo / "feature2.txt").write_text("feature 2\n")
         subprocess_run(["git", "add", "feature2.txt"], cwd=repo, check=True)
         subprocess_run(["git", "commit", "-qm", "feature 2 commit"], cwd=repo, check=True)
-        commit2 = Repo(str(repo)).commit(branch2).hexsha
+        with Repo(str(repo)) as _r:
+            commit2 = _r.commit(branch2).hexsha
         audit_log.append_event("verification_executed", {
             "op": "verification_executed",
             "task_ref": task2.id,
@@ -1997,6 +1999,9 @@ class TestUnmergedTaskHandling:
         assert state_file.exists()
         import json
         assert json.loads(state_file.read_text())["status"] == "completed"
+        # Close the repo: GitPython's default object DB holds a persistent
+        # `git cat-file` child until close (Fixes #258).
+        repo.close()
 
     def test_try_merge_unmerged_task_merge_failure(self, temp_project):
         """_try_merge_unmerged_task returns False and marks unmerged when merge fails."""
@@ -2049,6 +2054,7 @@ class TestUnmergedTaskHandling:
         assert state_file.exists()
         import json
         assert json.loads(state_file.read_text())["status"] == "unmerged"
+        repo.close()  # release the persistent git child (Fixes #258)
 
     def test_try_merge_unmerged_task_unverified_returns_none(self, temp_project):
         """_try_merge_unmerged_task returns None when merge gate has no passing verification."""
@@ -2090,6 +2096,7 @@ class TestUnmergedTaskHandling:
         )
 
         assert success is None
+        repo.close()  # release the persistent git child (Fixes #258)
 
 
 
