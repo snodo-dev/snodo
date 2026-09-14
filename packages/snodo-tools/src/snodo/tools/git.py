@@ -90,6 +90,15 @@ class GitMCP:
                 f"Path escapes project root: {path} -> {resolved}"
             ) from e
 
+        # Version-control internals are the tooling's bookkeeping, not the work
+        # a judge reasons about.  Case-insensitive because on a case-insensitive
+        # filesystem ``.GIT`` opens the very same directory (Fixes #273).
+        if any(part.lower() == ".git" for part in rel.parts):
+            raise PathValidationError(
+                f"Path is version-control bookkeeping, not the work under "
+                f"review, and is not shown: {path} -> {resolved}"
+            )
+
         if for_mutation and rel.parts and rel.parts[0] == ".snodo":
             raise PathValidationError(
                 f"Path is protected under .snodo/ and cannot be mutated: {path} -> {resolved}"

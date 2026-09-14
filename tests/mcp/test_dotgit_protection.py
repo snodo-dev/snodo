@@ -85,14 +85,14 @@ def server(protocol, project_dir):
 def test_validate_path_blocks_dotgit(workspace_with_dotgit):
     _, ws = workspace_with_dotgit
 
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.validate_path(".git/config")
 
 
 def test_validate_path_blocks_exact_dotgit(workspace_with_dotgit):
     _, ws = workspace_with_dotgit
 
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.validate_path(".git")
 
 
@@ -100,7 +100,7 @@ def test_validate_path_blocks_nested_dotgit(workspace_with_dotgit):
     root, ws = workspace_with_dotgit
 
     (root / ".git" / "refs" / "heads").mkdir(parents=True)
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.validate_path(".git/refs/heads/main")
 
 
@@ -108,28 +108,28 @@ def test_validate_path_blocks_absolute_dotgit(workspace_with_dotgit):
     root, ws = workspace_with_dotgit
     absolute_path = str(root / ".git" / "config")
 
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.validate_path(absolute_path)
 
 
 def test_read_file_blocks_dotgit(workspace_with_dotgit):
     _, ws = workspace_with_dotgit
 
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.read_file(".git/config")
 
 
 def test_read_file_lines_blocks_dotgit(workspace_with_dotgit):
     _, ws = workspace_with_dotgit
 
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.read_file_lines(".git/config", 1, 1)
 
 
 def test_list_files_blocks_dotgit_directory(workspace_with_dotgit):
     _, ws = workspace_with_dotgit
 
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.list_files(".git")
 
 
@@ -152,22 +152,22 @@ def test_file_exists_returns_false_for_dotgit(workspace_with_dotgit):
 def test_get_absolute_path_blocks_dotgit(workspace_with_dotgit):
     _, ws = workspace_with_dotgit
 
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.get_absolute_path(".git/config")
 
 
 def test_mutations_under_dotgit_are_blocked(workspace_with_dotgit):
     root, ws = workspace_with_dotgit
 
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.write_file(".git/config", "mutated\n")
     assert (root / ".git" / "config").read_text() == "[user]\n\tname = secret\n"
 
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.delete_file(".git/config")
     assert (root / ".git" / "config").exists()
 
-    with pytest.raises(PathValidationError, match=r"protected under \.git/"):
+    with pytest.raises(PathValidationError, match=r"version-control bookkeeping"):
         ws.create_directory(".git/new_dir")
     assert not (root / ".git" / "new_dir").exists()
 
@@ -181,7 +181,7 @@ def test_dotgitignore_is_not_blocked(workspace_with_dotgit):
 
 
 def test_mcp_read_file_dotgit_is_wrapped_as_mcp_error(server):
-    with pytest.raises(MCPError, match=r"Tool execution failed.*protected under \.git/"):
+    with pytest.raises(MCPError, match=r"Tool execution failed.*version-control bookkeeping"):
         server.call_tool("read_file", {"path": ".git/config"})
 
 

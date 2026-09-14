@@ -954,6 +954,128 @@ class TestPostExecuteToolLoop:
         assert result.severity == "pass"
         mock_workspace.list_files.assert_called_once_with("src")
 
+    def test_judge_asking_for_vcs_internals_gets_a_reasoned_refusal(
+        self, security_validator, tmp_path
+    ):
+        """A judge's read of version-control internals is refused in the tool
+        response, and the refusal names the reason rather than returning the
+        reflog or an empty result (Fixes #273)."""
+        import subprocess
+        from snodo.tools.workspace import WorkspaceMCP
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+        (repo / "app.py").write_text("print('ok')\n")
+        subprocess.run(["git", "add", "app.py"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+        workspace = WorkspaceMCP(str(repo))
+
+        # The tool loop needs a git view for the preloaded diff; a mock is fine
+        # because the point under test is the workspace read, not the diff.
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+print('ok')"
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = None
+            if call_count[0] == 1:
+                tc = MagicMock()
+                tc.id = "tc_read_git"
+                tc.function.name = "read_file"
+                tc.function.arguments = '{"path": ".git/logs/HEAD"}'
+                resp.choices[0].message.tool_calls = [tc]
+            else:
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
+                    "severity": "pass",
+                    "justification": "OK",
+                })
+                resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "pass"
+        # The next request carries the tool response for the refused read.
+        messages = completion_fn.call_args_list[-1].kwargs["messages"]
+        tool_msgs = [m["content"] for m in messages if m.get("role") == "tool"]
+        refusals = [m for m in tool_msgs if "version-control bookkeeping" in m]
+        assert refusals, tool_msgs
+        # The reflog itself never reached the judge.
+        assert not any("0000000000000000000000000000000000000000" in m for m in tool_msgs)
+
+    def test_judge_asking_for_derived_output_gets_a_reasoned_refusal(
+        self, security_validator, tmp_path
+    ):
+        """A judge's read of ignored, untracked build output is refused in the
+        tool response, naming the reason (Fixes #273)."""
+        import subprocess
+        from snodo.tools.workspace import WorkspaceMCP
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+        (repo / ".gitignore").write_text("dist/\n")
+        (repo / "app.py").write_text("print('ok')\n")
+        subprocess.run(["git", "add", ".gitignore", "app.py"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+        (repo / "dist").mkdir()
+        (repo / "dist" / "bundle.js").write_text("canary_bundle_contents\n")
+        workspace = WorkspaceMCP(str(repo))
+
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+print('ok')"
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = None
+            if call_count[0] == 1:
+                tc = MagicMock()
+                tc.id = "tc_read_dist"
+                tc.function.name = "read_file"
+                tc.function.arguments = '{"path": "dist/bundle.js"}'
+                resp.choices[0].message.tool_calls = [tc]
+            else:
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
+                    "severity": "pass",
+                    "justification": "OK",
+                })
+                resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, workspace, mock_git)
+
+        validator.evaluate(ctx)
+
+        messages = completion_fn.call_args_list[-1].kwargs["messages"]
+        tool_msgs = [m["content"] for m in messages if m.get("role") == "tool"]
+        assert any("derived build output" in m for m in tool_msgs), tool_msgs
+        assert not any("canary_bundle_contents" in m for m in tool_msgs)
+
     def test_tool_loop_bounded_at_max_turns(self, security_validator):
         """Tool loop should record abstention after max turns without submit_verdict."""
         from snodo.validators.llm_validator import _DEFAULT_MAX_TOOL_TURNS
