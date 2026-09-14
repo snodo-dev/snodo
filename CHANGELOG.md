@@ -9,6 +9,102 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-09-14
+
+### Added
+
+- A docs-coverage ratchet: every invokable surface must be mentioned in the
+  docs, and every unambiguous reference in the docs must name something that
+  exists. Documentation goes stale silently and silence reads as authority — in
+  one release the halt contract gained a fifth outcome, `run_plan` changed from
+  a blocking call to returning a job id, and a validator tool plus two commands
+  shipped with no page mentioning them, caught by nobody but a person
+  remembering. `scripts/enforce_docs_coverage.py` walks the live Typer tree, the
+  MCP tool registry and the settable config surface, and checks both directions
+  against `docs/`; which page covers an item stays an editorial choice.
+  `docs/decisions/` is exempt as a record of a moment, and `docs/specs/` is
+  excluded from the published site. Existing gaps are baselined in
+  `scripts/docs_coverage_baseline.txt` and may only shrink; a dangling
+  reference is never baselined. It runs in the local gate, the CI gate and the
+  release. (Fixes #266)
+
+- `snodo logs <job_id> --watch` follows a plan run. A plan job is a pure
+  orchestrator — it spawns a child task job per task and writes nothing to its
+  own stdout — so following one tailed an empty file indefinitely with no
+  indication that the output would never come. Following a plan job now shows
+  the plan's wave structure and streams per-task lifecycle updates (task, status,
+  child job id, duration), ending when the plan does; per-task detail stays one
+  `snodo logs <child_job>` away, because three concurrent tasks interleaved on
+  one screen is unreadable. This keeps the contract that any job id is followed
+  the same way, rather than requiring the reader to discover the plan name and
+  switch commands. Separately, following any job that produces no output of its
+  own now says so immediately instead of blocking or exiting silently.
+  (Fixes #272)
+
+- Halt payloads now record the attempts a task took, not only its final
+  verdicts. A task that passed first time and one that passed on the fourth
+  attempt after three silent judges previously produced payloads a reader could
+  not tell apart — observed on a real project whose completed payload reported
+  a unanimous pass and `abstain_count: 0` despite four attempts over
+  forty-five minutes. The payload gains an `attempts` summary: `total`,
+  `non_verdicts`, `coder_dispatches`, and a bounded `history` of
+  `{attempt, outcome}` entries using canonical outcomes (`passed`, `warned`,
+  `blocked`, `abstained`, `error`). It recovers the two categories the final
+  results hide — prior recovery attempts (from `prior_failures`) and the
+  in-place abstention re-judges that dispatch no coder and create no subtask.
+  Halt types and the final `validator_results` are unchanged; the summary is
+  the history that precedes them.
+
+
+
+- `make wt-check`, `make wt-rebase` and `make wt-merge` for the agent
+  worktrees. `wt-check` reports what is unmerged, stale or uncommitted across
+  every worktree; `wt-rebase` rebases onto `origin/main`, refusing rather than
+  rebasing over uncommitted work; `wt-merge` rebases, gates and merges each
+  selected worktree in turn and stops at the first failure, so a worktree whose
+  gate fails never has another merge stacked on top of it. Selection travels in
+  `W` (`make wt-merge W=a,c`).
+
+### Changed
+
+- The README is a two-minute introduction rather than a reference manual. It
+  carried the protocol language, the coder catalogue, the full command
+  reference, the architecture and the configuration surface — 289 lines a
+  developer had to read before knowing whether the project was for them. It is
+  now 158: the problem, what snodo is, the shortest install-to-run path, and one
+  real reproducible transcript whose gates are not stubbed. Reference content
+  moved to the pages that own it, each leaving a sentence and a link —
+  configuration, which had no home, into the runbook alongside readiness, retry
+  semantics and the command map; the coder table into the runbook and
+  `docs/index.md`, which became the authoritative hub carrying measured status
+  rather than an overflow bin. The honest boundaries stay up front: the
+  container opencode path is experimental, the repository is trusted rather than
+  sandboxed, and this is a preprint-stage research artifact. (Fixes #265)
+
+- Every post-execute validator is handed the produced change. It previously had
+  no way to learn what the coder had done: the diff preload existed only when a
+  project's protocol granted `read_diff_between_refs`, and never on the
+  single-completion path, so a judge asked to assess the work first had to find
+  it by reading the tree. Observed on a real project: an acceptance judge ran
+  41, then 49, then 44 turns reconstructing the change file by file and reached
+  no verdict in any of them, then passed at turn 26 on a fourth attempt where it
+  happened to open the changed files early — the same work, different luck. The
+  distinction is now the evaluation phase, not the tool grant: `run_validators`
+  reads `base_ref..HEAD` once per pass and every post-execute judge, tool-loop or
+  single-completion, granted or not, begins with a `## Code Change` section
+  already present, falling back to the engine-recorded file list when no git
+  range exists. Pre-execute judges review a proposal and never receive one. Tool
+  grants continue to govern capabilities unchanged — an ungranted
+  `read_diff_between_refs` is still neither offered nor callable. (Fixes #267)
+
+- An abstention keeps the judge's last words. A judge that answered in prose
+  instead of calling `submit_verdict` had that prose dropped: the record showed
+  that it declined to answer but not what it said, which is the single most
+  useful artefact of a failed judgement. The closing account is now kept,
+  bounded, alongside `severity=None`. It is never mined for a finding or a
+  severity — a judge that did not submit a verdict did not reach one.
+  (Fixes #270)
+
 ### Fixed
 
 - Read tools can no longer reach above the workspace root, and no longer offer
@@ -59,19 +155,24 @@ snodo uses [Semantic Versioning](https://semver.org/).
   follow-up offers `snodo authorize` rather than a coder retry. `abstention_policy`
   is unchanged, and an abstention is never converted into a pass.
 
-- Halt payloads now record the attempts a task took, not only its final
-  verdicts. A task that passed first time and one that passed on the fourth
-  attempt after three silent judges previously produced payloads a reader could
-  not tell apart — observed on a real project whose completed payload reported
-  a unanimous pass and `abstain_count: 0` despite four attempts over
-  forty-five minutes. The payload gains an `attempts` summary: `total`,
-  `non_verdicts`, `coder_dispatches`, and a bounded `history` of
-  `{attempt, outcome}` entries using canonical outcomes (`passed`, `warned`,
-  `blocked`, `abstained`, `error`). It recovers the two categories the final
-  results hide — prior recovery attempts (from `prior_failures`) and the
-  in-place abstention re-judges that dispatch no coder and create no subtask.
-  Halt types and the final `validator_results` are unchanged; the summary is
-  the history that precedes them.
+- The change section handed to a judge is bounded. Since #267 every post-execute
+  judge receives the produced change as a prompt section, and it was handed at
+  whatever size the diff happened to be: git returned it whole, it was stored
+  whole, and the prompt inlined it whole. A wave that regenerates a lockfile or
+  a bundle beside three source files therefore pushed tens of thousands of lines
+  into every judge, including the single-completion ones with no turn budget to
+  recover with — failing as a provider context-length error or a silent
+  mid-hunk cut that left the judge reading half a change it was told was whole,
+  both harder to recognise from a log than the wandering #267 removed. The
+  section is now at most `CHANGE_SECTION_CHAR_LIMIT` (24,000 characters) for a
+  change of any size. A diff that fits is shown verbatim. One that does not says
+  it is showing part of the change, names every changed file first — the names
+  are small and are what a judge most needs — and spends the remaining budget on
+  content, each file capped at `CHANGE_FILE_CHAR_CAP`, likely-regenerated bulk
+  giving way to hand-edited source, with explicit markers wherever content was
+  cut or dropped. The bound is on the section the engine injects unbidden;
+  `read_diff_between_refs`, which a judge calls deliberately, is untouched.
+  (Fixes #269)
 
 ## [0.8.4] — 2026-09-13
 
