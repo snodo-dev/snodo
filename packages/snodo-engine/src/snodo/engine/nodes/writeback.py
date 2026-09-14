@@ -444,6 +444,8 @@ class WritebackMixin:
                     entry["examined"] = list(r.examined)
                 if getattr(r, "unexamined_tools", None):
                     entry["unexamined_tools"] = list(r.unexamined_tools)
+                if getattr(r, "last_words", None):
+                    entry["last_words"] = r.last_words
             pending[task_id] = entry
 
         self._session_manager.update_decision(

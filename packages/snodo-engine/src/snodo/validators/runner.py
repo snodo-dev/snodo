@@ -124,6 +124,7 @@ def enrich_result_with_criteria(
         abstention_reason=getattr(result, "abstention_reason", None),
         examined=getattr(result, "examined", None),
         unexamined_tools=getattr(result, "unexamined_tools", None),
+        last_words=getattr(result, "last_words", None),
         skipped=getattr(result, "skipped", False),
         reused=getattr(result, "reused", False),
     )

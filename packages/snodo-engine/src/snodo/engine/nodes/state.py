@@ -43,6 +43,7 @@ class SerdeMixin:
                 abstention_reason=r.get("abstention_reason"),
                 examined=r.get("examined"),
                 unexamined_tools=r.get("unexamined_tools"),
+                last_words=r.get("last_words"),
                 reused=bool(r.get("reused", False)),
             ))
         

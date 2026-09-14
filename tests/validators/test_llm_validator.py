@@ -1227,6 +1227,104 @@ class TestPostExecuteToolLoop:
         # Asked exactly twice: the prose reply and the reply after the nudge.
         assert call_count[0] == 2
 
+    def test_free_text_abstention_records_the_judges_last_words(self, security_validator):
+        """A judge that answers in prose and never calls submit_verdict keeps
+        its own closing account: the abstention's record carries the text,
+        bounded, so an audit reader can see what it said when it declined."""
+        from snodo.validators.llm_validator import _LAST_WORDS_CHAR_LIMIT
+
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        prose = "I could not tell whether criterion 2 holds; I am still looking."
+
+        def completion_side_effect(**kwargs):
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = prose
+            resp.choices[0].message.tool_calls = []
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.abstained()
+        assert result.last_words == prose
+        # The canonical audit record must carry the same account, bounded.
+        record = result.record()
+        assert record["last_words"] == prose
+        assert "severity" in record and record["severity"] is None
+        assert len(record["last_words"]) <= _LAST_WORDS_CHAR_LIMIT
+
+    def test_free_text_is_kept_within_the_bound(self, security_validator):
+        """Prose is untrusted model output: an over-long account is truncated
+        to the stated ceiling rather than stored whole (Fixes #270)."""
+        from snodo.validators.llm_validator import _LAST_WORDS_CHAR_LIMIT
+
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        prose = "cannot decide. " * (_LAST_WORDS_CHAR_LIMIT // 4)
+
+        def completion_side_effect(**kwargs):
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = prose
+            resp.choices[0].message.tool_calls = []
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.abstained()
+        assert result.last_words is not None
+        assert len(result.last_words) <= _LAST_WORDS_CHAR_LIMIT
+        assert result.last_words.endswith("...<truncated>")
+
+    def test_free_text_is_never_derived_into_a_severity(self, security_validator):
+        """Prose is an account, not a verdict: a judge that wrote the word
+        "blocker" but never called submit_verdict is still an abstention.
+        Nothing may read a finding out of the text, and no severity may be
+        derived from it (Fixes #270, cf. #252)."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        prose = (
+            "This is a blocker: there is a critical vulnerability in the auth "
+            "path and it must not pass. Severity: blocker. Criterion 1 fails."
+        )
+
+        def completion_side_effect(**kwargs):
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = prose
+            resp.choices[0].message.tool_calls = []
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        # The words are kept verbatim but carry no authority.
+        assert result.last_words == prose
+        assert result.severity is None
+        assert result.abstained()
+        assert result.cited_criteria is None
+        record = result.record()
+        assert record["severity"] is None
+        assert "blocker" not in record.get("abstention_reason", "")
+
     def test_tool_loop_malformed_verdict_is_not_relabelled_as_abstention(self, security_validator):
         """A malformed/out-of-range submit_verdict is answered with correction
         (#53); a self-corrected judge records its verdict unchanged. It never
