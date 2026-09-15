@@ -690,6 +690,15 @@ class WritebackMixin:
 
         judging_model = getattr(self, "_default_model", None)
 
+        # Which binary, specifically, produced this run. Two installations of
+        # the same tool — an old one earlier on a long-running server's PATH,
+        # a newer one on the operator's — are otherwise indistinguishable in an
+        # audit trail that cannot then explain why the same task passed on one
+        # machine and failed on another (Fixes #290). Empty for coders that
+        # invoke no program (litellm, mock).
+        coder_binary = getattr(self, "_last_coder_binary", "") or None
+        coder_version = getattr(self, "_last_coder_version", "") or None
+
         # Prefer original / root spec for task_spec in the halt payload
         authoritative_spec = getattr(loop_state.task, "root_spec", None) or loop_state.task.spec
 
@@ -730,6 +739,8 @@ class WritebackMixin:
             "phase": phase,
             "coder": coder_name,
             "coder_model": coder_model,
+            "coder_binary": coder_binary,
+            "coder_version": coder_version,
             "judging_model": judging_model,
             # record(): the halt payload is what the orchestrator reads to
             # learn what happened; an abstention must not read as a pass

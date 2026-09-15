@@ -14,6 +14,7 @@ working tree via subprocess invocation. Base class handles:
 
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import threading
@@ -50,6 +51,19 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
     model_prefix: str = ""
     install_hint: str = ""
     timeout_seconds: int = 1800
+
+    #: Arguments that make the host CLI print its own version. Overridable per
+    #: adapter because there is no cross-tool convention; a tool that does not
+    #: answer leaves the version empty rather than failing the run.
+    version_args: tuple = ("--version",)
+
+    #: Resolved path and self-reported version of the binary THIS run invoked.
+    #: Empty until :meth:`_implement_in_place` resolves them. Read by the
+    #: engine so a halt payload can say which binary produced the run — two
+    #: installations of the same tool are otherwise indistinguishable after the
+    #: fact (Fixes #290).
+    last_binary_path: str = ""
+    last_binary_version: str = ""
 
     def __init__(
         self,
@@ -98,6 +112,42 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         if not cls.binary:
             return ()
         return ((cls.binary, cls.install_hint),)
+
+    def _resolve_binary_path(self) -> str:
+        """Return the absolute path of the binary PATH resolution picks HERE.
+
+        DECISION — should a long-running server re-resolve the coder rather
+        than trust the environment it was born with? No, and it does not have
+        to: ``subprocess`` resolves the bare name in the argv from the CHILD's
+        environment, which is the server's environment inherited at spawn.
+        Re-resolving to the operator's live shell PATH would record a binary
+        the run never used — a lie in the audit trail. PATH resolution at
+        invocation is already correct; what was missing was recording its
+        result. So the adapter resolves in the process that will actually run
+        the coder, at the moment it runs, and keeps the answer (Fixes #290).
+        """
+        return shutil.which(self.binary) or ""
+
+    def _read_binary_version(self, binary_path: str) -> str:
+        """Return the version *binary_path* reports, via the shared reader.
+
+        The rule for what counts as a tool's version lives in
+        ``snodo.coders.availability`` so the readiness checker and the adapter
+        record agree (Fixes #290).
+        """
+        from snodo.coders.availability import read_binary_version
+
+        return read_binary_version(binary_path, self.version_args)
+
+    def _record_binary_provenance(self) -> None:
+        """Resolve and remember the binary path and version for THIS run.
+
+        Called once per dispatch, before the CLI is spawned, so the record is
+        per-run and overwritten on the next (the same rule the halt payload's
+        other per-run facts follow).
+        """
+        self.last_binary_path = self._resolve_binary_path()
+        self.last_binary_version = self._read_binary_version(self.last_binary_path)
 
     def _bare_model(self) -> str:
         """Return the model to pass to the CLI, or "" to let it choose.
@@ -267,9 +317,16 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         bare_model = self._bare_model()
         argv = self._build_argv(prompt, project_root, bare_model)
 
+        # Resolve and record which binary this run is about to invoke, in THIS
+        # process's environment, before spawning it. The argv carries the bare
+        # name; the child's PATH resolves it, and that resolution is normally
+        # correct — what was missing was any record of its result (Fixes #290).
+        self._record_binary_provenance()
         _logger.info(
-            "%s: executing with containment boundary at %s",
+            "%s: executing with containment boundary at %s (binary=%s version=%s)",
             self.binary, project_root,
+            self.last_binary_path or "unresolved",
+            self.last_binary_version or "unknown",
         )
 
         timed_out = False
@@ -286,8 +343,13 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             # The program is not installed where the run executes. That is an
             # environment fault, not a coder-configuration fault and never a
             # verdict about the task: CoderUnavailableError says so in its
-            # type, and carries the install command in its message.
-            raise CoderUnavailableError(self.binary, self.install_hint) from e
+            # type, and carries the install command in its message. Name the
+            # PATH that was searched: the operator can see the binary on THEIR
+            # PATH, so "not on PATH" without the path searched sends them
+            # looking in the wrong place (Fixes #290).
+            raise CoderUnavailableError(
+                self.binary, self.install_hint, search_path=os.environ.get("PATH", ""),
+            ) from e
         except subprocess.TimeoutExpired as e:
             timed_out = True
             self.last_timed_out = True
