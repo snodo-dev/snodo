@@ -1,0 +1,18 @@
+# This file is the fixed prompt for `snodo models --benchmark`.
+#
+# The benchmark's whole point is that every run sends the exact same text, so
+# a number from one run can be compared with a number from another. Changing
+# the prompt below makes measurements taken before the change incomparable with
+# measurements taken after it. If you change it, say why in the commit.
+#
+# Lines in this header are not sent to the model. Everything after the marker
+# line is the prompt.
+#--- benchmark prompt below this line ---
+Write a Python implementation of a FIFO queue.
+
+Requirements:
+- A class named FifoQueue with enqueue(item) and dequeue() methods.
+- dequeue() raises IndexError when the queue is empty.
+- Include a length method and an is_empty method.
+- Add a short docstring to the class.
+- Return only the code, with no explanation or prose.
