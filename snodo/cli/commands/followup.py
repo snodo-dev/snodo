@@ -77,6 +77,32 @@ def recon_inspect(recon_id: str) -> str:
     return f"snodo logs {recon_id}"
 
 
+def task_authorize(task_id: str) -> str:
+    """Command to review and sign the decision pending for a task.
+
+    Only ever offered when the halt payload records that a decision is actually
+    waiting (``adjudicable``): ``snodo authorize`` answers "No pending decision
+    for task ..." otherwise, and naming it for a task with nothing to sign sends
+    the operator looking for a hatch that is not there (Fixes #288).
+    """
+    return f"snodo authorize {task_id}"
+
+
+def halt_followup(halt_payload: dict, task_id: str) -> list:
+    """The next-step commands for a halted task, matched to what will answer.
+
+    A halt with an adjudicable decision is offered ``snodo authorize``, which
+    signs it; a retry is offered alongside because the operator may prefer to
+    address the block instead. A halt with no decision keeps only the retry —
+    offer authorize there and the command refuses (Fixes #288).
+    """
+    commands = []
+    if (halt_payload or {}).get("adjudicable"):
+        commands.append(task_authorize(task_id))
+    commands.append(task_retry(task_id))
+    return commands
+
+
 def task_retry(task_id: str) -> str:
     """Command to retry a failed task with its spec unchanged.
 
