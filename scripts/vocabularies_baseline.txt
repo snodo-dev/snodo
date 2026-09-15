@@ -1,0 +1,42 @@
+# Closed-vocabulary record — one entry per value the engine's closed vocabularies carry.
+#
+# Each line is '<vocabulary> <value>': severity, halt (raw halt types and canonical outcomes),
+# or task_status. The check that reads this derives the values from the code;
+# an entry here is the record that a value was decided, not the definition of it.
+#
+# A value that appears in the source and not here fails the build. Run
+#   uv run python scripts/enforce_vocabularies.py --update-baseline
+# only to record a value you have written a decision record for, or to drop
+# one that was removed — it refuses while the check is red. There is no
+# suppression comment on purpose: widening a closed vocabulary is a decision.
+
+severity blocker
+severity pass
+severity warn
+halt blocked
+halt blocker
+halt constraint
+halt environment_error
+halt escalate
+halt escalated
+halt execution_error
+halt head_not_moved
+halt internal_error
+halt max_iterations
+halt no_file_operations
+halt recovery_exhausted
+halt recovery_stalled
+halt turn_budget_exhausted
+halt validator_error
+halt wf3
+task_status blocked
+task_status cancelled
+task_status completed
+task_status errored
+task_status failed
+task_status in_progress
+task_status merged
+task_status pending
+task_status running
+task_status unknown
+task_status unmerged
