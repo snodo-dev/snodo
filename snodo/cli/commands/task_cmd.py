@@ -155,6 +155,26 @@ def task_report(
     return task_report_command(SimpleNamespace(days=days, json=json))
 
 
+@app.command(name="complete")
+def task_complete(
+    task_id: str = typer.Argument(..., help="Task ID completed outside the loop"),
+    plan: Optional[str] = typer.Option(None, "--plan", "-p", help="Plan name (inferred if omitted)"),
+    who: Optional[str] = typer.Option(None, "--who", "--by", help="Person who completed the task"),
+    notes: Optional[str] = typer.Option(None, "--notes", help="Optional notes on manual completion"),
+    json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+):
+    """Record that a task was completed by hand outside the loop."""
+    return task_complete_command(SimpleNamespace(
+        task_id=task_id, plan=plan, who=who, notes=notes, json=json
+    ))
+
+
+def task_complete_command(args) -> int:
+    """Record that a task was completed by hand outside the loop."""
+    from snodo.cli.commands.task_complete import task_complete_command as _impl
+    return _impl(args)
+
+
 
 def _parse_timestamp(ts_val: Any) -> Any:
     from datetime import datetime, timezone
@@ -203,6 +223,7 @@ def _get_all_task_branches(project_root: str) -> dict:
             classifications = dec.get("classification", {}) if isinstance(dec.get("classification"), dict) else {}
 
     merged_tasks = set()
+    hand_completed_tasks = set()
     audit_timestamps: dict = {}
     audit_available = False
     try:
@@ -223,6 +244,8 @@ def _get_all_task_branches(project_root: str) -> dict:
                     b_name = data.get("branch")
                     if b_name:
                         merged_tasks.add(b_name)
+                if op in ("task_completed_by_hand", "hand_completed"):
+                    hand_completed_tasks.add(task_ref)
     except Exception as e:
         _logger.warning("Could not inspect audit log: %s", e)
 
@@ -261,6 +284,7 @@ def _get_all_task_branches(project_root: str) -> dict:
         | set(classifications.keys())
         | set(git_task_branches.keys())
         | {t for t in merged_tasks if isinstance(t, str) and not t.startswith("task/")}
+        | hand_completed_tasks
     )
     tasks = {}
 
@@ -276,7 +300,7 @@ def _get_all_task_branches(project_root: str) -> dict:
         elif failure_entry and failure_entry.get("branch"):
             branch = failure_entry["branch"]
         else:
-            branch = f"task/{tid}" if (halt_entry or class_entry or tid in merged_tasks) else "—"
+            branch = f"task/{tid}" if (halt_entry or class_entry or tid in merged_tasks or tid in hand_completed_tasks) else "—"
 
         if has_git is True:
             is_merged = bool(git_info.get("is_merged", False))
@@ -291,6 +315,8 @@ def _get_all_task_branches(project_root: str) -> dict:
 
         if is_merged:
             status = "merged"
+        elif tid in hand_completed_tasks:
+            status = "completed"
         elif failure_entry:
             status = "failed"
         elif halt_entry:
@@ -429,7 +455,29 @@ def task_show_command(args) -> int:
     halt_entry = halt.get(task_id) if isinstance(halt, dict) else None
     failure_entry = failure.get(task_id) if isinstance(failure, dict) else None
 
+    from snodo.cli.commands.task_complete import get_hand_completion_record, print_hand_completion_info
+    hand_completion = get_hand_completion_record(project_root, task_id)
+
     if not halt_entry and not failure_entry:
+        if hand_completion:
+            if json_out:
+                from snodo.cli.json_output import emit_json, schema_name
+                return emit_json({
+                    "schema": schema_name("task"),
+                    "ok": True,
+                    "task_id": task_id,
+                    "session_id": session.session_id,
+                    "mode": session.mode,
+                    "status": "completed",
+                    "halt": None,
+                    "failure": None,
+                    "hand_completion": hand_completion,
+                    "spec": None,
+                })
+            print(f"Task:    {task_id}")
+            print(f"Session: {session.session_id}  mode={session.mode}")
+            print_hand_completion_info(hand_completion)
+            return 0
         # A task that has not stopped has no halt/failure record — that is not
         # the same as there being no such task. Say what is true and point at
         # the live surface, rather than the "No record" line an unknown id gets.
@@ -522,7 +570,7 @@ def task_show_command(args) -> int:
 
     if json_out:
         from snodo.cli.json_output import emit_json, schema_name
-        return emit_json({
+        payload = {
             "schema": schema_name("task"),
             "ok": True,
             "task_id": task_id,
@@ -531,7 +579,10 @@ def task_show_command(args) -> int:
             "halt": halt_entry if isinstance(halt_entry, dict) else None,
             "failure": failure_entry if isinstance(failure_entry, dict) else None,
             "spec": spec,
-        })
+        }
+        if hand_completion is not None:
+            payload["hand_completion"] = hand_completion
+        return emit_json(payload)
 
     print(f"Task:    {task_id}")
     print(f"Session: {session.session_id}  mode={session.mode}")
@@ -566,6 +617,9 @@ def task_show_command(args) -> int:
         files = failure_entry.get("files_changed", [])
         if files:
             print(f"  files:   {', '.join(files)}")
+
+    if hand_completion:
+        print_hand_completion_info(hand_completion)
 
     from snodo.cli.commands import followup
 
@@ -669,97 +723,8 @@ def task_abandon_command(args) -> int:
 
 def task_prune_command(args) -> int:
     """List and delete stale task branches."""
-    from datetime import datetime, timezone, timedelta
-
-    stale_days = getattr(args, "stale_days", 7)
-    project_root = resolve_project_root()
-    if project_root is None:
-        print("Not inside a snodo project.", file=sys.stderr)
-        return 1
-
-    tasks = _get_all_task_branches(project_root)
-
-    if not tasks:
-        print("No task branches to prune.")
-        return 0
-
-    cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
-    stale = []
-    skipped_untimestamped = 0
-    for tid, info in sorted(tasks.items()):
-        if not info["has_git_branch"] and not info.get("has_failure_context"):
-            continue
-        ts = info["timestamp"]
-        if ts is None:
-            skipped_untimestamped += 1
-            continue
-        if ts < cutoff:
-            stale.append((tid, info["branch"], ts, info["has_git_branch"], info.get("has_failure_context", False)))
-
-    if skipped_untimestamped > 0:
-        print(f"Skipped {skipped_untimestamped} task(s) with unknown timestamp.")
-
-    if not stale:
-        print(f"No task branches older than {stale_days} days.")
-        return 0
-
-    print(f"Found {len(stale)} stale task branch(es) (> {stale_days} days):")
-    print()
-    for tid, branch, ts, _, _ in stale:
-        print(f"  {tid}  {branch}  ({ts.strftime('%Y-%m-%d')})")
-    print()
-
-    try:
-        answer = input(f"Delete these {len(stale)} branches? [y/N] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print("\nAborted.")
-        return 1
-    if answer != "y":
-        print("Aborted.")
-        return 0
-
-    try:
-        from snodo.tools.git import GitMCP
-        from snodo.infrastructure.worktree import remove_worktree
-        from snodo.infrastructure.state import read_state
-        from snodo.infrastructure.session import SessionManager
-
-        git = GitMCP(project_root)
-
-        state = read_state(project_root)
-        mode = state.current_mode
-        session = None
-        mgr = None
-        if mode:
-            mgr = SessionManager()
-            session = mgr.get_active_session(mode, project_root)
-
-        deleted = 0
-        for tid, branch, _, has_git, has_failure in stale:
-            if git:
-                branch_prefix = f"task/{tid}"
-                for head in git.repo.heads:
-                    if head.name == branch or head.name.startswith(branch_prefix):
-                        git.repo.git.branch("-D", head.name)
-                        deleted += 1
-                        break
-            remove_worktree(project_root, tid)
-
-            if session and mgr and has_failure:
-                task_failures = session.checkpoint.decisions.get("task_failure", {})
-                if isinstance(task_failures, dict) and tid in task_failures:
-                    del task_failures[tid]
-                    try:
-                        mgr.update_decision(session.session_id, "task_failure", task_failures)
-                    except Exception as e:
-                        _logger.warning("Could not clear failure context for task %s during prune: %s", tid, e)
-
-        print(f"Deleted {deleted} stale branch(es).")
-    except Exception as e:
-        print(f"Error pruning branches: {e}", file=sys.stderr)
-        return 1
-
-    return 0
+    from snodo.cli.commands.task_prune import task_prune_command as _impl
+    return _impl(args)
 
 
 VALID_VERDICTS = {"accepted", "amended", "discarded"}
