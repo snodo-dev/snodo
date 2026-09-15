@@ -633,13 +633,20 @@ class PlannerMCP:
         with open(status_file) as f:
             return json.load(f)
 
-    def update_status(self, plan_name: str, task_id: str, status: str) -> None:
+    def update_status(
+        self,
+        plan_name: str,
+        task_id: str,
+        status: str,
+        **metadata: Any,
+    ) -> None:
         """Update a task's status in the plan.
 
         Args:
             plan_name: Plan name
             task_id: Task identifier
             status: New status (pending/in_progress/completed/blocked/errored).
+            **metadata: Additional metadata (e.g. completed_by, completed_at, judged).
 
               ``errored`` is for tasks that halted without being judged — an
               operational fault (``validator_error`` / ``internal_error``), or
@@ -665,6 +672,13 @@ class PlannerMCP:
             existing = tasks.get(task_id)
             if isinstance(existing, dict):
                 existing["status"] = status
+                for k, v in metadata.items():
+                    existing[k] = v
+            elif metadata:
+                entry = {"status": status}
+                for k, v in metadata.items():
+                    entry[k] = v
+                tasks[task_id] = entry
             else:
                 tasks[task_id] = status
 
