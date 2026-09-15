@@ -217,6 +217,10 @@ class ValidationNodeMixin:
             self._last_timed_out = False
             self._last_timeout_seconds = None
             self._last_timeout_tail = ""
+            # The turn-budget bound is a per-run fact too: reset it with the
+            # other facts so a halt payload cannot carry a previous attempt's
+            # bounded outcome (Fixes #282).
+            self._last_turn_budget_exhausted = False
             self._last_existing_work_base_ref = None
             try:
                 self._progress("  Coder dispatched")
@@ -255,6 +259,24 @@ class ValidationNodeMixin:
                         f"{getattr(self, '_last_timeout_seconds', None)}s; "
                         f"judging the {len(artifacts)} artifact(s) it produced."
                     )
+                if getattr(self, "_last_turn_budget_exhausted", False):
+                    # The run hit its turn bound but its work was recoverable
+                    # from the task branch and is about to be judged. Record the
+                    # bound so the payload says a run ran out of turns even when
+                    # the work passes — the same "do not proceed silently"
+                    # obligation the clock bound carries (Fixes #282).
+                    loop_state.metadata["turn_budget_exhausted"] = True
+                    self._audit("coder_turn_budget_exhausted", {
+                        "op": "coder_turn_budget_exhausted",
+                        "task_ref": loop_state.task.id,
+                        "mode": loop_state.current_mode,
+                        "artifacts_count": len(artifacts),
+                    })
+                    self._progress(
+                        "  Coder exhausted its turn budget; judging the "
+                        f"{len(artifacts)} artifact(s) recovered from the task "
+                        "branch."
+                    )
             except SnodoMutationError as e:
                 # An in-place-writing coder mutated protected .snodo/ state.
                 # This is a governance violation (INV3-class), not an
@@ -281,11 +303,18 @@ class ValidationNodeMixin:
                 # The coder burned its full turn budget without submitting. A
                 # bounded, anticipated outcome — not a crash and not a
                 # validator verdict — so it gets its own terminal halt instead
-                # of ``internal_error``, and recovery must NOT spawn against it
-                # (retrying a turn-budget exhaustion cannot converge).
+                # of ``internal_error``. It is the same kind of thing as the
+                # clock bound below: the coder ran out of turns to *submit*, not
+                # to write, so the executor has already asked the task-branch
+                # probe whether the work it produced exists and, finding none,
+                # lets this exception through. It maps to the operational
+                # ``environment_error`` (ADR 015/#282), never a blocker verdict
+                # about work no judge saw, and recovery must NOT spawn against
+                # it (retrying a turn-budget exhaustion cannot converge).
                 loop_state.is_blocked = True
                 loop_state.halt_type = "turn_budget_exhausted"
                 loop_state.constraint_violations.append(str(e))
+                loop_state.metadata["turn_budget_exhausted"] = True
                 loop_state.metadata["post_validation"] = {
                     "outcome": "skipped",
                     "reason": str(e),

@@ -65,6 +65,44 @@ class ExecutorMixin:
             getattr(coder, "last_output_tail", "") or metadata.get("output_tail", "")
         )
 
+    def _recover_bounded_run_work(
+        self,
+        git_mcp: Optional[Any],
+        coder: Any,
+        artifacts: List[str],
+        *,
+        turn_budget: bool = False,
+    ) -> Optional[List[str]]:
+        """Carry work a bounded run could not submit into post-execute validation.
+
+        A run that hits a bound — the clock or its turn budget — is a bounded,
+        anticipated outcome, not a coder fault: the coder ran out of time or
+        turns to *submit*, not to write, so the files it produced are on disk
+        either way. Before assuming the work is absent, ask the task-branch
+        probe #281 built whether it is already committed (an earlier attempt's
+        commit, or this run's own commit the adapter's readback missed). Work
+        found there is carried into post-execute validation exactly as freshly
+        produced work would be, so the judges decide instead of the engine
+        assuming.
+
+        Returns the artifact list to return from the executor when recoverable
+        work was found, or ``None`` when the branch holds nothing — the caller
+        then reports the bounded outcome under its own halt. BOTH bounded
+        exceptions route through THIS method so the two paths cannot drift
+        apart (Fixes #282). ``turn_budget`` records for the run's own payload
+        which bound was hit, so a recovered run that passes is still reported
+        as having hit its turn budget rather than proceeding silently.
+        """
+        self._record_coder_run_facts(coder)
+        self._last_turn_budget_exhausted = turn_budget
+        existing = self._existing_task_branch_work(git_mcp)
+        if existing is None:
+            return None
+        self._last_existing_work_base_ref = existing[0]
+        self._last_execution_writes = list(existing[1])
+        artifacts.extend(existing[1])
+        return artifacts
+
     def _ensure_task_branch(self, git_mcp: Optional[Any], task: Task) -> None:
         """Ensure task branch is created and checked out for isolation."""
         if git_mcp and not self._worktree_path and not self._worktree_degraded:
@@ -332,26 +370,34 @@ class ExecutorMixin:
             # not an execution fault.
             raise
         except TurnBudgetExhausted:
-            # The coder ran out of turns without submitting — a bounded,
-            # anticipated outcome. Propagate unchanged so the engine reports it
-            # under its own halt outcome instead of as a generic execution fault.
+            # The coder ran out of turns to SUBMIT, not turns to write. A
+            # bounded, anticipated outcome — not a crash and not a validator
+            # verdict — so before reporting it, ask whether the work it
+            # produced is already committed on the task branch, exactly as the
+            # clock-bound path below does. Work found there is carried into
+            # post-execute validation so the judges decide; with nothing
+            # recoverable the exception propagates and the engine reports the
+            # bounded turn-budget outcome under its own run-level halt rather
+            # than a verdict about the code.
+            recovered = self._recover_bounded_run_work(
+                git_mcp, coder, artifacts, turn_budget=True
+            )
+            if recovered is not None:
+                return recovered
             raise
         except CoderTimeoutError:
             # A run that ended on the clock. Whatever it produced is not lost:
-            # record the timeout facts and, before declaring a fault, ask
-            # whether the work already exists on the task branch — an earlier
-            # attempt (or this run's own commit, if the adapter's readback
-            # missed it) may have committed it. If it does, carry it into
-            # post-execute validation exactly as freshly produced work would be,
-            # so the judges decide (Fixes #281). If not, re-raise: the engine
-            # reports the operational timeout, never a blocker verdict.
-            self._record_coder_run_facts(coder)
-            existing = self._existing_task_branch_work(git_mcp)
-            if existing is not None:
-                self._last_existing_work_base_ref = existing[0]
-                self._last_execution_writes = list(existing[1])
-                artifacts.extend(existing[1])
-                return artifacts
+            # the same bounded-run work-recovery probe as the turn-budget path
+            # above asks whether the work already exists on the task branch —
+            # an earlier attempt (or this run's own commit, if the adapter's
+            # readback missed it) may have committed it. If it does, carry it
+            # into post-execute validation exactly as freshly produced work
+            # would be, so the judges decide (Fixes #281). If not, re-raise:
+            # the engine reports the operational timeout, never a blocker
+            # verdict.
+            recovered = self._recover_bounded_run_work(git_mcp, coder, artifacts)
+            if recovered is not None:
+                return recovered
             raise
         except AdapterError:
             # The coder backend itself failed: a CLI that rejected the
