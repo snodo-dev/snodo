@@ -41,7 +41,13 @@ _CANONICAL_HALT = {
     "constraint": "blocker",
     "wf3": "blocker",
     "max_iterations": "blocker",
-    "turn_budget_exhausted": "blocker",
+    # A coder that exhausted its turn budget without submitting is a bounded
+    # outcome about the RUN, not a finding about the code: the coder was
+    # invoked and ran out of turns to submit (the files it wrote are on disk
+    # either way), the same operational family as the clock-bound timeout and
+    # the missing-program fault (ADR 015). It must not canonicalise to
+    # ``blocker``, a verdict about work no judge saw (Fixes #282).
+    "turn_budget_exhausted": "environment_error",
     # A coder fault the operator fixes in configuration (model string,
     # backend choice) stays a config-targeted blocker (#195); the missing-
     # program case is ``environment_error`` below.
@@ -213,12 +219,16 @@ def _blocker_fix_targets(
     A blocker has three fix targets — the code, the spec, or the policy. Which
     apply depends on the halt in hand:
     - a protocol violation (``constraint``, ``wf3``) is a policy problem;
-    - a loop that never converged (``max_iterations``, ``recovery_*``,
-      ``turn_budget_exhausted``) is a spec or policy problem;
+    - a loop that never converged (``max_iterations``, ``recovery_*``) is a spec
+      or policy problem;
     - a post-execute rejection of produced artifacts is a code problem;
     - a pre-execute rejection of the proposal is a spec problem — unless the
       block cites a criterion, in which case the criterion lives in the
       protocol and is a legitimate place to fix it.
+
+    ``turn_budget_exhausted`` is absent on purpose: it canonicalises to
+    ``environment_error`` (the operational-halt family, ADR 015/#282), not a
+    blocker, so no blocker fix target applies to it.
     """
     halt_type = halt_type or ""
     if halt_type in ("constraint", "wf3"):
@@ -229,7 +239,7 @@ def _blocker_fix_targets(
         # accept), an LLM call that errored. The operator fixes the coder
         # configuration, not the code, the spec, or the protocol (Fixes #195).
         return ["config"]
-    if halt_type in ("max_iterations", "turn_budget_exhausted", "recovery_exhausted", "recovery_stalled"):
+    if halt_type in ("max_iterations", "recovery_exhausted", "recovery_stalled"):
         return ["spec", "policy"]
     if halt_type == "head_not_moved":
         # The coder claimed a commit it did not make — the produced code is
@@ -286,6 +296,7 @@ def _build_hint(
     results: Optional[List[Any]] = None,
     reason: Optional[str] = None,
     timed_out: bool = False,
+    turn_budget_exhausted: bool = False,
 ) -> str:
     if halt == "escalate":
         return (
@@ -318,6 +329,21 @@ def _build_hint(
                 "needs fixing, and no recovery attempt is warranted: re-run the "
                 "task unchanged. Any work the run produced was judged before "
                 "this halt."
+            )
+        if turn_budget_exhausted:
+            # A bounded turn-budget outcome is an operational halt as well, but
+            # the fix is not an install: the coder ran and used every turn
+            # before submitting. Name what actually happened and point the
+            # operator at the turn budget, not the spec, the code or an
+            # install (Fixes #282).
+            return (
+                "This halt is about the run, not about the task: the coder was "
+                "invoked and used its full turn budget without submitting. "
+                f"{detail} Nothing about the spec, the code or the protocol "
+                "needs fixing, and no recovery attempt is warranted: raise the "
+                "coder's turn budget if the task needs more turns, then re-run "
+                "the task unchanged. Any work the run produced was judged "
+                "before this halt."
             )
         return (
             "This halt is about the execution environment, not about the "
@@ -641,6 +667,16 @@ class WritebackMixin:
         # here: a halt payload a human reads must never carry a previous
         # attempt's output (Fixes #281).
         timed_out = bool(meta.get("timed_out"))
+        # A bounded turn-budget run is reported as an operational halt, not a
+        # verdict about the code, so the hint must name the run fact. Derive it
+        # from THIS run's own raw halt type and metadata, never a builder
+        # scratch attribute a previous attempt could have left behind
+        # (Fixes #282). A run whose recovered work passed carries the metadata
+        # flag, so the bound is visible even when the work is green.
+        turn_budget_exhausted = bool(
+            loop_state.halt_type == "turn_budget_exhausted"
+            or meta.get("turn_budget_exhausted")
+        )
 
         payload = {
             "status": "blocked" if loop_state.is_blocked else "completed",
@@ -672,6 +708,7 @@ class WritebackMixin:
                 halt, loop_state.halt_type, phase,
                 loop_state.validation_results, reason=blocker_reason,
                 timed_out=timed_out,
+                turn_budget_exhausted=turn_budget_exhausted,
             ),
             "pre_validation": meta.get("pre_validation"),
             "post_validation": meta.get("post_validation"),
@@ -682,6 +719,10 @@ class WritebackMixin:
         if timed_out:
             payload["timed_out"] = True
             payload["timeout_seconds"] = meta.get("timeout_seconds")
+        if turn_budget_exhausted:
+            # A run that ran out of turns is worth knowing about even when its
+            # recovered work passes (Fixes #282).
+            payload["turn_budget_exhausted"] = True
         if commit_reason is not None:
             payload["commit_reason"] = commit_reason
         output_tail = meta.get("output_tail")

@@ -111,7 +111,14 @@ string the tool does not accept), an LLM call that errored — is an
 operator-fixable coder fault, not an engine fault: it halts under the raw
 `execution_error` (canonical `blocker`) with a config fix target, so the
 operator is told to fix the coder configuration rather than inspect engine
-logs (Fixes #195).
+logs (Fixes #195). A coder that hits a **bound** — the clock or its turn budget
+— is the same operational family: the coder was invoked and stopped before
+submitting, and whatever it produced is carried into post-execute validation by
+the shared task-branch work-recovery probe, so the judges decide rather than the
+engine assuming. With nothing recoverable, both bounds halt under the
+operational `environment_error` (ADR 015); the raw cause
+(`turn_budget_exhausted`) and the bound itself are recorded even when the
+recovered work passes (Fixes #281, #282).
 
 The plan layer reports that outcome rather than its own. The plan runner
 (`cli/commands/plan_run.py`) reads the persisted halt payload for each completed
