@@ -380,3 +380,151 @@ def test_plan_job_watch_hint_points_at_the_command_that_follows(capsys):
             out = capsys.readouterr().out
             assert "Follow this plan live: snodo logs j_plan_w --watch" in out
 
+
+def test_plan_job_with_children_still_surfaces_them(capsys):
+    """A plan that spawns a child task job per task keeps the #279 behaviour:
+    the non-watch view names the children and does not print a summary only."""
+    import json
+    import yaml
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        snodo_dir = Path(tmp_dir) / ".snodo"
+        jobs_dir = snodo_dir / "jobs"
+        plans_dir = snodo_dir / "plans"
+
+        plan_dir = plans_dir / "spawns"
+        plan_dir.mkdir(parents=True)
+        (plan_dir / "plan.yml").write_text(yaml.dump({
+            "name": "spawns", "intent": "Spawn two",
+            "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_a", "1.2_b"]}],
+        }))
+        (plan_dir / "status.json").write_text(json.dumps({
+            "tasks": {"1.1_a": {"status": "completed"}, "1.2_b": {"status": "running"}}
+        }))
+
+        plan_job_dir = jobs_dir / "j_plan_spawns"
+        plan_job_dir.mkdir(parents=True)
+        (plan_job_dir / "task.json").write_text(json.dumps({"plan_name": "spawns"}))
+        (plan_job_dir / "state.json").write_text(json.dumps({"status": "running", "job_type": "plan"}))
+        # A child-spawning plan writes nothing to its own stdout.
+        (plan_job_dir / "stdout.log").write_text("")
+
+        children = [
+            ("j_childa", "1.1_a", "completed"),
+            ("j_childb", "1.2_b", "running"),
+        ]
+        for cid, ref, status in children:
+            cdir = jobs_dir / cid
+            cdir.mkdir(parents=True)
+            (cdir / "task.json").write_text(json.dumps({
+                "task_id": ref, "parent_job": "j_plan_spawns",
+            }))
+            (cdir / "state.json").write_text(json.dumps({
+                "status": status, "duration_seconds": 4.0, "created_at": 1000,
+            }))
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            args = SimpleNamespace(composite_id="j_plan_spawns", watch=False)
+            res = logs_command(args)
+
+            assert res == 0
+            out = capsys.readouterr().out
+            assert "Output is produced by child task jobs" in out
+            assert "j_childa" in out
+            assert "j_childb" in out
+            # A running child earns a reachable hint with its real id (#279).
+            assert "snodo logs j_childb" in out
+            assert "(no stdout output)" not in out
+
+
+def test_plan_job_with_own_output_streams_it(capsys):
+    """A plan that ran its tasks in-process wrote the run to its own stdout.log;
+    following it streams that output rather than printing only a summary."""
+    import json
+    import yaml
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        snodo_dir = Path(tmp_dir) / ".snodo"
+        jobs_dir = snodo_dir / "jobs"
+        plans_dir = snodo_dir / "plans"
+
+        plan_dir = plans_dir / "inproc"
+        plan_dir.mkdir(parents=True)
+        (plan_dir / "plan.yml").write_text(yaml.dump({
+            "name": "inproc", "intent": "Run in-process",
+            "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_solo"]}],
+        }))
+        (plan_dir / "status.json").write_text(json.dumps({
+            "tasks": {"1.1_solo": {"status": "completed"}}
+        }))
+
+        plan_job_dir = jobs_dir / "j_plan_inproc"
+        plan_job_dir.mkdir(parents=True)
+        (plan_job_dir / "task.json").write_text(json.dumps({"plan_name": "inproc"}))
+        (plan_job_dir / "state.json").write_text(json.dumps({"status": "completed", "job_type": "plan"}))
+        # The whole run lives here — validator turns, tool calls, narration.
+        (plan_job_dir / "stdout.log").write_text(
+            "Wave 1:\n"
+            "  [1.1_solo] executing...\n"
+            "Turn 1: read_file\n"
+            "Turn 2: (no tools called)\n"
+            "  [1.1_solo] completed in 42.0s\n"
+        )
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            args = SimpleNamespace(composite_id="j_plan_inproc", watch=False)
+            res = logs_command(args)
+
+            assert res == 0
+            out = capsys.readouterr().out
+            # The summary stays as framing...
+            assert "Wave 1:" in out
+            assert "1.1_solo" in out
+            # ...and the run's own output is what the reader can actually see.
+            assert "Turn 1: read_file" in out
+            assert "Turn 2: (no tools called)" in out
+            assert "  [1.1_solo] executing..." in out
+            assert "(no stdout output)" not in out
+
+
+def test_plan_job_with_own_output_watch_streams_it(capsys):
+    """Following (--watch) an in-process plan run streams its stdout.log even
+    though it has no child jobs, instead of stopping at the summary."""
+    import json
+    import yaml
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        snodo_dir = Path(tmp_dir) / ".snodo"
+        jobs_dir = snodo_dir / "jobs"
+        plans_dir = snodo_dir / "plans"
+
+        plan_dir = plans_dir / "inproc_w"
+        plan_dir.mkdir(parents=True)
+        (plan_dir / "plan.yml").write_text(yaml.dump({
+            "name": "inproc_w", "intent": "Run in-process and follow",
+            "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_solo"]}],
+        }))
+        (plan_dir / "status.json").write_text(json.dumps({
+            "tasks": {"1.1_solo": {"status": "completed"}}
+        }))
+
+        plan_job_dir = jobs_dir / "j_plan_inproc_w"
+        plan_job_dir.mkdir(parents=True)
+        (plan_job_dir / "task.json").write_text(json.dumps({"plan_name": "inproc_w"}))
+        (plan_job_dir / "state.json").write_text(json.dumps({"status": "completed", "job_type": "plan"}))
+        (plan_job_dir / "stdout.log").write_text(
+            "intent body\n"
+            "Turn 32: (no tools called)\n"
+        )
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            args = SimpleNamespace(composite_id="j_plan_inproc_w", watch=True)
+            res = logs_command(args)
+
+            assert res == 0
+            out = capsys.readouterr().out
+            assert "Following plan run j_plan_inproc_w" in out
+            assert "Turn 32: (no tools called)" in out
+            assert "Plan run j_plan_inproc_w finished (completed)" in out
+
+

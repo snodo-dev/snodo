@@ -297,15 +297,28 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
     child_jobs = _fetch_child_jobs()
     tasks_status = _get_plan_tasks()
 
+    # Establish which shape this plan run has rather than assuming it. A plan
+    # that ran its tasks in-process wrote the whole run — validator turns, tool
+    # calls, coder narration — to its own stdout.log, and the reader who asked
+    # to follow the run wants that output, not only the summary they already
+    # saw from `plan status`. A plan that spawned a child task job per task
+    # leaves the detail in those children, and the summary plus child ids is
+    # the answer (#272, #279). The two are told apart by whether the run owns
+    # child jobs; the summary is printed either way, as framing.
     if not watch:
         print(f"Job {job_id} is a plan run (plan: {plan_name or 'unnamed'}, status: {cur_status}).")
         if intent:
             print(f"Intent: {intent}")
-        print("Output is produced by child task jobs.\n")
-        _print_status_view(tasks_status, child_jobs)
-        _print_child_log_hints(child_jobs)
+        if child_jobs:
+            print("Output is produced by child task jobs.\n")
+            _print_status_view(tasks_status, child_jobs)
+            _print_child_log_hints(child_jobs)
+        else:
+            # No children: the run's output is the plan job's own stdout.
+            _print_status_view(tasks_status, child_jobs)
+            _stream_job_stdout(project_root, job_id, args)
         print(f"  Follow this plan live: snodo logs {job_id} --watch")
-        return 0
+        return job_status.get("exit_code", 0) or 0
 
     print(f"Following plan run {job_id} (plan: {plan_name or 'unnamed'})")
     if intent:
@@ -314,7 +327,10 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
 
     if cur_status in TERMINAL_STATUSES:
         _print_status_view(tasks_status, child_jobs)
-        print(f"Plan run {job_id} finished ({cur_status}).")
+        if not child_jobs:
+            # In-process run: its stdout.log is the run, even once ended.
+            _stream_job_stdout(project_root, job_id, args)
+        print(f"Plan run {job_id} finished ({cur_status}).", flush=True)
         return job_status.get("exit_code", 0) or 0
 
     _print_status_view(tasks_status, child_jobs)
@@ -325,8 +341,35 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
         for tid, entry in tasks_status.items()
     }
 
+    # The plan's own stdout is followed alongside its children: an in-process
+    # run puts everything there, a child-spawning run leaves it effectively
+    # empty, so reading it is free and neither shape is guessed at from one
+    # snapshot — a plan that has not yet spawned its first child still shows
+    # its own output the moment it appears.
+    try:
+        log_path = mgr._job_dir(job_id) / "stdout.log"
+    except Exception:
+        log_path = Path(project_root) / ".snodo" / "jobs" / job_id / "stdout.log"
+    try:
+        own_log = open(log_path) if log_path.exists() else None
+    except OSError:
+        own_log = None
+
+    def _drain_own() -> None:
+        if own_log is None:
+            return
+        try:
+            while True:
+                line = own_log.readline()
+                if not line:
+                    break
+                print(line, end="", flush=True)
+        except (OSError, ValueError):
+            pass
+
     try:
         while True:
+            _drain_own()
             time.sleep(1.0)
             try:
                 current_job = mgr.get_status(job_id)
@@ -363,12 +406,16 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                         print(f"  [{tid}] {tstat}", flush=True)
 
             if current_plan_status in TERMINAL_STATUSES:
+                _drain_own()
                 print()
                 _print_status_view(cur_tasks_status, children)
                 print(f"Plan run {job_id} finished ({current_plan_status}).", flush=True)
                 return current_job.get("exit_code", 0) or 0
     except KeyboardInterrupt:
         pass
+    finally:
+        if own_log is not None:
+            own_log.close()
     return 0
 
 
@@ -396,11 +443,10 @@ def _print_child_log_hints(child_jobs: list[dict]) -> None:
 
 def _show_job(project_root: str, job_id: str, args) -> int:
     """Show job stdout, delegating to the existing job handler."""
-    from snodo.jobs import JobManager, TERMINAL_STATUSES
+    from snodo.jobs import JobManager
     import json
 
     mgr = JobManager(project_root)
-    watch = getattr(args, "watch", False)
 
     try:
         job_dir = mgr._job_dir(job_id)
@@ -439,72 +485,94 @@ def _show_job(project_root: str, job_id: str, args) -> int:
     if is_plan_job:
         return _show_plan_job(project_root, job_id, args)
 
+    return _stream_job_stdout(project_root, job_id, args)
+
+
+def _stream_job_stdout(project_root: str, job_id: str, args) -> int:
+    """Stream a job's own stdout.log — the run's output — to the console.
+
+    One code path serves a plain task job and a plan run that executed its
+    tasks in-process: ``--watch`` tails the file until the job reaches a
+    terminal status and then drains what remains, while a plain read prints
+    the log once. The plan branch must reach the same output the same way
+    rather than re-implementing it, so the two can never drift on what
+    "following the output" means.
+    """
+    from snodo.jobs import JobManager, TERMINAL_STATUSES
+
+    mgr = JobManager(project_root)
+    watch = getattr(args, "watch", False)
+
+    try:
+        job_dir = mgr._job_dir(job_id)
+    except Exception:
+        job_dir = Path(project_root) / ".snodo" / "jobs" / job_id
     log_path = job_dir / "stdout.log"
 
-    if watch:
-        # Check if job is already finished and produced no stdout output
-        has_content = log_path.exists() and log_path.stat().st_size > 0
-        if not has_content:
+    if not watch:
+        content = mgr.get_logs(job_id)
+        if content:
+            print(content, end="")
+        else:
+            print("(no stdout output)")
+        return 0
+
+    # Check if job is already finished and produced no stdout output
+    has_content = log_path.exists() and log_path.stat().st_size > 0
+    if not has_content:
+        try:
+            st = mgr.get_status(job_id)
+            if st.get("status") in TERMINAL_STATUSES:
+                print("(no stdout output)")
+                return 0
+        except Exception as e:
+            _logger.debug("Could not get terminal status for job %s: %s", job_id, e)
+
+    if not log_path.exists():
+        # Wait briefly for stdout.log to appear if job is running
+        waited = 0
+        while not log_path.exists():
             try:
-                st = mgr.get_status(job_id)
-                if st.get("status") in TERMINAL_STATUSES:
+                status = mgr.get_status(job_id)
+                if status.get("status") in TERMINAL_STATUSES:
                     print("(no stdout output)")
                     return 0
             except Exception as e:
-                _logger.debug("Could not get terminal status for job %s: %s", job_id, e)
+                _logger.debug("Could not get status while waiting for stdout.log: %s", e)
+            time.sleep(0.2)
+            waited += 1
+            if waited > 25:  # 5 seconds
+                print("(no stdout output — file not created yet)")
+                return 1
 
-        if not log_path.exists():
-            # Wait briefly for stdout.log to appear if job is running
-            waited = 0
-            while not log_path.exists():
-                try:
-                    status = mgr.get_status(job_id)
-                    if status.get("status") in TERMINAL_STATUSES:
-                        print("(no stdout output)")
-                        return 0
-                except Exception as e:
-                    _logger.debug("Could not get status while waiting for stdout.log: %s", e)
-                time.sleep(0.2)
-                waited += 1
-                if waited > 25:  # 5 seconds
-                    print("(no stdout output — file not created yet)")
-                    return 1
-
-        lines_printed = 0
-        try:
-            with open(log_path) as f:
-                f.seek(0)
-                while True:
-                    line = f.readline()
-                    if line:
-                        print(line, end="", flush=True)
-                        lines_printed += 1
-                    else:
-                        try:
-                            status = mgr.get_status(job_id)
-                            if status.get("status") in TERMINAL_STATUSES:
-                                while True:
-                                    line = f.readline()
-                                    if line:
-                                        print(line, end="", flush=True)
-                                        lines_printed += 1
-                                    else:
-                                        break
-                                break
-                        except Exception as e:
-                            _logger.debug("Could not read job status while following logs: %s", e)
-                        time.sleep(0.5)
-            if lines_printed == 0:
-                print("(no stdout output)")
-        except KeyboardInterrupt:
-            pass
-        return 0
-
-    content = mgr.get_logs(job_id)
-    if content:
-        print(content, end="")
-    else:
-        print("(no stdout output)")
+    lines_printed = 0
+    try:
+        with open(log_path) as f:
+            f.seek(0)
+            while True:
+                line = f.readline()
+                if line:
+                    print(line, end="", flush=True)
+                    lines_printed += 1
+                else:
+                    try:
+                        status = mgr.get_status(job_id)
+                        if status.get("status") in TERMINAL_STATUSES:
+                            while True:
+                                line = f.readline()
+                                if line:
+                                    print(line, end="", flush=True)
+                                    lines_printed += 1
+                                else:
+                                    break
+                            break
+                    except Exception as e:
+                        _logger.debug("Could not read job status while following logs: %s", e)
+                    time.sleep(0.5)
+        if lines_printed == 0:
+            print("(no stdout output)")
+    except KeyboardInterrupt:
+        pass
     return 0
 
 
