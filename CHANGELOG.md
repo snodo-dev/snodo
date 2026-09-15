@@ -28,6 +28,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
   value passes, and `--update-baseline` refuses while the check is red so a new
   value cannot be laundered in. It runs in the local gate, the CI gate and the
   release. (Fixes #280)
+
+### Fixed
+
+- A coder run that exhausts its **turn** budget has its produced work judged
+  instead of assumed absent, exactly as #281 made a timed-out run's work judged.
+  The two bounded outcomes — the clock and the turn budget — sat side by side in
+  the executor's `try` block and said different things about the same kind of
+  event: `CoderTimeoutError` consulted the task-branch work-recovery probe and
+  carried any work it found into post-execute validation, while
+  `TurnBudgetExhausted` propagated unchanged with `artifacts_count 0`. Both now
+  route through one shared probe, so the two paths cannot drift apart again. A
+  turn-budget exhaustion also no longer canonicalises to `blocker`, which read
+  as a verdict about code no judge saw; it resolves to the operational
+  `environment_error` (ADR 015), and its hint names the run's turn bound rather
+  than the spec, the code or an install. The run fact is still recorded when the
+  recovered work passes, so a bounded run never proceeds silently. No halt type,
+  severity or status value was added. (Fixes #282)
 ## [0.10.0] — 2026-09-14
 
 ### Added

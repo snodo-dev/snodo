@@ -599,6 +599,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._last_timed_out: bool = False
         self._last_timeout_seconds: Optional[int] = None
         self._last_timeout_tail: str = ""
+        self._last_turn_budget_exhausted: bool = False
     
     def close(self) -> None:
         """Release resources this builder owns.
