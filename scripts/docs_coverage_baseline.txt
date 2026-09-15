@@ -20,7 +20,6 @@ command job prune
 command job retry
 command job unarchive
 command logs
-command models
 command plan add-task
 command plan delete
 command session new

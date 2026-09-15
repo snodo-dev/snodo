@@ -296,6 +296,37 @@ discarded spec stays readable with `snodo task show <task_id>`.
 | `dashboard` | TUI (`snop`) |
 | `agent` / `sandbox` / `install` / `uninstall` | Agent memory; Docker sandbox; Claude Desktop MCP entries |
 
+### Models
+
+`snodo models` lists the configured providers, and `snodo models --provider=<name>`
+lists that provider's models with context window and price. `--stats` reports
+what your own jobs actually spent and how they ran, aggregated from project
+records.
+
+`snodo models --benchmark` answers a different question: how fast is a model on
+one fixed task? It sends **one prompt, the same prompt every run**, read from
+`snodo/cli/commands/model_benchmark_prompt.txt` in the repository, and reports
+the output tokens per second, the time to first token and the total wall time.
+Because the prompt never varies, two providers produce two numbers worth
+comparing — unlike `--stats`, whose rate moves with whatever prompts happened to
+run. The prompt's identity (opening line, length and content hash) is printed
+with the result, so you can tell whether two runs used the same prompt.
+Changing the prompt file makes past numbers incomparable; the file says so.
+
+Narrow the run to a single model with the same flags that filter a listing:
+
+```bash
+snodo models --benchmark --provider=deepseek --id-contains=chat
+```
+
+`--benchmark` makes one **real, billed API call**. It is never reachable from
+any other command and runs only when you pass the flag; the command prints the
+model, the prompt identity and the fact that it will spend before it does. The
+output names the token-count basis as well: throughput is computed from the
+provider's reported usage when it reports any, and from a local tokenizer when
+it does not — a comparison between a provider-reported count and a locally
+estimated one is flagged as such rather than silently averaged.
+
 ### Plan
 
 | Command | Description |
