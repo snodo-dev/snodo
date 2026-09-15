@@ -53,6 +53,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A coder run now records which binary produced it, a missing coder says which
+  PATH it searched, and a stopped server no longer leaves a child holding its
+  port. An operator spent an hour discovering that their coder was running a
+  version of `opencode` they had already uninstalled: two installs existed, the
+  older one earlier on the PATH a long-running `snodo serve` had captured hours
+  before, so every dispatched job used the old binary — and nothing in the halt
+  payload said which binary had run. The subprocess adapter now resolves the
+  binary in the process that will invoke it, at the moment it runs, and records
+  its absolute path and self-reported version (`coder_binary`/`coder_version`)
+  on the artifact and in the halt payload, so two installs of the same tool are
+  distinguishable after the fact. `CoderUnavailableError` names the PATH that
+  was searched, which is what makes "not on PATH" actionable when the operator
+  can see the binary on theirs. `snodo ready` reports the resolved install and
+  version (a new unscored INFO finding) rather than only that some `opencode`
+  exists. On the server side, the tunnel's MCP and cloudflared children are
+  spawned in their own process groups and the whole group is torn down on stop,
+  so nothing either started outlives it; and `snodo serve` names the process
+  holding a port and how long it has held it instead of surfacing a raw
+  `[Errno 48] address already in use`. PATH resolution is unchanged — being
+  silent about its result was the defect, not resolving it at invocation. No
+  halt type, severity or status value was added. (Fixes #290)
+
 - A recovery attempt whose spec asserts evidence the tree no longer holds is
   reported instead of dispatched. A spec that opens "the booking field is
   `<input type="url">`" is making a checkable claim, and an earlier attempt can

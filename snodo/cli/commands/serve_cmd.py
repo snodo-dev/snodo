@@ -186,6 +186,17 @@ def _run_server(args, protocol) -> int:
     if port is not None:
         mcp.settings.port = port
 
+    # A non-stdio server owns a port, and the common way a start fails is that
+    # a previous server's child still holds it. Ask whether a listener already
+    # owns the port BEFORE starting uvicorn — and before touching process
+    # state — so the failure reads as a sentence naming the holder and how long
+    # it has been there, instead of a raw ``[Errno 48] ... address already in
+    # use`` stack trace (Fixes #290). The check is read-only (lsof/psutil) — it
+    # never binds, so it cannot itself become the stale holder it reports.
+    if transport != "stdio" and _port_holder_pid(port) is not None:
+        print(f"Error: {_port_in_use_explanation(port)}", file=sys.stderr)
+        return 1
+
     # Accept proxied requests when not using stdio
     if transport != "stdio":
         os.environ["FORWARDED_ALLOW_IPS"] = "*"
@@ -206,7 +217,17 @@ def _run_server(args, protocol) -> int:
         print()
         print("  Or use: snodo serve --tunnel (requires free snodo account)")
 
-    mcp.run(transport=transport)
+    try:
+        mcp.run(transport=transport)
+    except SystemExit as e:
+        # uvicorn reports a bind failure by logging the OSError and exiting
+        # with STARTUP_FAILURE (3). The port can be taken between the check
+        # above and this bind; explain that failure rather than re-raising the
+        # bare SystemExit. Any other exit code is not ours to reinterpret.
+        if transport != "stdio" and e.code == 3:
+            print(f"Error: {_port_in_use_explanation(port)}", file=sys.stderr)
+            return 1
+        raise
     return 0
 
 
@@ -504,6 +525,123 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
     path.write_text(json.dumps(to_save, indent=2) + "\n")
 
 
+def _port_holder_pid(port: int, host: str = "127.0.0.1") -> Optional[int]:
+    """Return the PID listening on *host*:*port*, or None if it cannot be found.
+
+    ``lsof`` is the portable answer on macOS and Linux (both ship it, or a
+    package away). When it is absent — a minimal container, a Windows host —
+    the fallback is ``psutil``, which is already a test-time dependency. The
+    helper never raises: not being able to find the holder is a reason to say
+    less, not to turn a bind failure into a second stack trace.
+    """
+    try:
+        out = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],  # noqa: S607 - bare name resolved from PATH by design
+            capture_output=True, text=True, timeout=5,
+        )
+        first = next((line.strip() for line in out.stdout.splitlines() if line.strip()), "")
+        if first.isdigit():
+            return int(first)
+    except (OSError, subprocess.SubprocessError):
+        _logger.debug("lsof could not identify the holder of port %s", port, exc_info=True)
+    try:
+        import psutil
+
+        for conn in psutil.net_connections(kind="inet"):
+            if (
+                conn.status == psutil.CONN_LISTEN
+                and conn.laddr
+                and conn.laddr.port == port
+                and conn.pid is not None
+            ):
+                return conn.pid
+    except Exception:  # noqa: BLE001 — an observer must never break the start path
+        _logger.debug("psutil could not identify the holder of port %s", port, exc_info=True)
+    return None
+
+
+def _describe_process(pid: int) -> str:
+    """Describe a process by command and elapsed runtime, best-effort.
+
+    Names HOW LONG the holder has been there because that is the fact that
+    distinguishes the child this server just orphaned from an unrelated
+    service the operator forgot about.
+    """
+    try:
+        out = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["ps", "-o", "etime=,command=", "-p", str(pid)],  # noqa: S607 - bare name resolved from PATH by design
+            capture_output=True, text=True, timeout=5,
+        )
+        line = out.stdout.strip()
+        if line:
+            elapsed, _, command = line.partition(" ")
+            command = command.strip() or "?"
+            return f"pid {pid} ({command}) has held it for {elapsed}"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return f"pid {pid} holds it"
+
+
+def _port_in_use_explanation(port: int, host: str = "127.0.0.1") -> str:
+    """A sentence, not a stack trace, for 'cannot bind this port'.
+
+    Reports who holds the port and for how long. This is the common aftermath
+    of a server that was killed without its child being reaped: the child (or
+    something it spawned) still owns the port, and the next start must name it
+    rather than surfacing ``[Errno 48] ... address already in use`` raw
+    (Fixes #290).
+    """
+    pid = _port_holder_pid(port, host)
+    if pid is not None:
+        return (
+            f"Port {port} is already in use: {_describe_process(pid)}. "
+            "That process — often an MCP child left behind by a previous "
+            "server — must be stopped before this one can bind. "
+            f"Stop it with: kill {pid}"
+        )
+    return (
+        f"Port {port} is already in use, but the holder could not be "
+        "identified. Find it with: lsof -nP -iTCP:%d -sTCP:LISTEN" % port
+    )
+
+
+def _terminate_process_group(proc, timeout: float = 5.0) -> None:
+    """Stop *proc* and everything in its process group, then reap it.
+
+    A server that spawns children owns them: terminating only the direct child
+    leaves whatever IT started — an MCP listener holding the port — alive. The
+    children are started in their own session (``start_new_session=True``), so
+    the whole group is addressable with ``killpg`` and can be torn down in one
+    act (Fixes #290). The group is signalled SIGTERM first and SIGKILL after
+    the grace period; a process whose group cannot be signalled (already
+    exited) is signalled directly instead.
+    """
+    if proc is None:
+        return
+    _signal_process_group(proc.pid, signal.SIGTERM)
+    try:
+        proc.wait(timeout=timeout)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    _signal_process_group(proc.pid, signal.SIGKILL)
+    try:
+        proc.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _signal_process_group(pid: int, sig: int) -> None:
+    """Signal *pid*'s whole process group, falling back to the process alone."""
+    try:
+        os.killpg(os.getpgid(pid), sig)
+    except (ProcessLookupError, OSError):
+        try:
+            os.kill(pid, sig)
+        except (ProcessLookupError, OSError):
+            pass
+
+
 def _wait_for_server_bind(mcp_process, sleep_fn=None) -> bool:
     """Give the MCP server 2s to bind, then report if it is alive.
 
@@ -639,11 +777,16 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     if mode != "all":
         mcp_cmd.extend(["--mode", mode])
 
+    # start_new_session puts the MCP child (and anything IT spawns) in its own
+    # process group, so stopping the tunnel stops the whole tree: terminating
+    # only the direct child left the MCP listener alive holding the port, and
+    # the next start died on a raw EADDRINUSE (Fixes #290).
     mcp_process = subprocess.Popen(  # noqa: S603 - argv list (no shell); protocol path and mode are single argv elements, never interpreted
         mcp_cmd,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
+        start_new_session=True,
     )
 
     # Verify MCP server started — give uvicorn 2s to bind, then check process alive
@@ -665,6 +808,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        start_new_session=True,
     )
 
     # 6. Wait for cloudflared to connect
@@ -688,20 +832,13 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # 7. Wait for Ctrl+C
     def _cleanup(*_):
         print("\nStopping...")
+        # Stop the whole process group of each child, so nothing either one
+        # started outlives the server holding the port (Fixes #290).
         for proc in [cf_process, mcp_process]:
             try:
-                proc.terminate()
+                _terminate_process_group(proc)
             except Exception as e:
-                _logger.debug("Could not terminate process: %s", e)
-        for proc in [cf_process, mcp_process]:
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                try:
-                    proc.kill()
-                    proc.wait(timeout=2)
-                except Exception as e:
-                    _logger.debug("Could not kill process: %s", e)
+                _logger.debug("Could not terminate process group: %s", e)
 
     signal.signal(signal.SIGINT, _cleanup)
     signal.signal(signal.SIGTERM, _cleanup)
