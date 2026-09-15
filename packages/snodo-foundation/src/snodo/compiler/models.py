@@ -529,6 +529,9 @@ class PlanTask(BaseModel):
     parent_task_ref: Optional[str] = Field(default=None)
     depth: int = Field(default=0, ge=0)
     spec_hash: Optional[str] = Field(default=None)
+    completed_by: Optional[str] = Field(default=None)
+    completed_at: Optional[str] = Field(default=None)
+    judged: Optional[bool] = Field(default=None)
 
     def __getitem__(self, item: str) -> Any:
         if hasattr(self, item):
@@ -669,6 +672,9 @@ class Plan(BaseModel):
         # Merge status_tasks
         for tid, entry in status_tasks.items():
             tid_str = str(tid)
+            completed_by_val = None
+            completed_at_val = None
+            judged_val = None
             if isinstance(entry, str):
                 status_str = entry
                 parent_ref = None
@@ -686,6 +692,15 @@ class Plan(BaseModel):
                 hash_val = entry.get("spec_hash")
                 if hash_val is not None:
                     hash_val = str(hash_val)
+                completed_by_val = entry.get("completed_by")
+                if completed_by_val is not None:
+                    completed_by_val = str(completed_by_val)
+                completed_at_val = entry.get("completed_at")
+                if completed_at_val is not None:
+                    completed_at_val = str(completed_at_val)
+                judged_val = entry.get("judged")
+                if judged_val is not None:
+                    judged_val = bool(judged_val)
             else:
                 status_str = "pending"
                 parent_ref = None
@@ -698,6 +713,9 @@ class Plan(BaseModel):
                 parent_task_ref=parent_ref,
                 depth=depth_val,
                 spec_hash=hash_val,
+                completed_by=completed_by_val,
+                completed_at=completed_at_val,
+                judged=judged_val,
             )
 
         return cls(

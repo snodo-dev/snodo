@@ -271,6 +271,14 @@ on top of that spec (a positional description does the same); `--replace-spec
 "…"` replaces it, which is the only retry that discards anything, and the
 discarded spec stays readable with `snodo task show <task_id>`.
 
+### Completing a task outside the loop (by hand)
+
+When an operator completes a task by hand outside the loop (for instance, inspecting a preserved worktree, merging the changes, and verifying the work manually), record the completion with:
+
+`snodo task complete <task_id>`
+
+This records the provenance in the audit log (who, when, unjudged by the engine) and updates the plan's `status.json` so the plan advances from that record rather than manual file edits. Supported options include `--plan`, `--who`, `--notes`, and `--json`.
+
 ## CLI Reference
 
 `snodo <command> --help` is authoritative; the table below is the map.
