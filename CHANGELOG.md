@@ -28,6 +28,160 @@ snodo uses [Semantic Versioning](https://semver.org/).
   value passes, and `--update-baseline` refuses while the check is red so a new
   value cannot be laundered in. It runs in the local gate, the CI gate and the
   release. (Fixes #280)
+## [0.10.0] — 2026-09-14
+
+### Added
+
+- `snodo intake` proposes validator criteria from a repository's own decision
+  records, one at a time, each naming the record it came from, and writes the
+  protocol only after the operator accepts. Survey derives the extension of
+  governance from code — which modules exist, how each is verified, where
+  decisions live — and deliberately does not derive the protocol's normative
+  content, because that content is prose a human wrote. But the prose is often
+  in the repository: a real project's decision records stated the very rules
+  its protocol encoded by hand. The boundary is not "a human must author the
+  normative part" — it is that intake never opened the records. Intake does,
+  and offers what they state. A sentence is proposable only from a record's
+  **Decision** section: Context is background, Consequences are effects rather
+  than rules, Alternatives considered is the road not taken, and Status is
+  metadata, so none of them is offered and a record with no Decision section
+  proposes nothing. The citation discipline is the one a boundary judge
+  already uses on source files — every proposal cites its record, resolved
+  against the repository before the proposal is built, so a criterion without
+  a record is never proposed. `snodo intake --json` reports the proposals and
+  writes nothing; `--reject-all` writes nothing; `--validator <id>` chooses the
+  target (default: the protocol's architecture validator, else its first).
+  This is a sibling of survey rather than part of it: survey's contract is that
+  it writes nothing, and making that conditional would weaken it for every
+  caller (Fixes #259).
+
+### Changed
+
+- The rule that binds a model name for litellm has one home. Every completion
+  this system issues must bind litellm's routing name together with its
+  `api_base` and `api_key`; a provider block named for itself is not a provider
+  litellm knows. That rule was written three times, and the third copy —
+  `protocol_adherence` — passed the configured name straight through, so a
+  validator failed against a gateway-style provider while the engine path, which
+  had it right, worked. Two implementations that disagree, one of them wrong, is
+  the worst arrangement to debug. `build_completion_fn` in the validator runner
+  is now the single implementation; `_build_completion_fn` in the engine loop is
+  gone and its four call sites import the shared factory, and
+  `protocol_adherence` no longer overrides the bound name. A guard test walks
+  both package trees and fails if a second implementation reappears under any
+  name. (Fixes #255, Fixes #256)
+
+### Fixed
+
+- A judge returns a verdict, and a non-verdict is an error. The abstention
+  state — `severity=None` plus `abstention_reason`, `unexamined_tools`,
+  `last_words`, `abstention_policy`, two halt types, an in-place re-judge loop
+  and two decision records — began as #252's correct worry that a judge which
+  did not decide must not be reported as a pass. The remedy was wrong: `error`
+  already existed and already failed closed, and the invented state spread to
+  twenty-one call sites across six packages. Observed on a real project: five
+  consecutive runs of one task where the architecture judge read fourteen files,
+  answered in prose, was asked for a verdict, and went back to reading — because
+  the loop offered every read tool on every turn, including the turn after it
+  asked the judge to stop and decide. The judge is now made to decide: the final
+  turn offers `submit_verdict` alone, the read tools are withdrawn, and the judge
+  is told that a verdict on partial reading is a real verdict (`warn` is what it
+  is for). One that still returns nothing is an error and fails closed. Removing
+  the state took 1,606 lines with it. `ValidatorResult.severity` is now required.
+  ADR 045 supersedes ADR 042 and ADR 043 and records why the vocabulary is
+  closed. (Fixes #278, and with it the non-blocking denominator arithmetic of
+  #277, which described a policy that no longer exists.)
+
+- A timed-out coder run has its work judged rather than discarded. A run that
+  finishes and then hits the clock is an operational outcome, not a verdict about
+  the code. Observed on a real project: the coder fixed the field, wrote the
+  inventory document, added the regression test, ran the suite green and reported
+  "Done" — then the 3600s timeout fired. The engine raised a generic
+  `LLMCallError`, recorded `artifacts_count: 0`, skipped post-validation and
+  halted the task as a blocker with a hint to fix the coder's install. The
+  finished deliverables sat on the task branch while the plan reported the task
+  blocked, and a day was spent on it. A timeout now raises `CoderTimeoutError`
+  and the executor consults the existing task-branch work-recovery probe before
+  declaring a fault; work found there is carried into post-execute validation
+  exactly as freshly produced work would be, so the judges decide instead of the
+  engine assuming. A timeout belongs with the coder that could not be invoked —
+  it reports as the operational halt it is, and no halt type was added for it.
+  (Fixes #281)
+
+- A completed job's worktree and branch are torn down. #275 moved worktree
+  creation to the task identity; the teardown was not moved with it, so the
+  wrapper asked git to remove a worktree that was never created under that name,
+  found nothing, and left the real one registered — and a branch checked out in a
+  worktree cannot be deleted, so both survived a clean merge. A real project
+  accumulated around a hundred worktrees and as many `task/*` branches this way,
+  which is also what made `snodo task list` unreadable. The identity has one home
+  now, `resolve_task_identity`, used by both creation and teardown, and teardown
+  is one shared sequence: worktree first, then only branches whose work is
+  already in the base. A failed or blocked run still preserves both for
+  inspection. (Fixes #276)
+
+- Task status is settled by git containment rather than by an audit event alone.
+  A task branch still on disk was read as work in flight however long ago it
+  landed, and `merged` was reachable only through a `task_merged` event, so a
+  task whose event was absent or keyed differently stayed `in_progress` forever.
+  Observed on a real project: 161 task branches, 148 of them fully merged into
+  main, every one of them reported in progress — and 113 of those were named for
+  a job rather than a task, duplicating work that was already listed correctly
+  under its own id. Containment in the base is now the authority, and a
+  job-executed task appears once, under the task identity. (Fixes #275)
+
+- A blocked plan task names the job that reaches its logs. `snodo plan status`
+  reported a blocked row and `snodo logs <plan_job>` said to inspect
+  `<child_job_id>` without naming one, so the only way from a blocked task to its
+  output was to grep the jobs directory by hand. Rows that need a look now carry
+  the command to look; healthy and never-run rows stay clean. Following a plan
+  remains one command — status points at `snodo logs <plan_job> --watch` rather
+  than shipping a second way to watch. (Fixes #279)
+
+- Opening a git repository no longer leaves a persistent `git cat-file` child
+  behind to be terminated later. GitPython's default object DB starts a
+  long-lived `git cat-file --batch-check` subprocess on the first object read
+  and ends it only from `Repo.__del__`; because `Repo`/`Git` form reference
+  cycles, that finalizer runs on a later cyclic-GC pass — an unbounded time
+  after the work that needed it, and possibly inside an unrelated task or test.
+  The child dies by `Popen.terminate()`, i.e. `os.kill(pid, SIGTERM)`, which is
+  how a test suite came to signal a process it never created: under `-n 24`,
+  `test_cancel_running_job` patched `os.kill` process-wide and intermittently
+  recorded extra SIGTERMs from a `git cat-file` child that another test had
+  orphaned earlier. Every repository open now goes through
+  `snodo.tools.git.open_repo`, which uses GitPython's in-process object DB and
+  is used as a context manager where the work is function-scoped, so no such
+  child exists to outlive its work. A new autouse guard (`Fixes #258`) fails any
+  test that leaves a live child process or non-daemon thread running into the
+  next one, so a future leak is caught where it is introduced. The
+  `test_cancel_running_job` assertion stays `assert_any_call` — that is the
+  correct statement of its intent, independent of this leak.
+
+- The reduced-gate banner states its count or says nothing, and appears only
+  when a reduction happened. It exists to say what did not run, and was wrong in
+  both directions: under `pytest -n` the deselected count interpolated as empty,
+  leaving "the end-to-end (e2e) suite were deselected" — ungrammatical, and
+  missing the only quantitative thing it said — because the deselection happens
+  in xdist workers and the controller had no tally to report. And it printed on
+  any run whose marker filter excluded e2e, including scoped runs like
+  `pytest tests/jobs` that contain no e2e test at all: it announced a reduction
+  that never happened and listed three CI-only gates as the reason. A warning
+  that is wrong on the runs where it is least needed teaches a reader to skip
+  it, and then it fails on the run where it was right. (Fixes #257)
+
+- The change section handed to a judge is budgeted from what changes here
+  actually weigh. `CHANGE_SECTION_CHAR_LIMIT` was set at 24,000 characters
+  without measurement; across the last forty non-merge commits on main (p50
+  21,444, p75 34,004, p90 53,487, max 103,626) that truncated 45% of them, so
+  the "PART OF the change" path introduced for lockfile-and-bundle outliers had
+  become the norm — and a judge routinely told its view is partial is a judge
+  pushed back toward reading the tree, which is what handing it the change was
+  meant to stop. The limit is now 64,000 characters, leaving 95% of this
+  repository's commits untruncated. The per-file cap moved with it, 8,000 to
+  16,000: measured against 241 non-bulk source chunks the old cap was cutting
+  14.1% of hand-edited files — including a 31,030-character one — which is the
+  content a judge most needs. Both distributions are recorded beside the
+  constants. (Fixes #274)
 
 ## [0.9.0] — 2026-09-14
 
@@ -124,51 +278,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
   bounded, alongside `severity=None`. It is never mined for a finding or a
   severity — a judge that did not submit a verdict did not reach one.
   (Fixes #270)
-### Added
-
-- `snodo intake` proposes validator criteria from a repository's own decision
-  records, one at a time, each naming the record it came from, and writes the
-  protocol only after the operator accepts. Survey derives the extension of
-  governance from code — which modules exist, how each is verified, where
-  decisions live — and deliberately does not derive the protocol's normative
-  content, because that content is prose a human wrote. But the prose is often
-  in the repository: a real project's decision records stated the very rules
-  its protocol encoded by hand. The boundary is not "a human must author the
-  normative part" — it is that intake never opened the records. Intake does,
-  and offers what they state. A sentence is proposable only from a record's
-  **Decision** section: Context is background, Consequences are effects rather
-  than rules, Alternatives considered is the road not taken, and Status is
-  metadata, so none of them is offered and a record with no Decision section
-  proposes nothing. The citation discipline is the one a boundary judge
-  already uses on source files — every proposal cites its record, resolved
-  against the repository before the proposal is built, so a criterion without
-  a record is never proposed. `snodo intake --json` reports the proposals and
-  writes nothing; `--reject-all` writes nothing; `--validator <id>` chooses the
-  target (default: the protocol's architecture validator, else its first).
-  This is a sibling of survey rather than part of it: survey's contract is that
-  it writes nothing, and making that conditional would weaken it for every
-  caller (Fixes #259).
-
 ### Fixed
-
-- Opening a git repository no longer leaves a persistent `git cat-file` child
-  behind to be terminated later. GitPython's default object DB starts a
-  long-lived `git cat-file --batch-check` subprocess on the first object read
-  and ends it only from `Repo.__del__`; because `Repo`/`Git` form reference
-  cycles, that finalizer runs on a later cyclic-GC pass — an unbounded time
-  after the work that needed it, and possibly inside an unrelated task or test.
-  The child dies by `Popen.terminate()`, i.e. `os.kill(pid, SIGTERM)`, which is
-  how a test suite came to signal a process it never created: under `-n 24`,
-  `test_cancel_running_job` patched `os.kill` process-wide and intermittently
-  recorded extra SIGTERMs from a `git cat-file` child that another test had
-  orphaned earlier. Every repository open now goes through
-  `snodo.tools.git.open_repo`, which uses GitPython's in-process object DB and
-  is used as a context manager where the work is function-scoped, so no such
-  child exists to outlive its work. A new autouse guard (`Fixes #258`) fails any
-  test that leaves a live child process or non-daemon thread running into the
-  next one, so a future leak is caught where it is introduced. The
-  `test_cancel_running_job` assertion stays `assert_any_call` — that is the
-  correct statement of its intent, independent of this leak.
 
 - Read tools can no longer reach above the workspace root, and no longer offer
   version-control internals or derived build output as though they were the
