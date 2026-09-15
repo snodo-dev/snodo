@@ -510,6 +510,60 @@ class TestHaltFooterSuggestions:
         # argument is a suggestion to rewrite the task when pasted.
         assert out.strip().endswith("snodo run --retry task_abc")
 
+    def test_halt_without_a_decision_does_not_offer_authorize(self, capsys):
+        """A halt with no pending decision must not name `snodo authorize`.
+
+        The recorded fault: a halted task printed `snodo authorize <task_id>`
+        and running it answered "No pending decision for task ..." — the
+        suggestion is derived from the halt's shape, not from whether a decision
+        was issued (Fixes #288)."""
+        from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
+
+        payload = {
+            "halt_type": "escalate",
+            "final_decision": "escalate",
+            "status": "blocked",
+            "reason": "test",
+            "task_id": "task_no_decision",
+            "task_spec": "do stuff",
+            "validator_results": [],
+            # No `adjudicable` key: no decision record exists for this task.
+        }
+        tree = ClosureNode(task_id="task_no_decision", depth=0, outcome="escalate",
+                           halt_payload=payload)
+        _report_closure(tree, {}, session_id="sess_xyz")
+
+        out = capsys.readouterr().out
+        assert "snodo authorize" not in out
+        assert "snodo run --retry task_no_decision" in out
+
+    def test_halt_with_a_decision_names_authorize(self, capsys):
+        """A halt with an adjudicable decision names it, so the operator knows
+        the escape hatch is real (Fixes #288)."""
+        from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
+
+        payload = {
+            "halt_type": "escalate",
+            "final_decision": "escalate",
+            "status": "blocked",
+            "reason": "test",
+            "task_id": "task_has_decision",
+            "task_spec": "do stuff",
+            "validator_results": [],
+            "adjudicable": True,
+        }
+        tree = ClosureNode(task_id="task_has_decision", depth=0, outcome="escalate",
+                           halt_payload=payload)
+        _report_closure(tree, {}, session_id="sess_xyz")
+
+        out = capsys.readouterr().out
+        assert "snodo authorize task_has_decision" in out
+        assert "snodo run --retry task_has_decision" in out
+
     def test_blocker_halt_offers_a_retry(self, capsys):
         """A genuine blocker — a judge faulted the code — keeps the coder retry
         suggestion."""

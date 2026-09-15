@@ -484,6 +484,68 @@ class TestAutoWriteHaltPayloadEdges:
 
 
 # ---------------------------------------------------------------------------
+# _auto_write_halt_payload — the adjudicable flag (Fixes #288)
+# ---------------------------------------------------------------------------
+
+class TestHaltPayloadAdjudicable:
+    """The payload records whether `snodo authorize` has a decision to sign.
+
+    The hint and the CLI follow-up name authorize only when this is true — a
+    halt with no pending decision must not offer a command that answers "No
+    pending decision" (Fixes #288).
+    """
+
+    def _blocked_state(self):
+        state = LoopState(task=_make_task(), current_mode="producer")
+        state.is_complete = False
+        state.is_blocked = True
+        state.halt_type = "escalated"
+        return state
+
+    def test_no_pending_decision_is_not_adjudicable(self):
+        builder, mgr, session = _make_builder_with_session(decisions={})
+        builder._merge_into_job_state = MagicMock()
+        payload = builder._build_halt_payload(self._blocked_state())
+        assert "adjudicable" not in payload
+        assert "snodo authorize" not in payload["hint"]
+
+    def test_warn_adjudication_is_adjudicable(self):
+        builder, mgr, session = _make_builder_with_session(decisions={
+            "pending_decisions": {
+                "t1": {"type": "adjudicate", "severity": "warn",
+                       "validator_id": "sec", "justification": "x"},
+            },
+        })
+        payload = builder._build_halt_payload(self._blocked_state())
+        assert payload["adjudicable"] is True
+        assert "snodo authorize" in payload["hint"]
+
+    def test_blocker_adjudication_is_not_adjudicable(self):
+        """A blocker is non-overridable (INV3), so authorize refuses to mint it
+        — naming it would promise a hatch that is not there (Fixes #288)."""
+        builder, mgr, session = _make_builder_with_session(decisions={
+            "pending_decisions": {
+                "t1": {"type": "adjudicate", "severity": "blocker",
+                       "validator_id": "sec", "justification": "x"},
+            },
+        })
+        payload = builder._build_halt_payload(self._blocked_state())
+        assert "adjudicable" not in payload
+        assert "snodo authorize" not in payload["hint"]
+
+    def test_set_model_proposal_is_adjudicable(self):
+        builder, mgr, session = _make_builder_with_session(decisions={
+            "pending_decisions": {
+                "t1": {"type": "set_model", "scope": "coder",
+                       "proposed_model": "m", "justification": "x"},
+            },
+        })
+        payload = builder._build_halt_payload(self._blocked_state())
+        assert payload["adjudicable"] is True
+        assert "snodo authorize" in payload["hint"]
+
+
+# ---------------------------------------------------------------------------
 # _auto_write_classification — session exception + classifications-not-dict
 # ---------------------------------------------------------------------------
 

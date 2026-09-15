@@ -289,6 +289,26 @@ def _build_blocker_hint(
     return "This halt can be fixed: " + " or ".join(phrases) + "."
 
 
+def _has_adjudicable_decision(
+    session_manager: Any, session_id: Optional[str], task_id: str,
+) -> bool:
+    """Whether ``snodo authorize <task_id>`` would find a decision to sign.
+
+    The accept-rule itself lives beside INV3 in
+    ``snodo.infrastructure.decisions``; this only resolves the session. Any
+    failure to read the session counts as "no decision" — the hint must never
+    promise a hatch it could not confirm (Fixes #288).
+    """
+    if not session_manager or not session_id:
+        return False
+    try:
+        session = session_manager.load_session(session_id)
+    except Exception:
+        return False
+    from snodo.infrastructure.decisions import pending_adjudicable_decision
+    return pending_adjudicable_decision(session, task_id) is not None
+
+
 def _build_hint(
     halt: str,
     halt_type: Optional[str] = "",
@@ -297,13 +317,24 @@ def _build_hint(
     reason: Optional[str] = None,
     timed_out: bool = False,
     turn_budget_exhausted: bool = False,
+    adjudicable: bool = False,
 ) -> str:
     if halt == "escalate":
+        # The escape hatch is named only when a decision is actually waiting:
+        # `snodo authorize` answers "No pending decision" otherwise, and a hint
+        # that sends the operator looking for a hatch that is not there costs
+        # the time the halt itself needed (Fixes #288).
+        if adjudicable:
+            return (
+                "Address the blocking concerns and re-run a revised task. "
+                "If you believe the block is incorrect, a decision is pending: "
+                "use `snodo authorize <task_id>`.\n"
+                "Run: snodo authorize to list all pending decisions."
+            )
         return (
-            "Address the blocking concerns and re-run a revised task. "
-            "If you believe the block is incorrect, use "
-            "`snodo authorize <task_id>`.\n"
-            "Run: snodo authorize to list all pending decisions."
+            "Address the blocking concerns and re-run a revised task. There is "
+            "no pending decision for this task, so there is nothing to sign; "
+            "revise the spec or the code and re-run."
         )
     if halt in ("validator_error", "internal_error"):
         return (
@@ -678,6 +709,14 @@ class WritebackMixin:
             or meta.get("turn_budget_exhausted")
         )
 
+        # Whether `snodo authorize` would find a decision to sign for this task.
+        # Derived from the session that actually holds the pending proposals, so
+        # the hint and the CLI follow-up name an escape hatch only when it
+        # answers (Fixes #288).
+        adjudicable = _has_adjudicable_decision(
+            self._session_manager, self._session_id, loop_state.task.id,
+        )
+
         payload = {
             "status": "blocked" if loop_state.is_blocked else "completed",
             "halt_type": halt,
@@ -709,6 +748,7 @@ class WritebackMixin:
                 loop_state.validation_results, reason=blocker_reason,
                 timed_out=timed_out,
                 turn_budget_exhausted=turn_budget_exhausted,
+                adjudicable=adjudicable,
             ),
             "pre_validation": meta.get("pre_validation"),
             "post_validation": meta.get("post_validation"),
@@ -716,6 +756,11 @@ class WritebackMixin:
             "blocker_reason": blocker_reason,
             "artifacts_count": len(loop_state.artifacts),
         }
+        # A decision waiting to be signed is what makes `snodo authorize` a
+        # follow-up rather than a dead end; the CLI reads this instead of
+        # re-deriving it (Fixes #288).
+        if adjudicable:
+            payload["adjudicable"] = True
         if timed_out:
             payload["timed_out"] = True
             payload["timeout_seconds"] = meta.get("timeout_seconds")
