@@ -91,7 +91,7 @@ def test_agy_custom_timeout_sets_print_timeout_in_argv(temp_workspace: Path):
     assert argv[timeout_idx + 1] == "120s"
 
 
-def test_agy_binary_missing_raises_actionable_error(temp_workspace: Path):
+def test_agy_binary_missing_raises_actionable_error(temp_workspace: Path, monkeypatch):
     """Missing agy binary raises CoderUnavailableError naming tool and install url.
 
     A program that is not installed is an ENVIRONMENT fault, typed apart from
@@ -103,6 +103,8 @@ def test_agy_binary_missing_raises_actionable_error(temp_workspace: Path):
     adapter = AGYAdapter(workspace=temp_workspace)
     spec = TaskSpec(description="Implement feature X", constraints=[])
 
+    monkeypatch.setenv("PATH", "/opt/snodo/agent/path:/usr/bin")
+
     with mock.patch("subprocess.Popen", side_effect=FileNotFoundError):
         with pytest.raises(CoderUnavailableError) as exc_info:
             adapter.implement(spec)
@@ -112,6 +114,38 @@ def test_agy_binary_missing_raises_actionable_error(temp_workspace: Path):
     msg = str(exc_info.value)
     assert "agy not found on PATH" in msg
     assert "https://antigravity.google/docs/cli" in msg
+    # The operator can see 'agy' on THEIR PATH; the message must name the PATH
+    # the run actually searched so the mismatch is visible (Fixes #290).
+    assert "/opt/snodo/agent/path" in msg
+    assert exc_info.value.search_path == "/opt/snodo/agent/path:/usr/bin"
+
+
+def test_agy_records_resolved_binary_and_version(temp_workspace: Path):
+    """A run records which binary produced it, specifically enough to audit.
+
+    Two installs of the same tool, an older one earlier on a long-running
+    server's PATH, are otherwise indistinguishable after the fact (Fixes #290).
+    """
+    adapter = AGYAdapter(workspace=temp_workspace)
+    spec = TaskSpec(description="Implement feature X", constraints=[])
+
+    def fake_which(name):
+        return "/opt/old-agy/bin/agy" if name == "agy" else None
+
+    fake_version = mock.MagicMock(returncode=0, stdout="agy 0.4.2\n", stderr="")
+
+    def on_run(argv, **kwargs):
+        (temp_workspace / "feature.py").write_text("def x(): pass\n")
+
+    with mock.patch("snodo.coders.subprocess_adapter.shutil.which", side_effect=fake_which):
+        with mock.patch("snodo.coders.availability.subprocess.run", return_value=fake_version):
+            with mock.patch("subprocess.Popen", side_effect=_make_fake_popen(side_effect=on_run)):
+                artifact = adapter.implement(spec)
+
+    assert adapter.last_binary_path == "/opt/old-agy/bin/agy"
+    assert adapter.last_binary_version == "agy 0.4.2"
+    assert artifact.metadata["coder_binary"] == "/opt/old-agy/bin/agy"
+    assert artifact.metadata["coder_version"] == "agy 0.4.2"
 
 
 def test_agy_nonzero_exit_surfaces_stderr(temp_workspace: Path):

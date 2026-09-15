@@ -920,6 +920,13 @@ class TestServePortAndProxy:
         import os
 
         monkeypatch.setattr(os, "environ", os.environ.copy())
+        # These tests exercise port passthrough, not the port-holder preflight:
+        # a real listener on the chosen test port would otherwise make the
+        # preflight refuse and change what is under test. The preflight itself
+        # is covered in tests/mcp/test_serve_lifecycle.py.
+        monkeypatch.setattr(
+            "snodo.cli.commands.serve_cmd._port_holder_pid", lambda *a, **k: None,
+        )
 
     def test_port_passed_to_fastmcp_settings(self):
         """Port arg is set on mcp.settings.port before run."""

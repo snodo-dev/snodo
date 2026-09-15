@@ -117,6 +117,63 @@ class TestCoderInHaltPayload:
         assert payload_b["coder"] == "litellm"
         assert payload_a["coder"] != payload_b["coder"]
 
+    def test_halt_payload_names_the_binary_and_version_that_ran(self):
+        """Two installs of the same coder must be distinguishable in the payload.
+
+        The operator ran an already-uninstalled opencode, and nothing in the
+        halt said which binary produced the run. The coder's own resolved path
+        and version travel through ``_record_coder_run_facts`` into the payload
+        so an audit trail can explain the outcome a coder bug caused (#290).
+        """
+        from snodo.coders import MockAdapter
+
+        builder, _, _ = _make_builder_with_session(coder=MockAdapter())
+        coder = builder.coder
+        coder.last_binary_path = "/home/op/.opencode/bin/opencode"
+        coder.last_binary_version = "1.18.31"
+        builder._record_coder_run_facts(coder)
+
+        state = _make_loop_state()
+        state.is_blocked = True
+        state.halt_type = "environment_error"
+        state.constraint_violations = ["opencode run failed (rc=1)"]
+
+        payload = builder._build_halt_payload(state)
+
+        assert payload["coder_binary"] == "/home/op/.opencode/bin/opencode"
+        assert payload["coder_version"] == "1.18.31"
+
+    def test_record_coder_run_facts_falls_back_to_artifact_metadata(self):
+        """When the coder raised, the version still reaches the payload if the
+        artifact carried it."""
+        from snodo.coders import MockAdapter
+        from snodo.core.interfaces import CodeArtifact
+
+        builder, _, _ = _make_builder_with_session(coder=MockAdapter())
+        artifact = CodeArtifact(
+            files=[],
+            metadata={"coder_binary": "/usr/local/bin/agy", "coder_version": "0.4.2"},
+        )
+        builder._record_coder_run_facts(builder.coder, artifact)
+
+        assert builder._last_coder_binary == "/usr/local/bin/agy"
+        assert builder._last_coder_version == "0.4.2"
+
+    def test_halt_payload_binary_is_null_for_a_coder_that_invokes_no_program(self):
+        """A coder with no host binary records null, not an invented path."""
+        from snodo.coders import MockAdapter
+
+        builder, _, _ = _make_builder_with_session(coder=MockAdapter())
+        state = _make_loop_state()
+        state.is_blocked = True
+        state.halt_type = "constraint"
+        state.constraint_violations = ["v1"]
+
+        payload = builder._build_halt_payload(state)
+
+        assert payload["coder_binary"] is None
+        assert payload["coder_version"] is None
+
 
 # ---------------------------------------------------------------------------
 # Coder name in the audit trail

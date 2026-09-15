@@ -288,6 +288,61 @@ def test_readiness_assesses_whole_protocol_across_all_modes(git_repo: Path):
     assert not any("architecture" in f.id for f in code_mode_findings)
 
 
+def test_opencode_resolved_binary_reports_path_and_version(git_repo: Path, monkeypatch):
+    """Readiness names WHICH opencode (and version) PATH resolution picked.
+
+    A bare existence check cannot tell two installs apart, so an operator whose
+    coder runs an already-uninstalled opencode sees "opencode is present" and
+    chases the wrong thing. The workstation report names the resolved path and
+    the version it reports (Fixes #290).
+    """
+    protocol = _make_protocol(
+        modes=[Mode(mode_id="build", name="Build", coder="opencode-cli")],
+    )
+
+    monkeypatch.setattr(
+        "snodo.readiness.checker.shutil.which",
+        lambda name: "/home/op/.opencode/bin/opencode" if name == "opencode" else None,
+    )
+    monkeypatch.setattr(
+        "snodo.coders.availability.read_binary_version",
+        lambda path, args=("--version",): "1.18.31",
+    )
+
+    assessment = assess_readiness(git_repo, protocol)
+
+    resolved = [
+        f for f in assessment.workstation_findings
+        if f.id == "coder_binary_resolved:opencode"
+    ]
+    assert len(resolved) == 1
+    finding = resolved[0]
+    assert finding.kind == ReadinessKind.WORKSTATION
+    assert finding.severity == FindingSeverity.INFO
+    assert "/home/op/.opencode/bin/opencode" in finding.description
+    assert "1.18.31" in finding.description
+
+
+def test_missing_opencode_still_reports_the_missing_binary(git_repo: Path, monkeypatch):
+    """A truly absent opencode is still the WARN the operator installs."""
+    protocol = _make_protocol(
+        modes=[Mode(mode_id="build", name="Build", coder="opencode-cli")],
+    )
+    monkeypatch.setattr("snodo.readiness.checker.shutil.which", lambda name: None)
+
+    assessment = assess_readiness(git_repo, protocol)
+
+    missing = [
+        f for f in assessment.workstation_findings
+        if f.id == "coder_binary_missing:opencode"
+    ]
+    assert len(missing) == 1
+    assert missing[0].severity == FindingSeverity.WARN
+    assert not any(
+        f.id.startswith("coder_binary_resolved") for f in assessment.workstation_findings
+    )
+
+
 def test_plaintext_api_key_reported_in_workstation_findings(git_repo: Path, tmp_path: Path, monkeypatch):
     """Plaintext API keys configured in config.yml are reported in workstation findings without affecting repo score (Fixes #227)."""
     snodo_dir = git_repo / ".snodo"
