@@ -95,9 +95,18 @@ class TestBlockerHintContent:
         assert "protocol.yml" in hint
         assert " or " in hint
 
-    def test_escalate_hint_unchanged(self):
-        hint = _build_hint("escalate")
+    def test_escalate_hint_names_authorize_when_a_decision_is_pending(self):
+        """A decision waiting to be signed is the one case the escape hatch is
+        real, so the hint names it (Fixes #288)."""
+        hint = _build_hint("escalate", adjudicable=True)
         assert "snodo authorize" in hint
+
+    def test_escalate_hint_does_not_name_authorize_without_a_decision(self):
+        """No pending decision means `snodo authorize` answers "No pending
+        decision" — the hint must not send the operator after it (Fixes #288)."""
+        hint = _build_hint("escalate")
+        assert "snodo authorize" not in hint
+        assert "nothing to sign" in hint
 
     def test_internal_error_hint_unchanged(self):
         hint = _build_hint("internal_error")

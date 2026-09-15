@@ -48,6 +48,41 @@ class DecisionMintRejectedError(DecisionError):
     """A verify-only issuer was asked to mint — not allowed."""
 
 
+def is_adjudicable_proposal(proposal: Any) -> bool:
+    """True when ``snodo authorize`` would accept this pending proposal.
+
+    ``snodo authorize <task_id>`` reads the proposal stored in the session and
+    refuses an id with no entry; a blocker adjudication is non-overridable
+    (INV3), so it refuses to mint one too. A proposal is therefore adjudicable
+    when it is a ``set_model`` proposal or an ``adjudicate`` proposal whose
+    severity is not ``blocker`` — the cases where the command does something.
+
+    The rule lives beside ``_validate_severity`` (INV3) so the CLI that mints
+    and anything that offers the command agree on what the command accepts.
+    """
+    if not isinstance(proposal, dict):
+        return False
+    proposal_type = proposal.get("type", "")
+    if proposal_type == "set_model":
+        return True
+    return proposal_type == "adjudicate" and proposal.get("severity") != "blocker"
+
+
+def pending_adjudicable_decision(session: Any, task_id: str) -> Optional[Dict[str, Any]]:
+    """The pending proposal ``snodo authorize <task_id>`` would accept, or None.
+
+    Returns the proposal dict from ``checkpoint.decisions.pending_decisions``
+    when it is adjudicable (:func:`is_adjudicable_proposal`); None when there is
+    no entry or the entry is not something authorize can sign.
+    """
+    decisions = getattr(getattr(session, "checkpoint", None), "decisions", None) or {}
+    pending = decisions.get("pending_decisions", {})
+    if not isinstance(pending, dict):
+        return None
+    proposal = pending.get(task_id)
+    return proposal if is_adjudicable_proposal(proposal) else None
+
+
 class DecisionRecord:
     """JWT-backed human adjudication record.
 
