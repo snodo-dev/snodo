@@ -138,7 +138,7 @@ class TestTerminalOutcomeAudit:
             ("constraint", "blocker"),
             ("wf3", "blocker"),
             ("max_iterations", "blocker"),
-            ("turn_budget_exhausted", "blocker"),
+            ("turn_budget_exhausted", "environment_error"),
             ("execution_error", "blocker"),
             ("recovery_exhausted", "blocker"),
             ("recovery_stalled", "blocker"),

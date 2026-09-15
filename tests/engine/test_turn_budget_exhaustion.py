@@ -1,12 +1,13 @@
-"""Turn-budget exhaustion is a nameable halt, not an internal error.
+"""Turn-budget exhaustion is a nameable operational halt, not a code verdict.
 
 FILE: tests/engine/test_turn_budget_exhaustion.py
 
 When a coder burns its full tool-loop turn budget without submitting files,
-the run must halt under a distinct, anticipated outcome — canonical ``blocker``,
-raw ``turn_budget_exhausted`` — and must NOT spawn a recovery subtask. Retrying
-a turn-budget exhaustion cannot converge, so the recovery ladder has nothing to
-learn from another attempt.
+the run must halt under a distinct raw outcome (``turn_budget_exhausted``) that
+resolves to the operational ``environment_error`` — a fact about the run, not a
+verdict about code no judge saw — and must NOT spawn a recovery subtask.
+Retrying a turn-budget exhaustion cannot converge, so the recovery ladder has
+nothing to learn from another attempt (Fixes #282).
 """
 
 import json
@@ -87,12 +88,12 @@ def _passing_validators(task, validators, shell, **kwargs):
     ]
 
 
-def test_turn_budget_exhaustion_is_a_blocker_not_internal_error(
+def test_turn_budget_exhaustion_is_an_operational_halt_not_internal_error(
     solo_protocol, git_fixture_repo,
 ):
     """Coder exhausts its turn budget -> raw halt ``turn_budget_exhausted``,
-    canonical ``blocker``, zero artifacts, skipped post-validation, and no
-    recovery subtask."""
+    canonical ``environment_error`` (the operational family, ADR 015), zero
+    artifacts, skipped post-validation, and no recovery subtask."""
     adapter = LiteLLMAdapter(model="gpt-4o", max_tool_turns=3)
     adapter._completion_fn = MagicMock(side_effect=_read_file_call_response)
 
@@ -107,24 +108,33 @@ def test_turn_budget_exhaustion_is_a_blocker_not_internal_error(
     task = Task(id="task_turn_budget", spec="Huge task")
     _final_state, tree = run_to_closure(graph, task, mode="producer")
 
-    # Distinct outcome, not the internal_error it used to be reported as.
+    # The specific raw outcome survives on the closure tree, not laundered into
+    # ``internal_error``.
     assert tree.outcome == "turn_budget_exhausted"
     assert tree.outcome != "internal_error"
 
     payload = tree.halt_payload
     assert payload is not None
     assert payload["status"] == "blocked"
-    # Canonical outcome vocabulary (a blocker; ADR 015), with the specific
-    # reason carried in ``reason`` and the closure tree's raw
-    # ``turn_budget_exhausted``.
-    assert payload["halt_type"] == "blocker"
-    assert payload["final_decision"] == "blocker"
-    assert payload["raw_halt_type"] == "blocker"
+    # The raw cause is ``turn_budget_exhausted``; the canonical outcome is the
+    # operational ``environment_error`` — a fact about the run, NOT a blocker
+    # verdict about code no judge saw (Fixes #282).
+    assert payload["raw_halt_type"] == "environment_error"
+    assert payload["halt_type"] == "environment_error"
+    assert payload["final_decision"] == "environment_error"
+    assert payload["final_decision"] != "blocker"
     assert payload["artifacts_count"] == 0
 
     # The turn budget is named in the reason so the operator can tell this
     # apart from an ordinary blocker or a crash.
     assert "turn budget" in (payload["reason"] or "")
+
+    # The hint points at the run's own turn bound, not at the code, the spec or
+    # an install.
+    hint = payload["hint"]
+    assert "turn budget" in hint
+    assert "install the program" not in hint
+    assert "Fix the produced code" not in hint
 
     # Post-validation was skipped (nothing to validate).
     assert payload["post_validation"] is not None
