@@ -16,8 +16,43 @@ dependency edge: dispatch layers (snodo-mcp) already sit above snodo.coders
 in the import contracts, and readiness is left untouched.
 """
 
+import logging
 import shutil
+import subprocess
 from typing import Optional, Tuple
+
+_logger = logging.getLogger(__name__)
+
+
+def read_binary_version(
+    binary_path: str, version_args: tuple = ("--version",),
+) -> str:
+    """Return the version *binary_path* reports, or "" if it will not say.
+
+    Best-effort by design: a tool without a version flag, or one that hangs,
+    must not turn a run (or a readiness check) into a failure over an audit
+    detail. The probe is bounded, needs no shell, and reduces output to its
+    last non-empty line — where version strings conventionally land. One
+    implementation, shared by the adapters that record provenance and by the
+    readiness checker that reports it, so the two can never disagree about
+    what "the version" is (Fixes #290).
+    """
+    if not binary_path or not version_args:
+        return ""
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list (no shell); resolved absolute path plus fixed flags
+            [binary_path, *version_args],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=5,
+        )
+    except Exception:  # noqa: BLE001 — a best-effort audit probe must never break the run it records
+        _logger.debug("Could not read version from %s", binary_path, exc_info=True)
+        return ""
+    output = (proc.stdout or "").strip() or (proc.stderr or "").strip()
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    return lines[-1] if lines else ""
 
 
 def check_coder_available(coder_name: str) -> Optional[Tuple[str, str]]:

@@ -155,6 +155,50 @@ def _extract_cited_paths(text: str) -> List[str]:
     return paths
 
 
+def _record_resolved_binary(
+    findings: List[ReadinessFinding],
+    mode_id: str,
+    coder_name: str,
+    binary_path: str,
+    version_args: Tuple[str, ...] = ("--version",),
+) -> None:
+    """Report which install and version PATH resolution picked for a coder.
+
+    A bare existence check (``shutil.which``) answers "is a binary named
+    ``opencode`` on PATH" — not "which one". Two installs, the older earlier on
+    PATH, are indistinguishable to it, and a long-running server that captured
+    its PATH before an upgrade keeps dispatching to the stale one with nothing
+    in the record saying so. This finding names the resolved path and the
+    version that path reports, so the operator can see the mismatch between the
+    binary they think runs and the one that does (Fixes #290).
+
+    Reported as INFO: this is not a fault to fix, it is the provenance of the
+    check that already passed. It is unscored, like every workstation finding.
+    """
+    from snodo.coders.availability import read_binary_version
+
+    version = read_binary_version(binary_path, tuple(version_args))
+    version_detail = f" version {version}" if version else " (version unknown)"
+    findings.append(
+        ReadinessFinding(
+            id=f"coder_binary_resolved:{coder_name}",
+            kind=ReadinessKind.WORKSTATION,
+            severity=FindingSeverity.INFO,
+            modes=[mode_id],
+            description=(
+                f"{coder_name} for mode '{mode_id}' resolves to "
+                f"'{binary_path}'{version_detail}."
+            ),
+            remediation=(
+                "If this is not the build you expect, PATH order — not the "
+                f"coder configuration — decides which '{coder_name}' runs; "
+                "put the intended install first on PATH."
+            ),
+            fix_cost=1,
+        )
+    )
+
+
 def _resolve_model_provider_env(model_name: str) -> Optional[Tuple[str, str]]:
     """Return (env_var_name, provider_name) for a given model string, or None."""
     if not model_name:
@@ -447,8 +491,12 @@ def assess_readiness(
                                 fix_cost=1,
                             )
                         )
-            # Workstation check for agy binary
-            if not shutil.which("agy"):
+            # Workstation check for agy binary: name WHICH one, not just that
+            # some 'agy' exists. An upgrade that leaves an older install
+            # earlier on PATH is invisible to a bare existence check, and the
+            # operator chases a bug an uninstalled binary is causing (Fixes #290).
+            agy_path = shutil.which("agy")
+            if not agy_path:
                 workstation_findings.append(
                     ReadinessFinding(
                         id="coder_binary_missing:agy",
@@ -459,6 +507,10 @@ def assess_readiness(
                         remediation="Install agy: https://antigravity.google/docs/cli",
                         fix_cost=3,
                     )
+                )
+            else:
+                _record_resolved_binary(
+                    workstation_findings, mode_id, "agy", agy_path,
                 )
 
         elif coder_name == "opencode-cli":
@@ -477,7 +529,8 @@ def assess_readiness(
                                 fix_cost=1,
                             )
                         )
-            if not shutil.which("opencode"):
+            opencode_path = shutil.which("opencode")
+            if not opencode_path:
                 workstation_findings.append(
                     ReadinessFinding(
                         id="coder_binary_missing:opencode",
@@ -488,6 +541,14 @@ def assess_readiness(
                         remediation="Install opencode: curl -fsSL https://opencode.ai/install | bash",
                         fix_cost=3,
                     )
+                )
+            else:
+                # Which install, and what version: the operator whose coder runs
+                # an already-uninstalled opencode needs THIS line to see it
+                # (Fixes #290).
+                _record_resolved_binary(
+                    workstation_findings, mode_id, "opencode", opencode_path,
+                    version_args=("--version",),
                 )
 
         elif coder_name == "opencode":

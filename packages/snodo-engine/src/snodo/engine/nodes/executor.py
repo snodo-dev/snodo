@@ -53,6 +53,16 @@ class ExecutorMixin:
         metadata = getattr(code_artifact, "metadata", None)
         metadata = metadata if isinstance(metadata, dict) else {}
         self._last_commit_reason = getattr(coder, "last_commit_reason", None)
+        # Which binary produced the run. Recorded per-run from the coder's own
+        # resolution (or its artifact metadata) so a halt payload is specific
+        # enough to tell two installations of the same tool apart after the
+        # fact (Fixes #290). Absent for coders that invoke no program.
+        self._last_coder_binary = (
+            getattr(coder, "last_binary_path", "") or metadata.get("coder_binary", "")
+        )
+        self._last_coder_version = (
+            getattr(coder, "last_binary_version", "") or metadata.get("coder_version", "")
+        )
         self._last_timed_out = bool(
             getattr(coder, "last_timed_out", False) or metadata.get("timed_out", False)
         )

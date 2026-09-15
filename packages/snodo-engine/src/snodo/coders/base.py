@@ -45,10 +45,23 @@ class CoderUnavailableError(AdapterError):
     spec, the code or the protocol.
     """
 
-    def __init__(self, binary: str, remediation: str = ""):
+    def __init__(
+        self,
+        binary: str,
+        remediation: str = "",
+        search_path: Optional[str] = None,
+    ):
         self.binary = binary
         self.remediation = remediation or f"Install {binary} and make sure it is on PATH"
-        super().__init__(f"{binary} not found on PATH. {self.remediation}")
+        self.search_path = search_path
+        # "Not on PATH" alone is unhelpful when the operator can see the binary
+        # on THEIR PATH: the run executes in a process whose environment was
+        # captured earlier (a long-running server), and naming the PATH it
+        # actually searched is what turns a dead end into an actionable fact.
+        detail = f"{binary} not found on PATH"
+        if search_path:
+            detail += f" (searched: {search_path})"
+        super().__init__(f"{detail}. {self.remediation}")
 
 
 class CoderTimeoutError(LLMCallError):
@@ -186,6 +199,16 @@ class InPlaceCoderAdapter(Coder, ABC):
             if coder_name:
                 artifact.metadata["coder"] = coder_name
             artifact.metadata["model"] = model_str
+            # Which binary, specifically, produced this run. Two installations
+            # of the same tool are otherwise indistinguishable afterwards, so a
+            # coder bug cannot be attributed to the version that caused it
+            # (Fixes #290). Absent on adapters that invoke no program.
+            binary_path = getattr(self, "last_binary_path", "")
+            binary_version = getattr(self, "last_binary_version", "")
+            if binary_path:
+                artifact.metadata["coder_binary"] = binary_path
+            if binary_version:
+                artifact.metadata["coder_version"] = binary_version
             if timed_out:
                 artifact.metadata["timed_out"] = True
                 artifact.metadata["timeout_seconds"] = timeout_seconds
