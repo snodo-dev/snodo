@@ -26,6 +26,10 @@ def register(app: typer.Typer) -> None:
         provider: Optional[str] = typer.Option(None, "--provider", "-p", help="Provider to list models for"),
         flush: bool = typer.Option(False, "--flush", help="Ignore cache and refetch"),
         stats: bool = typer.Option(False, "--stats", help="Report actual model and coder usage from project records"),
+        benchmark: bool = typer.Option(
+            False, "--benchmark",
+            help="Time one fixed prompt against the selected model. Makes a real, billed API call.",
+        ),
         id_contains: Optional[str] = typer.Option(None, "--id-contains", help="Substring on id/display_name (case-insensitive)"),
         max_output_cost: Optional[float] = typer.Option(None, "--max-output-cost", help="Output cost/1M <= value. Excludes unknown costs."),
         min_output_cost: Optional[float] = typer.Option(None, "--min-output-cost", help="Output cost/1M >= value. Excludes unknown costs."),
@@ -37,6 +41,7 @@ def register(app: typer.Typer) -> None:
             provider=provider,
             flush=flush,
             stats=stats,
+            benchmark=benchmark,
             id_contains=id_contains,
             max_output_cost=max_output_cost,
             min_output_cost=min_output_cost,
@@ -84,6 +89,9 @@ def models_command(args) -> int:
     """List configured providers, their models, or project usage stats."""
     if getattr(args, "stats", False):
         return models_stats_command(args)
+
+    if getattr(args, "benchmark", False):
+        return models_benchmark_command(args)
 
     provider_name = getattr(args, "provider", None)
     flush = getattr(args, "flush", False)
@@ -698,5 +706,273 @@ def models_stats_command(args) -> int:
     _print_model_stats_table(model_stats)
     print()
     _print_coder_stats_table(coder_stats)
+    return 0
+
+
+# ============================================================================
+# --benchmark: time one fixed prompt against one model
+# ============================================================================
+#
+# Why this exists next to --stats: --stats aggregates job telemetry, so its
+# tokens-per-second figure moves with prompt size, tool-call count and how much
+# the judge read. Two models are never compared there on the same work. A
+# benchmark sends ONE prompt — the same one every run — and times the result,
+# so two providers produce two numbers worth comparing.
+#
+# The prompt is part of the measurement, not an argument to it. It lives in
+# this directory as ``model_benchmark_prompt.txt`` and is read from disk, never
+# constructed from a string in this module: a prompt that varies between runs
+# measures nothing across them. Changing that file makes past numbers
+# incomparable, which is why the file itself says so.
+#
+# This makes a real, billed API call. It is reachable only through the explicit
+# ``--benchmark`` flag and is never touched by listing, ``--stats`` or any
+# other path — the gate and the test suite never issue it.
+
+_BENCHMARK_PROMPT_PATH = Path(__file__).parent / "model_benchmark_prompt.txt"
+_BENCHMARK_PROMPT_MARKER = "#--- benchmark prompt below this line ---"
+
+
+def _load_benchmark_prompt() -> str:
+    """Read the fixed benchmark prompt from the repository.
+
+    Deliberately a filesystem read and not a literal: the prompt's identity is
+    the file's content, and a benchmark whose prompt is assembled at runtime
+    cannot be compared across runs. The file carries a comment header that
+    records why changing it invalidates past numbers; the marker line separates
+    that header from the prompt text, which is the only part sent to the model.
+    Raises ``FileNotFoundError`` if the file is missing, because a silent
+    fallback would quietly change the measurement.
+    """
+    raw = _BENCHMARK_PROMPT_PATH.read_text(encoding="utf-8")
+    if _BENCHMARK_PROMPT_MARKER in raw:
+        raw = raw.split(_BENCHMARK_PROMPT_MARKER, 1)[1]
+    return raw.lstrip("\n")
+
+
+def _benchmark_prompt_identity(prompt: str) -> str:
+    """Return a short, stable identity for a prompt: length and content hash."""
+    import hashlib
+    digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
+    first_line = next(
+        (line.strip() for line in prompt.splitlines() if line.strip()), ""
+    )
+    return f"{first_line!r} ({len(prompt)} chars, sha256:{digest})"
+
+
+def _select_benchmark_model(provider_name: str, args) -> Optional[str]:
+    """Resolve exactly one model from the flags that already select a model.
+
+    Reuses ``--provider`` plus the discrete filters, so the benchmark is scoped
+    by the same surface as a listing. More than one match is an error that names
+    the candidates rather than an arbitrary pick — benchmarking "a provider" is
+    not a measurement.
+    """
+    from snodo.config import ConfigManager
+    providers = ConfigManager().get_providers()
+    pc = providers.get(provider_name)
+    if not pc:
+        print(f"Provider not configured: {provider_name}", file=sys.stderr)
+        print(f"  Configured: {', '.join(sorted(providers.keys()))}",
+              file=sys.stderr)
+        return None
+
+    models = _get_models(provider_name, pc, force_refresh=getattr(args, "flush", False))
+    if not models:
+        print(f"No models discovered for {provider_name}", file=sys.stderr)
+        return None
+
+    models = _apply_discrete_filters(
+        models,
+        id_contains=getattr(args, "id_contains", None),
+        max_output_cost=getattr(args, "max_output_cost", None),
+        min_output_cost=getattr(args, "min_output_cost", None),
+        max_input_cost=getattr(args, "max_input_cost", None),
+        min_context=getattr(args, "min_context", None),
+    )
+    if not models:
+        print("No models matched the specified filters.", file=sys.stderr)
+        return None
+
+    if len(models) > 1:
+        print(
+            f"--benchmark needs exactly one model, but {len(models)} matched. "
+            "Narrow with --id-contains:",
+            file=sys.stderr,
+        )
+        for m in models:
+            print(f"  {m.get('full_string', m.get('id', ''))}", file=sys.stderr)
+        return None
+
+    return models[0].get("full_string") or models[0].get("id")
+
+
+def _print_benchmark_intent(model: str, prompt: str) -> None:
+    """Say what is about to be spent, before it is spent."""
+    print("About to benchmark one model with one fixed prompt.")
+    print(f"  model:  {model}")
+    print(f"  prompt: {_benchmark_prompt_identity(prompt)}")
+    print(f"  source: {_BENCHMARK_PROMPT_PATH}")
+    print("  This makes one real, billed API call.")
+    print()
+
+
+def _run_benchmark_call(
+    model: str,
+    prompt: str,
+    completion_fn: Optional[Any] = None,
+    token_counter_fn: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """Send the prompt once and measure what came back.
+
+    Streaming is used so time to first token is observable. Two rates are
+    returned on purpose: a model that streams fast after a slow start is a
+    different proposition for a coder than for a validator, and a single figure
+    would hide that. ``decode_tok_per_sec`` measures the stream after the first
+    token; ``overall_tok_per_sec`` measures everything the caller waited for.
+
+    Token counts prefer the provider's reported usage; when a provider reports
+    none, a local tokenizer stands in and the basis says so, because dividing
+    one provider's count by another's timing would be a comparison of
+    accounting systems rather than of speed.
+    """
+    from contextlib import nullcontext
+    import litellm
+    from snodo.config import ConfigManager, provider_env
+
+    if completion_fn is None:
+        completion_fn = litellm.completion
+    if token_counter_fn is None:
+        token_counter_fn = litellm.token_counter
+
+    litellm.drop_params = True
+    litellm_model = ConfigManager.resolve_litellm_model(model)
+
+    kwargs: Dict[str, Any] = {
+        "model": litellm_model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    api_base = ConfigManager.resolve_api_base(model)
+    if api_base:
+        kwargs["api_base"] = api_base
+    extra_headers = ConfigManager.resolve_extra_headers(model)
+    if extra_headers:
+        kwargs["extra_headers"] = extra_headers
+
+    env_ctx = provider_env(model) if completion_fn is litellm.completion else nullcontext()
+
+    start = time.perf_counter()
+    ttft: Optional[float] = None
+    text_parts: list = []
+    usage: Any = None
+
+    with env_ctx:
+        for chunk in completion_fn(**kwargs):
+            content = None
+            try:
+                content = getattr(chunk.choices[0].delta, "content", None)
+            except (AttributeError, IndexError) as e:
+                _logger.debug("Skipping chunk without a content delta: %s", e)
+            if content:
+                if ttft is None:
+                    ttft = time.perf_counter() - start
+                text_parts.append(content)
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage is not None:
+                usage = chunk_usage
+    wall = time.perf_counter() - start
+    text = "".join(text_parts)
+
+    output_tokens: Optional[int] = None
+    prompt_tokens: Optional[int] = None
+    if usage is not None:
+        ct = getattr(usage, "completion_tokens", None)
+        if ct is None:
+            ct = getattr(usage, "output_tokens", None)
+        pt = getattr(usage, "prompt_tokens", None)
+        if pt is None:
+            pt = getattr(usage, "input_tokens", None)
+        if isinstance(ct, int):
+            output_tokens = ct
+        if isinstance(pt, int):
+            prompt_tokens = pt
+
+    if output_tokens is not None:
+        counts_basis = "provider-reported usage"
+    else:
+        output_tokens = int(token_counter_fn(model=litellm_model, text=text))
+        counts_basis = "local tokenizer estimate (provider reported no usage)"
+    if prompt_tokens is None:
+        prompt_tokens = int(token_counter_fn(model=litellm_model, text=prompt))
+
+    overall_rate = output_tokens / wall if wall > 0 and output_tokens else None
+    decode_rate = None
+    if ttft is not None and wall > ttft and output_tokens > 1:
+        decode_rate = (output_tokens - 1) / (wall - ttft)
+
+    return {
+        "output_tokens": output_tokens,
+        "prompt_tokens": prompt_tokens,
+        "counts_basis": counts_basis,
+        "time_to_first_token": ttft,
+        "wall_seconds": wall,
+        "decode_tok_per_sec": decode_rate,
+        "overall_tok_per_sec": overall_rate,
+    }
+
+
+def _print_benchmark_report(model: str, prompt: str, result: Dict[str, Any]) -> None:
+    """Print the measurement, naming the prompt, the counts and the timing basis."""
+    def _rate(val: Optional[float]) -> str:
+        return f"{val:.1f}" if val is not None else "n/a"
+
+    ttft = result["time_to_first_token"]
+    ttft_str = f"{ttft:.2f}s" if ttft is not None else "n/a"
+
+    print(f"Benchmark result: {model}")
+    print(f"  prompt       {_benchmark_prompt_identity(prompt)}")
+    print(f"  prompt file  {_BENCHMARK_PROMPT_PATH}")
+    print(
+        f"  tokens       prompt {result['prompt_tokens']} / "
+        f"output {result['output_tokens']}  ({result['counts_basis']})"
+    )
+    print(
+        f"  timing       first token {ttft_str}, "
+        f"total wall {result['wall_seconds']:.2f}s"
+    )
+    print(
+        f"  throughput   decode {_rate(result['decode_tok_per_sec'])} output tok/s "
+        f"(after first token); overall {_rate(result['overall_tok_per_sec'])} "
+        "output tok/s (including first-token wait)"
+    )
+
+
+def models_benchmark_command(args) -> int:
+    """Benchmark one fixed prompt against one model selected by the model flags."""
+    provider_name = getattr(args, "provider", None)
+    if not provider_name:
+        print(
+            "--benchmark requires --provider=<name> (and, when a provider has "
+            "more than one model, --id-contains=<substring>).",
+            file=sys.stderr,
+        )
+        return 1
+
+    model = _select_benchmark_model(provider_name, args)
+    if model is None:
+        return 1
+
+    prompt = _load_benchmark_prompt()
+    _print_benchmark_intent(model, prompt)
+
+    try:
+        result = _run_benchmark_call(model, prompt)
+    except Exception as e:
+        print(f"Benchmark call failed: {e}", file=sys.stderr)
+        return 1
+
+    _print_benchmark_report(model, prompt, result)
     return 0
 

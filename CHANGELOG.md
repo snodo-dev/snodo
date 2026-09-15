@@ -11,6 +11,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `snodo models --benchmark` times one fixed prompt against one model and
+  reports output tokens per second, time to first token and total wall time, so
+  two providers produce two numbers produced by the same work. Until now the
+  only throughput figure came from `--stats`, which aggregates job telemetry
+  across whatever prompts happened to run — a number that moves with prompt
+  size, tool-call count and how much the judge read, and that was used on a real
+  project to switch the coder between providers twice without a like-for-like
+  comparison. The prompt is part of the measurement, not an argument to it: it
+  lives in `snodo/cli/commands/model_benchmark_prompt.txt`, is read from the
+  repository rather than assembled at runtime, and is the same every run
+  (changing it makes past numbers incomparable, which the file states). The
+  command is scoped by the flags that already select a model (`--provider`,
+  `--id-contains`, the cost/context bounds), requires exactly one model, and
+  reports both decode throughput (after the first token) and overall throughput
+  (including the first-token wait) because a model that streams fast after a
+  slow start is a different proposition for a coder than for a validator. It
+  makes one real, billed API call, reachable only through `--benchmark`, and
+  prints the model, the prompt identity and a spending notice before the call.
+  The output names the token-count basis — provider-reported usage when
+  available, otherwise a local tokenizer — so a comparison is never between two
+  different accounting systems. No new state, halt type or status value. (Fixes #284)
+
 - A closed-vocabulary check: a new severity, halt type or task status fails the
   gate until a decision record is written for it. ADR 045 records that the
   engine's vocabulary is closed — a validator returns one of three severities, a
