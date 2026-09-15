@@ -35,6 +35,7 @@ from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.engine.constraints import ConstraintEngine
 from snodo.engine.policy import PolicyEvaluator
+from snodo.engine.premise import find_stale_citations
 from snodo.engine.state import (  # noqa: F401 — re-exported for existing imports
     LoopStage,
     LoopState,
@@ -706,6 +707,26 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
                     return False
         return True
 
+    def _stale_recovery_citations(self, root_spec: str) -> list:
+        """Presence claims in *root_spec* the worktree no longer satisfies.
+
+        Resolves the tree the recovery coder would run in — the workspace root,
+        then the worktree, then the project root.  When none is known (a bare
+        unit construction) the check is skipped: no root means no evidence, and
+        a false stale verdict is worse than no check (Fixes #286).
+        """
+        root = None
+        workspace_root = getattr(self.workspace_mcp, "project_root", None)
+        if workspace_root is not None:
+            root = Path(workspace_root)
+        elif self._worktree_path:
+            root = Path(self._worktree_path)
+        elif self._project_root:
+            root = Path(self._project_root)
+        if root is None:
+            return []
+        return find_stale_citations(root_spec, root)
+
     def _spawn_recovery_subtask(self, loop_state: LoopState, results: list, decision: Any) -> None:
         """Spawn a recovery subtask or mark recovery_exhausted if at depth cap.
 
@@ -757,6 +778,37 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             for r in results
             if r.severity in ("warn", "blocker")
         ]
+
+        # A spec that asserts evidence the tree no longer holds is stale: an
+        # earlier attempt fixed the very thing it cites, so the next coder
+        # would be sent to find a defect that is gone (Fixes #286).  The engine
+        # reports the stale premise and refuses to dispatch; it does not rewrite
+        # the spec, because deciding what the task now means is not its call
+        # (#35).  The check is skipped when no worktree root is known.
+        stale = self._stale_recovery_citations(root_spec)
+        if stale:
+            details = "; ".join(c.describe() for c in stale)
+            loop_state.is_blocked = True
+            loop_state.halt_type = "escalated"
+            loop_state.constraint_violations.append(
+                "Recovery premise is stale: the spec asserts evidence the tree "
+                f"no longer contains ({details}). The engine does not rewrite "
+                "the spec; re-scope the task or retry with a corrected spec."
+            )
+            self._progress(
+                f"  Recovery premise stale (attempt {attempt_no}/{max_depth}): "
+                f"{details}; halting instead of dispatching"
+            )
+            self._audit("spec_premise_stale", {
+                "op": "spec_premise_stale",
+                "task_ref": loop_state.task.id,
+                "depth": current_depth,
+                "citations": [
+                    {"path": c.path, "construct": c.construct, "line": c.line}
+                    for c in stale
+                ],
+            })
+            return
 
         # Identical repeated verdict: this attempt's failures match the previous
         # attempt's, so the loop cannot converge.  Stop before spending another
