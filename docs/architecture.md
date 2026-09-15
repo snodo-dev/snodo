@@ -101,7 +101,11 @@ Halt outcomes are canonical across both paths — `escalate`, `blocker`,
 `validator_error`, `internal_error` — with `halt_type == final_decision`. Only
 `escalate` is resolvable by a human decision; a `blocker` is resolved by changing
 the code or the spec (INV3), and `validator_error` / `internal_error` are
-operational faults, not authorisation problems. A coder backend failure — a
+operational faults, not authorisation problems. The vocabularies are closed
+(ADR 045) and mechanically enforced: `scripts/enforce_vocabularies.py` reads the
+`ValidatorResult.severity` annotation, the `_CANONICAL_HALT` map and the task
+statuses from source and fails the gate when a value appears that is not
+recorded in `scripts/vocabularies_baseline.txt`. A coder backend failure — a
 binary missing from PATH, a CLI that rejected the arguments (e.g. a model
 string the tool does not accept), an LLM call that errored — is an
 operator-fixable coder fault, not an engine fault: it halts under the raw
@@ -244,6 +248,7 @@ depth-exhausted or otherwise non-resolved) is itself reported non-resolved.
 | INV1 — Token integrity | JWT HS256, expiry, task binding | `foundation/infrastructure/tokens.py` |
 | INV2 — Capability boundary | Mode-filtered tool exposure at the MCP boundary; path validation confines writes to the project root and excludes `.snodo/` from tool mutation (ADR 026) | `mcp/server.py`, `tools/workspace.py:validate_path()`, `tools/git.py` |
 | INV3 — Non-overridable block | `blocker_count > 0 → HALT` before policy logic | `engine/policy.py` |
+| Closed vocabularies | Severity / halt / task-status values derived from source and checked against the baseline; a new value fails the gate (ADR 045) | `scripts/enforce_vocabularies.py` |
 | INV4 — Audit immutability | Hash-chained append-only log | `foundation/infrastructure/audit.py` |
 | INV5 — Session resumability | File-backed checkpoint per (mode, project) | `foundation/infrastructure/session.py` |
 

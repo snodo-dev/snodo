@@ -9,6 +9,26 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- A closed-vocabulary check: a new severity, halt type or task status fails the
+  gate until a decision record is written for it. ADR 045 records that the
+  engine's vocabulary is closed — a validator returns one of three severities, a
+  halt resolves to a fixed set of outcomes, a task carries a fixed set of
+  statuses — but nothing enforced it. The lesson the record preserves is the
+  abstention `severity=None`: a value added once that spread to twenty-one call
+  sites across six packages before anyone questioned it, and cost sixteen
+  hundred lines to remove. A document prevents the next one only if someone
+  reads it at the moment they are adding a value, which is exactly when nobody
+  does. `scripts/enforce_vocabularies.py` derives the three vocabularies from the
+  code — the `ValidatorResult.severity` annotation, the `_CANONICAL_HALT` map,
+  the task-status anchors — and fails with a message naming the value and the
+  vocabulary it joined, saying that widening it is a decision, not an edit.
+  Today's values are recorded in `scripts/vocabularies_baseline.txt`; removing a
+  value passes, and `--update-baseline` refuses while the check is red so a new
+  value cannot be laundered in. It runs in the local gate, the CI gate and the
+  release. (Fixes #280)
+
 ## [0.9.0] — 2026-09-14
 
 ### Added

@@ -95,7 +95,20 @@ when it points at the full suite.
 ```bash
 uv run ruff check .           # lint
 uv run lint-imports           # architecture layering contract
+uv run python scripts/enforce_file_length.py     # file-length ratchet
+uv run python scripts/enforce_docs_coverage.py   # docs-coverage ratchet
+uv run python scripts/enforce_vocabularies.py    # closed-vocabulary check
 ```
+
+`enforce_vocabularies.py` is the gate behind ADR 045. The engine's vocabularies
+are closed: a validator returns one of three severities, a halt resolves to a
+fixed set of outcomes, and a task carries a fixed set of statuses. The check
+reads them from the code (the `ValidatorResult.severity` annotation, the
+`_CANONICAL_HALT` map, the task-status anchors) and fails when a value appears
+that is not in `scripts/vocabularies_baseline.txt`. A new value is a decision,
+not an edit: write a decision record and add the baseline line in the same
+change. `--update-baseline` refuses while the check is red, so it cannot launder
+one in.
 
 Test suites you can target individually:
 
