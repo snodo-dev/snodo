@@ -53,6 +53,22 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A recovery attempt whose spec asserts evidence the tree no longer holds is
+  reported instead of dispatched. A spec that opens "the booking field is
+  `<input type="url">`" is making a checkable claim, and an earlier attempt can
+  have fixed exactly that while a later attempt is still sent to find the
+  defect — observed on a real project, where attempt 4 spent an hour proving the
+  premise false before running out of time. Before spawning a recovery subtask
+  the engine now reads the spec's presence claims (a code construct introduced
+  by a copula or stative verb, with any preceding modal disqualifying it, and
+  bare identifiers left alone) and checks whether the construct still appears
+  anywhere in the worktree. When it is gone the recovery halts with the
+  existing `escalated` outcome and the citation in the record; the engine never
+  rewrites the spec, because deciding what the task now means is not its call
+  (#35). Absence is only reported on a complete scan, so a false stale verdict
+  is never preferred to a missed one. No halt type, severity or status value was
+  added. (Fixes #286)
+
 - A coder run that exhausts its **turn** budget has its produced work judged
   instead of assumed absent, exactly as #281 made a timed-out run's work judged.
   The two bounded outcomes — the clock and the turn budget — sat side by side in
