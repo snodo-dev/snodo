@@ -68,6 +68,17 @@ _READ_ONLY_TOOL_NAMES: Set[str] = {
 # Tools only meaningful when a change is committed (post-execute).
 _POST_EXECUTE_ONLY_TOOLS: Set[str] = {"read_diff_between_refs"}
 
+# The instruction that closes the reading window. The nudge after a prose
+# answer and the final turn are the same moment — the system has decided the
+# reading is over — so they say the same thing: the read tools are withdrawn,
+# decide now, and a verdict on a partial view is real ("warn" exists for it).
+_VERDICT_ONLY_INSTRUCTION = (
+    "The read tools are no longer available. Return your verdict now by "
+    "calling submit_verdict(severity, justification); do not narrate. A "
+    "verdict reached on partial reading is a real verdict — if your view is "
+    "partial, say so in the justification and use \"warn\"."
+)
+
 
 def _phase_frame(phase: str) -> str:
     """Return the phase statement that tells the judge what it is looking at.
@@ -430,23 +441,19 @@ class LLMValidator(ValidatorBase):
 
         for turn in range(tool_turns):
             is_final_turn = turn == tool_turns - 1
-            # Time is up on the final turn: the read tools are removed and the
-            # judge is asked for a verdict from the evidence it has. A verdict
-            # reached on incomplete reading is a real verdict — "warn" exists
-            # for exactly that — and the judge is given no way to keep reading.
-            if is_final_turn:
+            # Time is up on the final turn, and it is also up the moment the
+            # loop asks the judge for its verdict after a prose answer: the
+            # nudge and the final turn are the same moment. The read tools are
+            # withdrawn and the judge is asked for a verdict from the evidence
+            # it has. A verdict reached on incomplete reading is a real verdict
+            # — "warn" exists for exactly that — and the judge is given no way
+            # to keep reading (Fixes #285).
+            if is_final_turn or retried_free_text:
                 offered_names: Set[str] = set()
                 turn_tools = [self._SUBMIT_VERDICT_DEF]
                 messages.append({
                     "role": "user",
-                    "content": (
-                        "Your time is up. The read tools are no longer "
-                        "available. State your verdict now from the evidence "
-                        "you have gathered; a verdict reached on partial "
-                        "reading is a real verdict. If your view is partial, "
-                        "say so in the justification and use \"warn\". Call "
-                        "submit_verdict(severity, justification)."
-                    ),
+                    "content": _VERDICT_ONLY_INSTRUCTION,
                 })
             else:
                 offered_names = active_names
@@ -512,19 +519,20 @@ class LLMValidator(ValidatorBase):
                 )
                 return verdict
 
-            # On the final turn the judge was offered submit_verdict alone.
-            # Anything else is a judge that did not decide — an error that
-            # fails closed. It is not given another turn, and a read call
-            # cannot be honoured: the tools were withdrawn precisely so it
-            # would state what it found on what it has.
-            if is_final_turn:
+            # The judge was offered submit_verdict alone (the final turn, or
+            # the turn after the prose nudge). Anything else is a judge that
+            # did not decide — an error that fails closed. It is not given
+            # another turn, and a read call cannot be honoured: the tools were
+            # withdrawn precisely so it would state what it found on what it
+            # has.
+            if is_final_turn or retried_free_text:
                 if tool_calls:
                     attempted = ", ".join(
                         tc.function.name for tc in tool_calls
                     )
                     examination.append(
                         f"turn {turn + 1}: {attempted} (not a verdict; no read "
-                        "tools offered on the final turn)"
+                        "tools offered where a verdict was requested)"
                     )
                 return ValidatorResult(
                     validator_id=self.validator_spec.validator_id,
@@ -618,8 +626,12 @@ class LLMValidator(ValidatorBase):
                 msg.content = ""  # normalise so the retry path picks it up
                 has_content = True
 
-            # A judge that narrated on an ordinary turn is asked once more to
-            # use the tool, and may keep reading.
+            # A judge that narrated is asked once more to use the tool — and
+            # that is the moment the reading window closes. The assistant's
+            # prose is recorded here; the next iteration sees
+            # retried_free_text set and withdraws the read tools, offering
+            # submit_verdict alone with the shared instruction. It is not
+            # handed the menu it just chose to keep reading from (Fixes #285).
             if has_content and not retried_free_text:
                 retried_free_text = True
                 examination.append(
@@ -628,14 +640,6 @@ class LLMValidator(ValidatorBase):
                 messages.append({
                     "role": "assistant",
                     "content": msg.content,
-                })
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        "Return your verdict by calling "
-                        "submit_verdict(severity, justification). "
-                        "Do not narrate."
-                    ),
                 })
                 continue
 
