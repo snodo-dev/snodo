@@ -98,6 +98,22 @@ snodo uses [Semantic Versioning](https://semver.org/).
   nudge returns a real verdict; one that still returns nothing fails closed,
   unchanged. No halt type, severity or status value was added. (Fixes #285)
 
+- A halt names `snodo authorize <task_id>` only when there is a decision to
+  sign. The escalate hint and the CLI follow-up were derived from the halt's
+  shape, so a halted task printed `Follow-up: snodo authorize <task_id>` even
+  when no decision existed; running it answered "No pending decision for task
+  ..." and the task never appeared in `snodo authorize`'s list. Observed on a
+  real project: a halt printed the command, the audit log carried 3,792 events
+  and not one decision record naming the task, and the operator spent the time
+  that the halt itself needed looking for a hatch that was not there. The
+  accept-rule now lives beside INV3 in `snodo.infrastructure.decisions`
+  (`is_adjudicable_proposal`: a `set_model` proposal, or an `adjudicate`
+  whose severity is not `blocker`, since a blocker is non-overridable) and the
+  engine records an `adjudicable` flag on the payload from the session that
+  actually holds the proposal. The hint and the follow-up name authorize only
+  when that flag is set, and otherwise say what the operator can do instead. No
+  state, status or halt type was added, and nothing mints a decision to make the
+  suggestion true. (Fixes #288)
 ## [0.10.0] — 2026-09-14
 
 ### Added
