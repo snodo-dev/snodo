@@ -67,6 +67,21 @@ snodo uses [Semantic Versioning](https://semver.org/).
   than the spec, the code or an install. The run fact is still recorded when the
   recovered work passes, so a bounded run never proceeds silently. No halt type,
   severity or status value was added. (Fixes #282)
+
+- A judge told to decide is no longer handed the read tools while it does so.
+  #278 withdrew the read tools on the final turn, but the nudge after a prose
+  answer still offered the full read-only set and only narrowed at the last
+  turn. Observed on a real project: an acceptance judge on a 44-turn budget
+  answered in prose at turn 32, was asked for its verdict, and read for twelve
+  more turns — the tools it kept choosing from were withdrawn only at turn 44,
+  by which point it submitted nothing and the run failed closed. The nudge and
+  the final turn are the same moment for this purpose: the loop has decided the
+  reading is over, so the turn after the nudge now offers `submit_verdict`
+  alone, states that the read tools are gone, and says that a verdict on a
+  partial view is real (`warn` exists for it). A judge that decides at the
+  nudge returns a real verdict; one that still returns nothing fails closed,
+  unchanged. No halt type, severity or status value was added. (Fixes #285)
+
 ## [0.10.0] — 2026-09-14
 
 ### Added
