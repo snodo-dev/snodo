@@ -1144,6 +1144,92 @@ class TestPostExecuteToolLoop:
         assert "read_file" in offered_per_turn[0]
         assert offered_per_turn[-1] == {"submit_verdict"}
 
+    def test_nudge_turn_offers_no_read_tool(self, security_validator):
+        """The turn after a prose answer is asked for a verdict only: the read
+        tools are withdrawn, so the judge cannot resume reading (Fixes #285).
+
+        Before the fix the nudge said "do not narrate" while still offering the
+        full read-only set, and a judge that had been asked to decide read for
+        twelve more turns. Here it calls read_file on the nudge turn: the call
+        is refused and the loop fails closed rather than reading."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        offered_per_turn = []
+
+        def completion_side_effect(**kwargs):
+            offered_per_turn.append(
+                {t["function"]["name"] for t in kwargs.get("tools", [])}
+            )
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if len(offered_per_turn) == 1:
+                resp.choices[0].message.content = "The change looks reasonable."
+                resp.choices[0].message.tool_calls = []
+            else:
+                tool_call = MagicMock()
+                tool_call.id = "tc_1"
+                tool_call.function.name = "read_file"
+                tool_call.function.arguments = '{"path": "x.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tool_call]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert "read_file" in offered_per_turn[0]
+        assert offered_per_turn[1] == {"submit_verdict"}
+        # The refused read was never executed.
+        mock_workspace.read_file.assert_not_called()
+        # A judge that will not decide when asked fails closed.
+        assert result.error is True
+        assert result.severity == "blocker"
+
+    def test_judge_that_decides_at_the_nudge_returns_a_real_verdict(self, security_validator):
+        """A judge that narrated but then decides on the verdict-only turn
+        returns a real verdict on its partial view — warn is what it is for
+        (Fixes #285)."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = None
+            if call_count[0] == 1:
+                resp.choices[0].message.content = "I have not finished reading."
+                resp.choices[0].message.tool_calls = []
+            else:
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
+                    "severity": "warn",
+                    "justification": "Partial reading; criterion 2 may not hold.",
+                })
+                resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.severity == "warn"
+        assert result.error is False
+        assert "Partial reading" in result.justification
+        assert completion_fn.call_count == 2
+
     def test_judge_that_decides_late_returns_a_real_verdict(self, security_validator):
         """A judge that reads for many turns and then decides still returns a
         real verdict — a verdict on partial reading is a real verdict."""
