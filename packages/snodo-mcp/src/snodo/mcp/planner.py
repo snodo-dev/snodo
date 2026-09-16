@@ -684,6 +684,22 @@ class PlannerMCP:
 
         atomic_update_json(plan_dir, "status.json", _updater, strict=True)
 
+        # Liveness (Fixes #291): a plan/task status write changes what is
+        # running, and it does not append an audit event, so the writer says
+        # so here. A terminal write (completed/blocked/errored/unmerged) is
+        # the only record that will tell the far side the task stopped, so it
+        # forces past the throttle; a start or a not-yet-started task pushes
+        # at the normal once-per-minute budget, coalescing with its neighbours.
+        # A session with nothing started, and sync disabled, send nothing.
+        try:
+            from snodo.infrastructure import cloud_liveness
+            cloud_liveness.note_transition(
+                str(self.project_root),
+                force=status in cloud_liveness.TERMINAL_PLAN_STATUSES,
+            )
+        except Exception as exc:  # noqa: BLE001 — liveness never breaks a status write
+            _logger.debug("Liveness note after status write skipped: %s", exc)
+
     def recompute_depths(self, plan_name: str) -> dict:
         """Two-pass depth recompute for legacy plans.
 

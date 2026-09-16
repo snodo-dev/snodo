@@ -296,6 +296,23 @@ def test_secret() -> str:
     return TEST_SECRET
 
 
+@pytest.fixture(autouse=True)
+def quiesce_cloud_liveness():
+    """Disarm the cloud-liveness audit listener around every test (Fixes #291).
+
+    The listener is process-global: a test that drives ``_execute_task`` arms
+    it, and a later test in the same xdist worker that happens to patch a
+    sync-enabled ``ConfigManager`` and append a trigger event would otherwise
+    start a real push thread. Liveness is still tested — its own module arms
+    it explicitly — but no test arms it as a side effect for the next one.
+    """
+    from snodo.infrastructure import cloud_liveness
+
+    cloud_liveness.uninstall()
+    yield
+    cloud_liveness.uninstall()
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Validate pytest rootdir at configuration time.
 

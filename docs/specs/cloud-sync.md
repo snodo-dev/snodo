@@ -23,7 +23,8 @@ Authorization: Bearer <account key>
 
 Batched 1-50 events. Dispatched from a background thread during `snodo run`
 teardown and from `snodo cloud sync`; nowhere else. The cursor advances only on
-a 2xx, so a failed batch re-sends rather than being lost.
+a 2xx, so a failed batch re-sends rather than being lost. ("Nowhere else" scopes
+the *ingest* path: liveness is a second, separate wire, described below.)
 
 ```json
 {
@@ -87,6 +88,89 @@ and `override` identities are stable and returned without repeated subprocess
 calls.
 
 The decision governing all of this is documented in ADR 012 (`docs/decisions/012-project-identity-from-git-remote.md`).
+
+## Liveness — what is running right now
+
+HISTORY (the ingest path above) is append-only and outlives the machine.
+LIVENESS is mutable and worthless once stale: "task 2.1 is in_progress" is
+true for forty minutes and then false. So it travels a separate wire with
+opposite mechanics (Fixes #291) — and deliberately *not* the ingest path:
+giving liveness the cursor's delivery guarantee would replay a stale status
+after a failed push, which is worse than the gap it covered.
+
+```
+PUT {api_url}/live/{session_id}
+Authorization: Bearer <account key>
+```
+
+The machine pushes; nothing reaches inward. The tunnel remains a convenience,
+not a requirement.
+
+**Event-driven, never on a timer.** A push starts when something actually
+changes: a plan/task status write (planner `update_status`), or an engine
+transition observed through the audit log of a running process (`dispatch`,
+`transition`, `halt`, `task_complete`, `task_merged`, `token_consumed`,
+`post_validation_route`, `verification_executed`,
+`unverified_merge_blocked`, `execution_failed`, `session_started`,
+`session_task_changed`). The task's final word is on the wire regardless of
+when its `state.json` was last rewritten: every snapshot carries what the
+last event was, and a terminal event (`halt`, `task_complete`, …) forces the
+push past the throttle. No heartbeat, no keepalive — so silence means nothing
+changed, not that the machine died. A session with nothing running sends
+nothing: if no plan has begun and there is no task or job record, the snapshot
+is not built.
+
+**At most one push per 60 seconds per session**, so a burst of transitions
+coalesces into one write. The snapshot is built at send time inside the worker,
+so the coalesced write carries the later state. A transition that ends a run's
+claim to be live — a terminal audit event or a plan-task status of
+`completed`/`blocked`/`errored`/`unmerged` — bypasses the throttle: dropping
+the sole record of "this stopped" would strand a false "running" until some
+later event displaced it.
+
+**A full snapshot, never a delta.** A lost push is harmless; the next
+supersedes it entirely. A failed push is dropped — no queue, no retry, no
+cursor, and `cloud_sync.json` is never touched by this path.
+
+**The key is the session.** A session is already project-scoped, persisted,
+and survives a restart (a resumed run rejoins it), so it accumulates no rows
+the way an instance id would. The project rides along so the far side can join
+on it; machine identity adds nothing a session does not already imply. No user
+identifier is sent — the credential identifies the person, and attribution is
+taken from it on the far side so a sender cannot claim to be someone else.
+
+```json
+{
+  "session_id":     "sess_20260902_prod_363b8e",
+  "project_id":     "local:6bd1d012554546c4b9462bfaaa4183d8",
+  "scope":          "local",
+  "display_name":   "nfc-card-v2",
+  "run_started_at": "2026-09-02T21:10:04+00:00",
+  "plans": [
+    {"name": "wave8", "tasks": [{"id": "2.1", "status": "in_progress"}]}
+  ],
+  "tasks": [
+    {"id": "implement-oob", "status": "running", "started_at": "2026-09-02T21:10:05+00:00"}
+  ],
+  "jobs": [
+    {"id": "j_20260902_211005_a1b2", "status": "running", "started_at": "2026-09-02T21:10:06+00:00"}
+  ],
+  "last_event":  {"event_type": "dispatch", "timestamp": "2026-09-02T21:50:01.7+00:00"},
+  "snapshot_at": "2026-09-02T21:50:02.9+00:00"
+}
+```
+
+Statuses are the ones the machine already records — planner statuses, task and
+job `state.json` statuses — passed through verbatim; this path adds no status,
+halt type or state value. Only *when* they travel is changing. `started_at`
+values (epoch on disk) are normalised to ISO. `run_started_at` is the session
+file's `created_at`. `display_name` is the project directory basename.
+
+What the liveness wire never carries is what the ingest path never carries:
+payloads, prompts, diffs, file contents, absolute paths, `usage` records, halt
+payloads — and, unlike the ingest envelope, no `project_path`. Opt-in is the
+same single gate: `cloud.sync_enabled` off or no `cloud.api_key` means a run
+makes no network call on this path either. Log streaming is out of scope.
 
 ## What is in `data`
 
@@ -240,6 +324,8 @@ to argue against this list.
 | Cursor state | `infrastructure/cloud_sync.py` — `CloudSyncState`, `~/.snodo/cloud_sync.json` |
 | Batching, retry, refusal | `infrastructure/cloud_sync.py` — `CloudSyncDispatcher` |
 | Payload construction | `CloudSyncDispatcher._post_batch` |
+| Liveness snapshot, throttle, push | `infrastructure/cloud_liveness.py` |
+| Liveness triggering from engine events | `infrastructure/audit.py` — `register_event_listener` |
 | Run-teardown hook | `cli/commands/run_cmd.py` |
 | Connect / disconnect / status / sync | `cli/commands/cloud_cmd.py` |
 | Config schema | `snodo/config.py` — `cloud.api_key`, `cloud.api_url`, `cloud.sync_enabled` |
