@@ -173,15 +173,14 @@ class PlanToolHandler:
         as a timeout while the run itself carries on — a caller told nothing
         about work that is going fine.
 
-        No validation token is required to reach this handler, and none is
-        consumed. A plan run is not itself a mutation — it starts the CLI's
-        plan-run path, and every task that path dispatches passes the engine's
-        validator quorum and consumes its own token at its own dispatch
-        boundary. WF1 therefore holds per task, where irreversible work
-        actually begins. Gating here would have meant a token issued by
-        ``validate_task`` for one unrelated task standing in for authorisation
-        of an entire plan, which gates nothing while refusing callers who have
-        no coherent way to comply.
+        No token gates this call, at the surface or anywhere else: no MCP
+        tool demands one from the caller (ADR 047). A plan run is not itself
+        a mutation — it starts the CLI's plan-run path, and every task that
+        path dispatches passes the engine's validator quorum and consumes
+        its own token at the loop's own execute boundary. The guarantee
+        therefore holds per task, where irreversible work actually begins;
+        gating the start would only have let a verdict about one unrelated
+        task stand in for authorisation of an entire plan.
 
         A caller that genuinely wants to block — a test, a script — may pass
         ``wait`` true (with an optional ``timeout``); that is opt-in and never

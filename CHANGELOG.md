@@ -133,6 +133,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
   to before, and the same lines reach the log and the audit trail in the same
   order. The `snodo logs --watch` path renders the same way. (Fixes #294)
 
+- An MCP tool is no longer gated on a token the caller must hold. Every tool
+  schema carried a `requires_token` flag and `_enforce_wf1` refused the call
+  when the server held no validation token — but which tools a caller may use
+  is the protocol's and the mode's to decide, and the validator quorum is
+  enforced inside the engine loop, per task. The flags and the surface gate
+  are removed (`requires_token`, `_enforce_wf1`, the `WF1 violation` refusal
+  and the `wf1_violation` audit event); `validate_task` still runs the real
+  pre-execute quorum and a `pass` still records the single-use token the next
+  `dispatch_task` consumes as the audit link. The engine's token issuance,
+  verification and the human `authorize` path are untouched, and so are the
+  four validation outcomes. The server instructions now say what is true:
+  access is the mode grant, the guarantee is the loop (ADR 047, superseding
+  ADR 017 as the record of the tool surface). Notably, `propose_plan`,
+  `decompose` and `generate_spec` — authoring calls that execute nothing —
+  are no longer refused for want of a verdict about a task that does not
+  exist yet. (Fixes #312)
+
 ### Fixed
 
 - An `llm.*` config key that is not a setting of its section now fails loudly

@@ -7,7 +7,7 @@ This is the documentation home. For the two-minute introduction, see the
 
 ## Core idea: policy vs mechanism
 
-Declare what a valid development process looks like (`protocol.yml` — modes, validators, constraints, disagreement policies). The engine enforces it structurally: tokens issue only when validators agree, mutations require valid tokens, and a single `blocker` halts execution unconditionally regardless of policy. You write the policy; the engine provides the mechanism.
+Declare what a valid development process looks like (`protocol.yml` — modes, validators, constraints, disagreement policies). The engine enforces it structurally: tokens issue only when validators agree, the loop executes a task only on a valid token, and a single `blocker` halts execution unconditionally regardless of policy. Tool access at the MCP surface is the protocol's and the mode's to decide — not a token the caller must hold. You write the policy; the engine provides the mechanism.
 
 ## 2+N model
 

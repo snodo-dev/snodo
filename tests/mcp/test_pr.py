@@ -7,7 +7,7 @@ Tests cover:
 - All 7 PR operations through provider
 - Error wrapping (ProviderError -> PrError)
 - Server integration (TOOL_REGISTRY, MODE_TOOL_MAP, mode filtering)
-- WF1 enforcement for mutating PR tools
+- No token gate at the PR surface (ADR 047)
 - --from-pr CLI flag
 """
 
@@ -229,7 +229,7 @@ class TestServerIntegration:
 
     def test_pr_tools_registry_schemas(self):
         from snodo.mcp.server import TOOL_REGISTRY
-        required_keys = {"description", "inputSchema", "requires_token", "mcp", "method"}
+        required_keys = {"description", "inputSchema", "mcp", "method"}
         pr_tools = ["create_pr", "read_pr_diff", "post_review_comment",
                      "approve_pr", "reject_pr", "merge_pr"]
         for tool in pr_tools:
@@ -244,17 +244,13 @@ class TestServerIntegration:
         for tool in pr_tools:
             assert TOOL_REGISTRY[tool]["mcp"] == "pr"
 
-    def test_read_pr_diff_requires_no_token(self):
+    def test_no_pr_tool_carries_a_token_requirement(self):
+        """A PR tool is governed by the protocol, not by a token the caller
+        holds (ADR 047): no schema carries requires_token."""
         from snodo.mcp.server import TOOL_REGISTRY
-        assert TOOL_REGISTRY["read_pr_diff"]["requires_token"] is False
-
-    def test_mutating_pr_tools_require_token(self):
-        from snodo.mcp.server import TOOL_REGISTRY
-        mutating = ["create_pr", "post_review_comment", "approve_pr", "reject_pr", "merge_pr"]
-        for tool in mutating:
-            assert TOOL_REGISTRY[tool]["requires_token"] is True, (
-                f"{tool} should require token"
-            )
+        for tool in ("read_pr_diff", "create_pr", "post_review_comment",
+                     "approve_pr", "reject_pr", "merge_pr"):
+            assert "requires_token" not in TOOL_REGISTRY[tool]
 
     def test_pr_in_mode_tool_map(self):
         from snodo.mcp.server import MODE_TOOL_MAP
@@ -345,22 +341,19 @@ class TestModeFiltering:
         assert "approve_pr" not in tool_names
         assert "merge_pr" not in tool_names
 
-    def test_reviewer_pr_tools_wf1_enforced(self, protocol_with_pr, project_dir):
-        """Mutating PR tools require validation token."""
-        from snodo.mcp.server import MCPError, ProtocolMCPServer
+    def test_reviewer_pr_tools_callable_without_token(self, protocol_with_pr, project_dir):
+        """The reviewer mode grants the PR tools; with the grant in hand the
+        caller holds no token and the calls still reach the provider (ADR 047)."""
+        from snodo.mcp.server import ProtocolMCPServer
         server = ProtocolMCPServer(protocol_with_pr, project_dir, mode_id="reviewer")
+        server.pr.provider = StubProvider()
+        assert server._validation_token is None
 
-        # Mutating tools should fail without token
-        with pytest.raises(MCPError, match="WF1 violation"):
-            server.call_tool("create_pr", {
-                "branch": "feat", "title": "t", "body": "b"
-            })
-
-        with pytest.raises(MCPError, match="WF1 violation"):
-            server.call_tool("approve_pr", {"pr_number": 1})
-
-        with pytest.raises(MCPError, match="WF1 violation"):
-            server.call_tool("merge_pr", {"pr_number": 1})
+        assert "pull/42" in server.call_tool("create_pr", {
+            "branch": "feat", "title": "t", "body": "b"
+        })
+        assert "approved" in server.call_tool("approve_pr", {"pr_number": 1})
+        assert "merged" in server.call_tool("merge_pr", {"pr_number": 1})
 
     def test_reviewer_read_pr_diff_no_token_needed(self, protocol_with_pr, project_dir):
         """read_pr_diff should work without validation token (but needs provider)."""

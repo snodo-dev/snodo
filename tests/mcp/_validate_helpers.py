@@ -3,7 +3,8 @@
 FILE: tests/mcp/_validate_helpers.py
 
 Provides a deterministic "passing validation" context so tests can exercise
-the token-gated dispatch/commit flow without a real LLM or test suite.
+the validate_task → dispatch flow (quorum outcome and recorded token)
+without a real LLM or test suite.
 """
 
 from contextlib import contextmanager

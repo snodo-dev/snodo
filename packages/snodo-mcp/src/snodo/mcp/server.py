@@ -2,8 +2,11 @@
 
 Generates an MCP server from a Protocol definition:
 - Maps protocol mode tools to real MCP implementations (workspace, git, shell)
-- Enforces WF1: tool execution requires a valid validation token
-- Filters available tools by active mode
+- Filters available tools by active mode — tool access is the protocol's
+  and the mode's to decide, not a token the caller must hold (see ADR 047)
+- Records the validator quorum's verdict: validate_task mints a single-use
+  token on a pass and dispatch_task consumes it as the audit link between
+  a satisfied quorum and the work dispatched
 
 Transport is handled by FastMCP (see transport.py).
 """
@@ -41,8 +44,9 @@ class MCPError(Exception):
 class ProtocolMCPServer:
     """MCP server generated from a Protocol definition.
 
-    Exposes tools filtered by protocol mode and enforces WF1:
-    write/mutating tools require a valid validation token.
+    Exposes the tools the protocol's active mode(s) grant. A tool call is
+    never refused for want of a token the caller holds: the validator
+    quorum is enforced inside the engine loop, per task (see ADR 047).
     """
 
     def __init__(
@@ -59,7 +63,8 @@ class ProtocolMCPServer:
             protocol: Protocol definition
             project_root: Project root directory
             mode_id: Specific mode to serve (None = all modes)
-            token_issuer: Token issuer for WF1 enforcement
+            token_issuer: Token issuer backing validate_task's single-use
+                token (recorded on a pass, consumed at the dispatch boundary)
             audit_log: Optional AuditLog for INV4 event logging
         """
         self.protocol = protocol
@@ -163,7 +168,8 @@ class ProtocolMCPServer:
         project state (``.snodo/state.json``), falling back to the protocol's
         initial mode.  This is what makes it possible to attribute an operation
         to a mode from the audit log alone — disjointness no longer provides
-        mode inference under the relaxed WF1 (see ADR 017).
+        mode inference under the relaxed WF1 (see ADR 017, carried forward by
+        ADR 047).
         """
         if self.mode_id:
             return self.mode_id
@@ -215,7 +221,8 @@ class ProtocolMCPServer:
                     if name in TOOL_REGISTRY and name not in tools:
                         tools[name] = TOOL_REGISTRY[name]
 
-        # Always include validate_task (meta-tool for WF1 token issuance)
+        # Always include validate_task (meta-tool: runs the pre-execute
+        # quorum; a pass records the single-use token dispatch consumes)
         tools["validate_task"] = TOOL_REGISTRY["validate_task"]
 
         # The planning surface is the human gate above the task loop: a
@@ -251,7 +258,7 @@ class ProtocolMCPServer:
         arguments: Optional[Dict[str, Any]] = None,
         progress_sink: Optional[Any] = None,
     ) -> Any:
-        """Execute a tool call with WF1 enforcement.
+        """Execute a tool call.
 
         Args:
             name: Tool name
@@ -267,7 +274,7 @@ class ProtocolMCPServer:
             Tool result
 
         Raises:
-            MCPError: If tool not found, token invalid, or execution fails
+            MCPError: If tool not found or execution fails
         """
         arguments = arguments or {}
 
@@ -275,7 +282,6 @@ class ProtocolMCPServer:
             raise MCPError(f"Unknown tool: {name}")
 
         schema = self._tools[name]
-        self._enforce_wf1(name, schema)
 
         self._audit("tool_call", {
             "op": "tool_call",
@@ -325,62 +331,6 @@ class ProtocolMCPServer:
         return await asyncio.to_thread(
             functools.partial(self.call_tool, name, arguments, progress_sink)
         )
-
-    def _enforce_wf1(self, name: str, schema: dict) -> None:
-        """Enforce WF1: mutating tools require a valid validation token.
-
-        This is also the INV3 enforcement point: mutations are gated
-        behind a valid token, which can only be issued by a satisfied
-        validator quorum.  The token cannot be forged (INV1/JWT), the
-        quorum cannot be bypassed (WF1 checks the token is present),
-        so non-overridable validation is structurally enforced here.
-
-        Args:
-            name: Tool name (for error messages)
-            schema: Tool schema with requires_token flag
-
-        Raises:
-            MCPError: If token is missing or invalid
-        """
-        if not schema["requires_token"]:
-            return
-        with self._token_lock:
-            if not self._validation_token:
-                status = getattr(self, "_validation_status", None) or "none"
-                self._audit("wf1_violation", {
-                    "op": "wf1_violation",
-                    "tool": name,
-                    "mode": self._active_mode(),
-                    "reason": "no_token",
-                })
-                raise MCPError(
-                    f"WF1 violation: tool '{name}' requires a validation token. "
-                    f"validate_task last returned status='{status}' — a token is "
-                    f"only issued on status='pass'. Call validate_task first."
-                )
-            try:
-                valid = self.token_issuer.verify_token(self._validation_token)
-            except TokenStoreError as e:
-                self._audit("wf1_violation", {
-                    "op": "wf1_violation",
-                    "tool": name,
-                    "mode": self._active_mode(),
-                    "reason": "token_store_unavailable",
-                })
-                raise MCPError(
-                    f"WF1 violation: cannot verify validation token for tool "
-                    f"'{name}' — token store unavailable: {e}"
-                ) from e
-            if not valid:
-                self._audit("wf1_violation", {
-                    "op": "wf1_violation",
-                    "tool": name,
-                    "mode": self._active_mode(),
-                    "reason": "invalid_token",
-                })
-                raise MCPError(
-                    f"WF1 violation: invalid or expired validation token for tool '{name}'"
-                )
 
     def _dispatch_tool(self, name: str, schema: dict, arguments: dict) -> Any:
         """Dispatch a tool call to the backing MCP.
@@ -743,9 +693,11 @@ class CoreToolHandler:
             "mode": self.server._active_mode(),
         })
 
-        # Single-use: consume the token at the dispatch boundary (the point
-        # where the token authorises irreversible work). The INSERT is the
-        # claim — atomic across processes. Fail closed if the store is down.
+        # Single-use: consume the last recorded token at the dispatch
+        # boundary. This is an audit link between a satisfied quorum and
+        # the work dispatched, not a gate — dispatch proceeds either way
+        # (the run re-runs the quorum per task inside the engine loop).
+        # The INSERT is the claim — atomic across processes.
         with self.server._token_lock:
             token = self.server._validation_token
             if token is not None:

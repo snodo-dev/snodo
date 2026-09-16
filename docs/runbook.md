@@ -458,14 +458,14 @@ Or use `snodo install` / `snodo uninstall` to manage the Claude Desktop config a
 
 ### How modes become servers
 
-Each protocol mode declares a set of logical tools (e.g., `edit`, `approve`, `pr`). `snodo serve` maps those to concrete MCP operations with per-tool WF1 enforcement: every mutating operation requires a valid JWT validation token. Read-only operations (read_file, list_files, get_status) require no token.
+Each protocol mode declares a set of logical tools (e.g., `edit`, `approve`, `pr`). `snodo serve` maps those to concrete MCP operations and serves exactly the mode's grant: tools the active mode(s) do not grant are not exposed at all (write_file and delete_file belong to no shipped grant), and no exposed call demands a validation token from the caller (ADR 047). The validator quorum is enforced inside the engine loop, per task.
 
-### Validation flow (WF1 + INV3)
+### Validation flow (engine loop + INV3)
 
-1. An orchestrator calls `validate_task` → the engine runs the configured validators
-2. If all pass (policy threshold met, no blockers), a JWT validation token is issued
-3. The orchestrator calls mutating tools (write_file, commit, etc.) with the token
-4. If any validator emits blocker, the task halts (INV3) — no token is issued, no mutations allowed
+1. An orchestrator calls `validate_task` → the server runs the real pre-execute validators (the same quorum the loop runs)
+2. If the quorum passes (policy threshold met, no blockers), a single-use JWT is recorded; the next `dispatch_task` consumes it as the audit link between the pre-check and the work
+3. The orchestrator dispatches (`dispatch_task`, `run_plan`); the run validates the task again inside the engine loop before the coder executes
+4. If any validator emits blocker, the task halts (INV3) — no token is issued and the loop does not proceed
 5. If the task escalates (threshold not met, no blockers), use `snodo authorize` to review and sign
 
 ## Troubleshooting
@@ -494,7 +494,7 @@ Two refusal modes appear in the payload:
 
 ### Token expired or invalid
 
-Tokens expire at the configured TTL (default 10 minutes). A task that sits idle between validation and execution may see `WF1 violation: token required`. Re-run the task — the session checkpoint preserves state, and the engine re-issues a new token on resume.
+Tokens expire at the configured TTL (default 10 minutes) and are single-use. At the tool surface this is never a refusal: dispatch is not gated on a caller-held token (ADR 047). Inside the engine loop an expired token does stop the run — the session checkpoint preserves state, and the engine re-issues a new token on resume after re-validating.
 
 ### Quality validator runs subprocess tests
 

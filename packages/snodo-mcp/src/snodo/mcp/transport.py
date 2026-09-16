@@ -2,13 +2,15 @@
 
 FILE: snodo/mcp/transport.py
 
-Bridges ProtocolMCPServer (tool resolution, WF1 enforcement) to FastMCP
+Bridges ProtocolMCPServer (tool resolution, mode filtering) to FastMCP
 (official MCP SDK transport). Replaces the custom stdio/SSE transport
 that didn't work with Claude Desktop.
 
 ProtocolMCPServer handles:
 - Protocol-driven tool resolution (MODE_TOOL_MAP -> TOOL_REGISTRY)
-- WF1 enforcement (validation tokens for mutating tools)
+- Validation-quorum reporting (validate_task outcome; single-use token
+  recorded on a pass and consumed at the dispatch boundary — an audit
+  link, not a gate the caller must pass; see ADR 047)
 - Dispatching to backing MCPs (workspace, git, shell, pr, planner)
 
 FastMCP handles:
@@ -193,17 +195,22 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         f"- **Coder**: generates code artifacts. Runs in background jobs.\n"
         f"- **Validators**: read-only checks on task specs (pre-execute) and code\n"
         f"  changes (post-execute). They cannot mutate the repo.\n"
-        f"- **Mutations are token-gated (WF1)**: write/exec tools require a single-use\n"
-        f"  validation token issued by a satisfied validator quorum.\n"
+        f"- **Tool access is the protocol's to decide**: a server exposes only the\n"
+        f"  tools the active mode(s) grant, and no tool call is refused for want\n"
+        f"  of a token the caller holds (see ADR 047).\n"
+        f"- **The quorum is enforced inside the engine loop**: every dispatched\n"
+        f"  task passes the validators again before anything is written — a\n"
+        f"  `blocker` sends the work back and is never overridable by you.\n"
         f"\n"
         f"## The workflow loop (per task)\n"
         f"Execute tasks in this exact order:\n"
         f"\n"
         f"1. `validate_task(task_id, task_spec)` — runs the real pre-execute validators\n"
         f"   and the test suite, then returns ONE of four validation outcomes:\n"
-        f"   - `pass`            → a validation token is issued; proceed to dispatch\n"
+        f"   - `pass`            → quorum satisfied (a single-use token is recorded);\n"
+        f"                        proceed to dispatch\n"
         f"   - `escalate`        → NO token; run `snodo authorize <decision_id>`, then\n"
-        f"                        re-call validate_task to obtain the token\n"
+        f"                        re-call validate_task to clear it\n"
         f"   - `blocker`         → NO token; fix the code and re-validate (a blocker is\n"
         f"                        NEVER overridable by a human decision)\n"
         f"   - `validator_error` → NO token; retry / inspect logs (not an authorisation\n"
@@ -212,8 +219,10 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         f"   additionally halt `environment_error` (the coder could not be invoked);\n"
         f"   handle it as a non-verdict operational halt, never as a verdict about the\n"
         f"   task. See ADR 015 for the taxonomy and the reasoning.\n"
-        f"2. `dispatch_task(task_spec)` — requires a token from a `pass` validate_task;\n"
-        f"   submits the task for background execution, returns job_id\n"
+        f"2. `dispatch_task(task_spec)` — submits the task for background execution,\n"
+        f"   returns job_id; the run re-validates this task inside the engine loop\n"
+        f"   before anything is written, so your pre-check is guidance, not a\n"
+        f"   permission the call must carry\n"
         f"3. `get_job_status(job_id)` — poll until status is `completed` or `failed`\n"
         f"4. `get_job_logs(job_id, tail=N)` — read output, especially on failure\n"
         f"\n"
@@ -251,11 +260,18 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         f"(`run_plan` needs no progress stream: it returns a job_id at once, and the\n"
         f"run's narration lands in the job's stdout.log as it is produced.)\n"
         f"\n"
-        f"## WF1 token lifecycle\n"
-        f"- `validate_task` issues a single-use JWT token with a short TTL — only when\n"
-        f"  the validators reach `pass` (or after a human adjudicates an escalation).\n"
-        f"- The token authorizes the next mutating tool call (write_file, commit, etc).\n"
-        f"- The token is consumed on use — you must re-validate for each mutation cycle.\n"
+        f"## Where the guarantee lives (tokens and access)\n"
+        f"- `validate_task` runs the pre-execute quorum. On `pass` (or on\n"
+        f"  `escalate` after a human adjudicates via `snodo authorize`) it records a\n"
+        f"  single-use JWT token with a short TTL; the next `dispatch_task` consumes\n"
+        f"  it — the audit link between a satisfied quorum and the work dispatched.\n"
+        f"- No tool at this surface is gated on a token you hold. Your authority is\n"
+        f"  the protocol's mode grant: a server exposes only the tools its active\n"
+        f"  mode(s) grant, and refuses everything else (see ADR 047).\n"
+        f"- The enforceable discipline is per task inside the engine loop: the run\n"
+        f"  validates before it executes; a `blocker` sends the work back and is\n"
+        f"  never overridable; an `escalate` halts until a human decides through\n"
+        f"  `snodo authorize`. None of that can be bypassed from this surface.\n"
         f"\n"
         f"## Where to find state\n"
         f"You cannot read the filesystem. Use these resources instead:\n"
@@ -285,7 +301,7 @@ def build_fastmcp_server(
     instructions from the loaded protocol, and resources for self-description.
 
     Args:
-        protocol_server: ProtocolMCPServer with resolved tools and WF1 state
+        protocol_server: ProtocolMCPServer with resolved tools and validation state
         token_verifier: Optional OAuth TokenVerifier for Bearer JWT validation.
             When set, FastMCP wraps the /mcp endpoint with auth middleware.
         auth_settings: Optional OAuth settings (issuer_url, resource_server_url).

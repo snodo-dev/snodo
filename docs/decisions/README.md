@@ -20,7 +20,7 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [014](014-trusted-repository-threat-model.md) | Trusted-repository threat model and `init` consent gate | 2026-08-21 | Threat-model decision (`init_cmd.py`) |
 | [015](015-mcp-validation-four-outcome-contract.md) | Real validation on the MCP path + the outcome contract (five outcomes) | 2026-08-21 | `handle_validate_task` (`server.py`) |
 | [016](016-token-single-use-sqlite-store.md) | Shared SQLite store for validation-token single-use | 2026-08-22 | `TokenStore` (`tokens.py`) |
-| [017](017-wf1-exclusive-tools.md) | WF1 relaxed to exclusivity on approval-conferring tools | 2026-08-23 | `check_wf1` (`verifier.py`) |
+| [017](017-wf1-exclusive-tools.md) | WF1 relaxed to exclusivity on approval-conferring tools | 2026-08-23 | Superseded by 047 (load-time rule stands) |
 | [018](018-auto-merge-task-branches.md) | Auto-merge task branches on successful completion | 2026-08-24 | `_merge_on_success` (`run_cmd.py`) |
 | [019](019-phase-aware-validator-prompts.md) | Phase-aware validator prompts + read tools for repository-content validators | 2026-08-24 | `_phase_frame` (`llm_validator.py`) |
 | [020](020-wave-classifier-config.md) | Wave classification reads `ClassifierConfig`; classifier model resolved once | 2026-08-24 | `_migrate_wave_classifier_keys` (`config.py`) |
@@ -50,3 +50,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [044](044-intake-proposes-criteria.md) | Intake proposes criteria from decision records; the operator accepts | 2026-09-13 | `snodo/survey/criteria.py` + `intake_cmd.py` |
 | [045](045-a-judge-is-made-to-decide.md) | A judge is made to decide; a non-verdict is an error | 2026-09-14 | `validators/llm_validator.py` + `core/interfaces.py` (`ValidatorResult`) |
 | [046](046-unknown-llm-config-key-fails-loud.md) | An unknown `llm` config key is rejected, not silently dropped | 2026-09-16 | `infrastructure/config.py` (`LlmConfig` + section models) |
+| [047](047-mcp-tools-governed-not-token-gated.md) | An MCP tool is governed by the protocol, not by a token the caller must hold | 2026-09-16 | `mcp/server.py` + `mcp/tools.py` (supersedes 017 as the tool-surface record) |

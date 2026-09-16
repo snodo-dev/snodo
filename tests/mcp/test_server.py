@@ -2,8 +2,9 @@
 
 FILE: tests/mcp/test_server.py
 
-Tests ProtocolMCPServer (tool resolution, WF1 enforcement, mode filtering)
-and the FastMCP transport bridge (build_fastmcp_server, tool handler delegation).
+Tests ProtocolMCPServer (tool resolution, mode filtering, no token gate at
+the tool surface) and the FastMCP transport bridge (build_fastmcp_server,
+tool handler delegation).
 """
 
 import inspect
@@ -17,7 +18,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from snodo.compiler.models import Protocol
 from snodo.core.interfaces import ValidatorResult
-from snodo.infrastructure.tokens import TokenIssuer
 from snodo.mcp.server import (
     MODE_TOOL_MAP,
     TOOL_REGISTRY,
@@ -161,49 +161,42 @@ class TestToolResolution:
             assert "inputSchema" in tool
 
 
-# === WF1 Enforcement ===
+# === No token gate at the tool surface (ADR 047) ===
 
-class TestWF1Enforcement:
+class TestNoSurfaceTokenGate:
     def test_read_tools_work_without_token(self, server):
-        # read_file requires no token
+        # read_file was never gated; it stays callable with nothing held
         (Path(server.project_root) / "hello.txt").write_text("world")
         result = server.call_tool("read_file", {"path": "hello.txt"})
         assert result == "world"
 
-    def test_mutating_tools_rejected_without_token(self, server):
-        with pytest.raises(MCPError, match="WF1 violation"):
-            server.call_tool("stage_files", {"paths": ["test.txt"]})
+    def test_surface_gate_is_gone(self, server):
+        """The gate itself no longer exists, and the server holds no token."""
+        assert server._validation_token is None
+        assert not hasattr(server, "_enforce_wf1")
 
-    def test_commit_rejected_without_token(self, server):
-        with pytest.raises(MCPError, match="WF1 violation"):
+    def test_commit_callable_without_token(self, server):
+        assert server._validation_token is None
+        # Empty repo state: git raises "nothing to commit", wrapped — never a
+        # token demand.
+        with pytest.raises(MCPError) as exc:
             server.call_tool("commit", {"message": "test"})
+        assert "token" not in str(exc.value).lower()
 
-    def test_stage_files_rejected_without_token(self, server):
-        with pytest.raises(MCPError, match="WF1 violation"):
-            server.call_tool("stage_files", {"paths": ["file.txt"]})
-
-    def test_commit_works_after_validate(self, server):
-        # Issue token via validate_task (validators pass under the mock)
-        with validation_passing(server):
-            result = server.call_tool("validate_task", {"task_id": "t1"})
-        assert result["token_issued"] is True
-        assert result["status"] == "pass"
-
-        # Create a file to stage and commit
+    def test_stage_files_and_commit_work_without_token(self, server):
+        # Mutations execute with no validation held by the caller — the
+        # guarantee is the engine loop's, per dispatched task, not this gate.
         (Path(server.project_root) / "new.txt").write_text("hello")
         server.call_tool("stage_files", {"paths": ["new.txt"]})
         server.call_tool("commit", {"message": "test commit"})
 
-    def test_invalid_token_rejected(self, server):
-        # Create a token with a different secret so verification fails
-        rogue = TokenIssuer(secret="rogue_secret_key_32bytes_longer!", ttl_seconds=3600)
-        rogue_token = rogue.issue_token(
-            "t1",
-            [ValidatorResult(validator_id="sec", severity="pass", justification="ok")],
-        )
-        server._validation_token = rogue_token
-        with pytest.raises(MCPError, match="WF1 violation.*invalid"):
-            server.call_tool("stage_files", {"paths": ["x.txt"]})
+    def test_validate_task_records_token_on_pass(self, server):
+        # The validate_task contract (ADR 015) is untouched: a pass still
+        # records the single-use token that dispatch consumes as evidence.
+        with validation_passing(server):
+            result = server.call_tool("validate_task", {"task_id": "t1"})
+        assert result["token_issued"] is True
+        assert result["status"] == "pass"
 
     def test_validate_task_returns_results(self, server):
         with validation_passing(server):
@@ -261,7 +254,7 @@ class TestModeToolMap:
                 )
 
     def test_all_registry_tools_have_required_keys(self):
-        required_keys = {"description", "inputSchema", "requires_token", "mcp", "method"}
+        required_keys = {"description", "inputSchema", "mcp", "method"}
         for name, schema in TOOL_REGISTRY.items():
             assert required_keys.issubset(schema.keys()), (
                 f"TOOL_REGISTRY['{name}'] missing keys: {required_keys - schema.keys()}"
@@ -318,13 +311,14 @@ class TestFastMCPBridge:
         result = handler(path="test.txt")
         assert result == "hello"
 
-    def test_tool_handler_wf1_error_propagates(self, server):
-        """WF1 violations propagate as MCPError from handler."""
+    def test_tool_handler_no_token_error_to_propagate(self, server):
+        """A mutating handler runs with no token held: no gate stands in
+        front of it, and it never raises a token demand (ADR 047)."""
+        (Path(server.project_root) / "staged.txt").write_text("hello")
         tool_info = next(t for t in server.get_tools() if t["name"] == "stage_files")
         handler = _make_tool_handler(server, tool_info)
 
-        with pytest.raises(MCPError, match="WF1"):
-            handler(paths=["test.txt"])
+        handler(paths=["staged.txt"])  # executes — nothing refuses
 
     def test_tool_handler_returns_json_for_dicts(self, server):
         """Dict results are serialized as JSON (async handler for slow tools)."""
@@ -456,13 +450,11 @@ class TestSoloProtocolTools:
         assert "merge_branch" in TOOL_REGISTRY
         assert TOOL_REGISTRY["merge_branch"]["mcp"] == "git"
         assert TOOL_REGISTRY["merge_branch"]["method"] == "merge_branch"
-        assert TOOL_REGISTRY["merge_branch"]["requires_token"] is True
 
     def test_delete_branch_in_tool_registry(self):
         assert "delete_branch" in TOOL_REGISTRY
         assert TOOL_REGISTRY["delete_branch"]["mcp"] == "git"
         assert TOOL_REGISTRY["delete_branch"]["method"] == "delete_branch"
-        assert TOOL_REGISTRY["delete_branch"]["requires_token"] is True
 
     def test_commit_tool_mapping(self):
         assert "commit" in MODE_TOOL_MAP
@@ -548,7 +540,6 @@ class TestDispatchTask:
 
     def test_dispatch_task_in_tool_registry(self):
         assert "dispatch_task" in TOOL_REGISTRY
-        assert TOOL_REGISTRY["dispatch_task"]["requires_token"] is True
         assert TOOL_REGISTRY["dispatch_task"]["mcp"] is None
         assert TOOL_REGISTRY["dispatch_task"]["method"] is None
 
@@ -556,9 +547,18 @@ class TestDispatchTask:
         assert "dispatch" in MODE_TOOL_MAP
         assert "dispatch_task" in MODE_TOOL_MAP["dispatch"]
 
-    def test_dispatch_task_requires_token(self, dispatch_server):
-        with pytest.raises(MCPError, match="WF1 violation"):
-            dispatch_server.call_tool("dispatch_task", {"task_spec": "test"})
+    def test_dispatch_task_callable_without_token(self, dispatch_server):
+        """No validate_task run, no token held — the dispatch still goes
+        through: the enforceable quorum is the engine loop's, per task."""
+        assert dispatch_server._validation_token is None
+        with patch("snodo.jobs.JobManager") as mock_jm_cls:
+            mock_jm = MagicMock()
+            mock_jm.submit.return_value = "j_notoken"
+            mock_jm_cls.return_value = mock_jm
+            result = dispatch_server.call_tool(
+                "dispatch_task", {"task_spec": "test"}
+            )
+        assert result["status"] == "accepted"
 
     def test_dispatch_task_submits_to_jobmanager(self, dispatch_server):
         """dispatch_task submits to JobManager and returns the job_id."""
@@ -623,7 +623,7 @@ class TestDispatchTask:
         """get_job_status, list_jobs, get_job_logs are registered."""
         for name in ("get_job_status", "list_jobs", "get_job_logs"):
             assert name in TOOL_REGISTRY, f"{name} missing from TOOL_REGISTRY"
-            assert not TOOL_REGISTRY[name]["requires_token"]
+            assert "requires_token" not in TOOL_REGISTRY[name]
             assert TOOL_REGISTRY[name]["mcp"] is None
 
     def test_job_tools_in_dispatch_map(self):
@@ -806,7 +806,7 @@ class TestDispatchTask:
         """list_models and resolve_model are registered."""
         for name in ("list_models", "resolve_model"):
             assert name in TOOL_REGISTRY, f"{name} missing from TOOL_REGISTRY"
-            assert not TOOL_REGISTRY[name]["requires_token"]
+            assert "requires_token" not in TOOL_REGISTRY[name]
             assert TOOL_REGISTRY[name]["mcp"] is None
 
     def test_model_tools_in_edit_mode(self):
@@ -1830,14 +1830,13 @@ class TestServerAuditLog:
         assert len(events) == 1
         assert events[0].data["mode"] == "producer"
 
-    def test_wf1_violation_logs_event(self, audited_server, audit_log):
-        """WF1 violation logs wf1_violation event."""
-        with pytest.raises(MCPError, match="WF1"):
-            audited_server.call_tool("stage_files", {"paths": ["x.txt"]})
-        events = audit_log.get_history(event_type="wf1_violation")
-        assert len(events) == 1
-        assert events[0].data["tool"] == "stage_files"
-        assert events[0].data["reason"] == "no_token"
+    def test_mutating_call_audits_no_violation(self, audited_server, audit_log, project_dir):
+        """A mutating call with no token on record is a tool_call, not a
+        violation: the wf1_violation event left with the surface gate."""
+        (Path(project_dir) / "stageable.txt").write_text("hi")
+        audited_server.call_tool("stage_files", {"paths": ["stageable.txt"]})
+        assert audit_log.get_history(event_type="tool_call")
+        assert not audit_log.get_history(event_type="wf1_violation")
 
     def test_validate_task_logs_validator_results(self, audited_server, audit_log):
         """validate_task logs validator_results event."""
@@ -1895,11 +1894,16 @@ class TestInstructions:
         assert "poll" in instructions.lower() or "get_job_status" in instructions
         assert "dispatch" in instructions.lower()
 
-    def test_instructions_contains_wf1(self, server):
-        """Instructions describe WF1 token lifecycle."""
+    def test_instructions_describe_governance_not_a_surface_gate(self, server):
+        """The instructions must say what is true: no tool call is refused
+        for want of a caller-held token; the quorum is the loop's (ADR 047)."""
         instructions = _build_instructions(server)
-        assert "WF1" in instructions
-        assert "single-use" in instructions or "token" in instructions.lower()
+        assert "token-gated" not in instructions
+        assert "requires a token" not in instructions
+        assert "authorizes the next mutating tool call" not in instructions
+        assert "single-use" in instructions  # validate_task still records one
+        assert "loop" in instructions
+        assert "ADR 047" in instructions
 
     def test_instructions_contains_resource_uris(self, server):
         """Instructions point to resources for state."""

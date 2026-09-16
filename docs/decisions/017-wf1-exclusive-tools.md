@@ -1,7 +1,14 @@
 # ADR 017 — WF1 relaxed to exclusivity on approval-conferring tools
 
 ## Status
-Accepted
+
+Superseded by [ADR 047](047-mcp-tools-governed-not-token-gated.md) as the record
+of what governs the MCP tool surface. This page is kept intact. The load-time
+rule decided here — WF1 checks exclusivity of approval-conferring tools, with
+mode attribution in the audit log — remains in force inside the protocol
+compiler; what ADR 047 removes is the reading of WF1 as a token gate at the
+tool surface (the `requires_token` flags and `_enforce_wf1` in
+`snodo/mcp/server.py`), which is no longer demanded of a caller.
 
 ## Context
 `check_wf1` enforced **total tool disjointness**: it refused to load any protocol

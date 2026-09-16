@@ -9,7 +9,7 @@ Tests cover:
 - validate_plan: completeness checks
 - get_plan, list_plans, get_status, update_status
 - Server integration (TOOL_REGISTRY, MODE_TOOL_MAP)
-- WF1 enforcement
+- No token gate at the plan surface (ADR 047)
 - Default protocol planner mode
 - CLI plan command (list, status)
 - CLI run --plan execution
@@ -442,17 +442,12 @@ class TestServerIntegration:
         for tool in ["decompose", "generate_spec", "validate_plan"]:
             assert TOOL_REGISTRY[tool]["mcp"] == "planner"
 
-    def test_decompose_requires_token(self):
+    def test_plan_tools_carry_no_token_requirement(self):
+        """An MCP tool is governed by the protocol, not by a token the
+        caller holds (ADR 047) — authoring tools included."""
         from snodo.mcp.server import TOOL_REGISTRY
-        assert TOOL_REGISTRY["decompose"]["requires_token"] is True
-
-    def test_generate_spec_requires_token(self):
-        from snodo.mcp.server import TOOL_REGISTRY
-        assert TOOL_REGISTRY["generate_spec"]["requires_token"] is True
-
-    def test_validate_plan_no_token(self):
-        from snodo.mcp.server import TOOL_REGISTRY
-        assert TOOL_REGISTRY["validate_plan"]["requires_token"] is False
+        for tool in ("decompose", "generate_spec", "validate_plan"):
+            assert "requires_token" not in TOOL_REGISTRY[tool]
 
     def test_plan_in_mode_tool_map(self):
         from snodo.mcp.server import MODE_TOOL_MAP
@@ -545,19 +540,22 @@ class TestModeFiltering:
         assert "generate_spec" not in tool_names
         assert "validate_plan" not in tool_names
 
-    def test_planner_wf1_enforced(self, protocol_with_planner, project_dir):
-        from snodo.mcp.server import MCPError, ProtocolMCPServer
+    def test_decompose_callable_without_token(self, protocol_with_planner, project_dir):
+        """The planner mode grants decompose; with the grant in hand no
+        token is demanded and the scaffold is created (ADR 047)."""
+        from snodo.mcp.server import ProtocolMCPServer
         server = ProtocolMCPServer(protocol_with_planner, project_dir, mode_id="planner")
+        assert server._validation_token is None
 
-        with pytest.raises(MCPError, match="WF1 violation"):
-            server.call_tool("decompose", {"intent": "test", "plan_name": "p"})
+        result = server.call_tool("decompose", {"intent": "test", "plan_name": "p"})
+        assert result["name"] == "p"
 
     def test_validate_plan_works_without_token(self, protocol_with_planner, project_dir):
         from snodo.mcp.server import ProtocolMCPServer
         server = ProtocolMCPServer(protocol_with_planner, project_dir, mode_id="planner")
 
-        # validate_plan is read-only, no WF1 token needed
-        # Plan doesn't exist, but PlannerError is wrapped as MCPError
+        # Plan doesn't exist, but PlannerError is wrapped as MCPError —
+        # the failure is the operation's, never a token demand
         from snodo.mcp.server import MCPError
         with pytest.raises(MCPError, match="Plan not found"):
             server.call_tool("validate_plan", {"plan_name": "nonexistent"})
