@@ -116,8 +116,14 @@ class TestTransitionDriven:
         assert body["session_id"] == "sess_test_1"
         assert body["project_id"] == "local:test123"
         assert body["scope"] == "local"
+        # The plan arrives as shape, not as a task dump: a begun plan node
+        # carries its status counts and the detail of what has started.
+        # (No plan.yml here: the task detail rides on the plan node.)
         assert body["plans"] == [{
-            "name": "wave8", "tasks": [{"id": "2.1", "status": "in_progress"}],
+            "name": "wave8",
+            "total": 2,
+            "status_counts": {"in_progress": 1, "pending": 1},
+            "tasks": [{"id": "2.1", "status": "in_progress"}],
         }]
         assert body["tasks"][0]["id"] == "t_alpha"
         assert body["tasks"][0]["status"] == "running"
@@ -425,6 +431,7 @@ class TestPayloadContent:
         assert set(body) == {
             "session_id", "project_id", "scope", "display_name",
             "run_started_at", "plans", "tasks", "jobs",
+            "task_status_counts", "job_status_counts",
             "last_event", "snapshot_at",
         }
 
@@ -508,6 +515,33 @@ class TestPayloadContent:
         assert body["jobs"][0]["status"] == "running"
         assert "unbounded tool output" not in json.dumps(body)
 
+    def test_task_ref_links_a_job_to_its_plan_task(self, project):
+        """A job nested under its task keeps its identity off the top level.
+
+        ``task.json`` is read for the task id only: the description (the task
+        spec) stays on the machine with the payload fields.
+        """
+        root, _ = project
+        (root / ".snodo" / "plans" / "wave8" / "plan.yml").write_text(
+            "waves:\n  - id: 1\n    tasks: ['2.1']\n"
+        )
+        _write(root / ".snodo" / "jobs" / "j_20260902_a2" / "state.json", {
+            "status": "running", "started_at": 1787000001.0,
+        })
+        _write(root / ".snodo" / "jobs" / "j_20260902_a2" / "task.json", {
+            "task_id": "2.1", "description": "the whole task spec",
+        })
+        body = cloud_liveness.build_liveness_snapshot("sess_test_1", str(root))
+        task = body["plans"][0]["waves"][0]["tasks"][0]
+        assert task["id"] == "2.1"
+        assert task["jobs"] == [{
+            "id": "j_20260902_a2", "status": "running",
+            "started_at": datetime.fromtimestamp(1787000001.0, timezone.utc).isoformat(),
+        }]
+        # The nested job is not also enumerated at the top level.
+        assert body["jobs"] == []
+        assert "the whole task spec" not in json.dumps(body)
+
     def test_snapshot_carries_no_delta_semantics(self, project):
         """Two pushes are two full snapshots, not a base and a diff."""
         root, _ = project
@@ -526,9 +560,184 @@ class TestPayloadContent:
         _, first = posts.calls[0]
         _, second = posts.calls[1]
         assert first["tasks"][0]["status"] == "running"
-        assert second["tasks"][0]["status"] == "completed"
+        # The settled record leaves the live lists and joins the tally: same
+        # truth, carried as a count instead of an enumeration.
+        assert second["tasks"] == []
+        assert second["task_status_counts"] == {"completed": 1}
         # The second snapshot is self-contained: same shape, all sections.
         assert set(first) == set(second)
+
+
+# ------------------------------------------------------------------ #
+# The snapshot carries the plan's shape, not its history (Fixes #303)
+# ------------------------------------------------------------------ #
+
+
+def _make_plan(root: Path, name: str, plan_yml: str, status: dict) -> None:
+    plan_dir = root / ".snodo" / "plans" / name
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    (plan_dir / "plan.yml").write_text(plan_yml)
+    _write(plan_dir / "status.json", {"tasks": status})
+
+
+def _make_job(root: Path, job_id: str, status: str, task_ref: str,
+              started: float) -> None:
+    job_dir = root / ".snodo" / "jobs" / job_id
+    _write(job_dir / "state.json", {"status": status, "started_at": started})
+    _write(job_dir / "task.json", {"task_id": task_ref, "description": "spec"})
+
+
+def _snapshot(root: Path, session_id: str = "sess_shape") -> dict:
+    """Build against an empty home: shape tests never read a real session."""
+    with patch.object(
+        cloud_liveness, "resolve_home",
+        lambda: root.parent / "nohome",
+    ):
+        return cloud_liveness.build_liveness_snapshot(session_id, str(root))
+
+
+_WAVES_YML = """
+waves:
+  - id: 1
+    depends_on: []
+    tasks: ['1.1', '1.2', '1.3']
+  - id: 2
+    depends_on: [1]
+    tasks: ['2.1', '2.2', '2.3']
+"""
+
+
+def _shaped_project(tmp_path: Path, attempts_per_completed_task: int) -> Path:
+    """One incomplete plan: wave 1 fully completed, wave 2 at the frontier.
+
+    ``attempts_per_completed_task`` multiplies the *settled job history* under
+    the completed wave while leaving the plan's shape untouched — exactly the
+    twelve-day session that must stop re-shipping its accumulation.
+    """
+    root = tmp_path / "shaped"
+    _make_plan(root, "wave8", _WAVES_YML, {
+        "1.1": "completed", "1.2": "completed", "1.3": "completed",
+        "2.1": "completed", "2.2": "in_progress", "2.3": "pending",
+    })
+    for wave_task, wave_status in (("1.1", "completed"), ("1.2", "completed"),
+                                   ("1.3", "completed"), ("2.1", "completed")):
+        _write(root / ".snodo" / "tasks" / wave_task / "state.json", {
+            "status": "completed", "started_at": 1787000000.0,
+        })
+        for n in range(attempts_per_completed_task):
+            _make_job(root, f"j_done_{wave_task}_{n}", "completed", wave_task,
+                      1787000000.0 + n)
+    _write(root / ".snodo" / "tasks" / "2.2" / "state.json", {
+        "status": "running", "started_at": 1787000200.0,
+    })
+    _make_job(root, "j_live_22", "running", "2.2", 1787000200.0)
+    return root
+
+
+class TestSnapshotShape:
+    def test_completed_wave_is_counts_running_wave_is_detail(self, tmp_path):
+        root = _shaped_project(tmp_path, attempts_per_completed_task=2)
+        body = _snapshot(root)
+        plan = body["plans"][0]
+        assert plan["name"] == "wave8"
+        assert plan["total"] == 6
+        assert plan["status_counts"] == {
+            "completed": 4, "in_progress": 1, "pending": 1,
+        }
+
+        wave1, wave2 = plan["waves"]
+        # The completed branch: a count and the summary that renders
+        # "wave 1: 3/3 done" — not a full list of its members.
+        assert wave1 == {
+            "id": 1, "total": 3, "status_counts": {"completed": 3},
+        }
+        assert "tasks" not in wave1
+
+        # The running frontier keeps its detail: started tasks, live job.
+        assert wave2["id"] == 2
+        assert wave2["status_counts"] == {
+            "completed": 1, "in_progress": 1, "pending": 1,
+        }
+        started = {t["id"]: t for t in wave2["tasks"]}
+        assert started["2.2"]["status"] == "in_progress"
+        assert started["2.2"]["jobs"] == [{
+            "id": "j_live_22", "status": "running",
+            "started_at": datetime.fromtimestamp(
+                1787000200.0, timezone.utc,
+            ).isoformat(),
+        }]
+        # The pending member is not enumerated: its count is in the wave.
+        assert "2.3" not in started
+
+        # Terminal jobs inside the incomplete plan are still reported — as
+        # the plan's tally, not as an enumeration that grows with history.
+        assert plan["job_status_counts"] == {"completed": 8}
+        for done in ("j_done_1.1_0", "j_done_2.1_1"):
+            assert done not in json.dumps(body)
+        # Nothing claimed by the structure rides the top level twice.
+        assert body["tasks"] == []
+        assert body["jobs"] == []
+
+    def test_payload_does_not_grow_with_completed_history(self, tmp_path):
+        """The twelve-day session pinned: more settled jobs, same payload.
+
+        The plan's shape is identical in both snapshots; only the settled
+        job history differs. The payload must not re-ship that history, so
+        its size is flat and its frontier detail is byte-identical.
+        """
+        small = _snapshot(
+            _shaped_project(tmp_path / "a", attempts_per_completed_task=3))
+        big = _snapshot(
+            _shaped_project(tmp_path / "b", attempts_per_completed_task=40))
+        small["snapshot_at"] = big["snapshot_at"] = "fixed"
+        small_blob, big_blob = json.dumps(small), json.dumps(big)
+        # Eight times the settled job history moves the payload by the digits
+        # of its count — not by anything proportional to the history itself.
+        assert len(big_blob) - len(small_blob) < 2
+        # The frontier detail is identical, and the history's members are
+        # never enumerated.
+        def frontier(b):
+            return json.dumps(b["plans"][0]["waves"][1])
+        assert frontier(small) == frontier(big)
+        assert "j_done_1.2_9" not in big_blob
+        assert big["plans"][0]["job_status_counts"] == {"completed": 160}
+
+    def test_settled_plan_is_a_count_node(self, tmp_path):
+        """A finished plan keeps its summary row but loses its member lists."""
+        root = tmp_path / "oldplans"
+        _make_plan(root, "done_plan", _WAVES_YML, {
+            "1.1": "completed", "1.2": "completed", "1.3": "completed",
+            "2.1": "completed", "2.2": "completed", "2.3": "completed",
+        })
+        for i in range(60):
+            _make_job(root, f"j_old_{i}", "completed", "1.1", 1787000000.0 + i)
+        _make_plan(root, "live_plan", _WAVES_YML, {
+            "1.1": "in_progress",
+        })
+        body = _snapshot(root, "sess_old")
+        done, live = body["plans"]
+        assert done["name"] == "done_plan"
+        assert done["status_counts"] == {"completed": 6}
+        assert "waves" not in done and "tasks" not in done
+        assert done["job_status_counts"] == {"completed": 60}
+        assert live["waves"][0]["tasks"][0]["id"] == "1.1"
+
+    def test_a_record_the_plan_collapsed_away_still_surfaces_while_live(
+        self, tmp_path,
+    ):
+        """Collapsing reshapes the picture; it never hides what is running."""
+        root = _shaped_project(tmp_path, attempts_per_completed_task=1)
+        _make_plan(root, "settled_plan", _WAVES_YML, {
+            "1.1": "completed",
+        })
+        # A zombie engine record: the plan says completed, the state says
+        # running. The plan node collapsed its task away, so the live record
+        # must surface at the top level rather than vanish.
+        _write(root / ".snodo" / "tasks" / "1.1" / "state.json", {
+            "status": "running", "started_at": 1787000000.0,
+        })
+        body = _snapshot(root)
+        assert [t["id"] for t in body["tasks"]] == ["1.1"]
 
 
 # ------------------------------------------------------------------ #

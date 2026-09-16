@@ -21,6 +21,11 @@ with opposite mechanics (Fixes #291):
   it would strand a false "running" until the next event.
 - **A full snapshot, never a delta.** A lost push is harmless; the next one
   supersedes it entirely.
+- **The plan's shape, not its history.** Plans carry structure — plan, then
+  waves, then tasks, then the jobs beneath them — and a branch that has
+  completed is a count and a summary, not a re-shipment of its members. What
+  is sent grows with the plan's shape and what is in flight, never with
+  elapsed time (Fixes #303).
 - **Keyed by session**, which is already project-scoped, already persisted,
   and already survives a restart. The project rides along so the far side can
   join on it.
@@ -40,9 +45,10 @@ import json
 import logging
 import threading
 import time
+from collections import Counter
 from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 from urllib.parse import quote
 
 from snodo.infrastructure.cloud_sync import _should_sync
@@ -98,6 +104,15 @@ TERMINAL_PLAN_STATUSES = frozenset({
 #: the session has *anything* worth publishing — never to rename a status on
 #: the wire.
 _PENDING_TASK_STATUS = "pending"
+
+#: Statuses that mean a task or job record has settled. The same vocabulary
+#: the CLI and the dashboard already treat as terminal (``task_cmd``'s
+#: ``_TASK_TERMINAL_STATUSES``); nothing new. Used only to decide what is
+#: detail (a live record, enumerated) and what is a settled branch (counted)
+#: — never to rename a status on the wire (Fixes #303).
+_SETTLED_RUN_STATUSES = frozenset({
+    "completed", "failed", "cancelled", "unmerged", "blocked",
+})
 
 # Per-session push bookkeeping: session_id -> {"last_push": float|None,
 # "in_flight": bool}. Guards the throttle check and the in-flight flag, not
@@ -318,20 +333,29 @@ def build_liveness_snapshot(session_id: str, project_root: str) -> Optional[dict
     """Assemble the full current state for *session_id*, or None when the
     session has nothing running (Fixes #291).
 
-    Read-only over the same records the dashboard's liveness reader uses —
-    plan status files, task and job ``state.json`` — plus the session file and
-    the audit tail for "what the last event was and when". A torn or corrupt
-    read is skipped, never fatal: a snapshot missing one job still carries the
-    truth about the rest.
+    The payload carries the plan's *shape* — plan, then waves, then tasks,
+    then the jobs beneath them — the way `snodo plan status` renders it
+    (Fixes #303). A branch that has completed is a count and a summary
+    ("wave 1: 3/3 done"), not a list of its members; the running frontier
+    keeps its detail, because that is the part a viewer is watching. What
+    is sent grows with the plan's shape and what is in flight, never with
+    elapsed time: a session's settled history is tallied, not re-shipped.
+
+    Read-only over the same records the plan-status view reads — plan files,
+    task and job ``state.json`` — plus the session file and the audit tail
+    for "what the last event was and when". A torn or corrupt read is skipped,
+    never fatal: a snapshot missing one job still carries the truth about the
+    rest.
     """
     root = Path(project_root)
     session = _read_json(resolve_home() / "sessions" / f"{session_id}.json")
-    plans = _collect_plans(root)
-    tasks = _collect_runs(root / ".snodo" / "tasks")
-    jobs = _collect_runs(root / ".snodo" / "jobs", job_dirs=True)
+    task_rows = _collect_runs(root / ".snodo" / "tasks")
+    job_rows = _collect_runs(root / ".snodo" / "jobs", job_dirs=True)
+    plans, tallied_refs, detailed_refs, tallied_job_ids, nested_job_ids = \
+        _collect_plans(root, task_rows, job_rows)
     last_event = _last_audit_event(root / ".snodo" / "audit.log")
 
-    if not _anything_running(plans, tasks, jobs):
+    if not _anything_running(plans, task_rows, job_rows):
         return None
 
     project_id = ""
@@ -340,9 +364,17 @@ def build_liveness_snapshot(session_id: str, project_root: str) -> Optional[dict
         project_id = str(session.get("project_id") or "")
         run_started_at = session.get("created_at")
     if run_started_at is None:
-        starts = [r["started_at"] for r in tasks + jobs if r.get("started_at")]
+        starts = [r["started_at"] for r in task_rows + job_rows if r.get("started_at")]
         run_started_at = min(starts) if starts else None
     run_started_at = _as_iso(run_started_at)
+
+    # Records the plan structure already carries are not enumerated a second
+    # time once settled; a record that is still live always stays enumerated —
+    # at the plan frontier if the structure shows it there, at the top level
+    # otherwise — so nothing running can be hidden by the collapsing
+    # (Fixes #303).
+    live_tasks, task_counts = _unreported(task_rows, tallied_refs, detailed_refs)
+    live_jobs, job_counts = _unreported(job_rows, tallied_job_ids, nested_job_ids)
     snapshot: dict = {
         "session_id": session_id,
         "project_id": project_id,
@@ -350,8 +382,10 @@ def build_liveness_snapshot(session_id: str, project_root: str) -> Optional[dict
         "display_name": Path(project_root).name if project_root else "",
         "run_started_at": run_started_at,
         "plans": plans,
-        "tasks": tasks,
-        "jobs": jobs,
+        "tasks": live_tasks,
+        "jobs": live_jobs,
+        "task_status_counts": task_counts,
+        "job_status_counts": job_counts,
         "last_event": last_event,
         "snapshot_at": _now_iso(),
     }
@@ -380,32 +414,223 @@ def _as_iso(value: Any) -> Any:
     return value
 
 
-def _collect_plans(root: Path) -> list:
-    """One entry per plan that has begun, with its tasks' existing statuses.
+def _task_entry_status(entry: Any) -> str:
+    """The planner's status string for one status.json entry, verbatim."""
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        return str(entry.get("status", "unknown"))
+    return "unknown"
+
+
+def _status_counts(statuses: Iterable[str]) -> dict:
+    """Per-status tally of existing status values, in a stable order."""
+    return dict(sorted(Counter(statuses).items()))
+
+
+def _plan_waves(plan_path: Path) -> Optional[list]:
+    """The plan's wave structure from plan.yml; None when absent or unreadable.
+
+    A plan with no readable plan.yml is not dropped — its task detail rides
+    directly on the plan node — because a snapshot that loses *one*
+    relationship still carries the truth about the rest (Fixes #303).
+    """
+    plan_file = plan_path / "plan.yml"
+    if not plan_file.is_file():
+        return None
+    try:
+        import yaml
+        with open(plan_file, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except Exception as exc:  # noqa: BLE001 — an unreadable plan reads shapeless
+        _logger.debug("liveness: %s unreadable: %s", plan_file, exc)
+        return None
+    waves = data.get("waves") if isinstance(data, dict) else None
+    return waves if isinstance(waves, list) else None
+
+
+def _collect_plans(
+    root: Path,
+    task_rows: list,
+    job_rows: list,
+) -> tuple:
+    """One entry per plan that has begun, carrying the plan's shape.
+
+    Returns ``(plan_nodes, tallied_refs, detailed_refs, tallied_job_ids,
+    nested_job_ids)``: the task refs whose statuses the structure tallies,
+    the refs it shows in detail, the settled jobs counted inside a plan node,
+    and the live jobs nested under a task — everything the caller must not
+    enumerate a second time at the top level.
 
     A plan whose status file has no entries yet, or only ``pending`` tasks,
     has not started and is left out: this payload answers "what is running",
-    and the planner's ``pending`` default is not an answer.
+    and the planner's ``pending`` default is not an answer. Inside a begun
+    plan, a wave that has settled is a count and a summary; an unsettled wave
+    keeps the detail of its started tasks and the live jobs beneath them
+    (Fixes #303).
     """
     plans_dir = root / ".snodo" / "plans"
     if not plans_dir.is_dir():
-        return []
-    plans: list = []
+        return [], set(), set(), set(), set()
+
+    tasks_by_id = {r["id"]: r for r in task_rows}
+    infos: list = []
     for plan_path in sorted(plans_dir.iterdir()):
         if not plan_path.is_dir():
             continue
         status = _read_json(plan_path / "status.json")
         if not status:
             continue
-        tasks = []
-        for task_id, entry in (status.get("tasks") or {}).items():
-            task_status = entry if isinstance(entry, str) else \
-                (entry.get("status", "unknown") if isinstance(entry, dict) else "unknown")
-            tasks.append({"id": task_id, "status": task_status})
-        started = [t for t in tasks if t["status"] != _PENDING_TASK_STATUS]
-        if started:
-            plans.append({"name": plan_path.name, "tasks": started})
-    return plans
+        statuses = {
+            task_id: _task_entry_status(entry)
+            for task_id, entry in (status.get("tasks") or {}).items()
+        }
+        waves = _plan_waves(plan_path)
+        if waves:
+            # plan.yml tasks with no status entry have not begun; counting
+            # them as pending keeps "total" honest without inventing a status.
+            for wave in waves:
+                if isinstance(wave, dict):
+                    for task_id in wave.get("tasks") or []:
+                        statuses.setdefault(str(task_id), _PENDING_TASK_STATUS)
+        if not any(s != _PENDING_TASK_STATUS for s in statuses.values()):
+            continue
+        infos.append({"name": plan_path.name, "statuses": statuses, "waves": waves})
+
+    # Attribute each job to the first plan (sorted by name) declaring its
+    # task. A settled job joins that plan's tally; a live job waits to be
+    # nested under its task node, and surfaces at the top level if it never
+    # gets one — a live record is never hidden by the collapsing.
+    ref_owner: dict = {}
+    for idx, info in enumerate(infos):
+        for task_id in info["statuses"]:
+            ref_owner.setdefault(task_id, idx)
+    settled_job_ids: set = set()
+    settled_job_counts: list = [Counter() for _ in infos]
+    live_jobs_by_ref: list = [{} for _ in infos]
+    for job in job_rows:
+        idx = ref_owner.get(job.get("task_ref") or "")
+        if idx is None:
+            continue
+        if job["status"] in _SETTLED_RUN_STATUSES:
+            settled_job_ids.add(job["id"])
+            settled_job_counts[idx][job["status"]] += 1
+        else:
+            live_jobs_by_ref[idx].setdefault(job["task_ref"], []).append(job)
+
+    nodes: list = []
+    nested_job_ids: set = set()
+    detailed_refs: set = set()
+    for idx, info in enumerate(infos):
+        statuses = info["statuses"]
+        node = {
+            "name": info["name"],
+            "total": len(statuses),
+            "status_counts": _status_counts(statuses.values()),
+        }
+        if settled_job_counts[idx]:
+            node["job_status_counts"] = dict(sorted(settled_job_counts[idx].items()))
+        if all(s in TERMINAL_PLAN_STATUSES for s in statuses.values()):
+            # The whole plan is a completed branch: counts and summary, no
+            # member list. Its live stragglers stay at the top level.
+            nodes.append(node)
+            continue
+        live_for_ref = live_jobs_by_ref[idx]
+
+        def task_node(task_id: str) -> dict:
+            if statuses[task_id] not in TERMINAL_PLAN_STATUSES:
+                # The node itself represents a live task, so it claims the
+                # engine's live record for that ref. A settled node claims
+                # nothing live: a record still running under a task the
+                # planner calls finished must surface, not vanish.
+                detailed_refs.add(task_id)
+            tnode = {"id": task_id, "status": statuses[task_id]}
+            live = live_for_ref.get(task_id, [])
+            started = tasks_by_id.get(task_id, {}).get("started_at")
+            if not started:
+                starts = [j["started_at"] for j in live if j.get("started_at")]
+                started = min(starts) if starts else None
+            if started:
+                tnode["started_at"] = started
+            if live:
+                tnode["jobs"] = [
+                    {k: j[k] for k in ("id", "status", "started_at") if k in j}
+                    for j in live
+                ]
+                nested_job_ids.update(j["id"] for j in live)
+            return tnode
+
+        enumerated: set = set()
+        if info["waves"] is not None:
+            wave_nodes = []
+            for wave in info["waves"]:
+                if not isinstance(wave, dict):
+                    continue
+                members = []
+                for task_id in wave.get("tasks") or []:
+                    task_id = str(task_id)
+                    if task_id in statuses and task_id not in enumerated:
+                        enumerated.add(task_id)
+                        members.append(task_id)
+                wave_node = {
+                    "id": wave.get("id"),
+                    "total": len(members),
+                    "status_counts": _status_counts(statuses[t] for t in members),
+                }
+                settled_wave = members and all(
+                    statuses[t] in TERMINAL_PLAN_STATUSES for t in members
+                )
+                if not settled_wave:
+                    detail = [t for t in members if statuses[t] != _PENDING_TASK_STATUS]
+                    if detail:
+                        wave_node["tasks"] = [task_node(t) for t in detail]
+                wave_nodes.append(wave_node)
+            node["waves"] = wave_nodes
+        leftover = [
+            t for t, s in statuses.items()
+            if s != _PENDING_TASK_STATUS and t not in enumerated
+        ]
+        if leftover:
+            node["tasks"] = [task_node(t) for t in leftover]
+        nodes.append(node)
+
+    # A settled record whose task ref is tallied by a plan node is not
+    # enumerated a second time at the top level; a live record is claimed
+    # only where the structure actually shows it (a task node, a nested
+    # job). Anything still running that the plan collapsed away surfaces
+    # top-level — the collapsing may reorder the picture, never hide it.
+    started_refs = {
+        task_id
+        for info in infos
+        for task_id, s in info["statuses"].items()
+        if s != _PENDING_TASK_STATUS
+    }
+    return nodes, started_refs, detailed_refs, settled_job_ids, nested_job_ids
+
+
+def _unreported(rows: list, settled_claimed: set, live_claimed: set) -> tuple:
+    """Split top-level records into live detail and a settled tally.
+
+    A settled record already tallied by the plan structure (*settled_claimed*)
+    is left out; one still running (*rows*) is enumerated in full unless the
+    structure already shows it (*live_claimed*). Nothing running may be
+    reduced to a number, and nothing counted may be enumerated twice
+    (Fixes #303).
+    """
+    live: list = []
+    counts: Counter = Counter()
+    for row in rows:
+        if row["status"] in _SETTLED_RUN_STATUSES:
+            if row["id"] not in settled_claimed:
+                counts[row["status"]] += 1
+            continue
+        if row["id"] in live_claimed:
+            continue
+        wire = {k: row[k] for k in ("id", "status", "started_at") if k in row}
+        if row.get("task_ref"):
+            wire["task_ref"] = row["task_ref"]
+        live.append(wire)
+    return live, dict(sorted(counts.items()))
 
 
 def _collect_runs(runs_dir: Path, job_dirs: bool = False) -> list:
@@ -413,7 +638,9 @@ def _collect_runs(runs_dir: Path, job_dirs: bool = False) -> list:
 
     ``description`` (the spec), ``halt`` payloads and ``usage`` stay on the
     disk: the emit contract refuses payloads and prompts on the wire, and
-    these fields carry them.
+    these fields carry them. A job directory also carries the identity of
+    the task it ran (``task.json``), read here as an internal link for the
+    snapshot's structure — only the task id travels, never the spec.
     """
     if not runs_dir.is_dir():
         return []
@@ -426,12 +653,28 @@ def _collect_runs(runs_dir: Path, job_dirs: bool = False) -> list:
         state = _read_json(entry / "state.json")
         if state is None:
             continue
-        rows.append({
+        row = {
             "id": entry.name,
             "status": str(state.get("status") or "unknown"),
             "started_at": _as_iso(state.get("started_at")),
-        })
+        }
+        if job_dirs:
+            row["task_ref"] = _job_task_ref(entry)
+        rows.append(row)
     return rows
+
+
+def _job_task_ref(job_dir: Path) -> str:
+    """The task identity a job ran, as ``JobManager`` resolves it; "" if none.
+
+    A plan-run row owns no single task (``plan_name`` set), so it links to
+    nothing, mirroring ``_summarize_job``. Only ids are read from task.json;
+    the description — the task spec — is never touched.
+    """
+    task = _read_json(job_dir / "task.json") or {}
+    if task.get("plan_name"):
+        return ""
+    return str(task.get("task_id") or task.get("retry_task_id") or "")
 
 
 def _last_audit_event(audit_path: Path) -> Optional[dict]:

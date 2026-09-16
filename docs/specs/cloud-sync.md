@@ -128,9 +128,24 @@ claim to be live — a terminal audit event or a plan-task status of
 the sole record of "this stopped" would strand a false "running" until some
 later event displaced it.
 
-**A full snapshot, never a delta.** A lost push is harmless; the next
-supersedes it entirely. A failed push is dropped — no queue, no retry, no
-cursor, and `cloud_sync.json` is never touched by this path.
+**A full snapshot, never a delta, and it carries the plan's shape.** A lost
+push is harmless; the next supersedes it entirely. A failed push is dropped —
+no queue, no retry, no cursor, and `cloud_sync.json` is never touched by this
+path. Shape, not flat lists (Fixes #303): plans arrive as plan → waves →
+tasks → the jobs beneath them, the structure `snodo plan status` renders. A
+branch that has completed — a wave whose every task has settled, a plan whose
+every wave has — is carried as a count plus the summary needed to render
+"wave 1: 3/3 done" (`total` and a per-status `status_counts`), not as a full
+list of its members. The running frontier keeps its detail, because that is
+the part a viewer is watching: unsettled waves enumerate their started tasks,
+and each task node carries the *live* jobs beneath it. Terminal jobs inside an
+incomplete plan stay in the picture as the plan's `job_status_counts`. Task or
+job records that no plan claims ride the top level: live ones enumerated in
+full, settled ones tallied in `task_status_counts` / `job_status_counts`.
+Nothing still running is ever reduced to a count or hidden by the collapsing;
+a live record whose plan node settled is enumerated. What is sent grows with
+the plan's shape and what is in flight, never with elapsed time — a session
+kept open for weeks re-ships its settled history as digits, not as lists.
 
 **The key is the session.** A session is already project-scoped, persisted,
 and survives a restart (a resumed run rejoins it), so it accumulates no rows
@@ -147,24 +162,54 @@ taken from it on the far side so a sender cannot claim to be someone else.
   "display_name":   "nfc-card-v2",
   "run_started_at": "2026-09-02T21:10:04+00:00",
   "plans": [
-    {"name": "wave8", "tasks": [{"id": "2.1", "status": "in_progress"}]}
+    {
+      "name": "wave8",
+      "total": 6,
+      "status_counts": {"completed": 4, "in_progress": 1, "pending": 1},
+      "job_status_counts": {"completed": 8},
+      "waves": [
+        {"id": 1, "total": 3, "status_counts": {"completed": 3}},
+        {
+          "id": 2, "total": 3,
+          "status_counts": {"completed": 1, "in_progress": 1, "pending": 1},
+          "tasks": [
+            {"id": "2.1", "status": "completed"},
+            {
+              "id": "2.2", "status": "in_progress",
+              "started_at": "2026-09-02T21:10:05+00:00",
+              "jobs": [
+                {"id": "j_20260902_211005_a1b2", "status": "running",
+                 "started_at": "2026-09-02T21:10:06+00:00"}
+              ]
+            }
+          ]
+        }
+      ]
+    }
   ],
   "tasks": [
     {"id": "implement-oob", "status": "running", "started_at": "2026-09-02T21:10:05+00:00"}
   ],
   "jobs": [
-    {"id": "j_20260902_211005_a1b2", "status": "running", "started_at": "2026-09-02T21:10:06+00:00"}
+    {"id": "j_20260902_211100_c3d4", "status": "running", "started_at": "2026-09-02T21:11:00+00:00", "task_ref": "implement-oob"}
   ],
+  "task_status_counts": {"completed": 12, "failed": 1},
+  "job_status_counts": {"completed": 40, "failed": 2},
   "last_event":  {"event_type": "dispatch", "timestamp": "2026-09-02T21:50:01.7+00:00"},
   "snapshot_at": "2026-09-02T21:50:02.9+00:00"
 }
 ```
 
-Statuses are the ones the machine already records — planner statuses, task and
-job `state.json` statuses — passed through verbatim; this path adds no status,
-halt type or state value. Only *when* they travel is changing. `started_at`
-values (epoch on disk) are normalised to ISO. `run_started_at` is the session
-file's `created_at`. `display_name` is the project directory basename.
+Statuses are the ones the machine already records — planner statuses, task
+and job `state.json` statuses — passed through verbatim; this path adds no
+status, halt type or state value. Counts (`total`, `status_counts`,
+`job_status_counts`, `task_status_counts`) tally those existing statuses;
+they introduce no vocabulary. Only *when* and *how* they travel is changing.
+A job is linked to its plan task by the task identity the engine already
+records for the job; the link's own payload fields (the spec, the
+description) stay on the disk. `started_at` values (epoch on disk) are
+normalised to ISO. `run_started_at` is the session file's `created_at`.
+`display_name` is the project directory basename.
 
 What the liveness wire never carries is what the ingest path never carries:
 payloads, prompts, diffs, file contents, absolute paths, `usage` records, halt
