@@ -1,6 +1,7 @@
 """Tests for infrastructure/config.py — LLM config loader."""
 
 import tempfile
+import warnings
 from pathlib import Path
 
 import pytest
@@ -190,3 +191,98 @@ def test_role_models_default_to_none():
         assert cfg.coder.model is None
         assert cfg.validator.model is None
         assert cfg.classifier.model is None
+
+
+# ========== unknown keys under an engine-owned section ==========
+
+
+@pytest.mark.parametrize(
+    "section,unknown",
+    [
+        ("validator", "single_max_tokens"),
+        ("validator", "temperature"),
+        ("coder", "temprature"),
+        ("classifier", "singel_max_tokens"),
+    ],
+)
+def test_unknown_key_is_reported_with_name_and_section(section, unknown):
+    """A key that is not a field of the section is rejected, naming both.
+
+    The reported failure: a validator section carried ``single_max_tokens``
+    and ``temperature``, neither a field of ValidatorConfig, and both were
+    dropped without a word.  A typo and a knob that was never implemented must
+    not look identical.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text(
+            "llm:\n"
+            f"  {section}:\n"
+            f"    {unknown}: 1\n"
+        )
+        with pytest.raises(ConfigLoadError) as exc_info:
+            load_llm_config(config_dir=tmpdir)
+        message = str(exc_info.value)
+        assert unknown in message
+        assert f"llm.{section}" in message
+
+
+def test_unknown_top_level_key_under_llm_is_reported():
+    """A key that is not one of LlmConfig's fields is rejected too."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text(
+            "llm:\n"
+            "  num_retires: 5\n"
+        )
+        with pytest.raises(ConfigLoadError) as exc_info:
+            load_llm_config(config_dir=tmpdir)
+        assert "num_retires" in str(exc_info.value)
+
+
+def test_valid_config_produces_no_output(capsys):
+    """A fully valid section loads silently — no warning, no stderr, no stdout.
+
+    The new strictness must not turn every run into a lecture: an operator who
+    set only real keys sees exactly what they saw before.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text(
+            "llm:\n"
+            "  coder:\n"
+            "    max_tokens: 8000\n"
+            "  validator:\n"
+            "    max_tool_turns: 3\n"
+            "  classifier:\n"
+            "    temperature: 0.5\n"
+            "  wave:\n"
+            "    max_age_days: 30\n"
+            "  recon:\n"
+            "    num_agents: 2\n"
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cfg = load_llm_config(config_dir=tmpdir)
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+        assert cfg.coder.max_tokens == 8000
+        assert cfg.validator.max_tool_turns == 3
+        assert cfg.classifier.temperature == 0.5
+
+
+def test_deprecated_wave_migration_is_not_an_unknown_key():
+    """The migrated ``llm.wave`` keys are moved before validation, not rejected.
+
+    A supported migration must keep working: the wave keys are popped and
+    reported as deprecated, never surfaced as unknown ``llm.wave`` keys.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "config.yml").write_text(
+            "llm:\n"
+            "  wave:\n"
+            "    max_tokens: 2000\n"
+            "    temperature: 0.5\n"
+        )
+        with pytest.warns(DeprecationWarning):
+            cfg = load_llm_config(config_dir=tmpdir)
+        assert cfg.classifier.max_tokens == 2000
+        assert cfg.classifier.temperature == 0.5

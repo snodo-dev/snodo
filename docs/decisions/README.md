@@ -49,3 +49,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [043](043-halt-payload-attempt-history.md) | A halt payload records the attempts that produced the result | 2026-09-13 | Superseded by 045 |
 | [044](044-intake-proposes-criteria.md) | Intake proposes criteria from decision records; the operator accepts | 2026-09-13 | `snodo/survey/criteria.py` + `intake_cmd.py` |
 | [045](045-a-judge-is-made-to-decide.md) | A judge is made to decide; a non-verdict is an error | 2026-09-14 | `validators/llm_validator.py` + `core/interfaces.py` (`ValidatorResult`) |
+| [046](046-unknown-llm-config-key-fails-loud.md) | An unknown `llm` config key is rejected, not silently dropped | 2026-09-16 | `infrastructure/config.py` (`LlmConfig` + section models) |
