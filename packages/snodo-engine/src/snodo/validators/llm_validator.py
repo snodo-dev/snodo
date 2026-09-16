@@ -175,10 +175,20 @@ def _is_provider_rejection(e: Exception) -> bool:
     """Return True if *e* is a provider rejecting the request (a 4xx client error).
 
     Used to distinguish "the provider refused response_format" (a 400 like
-    DeepSeek's "This response_format type is unavailable now") from "the model
-    returned garbage" — only the former makes an unparseable fallback an
-    operational fault rather than a warn verdict (Fixes #84).
+    DeepSeek's "This response_format type is unavailable now") or forced
+    tool_choice from "the model returned garbage" — only the former makes an
+    unparseable fallback an operational fault rather than a warn verdict (Fixes #84, #296).
     """
+    try:
+        from litellm.exceptions import (
+            BadRequestError,
+            InvalidRequestError,
+            UnsupportedParamsError,
+        )
+        if isinstance(e, (BadRequestError, InvalidRequestError, UnsupportedParamsError)):
+            return True
+    except ImportError:
+        pass
     status = getattr(e, "status_code", None)
     if isinstance(status, int):
         return 400 <= status < 500 and status != 429
@@ -476,7 +486,33 @@ class LLMValidator(ValidatorBase):
                 }
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = 0.0
-                response = self._call_completion_with_retry(**kwargs)
+                # When the offered tools are submit_verdict alone (the final
+                # turn, or the turn after prose narration), require that function
+                # via tool_choice so the judge is not free to answer in prose a
+                # second time (Fixes #296). On reading turns, leave tool_choice
+                # unset so the judge is free to read or decide.
+                if len(turn_tools) == 1 and turn_tools[0].get("function", {}).get("name") == "submit_verdict":
+                    kwargs["tool_choice"] = {
+                        "type": "function",
+                        "function": {"name": "submit_verdict"},
+                    }
+                try:
+                    response = self._call_completion_with_retry(**kwargs)
+                except Exception as e:
+                    # Not all providers honour a forced function choice; if
+                    # rejected for that reason (4xx client error), fall back to
+                    # the unforced request rather than failing as an operational
+                    # error (Fixes #296).
+                    if "tool_choice" in kwargs and _is_provider_rejection(e):
+                        _logger.warning(
+                            "Validator %s provider rejected tool_choice on turn %d "
+                            "(model=%s): %s; falling back to unforced request",
+                            self.validator_spec.validator_id, turn + 1, self.model, e,
+                        )
+                        del kwargs["tool_choice"]
+                        response = self._call_completion_with_retry(**kwargs)
+                    else:
+                        raise
             except Exception as e:
                 # Provider fault on the tool-loop path: it halts as
                 # validator_error, so log the cause and carry its type into
