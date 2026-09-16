@@ -920,11 +920,25 @@ class WritebackMixin:
         if not new_model or new_model == getattr(self.coder, "model", ""):
             return
 
-        from snodo.coders import resolve_adapter_class
+        from snodo.coders import (
+            resolve_adapter_class,
+            resolve_coder_name,
+        )
+        from snodo.coders.inert_settings import (
+            explicit_coder_settings,
+            report_inert_coder_settings,
+        )
         from snodo.infrastructure.config import load_llm_config
 
         llm_cfg = load_llm_config()
         adapter_cls = resolve_adapter_class(new_model)
+        # The override just selected a different coder; a setting the operator
+        # wrote for the old one may be inert for the new one, and the moment to
+        # say so is this selection, not the next halted run (Fixes #311).
+        report_inert_coder_settings(
+            resolve_coder_name(model=new_model),
+            explicit_coder_settings(llm_cfg.coder),
+        )
         fresh_coder = adapter_cls(
             model=new_model,
             max_tokens=llm_cfg.coder.max_tokens,

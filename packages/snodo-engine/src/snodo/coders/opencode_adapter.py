@@ -47,6 +47,17 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
     skip_engine_commit: bool = True
     skip_workspace_write: bool = True
 
+    #: The container coder reads the model (into the session payload) and its
+    #: workspace/container. It does NOT honour ``timeout_seconds`` — the
+    #: session budget is the hardcoded ``_SESSION_TIMEOUT`` below, and the
+    #: value from config is absorbed by ``**kwargs`` and dropped — nor
+    #: ``temperature``, which the constructor stores and nothing ever reads,
+    #: nor ``max_tokens``/``max_tool_turns``, which belong to a loop this
+    #: adapter does not run (Fixes #311).
+    honoured_settings: frozenset[str] = frozenset(
+        {"model", "workspace", "container"}
+    )
+
     @classmethod
     def availability_requirements(cls) -> tuple:
         """The container coder needs a Docker runtime, not a host CLI."""

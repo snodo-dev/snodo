@@ -140,6 +140,15 @@ class LiteLLMAdapter(CoderAdapter):
 
     TRUNCATION_REASONS: set[str] = {"length", "max_tokens", "MAX_TOKENS"}
 
+    #: The named settings this adapter actually reads. The litellm family runs
+    #: its tool loop in-process, so the model, temperature, max_tokens and
+    #: max_tool_turns knobs govern it. ``timeout_seconds`` is not declared:
+    #: it is absorbed by ``**kwargs`` at construction and never read, so an
+    #: operator who set it would be setting nothing. Declared on the adapter
+    #: — the one place that can know — and consulted where a coder is
+    #: selected, so an inert setting is named instead of watched (Fixes #311).
+    honoured_settings = frozenset({"model", "temperature", "max_tokens", "max_tool_turns"})
+
     def __init__(
         self,
         model: str = DEFAULT_MODEL,
@@ -1043,10 +1052,7 @@ Return ONLY the JSON array, no other text.
         raises — telemetry must not crash the tool loop.
         """
         try:
-            from snodo.infrastructure.tool_telemetry import (
-                canonical_target_path,
-                persist_tool_telemetry,
-            )
+            from snodo.infrastructure.tool_telemetry import canonical_target_path, persist_tool_telemetry
 
             record = {
                 "task_ref": self._task_id or "unknown",

@@ -212,6 +212,18 @@ in a declared optional interface with a default implementation on the base class
 then "this adapter does not support X" is a visible fact rather than a silently
 skipped line.
 
+The same mechanism now closes one specific blind spot: an `llm.coder` setting the
+selected coder cannot honour. Each adapter declares `honoured_settings` — the named
+settings it actually reads, so a value stored and never read (like `temperature` on
+the subprocess adapters) counts as absent — and
+`snodo/coders/inert_settings.py` reports every explicitly configured setting the
+chosen adapter does not declare, naming the setting and the coder, at the points a
+coder is selected (graph build and the governance-driven respawn). Defaults stay
+silent; nothing is rejected, because a setting that is inert for one coder is real
+for another (Fixes #311). The declaration is pinned by
+`test_every_adapter_declares_its_honoured_settings`, so a new adapter cannot escape
+the check by forgetting it.
+
 ---
 
 ## 6. Immediate actions
