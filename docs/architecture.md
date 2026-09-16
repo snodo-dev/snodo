@@ -13,7 +13,7 @@ How enforcement works from top to bottom. For individual design decisions, see [
 
 Snodo is a **policy-vs-mechanism** engine: you declare what a valid software development process looks like (`protocol.yml`), and the engine enforces it structurally — no after-the-fact review, no trust in agent compliance. AI agents participate as first-class team members, gated by the same rules as human contributors.
 
-The 2+N model underlies everything: **2** human-in-control roles (producer and reviewer) plus **N** specialized AI agents that operate within those roles. Mode separation is structural — the engine refuses to load a protocol where two modes share an approval-conferring tool (WF1), and every mutating operation requires a cryptographically valid token that can only be issued by a satisfied validator quorum (INV1/INV3).
+The 2+N model underlies everything: **2** human-in-control roles (producer and reviewer) plus **N** specialized AI agents that operate within those roles. Mode separation is structural — the engine refuses to load a protocol where two modes share an approval-conferring tool (WF1), and inside the engine loop every mutation is gated by a cryptographically valid token that can only be issued by a satisfied validator quorum (INV1/INV3). Tool access at the MCP surface is the protocol's and the mode's to decide, not a token the caller must hold (ADR 047).
 
 ## Package map
 
@@ -40,7 +40,7 @@ execution may run inside a git worktree, so project-relative state would fragmen
 | Mode separation | Exclusive approval-conferring tools, verified at load time | WF1 |
 | Validator quorum | N validators vote; policy decides proceed/block | Decision flow below |
 | Non-overridable block | Any `blocker` halts before policy logic | INV3 |
-| Token-gated mutations | Mutating MCP tools require JWT validation token | WF1, INV1 |
+| Quorum-gated execution | The engine loop executes a task only on a token its quorum issued | INV1, INV3 |
 | Audit immutability | Hash-chained event log, append-only | INV4 |
 | Session resumability | File-backed checkpoint per (mode, project) | INV5 |
 | Recovery loop | Failed tasks re-enter governance on resume | Kleene closure |
@@ -63,7 +63,7 @@ Governance → Validate → [Execute] → Post-validate → [Move-next] → Comp
    - Threshold met → token issued → proceed to execute
    - Threshold not met → **ESCALATE** → `pending_disagreement` populated → task blocked, human resolves
 
-3. **Execute**: The coder generates code artifacts. Files are written via WorkspaceMCP, staged and committed via GitMCP. Every mutation requires a valid JWT token (WF1 enforcement at the MCP server layer).
+3. **Execute**: The coder generates code artifacts. Files are written via WorkspaceMCP, staged and committed via GitMCP. The engine's execute boundary verifies the quorum's JWT token and consumes it before the coder runs — the token discipline lives in the loop, not at the tool surface (ADR 047).
 
 4. **Post-validate** (`post_execute`): Runs post-execute validators (e.g., quality/test-runner). Same policy evaluation. Can ESCALATE or HALT after execution.
 
@@ -140,25 +140,27 @@ snodo serve --mode producer  # edit, dispatch, test, validate
 snodo serve --mode reviewer  # review, approve, merge, pr
 ```
 
-The orchestrator connects to both servers, routing operations through the appropriate mode. Each server's tool set is the logical tools' concrete MCP operations, with read-only operations requiring no token and mutations requiring a valid JWT.
+The orchestrator connects to both servers, routing operations through the appropriate mode. Each server's tool set is the logical tools' concrete MCP operations, filtered to the mode's grant: anything the active mode does not grant is not exposed, and no exposed call demands a token from the caller (ADR 047).
 
 **Deployment caveat (see ADR 015):** on the MCP path snodo is one tool provider among
 several. INV2 holds only if the host agent is restricted to snodo's tools; a host with
 its own file-write or shell tools can bypass the boundary.
 
-## Validator quorum → token issuance → gated mutations
+## Validator quorum → token issuance → gated execution
 
-This is the core enforcement chain:
+This is the core enforcement chain, enforced per task inside the engine loop:
 
 1. Validators evaluate the task spec and emit `pass` / `warn` / `blocker`
 2. `PolicyEvaluator` combines results per the disagreement policy (`engine/policy.py`)
 3. If the policy permits and no blockers exist, `TokenIssuer.issue_token()` mints a JWT (`infrastructure/tokens.py`)
-4. The MCP server's `_enforce_wf1()` checks the token before every mutation (`mcp/server.py`)
-5. Without a token — no writes, no commits, no merges
+4. The engine's execute node verifies that token and consumes it before the coder writes anything (`engine/nodes/validation.py`)
+5. Without a token — the loop does not execute; a blocker sends the work back, an escalate halts until a human signs
 
 The chain is structural: you cannot bypass validation by skipping a step. You need:
-- A satisfied validator quorum → a token → the ability to mutate
-- None of these can be forged (JWT signed, verifiable) or skipped (WF1 enforced at the boundary)
+- A satisfied validator quorum → a token → the loop executing the task
+- None of these can be forged (JWT signed, verifiable) or skipped (verified at the execute boundary)
+
+The MCP surface mirrors the verdict without gating on it: `validate_task` runs the same pre-execute quorum, and a `pass` records the single-use token that the next `dispatch_task` consumes as the audit link between the pre-check and the dispatched work (ADR 047).
 
 > **TODO (after the token single-use work lands):** document the token lifecycle —
 > issue → verify (per mutating call) → consume (once, at the dispatch boundary) —

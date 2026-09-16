@@ -81,18 +81,6 @@ def server_with_mode(protocol, project_dir):
     return ProtocolMCPServer(protocol, project_dir, mode_id="full")
 
 
-def _issue_token(server, task_id="t1"):
-    """Issue a token so mutating tools pass WF1 (bypasses validate_task)."""
-    from snodo.core.interfaces import ValidatorResult
-
-    token = server.token_issuer.issue_token(
-        task_id=task_id,
-        validator_results=[ValidatorResult(validator_id="sec", severity="pass", justification="ok")],
-    )
-    with server._token_lock:
-        server._validation_token = token
-
-
 # ---------------------------------------------------------------------------
 # _resolve_provider exception → returns None (lines 116-117)
 # ---------------------------------------------------------------------------
@@ -181,8 +169,8 @@ class TestCallToolDispatchBranches:
         server._recon_handler.handle_get_recon_results.assert_called_once()
 
     def test_retry_job_routed(self, server):
-        """retry_job requires a token (requires_token=True)."""
-        _issue_token(server)
+        """retry_job is routed with no token held (ADR 047)."""
+        assert server._validation_token is None
         mock_result = {"status": "accepted", "job_id": "j2", "task_id": "t1", "description": "d"}
         server._handle_retry_job = MagicMock(return_value=mock_result)
         server.call_tool("retry_job", {"job_id": "j1"})
@@ -196,14 +184,13 @@ class TestCallToolDispatchBranches:
 class TestDispatchToolErrors:
     def test_no_backing_mcp_raises(self, server):
         """Schema with mcp=None → MCPError 'No backing MCP'."""
-        schema = {"requires_token": False, "mcp": None, "method": "some_method"}
+        schema = {"mcp": None, "method": "some_method"}
         with pytest.raises(MCPError, match="No backing MCP"):
             server._dispatch_tool("phantom_tool", schema, {})
 
     def test_method_not_found_raises(self, server):
         """Schema with valid mcp but nonexistent method → MCPError 'Method ... not found'."""
         schema = {
-            "requires_token": False,
             "mcp": "workspace",
             "method": "nonexistent_method_xyz",
         }

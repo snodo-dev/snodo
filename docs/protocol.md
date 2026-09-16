@@ -369,7 +369,7 @@ Shipped predicates: `files_in_scope`, `tests_exist_for_modified`, `no_secrets_in
 
 ## Token
 
-The engine issues a JWT validation token when the policy threshold is met with no blockers. Mutating tools (write, commit, merge, etc.) require a valid token at invocation time — enforced by `_enforce_wf1` in the MCP server layer. Tokens are single-use per task and expire at the configured TTL (default 600 seconds).
+The engine issues a JWT validation token when the policy threshold is met with no blockers, verifies it at the execute boundary, and consumes it there — single-use per task, expiring at the configured TTL (default 600 seconds). This discipline lives in the engine loop, not at the MCP tool surface: `validate_task` on the MCP path runs the same pre-execute quorum and records the token that the next `dispatch_task` consumes as the audit link, but no MCP tool call is refused for want of a token the caller holds (ADR 047).
 
 Configure in `~/.snodo/config.yml`:
 ```yaml

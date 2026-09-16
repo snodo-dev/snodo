@@ -40,7 +40,6 @@ config llm.validator.max_tokens
 config llm.validator.max_tool_turns
 config llm.wave.max_age_days
 config llm.wave.max_idle_days
-tool delete_file
 tool get_job_logs
 tool get_job_status
 tool get_plan
@@ -53,4 +52,3 @@ tool propose_plan
 tool propose_set_model
 tool resolve_model
 tool retry_job
-tool run_plan

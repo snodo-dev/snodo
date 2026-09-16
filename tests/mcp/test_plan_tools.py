@@ -92,7 +92,8 @@ def producer_server(project_dir):
 
 
 def _token(server):
-    """Obtain a WF1 token via the protocol's own validate_task."""
+    """Record a pass via the protocol's own validate_task (the recorded
+    token is now audit evidence, not permission — ADR 047)."""
     result = server.call_tool("validate_task", {"task_id": "plan-gate"})
     assert result["status"] == "pass", result
     return result
@@ -136,17 +137,15 @@ class TestPlanningSurface:
                 producer_server.call_tool(tool, {"plan_name": "p", "intent": "i"})
 
     def test_run_plan_needs_no_validation_token(self, server, project_dir):
-        """A plan run is not a mutation: WF1 is satisfied per task, inside the run.
-
-        Gating here would have meant a token issued by validate_task, for one
-        unrelated task, standing in for authorisation of a whole plan. The plan
-        below is malformed, so it is refused on its own conformance - never for
-        want of a token.
+        """A plan run is not a mutation: the quorum is enforced per task,
+        inside the run — and now no MCP call is gated on a caller-held token
+        at all (ADR 047). The plan below is malformed, so it is refused on its
+        own conformance - never for want of a token.
         """
         _write_broken_plan(project_dir, name="tokenless")
         with pytest.raises(MCPError) as excinfo:
             server.call_tool("run_plan", {"plan_name": "tokenless"})
-        assert "WF1" not in str(excinfo.value)
+        assert "requires a validation token" not in str(excinfo.value).lower()
         assert "failed validation" in str(excinfo.value)
 
 

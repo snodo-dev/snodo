@@ -74,10 +74,18 @@ class TestToolRegistrySnapshot:
         )
 
     def test_all_registry_entries_have_required_fields(self):
-        required = {"description", "inputSchema", "requires_token", "mcp", "method"}
+        required = {"description", "inputSchema", "mcp", "method"}
         for name, entry in TOOL_REGISTRY.items():
             missing = required - set(entry.keys())
             assert not missing, f"Tool '{name}' missing fields: {missing}"
+
+    def test_no_tool_carries_a_token_requirement(self):
+        """A tool is governed by the protocol, not by a token the caller
+        holds (ADR 047): the requires_token flag is gone from every schema."""
+        for name, entry in TOOL_REGISTRY.items():
+            assert "requires_token" not in entry, (
+                f"Tool '{name}' still carries requires_token"
+            )
 
 
 class TestModeToolMapSnapshot:

@@ -1,9 +1,14 @@
 """MCP tool schemas and mode-to-tool mappings.
 
 Extracted from mcp/server.py to isolate static tool definitions.
+
+A tool is governed by the protocol, not by a token the caller must hold:
+which tools a server exposes is the mode's capability grant (MODE_TOOL_MAP
+below), and the validator quorum is enforced inside the engine loop, per
+task. Nothing here demands that the caller carry a validation token.
 """
 
-# Tool schemas: name -> {description, inputSchema, requires_token, mcp, method}
+# Tool schemas: name -> {description, inputSchema, mcp, method}
 TOOL_REGISTRY = {
     "read_file": {
         "description": "Read file content within the project",
@@ -14,7 +19,6 @@ TOOL_REGISTRY = {
             },
             "required": ["path"],
         },
-        "requires_token": False,
         "mcp": "workspace",
         "method": "read_file",
     },
@@ -28,7 +32,6 @@ TOOL_REGISTRY = {
             },
             "required": ["path", "content"],
         },
-        "requires_token": True,
         "mcp": "workspace",
         "method": "write_file",
     },
@@ -40,7 +43,6 @@ TOOL_REGISTRY = {
                 "directory": {"type": "string", "description": "Directory path", "default": "."},
             },
         },
-        "requires_token": False,
         "mcp": "workspace",
         "method": "list_files",
     },
@@ -53,7 +55,6 @@ TOOL_REGISTRY = {
             },
             "required": ["path"],
         },
-        "requires_token": True,
         "mcp": "workspace",
         "method": "delete_file",
     },
@@ -67,21 +68,18 @@ TOOL_REGISTRY = {
             },
             "required": ["test_path"],
         },
-        "requires_token": False,
         "mcp": "shell",
         "method": "run_tests",
     },
     "read_diff": {
         "description": "Read current git diff",
         "inputSchema": {"type": "object", "properties": {}},
-        "requires_token": False,
         "mcp": "git",
         "method": "read_diff",
     },
     "get_status": {
         "description": "Get git status",
         "inputSchema": {"type": "object", "properties": {}},
-        "requires_token": False,
         "mcp": "git",
         "method": "get_status",
     },
@@ -98,7 +96,6 @@ TOOL_REGISTRY = {
             },
             "required": ["paths"],
         },
-        "requires_token": True,
         "mcp": "git",
         "method": "stage_files",
     },
@@ -111,7 +108,6 @@ TOOL_REGISTRY = {
             },
             "required": ["message"],
         },
-        "requires_token": True,
         "mcp": "git",
         "method": "commit",
     },
@@ -124,7 +120,6 @@ TOOL_REGISTRY = {
             },
             "required": ["name"],
         },
-        "requires_token": True,
         "mcp": "git",
         "method": "create_branch",
     },
@@ -137,7 +132,6 @@ TOOL_REGISTRY = {
             },
             "required": ["branch"],
         },
-        "requires_token": True,
         "mcp": "git",
         "method": "merge_branch",
     },
@@ -150,7 +144,6 @@ TOOL_REGISTRY = {
             },
             "required": ["branch"],
         },
-        "requires_token": True,
         "mcp": "git",
         "method": "delete_branch",
     },
@@ -165,7 +158,6 @@ TOOL_REGISTRY = {
             },
             "required": ["branch", "title", "body"],
         },
-        "requires_token": True,
         "mcp": "pr",
         "method": "create_pr",
     },
@@ -178,7 +170,6 @@ TOOL_REGISTRY = {
             },
             "required": ["pr_number"],
         },
-        "requires_token": False,
         "mcp": "pr",
         "method": "read_pr_diff",
     },
@@ -192,7 +183,6 @@ TOOL_REGISTRY = {
             },
             "required": ["pr_number", "comment"],
         },
-        "requires_token": True,
         "mcp": "pr",
         "method": "post_review_comment",
     },
@@ -205,7 +195,6 @@ TOOL_REGISTRY = {
             },
             "required": ["pr_number"],
         },
-        "requires_token": True,
         "mcp": "pr",
         "method": "approve_pr",
     },
@@ -219,7 +208,6 @@ TOOL_REGISTRY = {
             },
             "required": ["pr_number", "reason"],
         },
-        "requires_token": True,
         "mcp": "pr",
         "method": "reject_pr",
     },
@@ -232,7 +220,6 @@ TOOL_REGISTRY = {
             },
             "required": ["pr_number"],
         },
-        "requires_token": True,
         "mcp": "pr",
         "method": "merge_pr",
     },
@@ -246,7 +233,6 @@ TOOL_REGISTRY = {
             },
             "required": ["intent", "plan_name"],
         },
-        "requires_token": True,
         "mcp": "planner",
         "method": "decompose",
     },
@@ -263,7 +249,6 @@ TOOL_REGISTRY = {
             },
             "required": ["plan_name", "task_id", "spec"],
         },
-        "requires_token": True,
         "mcp": "planner",
         "method": "generate_spec",
     },
@@ -276,7 +261,6 @@ TOOL_REGISTRY = {
             },
             "required": ["plan_name"],
         },
-        "requires_token": False,
         "mcp": "planner",
         "method": "validate_plan",
     },
@@ -297,7 +281,6 @@ TOOL_REGISTRY = {
             },
             "required": ["intent", "plan_name"],
         },
-        "requires_token": True,
         "mcp": None,
         "method": None,
     },
@@ -315,7 +298,6 @@ TOOL_REGISTRY = {
             },
             "required": ["plan_name"],
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -326,13 +308,12 @@ TOOL_REGISTRY = {
             "minutes, so do NOT expect this call to carry the run: follow the "
             "returned job_id with get_job_status (poll until completed / "
             "failed / unmerged), list_jobs, and get_job_logs. Per-task detail "
-            "stays available from get_plan at any time. No validation token is "
-            "needed to call this: the plan's structure is checked before "
-            "anything spawns (calling validate_plan first is a convenience "
-            "while authoring, not a precondition), and every task the run "
-            "dispatches passes the engine's own validator quorum and consumes "
-            "its own token at its own dispatch boundary — so WF1 is satisfied "
-            "per task, where the work actually happens. Refuses without "
+            "stays available from get_plan at any time. The plan's structure "
+            "is checked before anything spawns (calling validate_plan first "
+            "is a convenience while authoring, not a precondition), and every "
+            "task the run dispatches passes the engine's own validator quorum "
+            "inside the loop, at its own dispatch boundary — the guarantee "
+            "lives per task, where the work actually happens. Refuses without "
             "executing anything if the plan does not conform. Pass wait=true "
             "(with optional timeout, default 3600s) only when you genuinely "
             "want to block until the run finishes."
@@ -351,11 +332,6 @@ TOOL_REGISTRY = {
             },
             "required": ["plan_name"],
         },
-        # Not token-gated on purpose: a plan run is not itself a mutation, and
-        # the authority sits with the per-task quorum inside the run. Gating
-        # here would have meant a token issued by validate_task — for one
-        # unrelated task — standing in for authorisation of a whole plan.
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -369,7 +345,6 @@ TOOL_REGISTRY = {
             },
             "required": ["task_spec"],
         },
-        "requires_token": True,
         "mcp": None,
         "method": None,
     },
@@ -387,7 +362,6 @@ TOOL_REGISTRY = {
             },
             "required": ["job_id"],
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -402,7 +376,6 @@ TOOL_REGISTRY = {
             "type": "object",
             "properties": {},
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -420,16 +393,18 @@ TOOL_REGISTRY = {
             },
             "required": ["job_id"],
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
     "validate_task": {
         "description": (
-            "Run validators and obtain a validation token (WF1). Returns one of "
-            "four validation outcomes (pass/escalate/blocker/validator_error); an "
-            "execution halt can additionally be environment_error, a non-verdict "
-            "operational fault — see ADR 015."
+            "Run the pre-execute validators and report the quorum's outcome. "
+            "Returns one of four validation outcomes (pass/escalate/blocker/"
+            "validator_error); an execution halt can additionally be "
+            "environment_error, a non-verdict operational fault — see ADR 015. "
+            "A pass records a single-use token that the next dispatch_task "
+            "consumes as the audit link between the quorum and the work; no "
+            "tool call is refused for want of a token the caller holds."
         ),
         "inputSchema": {
             "type": "object",
@@ -439,7 +414,6 @@ TOOL_REGISTRY = {
             },
             "required": ["task_id"],
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -472,7 +446,6 @@ TOOL_REGISTRY = {
             },
             "required": ["task_id", "validator_id", "decision", "justification"],
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -503,7 +476,6 @@ TOOL_REGISTRY = {
             },
             "required": ["task_id", "proposed_model", "scope", "justification"],
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -518,7 +490,6 @@ TOOL_REGISTRY = {
                 },
             },
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -542,7 +513,6 @@ TOOL_REGISTRY = {
             },
             "required": ["query"],
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -579,7 +549,6 @@ TOOL_REGISTRY = {
             },
             "required": ["query", "paths"],
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -595,7 +564,6 @@ TOOL_REGISTRY = {
             },
             "required": ["recon_id"],
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -615,7 +583,6 @@ TOOL_REGISTRY = {
             },
             "required": ["recon_id"],
         },
-        "requires_token": False,
         "mcp": None,
         "method": None,
     },
@@ -650,7 +617,6 @@ TOOL_REGISTRY = {
             },
             "required": ["job_id"],
         },
-        "requires_token": True,
         "mcp": None,
         "method": None,
     },
