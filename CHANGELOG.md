@@ -53,6 +53,21 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `snodo survey` now says what it is waiting on while the boundary-judgement
+  agent call is in flight, instead of leaving a dead terminal. The call goes
+  out through the recon machinery and can take tens of seconds on a slow or
+  unreachable provider, during which the command printed nothing — so
+  thinking, a stalled request and a hung process looked identical, and the
+  reasonable response was ctrl-c, discarding work that was about to succeed.
+  A one-line indicator on stderr names the agent being waited on and erases
+  itself when the call returns. It is decoration, not output: it is written
+  only when stdout is a terminal and never under `--json`, so the report, the
+  machine interface and a piped run are byte-for-byte what they were. It is
+  funnelled through the engine's `ProgressSink`, so a broken indicator is
+  reported once and cannot take the run down. A failed or empty agent result
+  still prints exactly the diagnostic it printed before. No state, severity,
+  halt type or task status was added. (Fixes #292)
+
 - A coder run now records which binary produced it, a missing coder says which
   PATH it searched, and a stopped server no longer leaves a child holding its
   port. An operator spent an hour discovering that their coder was running a
