@@ -45,12 +45,28 @@ _TEST_MARKERS: List[Tuple[str, str]] = [
     ("go.mod", "go test ./..."),
 ]
 
-# Path regex to extract plausible relative file/dir citations from text
+# Path regex to extract candidate relative file/dir citations from text
 _PATH_TOKEN_REGEX = re.compile(
     r'(?<![a-zA-Z0-9_\-\./])'
     r'([a-zA-Z0-9_\-]+/(?:[a-zA-Z0-9_\-\./]+)?|[a-zA-Z0-9_\-]+\.[a-zA-Z0-9]{1,5})'
     r'(?![a-zA-Z0-9_\-\./])'
 )
+
+# A token is only a citation when the author could not have meant prose. Criteria
+# are written for a judge to read, and prose uses a slash for alternatives
+# (authentication/authorization), ratios (909/1031) and short lists
+# (dev/deploy/install). A warning about a file that was never meant to exist
+# teaches the operator to skim the report, which is worse than no warning at
+# all: an extensionless slash phrase cannot be told apart from a path with
+# confidence, so it is left unreported (Fixes #313).
+_FILE_EXTENSION_REGEX = re.compile(
+    r'\.(?:md|py|json|ya?ml|toml|ts|tsx|js|jsx|rs|go|sh|txt|cfg|ini|css|html|sql|proto|lock)$',
+    re.I,
+)
+
+# Punctuation a sentence glues to the end of a real citation; stripped before
+# deciding whether the token is a file or a slash-terminated directory.
+_TRAILING_PUNCTUATION = " \t\r\n.,;:)\"'`"
 
 # Common non-path file-like words to ignore
 _PATH_IGNORE_TOKENS = {
@@ -143,15 +159,32 @@ def _has_committed_markdown_files(
 
 
 def _extract_cited_paths(text: str) -> List[str]:
-    """Extract plausible repository relative file and directory paths from criteria strings."""
+    """Extract repository relative file and directory paths from criteria strings.
+
+    Only tokens whose shape a sentence would not produce are citations: a named
+    file with an extension (``docs/architecture.md``, ``README.md``) or a path
+    explicitly marked as a directory with a trailing slash (``docs/decisions/``).
+    The trailing slash is how criteria already distinguish a directory citation
+    from prose — the shipped templates write ``docs/decisions/`` and never
+    ``docs/decisions`` — so no new syntax is imposed on authors. A bare
+    extensionless slash phrase (``authentication/authorization``,
+    ``dev/deploy/install``) is prose and is not reported (Fixes #313).
+    """
     paths: List[str] = []
     for match in _PATH_TOKEN_REGEX.finditer(text):
-        token = match.group(1).strip()
+        raw = match.group(1)
+        token = raw.strip()
         if token in _PATH_IGNORE_TOKENS or token.startswith((".", "/", "\\")):
             continue
-        # Filter for file/directory shapes: contains / or ends with common code/doc extension
-        if "/" in token or re.search(r'\.(md|py|json|yml|yaml|toml|ts|js|rs|go|sh|txt|cfg)$', token, re.I):
-            paths.append(token.rstrip(".,;:)'\""))
+        token = token.rstrip(_TRAILING_PUNCTUATION)
+        if not token or token in _PATH_IGNORE_TOKENS:
+            continue
+        # A trailing slash survived punctuation stripping only if it was the
+        # last character of the raw token; it marks a deliberate directory
+        # citation rather than a slash the sentence happened to place.
+        directory_citation = raw.rstrip(_TRAILING_PUNCTUATION).endswith("/")
+        if _FILE_EXTENSION_REGEX.search(token) or directory_citation:
+            paths.append(token)
     return paths
 
 

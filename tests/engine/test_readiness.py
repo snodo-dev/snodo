@@ -12,6 +12,8 @@ PROVES:
   repository readiness figure.
 - Findings are ordered by cheapest fix at highest severity first.
 - Whole protocol is assessed regardless of active mode, with demanding modes tagged.
+- A real path cited in criteria is still reported when missing and when uncommitted.
+- A slash-separated English phrase in criteria is never reported as a path (Fixes #313).
 """
 
 import subprocess
@@ -24,7 +26,7 @@ from snodo.compiler.models import (
     Protocol,
     Validator,
 )
-from snodo.readiness.checker import assess_readiness
+from snodo.readiness.checker import _extract_cited_paths, assess_readiness
 from snodo.readiness.models import FindingSeverity, ReadinessKind
 
 
@@ -341,6 +343,74 @@ def test_missing_opencode_still_reports_the_missing_binary(git_repo: Path, monke
     assert not any(
         f.id.startswith("coder_binary_resolved") for f in assessment.workstation_findings
     )
+
+
+def test_cited_path_missing_is_still_reported(git_repo: Path):
+    """A real path cited in criteria and absent from the tree is still cited_path_missing (Fixes #313)."""
+    protocol = _make_protocol(
+        validators=[
+            Validator(
+                validator_id="val_arch",
+                validator_type="architecture",
+                criteria=["Follow docs/decisions/ and the layout in docs/layout.md"],
+            )
+        ]
+    )
+
+    assessment = assess_readiness(git_repo, protocol)
+
+    missing = [f for f in assessment.repository_findings if f.id == "cited_path_missing:docs/layout.md"]
+    assert len(missing) == 1
+    assert missing[0].severity == FindingSeverity.WARN
+    assert "docs/layout.md" in missing[0].description
+
+
+def test_cited_path_uncommitted_is_still_reported(git_repo: Path):
+    """A cited directory that exists on disk but is uncommitted is still cited_path_uncommitted (Fixes #313)."""
+    (git_repo / "docs" / "specs").mkdir(parents=True)
+    (git_repo / "docs" / "specs" / "001.md").write_text("# Spec\n")
+
+    protocol = _make_protocol(
+        validators=[
+            Validator(
+                validator_id="val_arch",
+                validator_type="architecture",
+                criteria=["Read the specs in docs/specs/."],
+            )
+        ]
+    )
+
+    assessment = assess_readiness(git_repo, protocol)
+
+    uncommitted = [f for f in assessment.repository_findings if f.id == "cited_path_uncommitted:docs/specs/"]
+    assert len(uncommitted) == 1
+    assert uncommitted[0].severity == FindingSeverity.WARN
+    assert uncommitted[0].fix_cost == 1
+
+
+def test_slash_separated_english_phrase_is_not_a_cited_path(git_repo: Path):
+    """Prose slashes — alternatives, ratios, short lists — produce no finding (Fixes #313)."""
+    prose = "Check authentication/authorization and open/closed principles; a ratio of 909/1031 is not a path."
+    assert _extract_cited_paths(prose) == []
+
+    protocol = _make_protocol(
+        validators=[
+            Validator(
+                validator_id="val_quality",
+                validator_type="quality",
+                tooling={"test_command": "pytest"},
+                criteria=[
+                    "Check authentication/authorization boundaries",
+                    "Apply open/closed and Liskov substitution",
+                    "The path dev/deploy/install is three words in a sentence",
+                ],
+            )
+        ]
+    )
+
+    assessment = assess_readiness(git_repo, protocol)
+
+    assert not any(f.id.startswith("cited_path_") for f in assessment.repository_findings)
 
 
 def test_plaintext_api_key_reported_in_workstation_findings(git_repo: Path, tmp_path: Path, monkeypatch):
