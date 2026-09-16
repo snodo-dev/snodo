@@ -48,10 +48,11 @@ _CANONICAL_HALT = {
     # the missing-program fault (ADR 015). It must not canonicalise to
     # ``blocker``, a verdict about work no judge saw (Fixes #282).
     "turn_budget_exhausted": "environment_error",
-    # A coder fault the operator fixes in configuration (model string,
-    # backend choice) stays a config-targeted blocker (#195); the missing-
-    # program case is ``environment_error`` below.
-    "execution_error": "blocker",
+    # An operational coder fault — the provider could not be reached, the call
+    # did not complete, the session could not be established — is an operational
+    # fact about the run, not a verdict about the code (ADR 015). It must not
+    # canonicalise to ``blocker``, a verdict about work no judge saw (Fixes #301).
+    "execution_error": "environment_error",
     # An environment fault is not a verdict, so its raw and canonical values
     # are the same (ADR 015).
     "environment_error": "environment_error",
@@ -226,19 +227,13 @@ def _blocker_fix_targets(
       block cites a criterion, in which case the criterion lives in the
       protocol and is a legitimate place to fix it.
 
-    ``turn_budget_exhausted`` is absent on purpose: it canonicalises to
-    ``environment_error`` (the operational-halt family, ADR 015/#282), not a
-    blocker, so no blocker fix target applies to it.
+    ``turn_budget_exhausted`` and ``execution_error`` are absent on purpose:
+    they canonicalise to ``environment_error`` (the operational-halt family,
+    ADR 015/#282, #301), not a blocker, so no blocker fix target applies to them.
     """
     halt_type = halt_type or ""
     if halt_type in ("constraint", "wf3"):
         return ["policy"]
-    if halt_type == "execution_error":
-        # The coder backend itself failed — a binary missing from PATH, a CLI
-        # that rejected the arguments (e.g. a model string the tool does not
-        # accept), an LLM call that errored. The operator fixes the coder
-        # configuration, not the code, the spec, or the protocol (Fixes #195).
-        return ["config"]
     if halt_type in ("max_iterations", "recovery_exhausted", "recovery_stalled"):
         return ["spec", "policy"]
     if halt_type == "head_not_moved":
@@ -309,6 +304,26 @@ def _has_adjudicable_decision(
     return pending_adjudicable_decision(session, task_id) is not None
 
 
+def _has_retryable_task(
+    session_manager: Any, session_id: Optional[str], task_id: str,
+) -> bool:
+    """Whether ``snodo run --retry <task_id>`` would find failure context to retry.
+
+    The accept-rule itself lives beside INV3 in
+    ``snodo.infrastructure.decisions``; this only resolves the session. Any
+    failure to read the session counts as "not retryable" — the follow-up
+    must never promise a command that would be refused (Fixes #301).
+    """
+    if not session_manager or not session_id:
+        return False
+    try:
+        session = session_manager.load_session(session_id)
+    except Exception:
+        return False
+    from snodo.infrastructure.decisions import pending_retryable_task
+    return pending_retryable_task(session, task_id)
+
+
 def _build_hint(
     halt: str,
     halt_type: Optional[str] = "",
@@ -346,8 +361,9 @@ def _build_hint(
         # install command the adapter declares — the operator must see THAT
         # here, not a fix hint about a spec that passed every validator.
         detail = reason or (
-            "the program the coder needs could not be invoked in the "
-            "execution environment"
+            "the coder call could not be completed"
+            if halt_type == "execution_error"
+            else "the program the coder needs could not be invoked in the execution environment"
         )
         if timed_out:
             # A timeout is an operational halt too, but the fix is not an
@@ -375,6 +391,17 @@ def _build_hint(
                 "coder's turn budget if the task needs more turns, then re-run "
                 "the task unchanged. Any work the run produced was judged "
                 "before this halt."
+            )
+        if halt_type == "execution_error":
+            # An operational coder fault (unreachable provider, failed session,
+            # broken call) is an operational halt, not a verdict about the code.
+            # Name the real cause rather than the coder configuration (Fixes #301).
+            return (
+                "This halt is about the run, not about the task: the coder "
+                f"call failed operationally ({detail}). Nothing about the spec, "
+                "the code or the protocol needs fixing, and no recovery "
+                "attempt is warranted: re-run the task once the operational "
+                "fault is addressed."
             )
         return (
             "This halt is about the execution environment, not about the "
@@ -726,6 +753,17 @@ class WritebackMixin:
             self._session_manager, self._session_id, loop_state.task.id,
         )
 
+        # Whether `snodo run --retry` would find failure context to retry.
+        # Derived from the session that actually holds the failure context, so
+        # the CLI follow-up offers a retry only when it will answer (Fixes #301).
+        # Operational halts never offer retry.
+        if halt in ("environment_error", "internal_error", "validator_error"):
+            retryable = False
+        else:
+            retryable = _has_retryable_task(
+                self._session_manager, self._session_id, loop_state.task.id,
+            )
+
         payload = {
             "status": "blocked" if loop_state.is_blocked else "completed",
             "halt_type": halt,
@@ -772,6 +810,11 @@ class WritebackMixin:
         # re-deriving it (Fixes #288).
         if adjudicable:
             payload["adjudicable"] = True
+        # Failure context waiting to be retried is what makes `snodo run --retry`
+        # a follow-up rather than a dead end; the CLI reads this instead of
+        # re-deriving it (Fixes #301).
+        if retryable:
+            payload["retryable"] = True
         if timed_out:
             payload["timed_out"] = True
             payload["timeout_seconds"] = meta.get("timeout_seconds")

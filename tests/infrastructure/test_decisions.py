@@ -450,3 +450,60 @@ class TestINV3Regression:
         )
         assert decision.action == PolicyAction.HALT
         assert decision.blocker_count == 1
+
+
+# === pending_adjudicable_decision & pending_retryable_task ===
+
+class TestPendingDecisionsAndRetryable:
+    def test_pending_retryable_task_with_failure_context(self):
+        from unittest.mock import MagicMock
+        from snodo.infrastructure.decisions import pending_retryable_task
+
+        session = MagicMock()
+        session.checkpoint.decisions = {
+            "task_failure": {
+                "t1": {"attempt": 1, "branch": "task/t1", "spec": "do something"},
+            }
+        }
+        assert pending_retryable_task(session, "t1") is True
+        assert pending_retryable_task(session, "t2") is False
+
+    def test_pending_retryable_task_exhausted(self):
+        from unittest.mock import MagicMock
+        from snodo.infrastructure.decisions import pending_retryable_task
+
+        session = MagicMock()
+        session.checkpoint.decisions = {
+            "task_failure": {
+                "t1": {"attempt": 3, "branch": "task/t1", "spec": "do something"},
+            }
+        }
+        assert pending_retryable_task(session, "t1", max_retries=3) is False
+
+    def test_pending_retryable_task_operational_halt_refused(self):
+        from unittest.mock import MagicMock
+        from snodo.infrastructure.decisions import pending_retryable_task
+
+        session = MagicMock()
+        session.checkpoint.decisions = {
+            "halt": {
+                "t1": {"halt_type": "environment_error", "status": "blocked"},
+            },
+            "task_failure": {
+                "t1": {"attempt": 1, "branch": "task/t1", "spec": "do something"},
+            },
+        }
+        assert pending_retryable_task(session, "t1") is False
+
+    def test_pending_retryable_task_fallback_to_blocked_halt(self):
+        from unittest.mock import MagicMock
+        from snodo.infrastructure.decisions import pending_retryable_task
+
+        session = MagicMock()
+        session.checkpoint.decisions = {
+            "halt": {
+                "t1": {"task_id": "t1", "halt_type": "blocker", "status": "blocked"},
+            }
+        }
+        assert pending_retryable_task(session, "t1") is True
+

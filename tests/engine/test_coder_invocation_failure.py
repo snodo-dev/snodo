@@ -107,24 +107,24 @@ def test_cli_rejects_model_is_execution_error_not_internal_error(git_fixture_rep
     with mock.patch("subprocess.Popen", side_effect=fake_popen):
         tree = _run_with_coder(coder, git_fixture_repo)
 
-    # Raw halt names the coder fault; canonical outcome is a blocker.
+    # Raw halt names the coder fault; canonical outcome is an operational halt.
     assert tree.outcome == "execution_error"
     assert tree.outcome != "internal_error"
 
     payload = tree.halt_payload
     assert payload is not None
     assert payload["status"] == "blocked"
-    assert payload["halt_type"] == "blocker"
-    assert payload["final_decision"] == "blocker"
-    assert payload["raw_halt_type"] == "blocker"
+    assert payload["halt_type"] == "environment_error"
+    assert payload["final_decision"] == "environment_error"
+    assert payload["raw_halt_type"] == "environment_error"
     assert payload["artifacts_count"] == 0
 
     # The exact coder error reaches the top-level reason.
     assert "invalid model selection" in (payload["reason"] or "")
 
-    # The hint tells the operator to fix the coder configuration, not to
-    # inspect engine logs.
-    assert "coder configuration" in payload["hint"]
+    # The hint names the real cause, not coder configuration (Fixes #301).
+    assert "invalid model selection" in payload["hint"]
+    assert "coder configuration" not in payload["hint"]
     assert "internal" not in payload["hint"]
     assert "inspect the logs" not in payload["hint"]
 
@@ -198,7 +198,7 @@ def test_container_runtime_missing_is_environment_error(git_fixture_repo):
 
 
 def test_llm_call_error_is_execution_error(git_fixture_repo):
-    """An LLM call failure (LLMCallError) is a coder fault, not an engine fault."""
+    """An LLM call failure (LLMCallError) is an operational fault, not a blocker verdict (Fixes #301)."""
     def failing_executor(task, token, coder, workspace_mcp, git_mcp, **kwargs):
         raise LLMCallError("LLM call failed: provider returned 401")
 
@@ -215,6 +215,10 @@ def test_llm_call_error_is_execution_error(git_fixture_repo):
 
     assert tree.outcome == "execution_error"
     payload = tree.halt_payload
-    assert payload["halt_type"] == "blocker"
-    assert payload["raw_halt_type"] == "blocker"
+    assert payload["halt_type"] == "environment_error"
+    assert payload["raw_halt_type"] == "environment_error"
+    assert payload["final_decision"] == "environment_error"
     assert "401" in (payload["reason"] or "")
+    assert "401" in payload["hint"]
+    assert "coder configuration" not in payload["hint"]
+    assert not payload.get("retryable")

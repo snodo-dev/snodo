@@ -762,20 +762,20 @@ class TestExecutionFailureReporting:
         result = builder.build_graph().compile().invoke(self._state())
 
         assert result["is_blocked"] is True
-        # Raw halt names the coder fault; canonical outcome is a blocker.
+        # Raw halt names the coder fault; canonical outcome is an operational halt.
         assert result["halt_type"] == "execution_error"
 
         payload = result["metadata"]["halt_payload"]
-        assert payload["raw_halt_type"] == "blocker"
-        assert payload["halt_type"] == "blocker"
-        assert payload["final_decision"] == "blocker"
+        assert payload["raw_halt_type"] == "environment_error"
+        assert payload["halt_type"] == "environment_error"
+        assert payload["final_decision"] == "environment_error"
         assert payload["status"] == "blocked"
         # The exact coder error reaches the top-level reason.
         assert payload["reason"] is not None
         assert "invalid model selection" in payload["reason"]
-        # The hint tells the operator to fix the coder configuration, not to
-        # inspect engine logs.
-        assert "coder configuration" in payload["hint"]
+        # The hint names the real cause, not coder configuration (Fixes #301).
+        assert "invalid model selection" in payload["hint"]
+        assert "coder configuration" not in payload["hint"]
         assert "internal" not in payload["hint"]
         # Post-validation was skipped, not passed.
         assert payload["post_validation"]["outcome"] == "skipped"
