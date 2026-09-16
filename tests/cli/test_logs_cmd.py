@@ -594,7 +594,9 @@ def test_watch_stream_is_byte_identical_under_no_color(capsys, monkeypatch):
 
 
 def test_watch_stream_colors_and_compacts_when_color_is_on(capsys):
-    """On an interactive terminal the watch styles lines and compacts turns."""
+    """On an interactive terminal the watch styles lines and keeps a scrolling
+    window of recent history rather than overwriting down to one row (#300):
+    distinct turns and the halt that follows all stay visible together."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         job_dir = Path(tmp_dir) / ".snodo" / "jobs" / "j_color"
         job_dir.mkdir(parents=True)
@@ -615,10 +617,11 @@ def test_watch_stream_colors_and_compacts_when_color_is_on(capsys):
 
         out = capsys.readouterr().out
         assert "\x1b" in out
-        # The halt keeps its own text and is not a turn.
-        assert "Recovery stalled" in _strip_ansi(out)
-        # Consecutive turns compact: the second moves up onto the first.
-        assert out.count("\x1b[1A") == 1
+        stripped = _strip_ansi(out)
+        # Neither turn overwrote the other, and the halt survived both.
+        assert "Turn 1: read_file(a.py)" in stripped
+        assert "Turn 2: read_file(b.py)" in stripped
+        assert "Recovery stalled" in stripped
 
 
 def _strip_ansi(text: str) -> str:
