@@ -572,6 +572,7 @@ def run_validators(
             effective_model = override_model or v.model or default_model or DEFAULT_MODEL
             ctx = copy.copy(context)
             ctx.model = effective_model
+            ctx.max_tool_turns = v.max_tool_turns or _vcfg.max_tool_turns
             future = executor.submit(_dispatch_with_progress, v, ctx)
             futures[future] = v.validator_id
 

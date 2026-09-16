@@ -168,6 +168,14 @@ class Validator(BaseModel):
         description="Optional LLM model override for this validator. "
                     "Falls back to coder model / default_model if not set."
     )
+    max_tool_turns: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=200,
+        description="Optional read-tool-loop turn budget override for this "
+                    "validator. Falls back to the configured llm.validator "
+                    "max_tool_turns if not set."
+    )
 
     @field_validator('validator_id')
     @classmethod
