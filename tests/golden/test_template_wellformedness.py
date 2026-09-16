@@ -42,6 +42,28 @@ def test_registry_contains_every_yml_in_templates_dir():
         assert result.passed, f"{name}.yml WF violations: {result.errors}"
 
 
+def test_every_shipped_template_compiles(tmp_path):
+    """Every shipped template builds and compiles an executable graph.
+
+    Well-formedness (WF1-WF5) is a static check on the parsed protocol; the
+    engine's graph builder reads more of the same fields and is what a run
+    actually uses. A template that passes WF1-WF5 but fails ``compile`` —
+    a mode or validator field the builder requires and the snapshot does not
+    notice — would fail at a user's first ``snodo init`` instead of here.
+    Both stages must hold for every template, so the two are pinned together.
+    """
+    from snodo.engine.loop import build_protocol_graph
+    from snodo.protocols import list_templates, template_protocol
+
+    for name in list_templates():
+        graph = build_protocol_graph(
+            template_protocol(name),
+            project_root=str(tmp_path),
+            use_mock_coder=True,
+        )
+        graph.compile()
+
+
 def test_broken_template_reported_with_file_and_condition(tmp_path, monkeypatch):
     """A template that fails WF1-WF5 is reported as broken (file + condition),
     not as missing."""
