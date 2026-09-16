@@ -408,6 +408,72 @@ class TestJudgeAdapter:
         assert judge is not None
         assert judge.model == "deepseek/deepseek-v4-flash"
 
+    def test_survey_judge_falls_back_to_second_model_on_silence_or_fault(self, tmp_path, monkeypatch):
+        from snodo.config import ConfigManager
+        from snodo.cli.commands import survey_cmd
+
+        cfg_dir = ConfigManager().config_dir
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / "config.yml").write_text(
+            "model: some/unknown-default\n"
+            "providers:\n"
+            "  deepseek:\n    api_key: test-key-1\n"
+            "  openai:\n    api_key: test-key-2\n"
+            "llm:\n  recon:\n    models: [deepseek/first-disengaging, openai/second-good]\n"
+        )
+
+        judge = survey_cmd.build_survey_judge(tmp_path, "auto")
+        assert judge is not None
+
+        calls = []
+
+        def fake_call_agent(project_root, model, query, paths, agent_label, max_turns):
+            calls.append(model)
+            if model == "deepseek/first-disengaging":
+                return self._result(error="Agent returned empty result", result="")
+            return self._result(
+                result='{"judgements": [{"subject": "x", "verdict": "product", "reason": "ok", "cited_files": ["f"]}]}'
+            )
+
+        monkeypatch.setattr("snodo.recon.call_agent", fake_call_agent)
+        outcome = judge({"subjects": [{"id": "x"}]})
+
+        assert outcome == {"verdicts": [{"subject": "x", "verdict": "product", "reason": "ok", "cited_files": ["f"]}]}
+        assert calls == ["deepseek/first-disengaging", "openai/second-good"]
+        assert judge.model == "openai/second-good"
+
+    def test_survey_judge_stops_when_first_model_answers(self, tmp_path, monkeypatch):
+        from snodo.config import ConfigManager
+        from snodo.cli.commands import survey_cmd
+
+        cfg_dir = ConfigManager().config_dir
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / "config.yml").write_text(
+            "model: some/unknown-default\n"
+            "providers:\n"
+            "  deepseek:\n    api_key: test-key-1\n"
+            "  openai:\n    api_key: test-key-2\n"
+            "llm:\n  recon:\n    models: [deepseek/first-working, openai/second-unused]\n"
+        )
+
+        judge = survey_cmd.build_survey_judge(tmp_path, "auto")
+        assert judge is not None
+
+        calls = []
+
+        def fake_call_agent(project_root, model, query, paths, agent_label, max_turns):
+            calls.append(model)
+            return self._result(
+                result='{"judgements": [{"subject": "x", "verdict": "product", "reason": "ok", "cited_files": ["f"]}]}'
+            )
+
+        monkeypatch.setattr("snodo.recon.call_agent", fake_call_agent)
+        outcome = judge({"subjects": [{"id": "x"}]})
+
+        assert "verdicts" in outcome
+        assert calls == ["deepseek/first-working"]
+        assert judge.model == "deepseek/first-working"
+
 
 class TestSurveyHumanOutputSections:
     def test_agent_consulted_without_accepted_verdicts_is_said_plainly(self, tmp_path, monkeypatch, capsys):

@@ -122,39 +122,50 @@ def resolve_recon_agents(
 
     Precedence (most specific wins):
       1. explicit_agents non-empty → return as-is
-      2. n = requested_n or recon_default_n or 1
-      3. resolve n against recon_models:
-         - models empty: n≤1 → ["default"]; n>1 → ["default"] + warn
-         - models present: first n; slots beyond len → warn per slot, skip
+      2. deliberate fan-out:
+         - requested_n > 1 or (requested_n is None and recon_default_n > 1):
+           resolve first n against recon_models (or ["default"] if empty),
+           warning per slot beyond configured models
+      3. priority list (single agent, n <= 1):
+         - models empty: return ["default"]
+         - models present: return configured models in priority order for fallback
     """
     if explicit_agents:
         return explicit_agents
 
-    n = requested_n or recon_default_n or 1
     models = recon_models or []
+    is_fanout = (requested_n is not None and requested_n > 1) or (
+        requested_n is None and recon_default_n > 1
+    )
 
-    if not models:
-        if n <= 1:
-            return ["default"]
-        import sys
-        print(
-            f"Warning: num_agents={n} but no recon models configured. "
-            "Using 'default' once (duplicates add no value).",
-            file=sys.stderr,
-        )
-        return ["default"]
-
-    results = []
-    for i in range(n):
-        if i < len(models):
-            results.append(models[i])
-        else:
+    if is_fanout:
+        n = requested_n if requested_n is not None else recon_default_n
+        if not models:
+            import sys
             print(
-                f"Warning: slot {i + 1}/{n} beyond configured models "
-                f"({len(models)}). Skipped.",
+                f"Warning: num_agents={n} but no recon models configured. "
+                "Using 'default' once (duplicates add no value).",
                 file=sys.stderr,
             )
-    return results if results else ["default"]
+            return ["default"]
+
+        results = []
+        for i in range(n):
+            if i < len(models):
+                results.append(models[i])
+            else:
+                import sys
+                print(
+                    f"Warning: slot {i + 1}/{n} beyond configured models "
+                    f"({len(models)}). Skipped.",
+                    file=sys.stderr,
+                )
+        return results if results else ["default"]
+
+    # Single-agent / priority fallback mode (n <= 1)
+    if not models:
+        return ["default"]
+    return list(models)
 
 
 def _read_file(project_root: str, path: str) -> str:
@@ -404,15 +415,15 @@ class ReconManager:
             return json.load(f)
 
     def _run_recon(self, recon_id: str, query: str, paths: list[str],
-                   agents: list[str]) -> None:
-        """Background entry point — fans out agents, writes results, updates state."""
+                   agents: list[str], fanout: bool = False) -> None:
+        """Background entry point — fans out or falls back, writes results, updates state."""
         try:
-            self._run_recon_impl(recon_id, query, paths, agents)
+            self._run_recon_impl(recon_id, query, paths, agents, fanout=fanout)
         except Exception as e:
             _logger.debug("Recon background task error for %s: %s", recon_id, e)
 
     def _run_recon_impl(self, recon_id: str, query: str, paths: list[str],
-                        agents: list[str]) -> None:
+                        agents: list[str], fanout: bool = False) -> None:
         recon_dir = self.recons_dir / recon_id
 
         resolved_agents = []
@@ -421,38 +432,63 @@ class ReconManager:
             resolved_agents.append((agent_label, model))
 
         results = []
-        with ThreadPoolExecutor(max_workers=min(len(resolved_agents), 4)) as executor:
-            futures = {}
-            for agent_label, model in resolved_agents:
-                future = executor.submit(
-                    call_agent,
-                    self.project_root, model, query, paths, agent_label,
-                )
-                futures[future] = agent_label
+        if fanout:
+            with ThreadPoolExecutor(max_workers=min(len(resolved_agents), 4)) as executor:
+                futures = {}
+                for agent_label, model in resolved_agents:
+                    future = executor.submit(
+                        call_agent,
+                        self.project_root, model, query, paths, agent_label,
+                    )
+                    futures[future] = agent_label
 
-            for future in as_completed(futures):
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        agent_label = futures[future]
+                        result = ReconResult(
+                            agent=agent_label,
+                            model="",
+                            result="",
+                            error=str(e),
+                        )
+                    results.append(result)
+        else:
+            # Priority fallback mode: sequential failover
+            # The first model that answers wins. Failover is strictly for silence and faults.
+            for agent_label, model in resolved_agents:
                 try:
-                    result = future.result()
+                    result = call_agent(
+                        self.project_root, model, query, paths, agent_label,
+                    )
                 except Exception as e:
-                    agent_label = futures[future]
                     result = ReconResult(
                         agent=agent_label,
-                        model="",
+                        model=model,
                         result="",
                         error=str(e),
                     )
                 results.append(result)
+                if not result.error and result.result.strip():
+                    # The first model that answers wins; do not call subsequent models.
+                    break
+                _logger.warning(
+                    "Recon agent %s (%s) returned empty result or failed: %s; falling back to next model",
+                    agent_label, model, result.error,
+                )
 
         self._save_results(recon_dir, results)
 
         state = self._load_state(recon_dir)
-        succeeded = sum(1 for r in results if isinstance(r, ReconResult) and not r.error)
+        succeeded = sum(1 for r in results if isinstance(r, ReconResult) and not r.error and r.result.strip())
         state["status"] = "complete" if succeeded > 0 else "failed"
         state["completed_at"] = time.time()
         self._save_state(recon_dir, state)
 
     def submit(self, query: str, paths: list[str],
-               agents: Optional[list[str]] = None) -> str:
+               agents: Optional[list[str]] = None,
+               fanout: bool = False) -> str:
         """Submit a recon query — returns immediately with a recon_id.
 
         Args:
@@ -460,6 +496,8 @@ class ReconManager:
             paths: List of paths to search within
             agents: List of model strings; ``["default"]`` resolves to
                     the configured model.  Named agents pass through directly.
+            fanout: Whether to fan out in parallel to all agents (True) or
+                    treat as an ordered priority list with fallback (False).
 
         Returns:
             Recon ID string (rec_...)
@@ -485,6 +523,7 @@ class ReconManager:
         thread = Thread(
             target=self._run_recon,
             args=(recon_id, query, paths, agents),
+            kwargs={"fanout": fanout},
         )
         thread.start()
         _threads.append(thread)
