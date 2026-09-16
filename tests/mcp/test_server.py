@@ -1869,6 +1869,20 @@ class TestServerAuditLog:
 class TestInstructions:
     """Tests for server instructions in the initialize handshake."""
 
+    @pytest.fixture
+    def dispatching_server(self, project_dir):
+        """An all-modes server on a protocol whose producer holds 'dispatch' —
+        the surface the workflow loop is written for."""
+        data = {
+            **MINIMAL_PROTOCOL_DATA,
+            "modes": [
+                {**MINIMAL_PROTOCOL_DATA["modes"][0],
+                 "tools": ["edit", "test", "dispatch"]},
+                MINIMAL_PROTOCOL_DATA["modes"][1],
+            ],
+        }
+        return ProtocolMCPServer(Protocol(**data), project_dir)
+
     def test_instructions_built_from_protocol(self, server):
         """Instructions contain protocol-specific data."""
         instructions = _build_instructions(server)
@@ -1879,17 +1893,33 @@ class TestInstructions:
         assert "security" in instructions  # validator
         assert "unanimous" in instructions  # disagreement_policy
 
-    def test_instructions_contains_workflow_loop(self, server):
+    def test_instructions_contains_workflow_loop(self, dispatching_server):
         """Instructions contain the ordered workflow loop."""
-        instructions = _build_instructions(server)
+        instructions = _build_instructions(dispatching_server)
         assert "validate_task" in instructions
         assert "dispatch_task" in instructions
         assert "get_job_status" in instructions
         assert "get_job_logs" in instructions
 
-    def test_instructions_contains_async_contract(self, server):
-        """Instructions explicitly state the async contract."""
+    def test_instructions_describe_only_the_tools_the_server_has(self, server):
+        """The loop section is written for a server that can dispatch. This
+        one cannot (no mode grants 'dispatch'), so its manual must not name
+        dispatch_task — the orchestrator may never be told to call what it
+        was not given. The run_plan it does offer still comes with the
+        observers its manual names."""
+        names = {t["name"] for t in server.get_tools()}
+        assert "dispatch_task" not in names
         instructions = _build_instructions(server)
+        assert "dispatch_task" not in instructions
+        # The planning surface is unconditional here, and the job observers
+        # travel with it (the server-side invariant):
+        assert "run_plan" in instructions
+        assert "get_job_status" in instructions
+        assert "get_job_status" in names
+
+    def test_instructions_contains_async_contract(self, dispatching_server):
+        """Instructions explicitly state the async contract."""
+        instructions = _build_instructions(dispatching_server)
         assert "ASYNCHRONOUS" in instructions
         assert "poll" in instructions.lower() or "get_job_status" in instructions
         assert "dispatch" in instructions.lower()

@@ -351,14 +351,14 @@ TOOL_REGISTRY = {
     "get_job_status": {
         "description": (
             "Poll execution status of one dispatched job and its full task "
-            "spec. Call after dispatch_task returns a task_id. Status "
-            "progresses: queued → running → completed | failed. Check for "
-            "completed + exit_code=0 to confirm success."
+            "spec. Call after dispatch_task or run_plan returns a job id. "
+            "Status progresses: queued → running → completed | failed. Check "
+            "for completed + exit_code=0 to confirm success."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "job_id": {"type": "string", "description": "Job ID returned by dispatch_task"},
+                "job_id": {"type": "string", "description": "Job ID returned by dispatch_task or run_plan"},
             },
             "required": ["job_id"],
         },
@@ -387,7 +387,7 @@ TOOL_REGISTRY = {
         "inputSchema": {
             "type": "object",
             "properties": {
-                "job_id": {"type": "string", "description": "Job ID returned by dispatch_task"},
+                "job_id": {"type": "string", "description": "Job ID returned by dispatch_task or run_plan"},
                 "stream": {"type": "string", "description": "stdout or stderr", "default": "stdout"},
                 "tail": {"type": "integer", "description": "Return only the last N lines", "default": 50},
             },
@@ -656,3 +656,30 @@ PLANNING_TOOLS = [
     "get_plan",
     "run_plan",
 ]
+
+# The read-only job-observation surface: the tools that answer "how is the
+# job I started doing?". They mutate nothing, so exposing them costs no
+# authority.
+JOB_OBSERVATION_TOOLS = [
+    "get_job_status",
+    "list_jobs",
+    "get_job_logs",
+]
+
+# The read-only recon-observation surface, by the same rule as the job one.
+RECON_OBSERVATION_TOOLS = [
+    "get_recon_status",
+    "get_recon_results",
+]
+
+# Tools that start background work, each mapped to the read-only tools that
+# observe the work it starts. A job_id with no way to ask after it is not a
+# contract an orchestrator can honour, so the pairing is not left to the
+# capability grant: ProtocolMCPServer._resolve_tools enforces it on every
+# server it builds, and the two surfaces cannot come apart. Only read-only
+# observers travel — a starter never drags a mutating tool along.
+WORK_STARTING_TOOLS = {
+    "dispatch_task": JOB_OBSERVATION_TOOLS,
+    "run_plan": JOB_OBSERVATION_TOOLS,
+    "recon": RECON_OBSERVATION_TOOLS,
+}
