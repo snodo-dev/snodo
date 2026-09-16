@@ -70,6 +70,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- An `llm.*` config key that is not a setting of its section now fails loudly
+  instead of being silently discarded. The `llm` section is owned end to end by
+  the engine, so `load_llm_config` rejects any key that is not a field of the
+  owning model (`CoderConfig`, `ValidatorConfig`, `ClassifierConfig`,
+  `ReconConfig`, `WaveConfig` or `LlmConfig` itself) with a `ConfigLoadError`
+  naming the key and the section and listing the section's valid keys. The
+  reported failure: a validator section carried `single_max_tokens` and
+  `temperature`, neither a field of `ValidatorConfig` and both explicitly out
+  of scope in `docs/specs/llm-config-section.md`, and both parsed, did nothing
+  and said nothing — the operator believed a budget and a temperature were
+  configured for weeks. A typo and a knob that was never implemented were
+  indistinguishable. The deprecated `llm.wave.max_tokens` / `temperature`
+  migration still runs before validation, so a supported migration keeps its
+  values and its `DeprecationWarning` and is never reported as an unknown key.
+  No default, field, state, severity, halt type or task status was added.
+  (Fixes #298)
+
 - `snodo survey` now says what it is waiting on while the boundary-judgement
   agent call is in flight, instead of leaving a dead terminal. The call goes
   out through the recon machinery and can take tens of seconds on a slow or
