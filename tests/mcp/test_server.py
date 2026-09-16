@@ -1456,15 +1456,19 @@ class TestTunnelRunErrors:
                     with patch("snodo.cli.commands.serve_cmd._provision_tunnel", return_value=provisioned):
                         with patch("snodo.cli.commands.serve_cmd._save_tunnel_config"):
                             with patch("httpx.get", return_value=MagicMock(status_code=200)):
-                                with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
-                                    with patch("snodo.cli.commands.serve_cmd.signal.signal"):
-                                        # Injected clock: the 2s uvicorn bind
-                                        # wait and the 0.1s poll both advance
-                                        # instantly instead of sleeping.
-                                        with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
-                                            # Return immediately so the function doesn't block
-                                            mock_sub.wait.return_value = 0
-                                            result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+                                # The explicit port is free: the port check is
+                                # real (read-only) but Popen is mocked globally
+                                # here, so let the probe answer directly.
+                                with patch("snodo.cli.commands.serve_cmd._port_holder_pid", return_value=None):
+                                    with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
+                                        with patch("snodo.cli.commands.serve_cmd.signal.signal"):
+                                            # Injected clock: the 2s uvicorn bind
+                                            # wait and the 0.1s poll both advance
+                                            # instantly instead of sleeping.
+                                            with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
+                                                # Return immediately so the function doesn't block
+                                                mock_sub.wait.return_value = 0
+                                                result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
         assert result == 0
 
@@ -1498,13 +1502,17 @@ class TestTunnelRunErrors:
                 with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=stored):
                     with patch("snodo.cli.commands.serve_cmd._provision_tunnel") as mock_provision:
                         with patch("httpx.get", return_value=MagicMock(status_code=200)):
-                            with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
-                                with patch("snodo.cli.commands.serve_cmd.signal.signal"):
-                                    # Injected clock: the 2s uvicorn bind wait
-                                    # advances instantly instead of sleeping.
-                                    with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
-                                        mock_sub.wait.return_value = 0
-                                        result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+                            # The stored tunnel records no port, so the run keeps
+                            # the historical default its ingress was built with;
+                            # the port probe answers free directly.
+                            with patch("snodo.cli.commands.serve_cmd._port_holder_pid", return_value=None):
+                                with patch("snodo.cli.commands.serve_cmd.subprocess.Popen", return_value=mock_sub):
+                                    with patch("snodo.cli.commands.serve_cmd.signal.signal"):
+                                        # Injected clock: the 2s uvicorn bind wait
+                                        # advances instantly instead of sleeping.
+                                        with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
+                                            mock_sub.wait.return_value = 0
+                                            result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
         assert result == 0
         mock_provision.assert_not_called()  # No provisioning on subsequent run

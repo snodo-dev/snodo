@@ -24,6 +24,14 @@ from snodo.cli.commands import load_protocol
 
 _logger = logging.getLogger(__name__)
 
+#: Where a server with no --port starts looking for a free port. Kept at the
+#: historical fixed default so the first server on a machine still lands on the
+#: port operators expect, and a second one walks upward from there.
+DEFAULT_PORT = 55441
+
+#: How many consecutive ports a no---port server will try before giving up.
+_PORT_SCAN_ATTEMPTS = 64
+
 
 def register(app: typer.Typer) -> None:
     """Register top-level CLI commands onto app (called by discovery loop)."""
@@ -39,7 +47,10 @@ def register(app: typer.Typer) -> None:
         transport: str = typer.Option(
             "stdio", "--transport", help="Transport type: stdio, sse, or streamable-http",
         ),
-        port: int = typer.Option(55441, "--port", help="Port for SSE/streamable-http transport"),
+        port: Optional[int] = typer.Option(
+            None, "--port",
+            help="Port for SSE/streamable-http transport (default: find a free one)",
+        ),
         tunnel: bool = typer.Option(
             False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
         ),
@@ -183,20 +194,25 @@ def _run_server(args, protocol) -> int:
     tools = protocol_server.get_tools()
     mode_label = mode_id or "all"
 
-    port = getattr(args, "port", 55441)
-    if port is not None:
+    # A non-stdio server owns a port. An explicit --port is the port the
+    # operator meant: if a listener already owns it, name the holder and how
+    # long it has been there instead of surfacing a raw bind error (Fixes #290)
+    # and never silently move it — whatever is configured to reach that port
+    # meant it. With no --port, find a port that is free and say which, so any
+    # server can start alongside any other — same project, different mode, or
+    # a different project entirely (Fixes #309). The check is read-only
+    # (lsof/psutil); it never binds, so it cannot itself become the stale
+    # holder it reports.
+    explicit_port = getattr(args, "port", None)
+    if transport != "stdio":
+        port = _choose_serve_port(explicit_port)
+        if port is None:
+            return 1
         mcp.settings.port = port
-
-    # A non-stdio server owns a port, and the common way a start fails is that
-    # a previous server's child still holds it. Ask whether a listener already
-    # owns the port BEFORE starting uvicorn — and before touching process
-    # state — so the failure reads as a sentence naming the holder and how long
-    # it has been there, instead of a raw ``[Errno 48] ... address already in
-    # use`` stack trace (Fixes #290). The check is read-only (lsof/psutil) — it
-    # never binds, so it cannot itself become the stale holder it reports.
-    if transport != "stdio" and _port_holder_pid(port) is not None:
-        print(f"Error: {_port_in_use_explanation(port)}", file=sys.stderr)
-        return 1
+    else:
+        port = explicit_port
+        if port is not None:
+            mcp.settings.port = port
 
     # Accept proxied requests when not using stdio
     if transport != "stdio":
@@ -466,7 +482,7 @@ def _tunnel_project_slug(project_root: str) -> str:
 
 
 def _provision_tunnel(
-    api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str, port: int = 55441,
+    api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str, port: int = DEFAULT_PORT,
 ) -> dict:
     """Provision a tunnel via the snodo-cloud API.
 
@@ -596,6 +612,30 @@ def _delete_tunnel_file(project_root: str) -> None:
         pass
 
 
+def _deprovision_newly_provisioned_tunnel(project_root: str, api_key: str,
+                                          tunnel_config: dict) -> None:
+    """Tear down a tunnel this run just provisioned after a failed start.
+
+    A start that fails must not leave a tunnel behind it (Fixes #309). Only the
+    tunnel this invocation created is removed — an existing tunnel recorded in
+    tunnel.json is someone else's and stays. The local record is cleared too, so
+    the next attempt provisions afresh rather than running cloudflared against a
+    token whose tunnel is gone. Deprovision failures are reported but not
+    re-raised: the start already failed, and the operator still needs the
+    original error, not a second one.
+    """
+    hostname = tunnel_config.get("hostname")
+    _delete_tunnel_file(project_root)
+    if not hostname:
+        return
+    try:
+        _deprovision_tunnel(api_key, hostname)
+        print(f"Rolled back tunnel: {hostname}", file=sys.stderr)
+    except RuntimeError as e:
+        print(f"Warning: could not roll back tunnel {hostname}: {e}",
+              file=sys.stderr)
+
+
 def _load_tunnel_config(project_root: str) -> dict:
     """Load .snodo/tunnel.json or return empty dict."""
     path = Path(project_root) / ".snodo" / "tunnel.json"
@@ -616,6 +656,8 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
         "tunnel_token": config.get("tunnel_token", ""),
         "created_at": config.get("created_at", ""),
     }
+    if config.get("port") is not None:
+        to_save["port"] = config["port"]
     path.write_text(json.dumps(to_save, indent=2) + "\n")
 
 
@@ -697,6 +739,56 @@ def _port_in_use_explanation(port: int, host: str = "127.0.0.1") -> str:
         f"Port {port} is already in use, but the holder could not be "
         "identified. Find it with: lsof -nP -iTCP:%d -sTCP:LISTEN" % port
     )
+
+
+def _find_free_port(start: int = DEFAULT_PORT, attempts: int = _PORT_SCAN_ATTEMPTS) -> Optional[int]:
+    """Return the first free port at or after *start*, or None if none is free.
+
+    Read-only by design: each candidate is tested with ``_port_holder_pid``
+    (lsof/psutil), never by binding. Binding a port to test it and releasing it
+    before the real bind would race another starter and, worse, momentarily
+    make this process the holder of the port it is checking — turning the check
+    into the very stale holder it exists to report (Fixes #309).
+
+    The scan walks upward from the historical default so the first server on a
+    machine keeps the port operators already expect, while a second lands one
+    above it. Returns None only when every candidate in the window is held, so
+    a genuinely exhausted range fails loudly rather than inventing a port.
+    """
+    for candidate in range(start, start + attempts):
+        if candidate > 65535:
+            break
+        if _port_holder_pid(candidate) is None:
+            return candidate
+    return None
+
+
+def _choose_serve_port(explicit_port: Optional[int]) -> Optional[int]:
+    """Decide the port a non-stdio server should bind, or None if it cannot.
+
+    An explicit ``--port`` is a promise: it is returned unchanged when free,
+    and when taken the holder is named exactly as before (Fixes #290) and
+    ``None`` is returned so the caller refuses rather than silently moving it.
+    With no port named, a free one is chosen and reported, so any server can
+    start alongside any other (Fixes #309).
+    """
+    if explicit_port is not None:
+        if _port_holder_pid(explicit_port) is not None:
+            print(f"Error: {_port_in_use_explanation(explicit_port)}", file=sys.stderr)
+            return None
+        return explicit_port
+
+    port = _find_free_port()
+    if port is None:
+        print(
+            f"Error: no free port found in {DEFAULT_PORT}–"
+            f"{DEFAULT_PORT + _PORT_SCAN_ATTEMPTS - 1}. "
+            "Pass --port to name one.",
+            file=sys.stderr,
+        )
+        return None
+    print(f"No --port given; using free port {port}", file=sys.stderr)
+    return port
 
 
 def _terminate_process_group(proc, timeout: float = 5.0) -> None:
@@ -784,7 +876,6 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     project_root = _derive_project_root(args.protocol)
     mode = getattr(args, "mode", None) or "all"
     transport = getattr(args, "transport", "streamable-http")
-    port = getattr(args, "port", 55441)
     rotate = getattr(args, "rotate", False)
     delete = getattr(args, "delete", False)
     delete_hostname = getattr(args, "hostname", None) or None
@@ -822,7 +913,36 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         print("Token rotation is no longer supported (OAuth 2.1 only).")
         return 0
 
+    # 4. Decide the port before anything is provisioned. The tunnel is told the
+    # port it must target when it is provisioned, and the MCP child is then
+    # told that same port, so what the tunnel routes to and what the server
+    # listens on cannot drift apart (Fixes #309). An explicit --port stays the
+    # operator's promise. An existing tunnel already has a port baked into its
+    # ingress rule, so its recorded port is reused rather than a new one chosen
+    # underneath it; a tunnel recorded before the port was stored keeps the
+    # historical default its ingress was built with. Only a fresh tunnel with
+    # no --port has a port chosen for it, and that choice is reported.
+    has_existing_tunnel = bool(tunnel_config.get("tunnel_token"))
+    explicit_port = getattr(args, "port", None)
+    if explicit_port is not None:
+        requested_port = explicit_port
+    elif tunnel_config.get("port") is not None:
+        requested_port = tunnel_config["port"]
+    elif has_existing_tunnel:
+        requested_port = DEFAULT_PORT
+    else:
+        requested_port = None
+    port = _choose_serve_port(requested_port)
+    if port is None:
+        return 1
+    if requested_port is not None:
+        # _choose_serve_port already announced a freely-found port; an explicit
+        # or stored one is named here, so the operator is always told what the
+        # tunnel targets.
+        print(f"Using port {port} for tunnel", file=sys.stderr)
+
     # First run: provision
+    newly_provisioned = False
     if not tunnel_config.get("tunnel_token"):
         from snodo.version import __version__
         short_id = _generate_short_id()
@@ -874,18 +994,12 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             "hostname": provisioned["hostname"],
             "tunnel_token": provisioned["tunnel_token"],
             "created_at": provisioned.get("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
+            "port": port,
         }
         _save_tunnel_config(project_root, tunnel_config)
+        newly_provisioned = True
 
-        _print_first_run_info(provisioned["hostname"])
-    else:
-        # Subsequent runs
-        _warn_if_unservable_hostname(tunnel_config["hostname"])
-        print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
-        print("  (OAuth 2.1 — Bearer JWT from mcp-auth.snodo.dev)")
-        print()
-
-    # 4. Start MCP server subprocess
+    # 5. Start MCP server subprocess
     mcp_cmd = [
         sys.executable, "-m", "snodo.cli.main", "serve",
         "--protocol", args.protocol,
@@ -907,16 +1021,33 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         start_new_session=True,
     )
 
-    # Verify MCP server started — give uvicorn 2s to bind, then check process alive
+    # Verify the server actually bound before anything is called active. The
+    # URL used to be printed as live before the child was even spawned, so a
+    # bind failure handed the operator a public address routing to nothing
+    # (Fixes #309).
     if not _wait_for_server_bind(mcp_process):
         stderr_output = mcp_process.stderr.read() if mcp_process.stderr else ""
         print(f"Error: MCP server exited with code {mcp_process.returncode}.",
               file=sys.stderr)
         if stderr_output:
             print(stderr_output, file=sys.stderr)
+        _terminate_process_group(mcp_process)
+        if newly_provisioned:
+            _deprovision_newly_provisioned_tunnel(project_root, api_key,
+                                                  tunnel_config)
         return 1
 
-    # 5. Start cloudflared
+    # Bind confirmed: only now is the tunnel announced as active, and only now
+    # is its URL handed to the operator.
+    _warn_if_unservable_hostname(tunnel_config["hostname"])
+    if newly_provisioned:
+        _print_first_run_info(tunnel_config["hostname"])
+    else:
+        print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
+        print("  (OAuth 2.1 — Bearer JWT from mcp-auth.snodo.dev)")
+        print()
+
+    # 6. Start cloudflared
     cf_cmd = [
         "cloudflared", "tunnel", "run",
         "--token", tunnel_config["tunnel_token"],
@@ -929,7 +1060,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         start_new_session=True,
     )
 
-    # 6. Wait for cloudflared to connect
+    # 7. Wait for cloudflared to connect
     connected = False
     deadline = time.time() + 30
     while time.time() < deadline:
@@ -947,7 +1078,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
     print("Press Ctrl+C to stop.")
 
-    # 7. Wait for Ctrl+C
+    # 8. Wait for Ctrl+C
     def _cleanup(*_):
         print("\nStopping...")
         # Stop the whole process group of each child, so nothing either one
