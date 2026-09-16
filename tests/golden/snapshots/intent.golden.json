@@ -76,6 +76,7 @@
       ],
       "evaluation_phase": "pre_execute",
       "judges_spec": true,
+      "max_tool_turns": null,
       "model": null,
       "severity_cap": "warn",
       "tooling": {},
