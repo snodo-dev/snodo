@@ -15,11 +15,14 @@
 # The gate's own output must stay what it was without a terminal. A pty makes
 # pytest colour its output and draw progress; running the checks through
 # `| cat` hands every tool a pipe instead, so they emit the plain lines they
-# always did. The pty's newline translation stays ON (`stty onlcr`): `ssh -tt`
-# puts the operator's terminal into raw mode, which does not supply the CR
-# itself, so turning it off made every line start where the previous one
-# ended. `pipefail` is what keeps a failing check's non-zero exit status from
-# being replaced by `cat`'s, which is always zero.
+# always did. The pty still needs its output post-processing: `ssh -tt` copies
+# the OPERATOR's raw termios onto this end, which leaves `opost` off, and with
+# `opost` off `onlcr` is inert, so a bare LF moves down a row without returning
+# to column zero and every line of a run started where the previous one ended —
+# the staircase. `stty opost onlcr` restores the CR that makes a line a row, and
+# its failure is not swallowed because the output's readability depends on it.
+# `pipefail` is what keeps a failing check's non-zero exit status from being
+# replaced by `cat`'s, which is always zero.
 
 set -o pipefail
 
@@ -121,13 +124,17 @@ gate_supervise() {
   trap 'trap - HUP INT TERM; gate_reap; exit 129' HUP INT TERM
   gate_acquire_slot || return $?
   # Every tool must see a pipe rather than the terminal, or its output
-  # changes -- that is what the `| cat` below is for. The pty's own
-  # newline translation must stay ON: `ssh -tt` puts the OPERATOR's
-  # terminal into raw mode, where a bare LF moves down a line without
-  # returning to column zero, so the CR has to come from this end. With
-  # it off, every line of the checks' output started where the last one
-  # ended and the run read as a staircase.
-  stty onlcr 2>/dev/null || true
+  # changes -- that is what the `| cat` below is for. The connection's own
+  # output post-processing must be back on: `ssh -tt` copies the operator's
+  # raw termios here, leaving `opost` off, and while `opost` is off `onlcr`
+  # does nothing, so a bare LF moves down a row without returning to column
+  # zero and every line starts where the last one ended. Only a terminal
+  # needs this -- with no tty the output is a pipe and cannot staircase --
+  # and where there is one, a failed `stty` is left visible rather than
+  # swallowed, because the output's readability depends on it.
+  if [ -t 0 ]; then
+    stty opost onlcr
+  fi
   # Background the pipeline and `wait` for it: bash defers a trap until the
   # foreground command returns, and a hung-up pty never returns one, so a
   # command run in the foreground would leave the trap holding an open hangup
