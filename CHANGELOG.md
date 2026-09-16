@@ -11,6 +11,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A gate's output now lands in rows on the operator's terminal instead of
+  marching off as a staircase. #304 ran the gate over a terminal (`ssh -tt`) so
+  a hangup reaches the remote process group, but `ssh` also copies the
+  operator's raw termios onto the remote pty, which leaves `opost` off — and
+  with `opost` off `onlcr` is inert, so the `stty onlcr` the wrapper had been
+  making was a no-op and every bare LF moved down a row without returning to
+  column zero. A full pytest run printed its progress as a diagonal that
+  wrapped and overwrote until it was unreadable. `gate_supervise` now sets
+  `stty opost onlcr` on the connection's tty (only where one exists) and no
+  longer discards its error, because the output's readability depends on it.
+  The checks, their order, the exit status and the #304 lifetime behaviour —
+  an interrupted gate still leaves nothing running on the host — are unchanged,
+  and a clean gate prints exactly what it always did. (Fixes #310)
+
 - A gate run now ends on the gate host when it ends on the operator's. `make
   gate` and `make gate-ci` ran `ssh` with no terminal and nothing tying the
   remote process tree to the connection, so an interrupted gate, a dropped

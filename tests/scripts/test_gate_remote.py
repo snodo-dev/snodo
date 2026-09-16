@@ -19,10 +19,13 @@ from __future__ import annotations
 
 import itertools
 import os
+import pty
 import re
+import select
 import signal
 import subprocess
 import sys
+import termios
 import time
 from pathlib import Path
 
@@ -98,6 +101,50 @@ def _start(program: str) -> subprocess.Popen:
     )
 
 
+def _run_on_raw_pty(program: str, tmp_path: Path) -> bytes:
+    """Run *program* with its stdin/stdout/stderr on a raw-mode pty.
+
+    ``ssh -tt`` does not hand the remote command a cooked terminal: it copies
+    the operator's raw termios onto the pty, which clears ``opost``. Running the
+    probe this way reproduces exactly that, so a wrapper that leaves
+    post-processing off emits bare LFs.
+    """
+    master, slave = pty.openpty()
+    attrs = termios.tcgetattr(slave)
+    attrs[1] &= ~termios.OPOST
+    termios.tcsetattr(slave, termios.TCSANOW, attrs)
+    env = dict(os.environ, GATE_ROOT=str(tmp_path), GATE_SLOTS="2")
+    proc = subprocess.Popen(
+        ["bash", "-c", program],
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        env=env,
+        start_new_session=True,
+    )
+    os.close(slave)
+    output = b""
+    try:
+        while True:
+            ready, _, _ = select.select([master], [], [], 5.0)
+            if not ready:
+                if proc.poll() is not None:
+                    break
+                continue
+            try:
+                chunk = os.read(master, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            output += chunk
+    finally:
+        _kill_group(proc.pid)
+        proc.wait(timeout=5)
+        os.close(master)
+    return output
+
+
 def _await_child(pattern: str, proc: subprocess.Popen, timeout: float = 10.0) -> None:
     """Wait until the probe's child exists, or fail with the wrapper's output."""
     deadline = time.monotonic() + timeout
@@ -169,6 +216,50 @@ def test_gate_supervise_leaves_output_byte_for_byte_unchanged(tmp_path: Path):
         "the wrapper changed the gate's stdout; a clean gate must print what "
         "it always did"
     )
+
+
+def test_gate_output_lines_begin_at_column_zero_on_a_raw_pty(tmp_path: Path):
+    """A gate's output must land in rows, not march off as a staircase.
+
+    ``ssh -tt`` copies the operator's raw termios onto the remote pty, clearing
+    ``opost``. With ``opost`` off, ``onlcr`` does nothing and a bare LF moves
+    down a row without returning to column zero, so every line starts where the
+    last one ended. The wrapper must turn output post-processing back on: each
+    line below has to be followed by CR before LF.
+    """
+    program = r"printf 'one\ntwo\nthree\n'"
+    output = _run_on_raw_pty(
+        f'source "{GATE_REMOTE}"\n'
+        f'export GATE_ROOT="{tmp_path}" GATE_SLOTS=2\n'
+        f"gate_supervise {program}",
+        tmp_path,
+    )
+    assert output == b"one\r\ntwo\r\nthree\r\n", (
+        "a gate's output staircased on a raw terminal: each line must return "
+        f"to column zero before the next (got {output!r})"
+    )
+
+
+def test_column_zero_setting_is_not_silently_swallowed():
+    """The setting the output's readability depends on must not be hidden.
+
+    The staircase fix was a no-op behind ``2>/dev/null || true``: a failure
+    there left every line starting where the last one ended, and nothing said
+    so. If the call is still made, it must not swallow its own failure.
+    """
+    text = GATE_REMOTE.read_text(encoding="utf-8")
+    assert "stty opost onlcr" in text, (
+        "the wrapper must turn output post-processing back on; onlcr alone is "
+        "inert while opost is off, which is the state ssh -tt leaves the pty in"
+    )
+    for line in text.splitlines():
+        if "stty" in line and "opost" in line:
+            assert "2>/dev/null" not in line, (
+                "the setting the output depends on must not discard its error"
+            )
+            assert "|| true" not in line, (
+                "the setting the output depends on must not swallow its failure"
+            )
 
 
 # --- the interrupted gate leaves nothing behind -----------------------------
