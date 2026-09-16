@@ -1,5 +1,5 @@
 """A stopped server leaves no child holding its port; a bind that cannot happen
-explains why (Fixes #290).
+explains why; a server with no --port finds its own (Fixes #290, #309).
 
 FILE: tests/mcp/test_serve_lifecycle.py
 
@@ -7,6 +7,12 @@ Two faults share one root: a server that spawns children must own their
 lifetime. ``_run_tunnel`` terminated only the direct MCP child, so anything it
 had started — the listener holding port 55441 — survived the server. The next
 start then failed with a raw ``[Errno 48] ... address already in use``.
+
+The other root: ``snodo serve`` defaulted to one fixed port for every server on
+a machine, so a second server for the same project — in another mode, or for
+another project — refused to start. With no ``--port`` a server now finds a
+free one and says which; an explicit ``--port`` still means that port and fails
+loudly, holder named, when it is taken.
 
 These tests drive the real helpers with a real process group, so a regression
 that stops reaping the group fails here rather than on an operator's machine.
@@ -22,7 +28,17 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from snodo.cli.commands import serve_cmd
+
+
+@pytest.fixture(autouse=True)
+def _isolate_environ(monkeypatch):
+    """_run_server writes FORWARDED_ALLOW_IPS into os.environ and leaves it set;
+    swap in a throwaway copy so the write cannot leak into later tests (#200)."""
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+
 
 _LISTEN_SCRIPT = (
     "import os, socket, time\n"
@@ -229,3 +245,294 @@ def test_run_server_preflight_ignores_stdio():
                 side_effect=AssertionError("stdio must not probe a port"),
             ):
                 assert serve_cmd._run_server(args, mock_protocol) == 0
+
+
+# === A server with no --port finds its own (Fixes #309) ===
+
+
+def _run_server_with_held(held, *, mode=None):
+    """Run _run_server against a fake holder set; return (result, port, err).
+
+    ``held`` is the set of ports some other server owns. The port-holder probe
+    answers from it, and the run reports which port it chose on stderr.
+    """
+    import io
+    from contextlib import redirect_stderr
+
+    mock_protocol = MagicMock()
+    mock_protocol.protocol_id = "test"
+    mock_protocol.modes = []
+    mock_protocol.get_mode.return_value = MagicMock()  # any named mode is valid
+
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=mode, transport="sse", port=None,
+    )
+
+    err = io.StringIO()
+    with patch("snodo.mcp.server.ProtocolMCPServer"):
+        with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+            mock_mcp = MagicMock()
+            mock_mcp.settings.port = 8000
+            mock_build.return_value = mock_mcp
+            with patch(
+                "snodo.cli.commands.serve_cmd._port_holder_pid",
+                side_effect=lambda port, host="127.0.0.1": 1 if port in held else None,
+            ):
+                with redirect_stderr(err):
+                    result = serve_cmd._run_server(args, mock_protocol)
+    return result, mock_mcp.settings.port, err.getvalue()
+
+
+def test_two_servers_without_a_port_both_start_on_different_ports():
+    """The second no---port server starts beside the first, on its own port."""
+    held: set[int] = set()
+
+    first_result, first_port, first_err = _run_server_with_held(held)
+    assert first_result == 0
+    assert f"using free port {first_port}" in first_err
+    held.add(first_port)  # the first server now owns its port
+
+    second_result, second_port, second_err = _run_server_with_held(held)
+    assert second_result == 0
+    assert f"using free port {second_port}" in second_err
+    assert first_port != second_port
+
+
+def test_two_modes_of_one_project_both_start():
+    """Mode is not part of the port: two modes of the same project coexist."""
+    held: set[int] = set()
+
+    producer_result, producer_port, _ = _run_server_with_held(held, mode="producer")
+    assert producer_result == 0
+    held.add(producer_port)
+
+    reviewer_result, reviewer_port, _ = _run_server_with_held(held, mode="reviewer")
+    assert reviewer_result == 0
+    assert producer_port != reviewer_port
+
+
+def test_choosing_a_port_does_not_bind_it():
+    """The chosen port is not held by this process — the check never binds.
+
+    Binding a port to test it and releasing it before the real bind would make
+    the check briefly the very holder it exists to report. After choosing, no
+    listener of ours may exist on the port (Fixes #309).
+    """
+    chosen = serve_cmd._choose_serve_port(None)
+
+    assert chosen is not None
+    assert serve_cmd._port_holder_pid(chosen) is None
+
+
+def test_explicit_port_in_use_names_the_real_holder(tmp_path, capsys):
+    """A named port that is taken still refuses, with the holder named (#290)."""
+    port = _free_port()
+    marker = tmp_path / "ready"
+    holder = _spawn_listener(port, marker)
+    try:
+        _wait_for_ready(marker, holder)
+
+        mock_protocol = MagicMock()
+        mock_protocol.protocol_id = "test"
+        mock_protocol.modes = []
+        mock_protocol.get_mode.return_value = None
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None, transport="sse", port=port,
+        )
+
+        with patch("snodo.mcp.server.ProtocolMCPServer"):
+            with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+                mock_mcp = MagicMock()
+                mock_build.return_value = mock_mcp
+                result = serve_cmd._run_server(args, mock_protocol)
+
+        err = capsys.readouterr().err
+    finally:
+        _reap(holder)
+
+    assert result == 1
+    assert mock_mcp.run.call_count == 0
+    assert f"Port {port} is already in use" in err
+    assert str(holder.pid) in err
+    assert "held it for" in err
+    assert "[Errno 48]" not in err
+
+
+def test_explicit_port_that_is_free_is_used_unchanged(capsys):
+    """A named port is a promise: it is used as given, not scanned away."""
+    port = _free_port()
+
+    result, chosen, err = _run_server_explicit(port)
+
+    assert result == 0
+    assert chosen == port
+    assert "using free port" not in err
+
+
+def _run_server_explicit(port):
+    """Run _run_server with an explicit port; return (result, port, err)."""
+    import io
+    from contextlib import redirect_stderr
+
+    mock_protocol = MagicMock()
+    mock_protocol.protocol_id = "test"
+    mock_protocol.modes = []
+    mock_protocol.get_mode.return_value = None
+
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=None, transport="sse", port=port,
+    )
+
+    err = io.StringIO()
+    with patch("snodo.mcp.server.ProtocolMCPServer"):
+        with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+            mock_mcp = MagicMock()
+            mock_mcp.settings.port = 8000
+            mock_build.return_value = mock_mcp
+            with redirect_stderr(err):
+                result = serve_cmd._run_server(args, mock_protocol)
+    return result, mock_mcp.settings.port, err.getvalue()
+
+
+# === A failed tunnel start leaves nothing behind and announces nothing (#309) ===
+
+
+def _run_tunnel_failed_bind(tmp_path, *, tunnel_config=None, port=9090):
+    """Drive _run_tunnel to a bind failure; return (result, out, err, deprovisioned).
+
+    The MCP child exits immediately, so ``_wait_for_server_bind`` reports the
+    failure. The tunnel is provisioned fresh. Whatever was printed is captured,
+    and deprovision calls are recorded.
+    """
+    import io
+    from contextlib import redirect_stdout, redirect_stderr
+
+    mock_protocol = MagicMock()
+    mock_protocol.protocol_id = "test"
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=None,
+        transport="streamable-http", port=port, rotate=False, delete=False,
+    )
+
+    provisioned = {
+        "hostname": "proj-all-abc123.tunnel.snodo.dev",
+        "tunnel_token": "tok_xxx",
+    }
+
+    bound = MagicMock()
+    bound.pid = 12345
+    bound.poll.return_value = 1  # exited: the bind failed
+    bound.returncode = 3
+    bound.stderr.read.return_value = ""
+
+    deprovisioned = []
+
+    out, err = io.StringIO(), io.StringIO()
+    with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+        with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+            with patch("snodo.cli.commands.serve_cmd._load_tunnel_config",
+                       return_value=tunnel_config or {}):
+                with patch("snodo.cli.commands.serve_cmd._provision_tunnel",
+                           return_value=provisioned):
+                    with patch("snodo.cli.commands.serve_cmd._save_tunnel_config"):
+                        with patch("snodo.cli.commands.serve_cmd._delete_tunnel_file"):
+                            with patch("snodo.cli.commands.serve_cmd._deprovision_tunnel",
+                                       side_effect=lambda api, host: deprovisioned.append(host) or True):
+                                with patch("snodo.cli.commands.serve_cmd._port_holder_pid",
+                                           return_value=None):
+                                    with patch("snodo.cli.commands.serve_cmd.subprocess.Popen",
+                                               return_value=bound):
+                                        with patch("snodo.cli.commands.serve_cmd._terminate_process_group"):
+                                            with redirect_stdout(out), redirect_stderr(err):
+                                                result = serve_cmd._run_tunnel(
+                                                    args, mock_protocol, ".snodo/protocol.yml")
+
+    return result, out.getvalue(), err.getvalue(), deprovisioned
+
+
+def test_failed_bind_prints_no_active_url(tmp_path):
+    """Nothing is called active before the server is actually listening."""
+    result, out, err, _ = _run_tunnel_failed_bind(tmp_path)
+
+    assert result == 1
+    assert "tunnel active" not in out
+    assert "tunnel active" not in err
+    assert "tunnel.snodo.dev/mcp" not in out
+
+
+def test_failed_bind_rolls_back_a_newly_provisioned_tunnel(tmp_path):
+    """A start that fails does not leave the tunnel it just made behind."""
+    result, _out, _err, deprovisioned = _run_tunnel_failed_bind(tmp_path)
+
+    assert result == 1
+    assert deprovisioned == ["proj-all-abc123.tunnel.snodo.dev"]
+
+
+def test_failed_bind_does_not_remove_an_existing_tunnel(tmp_path):
+    """Only a tunnel this run created is rolled back; an existing one stays."""
+    stored = {"hostname": "existing.tunnel.snodo.dev", "tunnel_token": "tok_old"}
+
+    result, _out, _err, deprovisioned = _run_tunnel_failed_bind(
+        tmp_path, tunnel_config=stored)
+
+    assert result == 1
+    assert deprovisioned == []
+
+
+def test_tunnel_targets_the_port_it_chose(tmp_path):
+    """The tunnel is provisioned for, and the child told, the chosen port."""
+    import io
+    from contextlib import redirect_stderr
+
+    mock_protocol = MagicMock()
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=None,
+        transport="streamable-http", port=None, rotate=False, delete=False,
+    )
+    provisioned = {"hostname": "proj-all-abc123.tunnel.snodo.dev", "tunnel_token": "tok"}
+
+    cf = MagicMock()
+    cf.pid = 999
+    cf.poll.return_value = None
+    cf.stderr.readline.return_value = "Registered tunnel connection\n"
+    cf.wait.return_value = 0
+
+    captured = {}
+
+    def fake_popen(cmd, **kwargs):
+        if cmd[0] == "cloudflared":
+            return cf
+        captured["mcp_cmd"] = cmd
+        mcp = MagicMock()
+        mcp.pid = 12345
+        mcp.poll.return_value = None
+        return mcp
+
+    def fake_provision(api_key, slug, mode, short_id, version, port):
+        captured["provision_port"] = port
+        return provisioned
+
+    err = io.StringIO()
+    with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+        with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+            with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
+                with patch("snodo.cli.commands.serve_cmd._provision_tunnel",
+                           side_effect=fake_provision):
+                    with patch("snodo.cli.commands.serve_cmd._save_tunnel_config"):
+                        with patch("snodo.cli.commands.serve_cmd._port_holder_pid",
+                                   return_value=None):
+                            with patch("snodo.cli.commands.serve_cmd.subprocess.Popen",
+                                       side_effect=fake_popen):
+                                with patch("snodo.cli.commands.serve_cmd.signal.signal"):
+                                    with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
+                                        with redirect_stderr(err):
+                                            result = serve_cmd._run_tunnel(
+                                                args, mock_protocol, ".snodo/protocol.yml")
+
+    assert result == 0
+    chosen = captured["provision_port"]
+    assert isinstance(chosen, int)
+    assert captured["mcp_cmd"][captured["mcp_cmd"].index("--port") + 1] == str(chosen)
+    assert f"using free port {chosen}" in err.getvalue()
+
+
