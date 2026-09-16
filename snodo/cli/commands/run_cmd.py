@@ -20,6 +20,7 @@ from snodo.core.spec import same_spec, spec_text, spec_with_guidance
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 from snodo.cli.commands import followup
+from snodo.infrastructure import cloud_liveness
 
 
 # === Shared execution options (single declaration) ===
@@ -797,6 +798,10 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
     if session_id and session_manager:
         session_manager.set_current_task(session_id, task.id)
+        # Liveness (Fixes #291): arm the audit listener once per task so engine
+        # transitions publish the running state while it is true. Inert when
+        # sync is disabled; never blocks the run.
+        cloud_liveness.install()
 
     # Set up agent memory
     memory_mgr, checkpointer, thread_config = _setup_memory(project_root, protocol, mode)
@@ -1326,18 +1331,18 @@ def _try_merge_unmerged_task(
         if audit_log_path.exists():
             audit_log = AuditLog(str(audit_log_path))
 
-    if audit_log:
-        history = audit_log.get_history("verification_executed")
-        matching = [
-            e for e in history
-            if target_commit
-            and _verified_commit_matches_merge_target(e.data.get("commit"), target_commit)
-        ]
-        matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
-        matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
-        if not matching_passes and not matching_ungated:
-            return None
-    else:
+    if not audit_log:
+        return None
+
+    history = audit_log.get_history("verification_executed")
+    matching = [
+        e for e in history
+        if target_commit
+        and _verified_commit_matches_merge_target(e.data.get("commit"), target_commit)
+    ]
+    matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
+    matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
+    if not matching_passes and not matching_ungated:
         return None
 
     task = Task(id=task_id, spec=spec)
@@ -1351,9 +1356,8 @@ def _try_merge_unmerged_task(
             _logger.debug("Could not tear down worktree after merge for %s: %s", task_id, e)
         _record_task_completion(project_root, task_id, "completed")
         return True
-    else:
-        _record_task_completion(project_root, task_id, "unmerged")
-        return False
+    _record_task_completion(project_root, task_id, "unmerged")
+    return False
 
 
 def _resolve_session(args, session_manager, protocol, project_root):

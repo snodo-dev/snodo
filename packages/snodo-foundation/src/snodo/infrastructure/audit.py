@@ -40,6 +40,22 @@ _RECOVERY_GUIDANCE = (
 #: the lock must not silently proceed (Fixes #114).
 _LOCK_TIMEOUT = 10.0
 
+#: Post-append observers, registered via ``register_event_listener``. Each is
+#: called with ``(event, audit_log)`` after a successful append, outside the
+#: append lock, and its failures are swallowed: an observer is a side effect
+#: of the attestation, never a condition of it. Observers must be cheap and
+#: non-blocking — the append happens on the run's critical path (Fixes #291).
+_event_listeners: list = []
+
+
+def register_event_listener(listener) -> None:
+    """Register *listener(event, audit_log)* to run after each successful append.
+
+    Idempotent: registering the same callable twice is a no-op.
+    """
+    if listener not in _event_listeners:
+        _event_listeners.append(listener)
+
 
 class _NullContext:
     """No-op context manager for platforms without ``fcntl``."""
@@ -176,6 +192,13 @@ class AuditLog:
                 # Disk first — if this raises, memory stays consistent
                 self._safe_append_to_disk(event)
                 self.events.append(event)
+
+        # Observers run outside the lock and never break the append (Fixes #291).
+        for listener in list(_event_listeners):
+            try:
+                listener(event, self)
+            except Exception:  # noqa: BLE001 — an observer failure is never fatal
+                _logger.debug("audit event listener failed", exc_info=True)
 
         return event
 
