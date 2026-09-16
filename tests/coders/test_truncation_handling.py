@@ -120,9 +120,9 @@ class TestTruncationExecutionFailure:
         assert payload is not None
 
         assert payload["status"] == "blocked"
-        assert payload["halt_type"] == "blocker"
-        assert payload["final_decision"] == "blocker"
-        assert payload["raw_halt_type"] == "blocker"
+        assert payload["halt_type"] == "environment_error"
+        assert payload["final_decision"] == "environment_error"
+        assert payload["raw_halt_type"] == "environment_error"
         assert payload["artifacts_count"] == 0
 
         # Post-validation was skipped

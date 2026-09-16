@@ -139,7 +139,7 @@ class TestTerminalOutcomeAudit:
             ("wf3", "blocker"),
             ("max_iterations", "blocker"),
             ("turn_budget_exhausted", "environment_error"),
-            ("execution_error", "blocker"),
+            ("execution_error", "environment_error"),
             ("recovery_exhausted", "blocker"),
             ("recovery_stalled", "blocker"),
             ("head_not_moved", "blocker"),

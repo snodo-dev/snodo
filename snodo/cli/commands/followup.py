@@ -92,14 +92,17 @@ def halt_followup(halt_payload: dict, task_id: str) -> list:
     """The next-step commands for a halted task, matched to what will answer.
 
     A halt with an adjudicable decision is offered ``snodo authorize``, which
-    signs it; a retry is offered alongside because the operator may prefer to
-    address the block instead. A halt with no decision keeps only the retry —
-    offer authorize there and the command refuses (Fixes #288).
+    signs it. A retry is offered when the task has failure context that ``snodo
+    run --retry`` will accept (``retryable``). A halt whose retry would be
+    refused (operational halts, exhausted retries, missing failure context)
+    keeps only the inspect command — offer retry there and the command refuses
+    (Fixes #288, Fixes #301).
     """
     commands = []
     if (halt_payload or {}).get("adjudicable"):
         commands.append(task_authorize(task_id))
-    commands.append(task_retry(task_id))
+    if (halt_payload or {}).get("retryable"):
+        commands.append(task_retry(task_id))
     return commands
 
 

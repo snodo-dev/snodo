@@ -546,6 +546,62 @@ class TestHaltPayloadAdjudicable:
 
 
 # ---------------------------------------------------------------------------
+# _auto_write_halt_payload — the retryable flag (Fixes #301)
+# ---------------------------------------------------------------------------
+
+class TestHaltPayloadRetryable:
+    """The payload records whether `snodo run --retry` has a failure context to run.
+
+    The CLI follow-up offers retry only when this is true — a halt whose retry
+    would be refused (operational faults, missing failure context, exhausted retries)
+    must not offer a command that answers "Cannot retry" (Fixes #301).
+    """
+
+    def _blocked_state(self, halt_type="blocker"):
+        state = LoopState(task=_make_task(), current_mode="producer")
+        state.is_complete = False
+        state.is_blocked = True
+        state.halt_type = halt_type
+        return state
+
+    def test_no_failure_context_is_not_retryable(self):
+        builder, mgr, session = _make_builder_with_session(decisions={})
+        builder._merge_into_job_state = MagicMock()
+        payload = builder._build_halt_payload(self._blocked_state())
+        assert "retryable" not in payload
+
+    def test_active_failure_context_is_retryable(self):
+        builder, mgr, session = _make_builder_with_session(decisions={
+            "task_failure": {
+                "t1": {"attempt": 1, "spec": "do something", "branch": "task/t1"},
+            },
+        })
+        payload = builder._build_halt_payload(self._blocked_state())
+        assert payload["retryable"] is True
+
+    def test_exhausted_retries_is_not_retryable(self):
+        builder, mgr, session = _make_builder_with_session(decisions={
+            "task_failure": {
+                "t1": {"attempt": 3, "spec": "do something", "branch": "task/t1"},
+            },
+        })
+        payload = builder._build_halt_payload(self._blocked_state())
+        assert "retryable" not in payload
+
+    def test_operational_halt_is_not_retryable(self):
+        builder, mgr, session = _make_builder_with_session(decisions={
+            "halt": {
+                "t1": {"halt_type": "environment_error", "raw_halt_type": "execution_error"},
+            },
+            "task_failure": {
+                "t1": {"attempt": 1, "spec": "do something", "branch": "task/t1"},
+            },
+        })
+        payload = builder._build_halt_payload(self._blocked_state(halt_type="environment_error"))
+        assert "retryable" not in payload
+
+
+# ---------------------------------------------------------------------------
 # _auto_write_classification — session exception + classifications-not-dict
 # ---------------------------------------------------------------------------
 

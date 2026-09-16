@@ -387,15 +387,15 @@ class ValidationNodeMixin:
                 })
                 return self._state_to_dict(loop_state)
             except AdapterError as e:
-                # The coder backend itself failed — a CLI that rejected the
-                # arguments (e.g. a model string the tool does not accept), an
-                # LLM call that errored, output that could not be parsed. This
-                # is an operator-fixable coder fault, not an engine fault: it
-                # halts under the ``execution_error`` raw type (canonical
-                # ``blocker``) with a config fix target, so the operator is
-                # told to fix the coder configuration rather than inspect
-                # engine logs (Fixes #195). A binary absent from PATH is NOT
-                # here — it halts above under ``environment_error`` (ADR 015).
+                # The coder backend itself failed — a provider unreachable, an
+                # LLM call that errored, a session that could not be established.
+                # This is an operational fault about the run, not a verdict
+                # about the code (ADR 015): it halts under the raw
+                # ``execution_error`` type (canonical ``environment_error``).
+                # Nothing about the task blocked, so no blocker verdict is
+                # recorded and no ``task_failure`` context is written: a retry
+                # after the operational fault is resolved is a fresh execution
+                # of the unchanged spec (Fixes #301).
                 loop_state.is_blocked = True
                 loop_state.halt_type = "execution_error"
                 loop_state.constraint_violations.append(str(e))
@@ -411,7 +411,6 @@ class ValidationNodeMixin:
                     "task_ref": loop_state.task.id,
                     "error": str(e),
                 })
-                self._auto_write_failure_context(loop_state, [])
                 return self._state_to_dict(loop_state)
             except NoFileOperationsError as e:
                 # The coder completed successfully (exit 0) but produced no
