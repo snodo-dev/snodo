@@ -3,6 +3,7 @@
 FILE: snodo/cli/commands/serve_cmd.py
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -312,9 +313,13 @@ class TunnelAPIError(RuntimeError):
 
 
 # Managed tunnel hostnames look like "<slug>-<mode>-<short>.tunnel.snodo.dev";
-# the 409 body may carry it as JSON or inside free-form error text.
+# the name before the tunnel domain is ONE DNS label (the wildcard
+# certificate covers exactly one label, and a dot is a label separator, not
+# a character). The 409 body may carry it as JSON or inside free-form error
+# text. Embedded dots are deliberately NOT matched: a hostname carrying one
+# is the broken shape (issue #308), never a name to act on as valid.
 _TUNNEL_HOSTNAME_RE = re.compile(
-    r"\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.tunnel\.snodo\.dev\b",
+    r"\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.tunnel\.snodo\.dev\b",
     re.IGNORECASE,
 )
 
@@ -331,6 +336,43 @@ def _extract_existing_hostname(body: str) -> Optional[str]:
             return host.strip()
     match = _TUNNEL_HOSTNAME_RE.search(body)
     return match.group(0) if match else None
+
+
+# The cloud's tunnel hostnames sit directly under tunnel.snodo.dev: the
+# wildcard certificate covers exactly the one label there. A leading portion
+# with an embedded dot (provisioned before the slug was constrained to one
+# label — issue #308) names something one level deeper, which no certificate
+# can ever match, so its clients are always refused.
+_TUNNEL_DOMAIN_SUFFIX = ".tunnel.snodo.dev"
+
+
+def _warn_if_unservable_hostname(hostname: str) -> bool:
+    """Tell the operator when a recorded hostname can never serve TLS.
+
+    Returns True if the hostname is not a single DNS label under the tunnel
+    domain — the shape produced by a dotted project directory before the slug
+    was constrained. Such a tunnel is unreachable; it is not load-bearing,
+    but it does exist on the cloud side and the operator otherwise has no way
+    to see it. The message names why and points at the existing, deliberate
+    delete-by-hostname path (which is unchanged here).
+    """
+    host = (hostname or "").strip().rstrip(".").lower()
+    if not host.endswith(_TUNNEL_DOMAIN_SUFFIX):
+        return False
+    leading = host[: -len(_TUNNEL_DOMAIN_SUFFIX)]
+    if "." not in leading:
+        return False
+    print(f"Warning: the tunnel at {host!r} has a hostname that is more than "
+          "one DNS label before tunnel.snodo.dev.", file=sys.stderr)
+    print("  The wildcard certificate covers exactly one label there, so TLS "
+          "can never match this name and clients will always be refused.",
+          file=sys.stderr)
+    print("  It is unreachable but still holds this project's slot in the "
+          "cloud. To remove it and re-provision under a servable name:",
+          file=sys.stderr)
+    print(f"    snodo serve --tunnel --delete --hostname {host}", file=sys.stderr)
+    print("    snodo serve --tunnel", file=sys.stderr)
+    return True
 
 
 def _check_cloudflared() -> bool:
@@ -369,6 +411,58 @@ def _generate_short_id() -> str:
     """Generate a 6-character random alphanumeric short_id."""
     chars = string.ascii_lowercase + string.digits
     return "".join(random.choices(chars, k=6))  # noqa: S311 - non-secret tunnel short_id (a collision-resistance convenience, not a credential); no cryptographic strength needed
+
+
+# A single DNS label: 1-63 chars of [a-z0-9-], starting and ending with an
+# alphanumeric. A hostname before the tunnel domain must match this exactly,
+# or a wildcard certificate cannot cover it (issue #308).
+_DNS_LABEL_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
+
+_DNS_LABEL_MAX = 63
+_SLUG_DIGEST_LEN = 6
+
+
+def _tunnel_project_slug(project_root: str) -> str:
+    """Reduce a project directory name to a single valid DNS label.
+
+    The tunnel slug becomes the leading label of
+    "<slug>-<mode>-<short>.tunnel.snodo.dev". A dot in that label is a label
+    separator, not a character: a directory named "droptrack.io" would
+    otherwise ask the cloud to serve a name one level deeper than the
+    wildcard certificate covers, and every TLS client would be refused
+    forever (issue #308).
+
+    A name that is already a bare label is returned unchanged so existing
+    working tunnels keep their hostnames. Anything else is sanitised —
+    invalid characters folded to hyphens — and given a short deterministic
+    digest of the original name, so two distinct directories ("droptrack.io"
+    and "droptrack-io") can never collapse onto one hostname. Modes of one
+    project still differ because the cloud appends the mode as a separate
+    segment of the label.
+
+    Raises TunnelAPIError for a name with nothing servable left after
+    sanitising: rather than provision a tunnel that can never work, the
+    operator is told why the name was refused.
+    """
+    raw = Path(project_root).name
+    if _DNS_LABEL_RE.match(raw):
+        return raw
+
+    sanitised = re.sub(r"[^a-z0-9-]", "-", raw.lower())
+    sanitised = re.sub(r"-{2,}", "-", sanitised).strip("-")
+    if not sanitised or not re.search(r"[a-z0-9]", sanitised):
+        raise TunnelAPIError(
+            f"Project directory name {raw!r} cannot be turned into a tunnel "
+            f"hostname: it has no DNS label characters (a-z, 0-9) to build "
+            "from. Tunnel hostnames must be a single DNS label. Rename the "
+            "project directory to something using letters or digits, or pass "
+            "a different --protocol path inside such a directory."
+        )
+
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:_SLUG_DIGEST_LEN]
+    budget = _DNS_LABEL_MAX - len(digest) - 1
+    stem = sanitised[:budget].rstrip("-")
+    return f"{stem}-{digest}"
 
 
 def _provision_tunnel(
@@ -688,7 +782,6 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     subprocess alongside the MCP server.  Ctrl+C stops both cleanly.
     """
     project_root = _derive_project_root(args.protocol)
-    project_slug = Path(project_root).name
     mode = getattr(args, "mode", None) or "all"
     transport = getattr(args, "transport", "streamable-http")
     port = getattr(args, "port", 55441)
@@ -735,6 +828,30 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         short_id = _generate_short_id()
 
         try:
+            project_slug = _tunnel_project_slug(project_root)
+        except TunnelAPIError as e:
+            # The directory name cannot be reduced to a servable single DNS
+            # label; refuse rather than provision a tunnel whose certificate
+            # could never match (issue #308).
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        if project_slug != Path(project_root).name.lower():
+            # A dotted (or otherwise unsafe) name now provisions under a
+            # sanitised slug, so any older tunnel published under the raw
+            # name still exists on the cloud side but can never serve TLS.
+            print("Note: this project's directory name is not a single DNS "
+                  "label, so the tunnel is published under a sanitised slug.",
+                  file=sys.stderr)
+            print("  If an older tunnel was provisioned under the raw "
+                  "directory name, it can never work (its name sits one level",
+                  file=sys.stderr)
+            print("  deeper than the wildcard certificate). Remove it by name:",
+                  file=sys.stderr)
+            print("    snodo serve --tunnel --delete --hostname <old-hostname>",
+                  file=sys.stderr)
+
+        try:
             provisioned = _provision_tunnel(
                 api_key, project_slug, mode, short_id, __version__, port,
             )
@@ -763,6 +880,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         _print_first_run_info(provisioned["hostname"])
     else:
         # Subsequent runs
+        _warn_if_unservable_hostname(tunnel_config["hostname"])
         print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
         print("  (OAuth 2.1 — Bearer JWT from mcp-auth.snodo.dev)")
         print()
