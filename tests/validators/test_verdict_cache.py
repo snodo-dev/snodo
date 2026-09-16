@@ -226,6 +226,23 @@ def test_changing_the_model_invalidates(tmp_path):
     assert second[0].reused is False
 
 
+def test_changing_the_validator_max_tool_turns_invalidates(tmp_path):
+    """A validator's own reading-budget override participates in the key
+    exactly like the engine-configured default did before it existed."""
+    cache = _cache(tmp_path)
+    completion = _Completion()
+
+    narrow = _validator(max_tool_turns=3)
+    first, _ = _run(_protocol([narrow]), [narrow], cache, completion)
+
+    wide = _validator(max_tool_turns=10)
+    second, _ = _run(_protocol([wide]), [wide], cache, completion)
+
+    assert completion.count() == 2
+    assert first[0].reused is False
+    assert second[0].reused is False
+
+
 def test_changing_the_protocol_version_invalidates(tmp_path):
     validator = _validator()
     cache = _cache(tmp_path)
