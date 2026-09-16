@@ -437,6 +437,215 @@ class TestSurveyHumanOutputSections:
         assert "Origin: declaration" in out
 
 
+class TestWaitingIndicator:
+    """The command says what it is waiting on, without becoming output.
+
+    The agent call can take tens of seconds; before this the command was silent
+    and indistinguishable from a hang. The indicator is decoration on stderr,
+    off under --json and when stdout is not a terminal, and it must not disturb
+    the diagnostic an empty agent result prints.
+    """
+
+    @staticmethod
+    def _make_repo(root):
+        import json as json_mod
+        from git import Repo
+        Repo.init(str(root))
+        (root / "package.json").write_text(json_mod.dumps(
+            {"name": "mono", "workspaces": ["app"]}
+        ))
+        (root / "app").mkdir()
+        (root / "app" / "package.json").write_text(json_mod.dumps({"name": "app"}))
+        (root / "app" / "main.ts").write_text("export const x = 1")
+
+    class _Tty:
+        """A stdout stand-in whose isatty() is True, with the bytes written."""
+
+        def __init__(self):
+            self.value = ""
+
+        def write(self, text):
+            self.value += text
+
+        def flush(self):
+            pass
+
+        def isatty(self):
+            return True
+
+    def _on_a_tty(self, monkeypatch):
+        """Route stdout (a tty) and stderr to buffers, and return both.
+
+        ``survey_cmd`` reaches the streams through the shared ``sys`` module,
+        so patching there is the production path. Returns (stdout, stderr).
+        """
+        import io
+
+        from snodo.cli.commands import survey_cmd
+        stdout = self._Tty()
+        stderr = io.StringIO()
+        monkeypatch.setattr(survey_cmd.sys, "stdout", stdout)
+        monkeypatch.setattr(survey_cmd.sys, "stderr", stderr)
+        return stdout, stderr
+
+    def test_indicator_names_the_wait_and_clears_while_the_call_is_in_flight(
+        self, tmp_path, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        from snodo.cli.commands import survey_cmd
+        self._make_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        shown = {}
+
+        def stub_judge(dossier):
+            shown["during"] = stderr.getvalue()
+            return {"verdicts": []}
+
+        monkeypatch.setattr(survey_cmd, "build_survey_judge", lambda root, mode: stub_judge)
+        stub_judge.model = "deepseek/deepseek-flash"
+        stdout, stderr = self._on_a_tty(monkeypatch)
+
+        rc = survey_cmd.survey_command(SimpleNamespace(json=False, agent="force"))
+
+        assert rc == 0
+        # While the call was in flight, the indicator named what it waits on.
+        assert "Waiting for the survey agent" in shown["during"]
+        assert "deepseek/deepseek-flash" in shown["during"]
+        # It wrote to stderr, never to stdout, and erased itself at the end:
+        # the last thing written is a carriage return with no message.
+        assert "Waiting for the survey agent" not in stdout.value
+        assert stderr.getvalue().endswith("\r")
+
+    def test_stdout_is_byte_identical_on_a_tty_and_off_it(
+        self, tmp_path, monkeypatch
+    ):
+        """Decoration never reaches stdout: same report, tty or pipe."""
+        import io
+        from types import SimpleNamespace
+
+        from snodo.cli.commands import survey_cmd
+        self._make_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        def verdicts(dossier):
+            return {"verdicts": []}
+
+        monkeypatch.setattr(survey_cmd, "build_survey_judge", lambda root, mode: verdicts)
+        verdicts.model = "deepseek/deepseek-flash"
+
+        def run(stdout):
+            stderr = io.StringIO()
+            monkeypatch.setattr(survey_cmd.sys, "stdout", stdout)
+            monkeypatch.setattr(survey_cmd.sys, "stderr", stderr)
+            rc = survey_cmd.survey_command(SimpleNamespace(json=False, agent="force"))
+            return rc, stdout.value, stderr.getvalue()
+
+        tty_out = self._Tty()
+        rc_tty, out_tty, err_tty = run(tty_out)
+
+        class _Pipe:
+            def __init__(self):
+                self.value = ""
+
+            def write(self, text):
+                self.value += text
+
+            def flush(self):
+                pass
+
+            def isatty(self):
+                return False
+
+        pipe_out = _Pipe()
+        rc_pipe, out_pipe, err_pipe = run(pipe_out)
+
+        assert rc_tty == rc_pipe == 0
+        # The project id is generated per run; compare the report proper.
+        import re
+
+        def strip_id(text):
+            return re.sub(r"^Project ID: .*$", "Project ID: <ID>", text, flags=re.MULTILINE)
+
+        assert strip_id(out_tty) == strip_id(out_pipe), "the report is identical on a tty and off it"
+        assert "Waiting for the survey agent" in err_tty
+        assert "Waiting for the survey agent" not in err_pipe
+
+    def test_json_output_carries_no_indicator(self, tmp_path, monkeypatch, capsys):
+        from types import SimpleNamespace
+
+        from snodo.cli.commands import survey_cmd
+        self._make_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            survey_cmd, "build_survey_judge",
+            lambda root, mode: (lambda dossier: {"verdicts": []}),
+        )
+        # Even on a tty, --json must not decorate stderr.
+        monkeypatch.setattr(survey_cmd.sys.stdout, "isatty", lambda: True)
+
+        rc = survey_cmd.survey_command(SimpleNamespace(json=True, agent="force"))
+        captured = capsys.readouterr()
+
+        assert rc == 0
+        assert json.loads(captured.out)["ok"] is True
+        assert "Waiting for the survey agent" not in captured.err
+
+    def test_non_tty_stdout_carries_no_indicator(self, tmp_path, monkeypatch, capsys):
+        from types import SimpleNamespace
+
+        from snodo.cli.commands import survey_cmd
+        self._make_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            survey_cmd, "build_survey_judge",
+            lambda root, mode: (lambda dossier: {"verdicts": []}),
+        )
+        assert not survey_cmd.sys.stdout.isatty()
+
+        rc = survey_cmd.survey_command(SimpleNamespace(json=False, agent="force"))
+        captured = capsys.readouterr()
+
+        assert rc == 0
+        assert "Waiting for the survey agent" not in captured.err
+        assert "Waiting for the survey agent" not in captured.out
+        assert "Repository Analysis:" in captured.out
+
+    def test_empty_agent_result_diagnostic_survives(
+        self, tmp_path, monkeypatch, capsys, caplog
+    ):
+        """The recon empty-result warning is still emitted, indicator and all."""
+        import logging
+        from types import SimpleNamespace
+
+        from snodo.cli.commands import survey_cmd
+        self._make_repo(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        def empty_judge(dossier):
+            logging.getLogger("snodo.recon").warning(
+                "Recon agent returned empty result on model=deepseek/deepseek-flash "
+                "— possible model disengagement or auth issue"
+            )
+            return {"reason": "Agent returned empty result"}
+
+        monkeypatch.setattr(survey_cmd, "build_survey_judge", lambda root, mode: empty_judge)
+        monkeypatch.setattr(survey_cmd.sys.stdout, "isatty", lambda: True)
+
+        with caplog.at_level(logging.WARNING, logger="snodo.recon"):
+            rc = survey_cmd.survey_command(SimpleNamespace(json=False, agent="force"))
+        captured = capsys.readouterr()
+
+        assert rc == 0
+        assert any(
+            "Recon agent returned empty result on model=deepseek/deepseek-flash"
+            in record.getMessage()
+            for record in caplog.records
+        )
+        assert "Not made" in captured.out
+
+
 class TestTestCommandSummaryScope:
     """The summary names the scope it speaks for: repository root, not modules."""
 
