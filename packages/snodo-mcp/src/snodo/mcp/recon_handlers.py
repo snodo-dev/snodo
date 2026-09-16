@@ -55,7 +55,8 @@ class ReconToolHandler:
         return {
             "recon_id": recon_id,
             "status": "running",
-            "agents": agents,
+            "agents": [lane[0] for lane in agents],
+            "failover": {lane[0]: lane for lane in agents if len(lane) > 1},
             "query": query,
         }
 

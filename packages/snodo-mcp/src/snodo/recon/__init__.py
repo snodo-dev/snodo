@@ -26,10 +26,22 @@ class ReconState(BaseModel):
     recon_id: str
     query: str
     paths: list[str]
-    agents: list[str]
+    agents: list  # one failover chain per agent; flat names may still be read
     status: str  # "running" | "complete" | "failed"
     created_at: float
     completed_at: Optional[float] = None
+
+
+class ReconAttempt(BaseModel):
+    """One model asked during a call, and how it ended.
+
+    A failover chain appends one of these per model it asks, in order.  The
+    ``error`` is why the model did not win: a raised call, or the empty result
+    that reads as disengagement.  ``None`` marks the model that answered.
+    """
+
+    model: str
+    error: Optional[str] = None
 
 
 class ReconResult(BaseModel):
@@ -37,6 +49,7 @@ class ReconResult(BaseModel):
     model: str
     result: str
     error: Optional[str] = None
+    attempts: list[ReconAttempt] = []
 
 
 class ReconError(Exception):
@@ -112,49 +125,129 @@ def resolve_agent_model(agent: str) -> str:
     return agent
 
 
+def _warn(message: str) -> None:
+    """Write a resolution warning to stderr. Primary output stays on stdout."""
+    import sys
+    print(f"Warning: {message}", file=sys.stderr)
+
+
 def resolve_recon_agents(
     requested_n: int | None = None,
     recon_models: list[str] | None = None,
     recon_default_n: int = 1,
     explicit_agents: list[str] | None = None,
-) -> list[str]:
-    """Resolve recon agents from config + CLI/MCP request.
+) -> list[list[str]]:
+    """Resolve recon agents from config + CLI/MCP request into failover chains.
+
+    Returns one *lane* per agent to run, in order. Each lane is an ordered
+    chain of models: the lane calls its models in turn and the first that
+    answers wins, so ``llm.recon.models`` is a priority list in behaviour and
+    not only in name. A model that answers is never retried.
 
     Precedence (most specific wins):
-      1. explicit_agents non-empty → return as-is
+      1. explicit_agents non-empty → one single-model lane per name. This is
+         the deliberate fan-out: every requested agent is asked, in parallel,
+         to compare answers.
       2. n = requested_n or recon_default_n or 1
       3. resolve n against recon_models:
-         - models empty: n≤1 → ["default"]; n>1 → ["default"] + warn
-         - models present: first n; slots beyond len → warn per slot, skip
+         - models empty: one lane ``["default"]``; n>1 warns that duplicates
+           add no value
+         - n≤1: one lane holding the whole ordered list — every entry is
+           reachable as a fallback, and the first that answers wins
+         - n>1: n single-model lanes (deliberate fan-out). Fewer models than n
+           runs what is configured and says so once; more models than n warns
+           that the tail is unused, so an operator can tell which models run
+           and why.
     """
     if explicit_agents:
-        return explicit_agents
+        if requested_n is not None:
+            _warn("explicit agents given; ignoring num_agents.")
+        return [[agent] for agent in explicit_agents]
 
     n = requested_n or recon_default_n or 1
-    models = recon_models or []
+    models = [m for m in (recon_models or []) if m]
 
     if not models:
-        if n <= 1:
-            return ["default"]
-        import sys
-        print(
-            f"Warning: num_agents={n} but no recon models configured. "
-            "Using 'default' once (duplicates add no value).",
-            file=sys.stderr,
-        )
-        return ["default"]
-
-    results = []
-    for i in range(n):
-        if i < len(models):
-            results.append(models[i])
-        else:
-            print(
-                f"Warning: slot {i + 1}/{n} beyond configured models "
-                f"({len(models)}). Skipped.",
-                file=sys.stderr,
+        if n > 1:
+            _warn(
+                f"num_agents={n} but no recon models configured. "
+                "Using 'default' once (duplicates add no value)."
             )
-    return results if results else ["default"]
+        return [["default"]]
+
+    if n <= 1:
+        return [list(models)]
+
+    lanes = [[model] for model in models[:n]]
+    if len(models) < n:
+        _warn(
+            f"num_agents={n} but only {len(models)} recon model(s) "
+            f"configured; fanning out to {len(models)}."
+        )
+    elif len(models) > n:
+        unused = ", ".join(models[n:])
+        _warn(
+            f"num_agents={n} uses the first {n} recon model(s); unused: "
+            f"{unused}. Use num_agents=1 to try the whole list in order."
+        )
+    return lanes
+
+
+def normalize_recon_agents(agents: list) -> list[list[str]]:
+    """Coerce an agent list into lanes.
+
+    Accepts the flat ``["m1", "m2"]`` form (each a single-model lane) and the
+    lane form ``[["m1"], ["m2", "m3"]]``, so callers written before failover
+    keep working and a stored state file from before it still loads.
+    """
+    lanes: list[list[str]] = []
+    for agent in agents:
+        if isinstance(agent, str):
+            lanes.append([agent])
+        else:
+            lanes.append(list(agent))
+    return lanes or [["default"]]
+
+
+def call_agent_chain(
+    project_root: str,
+    models: list[str],
+    query: str,
+    paths: list[str],
+    agent_label: str,
+    max_turns: int = 10,
+) -> ReconResult:
+    """Ask *models* in order and return the first answer.
+
+    Failover is for silence and faults: a model that raises, or that returns
+    an empty result, hands off to the next. A model that answers is not
+    retried — a poor answer is an answer. Each model is called at most once,
+    so the number of calls is bounded by ``len(models)``; every attempt is
+    recorded on the result so a caller can see which models were tried and
+    why each one was passed over.
+    """
+    attempts: list[ReconAttempt] = []
+    for model in models:
+        result = call_agent(
+            project_root, model, query, paths, agent_label, max_turns,
+        )
+        if not result.error and result.result.strip():
+            result.attempts = attempts + [ReconAttempt(model=model)]
+            return result
+        attempts.append(
+            ReconAttempt(model=model, error=result.error or "empty result")
+        )
+
+    tried = "; ".join(
+        f"{a.model} ({a.error})" for a in attempts
+    ) if attempts else "(none)"
+    return ReconResult(
+        agent=agent_label,
+        model=models[-1] if models else "",
+        result="",
+        error=f"all models failed; tried {tried}",
+        attempts=attempts,
+    )
 
 
 def _read_file(project_root: str, path: str) -> str:
@@ -404,7 +497,7 @@ class ReconManager:
             return json.load(f)
 
     def _run_recon(self, recon_id: str, query: str, paths: list[str],
-                   agents: list[str]) -> None:
+                   agents: list) -> None:
         """Background entry point — fans out agents, writes results, updates state."""
         try:
             self._run_recon_impl(recon_id, query, paths, agents)
@@ -412,21 +505,22 @@ class ReconManager:
             _logger.debug("Recon background task error for %s: %s", recon_id, e)
 
     def _run_recon_impl(self, recon_id: str, query: str, paths: list[str],
-                        agents: list[str]) -> None:
+                        agents: list) -> None:
         recon_dir = self.recons_dir / recon_id
 
-        resolved_agents = []
-        for agent_label in agents:
-            model = resolve_agent_model(agent_label)
-            resolved_agents.append((agent_label, model))
+        lanes = normalize_recon_agents(agents)
+        resolved_lanes = []
+        for lane in lanes:
+            resolved = [resolve_agent_model(model) for model in lane]
+            resolved_lanes.append((lane[0], resolved))
 
         results = []
-        with ThreadPoolExecutor(max_workers=min(len(resolved_agents), 4)) as executor:
+        with ThreadPoolExecutor(max_workers=min(len(resolved_lanes), 4)) as executor:
             futures = {}
-            for agent_label, model in resolved_agents:
+            for agent_label, models in resolved_lanes:
                 future = executor.submit(
-                    call_agent,
-                    self.project_root, model, query, paths, agent_label,
+                    call_agent_chain,
+                    self.project_root, models, query, paths, agent_label,
                 )
                 futures[future] = agent_label
 
@@ -452,20 +546,25 @@ class ReconManager:
         self._save_state(recon_dir, state)
 
     def submit(self, query: str, paths: list[str],
-               agents: Optional[list[str]] = None) -> str:
+               agents: Optional[list] = None) -> str:
         """Submit a recon query — returns immediately with a recon_id.
 
         Args:
             query: The exploration question
             paths: List of paths to search within
-            agents: List of model strings; ``["default"]`` resolves to
-                    the configured model.  Named agents pass through directly.
+            agents: One failover chain per agent. A flat list
+                    ``["m1", "m2"]`` runs two single-model agents in
+                    parallel; a nested list ``[["m1", "m2"]]`` runs one
+                    agent that tries m1 then m2. ``"default"`` resolves to
+                    the configured model. Named models pass through directly.
 
         Returns:
             Recon ID string (rec_...)
         """
         if agents is None:
             agents = ["default"]
+
+        lanes = normalize_recon_agents(agents)
 
         recon_id = self._generate_id()
         recon_dir = self.recons_dir / recon_id
@@ -475,7 +574,7 @@ class ReconManager:
             "recon_id": recon_id,
             "query": query,
             "paths": paths,
-            "agents": agents,
+            "agents": lanes,
             "status": "running",
             "created_at": time.time(),
             "completed_at": None,
@@ -484,7 +583,7 @@ class ReconManager:
 
         thread = Thread(
             target=self._run_recon,
-            args=(recon_id, query, paths, agents),
+            args=(recon_id, query, paths, lanes),
         )
         thread.start()
         _threads.append(thread)

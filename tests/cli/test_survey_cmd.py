@@ -341,9 +341,9 @@ class TestJudgeAdapter:
     """The judge body: recon call in, verdicts out, failures reported not hidden."""
 
     @staticmethod
-    def _result(error=None, result=""):
+    def _result(error=None, result="", model="m"):
         from snodo.recon import ReconResult
-        return ReconResult(agent="survey-judge", model="m", result=result, error=error)
+        return ReconResult(agent="survey-judge", model=model, result=result, error=error)
 
     def test_judge_sends_prompt_with_dossier_and_parses_verdicts(self, tmp_path, monkeypatch):
         from snodo.cli.commands import survey_cmd
@@ -391,6 +391,60 @@ class TestJudgeAdapter:
         )
         outcome = judge({"subjects": []})
         assert "no parseable" in outcome["reason"]
+
+    def test_judge_falls_over_to_the_second_configured_model(self, tmp_path, monkeypatch):
+        """A first model returning nothing hands off to the second, which answers."""
+        from snodo.config import ConfigManager
+        from snodo.cli.commands import survey_cmd
+
+        cfg_dir = ConfigManager().config_dir
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / "config.yml").write_text(
+            "model: some/unknown-default\n"
+            "llm:\n  recon:\n    models: [m1, m2]\n    num_agents: 1\n"
+        )
+
+        calls = []
+
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+            calls.append(model)
+            if model == "m1":
+                return self._result(error="disengaged", model="m1")
+            return self._result(
+                model="m2",
+                result='{"judgements": [{"subject": "x", "verdict": "product"}]}',
+            )
+
+        monkeypatch.setattr("snodo.recon.call_agent", fake_call)
+        judge = survey_cmd.build_survey_judge(tmp_path, "force")
+        outcome = judge({"subjects": []})
+
+        assert calls == ["m1", "m2"]
+        assert outcome == {"verdicts": [{"subject": "x", "verdict": "product"}]}
+        assert judge.model == "m2"
+
+    def test_judge_does_not_retry_a_model_that_answered(self, tmp_path, monkeypatch):
+        from snodo.config import ConfigManager
+        from snodo.cli.commands import survey_cmd
+
+        cfg_dir = ConfigManager().config_dir
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / "config.yml").write_text(
+            "model: some/unknown-default\n"
+            "llm:\n  recon:\n    models: [m1, m2]\n    num_agents: 1\n"
+        )
+
+        calls = []
+
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+            calls.append(model)
+            return self._result(result="not json, but an answer")
+
+        monkeypatch.setattr("snodo.recon.call_agent", fake_call)
+        judge = survey_cmd.build_survey_judge(tmp_path, "force")
+        judge({"subjects": []})
+
+        assert calls == ["m1"]
 
     def test_auto_mode_uses_a_recon_configured_model_with_a_key(self, tmp_path):
         from snodo.config import ConfigManager

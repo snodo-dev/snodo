@@ -30,6 +30,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `llm.recon.models` is now an ordered failover list in behaviour, not only in
+  name. Recon resolves the list into one lane per agent, and a lane tries its
+  models in order: a model that fails or returns nothing hands off to the next,
+  and the first that answers wins. Previously `resolve_recon_agents` took the
+  first `num_agents` entries and called each exactly once, so a second model was
+  reachable only by raising `num_agents` — which fanned out to both models in
+  parallel instead of falling back to the second. `snodo survey` was stricter
+  still, reading only `agents[0]`, so every entry past the first was dead on
+  that path. A model that answered is never retried: a poor answer is an answer,
+  and failover is for silence and faults. The deliberate fan-out is preserved —
+  `num_agents > 1` still runs several models in parallel to compare answers, and
+  an explicit `agents=[...]` list still means exactly those agents. Each result
+  records the models that were tried and why each was passed over, and the
+  resolution warnings now name the unused tail when more models are configured
+  than `num_agents`, instead of warning per empty slot when fewer are. No new
+  state, severity, halt type or task status was added. (Fixes #302)
+
 - `snodo models --benchmark` times one fixed prompt against one model and
   reports output tokens per second, time to first token and total wall time, so
   two providers produce two numbers produced by the same work. Until now the

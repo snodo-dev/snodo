@@ -36,7 +36,6 @@ config llm.coder.concurrency
 config llm.coder.model
 config llm.coder.timeout_seconds
 config llm.num_retries
-config llm.recon.models
 config llm.validator.max_tokens
 config llm.validator.max_tool_turns
 config llm.wave.max_age_days
