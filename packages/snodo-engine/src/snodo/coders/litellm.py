@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
 from snodo.paths import is_protected_workspace_path
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError, TurnBudgetExhausted
+from snodo.coders.report import build_coder_report as assemble_coder_report
 from snodo.engine.progress import format_elapsed, format_tool_call_summary
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.infrastructure.usage_tracker import UsageTracker
@@ -175,6 +176,12 @@ class LiteLLMAdapter(CoderAdapter):
         #: Exposed as paths only (see ``last_read_paths``) so a later recovery
         #: attempt can reuse the map of what was inspected, never its contents.
         self._read_tracker: Optional["ReadMemoryTracker"] = None
+
+        #: This run's best-effort account of what it did and why it stopped
+        #: (ADR 048), filled by ``build_coder_report`` at each loop exit.
+        #: None until a tool-loop run records one; a report that cannot be
+        #: built leaves it None rather than failing the run.
+        self.last_report: Optional[Any] = None
 
         try:
             from litellm import completion
@@ -344,6 +351,24 @@ Return ONLY the JSON array, no other text.
         self._last_artifact_metadata = metadata
         return json.dumps(list(accumulated_files.values()))
 
+    def build_coder_report(self, stop_reason: Optional[str], turns_used: int,
+                           accumulated_files: Dict[str, Dict[str, Any]],
+                           tokens_used: Optional[int], elapsed_ms: int,
+                           workspace: Any) -> Optional[Any]:
+        """Assemble and record this run's report from what the loop holds.
+
+        Fills the ADR 048 shape with the files the run submitted, the turns it
+        used against ``max_tool_turns``, the tokens it consumed, its wall time
+        and why it stopped. Best-effort evidence, never a verdict: a report
+        that cannot be assembled is recorded as absent and the run is
+        untouched (see ``assemble_coder_report``).
+        """
+        self.last_report = assemble_coder_report(
+            stop_reason, accumulated_files, turns_used, self.max_tool_turns,
+            tokens_used, elapsed_ms, workspace,
+        )
+        return self.last_report
+
     def _call_llm_with_tools(self, prompt: str) -> str:
         """Bounded tool-use loop with submit_files, search tools, and test runner observation."""
         workspace = self.workspace_mcp
@@ -361,6 +386,19 @@ Return ONLY the JSON array, no other text.
         accumulated_files: Dict[str, Dict[str, Any]] = {}
         test_governing_mutations: Dict[str, Dict[str, str]] = {}
         self._read_tracker = read_tracker
+        self.last_report = None
+        #: Tokens consumed across the run; None until a response reports
+        #: usage, so a provider that omits it does not read as zero.
+        tokens_total: Optional[int] = None
+
+        def _record(stop_reason: Optional[str], turns_used: int) -> None:
+            try:
+                self.build_coder_report(
+                    stop_reason, turns_used, accumulated_files, tokens_total,
+                    int((time.monotonic() - start_time) * 1000), workspace,
+                )
+            except Exception as e:
+                _logger.warning("Failed to record coder report: %s", e)
 
         for turn in range(self.max_tool_turns):
             turn_start = time.monotonic()
@@ -398,12 +436,26 @@ Return ONLY the JSON array, no other text.
                     tokens_out=0,
                     elapsed_ms=(time.monotonic() - turn_start) * 1000,
                 )
+                _record("provider_fault", turn + 1)
                 staged_info = f" ({len(accumulated_files)} file(s) staged)" if accumulated_files else ""
                 raise LLMCallError(
                     f"LLM tool-loop error on turn {turn + 1}{staged_info}: {e}"
                 ) from e
 
-            self._check_truncation(response)
+            if getattr(response, "usage", None) is not None:
+                tokens_total = (
+                    (tokens_total or 0)
+                    + _usage_tokens(response, "prompt")
+                    + _usage_tokens(response, "completion")
+                )
+
+            try:
+                self._check_truncation(response)
+            except ParseError:
+                # Cut off at the output ceiling: the loop stopped against its
+                # token budget, not its turns.
+                _record("context_budget", turn + 1)
+                raise
 
             msg = response.choices[0].message
             tool_calls = getattr(msg, "tool_calls", [])
@@ -523,6 +575,7 @@ Return ONLY the JSON array, no other text.
 
             # No tool calls on this turn — deliver accumulated files if any
             if accumulated_files:
+                _record("completed", turn + 1)
                 return self._finalize_accumulated_deliveries(accumulated_files, test_governing_mutations)
 
             # No tool calls — free-text, try corrective retry once
@@ -544,6 +597,7 @@ Return ONLY the JSON array, no other text.
 
             # Fallback: try to parse free-text as file operations
             if msg.content is not None:
+                _record("completed", turn + 1)
                 return self._try_parse_or_fail(
                     msg.content, turn, finish_reason,
                 )
@@ -553,6 +607,7 @@ Return ONLY the JSON array, no other text.
             # coder exhausted its turn budget. This is a bounded, anticipated
             # outcome with its own identity — never a crash, never a parse
             # failure — so it must not be laundered into ``internal_error``.
+            _record("turn_budget", self.max_tool_turns)
             if accumulated_files:
                 return self._finalize_accumulated_deliveries(
                     accumulated_files, test_governing_mutations,
