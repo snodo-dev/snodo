@@ -528,3 +528,99 @@ def test_plan_job_with_own_output_watch_streams_it(capsys):
             assert "Plan run j_plan_inproc_w finished (completed)" in out
 
 
+
+
+def test_watch_stream_is_byte_identical_when_color_is_off(capsys, monkeypatch):
+    """A piped / NO_COLOR watch prints exactly the log's bytes, in order (#294).
+
+    The renderer must never alter what a non-interactive reader sees: every
+    line the stdout.log holds is printed verbatim with its own newline. The
+    capture stream here is not a tty, which is the real default for a pipe.
+    """
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        job_dir = Path(tmp_dir) / ".snodo" / "jobs" / "j_plain"
+        job_dir.mkdir(parents=True)
+        (job_dir / "stdout.log").write_text(
+            "  Coder dispatched\n"
+            "    [0:01] Turn 1: read_file(a.py)\n"
+            "    [0:02] Turn 2: read_file(b.py)\n"
+            "  Recovery stalled (attempt 2/3): halting loop\n"
+        )
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            mock_manager = MagicMock()
+            mock_manager._job_dir.return_value = job_dir
+            mock_manager.get_status.return_value = {"status": "completed"}
+            with patch("snodo.jobs.JobManager", return_value=mock_manager):
+                args = SimpleNamespace(composite_id="j_plain", watch=True)
+                assert logs_command(args) == 0
+
+        out = capsys.readouterr().out
+        assert out == (
+            "  Coder dispatched\n"
+            "    [0:01] Turn 1: read_file(a.py)\n"
+            "    [0:02] Turn 2: read_file(b.py)\n"
+            "  Recovery stalled (attempt 2/3): halting loop\n"
+        )
+        assert "\x1b" not in out
+
+
+def test_watch_stream_is_byte_identical_under_no_color(capsys, monkeypatch):
+    """NO_COLOR produces today's plain lines even when stdout looks like a tty."""
+    monkeypatch.setenv("NO_COLOR", "1")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        job_dir = Path(tmp_dir) / ".snodo" / "jobs" / "j_nc"
+        job_dir.mkdir(parents=True)
+        (job_dir / "stdout.log").write_text(
+            "    [0:01] Turn 1: read_file(a.py)\n"
+            "    [0:02] Turn 2: read_file(b.py)\n"
+        )
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            mock_manager = MagicMock()
+            mock_manager._job_dir.return_value = job_dir
+            mock_manager.get_status.return_value = {"status": "completed"}
+            with patch("snodo.jobs.JobManager", return_value=mock_manager):
+                args = SimpleNamespace(composite_id="j_nc", watch=True)
+                assert logs_command(args) == 0
+
+        out = capsys.readouterr().out
+        assert out == (
+            "    [0:01] Turn 1: read_file(a.py)\n"
+            "    [0:02] Turn 2: read_file(b.py)\n"
+        )
+        assert "\x1b" not in out
+
+
+def test_watch_stream_colors_and_compacts_when_color_is_on(capsys):
+    """On an interactive terminal the watch styles lines and compacts turns."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        job_dir = Path(tmp_dir) / ".snodo" / "jobs" / "j_color"
+        job_dir.mkdir(parents=True)
+        (job_dir / "stdout.log").write_text(
+            "    [0:01] Turn 1: read_file(a.py)\n"
+            "    [0:02] Turn 2: read_file(b.py)\n"
+            "  Recovery stalled (attempt 2/3): halting loop\n"
+        )
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            mock_manager = MagicMock()
+            mock_manager._job_dir.return_value = job_dir
+            mock_manager.get_status.return_value = {"status": "completed"}
+            with patch("snodo.jobs.JobManager", return_value=mock_manager), \
+                 patch("snodo.engine.progress.color_enabled", return_value=True):
+                args = SimpleNamespace(composite_id="j_color", watch=True)
+                assert logs_command(args) == 0
+
+        out = capsys.readouterr().out
+        assert "\x1b" in out
+        # The halt keeps its own text and is not a turn.
+        assert "Recovery stalled" in _strip_ansi(out)
+        # Consecutive turns compact: the second moves up onto the first.
+        assert out.count("\x1b[1A") == 1
+
+
+def _strip_ansi(text: str) -> str:
+    import re
+    return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text)

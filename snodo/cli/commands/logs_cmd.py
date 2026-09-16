@@ -13,6 +13,39 @@ import typer
 _logger = logging.getLogger(__name__)
 
 
+def _watch_renderer():
+    """Return a styled progress renderer for a live watch, or None.
+
+    None on a non-tty stdout, a redirected stream, or under ``NO_COLOR``: the
+    watch then takes the exact ``print(line, end="")`` path it always has, so
+    its output there is byte-identical to before (#294). On an interactive
+    terminal the renderer colours the engine's line kinds and compacts repeated
+    tool turns in place. Presentation only — the job's own stdout.log is
+    untouched, and a line still appears in the same order.
+    """
+    from snodo.engine.progress import ProgressRenderer, color_enabled
+
+    if not color_enabled():
+        return None
+    return ProgressRenderer()
+
+
+def _emit_watch_line(renderer, line: str) -> None:
+    """Write one log line to the console, styled when a renderer is present.
+
+    A line without its terminating newline is a partial tail (the writer has
+    not finished the line): it is passed through verbatim with no added
+    newline, exactly as the watch path always printed it, and the renderer's
+    in-place turn state is reset so a following turn cannot be drawn over it.
+    """
+    if renderer is None or not line.endswith("\n"):
+        if renderer is not None:
+            renderer.reset()
+        print(line, end="", flush=True)
+        return
+    renderer(line.rstrip("\n"))
+
+
 def register(app: typer.Typer) -> None:
     """Register top-level CLI commands onto app (called by discovery loop)."""
 
@@ -363,10 +396,11 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                 line = own_log.readline()
                 if not line:
                     break
-                print(line, end="", flush=True)
+                _emit_watch_line(watch_renderer, line)
         except (OSError, ValueError):
             pass
 
+    watch_renderer = _watch_renderer()
     try:
         while True:
             _drain_own()
@@ -546,13 +580,14 @@ def _stream_job_stdout(project_root: str, job_id: str, args) -> int:
                 return 1
 
     lines_printed = 0
+    watch_renderer = _watch_renderer()
     try:
         with open(log_path) as f:
             f.seek(0)
             while True:
                 line = f.readline()
                 if line:
-                    print(line, end="", flush=True)
+                    _emit_watch_line(watch_renderer, line)
                     lines_printed += 1
                 else:
                     try:
@@ -561,7 +596,7 @@ def _stream_job_stdout(project_root: str, job_id: str, args) -> int:
                             while True:
                                 line = f.readline()
                                 if line:
-                                    print(line, end="", flush=True)
+                                    _emit_watch_line(watch_renderer, line)
                                     lines_printed += 1
                                 else:
                                     break
