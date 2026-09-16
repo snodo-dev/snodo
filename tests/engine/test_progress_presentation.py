@@ -70,6 +70,13 @@ def test_engine_lines_classify_by_their_emitted_shape():
         assert classify_progress_line(line) == kind, line
 
 
+def test_turn_past_an_hour_still_reads_as_a_turn():
+    """A run past an hour labels its turns h:mm:ss (#316); the compaction rule
+    widens with the renderer rather than silently dropping such turns to plain."""
+    assert classify_progress_line("    [1:04:11] Turn 9: read_file(a.py)") == TURN
+    assert classify_progress_line("    [22:35] Turn 9: read_file(a.py)") == TURN
+
+
 def test_non_tty_stream_is_rendered_verbatim():
     """Colour off: the exact bytes the sink produced, no escape sequences."""
     lines = list(_ENGINE_LINES)

@@ -12,17 +12,31 @@ from unittest.mock import MagicMock
 from snodo.coders.litellm import LiteLLMAdapter
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task
-from snodo.engine.progress import format_elapsed, format_tool_call_summary
+from snodo.engine.progress import format_duration, format_elapsed, format_tool_call_summary
 from snodo.validators.context import ValidatorContext
 from snodo.validators.llm_validator import LLMValidator
 
 
 def test_format_elapsed():
-    """Test elapsed time formatting into m:ss format."""
+    """Test elapsed time formatting into m:ss format, hours past an hour."""
     assert format_elapsed(0) == "0:00"
     assert format_elapsed(4.2) == "0:04"
     assert format_elapsed(65) == "1:05"
-    assert format_elapsed(3605) == "60:05"
+    # A run past an hour says so (#316): "60:05" made the reader divide.
+    assert format_elapsed(3605) == "1:00:05"
+
+
+def test_format_duration_scales_as_it_grows():
+    """Seconds while it is seconds, minutes past a minute, hours past an hour."""
+    assert format_duration(0) == "0.0s"
+    assert format_duration(12.5) == "12.5s"
+    assert format_duration(59.9) == "59.9s"
+    assert format_duration(60) == "1:00"
+    assert format_duration(1355.5) == "22:35"
+    assert format_duration(3599.0) == "59:59"
+    assert format_duration(3600) == "1:00:00"
+    assert format_duration(7322.5) == "2:02:02"
+    assert format_duration(-4.0) == "0.0s"
 
 
 def test_format_tool_call_summary():
