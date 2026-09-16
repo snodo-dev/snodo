@@ -399,6 +399,34 @@ def test_validator_default_severity_cap():
     assert v.severity_cap is None
 
 
+def test_validator_default_max_tool_turns_is_none():
+    """Validator carries no reading-budget override by default; the engine
+    falls back to the configured llm.validator.max_tool_turns."""
+    v = Validator(
+        validator_id="v1",
+        validator_type="architecture"
+    )
+    assert v.max_tool_turns is None
+
+
+def test_validator_declares_own_max_tool_turns():
+    v = Validator(
+        validator_id="architecture",
+        validator_type="architecture",
+        max_tool_turns=6,
+    )
+    assert v.max_tool_turns == 6
+
+
+def test_validator_max_tool_turns_out_of_bounds_rejected():
+    with pytest.raises(ValidationError):
+        Validator(
+            validator_id="architecture",
+            validator_type="architecture",
+            max_tool_turns=0,
+        )
+
+
 def test_quality_validator_allows_severity_cap():
     """Quality validator can specify severity_cap (§4.1 expressiveness)."""
     v = Validator(
