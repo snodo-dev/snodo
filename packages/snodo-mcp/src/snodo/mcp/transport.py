@@ -32,6 +32,7 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
 
 from snodo.mcp.server import ProtocolMCPServer
+from snodo.mcp.tools import TOOL_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -167,13 +168,27 @@ def _make_progress_emitter(ctx: Optional[Context]) -> tuple:
 
 
 def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
-    """Build the canonical operating manual from the loaded protocol.
+    """Build the canonical operating manual from the loaded protocol AND the
+    tools this server actually exposes.
 
     This lands in the MCP initialize handshake — present in every session,
     before any tool call. It is the orchestrator's only source of truth
-    about the workflow, role model, and async contract.
+    about the workflow, role model, and async contract — and about the tool
+    set it may trust: which tools exist is the mode grant's decision, so the
+    manual cannot be a fixed string. A fixed manual tells the orchestrator
+    to call tools it was never given (the defect this closes: a server
+    offering run_plan, withholding get_job_status, and instructing the
+    caller to poll it). Sections are therefore emitted over the server's
+    resolved tool set, and a final guard refuses to serve a manual that
+    names any tool this server does not expose.
+
+    The guard holds because of the server-side invariant
+    (ProtocolMCPServer._resolve_tools / tools.WORK_STARTING_TOOLS): every
+    work-starting tool travels with its read-only observers, so a section
+    gated on a starter can name that starter's observers unconditionally.
     """
     p = protocol_server.protocol
+    exposed = {t["name"] for t in protocol_server.get_tools()}
     mode_list = ", ".join(m.mode_id for m in p.modes)
     validator_list = ", ".join(
         f"{v.validator_id} ({v.validator_type}, {v.evaluation_phase})"
@@ -181,7 +196,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
     )
     policy_value = getattr(p.disagreement_policy, "value", str(p.disagreement_policy))
 
-    return (
+    sections: list = [
         f"# Snodo Protocol Engine — {p.protocol_id} v{p.version}\n"
         f"\n"
         f"## What this is\n"
@@ -201,54 +216,83 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         f"- **The quorum is enforced inside the engine loop**: every dispatched\n"
         f"  task passes the validators again before anything is written — a\n"
         f"  `blocker` sends the work back and is never overridable by you.\n"
-        f"\n"
-        f"## The workflow loop (per task)\n"
-        f"Execute tasks in this exact order:\n"
-        f"\n"
-        f"1. `validate_task(task_id, task_spec)` — runs the real pre-execute validators\n"
-        f"   and the test suite, then returns ONE of four validation outcomes:\n"
-        f"   - `pass`            → quorum satisfied (a single-use token is recorded);\n"
-        f"                        proceed to dispatch\n"
-        f"   - `escalate`        → NO token; run `snodo authorize <decision_id>`, then\n"
-        f"                        re-call validate_task to clear it\n"
-        f"   - `blocker`         → NO token; fix the code and re-validate (a blocker is\n"
-        f"                        NEVER overridable by a human decision)\n"
-        f"   - `validator_error` → NO token; retry / inspect logs (not an authorisation\n"
-        f"                        problem)\n"
-        f"   The engine's canonical halt vocabulary is five. A dispatched job can\n"
-        f"   additionally halt `environment_error` (the coder could not be invoked);\n"
-        f"   handle it as a non-verdict operational halt, never as a verdict about the\n"
-        f"   task. See ADR 015 for the taxonomy and the reasoning.\n"
-        f"2. `dispatch_task(task_spec)` — submits the task for background execution,\n"
-        f"   returns job_id; the run re-validates this task inside the engine loop\n"
-        f"   before anything is written, so your pre-check is guidance, not a\n"
-        f"   permission the call must carry\n"
-        f"3. `get_job_status(job_id)` — poll until status is `completed` or `failed`\n"
-        f"4. `get_job_logs(job_id, tail=N)` — read output, especially on failure\n"
-        f"\n"
-        f"## Planning (above the task loop)\n"
-        f"Multi-task work goes through the plan gate before any dispatch:\n"
-        f"- `propose_plan(intent, plan_name)` turns an intent into a plan (waves,\n"
-        f"  dependencies, tasks) under .snodo/plans/ — nothing executes.\n"
-        f"- `generate_spec(plan_name, task_id, spec)` writes a task spec into a wave.\n"
-        f"- `validate_plan(plan_name)` checks the plan without running anything; this\n"
-        f"  is the human gate — review the proposal BEFORE execution.\n"
-        f"- `run_plan(plan_name)` STARTS an approved plan run as a background job\n"
-        f"  and returns its job_id at once; it refuses a plan that fails\n"
-        f"  validation before anything spawns. Follow the job_id with\n"
-        f"  get_job_status / list_jobs / get_job_logs — do NOT expect the call to\n"
-        f"  carry the run (a wave takes minutes).\n"
-        f"- `get_plan(plan_name)` retrieves the plan and its task statuses at any\n"
-        f"  time — the plan files on disk are the source of truth.\n"
-        f"\n"
-        f"## THE ASYNC CONTRACT — READ THIS\n"
-        f"**dispatch_task is ASYNCHRONOUS.** It returns a job_id and returns IMMEDIATELY.\n"
-        f"The coder runs in a background subprocess. A pre-execute validation pass does\n"
-        f"NOT mean the task succeeded. Only a job whose status is `completed` with\n"
-        f"`exit_code=0` and files written confirms success.\n"
-        f"\n"
-        f"**ALWAYS poll `get_job_status` after dispatch. NEVER infer completion from the\n"
-        f"dispatch response.** The dispatch response only confirms the job was queued.\n"
+    ]
+
+    if "dispatch_task" in exposed:
+        sections.append(
+            f"\n"
+            f"## The workflow loop (per task)\n"
+            f"Execute tasks in this exact order:\n"
+            f"\n"
+            f"1. `validate_task(task_id, task_spec)` — runs the real pre-execute validators\n"
+            f"   and the test suite, then returns ONE of four validation outcomes:\n"
+            f"   - `pass`            → quorum satisfied (a single-use token is recorded);\n"
+            f"                        proceed to dispatch\n"
+            f"   - `escalate`        → NO token; run `snodo authorize <decision_id>`, then\n"
+            f"                        re-call validate_task to clear it\n"
+            f"   - `blocker`         → NO token; fix the code and re-validate (a blocker is\n"
+            f"                        NEVER overridable by a human decision)\n"
+            f"   - `validator_error` → NO token; retry / inspect logs (not an authorisation\n"
+            f"                        problem)\n"
+            f"   The engine's canonical halt vocabulary is five. A dispatched job can\n"
+            f"   additionally halt `environment_error` (the coder could not be invoked);\n"
+            f"   handle it as a non-verdict operational halt, never as a verdict about the\n"
+            f"   task. See ADR 015 for the taxonomy and the reasoning.\n"
+            f"2. `dispatch_task(task_spec)` — submits the task for background execution,\n"
+            f"   returns job_id; the run re-validates this task inside the engine loop\n"
+            f"   before anything is written, so your pre-check is guidance, not a\n"
+            f"   permission the call must carry\n"
+            f"3. `get_job_status(job_id)` — poll until status is `completed` or `failed`\n"
+            f"4. `get_job_logs(job_id, tail=N)` — read output, especially on failure\n"
+        )
+
+    if "run_plan" in exposed:
+        sections.append(
+            f"\n"
+            f"## Planning (above the task loop)\n"
+            f"Multi-task work goes through the plan gate before any dispatch:\n"
+            f"- `propose_plan(intent, plan_name)` turns an intent into a plan (waves,\n"
+            f"  dependencies, tasks) under .snodo/plans/ — nothing executes.\n"
+            f"- `generate_spec(plan_name, task_id, spec)` writes a task spec into a wave.\n"
+            f"- `validate_plan(plan_name)` checks the plan without running anything; this\n"
+            f"  is the human gate — review the proposal BEFORE execution.\n"
+            f"- `run_plan(plan_name)` STARTS an approved plan run as a background job\n"
+            f"  and returns its job_id at once; it refuses a plan that fails\n"
+            f"  validation before anything spawns. Follow the job_id with\n"
+            f"  `get_job_status` / `list_jobs` / `get_job_logs` — do NOT expect the call to\n"
+            f"  carry the run (a wave takes minutes).\n"
+            f"- `get_plan(plan_name)` retrieves the plan and its task statuses at any\n"
+            f"  time — the plan files on disk are the source of truth.\n"
+        )
+
+    if "dispatch_task" in exposed or "run_plan" in exposed:
+        async_lines = [
+            f"\n"
+            f"## THE ASYNC CONTRACT — READ THIS\n"
+        ]
+        if "dispatch_task" in exposed:
+            async_lines.append(
+                f"**dispatch_task is ASYNCHRONOUS.** It returns a job_id and returns IMMEDIATELY.\n"
+                f"The coder runs in a background subprocess. A pre-execute validation pass does\n"
+                f"NOT mean the task succeeded. Only a job whose status is `completed` with\n"
+                f"`exit_code=0` and files written confirms success.\n"
+                f"\n"
+            )
+        if "run_plan" in exposed:
+            async_lines.append(
+                f"**run_plan is ASYNCHRONOUS.** It starts the plan run as a background job and\n"
+                f"returns its job_id IMMEDIATELY — a wave takes minutes; the call does not\n"
+                f"carry the run.\n"
+                f"\n"
+            )
+        async_lines.append(
+            f"**ALWAYS poll `get_job_status` after a job starts. NEVER infer completion from the\n"
+            f"response of the tool that started it.** That response only confirms the job was\n"
+            f"queued.\n"
+        )
+        sections.append("".join(async_lines))
+
+    progress_lines = [
         f"\n"
         f"## Progress on slow calls\n"
         f"`validate_task` can take minutes. It honours MCP progress notifications:\n"
@@ -257,14 +301,35 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         f"per-turn tool lines as `notifications/progress` while the call is in\n"
         f"flight, so a slow call is distinguishable from a dead server. Callers that\n"
         f"do not request progress receive nothing extra and the same final response.\n"
-        f"(`run_plan` needs no progress stream: it returns a job_id at once, and the\n"
-        f"run's narration lands in the job's stdout.log as it is produced.)\n"
+    ]
+    if "run_plan" in exposed:
+        progress_lines.append(
+            f"(`run_plan` needs no progress stream: it returns a job_id at once, and the\n"
+            f"run's narration lands in the job's stdout.log as it is produced\n"
+            f"(get_job_logs, `snodo job logs --watch`).)\n"
+        )
+    sections.append("".join(progress_lines))
+
+    guarantee_lines = [
         f"\n"
         f"## Where the guarantee lives (tokens and access)\n"
-        f"- `validate_task` runs the pre-execute quorum. On `pass` (or on\n"
-        f"  `escalate` after a human adjudicates via `snodo authorize`) it records a\n"
-        f"  single-use JWT token with a short TTL; the next `dispatch_task` consumes\n"
-        f"  it — the audit link between a satisfied quorum and the work dispatched.\n"
+    ]
+    if "dispatch_task" in exposed:
+        guarantee_lines.append(
+            f"- `validate_task` runs the pre-execute quorum. On `pass` (or on\n"
+            f"  `escalate` after a human adjudicates via `snodo authorize`) it records a\n"
+            f"  single-use JWT token with a short TTL; the next `dispatch_task` consumes\n"
+            f"  it — the audit link between a satisfied quorum and the work dispatched.\n"
+        )
+    else:
+        guarantee_lines.append(
+            f"- `validate_task` runs the pre-execute quorum. On `pass` (or on\n"
+            f"  `escalate` after a human adjudicates via `snodo authorize`) it records a\n"
+            f"  single-use JWT token with a short TTL; the engine's dispatch boundary\n"
+            f"  consumes it — the audit link between a satisfied quorum and the work\n"
+            f"  dispatched.\n"
+        )
+    guarantee_lines.append(
         f"- No tool at this surface is gated on a token you hold. Your authority is\n"
         f"  the protocol's mode grant: a server exposes only the tools its active\n"
         f"  mode(s) grant, and refuses everything else (see ADR 047).\n"
@@ -272,6 +337,10 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         f"  validates before it executes; a `blocker` sends the work back and is\n"
         f"  never overridable; an `escalate` halts until a human decides through\n"
         f"  `snodo authorize`. None of that can be bypassed from this surface.\n"
+    )
+    sections.append("".join(guarantee_lines))
+
+    sections.append(
         f"\n"
         f"## Where to find state\n"
         f"You cannot read the filesystem. Use these resources instead:\n"
@@ -287,6 +356,32 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         f"- Validators: {validator_list}\n"
         f"- Disagreement policy: {policy_value}\n"
     )
+
+    instructions = "".join(sections)
+    _assert_names_only_exposed_tools(instructions, exposed)
+    return instructions
+
+
+def _assert_names_only_exposed_tools(instructions: str, exposed: set) -> None:
+    """Refuse to serve a manual that names a tool this server does not expose.
+
+    The sections above are built over the resolved tool set, so this should
+    never fire; it exists because an instruction that lies is not a hint the
+    orchestrator can ignore — it is a contract the server cannot honour. If
+    a future edit names an unexposed tool in prose, the server fails at
+    build time, not the caller at run time.
+    """
+    named = {
+        name for name in TOOL_REGISTRY
+        if re.search(rf"(?<!\w){re.escape(name)}(?!\w)", instructions)
+    }
+    missing = named - exposed
+    if missing:
+        raise RuntimeError(
+            "Server instructions name tools this server does not expose: "
+            + ", ".join(sorted(missing))
+            + " — the manual must describe the tool set the server has."
+        )
 
 
 def build_fastmcp_server(

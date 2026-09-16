@@ -27,7 +27,7 @@ from snodo.tools.git import GitMCP
 from snodo.tools.shell import ShellMCP
 from snodo.mcp.pr import PrMCP
 from snodo.mcp.planner import PlannerMCP
-from snodo.mcp.tools import TOOL_REGISTRY, MODE_TOOL_MAP, PLANNING_TOOLS
+from snodo.mcp.tools import TOOL_REGISTRY, MODE_TOOL_MAP, PLANNING_TOOLS, WORK_STARTING_TOOLS
 from snodo.mcp.job_handlers import JobToolHandler
 from snodo.mcp.model_handlers import ModelToolHandler
 from snodo.mcp.decision_handlers import DecisionToolHandler
@@ -233,6 +233,20 @@ class ProtocolMCPServer:
         if self.mode_id is None:
             for name in PLANNING_TOOLS:
                 if name not in tools:
+                    tools[name] = TOOL_REGISTRY[name]
+
+        # The planning surface and the job surface are one surface: a
+        # server that can start work must be able to report on it. Enforced
+        # here, after every grant is resolved, so the pairing cannot be
+        # broken by a protocol whose modes never say "dispatch" (a real
+        # project shipped a server that handed out a job_id and withheld
+        # every tool that could ask after it — the orchestrator read
+        # .snodo/jobs/<id>/ files off disk to cope). Only read-only
+        # observers travel; no mutating tool is granted to a mode that does
+        # not hold it.
+        for starter, observers in WORK_STARTING_TOOLS.items():
+            if starter in tools:
+                for name in observers:
                     tools[name] = TOOL_REGISTRY[name]
 
         return tools
