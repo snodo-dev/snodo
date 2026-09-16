@@ -1,20 +1,24 @@
-"""Presentation of the run stream (Issue #294).
+"""Presentation of the run stream (Issue #294, #300).
 
 The engine already emits every kind of line this renders; these tests pin the
-two properties the change is allowed to have, and the two it must not:
+properties the change is allowed to have, and the ones it must not:
 
 - with colour unavailable (a non-tty, a redirected stream, ``NO_COLOR``) the
   output is byte-identical to what the sink produced before #294 — the same
   lines, in the same order, with no escape sequences;
 - with colour on, a halt line is distinguishable from a turn line (they carry
-  different styling), and repeated turn lines compact in place rather than
-  accumulating.
+  different styling);
+- with colour on, the live view is a scrolling window of recent lines rather
+  than a single overwritten row (#300): a verdict or phase boundary stays on
+  screen as later turns arrive, and only an *identical* consecutive turn line
+  collapses into the row it repeats.
 
 Classification is by the shape of the line the engine already emits, so a
 change to what the sink reports does not silently change the rendering.
 """
 
 import io
+import os
 import re
 from unittest.mock import patch
 
@@ -31,6 +35,7 @@ from snodo.engine.progress import (
     ProgressRenderer,
     classify_progress_line,
     color_enabled,
+    default_window_size,
     render_progress_line,
 )
 
@@ -116,48 +121,114 @@ def test_coloured_renderer_styles_and_keeps_every_line():
     """With colour on, every line still reaches the stream in order."""
     lines = list(_ENGINE_LINES)
     out = io.StringIO()
-    renderer = ProgressRenderer(stream=out, color=True)
+    renderer = ProgressRenderer(stream=out, color=True, window=len(lines))
     for line in lines:
         renderer(line)
     rendered = out.getvalue()
     assert "\x1b" in rendered
-    # Stripping ANSI and the in-place overwrites recovers the plain sequence.
+    # Stripping ANSI recovers the plain sequence.
     stripped = _ANSI_RE.sub("", rendered)
     for line in lines:
         assert line in stripped
+    assert renderer.visible_lines() == lines
 
 
-def test_consecutive_turns_compact_in_place():
-    """Repeated turn lines overwrite rather than accumulating."""
+def test_distinct_turn_lines_each_get_their_own_row():
+    """Different judges' turn lines never collapse into each other (#300):
+
+    #294 compacted every consecutive TURN-kind line regardless of content,
+    which is exactly what hid concurrent validators behind one changing row.
+    Only an *identical* repeat collapses; distinct turns are distinct rows.
+    """
     out = io.StringIO()
-    renderer = ProgressRenderer(stream=out, color=True)
+    renderer = ProgressRenderer(stream=out, color=True, window=10)
     renderer("    [0:01] Turn 1: read_file(a.py)")
     renderer("    [0:02] Turn 2: read_file(b.py)")
     renderer("    [0:03] Turn 3: read_file(c.py)")
-    rendered = out.getvalue()
-    # Three turn writes, but only one is a fresh line: the later two move up.
-    assert rendered.count("\x1b[1A") == 2
-    assert rendered.count("\n") == 3
+    assert renderer.visible_lines() == [
+        "    [0:01] Turn 1: read_file(a.py)",
+        "    [0:02] Turn 2: read_file(b.py)",
+        "    [0:03] Turn 3: read_file(c.py)",
+    ]
 
 
-def test_turn_compaction_resets_after_a_non_turn_line():
-    """A phase or halt between turns starts a fresh line, not an overwrite."""
+def test_identical_consecutive_turn_lines_collapse_into_one_row():
+    """A judge repeating the exact same read collapses, counted, not stacked."""
     out = io.StringIO()
-    renderer = ProgressRenderer(stream=out, color=True)
+    renderer = ProgressRenderer(stream=out, color=True, window=10)
     renderer("    [0:01] Turn 1: read_file(a.py)")
-    renderer("  Validating (pre-execute): security")
-    renderer("    [0:02] Turn 2: read_file(b.py)")
-    rendered = out.getvalue()
-    assert rendered.count("\x1b[1A") == 0
+    renderer("    [0:02] Turn 2: read_file(a.py)")
+    renderer("    [0:02] Turn 2: read_file(a.py)")
+    renderer("    [0:02] Turn 2: read_file(a.py)")
+    assert renderer.visible_lines() == [
+        "    [0:01] Turn 1: read_file(a.py)",
+        "    [0:02] Turn 2: read_file(a.py)  (×3)",
+    ]
 
 
-def test_reset_prevents_overwriting_another_writers_output():
+def test_verdict_line_stays_visible_after_later_turns_arrive():
+    """A verdict reached mid-run survives later turns instead of being
+    overwritten by the very next read (the core #300 complaint)."""
     out = io.StringIO()
-    renderer = ProgressRenderer(stream=out, color=True)
+    renderer = ProgressRenderer(stream=out, color=True, window=10)
+    renderer("    architecture: started")
+    renderer("    ⚠️ architecture: warn — layering drifted")
+    renderer("    architecture: finished")
+    renderer("    [0:04] Turn 5: read_file(x.py)")
+    renderer("    [0:05] Turn 6: read_file(y.py)")
+    visible = renderer.visible_lines()
+    assert "    ⚠️ architecture: warn — layering drifted" in visible
+    assert "    architecture: finished" in visible
+
+
+def test_window_scrolls_oldest_line_out_once_full():
+    out = io.StringIO()
+    renderer = ProgressRenderer(stream=out, color=True, window=3)
+    renderer("  Coder dispatched")
+    renderer("    [0:01] Turn 1: read_file(a.py)")
+    renderer("    [0:02] Turn 2: read_file(b.py)")
+    renderer("    [0:03] Turn 3: read_file(c.py)")
+    # Four distinct events, a window of three: the oldest has scrolled off.
+    assert renderer.visible_lines() == [
+        "    [0:01] Turn 1: read_file(a.py)",
+        "    [0:02] Turn 2: read_file(b.py)",
+        "    [0:03] Turn 3: read_file(c.py)",
+    ]
+
+
+def test_reset_clears_the_window():
+    out = io.StringIO()
+    renderer = ProgressRenderer(stream=out, color=True, window=10)
     renderer("    [0:01] Turn 1: read_file(a.py)")
     renderer.reset()
+    assert renderer.visible_lines() == []
     renderer("    [0:02] Turn 2: read_file(b.py)")
-    assert "\x1b[1A" not in out.getvalue()
+    assert renderer.visible_lines() == ["    [0:02] Turn 2: read_file(b.py)"]
+
+
+def test_default_window_size_prefers_an_explicit_override(monkeypatch):
+    monkeypatch.setenv("SNODO_WATCH_WINDOW", "7")
+    assert default_window_size(io.StringIO()) == 7
+
+
+def test_default_window_size_ignores_a_non_numeric_override(monkeypatch):
+    monkeypatch.setenv("SNODO_WATCH_WINDOW", "not-a-number")
+    with patch("shutil.get_terminal_size", return_value=os.terminal_size((80, 24))):
+        assert default_window_size(io.StringIO()) == 20
+
+
+def test_default_window_size_scales_with_terminal_height(monkeypatch):
+    """Not a hard-coded number: a taller terminal earns a bigger window."""
+    monkeypatch.delenv("SNODO_WATCH_WINDOW", raising=False)
+    with patch("shutil.get_terminal_size", return_value=os.terminal_size((80, 50))):
+        assert default_window_size(io.StringIO()) == 46
+
+
+def test_default_window_size_has_a_floor_on_a_short_terminal(monkeypatch):
+    """A short terminal still gets more than one line, reachable via override."""
+    monkeypatch.delenv("SNODO_WATCH_WINDOW", raising=False)
+    with patch("shutil.get_terminal_size", return_value=os.terminal_size((80, 5))):
+        assert default_window_size(io.StringIO()) == 5
 
 
 def _builder_with_verbose(verbose=True):
