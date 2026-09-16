@@ -44,6 +44,22 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A coder can now say, in structured terms, what a run did and how it ended —
+  and the engine has a shape to receive it. `snodo/coders/report.py` (new)
+  declares `CoderReport`: the files a coder believes it created/modified/
+  deleted, how far it got (turns used against available, tokens against the
+  window, wall time — whichever it actually knows), and why it stopped from a
+  closed set (`completed`, `turn_budget`, `context_budget`, `provider_fault`,
+  `abandoned`). This ticket adds only the shape: no adapter fills it in yet and
+  nothing reads it (ADR 048). Every field is optional — a report is best-effort
+  evidence from a non-deterministic participant, so a coder that did the work and
+  forgot to report is a normal, valid outcome, and a malformed report is discarded
+  with a log line by `parse_coder_report`, never a halt. The type carries no
+  verdict field and cannot gain one: the worktree stays the only authority on what
+  was written and nothing a coder reports may cause a pass — a coder that reports
+  nothing is indistinguishable, to any decision, from one that reports.
+  (Fixes #315)
+
 - The strict `llm` config is now pinned against the things snodo itself ships
   and writes. ADR 046 made an unknown `llm` key a `ConfigLoadError`, and
   nothing proved that what the tooling produces still loads under that

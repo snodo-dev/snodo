@@ -224,6 +224,20 @@ for another (Fixes #311). The declaration is pinned by
 `test_every_adapter_declares_its_honoured_settings`, so a new adapter cannot escape
 the check by forgetting it.
 
+The same declaration mechanism reaches one level up with the coder **report**
+(`snodo/coders/report.py`, ADR 048): a structured account of what a run did, how
+far it got, and why it stopped, so the engine no longer reconstructs that from a
+prose tail. It is declared here as a *shape only* — no adapter fills it in yet and
+nothing reads it; later tickets do those. Its two properties are load-bearing and
+pinned by `test_coder_report_shape.py`: every field is optional (a coder may do the
+work and forget to report, and absence is never an error), and a malformed report is
+discarded with a log line, never a halt. Above all it is **evidence, never a
+verdict**: the type carries no pass/severity/status field, the worktree stays the
+only authority on what was written, and nothing a coder says may cause a pass — so
+the vocabulary of stop reasons is fixed now, before its first reader exists, rather
+than accreting one value per incident.
+
+
 ---
 
 ## 6. Immediate actions
