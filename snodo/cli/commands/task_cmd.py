@@ -648,19 +648,25 @@ def task_show_command(args) -> int:
     print("Inspect:")
     print(f"  {followup.session_inspect(session.session_id)}")
     if isinstance(halt_entry, dict):
-        # A pending decision is live state: it can be consumed by `snodo
-        # authorize` after the halt was recorded, so the escape hatch is named
-        # from the session as it is now, not from the flag stored at halt time.
-        # A session that cannot be read yields no decision, which is the safe
-        # direction — never promise a hatch that could not be confirmed
-        # (Fixes #288).
-        from snodo.infrastructure.decisions import pending_adjudicable_decision
+        # A pending decision or retry eligibility is live state: it can be
+        # consumed or exhausted after the halt was recorded, so suggestions are
+        # named from the session as it is now, not from flags stored at halt
+        # time. A session that cannot be read yields no commands, which is the
+        # safe direction — never promise a command that could not be confirmed
+        # (Fixes #288, Fixes #301).
+        from snodo.infrastructure.decisions import (
+            pending_adjudicable_decision,
+            pending_retryable_task,
+        )
         adjudicable_now = pending_adjudicable_decision(session, task_id) is not None
-        shaped = {**halt_entry, "adjudicable": adjudicable_now}
+        retryable_now = pending_retryable_task(session, task_id)
+        shaped = {**halt_entry, "adjudicable": adjudicable_now, "retryable": retryable_now}
         for cmd in followup.halt_followup(shaped, task_id):
             print(f"  {cmd}")
     elif isinstance(failure_entry, dict):
-        print(f"  {followup.task_retry(task_id)}")
+        from snodo.infrastructure.decisions import pending_retryable_task
+        if pending_retryable_task(session, task_id):
+            print(f"  {followup.task_retry(task_id)}")
     return 0
 
 
