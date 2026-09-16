@@ -13,7 +13,7 @@ import sys
 import warnings
 from typing import Optional
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from snodo.paths import resolve_home
 from snodo.config import ProviderConfig, DEFAULT_PROVIDER_CATALOG, DEFAULT_MODEL  # noqa: F401
@@ -44,6 +44,8 @@ class ConfigLoadError(Exception):
 
 
 class CoderConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     model: Optional[str] = Field(default=None, description="Coder LLM model. None = use default_model.")
     max_tokens: int = Field(default=_CODER_MAX_TOKENS_DEFAULT, ge=1)
     max_tool_turns: int = Field(default=_CODER_MAX_TOOL_TURNS_DEFAULT, ge=1, le=200)
@@ -56,32 +58,44 @@ class CoderConfig(BaseModel):
 
 
 class ValidatorConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     max_tokens: int = Field(default=_VALIDATOR_MAX_TOKENS_DEFAULT, ge=1)
     max_tool_turns: int = Field(default=_VALIDATOR_MAX_TOOL_TURNS_DEFAULT, ge=1, le=200)
     model: Optional[str] = Field(default=None, description="Validator LLM model. None = use default_model.")
 
 
 class ValidatorLLMConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     model: Optional[str] = Field(default=None, description="Validator LLM model. None = use default_model.")
 
 
 class ClassifierConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     model: Optional[str] = Field(default=None, description="Classifier LLM model. None = use default_model.")
     max_tokens: int = Field(default=500, ge=1, description="Max tokens for classifier completion")
     temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Temperature for classifier completion")
 
 
 class ReconConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     num_agents: int = Field(default=1, ge=1, description="Default number of agents for recon fan-out")
     models: list[str] = Field(default_factory=list, description="Ordered model priority list for recon")
 
 
 class WaveConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     max_age_days: int = Field(default=14, ge=1, description="Hard expiry age for a wave")
     max_idle_days: int = Field(default=5, ge=1, description="Idle timeout before wave closes")
 
 
 class LlmConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     num_retries: int = Field(default=3, ge=0, le=10, description="litellm retry count for transient errors")
     coder: CoderConfig = Field(default_factory=CoderConfig)
     validator: ValidatorConfig = Field(default_factory=ValidatorConfig)
@@ -148,8 +162,52 @@ def _migrate_wave_classifier_keys(llm_data: dict) -> dict:
     return llm_data
 
 
+def _valid_keys_for_section(section: str) -> list[str]:
+    """The field names an ``llm.<section>`` block accepts, for error messages."""
+    field = LlmConfig.model_fields.get(section)
+    if field is None:
+        return []
+    return sorted(getattr(field.annotation, "model_fields", {}))
+
+
+def _format_unknown_keys(error: ValidationError) -> Optional[str]:
+    """Name every unknown ``llm`` key with the section that owns it.
+
+    Returns one line per key, or ``None`` when the failure is not (only)
+    unknown keys — the caller then falls back to the generic validation error.
+    """
+    unknown = []
+    for err in error.errors():
+        if err.get("type") != "extra_forbidden":
+            return None
+        loc = err.get("loc", ())
+        unknown.append((loc[0] if len(loc) > 1 else None, loc[-1]))
+    if not unknown:
+        return None
+
+    lines = []
+    for section, key in unknown:
+        if section is None:
+            lines.append(f"  llm.{key}: not a recognized key")
+        else:
+            valid = ", ".join(_valid_keys_for_section(section))
+            lines.append(
+                f"  llm.{section}.{key}: '{key}' is not a setting of "
+                f"section 'llm.{section}' (valid: {valid})"
+            )
+    return "\n".join(lines)
+
+
 def load_llm_config(config_dir: Optional[str] = None) -> LlmConfig:
     """Load ``llm`` section from config.yml, returning defaults when absent.
+
+    The ``llm`` section is owned end to end by the engine, so a key that is not
+    a field of one of its models is rejected with a ``ConfigLoadError`` naming
+    the key and the section rather than silently discarded.  A typo and a knob
+    that was never implemented are otherwise indistinguishable, and the operator
+    only learns the setting has no effect by watching it do nothing.  Keys that
+    moved are migrated before validation (see ``_migrate_wave_classifier_keys``)
+    so a supported migration is never reported as an unknown key.
 
     Args:
         config_dir: Optional override for the snodo home directory.
@@ -158,8 +216,9 @@ def load_llm_config(config_dir: Optional[str] = None) -> LlmConfig:
         LlmConfig populated from config.yml when present, otherwise defaults.
 
     Raises:
-        ConfigLoadError: If config.yml exists but contains malformed YAML
-            or fails pydantic validation.
+        ConfigLoadError: If config.yml exists but contains malformed YAML,
+            an unknown key under ``llm``, or another pydantic validation
+            failure.
     """
     import yaml
     from pathlib import Path as _Path
@@ -188,6 +247,13 @@ def load_llm_config(config_dir: Optional[str] = None) -> LlmConfig:
     try:
         return LlmConfig(**llm_data)
     except ValidationError as e:
+        unknown = _format_unknown_keys(e)
+        if unknown is not None:
+            raise ConfigLoadError(
+                f"Unknown key(s) in {config_path}:\n{unknown}\n"
+                "Remove the key or correct its spelling; a key that is not "
+                "listed is silently inert."
+            ) from e
         raise ConfigLoadError(
             f"Invalid config in {config_path}: {e}"
         ) from e
