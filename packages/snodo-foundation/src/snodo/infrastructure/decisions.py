@@ -83,6 +83,50 @@ def pending_adjudicable_decision(session: Any, task_id: str) -> Optional[Dict[st
     return proposal if is_adjudicable_proposal(proposal) else None
 
 
+def pending_retryable_task(session: Any, task_id: str, max_retries: int = 3) -> bool:
+    """True when ``snodo run --retry <task_id>`` would accept this task.
+
+    A retry requires structured failure context (or a non-environment halt
+    record) and an attempt count below the retry limit. Operational halts
+    (environment_error, internal_error, validator_error) and exhausted retries
+    are refused by the retry path (Fixes #301).
+    """
+    if not session:
+        return False
+    decisions = getattr(getattr(session, "checkpoint", None), "decisions", None) or {}
+    halt = decisions.get("halt", {})
+    if isinstance(halt, dict):
+        record = halt.get(task_id)
+        if isinstance(record, dict):
+            halt_outcome = record.get("final_decision") or record.get("halt_type")
+            if halt_outcome in (
+                "environment_error",
+                "internal_error",
+                "validator_error",
+            ):
+                return False
+
+    task_failure = decisions.get("task_failure", {})
+    if isinstance(task_failure, dict) and task_id in task_failure:
+        failure = task_failure[task_id]
+        if isinstance(failure, dict):
+            attempt = failure.get("attempt", 0)
+            return attempt < max_retries
+
+    if isinstance(halt, dict):
+        record = halt.get(task_id)
+        if isinstance(record, dict) and record.get("task_id") == task_id:
+            if record.get("status") == "blocked":
+                halt_outcome = record.get("final_decision") or record.get("halt_type")
+                if halt_outcome not in (
+                    "environment_error",
+                    "internal_error",
+                    "validator_error",
+                ):
+                    return True
+    return False
+
+
 class DecisionRecord:
     """JWT-backed human adjudication record.
 

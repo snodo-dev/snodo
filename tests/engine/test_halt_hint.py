@@ -41,10 +41,6 @@ class TestBlockerFixTargets:
     def test_recovery_stalled_is_spec_or_policy(self):
         assert _blocker_fix_targets("recovery_stalled", "unknown", None) == ["spec", "policy"]
 
-    def test_execution_error_is_config(self):
-        """A coder backend failure is a config problem, not code/spec/policy."""
-        assert _blocker_fix_targets("execution_error", "unknown", None) == ["config"]
-
     def test_post_execute_is_code(self):
         assert _blocker_fix_targets("blocked", "post_execute", None) == ["code"]
 
@@ -113,12 +109,12 @@ class TestBlockerHintContent:
         assert "internal" in hint
         assert "protocol.yml" not in hint
 
-    def test_execution_error_hint_names_coder_configuration(self):
-        """A coder backend failure tells the operator to fix the coder config,
-        not to inspect engine logs (Fixes #195)."""
-        hint = _build_hint("blocker", "execution_error", "execute", None)
-        assert "coder configuration" in hint
-        assert "--coder" in hint
+    def test_execution_error_hint_names_real_cause_not_coder_configuration(self):
+        """An operational coder fault names the real cause, not coder config (Fixes #301)."""
+        hint = _build_hint("environment_error", "execution_error", "execute", None, reason="LLM call failed: provider returned 401")
+        assert "provider returned 401" in hint
+        assert "coder configuration" not in hint
+        assert "--coder" not in hint
         assert "internal" not in hint
         assert "inspect the logs" not in hint
 

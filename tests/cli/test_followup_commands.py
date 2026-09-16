@@ -495,6 +495,7 @@ class TestHaltFooterSuggestions:
             "validator_results": [
                 {"validator_id": "sec", "severity": "warn", "justification": "x"},
             ],
+            "retryable": True,
         }
         tree = ClosureNode(task_id="task_abc", depth=0, outcome="escalate",
                            halt_payload=payload)
@@ -529,6 +530,7 @@ class TestHaltFooterSuggestions:
             "task_id": "task_no_decision",
             "task_spec": "do stuff",
             "validator_results": [],
+            "retryable": True,
             # No `adjudicable` key: no decision record exists for this task.
         }
         tree = ClosureNode(task_id="task_no_decision", depth=0, outcome="escalate",
@@ -555,6 +557,7 @@ class TestHaltFooterSuggestions:
             "task_spec": "do stuff",
             "validator_results": [],
             "adjudicable": True,
+            "retryable": True,
         }
         tree = ClosureNode(task_id="task_has_decision", depth=0, outcome="escalate",
                            halt_payload=payload)
@@ -587,6 +590,7 @@ class TestHaltFooterSuggestions:
                 "action": "halt",
                 "warn_count": 0, "blocker_count": 1,
             },
+            "retryable": True,
         }
         tree = ClosureNode(task_id="task_blocked", depth=0, outcome="blocker",
                            halt_payload=payload)
@@ -594,6 +598,31 @@ class TestHaltFooterSuggestions:
 
         out = capsys.readouterr().out
         assert "snodo run --retry task_blocked" in out
+
+    def test_halt_without_retryable_does_not_offer_retry(self, capsys):
+        """A halt whose retry would be refused (e.g. operational halt or exhausted
+        retries) must not offer `snodo run --retry`."""
+        from snodo.engine.closure import ClosureNode
+
+        from snodo.cli.commands.run_cmd import _report_closure
+
+        payload = {
+            "halt_type": "environment_error",
+            "final_decision": "halt",
+            "status": "blocked",
+            "reason": "provider down",
+            "task_id": "task_env",
+            "task_spec": "do stuff",
+            "validator_results": [],
+        }
+        tree = ClosureNode(task_id="task_env", depth=0, outcome="halt",
+                           halt_payload=payload)
+        _report_closure(tree, {}, session_id="sess_xyz")
+
+        out = capsys.readouterr().out
+        assert "snodo run --retry" not in out
+        assert "snodo session show sess_xyz" in out
+        assert "snodo task show task_env" in out
 
     def test_halt_footer_no_retry_on_completed(self, capsys):
         from snodo.engine.closure import ClosureNode
