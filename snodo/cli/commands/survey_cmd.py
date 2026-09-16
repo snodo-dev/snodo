@@ -32,6 +32,13 @@ Survey works without an agent: with no model configured, with the call
 failing, or on --no-agent, the deterministic result stands and every
 judgement that was not made is listed in the output.
 
+While the boundary-judgement call is in flight, a one-line indicator on stderr
+names the agent being waited on and erases itself when the call returns. The
+indicator is decoration, not output: it is written only when stdout is a
+terminal and never under --json, so the report and the machine interface are
+byte-for-byte what they were. It is an observer, funnelled through the engine's
+progress sink, so a broken indicator can never take the run down.
+
 Never writes to the repository — not the protocol, not a proposal file, not a
 suggested diff, and it offers no reconciliation: drift is reported to a person
 who decides. Never infers governance requirements from absence of practices.
@@ -136,6 +143,80 @@ def build_survey_judge(project_root: Path, agent_mode):
 
     judge.model = model  # type: ignore[attr-defined]
     return judge
+
+
+# ---------------------------------------------------------------------------
+# The waiting indicator: decoration on stderr, never output
+#
+# The agent call can take tens of seconds on a slow or unreachable provider,
+# and until this existed the command looked identical whether it was thinking,
+# stalled, or hung. The indicator names what is being waited on and erases
+# itself when the call returns. It is not output: it is written only when
+# stdout is a terminal and never under --json, so a pipe or a machine consumer
+# receives exactly the bytes it received before. It reaches the terminal
+# through the engine's ProgressSink, so a broken indicator is reported once
+# and can never take the run down.
+# ---------------------------------------------------------------------------
+
+
+class _SurveyWaitingIndicator:
+    """A transient, in-place one-line indicator written to *stream*.
+
+    Writes no newline, so the next line the command prints lands where the
+    indicator was; an empty message erases it. This is a callback, not a
+    context manager: the ProgressSink guard owns the failure handling.
+    """
+
+    def __init__(self, stream) -> None:
+        self._stream = stream
+        self._printed = 0
+
+    def __call__(self, message: str) -> None:
+        if message:
+            line = message.ljust(self._printed)
+            self._stream.write("\r" + line)
+            self._printed = max(self._printed, len(line))
+        else:
+            self._stream.write("\r" + " " * self._printed + "\r")
+            self._printed = 0
+        self._stream.flush()
+
+
+def _survey_progress_sink(json_out: bool):
+    """The engine progress sink for the waiting indicator, or None.
+
+    None is the whole story on ``--json`` and when stdout is not a terminal:
+    the indicator is decoration, and neither a machine consumer nor a pipe may
+    receive a byte it does not receive today.
+    """
+    if json_out or not getattr(sys.stdout, "isatty", lambda: False)():
+        return None
+    from snodo.engine.progress import ensure_progress_sink
+
+    return ensure_progress_sink(
+        _SurveyWaitingIndicator(sys.stderr), "survey progress"
+    )
+
+
+def _judge_with_indicator(judge, progress_sink):
+    """Wrap *judge* so the waiting indicator is shown for the duration of its call."""
+    if judge is None or progress_sink is None:
+        return judge
+    model = getattr(judge, "model", None)
+    message = (
+        f"Waiting for the survey agent (model {model}) to judge boundaries…"
+        if model
+        else "Waiting for the survey agent to judge boundaries…"
+    )
+
+    def consult(dossier: Dict[str, Any]):
+        progress_sink(message)
+        try:
+            return judge(dossier)
+        finally:
+            progress_sink("")
+
+    return consult
 
 
 def _judgement_prompt(dossier: Dict[str, Any]) -> str:
@@ -270,10 +351,18 @@ def survey_command(args) -> int:
         judge_mode = "auto"
     judge = build_survey_judge(project_root, judge_mode)
 
+    # While the agent call is in flight the command is otherwise silent; the
+    # indicator on stderr says what is being waited on. It is decoration: off
+    # under --json and when stdout is not a terminal, so nothing downstream
+    # sees a new byte.
+    progress_sink = _survey_progress_sink(json_out)
+
     # Analyze the repository
     try:
         analysis = analyze_repository(
-            project_root, judge=judge, judge_mode=judge_mode
+            project_root,
+            judge=_judge_with_indicator(judge, progress_sink),
+            judge_mode=judge_mode,
         )
     except Exception as e:
         if json_out:
