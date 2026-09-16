@@ -292,6 +292,132 @@ class TestReadOnlyTools:
 
 
 # ------------------------------------------------------------------#
+# Terminal answer tests (Fixes #299)
+# ------------------------------------------------------------------#
+
+def _reading_response(narration: str, path: str):
+    """A turn where the agent narrates and keeps reading."""
+    from types import SimpleNamespace
+
+    tc = SimpleNamespace(
+        id=f"call_{path}",
+        function=SimpleNamespace(
+            name="read_file", arguments=json.dumps({"path": path})
+        ),
+    )
+    msg = SimpleNamespace(content=narration, tool_calls=[tc])
+    return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
+
+def _prose_response(text):
+    """A turn where the agent answers in prose (no tool calls)."""
+    from types import SimpleNamespace
+
+    msg = SimpleNamespace(content=text, tool_calls=None)
+    return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
+
+class TestTerminalAnswer:
+    def test_out_of_turns_agent_asked_once_without_tools(self, project_with_snodo):
+        """An agent still calling tools on its last budgeted turn is asked
+        once more with the read tools withdrawn, and that answer — not the
+        narration from earlier turns — is what gets returned (Fixes #299)."""
+        from snodo.recon import _ANSWER_ONLY_INSTRUCTION, call_agent
+
+        answer = "The worker dispatches tasks to validators in bounded turns."
+        responses = [
+            _reading_response("Let me explore the codebase structure first.", "a.py"),
+            _reading_response("Now let me read the Worker code.", "b.py"),
+            _prose_response(answer),
+        ]
+
+        with patch("litellm.completion", side_effect=responses) as mock_comp:
+            res = call_agent(
+                project_root=project_with_snodo,
+                model="test/model",
+                query="What does the worker do?",
+                paths=["./"],
+                agent_label="agent1",
+                max_turns=2,
+            )
+
+        assert res.error is None
+        # The answer is what gets returned, and no narration from earlier
+        # turns appears in the result.
+        assert res.result == answer
+        assert "explore" not in res.result
+        assert "Now let me read" not in res.result
+
+        # Reading turns were offered the read-only tools.
+        assert mock_comp.call_count == 3
+        first_kwargs = mock_comp.call_args_list[0].kwargs
+        assert "tools" in first_kwargs
+
+        # The third request is the terminal ask: no tools offered, and the
+        # instruction appended as the last user turn.
+        final_kwargs = mock_comp.call_args.kwargs
+        assert "tools" not in final_kwargs
+        assert final_kwargs["messages"][-1] == {
+            "role": "user",
+            "content": _ANSWER_ONLY_INSTRUCTION,
+        }
+
+    def test_terminal_ask_with_empty_answer_keeps_empty_result_error(
+        self, project_with_snodo,
+    ):
+        """An agent that still produces nothing after being asked directly
+        keeps the existing empty-result error path (Fixes #299)."""
+        from snodo.recon import call_agent
+
+        responses = [
+            _reading_response("Let me check the specs.", "a.py"),
+            _prose_response(""),
+        ]
+
+        with patch("litellm.completion", side_effect=responses):
+            res = call_agent(
+                project_root=project_with_snodo,
+                model="test/model",
+                query="What does the worker do?",
+                paths=["./"],
+                agent_label="agent1",
+                max_turns=1,
+            )
+
+        assert res.error == "Agent returned empty result"
+        assert res.result == ""
+
+    def test_natural_conclusion_returns_answer_not_accumulated_narration(
+        self, project_with_snodo,
+    ):
+        """An agent that stops reading on its own is done: its final prose is
+        the result; narration from earlier turns is not folded into it."""
+        from snodo.recon import call_agent
+
+        answer = "The module defines the recon dispatch contract."
+        responses = [
+            _reading_response("I'll explore the codebase structure first.", "a.py"),
+            _prose_response(answer),
+        ]
+
+        with patch("litellm.completion", side_effect=responses) as mock_comp:
+            res = call_agent(
+                project_root=project_with_snodo,
+                model="test/model",
+                query="What is in this module?",
+                paths=["./"],
+                agent_label="agent1",
+                max_turns=10,
+            )
+
+        assert res.error is None
+        assert res.result == answer
+        assert "explore" not in res.result
+        # Concluded early — no terminal ask was needed.
+        assert mock_comp.call_count == 2
+
+
+# ------------------------------------------------------------------#
 # CLI completion and API base resolution tests
 # ------------------------------------------------------------------#
 
