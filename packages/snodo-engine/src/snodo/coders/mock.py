@@ -143,6 +143,12 @@ class MockAdapter(CoderAdapter):
     Useful for fast, reliable unit tests.
     """
 
+    #: The mock makes no LLM call, so no model or knob setting can govern it:
+    #: ``model`` is stored for interface compliance and never read (its
+    #: ``_bare_model`` is always "" — there is no model to attribute). Only
+    #: ``mock_files`` changes what it does (Fixes #311).
+    honoured_settings: frozenset[str] = frozenset({"mock_files"})
+
     def __init__(
         self,
         mock_files: Optional[list] = None,

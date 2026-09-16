@@ -353,6 +353,26 @@ def test_declared_capabilities_are_present_on_every_adapter(name):
         )
 
 
+@pytest.mark.parametrize("name", sorted(CODER_REGISTRY))
+def test_every_adapter_declares_its_honoured_settings(name):
+    """Every registered adapter declares which settings it actually reads.
+
+    The inert-setting report (Fixes #311) can only be as good as these
+    declarations, and only the adapter knows whether a stored value is ever
+    read. An adapter that declares nothing is unknown, and the report stays
+    silent on unknown — so silence here would re-open the exact blind spot
+    #311 closes. Catch the omission at the branch, the same way
+    ``coder_name`` is caught above.
+    """
+    declared = getattr(CODER_REGISTRY[name], "honoured_settings", None)
+    assert isinstance(declared, frozenset), (
+        f"{name} declares no 'honoured_settings' frozenset; a coder that "
+        "does not say what it reads cannot be checked against what the "
+        "operator set (snodo/coders/inert_settings.py, #311)."
+    )
+    assert all(isinstance(item, str) for item in declared)
+
+
 def test_progress_callback_is_injected_unconditionally():
     """The engine sets progress_callback unconditionally, even on adapters
     that never emit progress — the absence is never silent (#68)."""

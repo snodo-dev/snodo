@@ -1219,6 +1219,10 @@ def build_protocol_graph(
         shell_mcp = ShellMCP(mcp_root)
 
     from snodo.coders import get_coder, resolve_coder_name
+    from snodo.coders.inert_settings import (
+        explicit_coder_settings,
+        report_inert_coder_settings,
+    )
     from snodo.infrastructure.config import load_llm_config
     llm_cfg = load_llm_config()
 
@@ -1247,6 +1251,13 @@ def build_protocol_graph(
         }
         if mode_coder_config:
             coder_kwargs.update(mode_coder_config)
+        # The pairing of coder and settings is decided HERE, so an explicitly
+        # configured setting the chosen coder cannot honour is named now, not
+        # after a run has shown it had no effect (Fixes #311).
+        report_inert_coder_settings(
+            resolved_name,
+            explicit_coder_settings(llm_cfg.coder, mode_coder_config),
+        )
         coder = get_coder(
             resolved_name,
             model=resolved_model,
