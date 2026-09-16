@@ -99,12 +99,15 @@ def _agent_is_configured(mgr, model: str) -> bool:
 def build_survey_judge(project_root: Path, agent_mode):
     """Build a judge callable for the analyzer, or None when no agent is available.
 
-    The agent is resolved the same way recon resolves one — the configured
-    recon models first, the default model otherwise — and the request goes
-    out through the recon machinery's read-only agent call.  The judge
-    returns None-verdicts itself when the call fails; the analyzer then
-    records every judgement as not made.  ``judge.model`` says which agent
-    was asked.
+    The agents are resolved the same way recon resolves them — the configured
+    recon models in order, the default model otherwise — and the request goes
+    out through the recon machinery's read-only agent call.  The whole
+    configured list is one failover chain: a model that fails or returns
+    nothing hands off to the next, and the first that answers is the judge.
+    A model that answered is never retried.  The judge returns None-verdicts
+    itself when every call fails; the analyzer then records every judgement as
+    not made.  ``judge.model`` names the model that answered (or, before the
+    call, the first one to be tried).
     """
     if agent_mode == "off":
         return None
@@ -114,26 +117,37 @@ def build_survey_judge(project_root: Path, agent_mode):
 
     mgr = ConfigManager()
     recon_cfg = mgr.load().get("llm", {}).get("recon", {})
-    agents = resolve_recon_agents(
+    lanes = resolve_recon_agents(
         recon_models=recon_cfg.get("models", []),
         recon_default_n=recon_cfg.get("num_agents", 1),
     )
-    model = resolve_agent_model(agents[0])
-    if agent_mode != "force" and not _agent_is_configured(mgr, model):
-        return None
+
+    chain = []
+    for lane in lanes:
+        for candidate in lane:
+            resolved = resolve_agent_model(candidate)
+            if resolved not in chain:
+                chain.append(resolved)
+
+    if agent_mode != "force":
+        chain = [model for model in chain if _agent_is_configured(mgr, model)]
+        if not chain:
+            return None
 
     def judge(dossier: Dict[str, Any]):
-        from snodo.recon import call_agent
+        from snodo.recon import call_agent_chain
 
         prompt = _judgement_prompt(dossier)
-        result = call_agent(
+        result = call_agent_chain(
             str(project_root),
-            model,
+            chain,
             prompt,
             paths=["./"],
             agent_label="survey-judge",
             max_turns=_JUDGE_MAX_TURNS,
         )
+        if getattr(result, "model", None):
+            judge.model = result.model
         if getattr(result, "error", None):
             return {"reason": f"the agent call failed: {result.error}"}
         verdicts = _parse_verdicts(getattr(result, "result", "") or "")
@@ -141,7 +155,8 @@ def build_survey_judge(project_root: Path, agent_mode):
             return {"reason": "the agent returned no parseable judgement verdicts"}
         return {"verdicts": verdicts}
 
-    judge.model = model  # type: ignore[attr-defined]
+    judge.model = chain[0]  # type: ignore[attr-defined]
+    judge.models = chain  # type: ignore[attr-defined]
     return judge
 
 

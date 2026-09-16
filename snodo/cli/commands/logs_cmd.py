@@ -648,7 +648,14 @@ def _show_recon(project_root: str, recon_id: str) -> int:
     print(f"Query: {query}")
     print(f"Status: {status}")
     if agents:
-        print(f"Agents: {', '.join(agents)}")
+        from snodo.recon import normalize_recon_agents
+        lanes = normalize_recon_agents(agents)
+        # A lane is a failover chain; name its head, and show the order when
+        # more than one model can be reached.
+        print(f"Agents: {', '.join(lane[0] for lane in lanes)}")
+        for lane in lanes:
+            if len(lane) > 1:
+                print(f"  Failover order for {lane[0]}: {' → '.join(lane)}")
     print()
 
     for r in results:
@@ -656,8 +663,14 @@ def _show_recon(project_root: str, recon_id: str) -> int:
         model = r.get("model", "—")
         result_text = r.get("result", "").strip()
         error = r.get("error", "")
+        attempts = r.get("attempts", [])
 
         print(f"--- {agent} ({model}) ---")
+        for attempt in attempts:
+            attempt_model = attempt.get("model", "—")
+            attempt_error = attempt.get("error", None)
+            if attempt_error:
+                print(f"  tried {attempt_model}: {attempt_error}")
         if error:
             print(f"Error: {error}")
         if result_text:

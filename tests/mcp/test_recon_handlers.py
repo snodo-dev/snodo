@@ -45,7 +45,7 @@ class TestHandleRecon:
             MockCM.return_value.load.return_value = {
                 "llm": {"recon": {"models": ["default"], "num_agents": 1}}
             }
-            mock_rra.return_value = ["default"]
+            mock_rra.return_value = [["default"]]
             MockRM.return_value.submit.return_value = "recon-abc123"
             result = handler.handle_recon({"query": "find auth code", "paths": ["./"]})
         assert result["recon_id"] == "recon-abc123"
@@ -59,7 +59,7 @@ class TestHandleRecon:
              patch("snodo.recon.ReconManager") as MockRM, \
              patch("snodo.recon.resolve_recon_agents") as mock_rra:
             MockCM.return_value.load.return_value = {}
-            mock_rra.return_value = ["default"]
+            mock_rra.return_value = [["default"]]
             MockRM.return_value.submit.side_effect = ReconError("submit failed")
             with pytest.raises(MCPError, match="submit failed"):
                 handler.handle_recon({"query": "find auth", "paths": ["./"]})
@@ -71,7 +71,7 @@ class TestHandleRecon:
              patch("snodo.recon.ReconManager") as MockRM, \
              patch("snodo.recon.resolve_recon_agents") as mock_rra:
             MockCM.return_value.load.return_value = {}
-            mock_rra.return_value = ["claude-sonnet", "gemini"]
+            mock_rra.return_value = [["claude-sonnet"], ["gemini"]]
             MockRM.return_value.submit.return_value = "recon-xy"
             handler.handle_recon({
                 "query": "what is X",
@@ -88,7 +88,7 @@ class TestHandleRecon:
              patch("snodo.recon.ReconManager") as MockRM, \
              patch("snodo.recon.resolve_recon_agents") as mock_rra:
             MockCM.return_value.load.return_value = {}
-            mock_rra.return_value = ["m1", "m2", "m3"]
+            mock_rra.return_value = [["m1"], ["m2"], ["m3"]]
             MockRM.return_value.submit.return_value = "recon-3"
             handler.handle_recon({"query": "q", "paths": ["./"], "num_agents": 3})
         call_kwargs = mock_rra.call_args[1]

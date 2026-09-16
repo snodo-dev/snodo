@@ -70,7 +70,7 @@ class TestReconManagerSubmit:
         assert state["recon_id"] == recon_id
         assert state["query"] == "What does this code do?"
         assert state["paths"] == ["./"]
-        assert state["agents"] == ["default"]
+        assert state["agents"] == [["default"]]
         assert state["status"] == "running"
         assert "created_at" in state
 
@@ -80,7 +80,7 @@ class TestReconManagerSubmit:
 
         recon_dir = Path(recon_mgr.recons_dir) / recon_id
         state = json.loads((recon_dir / "state.json").read_text())
-        assert state["agents"] == agents
+        assert state["agents"] == [[agent] for agent in agents]
 
     def test_submit_starts_background_worker(self, project_with_snodo, monkeypatch):
         class FakeThread:
@@ -109,7 +109,7 @@ class TestReconManagerSubmit:
 
         assert len(fake_threads) == 1
         assert fake_threads[0].started is True
-        assert fake_threads[0].args == (recon_id, "query", ["./"], ["default"])
+        assert fake_threads[0].args == (recon_id, "query", ["./"], [["default"]])
 
 
 class TestReconManagerGetStatus:
@@ -469,3 +469,180 @@ class TestReconDefectFixes:
             mock_comp.assert_called()
             call_kwargs = mock_comp.call_args.kwargs
             assert call_kwargs.get("api_base") == "https://custom.endpoint.ai/v1"
+
+
+# ------------------------------------------------------------------#
+# Model-list failover: the configured order means what it says
+# ------------------------------------------------------------------#
+
+class TestResolveReconAgentsPriority:
+    def test_single_agent_lane_carries_the_whole_list_in_order(self):
+        from snodo.recon import resolve_recon_agents
+
+        lanes = resolve_recon_agents(
+            recon_models=["m1", "m2", "m3"], recon_default_n=1,
+        )
+        assert lanes == [["m1", "m2", "m3"]]
+
+    def test_more_models_than_agents_warns_which_tail_is_unused(self, capsys):
+        from snodo.recon import resolve_recon_agents
+
+        lanes = resolve_recon_agents(
+            recon_models=["m1", "m2", "m3"], recon_default_n=2,
+        )
+        assert lanes == [["m1"], ["m2"]]
+        err = capsys.readouterr().err
+        assert "unused" in err and "m3" in err
+
+    def test_fewer_models_than_agents_warns_once_not_per_slot(self, capsys):
+        from snodo.recon import resolve_recon_agents
+
+        lanes = resolve_recon_agents(
+            requested_n=5, recon_models=["m1", "m2"], recon_default_n=1,
+        )
+        assert lanes == [["m1"], ["m2"]]
+        err = capsys.readouterr().err
+        assert err.count("Warning:") == 1
+        assert "only 2 recon model(s)" in err
+
+    def test_no_models_and_n_gt_1_warns_and_uses_default_once(self, capsys):
+        from snodo.recon import resolve_recon_agents
+
+        lanes = resolve_recon_agents(requested_n=3, recon_models=[], recon_default_n=1)
+        assert lanes == [["default"]]
+        assert "no recon models configured" in capsys.readouterr().err
+
+    def test_explicit_agents_is_fan_out_of_single_model_lanes(self):
+        from snodo.recon import resolve_recon_agents
+
+        lanes = resolve_recon_agents(
+            requested_n=2, recon_models=["m1", "m2", "m3"],
+            explicit_agents=["x", "y"],
+        )
+        assert lanes == [["x"], ["y"]]
+
+    def test_normalize_accepts_flat_and_lane_forms(self):
+        from snodo.recon import normalize_recon_agents
+
+        assert normalize_recon_agents(["m1", "m2"]) == [["m1"], ["m2"]]
+        assert normalize_recon_agents([["m1", "m2"], ["m3"]]) == [["m1", "m2"], ["m3"]]
+        assert normalize_recon_agents([]) == [["default"]]
+
+
+class TestCallAgentChain:
+    def _ok(self, model, result="answer"):
+        from snodo.recon import ReconResult
+        return ReconResult(agent="a", model=model, result=result)
+
+    def _fault(self, model):
+        from snodo.recon import ReconResult
+        return ReconResult(agent="a", model=model, result="", error="boom")
+
+    def test_first_model_returning_nothing_hands_off_to_the_second(self):
+        from snodo.recon import call_agent_chain
+
+        calls = []
+
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+            calls.append(model)
+            if model == "m1":
+                return self._fault("m1")
+            return self._ok("m2", result="second answer")
+
+        with patch("snodo.recon.call_agent", fake_call):
+            result = call_agent_chain("/tmp", ["m1", "m2"], "q", ["./"], "a")
+
+        assert calls == ["m1", "m2"]
+        assert result.result == "second answer"
+        assert result.error is None
+        assert result.model == "m2"
+        assert [(a.model, a.error) for a in result.attempts] == [
+            ("m1", "boom"), ("m2", None),
+        ]
+
+    def test_first_model_answering_means_the_second_is_never_called(self):
+        from snodo.recon import call_agent_chain
+
+        calls = []
+
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+            calls.append(model)
+            return self._ok(model, result="first answer")
+
+        with patch("snodo.recon.call_agent", fake_call):
+            result = call_agent_chain("/tmp", ["m1", "m2"], "q", ["./"], "a")
+
+        assert calls == ["m1"]
+        assert result.result == "first answer"
+        assert result.model == "m1"
+
+    def test_a_poor_answer_is_an_answer_and_is_not_retried(self):
+        from snodo.recon import call_agent_chain
+
+        calls = []
+
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+            calls.append(model)
+            return self._ok(model, result="i have no idea")
+
+        with patch("snodo.recon.call_agent", fake_call):
+            result = call_agent_chain("/tmp", ["m1", "m2"], "q", ["./"], "a")
+
+        assert calls == ["m1"]
+        assert result.result == "i have no idea"
+
+    def test_every_model_failing_reports_which_were_tried_and_why(self):
+        from snodo.recon import call_agent_chain
+
+        def fake_call(project_root, model, query, paths, agent_label, max_turns=10):
+            return self._fault(model)
+
+        with patch("snodo.recon.call_agent", fake_call):
+            result = call_agent_chain("/tmp", ["m1", "m2"], "q", ["./"], "a")
+
+        assert result.error is not None
+        assert "m1 (boom)" in result.error
+        assert "m2 (boom)" in result.error
+
+
+class TestReconManagerFailover:
+    def test_lane_failover_is_called_and_first_answer_wins(
+        self, project_with_snodo, monkeypatch
+    ):
+        monkeypatch.setattr(recon_module, "_threads", [])
+        mgr = ReconManager(project_with_snodo)
+        calls = []
+
+        def fake_chain(project_root, models, query, paths, agent_label, max_turns=10):
+            from snodo.recon import ReconResult
+            calls.append(list(models))
+            return ReconResult(agent=agent_label, model=models[-1], result="ok")
+
+        monkeypatch.setattr(recon_module, "call_agent_chain", fake_chain)
+        recon_id = mgr.submit("q", ["./"], agents=[["m1", "m2"]])
+        mgr.shutdown()
+
+        assert calls == [["m1", "m2"]]
+        results = mgr.get_results(recon_id)["results"]
+        assert results[0]["model"] == "m2"
+        assert results[0]["result"] == "ok"
+
+    def test_explicit_fan_out_calls_every_requested_agent(
+        self, project_with_snodo, monkeypatch
+    ):
+        monkeypatch.setattr(recon_module, "_threads", [])
+        mgr = ReconManager(project_with_snodo)
+        calls = []
+
+        def fake_chain(project_root, models, query, paths, agent_label, max_turns=10):
+            from snodo.recon import ReconResult
+            calls.append(list(models))
+            return ReconResult(agent=agent_label, model=models[0], result="ok")
+
+        monkeypatch.setattr(recon_module, "call_agent_chain", fake_chain)
+        recon_id = mgr.submit("q", ["./"], agents=[["m1"], ["m2"], ["m3"]])
+        mgr.shutdown()
+
+        assert sorted(calls) == [["m1"], ["m2"], ["m3"]]
+        results = mgr.get_results(recon_id)["results"]
+        assert len(results) == 3

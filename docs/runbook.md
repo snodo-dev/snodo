@@ -101,7 +101,7 @@ llm:
     temperature: 0.0                          # 0.0-2.0
   recon:
     num_agents: 1
-    models: []                                # ordered priority list
+    models: []                                # ordered failover list
   wave:
     max_age_days: 14
     max_idle_days: 5
@@ -297,7 +297,7 @@ This records the provenance in the audit log (who, when, unjudged by the engine)
 | `audit verify` | Verify the hash chain |
 | `job` / `logs` / `meta` | Background jobs: `list`, `status`, `logs`, `wait`, `cancel`; log streaming; usage |
 | `task` / `worktree` | Task branches and the git worktrees used for isolation |
-| `recon` | Fan out read-only agents to answer a question about the codebase |
+| `recon` | Fan out read-only agents to answer a question; `llm.recon.models` is an ordered failover list |
 | `models` / `config` | Model discovery; keys and settings |
 | `serve` | Run the protocol as an MCP server (stdio or SSE) |
 | `cloud` | `connect`, `disconnect`, `status` for audit sync |
