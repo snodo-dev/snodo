@@ -9,6 +9,25 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A gate run now ends on the gate host when it ends on the operator's. `make
+  gate` and `make gate-ci` ran `ssh` with no terminal and nothing tying the
+  remote process tree to the connection, so an interrupted gate, a dropped
+  link or a killed `make` left the remote pytest and its workers running with
+  no parent watching them. A few abandoned runs plus a few live ones
+  oversubscribed the host until forking a login shell took tens of seconds —
+  sshd still accepted connections, so the box answered ping but looked
+  unreachable over SSH. The gate now runs over a terminal (`ssh -tt`) so a
+  hangup reaches the remote process group, and `scripts/gate_remote.sh` (new)
+  traps that hangup and reaps the whole tree, including children that
+  daemonise (`snodo.jobs.runner.spawn_background` starts jobs in a new
+  session). The checks themselves, their order, the per-worktree gate
+  directory and the exit status are unchanged, and a clean gate prints exactly
+  what it always did. Concurrent gates are bounded rather than forbidden: two
+  `flock` slots per host, so several worktrees can still gate at once without
+  saturating it. (Fixes #304)
+
 ### Added
 
 - `snodo models --benchmark` times one fixed prompt against one model and

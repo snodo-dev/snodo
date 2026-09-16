@@ -149,6 +149,22 @@ deploy-docs: docs
 #   make gate-init   one-time (implied by the above): create the remote repo
 #
 # Override GATE_HOST / GATE_HOME to point somewhere else.
+#
+# A gate's remote work ends when the invocation that started it ends. The
+# session is run over a terminal (`ssh -tt`), so an interrupt, a dropped link
+# or a killed `make` hangs up the remote command, and the trap in
+# scripts/gate_remote.sh reaps its whole process tree — pytest and its xdist
+# workers — with the leader. The alternative, an explicit bound on the run,
+# would cut a slow gate short rather than a dead one; a pty hangup is what
+# actually reaches a process whose parent is gone. Nothing here changes what a
+# gate checks or the order it checks it in.
+#
+# Concurrency is bounded, not forbidden. Several worktrees gating at once is
+# the point of GATE_NAME; several taking the host down is not. GATE_SLOTS
+# gates share a host at once through flock slots under GATE_ROOT, so a burst
+# of abandoned-plus-live runs waits instead of oversubscribing the box until a
+# login shell takes tens of seconds. Waiting is silent; a clean gate prints
+# exactly what it always did.
 
 GATE_HOST ?= yprift01@192.168.0.104
 GATE_HOME ?= /home/yprift01
@@ -157,7 +173,15 @@ GATE_NAME ?= $(notdir $(CURDIR))
 GATE_DIR   = $(GATE_ROOT)/$(GATE_NAME)
 GATE_URL   = ssh://$(GATE_HOST)$(GATE_DIR)
 GATE_JOBS ?= 24
+GATE_SLOTS ?= 2
 GATE_PATH  = export PATH=$(GATE_HOME)/.local/bin:$$PATH
+# Environment the remote wrapper reads: where uv lives, where the shared flock
+# slots live (GATE_ROOT, shared by every worktree on the host), and the two
+# bounds. The recipe below has already cd'd into this worktree's GATE_DIR.
+GATE_ENV   = GATE_HOME=$(GATE_HOME) GATE_ROOT=$(GATE_ROOT) GATE_JOBS=$(GATE_JOBS) GATE_SLOTS=$(GATE_SLOTS)
+# -q keeps ssh's own "Connection closed" notice out of a run; the remote
+# wrapper supplies the terminal (`-tt`) the hangup needs.
+GATE_SSH   = ssh -q -tt $(GATE_HOST)
 
 .PHONY: gate gate-ci gate-init _gate-push
 
@@ -175,11 +199,13 @@ _gate-push:
 	fi
 	@git push -q -f $(GATE_URL) HEAD:refs/heads/main
 
+# The wrapper runs from the pushed HEAD, so it is always the same revision the
+# gate is testing; GATE_DIR is this worktree's checkout after _gate-push.
 gate: gate-init _gate-push
-	@ssh $(GATE_HOST) '$(GATE_PATH); cd $(GATE_DIR) && uv sync --all-extras -q && uv run pytest tests/ -q -n $(GATE_JOBS) && uv run ruff check . && uv run lint-imports && uv run python scripts/enforce_file_length.py && uv run python scripts/enforce_docs_coverage.py && uv run python scripts/enforce_vocabularies.py'
+	@$(GATE_SSH) '$(GATE_PATH); cd $(GATE_DIR) && $(GATE_ENV) bash scripts/gate_remote.sh gate'
 
 gate-ci: gate-init _gate-push
-	@ssh $(GATE_HOST) '$(GATE_PATH); cd $(GATE_DIR) && uv sync --all-extras -q && uv run pytest tests/ -m "" -n $(GATE_JOBS) --tb=short --timeout=60 --cov --cov-report=term-missing --cov-fail-under=75 && uv run ruff check . && uv run lint-imports && uv run python scripts/enforce_file_length.py && uv run python scripts/enforce_docs_coverage.py && uv run python scripts/enforce_vocabularies.py'
+	@$(GATE_SSH) '$(GATE_PATH); cd $(GATE_DIR) && $(GATE_ENV) bash scripts/gate_remote.sh gate-ci'
 
 # ──────────────────────────────────────────────
 # Agent worktrees
