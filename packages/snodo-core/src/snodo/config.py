@@ -13,6 +13,7 @@ import stat
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
 import yaml
 from pydantic import BaseModel, Field
@@ -78,6 +79,76 @@ DEFAULT_MODEL = "claude-sonnet-4-20250514"
 # errors), and vice versa.
 DEFAULT_CLOUD_API_URL = "https://api.snodo.dev"
 DEFAULT_TUNNEL_API_URL = "https://app.snodo.dev"
+DEFAULT_CLOUD_LIVENESS_URL = "https://app.snodo.dev/v1"
+
+
+def derive_liveness_url(api_url: str) -> str:
+    """Derive the liveness endpoint base URL from a cloud API URL.
+
+    The receiving side serves liveness at ``https://app.snodo.dev/v1/live/{id}``:
+    the data plane is versioned in place on the app origin, while audit ingest
+    stays on the API origin (``https://api.snodo.dev``).
+
+    Derivation rule:
+    1. If the hostname has an 'api' label or prefix (e.g. 'api.snodo.dev',
+       'api.staging.snodo.dev', 'api-staging.snodo.dev'), replace it with 'app'
+       to address the app origin of that deployment.
+    2. If the host does not carry the production shape (e.g. a localhost port,
+       an IP address, or a staging / self-hosted domain with no 'api' label),
+       leave the host and port unchanged so local and single-host setups work
+       without separate configuration.
+    3. Include the version segment ('/v1') in the path so the wire reaches the
+       versioned data plane.
+    """
+    cleaned = (api_url or "").strip()
+    if not cleaned:
+        cleaned = DEFAULT_CLOUD_API_URL
+
+    if "://" not in cleaned:
+        parsed = urlsplit(f"https://{cleaned}")
+        scheme = "https"
+    else:
+        parsed = urlsplit(cleaned)
+        scheme = parsed.scheme or "https"
+
+    hostname = (parsed.hostname or "").lower()
+    port = parsed.port
+
+    # Rule 1: Replace leading 'api.' or 'api-' or exact 'api' with 'app'.
+    if hostname.startswith("api."):
+        new_hostname = "app." + hostname[4:]
+    elif hostname.startswith("api-"):
+        new_hostname = "app-" + hostname[4:]
+    elif hostname == "api":
+        new_hostname = "app"
+    else:
+        # Rule 2: Leave non-production hosts unchanged.
+        new_hostname = hostname
+
+    userinfo = ""
+    if "@" in parsed.netloc:
+        userinfo = parsed.netloc.split("@", 1)[0] + "@"
+
+    if ":" in new_hostname and not new_hostname.startswith("["):
+        host_part = f"[{new_hostname}]"
+    else:
+        host_part = new_hostname
+
+    if port is not None:
+        netloc = f"{userinfo}{host_part}:{port}"
+    else:
+        netloc = f"{userinfo}{host_part}"
+
+    # Rule 3: Ensure /v1 version segment is in path.
+    raw_path = parsed.path.rstrip("/")
+    if raw_path.endswith("/v1"):
+        path = raw_path
+    elif raw_path:
+        path = f"{raw_path}/v1"
+    else:
+        path = "/v1"
+
+    return f"{scheme}://{netloc}{path}"
 
 
 def get_cloud_ingest_url(config: dict) -> str:
@@ -97,6 +168,29 @@ def get_cloud_tunnel_url(config: dict) -> str:
     ingest, which answers tunnel requests as malformed event batches.
     """
     return _cloud_url(config, "tunnel_api_url", DEFAULT_TUNNEL_API_URL)
+
+
+def get_cloud_liveness_url(config: dict) -> str:
+    """Return the liveness endpoint base URL.
+
+    Derives the app origin and /v1 version segment from ``cloud.api_url``
+    (one knob stays one knob). If an explicit ``cloud.liveness_url`` or
+    ``cloud.liveness_api_url`` override is configured, it is used as the
+    escape hatch.
+    """
+    cloud = config.get("cloud") if isinstance(config, dict) else None
+    if isinstance(cloud, dict):
+        for key in ("liveness_url", "liveness_api_url"):
+            override = cloud.get(key)
+            if isinstance(override, str) and override.strip():
+                ov = override.strip().rstrip("/")
+                parsed = urlsplit(ov)
+                if not parsed.path:
+                    return f"{ov}/v1"
+                return ov
+
+    api_url = get_cloud_ingest_url(config)
+    return derive_liveness_url(api_url)
 
 
 def _cloud_url(config: dict, key: str, default: str) -> str:

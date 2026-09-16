@@ -112,7 +112,7 @@ class TestTransitionDriven:
 
         assert len(posts.calls) == 1
         url, body = posts.calls[0]
-        assert url == "https://api.snodo.test/live/sess_test_1"
+        assert url == "https://app.snodo.test/v1/live/sess_test_1"
         assert body["session_id"] == "sess_test_1"
         assert body["project_id"] == "local:test123"
         assert body["scope"] == "local"
@@ -475,7 +475,7 @@ class TestPayloadContent:
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
         url, body = posts.calls[0]
-        assert url.startswith("https://api.snodo.test/live/")
+        assert url.startswith("https://app.snodo.test/v1/live/")
         assert "sndo_live_testkey" not in url
         assert "sndo_live_testkey" not in json.dumps(body)
 
@@ -529,3 +529,107 @@ class TestPayloadContent:
         assert second["tasks"][0]["status"] == "completed"
         # The second snapshot is self-contained: same shape, all sections.
         assert set(first) == set(second)
+
+
+# ------------------------------------------------------------------ #
+# Liveness URL derivation & rejection visibility (Fixes #293)
+# ------------------------------------------------------------------ #
+
+
+class TestLivenessUrlDerivation:
+    def test_default_config_composes_app_origin_and_version(self):
+        """Default configuration PUTs to app origin with /v1 segment."""
+        posts = _Posts()
+        default_config = {
+            "cloud": {
+                "sync_enabled": True,
+                "api_key": "sndo_live_testkey",
+            },
+        }
+        with patch("httpx.put", posts):
+            cloud_liveness._post_snapshot({"session_id": "sess_default_1"}, config=default_config)
+        assert len(posts.calls) == 1
+        url, _ = posts.calls[0]
+        assert url == "https://app.snodo.dev/v1/live/sess_default_1"
+
+    def test_non_production_shape_composes_usable_url(self):
+        """Localhost or unlabelled hosts retain origin and append /v1."""
+        posts = _Posts()
+        local_config = {
+            "cloud": {
+                "sync_enabled": True,
+                "api_key": "sndo_live_testkey",
+                "api_url": "http://localhost:9000",
+            },
+        }
+        with patch("httpx.put", posts):
+            cloud_liveness._post_snapshot({"session_id": "sess_local_1"}, config=local_config)
+        assert len(posts.calls) == 1
+        url, _ = posts.calls[0]
+        assert url == "http://localhost:9000/v1/live/sess_local_1"
+
+
+class TestRejectionLogging:
+    def test_single_rejection_logs_debug_and_repeated_logs_warning(self, caplog):
+        """A single dropped push logs at debug; repeated rejection warns (Fixes #293)."""
+        import logging
+
+        caplog.set_level(logging.DEBUG)
+        snap = {"session_id": "sess_rej_1"}
+        cloud_liveness.reset_liveness_state()
+
+        fail_response = type("R", (), {"status_code": 404, "text": "Not Found"})()
+
+        with patch("httpx.put", return_value=fail_response):
+            # First rejection: logged at DEBUG, no WARNING
+            cloud_liveness._post_snapshot(snap)
+            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+            debugs = [r for r in caplog.records if r.levelno == logging.DEBUG]
+            assert len(warnings) == 0
+            assert any("404 (dropped)" in d.message for d in debugs)
+
+            # Second rejection: repeating rejection surfaces at WARNING
+            cloud_liveness._post_snapshot(snap)
+            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+            assert len(warnings) == 1
+            assert "repeated rejection, dropped" in warnings[0].message
+
+    def test_success_resets_rejection_streak(self, caplog):
+        """A 2xx response clears the rejection streak."""
+        import logging
+
+        caplog.set_level(logging.DEBUG)
+        snap = {"session_id": "sess_rej_2"}
+        cloud_liveness.reset_liveness_state()
+
+        fail_resp = type("R", (), {"status_code": 500, "text": "Server Error"})()
+        ok_resp = type("R", (), {"status_code": 204, "text": ""})()
+
+        with patch("httpx.put", return_value=fail_resp):
+            cloud_liveness._post_snapshot(snap)
+        with patch("httpx.put", return_value=ok_resp):
+            cloud_liveness._post_snapshot(snap)
+
+        caplog.clear()
+        # Next failure is the first in a new streak: must log at DEBUG, not WARNING
+        with patch("httpx.put", return_value=fail_resp):
+            cloud_liveness._post_snapshot(snap)
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 0
+
+    def test_repeated_network_exception_logs_warning(self, caplog):
+        """Repeated network failures (e.g. connection error) surface at WARNING."""
+        import logging
+
+        caplog.set_level(logging.DEBUG)
+        snap = {"session_id": "sess_rej_3"}
+        cloud_liveness.reset_liveness_state()
+
+        with patch("httpx.put", side_effect=OSError("connection refused")):
+            cloud_liveness._post_snapshot(snap)
+            assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+            cloud_liveness._post_snapshot(snap)
+            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+            assert len(warnings) == 1
+            assert "repeated rejection, dropped" in warnings[0].message
