@@ -88,6 +88,21 @@ _LIST_FILES_TOOL = {
 
 _READ_ONLY_TOOLS = [_READ_FILE_TOOL, _LIST_FILES_TOOL]
 
+# The instruction that closes the reading window — the recon analogue of the
+# validator's _VERDICT_ONLY_INSTRUCTION (snodo/validators/llm_validator.py).
+# The reading budget is spent, the read tools are withdrawn, and the agent is
+# asked for the answer from what it has gathered. An answer reached on
+# incomplete reading is a real answer. Unlike the validator, whose decision is
+# a submit_verdict tool call that tool_choice can require, a recon answer is
+# prose: with the tools withdrawn there is no call to force, so the ask rides
+# on the instruction itself (Fixes #299).
+_ANSWER_ONLY_INSTRUCTION = (
+    "The read tools are no longer available. Answer the query now from what "
+    "you have already gathered — do not narrate intentions or describe what "
+    "you would read next. An answer reached on incomplete reading is a real "
+    "answer: state what you found and note what remains unverified."
+)
+
 
 def resolve_agent_model(agent: str) -> str:
     """Resolve 'default' to the configured model; pass-through otherwise."""
@@ -209,19 +224,23 @@ def call_agent(
     model_param = ConfigManager.resolve_litellm_model(model)
     extra_headers = ConfigManager.resolve_extra_headers(model, task_id="recon")
 
+    def _complete(with_read_tools: bool):
+        kwargs = {
+            "model": model_param,
+            "messages": messages,
+        }
+        if with_read_tools:
+            kwargs["tools"] = _READ_ONLY_TOOLS
+        if api_base:
+            kwargs["api_base"] = api_base
+        if extra_headers:
+            kwargs["extra_headers"] = extra_headers
+        return litellm.completion(**kwargs)
+
     with provider_env(model):
         for _turn in range(max_turns):
             try:
-                kwargs = {
-                    "model": model_param,
-                    "messages": messages,
-                    "tools": _READ_ONLY_TOOLS,
-                }
-                if api_base:
-                    kwargs["api_base"] = api_base
-                if extra_headers:
-                    kwargs["extra_headers"] = extra_headers
-                response = litellm.completion(**kwargs)
+                response = _complete(with_read_tools=True)
             except Exception as e:
                 return ReconResult(
                     agent=agent_label,
@@ -234,9 +253,6 @@ def call_agent(
             msg = choice.message
             text = msg.content or ""
 
-            if text:
-                final_answer += text
-
             if not hasattr(msg, "tool_calls") or not msg.tool_calls:
                 if _turn == 0 and not text:
                     _logger.warning(
@@ -244,6 +260,11 @@ def call_agent(
                         "content=%r",
                         model, msg.content,
                     )
+                # Prose delivered without a tool call is the agent
+                # concluding: its text is the answer. Prose on a
+                # tool-calling turn is narration between reads, never
+                # the answer, so it is not accumulated here (Fixes #299).
+                final_answer = text
                 break
 
             # Execute read-only tool calls
@@ -275,6 +296,29 @@ def call_agent(
                     "tool_call_id": tc.id,
                     "content": result,
                 })
+        else:
+            # Reached only when the loop was never broken: the reading
+            # budget is spent and the agent was still calling tools on
+            # its last budgeted turn. Ask once more with the read tools
+            # withdrawn — the same terminal step the validator loop uses
+            # (llm_validator._VERDICT_ONLY_INSTRUCTION) — and return the
+            # answer from what it gathered. A hallucinated tool call
+            # here is not honoured: the tools were withdrawn precisely
+            # so the agent would say what it found (Fixes #299).
+            messages.append({
+                "role": "user",
+                "content": _ANSWER_ONLY_INSTRUCTION,
+            })
+            try:
+                response = _complete(with_read_tools=False)
+            except Exception as e:
+                return ReconResult(
+                    agent=agent_label,
+                    model=model,
+                    result="",
+                    error=str(e),
+                )
+            final_answer = response.choices[0].message.content or ""
 
         if not final_answer.strip():
             _logger.warning(
