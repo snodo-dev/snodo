@@ -324,6 +324,123 @@ def test_tool_reading_validator_rejudges_when_the_tree_changes(tmp_path):
     assert completion.calls == 2
 
 
+def _tool_validator(phase, vid="security", validator_type="security"):
+    return Validator(
+        validator_id=vid,
+        validator_type=validator_type,
+        evaluation_phase=phase,
+        criteria=["the proposal introduces no secret"],
+        tools=["read_file"],
+    )
+
+
+def _git_double(heads=None):
+    workspace = MagicMock()
+    workspace.project_root = "/tmp/project"
+    workspace.read_file.return_value = "code"
+    git = MagicMock()
+    git.get_head_sha.side_effect = heads or ["sha1"]
+    git.read_diff.return_value = "diff"
+    git.get_status.return_value = "clean"
+    return workspace, git
+
+
+def test_pre_execute_tool_judge_rejudges_when_only_the_spec_changes(tmp_path):
+    """A rewritten proposal is a new question, even on an untouched tree.
+
+    The pre-execute tool judge reads the spec in its prompt *and* the tree
+    through its tools, so its subject is the composite of both (#295):
+    keying it on the tree alone reused the previous verdict word-for-word
+    about text the ticket no longer contains.
+    """
+    validator = _tool_validator("pre_execute")
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _ToolCompletion()
+    workspace, git = _git_double(["sha1", "sha1", "sha1"])
+
+    def run(spec):
+        return _run(
+            protocol,
+            [validator],
+            cache,
+            completion,
+            phase="pre_execute",
+            workspace_mcp=workspace,
+            git_mcp=git,
+            task=Task(id="t1", spec=spec),
+        )
+
+    first, _ = run("Implement feature X")
+    same, _ = run("Implement feature X")
+    rewritten, _ = run("Implement feature Y, entirely different")
+
+    assert first[0].reused is False
+    assert same[0].reused is True, "same spec and same tree must reuse"
+    assert rewritten[0].reused is False, "the proposal changed; the tree did not"
+    assert completion.calls == 2
+
+
+def test_pre_execute_tool_judge_rejudges_when_only_the_tree_changes(tmp_path):
+    """The tree belongs in the pre-execute subject too: the judge reads it."""
+    validator = _tool_validator("pre_execute")
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _ToolCompletion()
+    workspace, git = _git_double(["sha1", "sha1", "sha2"])
+
+    def run():
+        return _run(
+            protocol,
+            [validator],
+            cache,
+            completion,
+            phase="pre_execute",
+            workspace_mcp=workspace,
+            git_mcp=git,
+        )
+
+    first, _ = run()
+    same, _ = run()
+    moved, _ = run()
+
+    assert first[0].reused is False
+    assert same[0].reused is True, "neither spec nor tree moved; reuse"
+    assert moved[0].reused is False, "the tree the judge can read changed"
+    assert completion.calls == 2
+
+
+def test_post_execute_tool_judge_keying_is_unchanged_by_spec(tmp_path):
+    """A judgement about produced work is a judgement about the work.
+
+    Post-execute stays tree-keyed only: an unrelated edit to the task spec
+    must not re-buy a verdict about unchanged work.
+    """
+    validator = _tool_validator("post_execute", vid="acceptance", validator_type="acceptance")
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _ToolCompletion()
+    workspace, git = _git_double(["sha1", "sha1", "sha1"])
+
+    def run(spec):
+        return _run(
+            protocol,
+            [validator],
+            cache,
+            completion,
+            phase="post_execute",
+            workspace_mcp=workspace,
+            git_mcp=git,
+            task=Task(id="t1", spec=spec),
+        )
+
+    first, _ = run("Implement feature X")
+    spec_changed, _ = run("Implement feature Y, entirely different")
+    assert first[0].reused is False
+    assert spec_changed[0].reused is True, "post-execute keys on the tree, not the spec"
+    assert completion.calls == 1
+
+
 @pytest.mark.parametrize("validator_type", ["security", "acceptance"])
 def test_post_execute_judge_without_tools_rejudges_on_tree_change(
     tmp_path, validator_type

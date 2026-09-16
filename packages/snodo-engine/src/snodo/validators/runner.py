@@ -211,7 +211,8 @@ def _tree_subject_for(context: ValidatorContext) -> Optional[str]:
 def _verdict_subject_kind(
     v: Validator, context: ValidatorContext, reg: Any
 ) -> Optional[str]:
-    """Classify what this judge's answer depends on: ``"tree"``, ``"spec"``, None.
+    """Classify what this judge's answer depends on: ``"tree"``, ``"spec"``,
+    ``"spec+tree"``, None.
 
     The classification is structural, not inherited: a judge that reads the
     tree is tree-keyed, and **every post-execute judge is tree-keyed** because
@@ -223,9 +224,17 @@ def _verdict_subject_kind(
     code attempt two rewrote - and because the reused prose is byte-identical,
     recovery-stall detection would read it as a repeated verdict and halt a
     loop a judge was never asked about.
+
+    A *pre-execute* tool-using judge is the mirror case: it is asked whether a
+    proposal is sound, so its answer depends on the spec it reads in the
+    prompt **and** on the tree its read tools can inspect — a composite
+    subject.  Keying it on the tree alone returns a stale verdict about a
+    rewritten proposal whenever the repository has not moved (#295).
     """
     if _judge_reads_tree(v, context):
-        return "tree"
+        if getattr(context, "phase", "") == "post_execute":
+            return "tree"
+        return "spec+tree"
 
     always_register = {"quality", "protocol"}
     cls = reg.lookup(v.validator_type) if (
@@ -245,6 +254,10 @@ def _verdict_subject_kind(
     return None
 
 
+#: Subject kinds whose judge reads the repository, so their subject digests it.
+_TREE_READING_KINDS = ("tree", "spec+tree")
+
+
 def _verdict_subject(
     v: Validator, context: ValidatorContext, reg: Any
 ) -> Tuple[Optional[str], bool]:
@@ -259,6 +272,11 @@ def _verdict_subject(
     if kind == "tree":
         subject = _tree_subject_for(context)
         return subject, subject is not None
+    if kind == "spec+tree":
+        tree = _tree_subject_for(context)
+        if tree is None:
+            return None, False
+        return _spec_subject(context) + "|" + tree, True
     if kind == "spec":
         return _spec_subject(context), True
     return None, False
@@ -520,7 +538,8 @@ def run_validators(
     # git read happens once rather than once per validator, and it never runs
     # concurrently under the pool.
     if verdict_cache is not None and any(
-        _verdict_subject_kind(v, context, reg) == "tree" for v in validators
+        _verdict_subject_kind(v, context, reg) in _TREE_READING_KINDS
+        for v in validators
     ):
         context.verdict_tree_subject = _tree_subject(context)
         context.verdict_tree_subject_ready = True
