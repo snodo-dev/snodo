@@ -591,6 +591,11 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._worktree_path = worktree_path or ""
         self._worktree_degraded = worktree_degraded
         self._verbose = verbose
+        #: Per-builder renderer so repeated turn lines compact across the whole
+        #: run rather than within one emitter's lifetime (#294). Built here, not
+        #: lazily, so validator-pool threads share the one instance.
+        from snodo.engine.progress import ProgressRenderer
+        self._progress_renderer: Optional[Any] = ProgressRenderer()
         self._project_context_cache: Optional[Dict[str, Any]] = None
         self._last_execution_writes: List[str] = []
         self._last_execution_reads: Dict[str, List[str]] = {"files": [], "directories": []}
@@ -1088,14 +1093,25 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             self._audit_log.append_event(event_type, data)
 
     def _progress(self, message: str, verbose: bool = False) -> None:
-        """Print a progress line to stdout.
+        """Print a progress line to stdout, styled for an interactive terminal.
 
         Normal-path transitions are always printed; per-validator verdicts and
         other fine-grained detail are gated behind ``verbose``.
+
+        Presentation is decoration over the lines the engine already emits
+        (#294): the renderer colours and compacts only on a tty, and writes the
+        line verbatim otherwise, so a piped or redirected stream and a
+        ``NO_COLOR`` caller see byte-identical output. What is emitted, when,
+        and what reaches the audit log are unchanged.
         """
         if verbose and not self._verbose:
             return
-        print(message, flush=True)
+        renderer = getattr(self, "_progress_renderer", None)
+        if renderer is None:
+            from snodo.engine.progress import ProgressRenderer
+            renderer = ProgressRenderer()
+            self._progress_renderer = renderer
+        renderer(message)
 
     def _validator_verdict_cb(self, validator_id: str, result: Any) -> None:
         """Print a per-validator verdict as it lands (warn/blocker/error always; pass in verbose).
