@@ -55,8 +55,10 @@ def recon_command(args) -> int:
         recon_default_n=recon_default_n,
     )
 
+    is_fanout = (num_agents is not None and num_agents > 1) or (num_agents is None and recon_default_n > 1)
+
     mgr = ReconManager(project_root)
-    recon_id = mgr.submit(query, paths, agents)
+    recon_id = mgr.submit(query, paths, agents, fanout=is_fanout)
 
     print(f"Recon dispatched: {recon_id}")
     print(f"  Agents: {', '.join(agents)}")

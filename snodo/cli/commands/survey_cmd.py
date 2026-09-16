@@ -118,30 +118,51 @@ def build_survey_judge(project_root: Path, agent_mode):
         recon_models=recon_cfg.get("models", []),
         recon_default_n=recon_cfg.get("num_agents", 1),
     )
-    model = resolve_agent_model(agents[0])
-    if agent_mode != "force" and not _agent_is_configured(mgr, model):
+    eligible_agents = [
+        a for a in agents
+        if agent_mode == "force" or _agent_is_configured(mgr, resolve_agent_model(a))
+    ]
+    if not eligible_agents:
         return None
 
     def judge(dossier: Dict[str, Any]):
         from snodo.recon import call_agent
 
         prompt = _judgement_prompt(dossier)
-        result = call_agent(
-            str(project_root),
-            model,
-            prompt,
-            paths=["./"],
-            agent_label="survey-judge",
-            max_turns=_JUDGE_MAX_TURNS,
-        )
-        if getattr(result, "error", None):
-            return {"reason": f"the agent call failed: {result.error}"}
-        verdicts = _parse_verdicts(getattr(result, "result", "") or "")
-        if verdicts is None:
-            return {"reason": "the agent returned no parseable judgement verdicts"}
-        return {"verdicts": verdicts}
+        last_error = "no agent answered"
+        for agent_label in eligible_agents:
+            model = resolve_agent_model(agent_label)
+            judge.model = model  # type: ignore[attr-defined]
+            try:
+                result = call_agent(
+                    str(project_root),
+                    model,
+                    prompt,
+                    paths=["./"],
+                    agent_label="survey-judge",
+                    max_turns=_JUDGE_MAX_TURNS,
+                )
+            except Exception as e:
+                last_error = str(e)
+                continue
 
-    judge.model = model  # type: ignore[attr-defined]
+            if getattr(result, "error", None):
+                last_error = result.error
+                continue
+
+            content = getattr(result, "result", "") or ""
+            if not content.strip():
+                last_error = "the agent returned empty result"
+                continue
+
+            verdicts = _parse_verdicts(content)
+            if verdicts is None:
+                return {"reason": "the agent returned no parseable judgement verdicts"}
+            return {"verdicts": verdicts}
+
+        return {"reason": f"the agent call failed: {last_error}"}
+
+    judge.model = resolve_agent_model(eligible_agents[0])  # type: ignore[attr-defined]
     return judge
 
 

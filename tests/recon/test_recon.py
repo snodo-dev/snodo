@@ -469,3 +469,135 @@ class TestReconDefectFixes:
             mock_comp.assert_called()
             call_kwargs = mock_comp.call_args.kwargs
             assert call_kwargs.get("api_base") == "https://custom.endpoint.ai/v1"
+
+
+# ------------------------------------------------------------------#
+# Priority list fallback and fan-out tests (Fixes #302)
+# ------------------------------------------------------------------#
+
+class TestReconPriorityFallback:
+    def test_first_model_returning_nothing_falls_back_to_second_and_returns_answer(
+        self, project_with_snodo, monkeypatch
+    ):
+        """A first model returning nothing causes the second to be called and its answer returned."""
+        from snodo.recon import ReconManager, ReconResult
+
+        calls = []
+
+        def fake_call_agent(project_root, model, query, paths, agent_label, max_turns=10):
+            calls.append(model)
+            if model == "m1":
+                return ReconResult(
+                    agent=agent_label,
+                    model=model,
+                    result="",
+                    error="Agent returned empty result",
+                )
+            return ReconResult(
+                agent=agent_label,
+                model=model,
+                result="Answer from model 2",
+            )
+
+        monkeypatch.setattr("snodo.recon.call_agent", fake_call_agent)
+        monkeypatch.setattr(recon_module, "_threads", [])
+
+        mgr = ReconManager(project_with_snodo)
+        recon_id = mgr.submit("query", ["./"], agents=["m1", "m2"], fanout=False)
+        mgr.shutdown(timeout=5.0)
+
+        status_data = mgr.get_status(recon_id)
+        assert status_data["status"] == "complete"
+        results = status_data["results"]
+        assert len(results) == 2
+        assert results[0]["model"] == "m1"
+        assert results[0]["error"] == "Agent returned empty result"
+        assert results[1]["model"] == "m2"
+        assert results[1]["result"] == "Answer from model 2"
+        assert calls == ["m1", "m2"]
+
+    def test_first_model_answering_means_second_is_never_called(
+        self, project_with_snodo, monkeypatch
+    ):
+        """A first model answering means the second is never called."""
+        from snodo.recon import ReconManager, ReconResult
+
+        calls = []
+
+        def fake_call_agent(project_root, model, query, paths, agent_label, max_turns=10):
+            calls.append(model)
+            return ReconResult(
+                agent=agent_label,
+                model=model,
+                result="Answer from model 1",
+            )
+
+        monkeypatch.setattr("snodo.recon.call_agent", fake_call_agent)
+        monkeypatch.setattr(recon_module, "_threads", [])
+
+        mgr = ReconManager(project_with_snodo)
+        recon_id = mgr.submit("query", ["./"], agents=["m1", "m2"], fanout=False)
+        mgr.shutdown(timeout=5.0)
+
+        status_data = mgr.get_status(recon_id)
+        assert status_data["status"] == "complete"
+        results = status_data["results"]
+        assert len(results) == 1
+        assert results[0]["model"] == "m1"
+        assert results[0]["result"] == "Answer from model 1"
+        assert calls == ["m1"]
+
+    def test_explicit_fanout_calls_every_requested_agent(
+        self, project_with_snodo, monkeypatch
+    ):
+        """Explicit fan-out still calls every requested agent in parallel."""
+        from snodo.recon import ReconManager, ReconResult
+
+        calls = []
+
+        def fake_call_agent(project_root, model, query, paths, agent_label, max_turns=10):
+            calls.append(model)
+            return ReconResult(
+                agent=agent_label,
+                model=model,
+                result=f"Answer from {model}",
+            )
+
+        monkeypatch.setattr("snodo.recon.call_agent", fake_call_agent)
+        monkeypatch.setattr(recon_module, "_threads", [])
+
+        mgr = ReconManager(project_with_snodo)
+        recon_id = mgr.submit("query", ["./"], agents=["m1", "m2"], fanout=True)
+        mgr.shutdown(timeout=5.0)
+
+        status_data = mgr.get_status(recon_id)
+        assert status_data["status"] == "complete"
+        results = status_data["results"]
+        assert len(results) == 2
+        models_called = {r["model"] for r in results}
+        assert models_called == {"m1", "m2"}
+        assert set(calls) == {"m1", "m2"}
+
+    def test_resolve_recon_agents_priority_list_and_fanout(self, capsys):
+        from snodo.recon import resolve_recon_agents
+
+        # Default single agent returns full priority list without warnings
+        assert resolve_recon_agents(recon_models=["m1", "m2", "m3"]) == ["m1", "m2", "m3"]
+        assert resolve_recon_agents(requested_n=1, recon_models=["m1", "m2"]) == ["m1", "m2"]
+        out = capsys.readouterr()
+        assert "Warning" not in out.err
+
+        # Deliberate fan-out takes requested n
+        assert resolve_recon_agents(requested_n=2, recon_models=["m1", "m2", "m3"]) == ["m1", "m2"]
+        assert resolve_recon_agents(recon_default_n=2, recon_models=["m1", "m2", "m3"]) == ["m1", "m2"]
+
+        # Fan-out exceeding configured models warns per slot beyond
+        res = resolve_recon_agents(requested_n=3, recon_models=["m1"])
+        assert res == ["m1"]
+        err = capsys.readouterr().err
+        assert "slot 2/3 beyond configured models" in err
+        assert "slot 3/3 beyond configured models" in err
+
+        # Explicit agents overrides everything
+        assert resolve_recon_agents(requested_n=2, explicit_agents=["custom"]) == ["custom"]
+
