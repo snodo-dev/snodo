@@ -1594,6 +1594,210 @@ class TestPostExecuteToolLoop:
         assert "git_log" in tool_names
         assert "list_files" in tool_names
 
+    def test_verdict_only_turn_sends_tool_choice_naming_submit_verdict(self, security_validator):
+        """The verdict-only turn sends tool_choice naming submit_verdict while
+        an ordinary reading turn sends none (Fixes #296)."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        tool_choice_per_turn = []
+
+        def completion_side_effect(**kwargs):
+            tool_choice_per_turn.append(kwargs.get("tool_choice"))
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if len(tool_choice_per_turn) == 1:
+                # Ordinary reading turn
+                tc = MagicMock()
+                tc.id = "tc_read"
+                tc.function.name = "read_file"
+                tc.function.arguments = '{"path": "auth.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+            else:
+                # Final turn
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({"severity": "pass", "justification": "Checked auth.py"})
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+        ctx.max_tool_turns = 2
+
+        result = validator.evaluate(ctx)
+
+        assert result.error is False
+        assert result.severity == "pass"
+        assert len(tool_choice_per_turn) == 2
+        # Reading turn must NOT require submit_verdict
+        assert tool_choice_per_turn[0] is None
+        # Final verdict-only turn MUST require submit_verdict
+        assert tool_choice_per_turn[1] == {
+            "type": "function",
+            "function": {"name": "submit_verdict"},
+        }
+
+    def test_nudge_turn_sends_tool_choice_naming_submit_verdict(self, security_validator):
+        """The turn after prose narration is a verdict-only turn and sends
+        tool_choice naming submit_verdict (Fixes #296)."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        tool_choice_per_turn = []
+
+        def completion_side_effect(**kwargs):
+            tool_choice_per_turn.append(kwargs.get("tool_choice"))
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            if len(tool_choice_per_turn) == 1:
+                # Narrates in prose instead of calling submit_verdict
+                resp.choices[0].message.content = "Everything looks fine."
+                resp.choices[0].message.tool_calls = []
+            else:
+                # Second turn: forced submit_verdict
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({"severity": "pass", "justification": "Confirmed"})
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+
+        result = validator.evaluate(ctx)
+
+        assert result.error is False
+        assert result.severity == "pass"
+        assert len(tool_choice_per_turn) == 2
+        # Turn 1: reading turn, no tool_choice
+        assert tool_choice_per_turn[0] is None
+        # Turn 2: nudge turn, tool_choice required
+        assert tool_choice_per_turn[1] == {
+            "type": "function",
+            "function": {"name": "submit_verdict"},
+        }
+
+    def test_provider_rejecting_tool_choice_falls_back_to_unforced_and_produces_verdict(self, security_validator):
+        """If a provider rejects forced tool_choice (4xx client error), the
+        validator falls back to an unforced request on the same turn and
+        produces a verdict rather than failing with an operational error (Fixes #296)."""
+        from litellm.exceptions import BadRequestError
+
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        calls = []
+
+        def completion_side_effect(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                # Turn 1: ordinary read
+                resp = MagicMock()
+                resp.choices = [MagicMock()]
+                tc = MagicMock()
+                tc.id = "tc_read"
+                tc.function.name = "read_file"
+                tc.function.arguments = '{"path": "auth.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+                return resp
+            elif len(calls) == 2:
+                # Turn 2: forced tool_choice rejected by provider
+                assert kwargs.get("tool_choice") == {
+                    "type": "function",
+                    "function": {"name": "submit_verdict"},
+                }
+                raise BadRequestError(
+                    message="tool_choice is not supported by this provider",
+                    model="custom/model",
+                    llm_provider="custom",
+                    response=None,
+                )
+            else:
+                # Turn 2 retry: unforced call succeeds
+                assert "tool_choice" not in kwargs or kwargs.get("tool_choice") is None
+                resp = MagicMock()
+                resp.choices = [MagicMock()]
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({"severity": "pass", "justification": "All clear"})
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+                return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+        ctx.max_tool_turns = 2
+
+        result = validator.evaluate(ctx)
+
+        assert result.error is False
+        assert result.severity == "pass"
+        assert result.justification == "All clear"
+        assert len(calls) == 3
+        # First call on turn 2 had tool_choice, fallback retry did not
+        assert "tool_choice" in calls[1]
+        assert "tool_choice" not in calls[2]
+
+    def test_provider_rejecting_tool_choice_with_status_code_falls_back(self, security_validator):
+        """A generic 4xx exception with status_code falls back to unforced request."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+
+        calls = []
+
+        def completion_side_effect(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                tc = MagicMock()
+                tc.id = "tc_read"
+                tc.function.name = "read_file"
+                tc.function.arguments = '{"path": "auth.py"}'
+                resp = MagicMock()
+                resp.choices = [MagicMock()]
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+                return resp
+            elif len(calls) == 2:
+                err = Exception("tool_choice invalid parameter")
+                err.status_code = 400
+                raise err
+            else:
+                resp = MagicMock()
+                resp.choices = [MagicMock()]
+                tc = MagicMock()
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({"severity": "warn", "justification": "Careful"})
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+                return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+        ctx.max_tool_turns = 2
+
+        result = validator.evaluate(ctx)
+
+        assert result.error is False
+        assert result.severity == "warn"
+        assert len(calls) == 3
+
 
 class TestPreExecuteRegression:
     """Ensure pre-execute validators still use single-completion path."""
