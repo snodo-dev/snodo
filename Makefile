@@ -42,29 +42,35 @@ bump:
 	uv version --bump $(PART)
 	$(MAKE) sync-versions
 
+# What a release must pass before it is tagged. `gate-ci` is the check that
+# decides: it runs on the gate host against the pushed HEAD — the very commit
+# about to be tagged, since a release refuses a dirty tree — with the marker
+# filter cleared, so the e2e tests, coverage and patch coverage are all
+# included alongside the suite, ruff, the import contracts and the three
+# ratchets. Re-running any of that here would derive the same answer a second
+# time on a weaker machine; the release used to, and it cost a full extra suite
+# per release while still never checking coverage.
+#
+# Override when the gate host is unreachable: `make release PART=minor
+# RELEASE_GATE=check` falls back to the local loop, which does NOT include the
+# e2e tests or either coverage gate. It is a way to ship with the lights off,
+# not an equal path.
+RELEASE_GATE ?= gate-ci
+
 release:
 	@# Refuse to release from a dirty tree: `git add -A` below would otherwise
 	@# sweep unrelated work into the "release:" commit, losing its own message
-	@# and any `Fixes #N` attribution.
+	@# and any `Fixes #N` attribution. It also keeps the gate honest: the gate
+	@# tests the pushed HEAD, which is only this tree when this tree is clean.
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "Working tree is dirty. Commit or stash before releasing:"; \
 		git status --short; \
 		exit 1; \
 	fi
-	@echo "Running test suite (incl. e2e)..."
-	uv run pytest tests/ -q || { \
-		echo "Tests failed. Aborting release."; \
+	$(MAKE) $(RELEASE_GATE) || { \
+		echo "$(RELEASE_GATE) failed. Aborting release."; \
 		exit 1; \
 	}
-	uv run pytest tests/e2e/ -m e2e -q || { \
-		echo "E2E tests failed. Aborting release."; \
-		exit 1; \
-	}
-	uv run ruff check . || { echo "Lint failed. Aborting release."; exit 1; }
-	uv run lint-imports || { echo "Import contracts broken. Aborting release."; exit 1; }
-	uv run python scripts/enforce_file_length.py || { echo "File-length ratchet failed. Aborting release."; exit 1; }
-	uv run python scripts/enforce_docs_coverage.py || { echo "Docs-coverage ratchet failed. Aborting release."; exit 1; }
-	uv run python scripts/enforce_vocabularies.py || { echo "Vocabulary check failed. Aborting release."; exit 1; }
 	$(MAKE) bump PART=$(PART)
 	@# Read the version in the SHELL, after bump has run. A make-level eval here
 	@# would be expanded when make expands this recipe — before any line of it runs —
