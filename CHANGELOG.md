@@ -30,6 +30,21 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The strict `llm` config is now pinned against the things snodo itself ships
+  and writes. ADR 046 made an unknown `llm` key a `ConfigLoadError`, and
+  nothing proved that what the tooling produces still loads under that
+  strictness — so a newly forbidden key could break a fresh install or every
+  `snodo config set` writer with no signal until an operator hit it mid-run.
+  Tests now load the default config `ConfigManager` reads and writes, every
+  key `snodo config set` accepts, and the full config example the runbook
+  prints, against the strict models; keep the deprecated `llm.wave` migration
+  a migration rather than an unknown key; and assert the rejection itself under
+  every section that forbids extras, naming the key and the section. Every
+  shipped template is also compiled, not only checked for well-formedness, so
+  a template the graph builder cannot build fails here rather than at a user's
+  first `snodo init`. No field, default or template content was changed.
+  (Fixes #307)
+
 - `llm.recon.models` is now an ordered failover list in behaviour, not only in
   name. Recon resolves the list into one lane per agent, and a lane tries its
   models in order: a model that fails or returns nothing hands off to the next,
