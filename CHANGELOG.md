@@ -51,6 +51,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
   value cannot be laundered in. It runs in the local gate, the CI gate and the
   release. (Fixes #280)
 
+### Changed
+
+- The run stream now distinguishes the kinds of line the engine already emits —
+  phase boundaries, validator and coder tool turns, coder activity, per-validator
+  gate verdicts and terminal recovery halts — and compacts repeated tool-turn
+  lines in place on an interactive terminal. A run that produced a screenful of
+  identical `[0:14] Turn 9: list_files(...)` lines, then a phase change, then a
+  halt, no longer makes the operator read every line to find the two that matter:
+  the halt and the phase carry their own styling, and the turns overwrite one
+  another as a moving latest turn. This is a presentation pass over information
+  the sink already carries, not new telemetry: classification reads only the
+  shape of a line, and no state, severity, halt type or task status is added.
+  Colour and compaction are decoration for a tty only — a piped or redirected
+  stream, a non-tty stdout, and `NO_COLOR` all produce byte-identical plain lines
+  to before, and the same lines reach the log and the audit trail in the same
+  order. The `snodo logs --watch` path renders the same way. (Fixes #294)
+
 ### Fixed
 
 - `snodo survey` now says what it is waiting on while the boundary-judgement
