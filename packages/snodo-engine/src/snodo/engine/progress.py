@@ -21,6 +21,17 @@ moment the next turn arrived. The renderer now holds a scrolling window of
 recent lines instead of a single row: only *identical* consecutive turn lines
 collapse (a judge repeating the same read), so a verdict, phase boundary or
 halt stays on screen until the window itself scrolls past it.
+
+Coder stream in the same shape (Issue #306): a validator's turn reaches the
+sink already composed — "[0:28] Turn 5: read_file(...)" — while a subprocess
+coder's reaches it as raw CLI output, so one sink carried two languages. On
+the interactive path only, the renderer now recognises what a coder line
+states it did (a read, an edit, a command run) and re-emits it as
+"[0:28] Turn 3: read_file(src/app.tsx)". Recognition is best-effort: an
+unrecognised line passes through verbatim rather than being dropped or
+guessed at, nothing here is decision input (ADR 034), and the record stays
+raw — the capture lists, a job's stdout.log and any non-tty or NO_COLOR
+stream all still see the coder's bytes exactly as written.
 """
 
 import json
@@ -29,7 +40,8 @@ import re
 import shutil
 import sys
 import threading
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class ProgressSink:
@@ -308,6 +320,98 @@ def render_progress_line(line: str, color: bool) -> str:
     return f"{style}{line}{_RESET}" if style else line
 
 
+# ── Coder stream shaping (Issue #306) ──────────────────────────────────
+#
+# A subprocess coder forwards its own stdout/stderr verbatim, so its live
+# stream reads as a firehose where the validator stream reads as numbered
+# turns. These patterns recognise, from the shape of a line the coder
+# already printed, the tool action it states — read, write, edit, delete,
+# run, list, search — so the renderer can re-emit it in the validator's
+# shape. Recognition is deliberately narrow (a leading verb plus a
+# concrete target): coders differ in what they emit and a line that cannot
+# be recognised is passed through rather than guessed at. The result is
+# presentation only: it never reaches the capture lists, a job's
+# stdout.log or a halt payload, and no engine decision reads it (ADR 034).
+
+#: A CLI bullet/checkbox before the verb: "✔ Read", "→  edit", "- Listing".
+_CODER_LEAD_RE = re.compile(r"^[\s\-–—*•·→➜›»|✔✓✅☑☒●○◦■□▲△%!]+")
+#: A shell prompt echo: "$ make build" states a command run.
+_CODER_SHELL_RE = re.compile(r"^\s*\$\s+(?P<target>\S.*?)\s*$")
+
+_CODER_TOOL_RES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
+    ("read_file", re.compile(
+        r"^(?:read|reads|reading|open(?:s|ed|ing)?|view(?:s|ed|ing)?|cat)\s+(?:the\s+)?(?:file\s+)?[:\-]?\s*(?P<target>\S.*?)\s*$",
+        re.IGNORECASE)),
+    ("write_file", re.compile(
+        r"^(?:writ(?:e|es|ing)|wrote|creat(?:e|es|ed|ing))\s+(?:the\s+)?(?:file\s+)?(?:module\s+)?[:\-]?\s*(?P<target>\S.*?)\s*$",
+        re.IGNORECASE)),
+    ("edit_file", re.compile(
+        r"^(?:edit(?:s|ed|ing)?|updat(?:e|es|ed|ing)|patch(?:es|ed|ing)?|appl(?:y|ies|ied|ying)|modif(?:y|ies|ied|ying))\s+(?:the\s+)?(?:file\s+)?[:\-]?\s*(?P<target>\S.*?)\s*$",
+        re.IGNORECASE)),
+    ("delete_file", re.compile(
+        r"^(?:delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing))\s+(?:the\s+)?(?:file\s+)?[:\-]?\s*(?P<target>\S.*?)\s*$",
+        re.IGNORECASE)),
+    ("run", re.compile(
+        r"^(?:run(?:s|ning)?|execut(?:e|es|ed|ing)|bash|shell|command|test(?:s|ing)?)\s*[:\-]?\s+(?P<target>\S.*?)\s*$",
+        re.IGNORECASE)),
+    ("list_files", re.compile(
+        r"^(?:list(?:s|ed|ing)?|ls|tree|scan(?:s|ned|ning)?|brows(?:e|es|ed|ing))\s+(?:the\s+)?(?:dir(?:ector)?y|files?|contents?|tree)?\s*[:\-]?\s*(?P<target>\S.*?)\s*$",
+        re.IGNORECASE)),
+    ("search", re.compile(
+        r"^(?:search(?:es|ed|ing)?|fin(?:d|ds|ding|ed)|grep(?:s|ped|ping)?|rg|glob(?:s|bed|bing)?|lookup)\s*[:\-]?\s+(?:for\s+)?(?P<target>\S.*?)\s*$",
+        re.IGNORECASE)),
+)
+
+#: A file-operation target must at least look like a path or a named file,
+#: not prose: "Read the manifest carefully" stays a prose line, "Read
+#: src/app.tsx" is a turn. Commands and search patterns carry no such anchor.
+_CODER_PATHISH_RE = re.compile(
+    r"(/|~|\.(?:py|ts|tsx|js|jsx|json|md|rs|go|toml|ya?ml|sh|css|html?|txt|cfg|ini|rb|java|c|cc|cpp|h|lock|sql|xml|env|gitignore|dockerfile)$)",
+    re.IGNORECASE,
+)
+#: Width cap so one long path cannot dictate the live line's shape.
+_CODER_TARGET_MAX = 60
+
+
+def _clean_coder_target(target: str) -> str:
+    """Strip quoting and trailing sentence punctuation from a target."""
+    target = target.strip().strip("\"'`“”‘’")
+    return target.rstrip(".,;:!?)]}”’\"'`").strip()
+
+
+def summarize_coder_line(line: str) -> Optional[str]:
+    """Return what a raw coder output line states it did, or None.
+
+    Mirrors the vocabulary of :func:`format_tool_call_summary` so coder and
+    validator turns read the same way ("read_file(src/app.tsx)"). None means
+    unrecognised — the caller must pass the line through untouched; it is
+    better to show an operator a raw line than to mislabel it.
+    """
+    shell = _CODER_SHELL_RE.match(line)
+    if shell:
+        return f"run({_shorten_coder_target(_clean_coder_target(shell.group('target')))})"
+
+    stripped = _CODER_LEAD_RE.sub("", line, count=1)
+    for name, pattern in _CODER_TOOL_RES:
+        match = pattern.match(stripped)
+        if not match:
+            continue
+        target = _clean_coder_target(match.group("target"))
+        if not target:
+            continue
+        if name in ("read_file", "write_file", "edit_file", "delete_file", "list_files"):
+            first = target.split()[0]
+            if not _CODER_PATHISH_RE.search(first):
+                continue
+            target = first
+        return f"{name}({_shorten_coder_target(target)})"
+    return None
+
+
+def _shorten_coder_target(target: str) -> str:
+    return target if len(target) <= _CODER_TARGET_MAX else target[: _CODER_TARGET_MAX - 3] + "..."
+
+
 class ProgressRenderer:
     """Render engine progress lines to a stream, as a scrolling window.
 
@@ -323,7 +427,9 @@ class ProgressRenderer:
     replaced by the very next turn. Only an *identical* consecutive turn line —
     a judge repeating the same read — collapses into the row it repeats,
     counted rather than each claiming a row of its own; any other line, turn or
-    not, is a distinct event and gets its own row.
+    not, is a distinct event and gets its own row. On this path only, a raw
+    coder line whose shape states what the coder did is first composed into a
+    turn line, so the coder's live stream reads like a validator's (Issue #306).
 
     Compaction is presentation only: it never suppresses a line from the log or
     the audit trail, both of which receive the plain text. A writer that shares
@@ -343,6 +449,12 @@ class ProgressRenderer:
         self._lock = threading.Lock()
         self._rows: List[Dict[str, Any]] = []
         self._drawn = 0
+        # Coder-phase cursor (Issue #306): set when a "Coder dispatched" line
+        # passes through the colour path, cleared when the coder's turn at the
+        # sink ends. Presentation-local bookkeeping — elapsed time and a turn
+        # count for shaping the coder's live stream — not engine state: the
+        # engine's decisions never read it (ADR 034).
+        self._coder_phase: Optional[Dict[str, Any]] = None
 
     def _use_color(self) -> bool:
         if self._color is not None:
@@ -375,6 +487,7 @@ class ProgressRenderer:
             return
 
         kind = classify_progress_line(line)
+        line, kind = self._shape_coder_line(line, kind)
         last = self._rows[-1] if self._rows else None
 
         if kind == TURN and last is not None and last["kind"] == TURN and last["text"] == line:
@@ -385,6 +498,48 @@ class ProgressRenderer:
             del self._rows[:-window]
 
         self._repaint(stream)
+
+    #: The coder-phase boundaries carried by the sink itself (#306): the
+    #: engine emits the dispatch line before the subprocess runs and one of
+    #: the closing lines when it ends, so the renderer needs no new signal —
+    #: only the lines every viewer already sees.
+    _CODER_DISPATCH_RE = re.compile(r"^\s*Coder dispatched\b")
+
+    def _shape_coder_line(self, line: str, kind: str) -> Tuple[str, str]:
+        """Compose a recognised coder line into the validator's turn shape.
+
+        Only the colour (interactive) path calls this: the capture, a job's
+        stdout.log and every plain stream keep the coder's raw bytes. While
+        a coder owns the sink, a line whose shape states what the coder did
+        (``summarize_coder_line``) is re-emitted as
+        "    [m:ss] Turn N: <summary>" — the same line a validator's turn
+        makes, so it classifies as TURN and compacts the same way. An
+        unrecognised line is returned untouched: passing it through beats
+        guessing, and nothing is ever dropped. Shaping a line here cannot
+        affect the run: this is the last stop before the terminal, the
+        return value feeds only the window, and the engine never reads it
+        back (ADR 034).
+        """
+        if kind == CODER:
+            if self._CODER_DISPATCH_RE.match(line):
+                self._coder_phase = {"started": time.monotonic(), "turns": 0}
+            else:
+                self._coder_phase = None
+            return line, kind
+        if kind in (PHASE, HALT):
+            # Another engine phase took the sink back; the coder's stream is over.
+            self._coder_phase = None
+            return line, kind
+        if self._coder_phase is None or kind == TURN:
+            # Outside a coder phase, or already a composed turn line (a
+            # litellm coder reports its own turns — never double-shape).
+            return line, kind
+        summary = summarize_coder_line(line)
+        if summary is None:
+            return line, kind
+        self._coder_phase["turns"] += 1
+        elapsed = format_elapsed(time.monotonic() - self._coder_phase["started"])
+        return f"    [{elapsed}] Turn {self._coder_phase['turns']}: {summary}", TURN
 
     @staticmethod
     def _format_row(row: Dict[str, Any]) -> str:

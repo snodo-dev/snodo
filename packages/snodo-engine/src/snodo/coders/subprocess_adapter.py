@@ -281,6 +281,12 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         a wire format, and nothing here inspects or rewrites it. A sink that
         fails must not kill the run it is watching, so errors are swallowed
         with a debug log rather than propagated.
+
+        Giving the coder's live stream the validator's turn shape (elapsed,
+        turn count, what the turn did) is the sink's presentation job, not
+        this one: it happens downstream in ``ProgressRenderer``, on the
+        interactive path only, so the capture, a job's stdout.log and every
+        plain stream keep these bytes untouched (Issue #306).
         """
         try:
             emit(line.rstrip("\n"))
