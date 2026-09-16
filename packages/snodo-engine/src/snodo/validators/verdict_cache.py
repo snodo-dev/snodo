@@ -18,7 +18,8 @@ The key covers, for every cached verdict:
 - the current mode,
 - the evaluation phase,
 - the subject (see ``snodo.validators.runner`` — the spec the judge read for
-  a proposal judge, or the commit/tree it inspected for a tool-using judge),
+  a proposal judge, the commit/tree it inspected for a tool-using
+  post-execute judge, or both, composed, for a tool-using pre-execute judge),
 - the token and tool-turn budgets.
 
 The cache lives with the project's own state (``.snodo/verdict_cache.json``),
