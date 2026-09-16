@@ -99,7 +99,7 @@ giving liveness the cursor's delivery guarantee would replay a stale status
 after a failed push, which is worse than the gap it covered.
 
 ```
-PUT {api_url}/live/{session_id}
+PUT {liveness_url}/live/{session_id}
 Authorization: Bearer <account key>
 ```
 

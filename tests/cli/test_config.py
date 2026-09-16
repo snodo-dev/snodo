@@ -993,3 +993,49 @@ class TestCloudServiceUrls:
         assert cloud["api_url"] == DEFAULT_CLOUD_API_URL
         assert cloud["tunnel_api_url"] == DEFAULT_TUNNEL_API_URL
 
+    def test_liveness_url_derives_origin_and_version(self):
+        from snodo.config import (
+            DEFAULT_CLOUD_API_URL,
+            get_cloud_ingest_url,
+            get_cloud_liveness_url,
+        )
+
+        # Default configuration: app origin + /v1 version segment
+        default_config = {}
+        assert get_cloud_liveness_url(default_config) == "https://app.snodo.dev/v1"
+        composed_liveness = f"{get_cloud_liveness_url(default_config)}/live/sess_1"
+        assert composed_liveness == "https://app.snodo.dev/v1/live/sess_1"
+
+        # Ingest URL remains byte-identical to today for the same config
+        ingest_url = f"{get_cloud_ingest_url(default_config).rstrip('/')}/ingest"
+        assert ingest_url == f"{DEFAULT_CLOUD_API_URL}/ingest"
+        assert ingest_url == "https://api.snodo.dev/ingest"
+
+        # Staging host with 'api' label
+        staging = {"cloud": {"api_url": "https://api.staging.snodo.dev"}}
+        assert get_cloud_liveness_url(staging) == "https://app.staging.snodo.dev/v1"
+
+    def test_liveness_url_non_production_shapes(self):
+        from snodo.config import get_cloud_liveness_url
+
+        # Localhost port, IP, and self-hosted deployment without 'api' label
+        for host, expected in [
+            ("http://localhost:8000", "http://localhost:8000/v1"),
+            ("http://127.0.0.1:8080", "http://127.0.0.1:8080/v1"),
+            ("https://snodo.internal", "https://snodo.internal/v1"),
+            ("https://staging.snodo.dev", "https://staging.snodo.dev/v1"),
+        ]:
+            cfg = {"cloud": {"api_url": host}}
+            derived = get_cloud_liveness_url(cfg)
+            assert derived == expected
+            assert f"{derived}/live/sess_1" == f"{expected}/live/sess_1"
+
+    def test_liveness_url_explicit_override_escape_hatch(self):
+        from snodo.config import get_cloud_liveness_url
+
+        override_with_v1 = {"cloud": {"liveness_url": "https://custom.app.snodo.dev/v1"}}
+        assert get_cloud_liveness_url(override_with_v1) == "https://custom.app.snodo.dev/v1"
+
+        override_without_path = {"cloud": {"liveness_api_url": "https://custom.app.snodo.dev"}}
+        assert get_cloud_liveness_url(override_without_path) == "https://custom.app.snodo.dev/v1"
+
