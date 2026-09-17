@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-09-17
+
 ### Added
 
 - The liveness snapshot now carries `last_activity_at`: when something last
