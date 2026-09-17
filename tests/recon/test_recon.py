@@ -360,19 +360,94 @@ class TestReconToolHandler:
 # Resolve agent model tests
 # ------------------------------------------------------------------#
 
+def _set_default_model(configured: str) -> None:
+    """Write ``model:`` into the isolated SNODO_HOME config."""
+    from snodo.config import ConfigManager
+
+    cfg = ConfigManager()
+    data = cfg.load()
+    data["model"] = configured
+    cfg.save(data)
+
+
 class TestResolveAgentModel:
     def test_default_resolves_to_configured_model(self):
         from snodo.recon import resolve_agent_model
 
-        with patch("snodo.config.ConfigManager") as MockCM:
-            MockCM.return_value.get_model.return_value = "gpt-4"
-            result = resolve_agent_model("default")
-            assert result == "gpt-4"
+        _set_default_model("gpt-4")
+        assert resolve_agent_model("default") == "gpt-4"
 
     def test_named_agent_passes_through(self):
         from snodo.recon import resolve_agent_model
         result = resolve_agent_model("gemini/gemini-2.0-flash-exp")
         assert result == "gemini/gemini-2.0-flash-exp"
+
+    def test_default_with_coder_adapter_prefix_is_stripped_to_a_callable_model(
+        self, capsys,
+    ):
+        """A default model namespaced by a subprocess coder (opencode-cli/...)
+        is stripped to the provider model the CLI would have used, so the
+        adapter-prefixed string never reaches the provider call."""
+        from snodo.recon import resolve_agent_model
+
+        _set_default_model("opencode-cli/deepseek/deepseek-chat")
+        result = resolve_agent_model("default")
+
+        assert result == "deepseek/deepseek-chat"
+        assert "opencode-cli/" not in result
+        assert "opencode-cli/deepseek/deepseek-chat" in capsys.readouterr().err
+
+    def test_default_with_legacy_opencode_prefix_is_stripped(self):
+        """``opencode`` accepts the legacy ``opencode/`` namespace as well as
+        its declared ``opencode-cli/`` prefix, and recon strips it too."""
+        from snodo.recon import resolve_agent_model
+
+        _set_default_model("opencode/deepseek/deepseek-chat")
+        assert resolve_agent_model("default") == "deepseek/deepseek-chat"
+
+    def test_default_that_is_no_model_at_all_falls_back_to_the_builtin(
+        self, capsys,
+    ):
+        """A configured default that names neither a provider model nor an
+        adapter namespace resolves to something this path can call."""
+        from snodo.config import DEFAULT_MODEL
+        from snodo.recon import resolve_agent_model
+
+        _set_default_model("not-a-provider-model")
+        result = resolve_agent_model("default")
+
+        assert result == DEFAULT_MODEL
+        assert "not-a-provider-model" in capsys.readouterr().err
+
+    def test_a_default_model_that_reaches_the_provider_call_is_stripped(
+        self, project_with_snodo,
+    ):
+        """End to end: a configured default carrying a coder-adapter prefix
+        does not reach litellm.completion."""
+        from unittest.mock import MagicMock
+
+        from snodo.recon import call_agent, resolve_agent_model
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "answer"
+        mock_response.choices[0].message.tool_calls = None
+
+        _set_default_model("opencode-cli/deepseek/deepseek-chat")
+        resolved = resolve_agent_model("default")
+        with patch("litellm.completion", return_value=mock_response) as mock_comp:
+            res = call_agent(
+                project_root=project_with_snodo,
+                model=resolved,
+                query="q",
+                paths=["./"],
+                agent_label="agent1",
+            )
+
+        assert not res.error
+        model_arg = mock_comp.call_args.kwargs["model"]
+        assert "opencode-cli/" not in model_arg
+        assert model_arg == "deepseek/deepseek-chat"
 
 
 # ------------------------------------------------------------------#

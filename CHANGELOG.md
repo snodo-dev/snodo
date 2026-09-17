@@ -18,6 +18,22 @@ snodo uses [Semantic Versioning](https://semver.org/).
   disk. A terminal recon, failed or complete, now reports the results it
   recorded through both calls; a running recon is unchanged and still reports
   nothing. No state, severity or task status was added. (Fixes #327)
+- A recon caller that names no agent now gets the configured recon models.
+  The `recon` tool's `agents` property carried a JSON Schema default of
+  `["default"]`, which many MCP clients materialise into the arguments they
+  send — so a caller that never chose an agent arrived having named one, and a
+  named agent short-circuits `llm.recon.models` entirely. The property no
+  longer declares a default, so the wire can express the difference between
+  "I named an agent" and "I named none"; an explicit `agents` list still means
+  exactly what it names. Whatever `default` resolves to must also be callable:
+  a project whose coder is a subprocess CLI can carry that adapter's namespace
+  in its default model (`opencode-cli/...`, `agy/...`), a string the adapter
+  strips before invoking its binary and which litellm rejects outright — recon
+  now strips such a prefix to the provider model and names the substitution on
+  stderr, falling back to the built-in default if nothing callable remains.
+  No state, severity, halt type or task status was added, and failover within
+  a chain, the fan-out, and what recon does once it has its models are
+  unchanged. (Fixes #328)
 
 ## [0.10.1] — 2026-09-17
 

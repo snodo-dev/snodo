@@ -122,11 +122,84 @@ _ANSWER_ONLY_INSTRUCTION = (
 )
 
 
+def _adapter_model_prefixes() -> tuple[str, ...]:
+    """Namespace prefixes the coder adapters declare (``agy/``, ...).
+
+    A subprocess CLI adapter owns its model catalog; a model in its namespace
+    is meaningful to that binary and stripped before it is invoked. The
+    prefix is what distinguishes such a string from one litellm can route.
+    """
+    try:
+        from snodo.coders import CODER_REGISTRY
+    except Exception:
+        return ()
+    prefixes: list[str] = []
+    for cls in CODER_REGISTRY.values():
+        prefix = getattr(cls, "model_prefix", "") or ""
+        if prefix and prefix not in prefixes:
+            prefixes.append(prefix)
+    return tuple(prefixes)
+
+
+#: Extra adapter namespaces a coder strips but that its ``model_prefix`` does
+#: not declare: ``opencode-cli`` accepts the legacy ``opencode/`` form too
+#: (SubprocessCoderAdapter._bare_model).
+_ADAPTER_MODEL_PREFIX_ALIASES = ("opencode/",)
+
+
+def _bare_agent_model(model: str) -> str:
+    """Strip a coder adapter's namespace from *model*, or return ""."""
+    prefixes = _adapter_model_prefixes() + _ADAPTER_MODEL_PREFIX_ALIASES
+    for prefix in prefixes:
+        if model.startswith(prefix):
+            return model[len(prefix):]
+    return ""
+
+
+def _callable_default_model(configured: str) -> str:
+    """Return a model this path can actually call for ``"default"``.
+
+    ``"default"`` is the configured default model, but that model is not
+    always one the provider call can route: a project whose coder is a
+    subprocess CLI can carry that adapter's namespace (``opencode-cli/...``,
+    ``agy/...``), which the adapter strips before invoking its binary and
+    which litellm rejects outright. When the configured default is such a
+    string, the adapter's own namespace is stripped — the bare model is the
+    provider model the CLI would have used — and when nothing callable
+    remains the built-in default is used. Either substitution is named on
+    stderr so an operator can see which model recon actually called.
+    """
+    from snodo.config import DEFAULT_MODEL, ConfigManager
+
+    if configured and ConfigManager._provider_for_model(configured) is not None:
+        return configured
+
+    bare = _bare_agent_model(configured) if configured else ""
+    if bare and ConfigManager._provider_for_model(bare) is not None:
+        _warn(
+            f"configured default model {configured!r} names a coder adapter, "
+            f"not a provider model; using {bare!r} for recon instead."
+        )
+        return bare
+
+    _warn(
+        f"configured default model {configured!r} is not a model this path "
+        f"can call; using {DEFAULT_MODEL!r} for recon instead."
+    )
+    return DEFAULT_MODEL
+
+
 def resolve_agent_model(agent: str) -> str:
-    """Resolve 'default' to the configured model; pass-through otherwise."""
+    """Resolve 'default' to a callable configured model; pass-through otherwise.
+
+    A named agent is returned unchanged — naming one is a deliberate override.
+    ``"default"`` resolves to the configured default model, guarded so a
+    coder-adapter namespaced string never reaches the provider call
+    (:func:`_callable_default_model`).
+    """
     if agent == "default":
         from snodo.config import ConfigManager
-        return ConfigManager().get_model()
+        return _callable_default_model(ConfigManager().get_model())
     return agent
 
 
