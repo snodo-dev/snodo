@@ -227,15 +227,20 @@ the check by forgetting it.
 The same declaration mechanism reaches one level up with the coder **report**
 (`snodo/coders/report.py`, ADR 048): a structured account of what a run did, how
 far it got, and why it stopped, so the engine no longer reconstructs that from a
-prose tail. It is declared here as a *shape only* — no adapter fills it in yet and
-nothing reads it; later tickets do those. Its two properties are load-bearing and
-pinned by `test_coder_report_shape.py`: every field is optional (a coder may do the
-work and forget to report, and absence is never an error), and a malformed report is
-discarded with a log line, never a halt. Above all it is **evidence, never a
-verdict**: the type carries no pass/severity/status field, the worktree stays the
-only authority on what was written, and nothing a coder says may cause a pass — so
-the vocabulary of stop reasons is fixed now, before its first reader exists, rather
-than accreting one value per incident.
+prose tail. A coder that owns its own loop fills it from what it holds; a
+subprocess coder, whose loop the engine cannot see, is instead *invited* to
+write it — the adapter offers a path inside the job's own state and asks the CLI
+to write the report there before exiting, then reads, tolerantly parses and
+deletes the file. Its properties are load-bearing and
+pinned by `test_coder_report_shape.py` and `test_subprocess_coder_report.py`:
+every field is optional (a coder may do the work and forget to report, and
+absence is never an error), a malformed report is discarded with a log line,
+never a halt, and the report file is engine scratch that never survives the run
+or lands in the user's project. Above all it is **evidence, never a verdict**:
+the type carries no pass/severity/status field, the worktree stays the only
+authority on what was written, and nothing a coder says may cause a pass — so
+the vocabulary of stop reasons is fixed, rather than accreting one value per
+incident.
 
 
 ---

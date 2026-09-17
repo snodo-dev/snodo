@@ -54,6 +54,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
   about the same event. Nothing changes about what the coder does, submits or
   how it fails, and a report that cannot be built leaves `last_report` absent
   instead of failing the run. Nothing reads it yet (ADR 048). (Fixes #317)
+- A subprocess coder is now invited to report its run, and says nothing if it
+  will not. The engine cannot count a spawned CLI's turns and will not read its
+  prose, so the adapter offers it a path inside the job's own state
+  (`.snodo/jobs/<job_id>/coder-report.json`, never the user's project) and asks
+  it to write an ADR 048 report there before exiting. After the run the file is
+  read, parsed tolerantly by `parse_coder_report`, and deleted whether it was
+  written or not. A missing report is the ordinary case and is silent; a partial
+  one keeps what it has; a malformed one is discarded with a log line. None of
+  these is an error, a halt, or a change to the run's outcome, and the
+  invitation is additive — it never changes what the coder is asked to build.
+  Reading is confined to the agreed path: stdout and stderr are never parsed,
+  and no stop reason is mapped onto a halt (ADR 034/048). (Fixes #318)
 
 - A coder can now say, in structured terms, what a run did and how it ended —
   and the engine has a shape to receive it. `snodo/coders/report.py` (new)
