@@ -6,6 +6,11 @@ FILE: snodo/engine/nodes/governance.py
 import logging
 from typing import Any, Dict, List
 
+from snodo.engine.evidence import (
+    evidence_missing,
+    extract_evidence,
+    preserve_evidence,
+)
 from snodo.engine.state import LoopStage, LoopState
 
 _logger = logging.getLogger(__name__)
@@ -39,10 +44,27 @@ class GovernanceNodeMixin:
             f"- [{c.get('validator_id', '?')}] {c.get('justification', '')}"
             for c in spec_critique
         )
+        # A redefinition restates the ask; it does not discard what the author
+        # knew.  The paths, line citations and named tests the original carried
+        # are what bound its scope, so they are named to the author and checked
+        # for afterwards.  With no evidence the block is empty and the prompt
+        # and result are exactly what they were before (Fixes #320).
+        evidence = extract_evidence(intent)
+        evidence_block = ""
+        if evidence:
+            evidence_block = (
+                "The INTENT carries this EVIDENCE — concrete anchors the task "
+                "was seen against.  Carry every item into the spec verbatim, "
+                "reword the ask around it, and do not widen the scope beyond "
+                "it:\n"
+                + "\n".join(f"- {anchor}" for anchor in evidence)
+                + "\n\n"
+            )
         authoring_prompt = (
             "You are a spec author.  The following is a raw INTENT (e.g. a bug report).  "
             "A spec validator gave this critique:\n\n"
             f"{critique_text}\n\n"
+            f"{evidence_block}"
             "Rewrite the intent into a well-formed spec that:\n"
             "1. Restates the desired outcome in 1-2 sentences (not a copy of the raw input)\n"
             "2. States explicit acceptance criteria (how we know it's resolved)\n"
@@ -70,6 +92,15 @@ class GovernanceNodeMixin:
                 "error": str(exc),
             })
 
+        # A rewrite that leaves the task vaguer than it found it has failed,
+        # whatever the critique said.  Any anchor the author dropped is put back
+        # verbatim, so the reworded ask is still bounded by the evidence the
+        # original carried.  With no evidence, or evidence the author kept,
+        # nothing is appended and the text is the author's exactly.
+        missing_evidence = evidence_missing(authored_spec, evidence)
+        if missing_evidence:
+            authored_spec = preserve_evidence(authored_spec, missing_evidence)
+
         before = loop_state.task.spec
         loop_state.task.spec = authored_spec
         loop_state.needs_spec_authoring = False
@@ -96,15 +127,23 @@ class GovernanceNodeMixin:
             progress(f"    Original: {before[:300]}")
             progress(f"    Authored: {authored_spec[:300]}")
             progress(f"    Critique: {critique_text[:300]}")
+            if missing_evidence:
+                progress(
+                    "    Evidence preserved: "
+                    + ", ".join(missing_evidence)[:300]
+                )
 
-        # Provenance: what triggered this, which attempt it was, and what the
-        # original said.  Carried in metadata so the halt payload shows the
-        # spec's origin rather than an invisible rewrite.
+        # Provenance: what triggered this, which attempt it was, what the
+        # original said, and which of its evidence the rewrite would have
+        # dropped.  Carried in metadata so the halt payload shows the spec's
+        # origin rather than an invisible rewrite.
         loop_state.metadata["spec_authoring"] = {
             "attempt": loop_state.spec_authoring_attempts,
             "triggered_by": [c.get("validator_id") for c in spec_critique],
             "original": before,
             "authored": authored_spec,
+            "evidence": evidence,
+            "evidence_restored": missing_evidence,
         }
 
         self._audit("spec_authored", {
@@ -115,6 +154,8 @@ class GovernanceNodeMixin:
             "intent_preview": before[:400],
             "authored_spec_preview": authored_spec[:400],
             "critique": spec_critique,
+            "evidence": evidence,
+            "evidence_restored": missing_evidence,
         })
 
         return loop_state
