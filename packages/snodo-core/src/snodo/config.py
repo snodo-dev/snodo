@@ -307,6 +307,10 @@ class ConfigManager:
                 "api_url": DEFAULT_CLOUD_API_URL,
                 "tunnel_api_url": DEFAULT_TUNNEL_API_URL,
                 "sync_enabled": False,
+                # Liveness push interval: at most one push per interval, and at
+                # least one while a session is running (Fixes #323). Lower it
+                # to hear from a quiet run more often, knowing the cost.
+                "liveness_interval_seconds": 60,
             },
             "mcp": {
                 "port": 55441,

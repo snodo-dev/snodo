@@ -305,12 +305,17 @@ def quiesce_cloud_liveness():
     sync-enabled ``ConfigManager`` and append a trigger event would otherwise
     start a real push thread. Liveness is still tested — its own module arms
     it explicitly — but no test arms it as a side effect for the next one.
+    The floor timers are process-global too, so the per-session bookkeeping
+    is reset here as well; a pushed-while-running session arms one, and it
+    must not outlive the test that created it (Fixes #323).
     """
     from snodo.infrastructure import cloud_liveness
 
     cloud_liveness.uninstall()
+    cloud_liveness.reset_liveness_state()
     yield
     cloud_liveness.uninstall()
+    cloud_liveness.reset_liveness_state()
 
 
 def pytest_configure(config: pytest.Config) -> None:

@@ -123,6 +123,10 @@ providers:
 cloud:
   api_url: https://api.snodo.dev
   sync_enabled: false
+  liveness_interval_seconds: 60             # at most one liveness push per
+                                            # interval, and at least one while
+                                            # a session is running; lower it to
+                                            # hear from a quiet run more often
 ```
 
 Every key is settable without hand-editing:

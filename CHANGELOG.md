@@ -20,6 +20,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
   idle. `last_activity_at` is the newest of the record files' modification
   times and the audit tail's own timestamp — no new state, no audit event
   appended, no trigger or throttle change. (Fixes #324)
+### Changed
+
+- Liveness is now heard from even when nothing changes. The push was
+  change-driven and throttled to at most one snapshot per session per
+  interval, so a session that was running but quiet — a coder reading for
+  twenty-four minutes without a status change — sent nothing, which is
+  indistinguishable on the far side from a machine that has died. The
+  interval is now a floor as well as a ceiling: at most one push per
+  interval, and at least one while something is running. The reason the
+  change-driven design existed is preserved — a session with nothing running
+  still sends nothing, and a repeat push carries the same true snapshot
+  rather than inventing state. The interval is configurable with
+  `cloud.liveness_interval_seconds` (default 60 seconds, unchanged), so a
+  deployment can lower it knowing the cost. Everything else about the wire
+  is unchanged: full-snapshot PUT, drop on failure with no retry or queue,
+  terminal transitions bypassing the throttle, and the sync/api-key gate.
+  (Fixes #323)
 
 ## [0.10.0] — 2026-09-17
 
