@@ -9,7 +9,31 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.2] — 2026-09-17
+
 ### Fixed
+
+- A protocol can declare `protected_paths`, and a task whose branch diff
+  touches one is blocked with the path named. Some paths in a repository are
+  decisions rather than code, and until now the only defence was a sentence in
+  a constraint — an instruction, not a boundary — so a coder implementing a
+  feature could rewrite the decision record that governed it and nothing
+  noticed. Detection reads the task branch's own diff, so it holds for every
+  coder on every platform without privileges or mounts, and the work is
+  unmerged when the check runs. Prevention (hiding a path from the task's
+  worktree, read-only mounts in the container) is recorded in ADR 049 as what
+  comes next, together with the platform truth that a same-user host
+  subprocess cannot be given a real read-only boundary. No state, severity,
+  halt type or task status was added. (Fixes #329)
+- The liveness snapshot now carries durable wave identifiers, so a consumer
+  can join it to ingested history. The snapshot nested tasks under a
+  plan-local ordinal while history knew the same tasks under the registry's
+  `w_xxxx` identifier, and nothing related the two — a completed wave could
+  only render as a count. An enumerated task now carries its own identifier,
+  and a settled wave reports the identifiers its tasks held alongside its
+  counts, so a collapsed wave joins without being enumerated. The plan ordinal
+  and the registry grouping remain different things and are documented as
+  such. (Fixes #331)
 
 - A failed recon now carries its reason to whoever asks. `get_status` loaded
   results only for `complete`, and `get_results` raised for any other status,
