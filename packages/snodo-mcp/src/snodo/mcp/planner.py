@@ -17,6 +17,7 @@ Plans live in .snodo/plans/<plan_name>/ with:
 import hashlib
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,6 +30,77 @@ from snodo.compiler.verifier import (
 )
 
 _logger = logging.getLogger(__name__)
+
+#: The audit event for a task an operator recorded as completed outside the
+#: loop. `snodo task complete` has written this event since #287 and the MCP
+#: `record_task_status` tool writes the same one: the record is the operator's,
+#: whichever surface carried it, and a reader cannot — and should not — tell
+#: the two apart.
+HAND_COMPLETED_EVENT = "task_completed_by_hand"
+
+#: The audit event for any other status an operator records outside the loop.
+#: Kept distinct from the completion event so `snodo task show` never reports a
+#: blocked or errored task as hand-completed; the provenance fields are the
+#: same, and the `status` field says which status was recorded.
+HAND_STATUS_EVENT = "task_status_recorded_by_hand"
+
+
+def resolve_audit_log(project_root: Any, audit_log: Any) -> Any:
+    """The audit log a record should be written to.
+
+    An injected log wins (the MCP server passes one when it has it); otherwise
+    the project's own ``.snodo/audit.log`` is resolved the same way the CLI
+    resolves it, so a record lands in the project's chain regardless of which
+    surface made it. Returns ``None`` when no log can be resolved — the caller
+    reports that rather than silently recording nothing.
+    """
+    if audit_log is not None:
+        return audit_log
+    try:
+        from snodo.infrastructure.audit import get_audit_log
+        path = Path(project_root) / ".snodo" / "audit.log"
+        return get_audit_log(str(path) if path.exists() else None)
+    except Exception as exc:  # noqa: BLE001 — an unavailable log is reported, not hidden
+        _logger.debug("Could not resolve audit log for %s: %s", project_root, exc)
+        return None
+
+
+def hand_record_event(
+    task_id: str,
+    who: str,
+    recorded_at: str,
+    *,
+    plan: Optional[str] = None,
+    notes: Optional[str] = None,
+    status: str = "completed",
+) -> tuple[str, Dict[str, Any]]:
+    """Build the ``(event_type, data)`` for an operator's status record.
+
+    The one builder behind both surfaces. A recorded status is an operator's
+    account, so every event carries ``judged: False``, ``engine_judged: False``
+    and ``outside_loop: True`` — a reader can tell it from a status the loop
+    itself wrote. It records what a human decided and decides nothing.
+    """
+    event_type = (
+        HAND_COMPLETED_EVENT if status == "completed" else HAND_STATUS_EVENT
+    )
+    data: Dict[str, Any] = {
+        "op": event_type,
+        "task_ref": task_id,
+        "who": who,
+        "recorded_at": recorded_at,
+        "timestamp": recorded_at,
+        "judged": False,
+        "engine_judged": False,
+        "outside_loop": True,
+    }
+    if plan:
+        data["plan"] = plan
+    if notes:
+        data["notes"] = notes
+    if status != "completed":
+        data["status"] = status
+    return event_type, data
 
 
 class PlannerError(Exception):
@@ -657,9 +729,7 @@ class PlannerMCP:
         Raises:
             PlannerError: If plan not found or invalid status
         """
-        valid_statuses = {"pending", "in_progress", "completed", "blocked", "errored", "unmerged"}
-        if status not in valid_statuses:
-            raise PlannerError(f"Invalid status: {status}. Must be one of {valid_statuses}")
+        self._check_status(status)
 
         plan_dir = self.plans_dir / plan_name
         if not plan_dir.exists():
@@ -703,6 +773,105 @@ class PlannerMCP:
             )
         except Exception as exc:  # noqa: BLE001 — liveness never breaks a status write
             _logger.debug("Liveness note after status write skipped: %s", exc)
+
+    @staticmethod
+    def _check_status(status: str) -> None:
+        """Refuse a status outside the plan vocabulary.
+
+        The one place the vocabulary is checked, so every writer — the loop's
+        own ``update_status`` and an operator's ``record_status`` — refuses
+        exactly the same values. Widening it is a decision (ADR 045), not an
+        edit: ``scripts/enforce_vocabularies.py`` reads this set.
+        """
+        valid_statuses = {"pending", "in_progress", "completed", "blocked", "errored", "unmerged"}
+        if status not in valid_statuses:
+            raise PlannerError(f"Invalid status: {status}. Must be one of {valid_statuses}")
+
+    def record_status(
+        self,
+        plan_name: Optional[str],
+        task_id: str,
+        status: str,
+        who: str,
+        *,
+        notes: Optional[str] = None,
+        recorded_at: Optional[str] = None,
+    ) -> dict:
+        """Record a status an operator decided on, outside the loop.
+
+        The one implementation behind both surfaces: ``snodo task complete``
+        and the MCP ``record_task_status`` tool both call this, so the plan
+        state they leave and the audit event they append cannot drift apart.
+        The status vocabulary is :meth:`update_status`'s — a value it would
+        refuse is refused here too, and no new status is introduced.
+
+        This records what a human decided; it decides nothing. The audit event
+        carries ``judged: False`` and ``outside_loop: True``, so a reader can
+        tell an operator's account from a status the loop itself wrote, and a
+        recorded ``completed`` is never evidence a validator quorum passed.
+
+        Args:
+            plan_name: Plan the task belongs to, or None for an audit-only
+                record (the CLI's task with no discoverable plan).
+            task_id: Task identifier.
+            status: One of :meth:`update_status`'s statuses.
+            who: The person (or role) the status is recorded for.
+            notes: Optional reason — the "why" beside the "who".
+            recorded_at: ISO timestamp; defaults to now (UTC).
+
+        Returns:
+            ``{"event_type", "status", "task_id", "plan", "who",
+            "recorded_at", "notes", "judged"}``.
+
+        Raises:
+            PlannerError: If a field is missing, the status is not in the
+                vocabulary, the plan is unknown, or the audit log is
+                unavailable.
+        """
+        if not task_id or not str(task_id).strip():
+            raise PlannerError("task_id is required")
+        if not who or not str(who).strip():
+            raise PlannerError("who is required — a recorded status names who decided it")
+
+        timestamp = recorded_at or datetime.now(timezone.utc).isoformat()
+
+        # update_status validates the status vocabulary and raises before
+        # anything is written, so an invalid status never reaches the plan or
+        # the audit log (the same guardrail the CLI path has).
+        if plan_name:
+            if status == "completed":
+                metadata = {
+                    "completed_by": who,
+                    "completed_at": timestamp,
+                    "judged": False,
+                }
+            else:
+                metadata = {
+                    "recorded_by": who,
+                    "recorded_at": timestamp,
+                    "judged": False,
+                }
+            self.update_status(plan_name, task_id, status, **metadata)
+
+        event_type, event_data = hand_record_event(
+            task_id, who, timestamp,
+            plan=plan_name, notes=notes, status=status,
+        )
+        audit_log = resolve_audit_log(self.project_root, self._audit_log)
+        if audit_log is None:
+            raise PlannerError("Audit log unavailable.")
+        audit_log.append_event(event_type, event_data)
+
+        return {
+            "event_type": event_type,
+            "status": status,
+            "task_id": task_id,
+            "plan": plan_name,
+            "who": who,
+            "recorded_at": timestamp,
+            "notes": notes,
+            "judged": False,
+        }
 
     def recompute_depths(self, plan_name: str) -> dict:
         """Two-pass depth recompute for legacy plans.

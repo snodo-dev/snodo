@@ -283,6 +283,14 @@ When an operator completes a task by hand outside the loop (for instance, inspec
 
 This records the provenance in the audit log (who, when, unjudged by the engine) and updates the plan's `status.json` so the plan advances from that record rather than manual file edits. Supported options include `--plan`, `--who`, `--notes`, and `--json`.
 
+An orchestrator connected over MCP records the same thing with the
+`record_task_status` tool (`plan_name`, `task_id`, `status`, `who`, optional
+`notes`). It is the machine-side `snodo task complete`: the same status
+vocabulary, the same provenance and the same audit event, written through the
+same implementation, so the plan state the two leave cannot diverge. A recorded
+status is an operator's account — the audit entry is marked unjudged and
+`outside_loop`, and it is never a validator verdict or a substitute for one.
+
 ## CLI Reference
 
 `snodo <command> --help` is authoritative; the table below is the map.

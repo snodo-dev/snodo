@@ -263,6 +263,12 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
             "  carry the run (a wave takes minutes).\n"
             "- `get_plan(plan_name)` retrieves the plan and its task statuses at any\n"
             "  time — the plan files on disk are the source of truth.\n"
+            "- `record_task_status(plan_name, task_id, status, who, notes)` records\n"
+            "  a status an operator decided on outside the loop — the machine-side\n"
+            "  `snodo task complete`. It writes the plan's own status vocabulary\n"
+            "  and appends an unjudged audit event so the plan advances from the\n"
+            "  record. It records a human's account and decides nothing: it never\n"
+            "  passes a task in place of the validators.\n"
         )
 
     if "dispatch_task" in exposed or "run_plan" in exposed:

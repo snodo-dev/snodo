@@ -118,7 +118,7 @@ def _add_task(server, plan, task_id, spec):
 
 PLANNING_TOOL_NAMES = {
     "decompose", "generate_spec", "validate_plan",
-    "propose_plan", "get_plan", "run_plan",
+    "propose_plan", "get_plan", "run_plan", "record_task_status",
 }
 
 

@@ -454,7 +454,7 @@ class TestServerIntegration:
         assert "plan" in MODE_TOOL_MAP
         assert set(MODE_TOOL_MAP["plan"]) == {
             "decompose", "generate_spec", "validate_plan",
-            "propose_plan", "get_plan", "run_plan",
+            "propose_plan", "get_plan", "run_plan", "record_task_status",
         }
 
 
