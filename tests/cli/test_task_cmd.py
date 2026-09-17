@@ -615,6 +615,103 @@ def test_task_show_no_spec_still_renders(tmp_path, monkeypatch, capsys):
     assert data["halt"]["reason"] == "no spec here"
 
 
+def test_task_show_with_coder_report(tmp_path, monkeypatch, capsys):
+    """task_show prints coder_report and disagreements when present."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "halt", {
+        "t1": {
+            "final_decision": "blocked",
+            "halt_type": "verification_failed",
+            "phase": "post_execute",
+            "coder_report": {
+                "source": "coder",
+                "evidence_only": True,
+                "stop_reason": "completed",
+                "turns_used": 3,
+                "turns_available": 10,
+                "claimed_but_missing": ["missing.py"],
+                "unclaimed_but_present": ["extra.py"],
+            },
+        }
+    })
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=False))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "coder_report (coder's account, evidence only):" in out
+    assert "stop_reason:           completed" in out
+    assert "turns:                 3 / 10" in out
+    assert "claimed-but-missing:   missing.py" in out
+    assert "unclaimed-but-present: extra.py" in out
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=True))
+    assert res == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["halt"]["coder_report"]["claimed_but_missing"] == ["missing.py"]
+    assert data["halt"]["coder_report"]["unclaimed_but_present"] == ["extra.py"]
+
+
+def test_task_show_without_coder_report_has_no_placeholder(tmp_path, monkeypatch, capsys):
+    """task_show has no coder_report block or placeholder when absent."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "halt", {
+        "t1": {
+            "final_decision": "blocked",
+            "halt_type": "verification_failed",
+            "phase": "post_execute",
+        }
+    })
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=False))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "coder_report" not in out
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=True))
+    assert res == 0
+    data = json.loads(capsys.readouterr().out)
+    assert "coder_report" not in data["halt"]
+
+
+def test_task_show_recovers_coder_report_from_task_state(tmp_path, monkeypatch, capsys):
+    """task_show recovers coder_report from local task state.json if absent in session halt."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    mgr.update_decision(session.session_id, "halt", {
+        "t1": {
+            "final_decision": "blocked",
+            "halt_type": "verification_failed",
+            "phase": "post_execute",
+        }
+    })
+
+    task_dir = tmp_path / ".snodo" / "tasks" / "t1"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "state.json").write_text(json.dumps({
+        "halt": {
+            "coder_report": {
+                "source": "coder",
+                "evidence_only": True,
+                "stop_reason": "turn_budget",
+                "turns_used": 10,
+                "turns_available": 10,
+            }
+        }
+    }))
+
+    res = task_show_command(SimpleNamespace(task_id="t1", json=False))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "coder_report (coder's account, evidence only):" in out
+    assert "stop_reason:           turn_budget" in out
+    assert "turns:                 10 / 10" in out
+
+
 # ============================================================================
 # 6. task_abandon_command tests
 # ============================================================================

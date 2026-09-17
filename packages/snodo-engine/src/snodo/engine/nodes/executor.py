@@ -74,6 +74,16 @@ class ExecutorMixin:
         self._last_output_tail = (
             getattr(coder, "last_output_tail", "") or metadata.get("output_tail", "")
         )
+        report = getattr(coder, "last_report", None)
+        if report is None and metadata:
+            report = metadata.get("coder_report") or metadata.get("report")
+        if report is not None:
+            from snodo.coders.report import parse_coder_report
+
+            self._last_coder_report = parse_coder_report(report)
+        else:
+            self._last_coder_report = None
+
 
     def _recover_bounded_run_work(
         self,
@@ -378,6 +388,7 @@ class ExecutorMixin:
             # Propagate unchanged so the engine can surface a blocker halt and
             # audit the attempt (Fixes #52) — this is a governance violation,
             # not an execution fault.
+            self._record_coder_run_facts(coder)
             raise
         except TurnBudgetExhausted:
             # The coder ran out of turns to SUBMIT, not turns to write. A
@@ -426,8 +437,10 @@ class ExecutorMixin:
             self._record_coder_run_facts(coder)
             raise
         except ExecutionError:
+            self._record_coder_run_facts(coder)
             raise
         except Exception as e:
+            self._record_coder_run_facts(coder)
             raise ExecutionError(f"Coder execution failed: {str(e)}") from e
 
         return artifacts

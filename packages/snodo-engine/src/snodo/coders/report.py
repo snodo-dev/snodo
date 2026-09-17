@@ -61,6 +61,7 @@ __all__ = [
     "CoderReport",
     "parse_coder_report",
     "build_coder_report",
+    "print_coder_report",
 ]
 
 #: The file operation a coder claims to have performed. ``created``,
@@ -261,3 +262,51 @@ def _is_new_path(path: str, workspace: Any) -> bool:
         return not bool(probe(path))
     except Exception:
         return False
+
+
+def print_coder_report(report: Any) -> None:
+    """Print the coder's own report and worktree disagreement as evidence.
+
+    Surfaces the coder's account of stopping, turns, tokens, wall time,
+    claimed files, and any disagreement with what was actually found in
+    the worktree.
+    """
+    if report is None:
+        return
+    if isinstance(report, CoderReport):
+        report_data = report.model_dump()
+    elif isinstance(report, dict):
+        report_data = report
+    else:
+        return
+
+    print("  coder_report (coder's account, evidence only):")
+    stop_reason = report_data.get("stop_reason")
+    if stop_reason:
+        print(f"    stop_reason:           {stop_reason}")
+    turns_used = report_data.get("turns_used")
+    turns_available = report_data.get("turns_available")
+    if turns_used is not None:
+        turns_str = f"{turns_used}"
+        if turns_available is not None:
+            turns_str += f" / {turns_available}"
+        print(f"    turns:                 {turns_str}")
+    tokens_used = report_data.get("tokens_used")
+    if tokens_used is not None:
+        print(f"    tokens:                {tokens_used}")
+    wall_time_ms = report_data.get("wall_time_ms")
+    if wall_time_ms is not None:
+        print(f"    wall_time:             {wall_time_ms}ms")
+    files = report_data.get("files")
+    if files:
+        file_strs = [
+            f"{f.get('path')} ({f.get('kind', 'modified')})" if isinstance(f, dict) else str(f)
+            for f in files
+        ]
+        print(f"    claimed_files:         {', '.join(file_strs)}")
+    claimed_missing = report_data.get("claimed_but_missing") or report_data.get("claimed_missing") or []
+    if claimed_missing:
+        print(f"    claimed-but-missing:   {', '.join(claimed_missing)}")
+    unclaimed_present = report_data.get("unclaimed_but_present") or report_data.get("unclaimed_present") or []
+    if unclaimed_present:
+        print(f"    unclaimed-but-present: {', '.join(unclaimed_present)}")
