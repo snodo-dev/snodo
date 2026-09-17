@@ -571,8 +571,11 @@ TOOL_REGISTRY = {
                 "agents": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Model strings; 'default' uses the configured model",
-                    "default": ["default"],
+                    "description": (
+                        "Explicit model names to run as agents. Omit to use "
+                        "the configured llm.recon.models; 'default' names the "
+                        "configured default model."
+                    ),
                 },
                 "num_agents": {
                     "type": "integer",

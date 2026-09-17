@@ -9,11 +9,20 @@ from unittest.mock import patch
 import pytest
 from snodo.mcp.recon_handlers import ReconToolHandler
 from snodo.mcp.server import MCPError
+from snodo.mcp.tools import TOOL_REGISTRY
 from snodo.recon import ReconError
 
 
 def _handler():
     return ReconToolHandler("/tmp/project")
+
+
+class TestReconSchema:
+    def test_agents_carries_no_schema_default(self):
+        """A schema default would erase the difference between a caller that
+        named an agent and one that named none — MCP clients materialise it."""
+        agents = TOOL_REGISTRY["recon"]["inputSchema"]["properties"]["agents"]
+        assert "default" not in agents
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +102,38 @@ class TestHandleRecon:
             handler.handle_recon({"query": "q", "paths": ["./"], "num_agents": 3})
         call_kwargs = mock_rra.call_args[1]
         assert call_kwargs["requested_n"] == 3
+
+    def test_omitting_agents_uses_the_configured_recon_models(self):
+        """A caller that names no agent is passed no explicit agents, so the
+        resolver reaches llm.recon.models rather than a default it did not
+        choose."""
+        handler = _handler()
+        with patch("snodo.config.ConfigManager") as MockCM, \
+             patch("snodo.recon.ReconManager") as MockRM:
+            MockCM.return_value.load.return_value = {
+                "llm": {"recon": {"models": ["m1", "m2"], "num_agents": 1}}
+            }
+            MockRM.return_value.submit.return_value = "recon-cfg"
+            result = handler.handle_recon({"query": "q", "paths": ["./"]})
+        submitted = MockRM.return_value.submit.call_args[0]
+        assert submitted[2] == [["m1", "m2"]]
+        assert result["agents"] == ["m1"]
+
+    def test_naming_agents_uses_those(self):
+        handler = _handler()
+        with patch("snodo.config.ConfigManager") as MockCM, \
+             patch("snodo.recon.ReconManager") as MockRM:
+            MockCM.return_value.load.return_value = {
+                "llm": {"recon": {"models": ["m1", "m2"], "num_agents": 1}}
+            }
+            MockRM.return_value.submit.return_value = "recon-named"
+            result = handler.handle_recon({
+                "query": "q", "paths": ["./"],
+                "agents": ["claude-sonnet", "gemini"],
+            })
+        submitted = MockRM.return_value.submit.call_args[0]
+        assert submitted[2] == [["claude-sonnet"], ["gemini"]]
+        assert result["agents"] == ["claude-sonnet", "gemini"]
 
 
 # ---------------------------------------------------------------------------
