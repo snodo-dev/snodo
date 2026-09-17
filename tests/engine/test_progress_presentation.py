@@ -29,6 +29,7 @@ from snodo.engine.progress import (
     GATE_OK,
     GATE_WARN,
     HALT,
+    HEARTBEAT,
     PHASE,
     PLAIN,
     TURN,
@@ -59,6 +60,7 @@ _ENGINE_LINES = {
     "  Recovery stalled (attempt 2/3): identical verdict; halting loop": HALT,
     "  Recovery depth exhausted (depth 2/2): limit reached; halting loop": HALT,
     "  Recovery premise stale (attempt 2/3): x; halting instead of dispatching": HALT,
+    "  ~ watching · plan 1:20 · no status change": HEARTBEAT,
     "Some narration no rule claims": PLAIN,
 }
 
@@ -171,6 +173,74 @@ def test_identical_consecutive_turn_lines_collapse_into_one_row():
         "    [0:01] Turn 1: read_file(a.py)",
         "    [0:02] Turn 2: read_file(a.py)  (×3)",
     ]
+
+
+# ── Heartbeat runs share one repainted row (Issue #321) ────────────────
+
+_HB_120 = "  ~ watching · plan 1:20 · no status change"
+_HB_125 = "  ~ watching · plan 1:25 · no status change"
+_HB_130 = "  ~ watching · plan 1:30 · no status change"
+
+
+def test_consecutive_heartbeats_share_one_repainted_row():
+    """A run of heartbeats occupies one row that is repainted with each newer
+    text (#321): differing only by the elapsed time they show, they are not
+    identical, yet an hour of waiting must not cost a row apiece."""
+    out = io.StringIO()
+    renderer = ProgressRenderer(stream=out, color=True, window=10)
+    renderer(_HB_120)
+    renderer(_HB_125)
+    renderer(_HB_130)
+    # One row, current: the newest numbers are what the operator sees.
+    assert renderer.visible_lines() == [_HB_130]
+    rendered = out.getvalue()
+    # The later heartbeats were drawn by moving the cursor up onto the row
+    # they share — a repaint, not a new line — and nothing is counted with a
+    # (×N) the way a repeated turn would be.
+    assert "\x1b[1A" in rendered
+    assert "×" not in rendered
+
+
+def test_real_event_between_heartbeats_ends_the_run():
+    """A turn arriving below the heartbeat row ends its run: the event takes
+    its own row, and the next heartbeat starts a fresh row beneath it (#321),
+    so the history of real events stays intact and only the waiting collapses.
+    """
+    turn = "    [0:28] Turn 5: read_file(src/app.tsx)"
+    out = io.StringIO()
+    renderer = ProgressRenderer(stream=out, color=True, window=10)
+    renderer(_HB_120)
+    renderer(_HB_125)
+    renderer(turn)
+    renderer(_HB_130)
+    renderer(_HB_120)  # a new run of waiting, on a row of its own
+    assert renderer.visible_lines() == [_HB_125, turn, _HB_120]
+
+
+def test_collapse_stays_narrow_to_heartbeat_lines():
+    """The repaint rule belongs to heartbeats alone: look-alike lines — a
+    repeated verdict, a near-miss marker — never share a row with anything."""
+    # Only the watch's own shape claims the kind.
+    assert classify_progress_line("Watching: nothing") == PLAIN
+    assert classify_progress_line("~watching") == PLAIN
+    assert classify_progress_line("  ~ waiting for status") == PLAIN
+
+    out = io.StringIO()
+    renderer = ProgressRenderer(stream=out, color=True, window=10)
+    renderer("    ✓ quality: pass")
+    renderer("    ✓ quality: pass")
+    assert renderer.visible_lines() == [
+        "    ✓ quality: pass",
+        "    ✓ quality: pass",
+    ]
+    # A turn followed by a heartbeat: two rows; the heartbeat claims a fresh
+    # one rather than painting over the turn.
+    out2 = io.StringIO()
+    renderer2 = ProgressRenderer(stream=out2, color=True, window=10)
+    renderer2("    [0:01] Turn 1: read_file(a.py)")
+    renderer2(_HB_120)
+    renderer2(_HB_125)
+    assert renderer2.visible_lines() == ["    [0:01] Turn 1: read_file(a.py)", _HB_125]
 
 
 def test_verdict_line_stays_visible_after_later_turns_arrive():
