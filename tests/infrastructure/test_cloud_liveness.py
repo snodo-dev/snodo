@@ -9,6 +9,7 @@ disturbs the ingest cursor.
 """
 
 import json
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -432,7 +433,7 @@ class TestPayloadContent:
             "session_id", "project_id", "scope", "display_name",
             "run_started_at", "plans", "tasks", "jobs",
             "task_status_counts", "job_status_counts",
-            "last_event", "snapshot_at",
+            "last_event", "last_activity_at", "snapshot_at",
         }
 
     def test_payloads_and_paths_stay_on_the_machine(self, project):
@@ -842,3 +843,113 @@ class TestRejectionLogging:
             warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
             assert len(warnings) == 1
             assert "repeated rejection, dropped" in warnings[0].message
+
+
+# ------------------------------------------------------------------ #
+# Two clocks: last_event (decisions) vs last_activity_at (happenings)
+# ------------------------------------------------------------------ #
+
+
+def _age(path: Path, seconds: float = 5 * 3600.0) -> None:
+    """Set a file's mtime seconds into the past (a five-hour-old write)."""
+    stamp = time.time() - seconds
+    os.utime(path, (stamp, stamp))
+
+
+def _iso(body_value: str) -> datetime:
+    return datetime.fromisoformat(body_value)
+
+
+class TestLastActivityClock:
+    """A status write moves ``last_activity_at`` without moving ``last_event``;
+    an audit event moves both. ``last_event`` keeps its exact meaning: the
+    last recorded decision, never relabelled (Fixes #324)."""
+
+    def test_plan_status_write_moves_last_activity_not_last_event(self, project):
+        """The reported bug: a plan advanced to done while the audit tail
+        stayed five hours behind. ``last_event`` must not change meaning."""
+        root, _ = project
+        old_decision = "2026-09-02T21:50:01+00:00"
+        (root / ".snodo" / "audit.log").write_text(json.dumps({
+            "sequence": 3, "timestamp": old_decision,
+            "event_type": "session_decision_updated",
+            "data": {"key": "scope", "value": "full"},
+        }) + "\n")
+        # The last write happened hours ago, as the audit tail claims.
+        _age(root / ".snodo" / "plans" / "wave8" / "status.json")
+        _age(root / ".snodo" / "tasks" / "t_alpha" / "state.json")
+        before = cloud_liveness.build_liveness_snapshot("sess_test_1", str(root))
+        assert before["last_event"] == {
+            "event_type": "session_decision_updated", "timestamp": old_decision,
+        }
+        assert _iso(before["last_activity_at"]).timestamp() < time.time() - 3600
+
+        # The planner writes the plan's last task complete: real activity,
+        # no audit event appended.
+        posts = _Posts()
+        from snodo.mcp.planner import PlannerMCP
+        planner = PlannerMCP(str(root))
+        with patch("httpx.put", posts):
+            planner.update_status("wave8", "2.1", "completed")
+            cloud_liveness.wait_for_pushes()
+
+        assert posts.calls, "the status write should still fire its push"
+        _, body = posts.calls[0]
+        # The new clock moved with the write; the old one stayed pinned.
+        assert _iso(body["last_activity_at"]) > _iso(before["last_activity_at"])
+        assert _iso(body["last_activity_at"]).timestamp() > time.time() - 120
+        assert body["last_event"] == before["last_event"]
+
+    def test_task_status_write_moves_the_new_timestamp(self, project):
+        """An engine task record rewritten in place moves last_activity_at —
+        file-level write, no planner, no audit event, same promise."""
+        root, _ = project
+        _age(root / ".snodo" / "plans" / "wave8" / "status.json")
+        _age(root / ".snodo" / "tasks" / "t_alpha" / "state.json")
+        before = cloud_liveness.build_liveness_snapshot("sess_test_1", str(root))
+        _write(root / ".snodo" / "tasks" / "t_alpha" / "state.json", {
+            "task_id": "t_alpha", "status": "completed",
+            "started_at": 1787000000.0,
+        })
+        after = cloud_liveness.build_liveness_snapshot("sess_test_1", str(root))
+        assert _iso(after["last_activity_at"]) > _iso(before["last_activity_at"])
+        assert after["last_event"] == before["last_event"]  # no audit log here
+
+    def test_audit_event_moves_both_clocks(self, project):
+        """A recorded decision is also something that happened: it moves
+        last_event and, through its own timestamp, last_activity_at — even
+        when every record file is older."""
+        root, _ = project
+        _age(root / ".snodo" / "plans" / "wave8" / "status.json")
+        _age(root / ".snodo" / "tasks" / "t_alpha" / "state.json")
+        before = cloud_liveness.build_liveness_snapshot("sess_test_1", str(root))
+        from snodo.infrastructure.audit import AuditLog
+        log = AuditLog(str(root / ".snodo" / "audit.log"),
+                       project_id="local:test123")
+        log.append_event("dispatch", {"task_ref": "2.1",
+                                      "session_id": "sess_test_1"})
+        after = cloud_liveness.build_liveness_snapshot("sess_test_1", str(root))
+        assert after["last_event"]["event_type"] == "dispatch"
+        assert _iso(after["last_activity_at"]) > _iso(before["last_activity_at"])
+        # The event is the freshest thing that happened: the clocks agree on it.
+        assert _iso(after["last_activity_at"]) == _iso(
+            after["last_event"]["timestamp"],
+        )
+
+    def test_last_activity_is_the_newest_evidence_across_sections(self, project):
+        """One old plan, one fresh job: the clock reads the newest file the
+        snapshot reports, not the audit tail alone."""
+        root, _ = project
+        _age(root / ".snodo" / "plans" / "wave8" / "status.json")
+        _age(root / ".snodo" / "tasks" / "t_alpha" / "state.json")
+        plan_stamp = time.time() - 4 * 3600
+        os.utime(root / ".snodo" / "plans" / "wave8" / "status.json",
+                 (plan_stamp, plan_stamp))
+        _write(root / ".snodo" / "jobs" / "j_20260902_a9" / "state.json", {
+            "status": "running", "started_at": 1787000001.0,
+        })
+        body = cloud_liveness.build_liveness_snapshot("sess_test_1", str(root))
+        assert _iso(body["last_activity_at"]).timestamp() > time.time() - 120
+        assert _iso(body["last_activity_at"]) > _iso(
+            datetime.fromtimestamp(plan_stamp, timezone.utc).isoformat(),
+        )

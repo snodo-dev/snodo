@@ -120,6 +120,20 @@ changed, not that the machine died. A session with nothing running sends
 nothing: if no plan has begun and there is no task or job record, the snapshot
 is not built.
 
+**Two clocks, deliberately distinct** (Fixes #324). A plan/task status write
+changes what is running *and* fires a push, but it appends no audit event — so
+"the last audit event" is not "the last thing that happened", and a consumer
+that conflates them renders a working machine as idle. The snapshot carries
+both. `last_event` is the last recorded decision — event type and timestamp
+from the audit tail, the governance log — and it does not move when a status
+write happens without one. `last_activity_at` is when something last happened
+in this session, across everything the snapshot reports: the newest of the
+plan `status.json` and task/job `state.json` modification times and the last
+audit event's own timestamp. Render "last activity" from `last_activity_at`;
+read `last_event` for what was last decided. No audit event is appended to
+move either clock, and neither is a heartbeat: with nothing changing, both
+stand still.
+
 **At most one push per 60 seconds per session**, so a burst of transitions
 coalesces into one write. The snapshot is built at send time inside the worker,
 so the coalesced write carries the later state. A transition that ends a run's
@@ -196,6 +210,7 @@ taken from it on the far side so a sender cannot claim to be someone else.
   "task_status_counts": {"completed": 12, "failed": 1},
   "job_status_counts": {"completed": 40, "failed": 2},
   "last_event":  {"event_type": "dispatch", "timestamp": "2026-09-02T21:50:01.7+00:00"},
+  "last_activity_at": "2026-09-02T21:50:02.5+00:00",
   "snapshot_at": "2026-09-02T21:50:02.9+00:00"
 }
 ```
@@ -209,7 +224,9 @@ A job is linked to its plan task by the task identity the engine already
 records for the job; the link's own payload fields (the spec, the
 description) stay on the disk. `started_at` values (epoch on disk) are
 normalised to ISO. `run_started_at` is the session file's `created_at`.
-`display_name` is the project directory basename.
+`display_name` is the project directory basename. `last_activity_at` is ISO
+too — the newest of the record-file modification times and the `last_event`
+timestamp — so a status write that appends no audit event still moves it.
 
 What the liveness wire never carries is what the ingest path never carries:
 payloads, prompts, diffs, file contents, absolute paths, `usage` records, halt
