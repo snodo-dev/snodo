@@ -193,6 +193,7 @@ def _show_plan_name_logs(project_root: str, plan_name: str, args) -> int:
 def _show_plan_job(project_root: str, job_id: str, args) -> int:
     """Show progress for a plan-run job, following its child task jobs."""
     from snodo.jobs import JobManager, TERMINAL_STATUSES
+    from snodo.engine.progress import format_duration
     import json
 
     mgr = JobManager(project_root)
@@ -290,7 +291,7 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                     if cj:
                         cid = cj["id"]
                         dur = cj.get("duration_seconds")
-                        dur_str = f" in {dur}s" if dur is not None else ""
+                        dur_str = f" in {format_duration(dur)}" if dur is not None else ""
                         print(f"    [{marker}] {task_id}: {state} (job {cid}){dur_str}")
                     else:
                         print(f"    [{marker}] {task_id}: {state}")
@@ -301,7 +302,7 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                 t_ref = cj.get("task_ref") or "task"
                 c_stat = cj.get("status", "")
                 dur = cj.get("duration_seconds")
-                dur_str = f" in {dur}s" if dur is not None else ""
+                dur_str = f" in {format_duration(dur)}" if dur is not None else ""
                 print(f"  [{t_ref}] {c_stat} (job {cid}){dur_str}")
             print()
 
@@ -401,8 +402,66 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
             pass
 
     watch_renderer = _watch_renderer()
+
+    # Liveness (#316): the loop polls every second but prints only when a
+    # child's status CHANGES, so a wave of healthy coders can leave the
+    # terminal motionless for twenty minutes — a quiet run is
+    # indistinguishable from a dead process, and killing a frozen screen is
+    # the wrong remedy for a healthy one. On an interactive stream only, one
+    # line at the foot of the output keeps the elapsed time of what is
+    # running current: drawn in place every few polls, never a block
+    # repaint, committed to history only when real output needs to follow it.
+    # The poll itself is unchanged, and a non-tty, redirected or NO_COLOR
+    # watch (renderer None) never draws or commits a heartbeat, so its
+    # append-only lines stay exactly what they are today — nothing to flood
+    # a log or a pipe. This is presentation only: it adds no state and no
+    # status, changes what is emitted by a transition in no way, and touches
+    # no log or audit record.
+    _HEARTBEAT_POLLS = 5
+    heartbeat: dict = {"open": False, "polls": 0}
+
+    def _close_heartbeat() -> None:
+        """End the in-place line, so the next printed line starts fresh.
+
+        The renderer's painted window sits above the heartbeat; once one is
+        on screen the renderer must not move up over it, so the window is
+        forgotten and the next log line begins a fresh block.
+        """
+        if not heartbeat["open"]:
+            return
+        print(flush=True)
+        heartbeat["open"] = False
+        if watch_renderer is not None:
+            watch_renderer.reset()
+
+    def _draw_heartbeat(children: list[dict], plan_state: dict) -> None:
+        if watch_renderer is None:
+            return
+        parts = ["  ~ watching"]
+        running = [cj for cj in children if cj.get("status") not in TERMINAL_STATUSES]
+        started = plan_state.get("started_at") if isinstance(plan_state, dict) else None
+        if started:
+            parts.append(f"plan {format_duration(time.time() - started)}")
+        if running:
+            oldest = min(running, key=lambda c: c.get("created_at") or 0)
+            ref = oldest.get("task_ref") or oldest.get("id") or "?"
+            seg = f"{len(running)} running: {ref}"
+            dur = oldest.get("duration_seconds")
+            if dur is not None:
+                seg += f" {format_duration(dur)}"
+            parts.append(seg)
+        parts.append("no status change")
+        line = " · ".join(parts)
+        # Rewrite one short line in place, at most once every few seconds:
+        # an hour of a quiet watch costs tens of kilobytes of terminal, not
+        # a repaint of the status block.
+        sys.stdout.write("\r\x1b[K" + line)
+        sys.stdout.flush()
+        heartbeat["open"] = True
+
     try:
         while True:
+            _close_heartbeat()
             _drain_own()
             time.sleep(1.0)
             try:
@@ -422,12 +481,12 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                 if prev is None:
                     seen_child_status[cid] = cstat
                     dur = cj.get("duration_seconds")
-                    dur_str = f" in {dur}s" if dur is not None and cstat in TERMINAL_STATUSES else ""
+                    dur_str = f" in {format_duration(dur)}" if dur is not None and cstat in TERMINAL_STATUSES else ""
                     print(f"  [{t_ref}] {cstat} (job {cid}){dur_str}", flush=True)
                 elif prev != cstat:
                     seen_child_status[cid] = cstat
                     dur = cj.get("duration_seconds")
-                    dur_str = f" in {dur}s" if dur is not None and cstat in TERMINAL_STATUSES else ""
+                    dur_str = f" in {format_duration(dur)}" if dur is not None and cstat in TERMINAL_STATUSES else ""
                     print(f"  [{t_ref}] {cstat} (job {cid}){dur_str}", flush=True)
 
             cur_tasks_status = _get_plan_tasks()
@@ -445,9 +504,15 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                 _print_status_view(cur_tasks_status, children)
                 print(f"Plan run {job_id} finished ({current_plan_status}).", flush=True)
                 return current_job.get("exit_code", 0) or 0
+
+            heartbeat["polls"] += 1
+            if heartbeat["polls"] >= _HEARTBEAT_POLLS:
+                heartbeat["polls"] = 0
+                _draw_heartbeat(children, current_job)
     except KeyboardInterrupt:
         pass
     finally:
+        _close_heartbeat()
         if own_log is not None:
             own_log.close()
     return 0

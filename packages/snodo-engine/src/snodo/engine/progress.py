@@ -89,10 +89,34 @@ def ensure_progress_sink(callback: Any, label: str = "progress") -> Optional[Pro
 
 
 def format_elapsed(seconds: float) -> str:
-    """Format elapsed seconds into m:ss format (e.g. 0:04, 1:12)."""
-    secs = max(0, int(seconds))
-    m, s = divmod(secs, 60)
+    """Format elapsed seconds into m:ss (e.g. 0:04, 1:12), hours past an hour.
+
+    The turn labels the engine composes ("[0:28] Turn 5: ...") are minutes
+    deep at most in practice, but a coder phase or a long watch can pass an
+    hour, and "60:05" makes the reader do the division. Past an hour the same
+    reading as a clock applies: 1:00:05 (#316).
+    """
+    total = max(0, int(seconds))
+    hours, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if hours:
+        return f"{hours}:{m:02d}:{s:02d}"
     return f"{m}:{s:02d}"
+
+
+def format_duration(seconds: float) -> str:
+    """Render a duration the way it reads: "12.5s", "22:35", "1:04:11".
+
+    The single renderer every shown duration goes through (#316): seconds
+    while it is seconds, m:ss once it passes a minute, h:mm:ss once it passes
+    an hour. "in 1355.5s" forced the reader to convert a number that is
+    really "22:35"; four call sites each holding their own format string is
+    four chances to drift, so they hold one call instead.
+    """
+    secs = max(0.0, float(seconds))
+    if secs < 60:
+        return f"{secs}s"
+    return format_elapsed(secs)
 
 
 def format_tool_call_summary(tool_calls: Optional[List[Any]]) -> str:
@@ -192,7 +216,9 @@ _MIN_WINDOW = 5
 _FALLBACK_TERMINAL_LINES = 24
 
 #: A tool-loop turn line, the one kind that compacts: "    [0:14] Turn 9: ...".
-_TURN_RE = re.compile(r"^\s*\[\d+:\d{2}\]\s+Turn\s+\d+:")
+#: The optional leading group carries the hours bucket a run past an hour now
+#: renders ("[1:04:11]"), so such a turn still reads as a turn (#316).
+_TURN_RE = re.compile(r"^\s*\[(?:\d+:)?\d+:\d{2}\]\s+Turn\s+\d+:")
 #: Phase boundaries: entering a quorum, post-validation, a spec rewrite.
 _PHASE_RES = (
     re.compile(r"^\s*Validating \(pre-execute\):"),

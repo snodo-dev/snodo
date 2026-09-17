@@ -627,3 +627,202 @@ def test_watch_stream_colors_and_compacts_when_color_is_on(capsys):
 def _strip_ansi(text: str) -> str:
     import re
     return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text)
+
+
+def _plan_watch_tree(tmp_dir: str) -> None:
+    """A plan run 'wave' with one task '1.1_a', running on disk.
+
+    Only the files the watch reads directly — the plan dir, the plan job's
+    stdout.log, the task-status file — are created here; the child job rows
+    come from a patched JobManager so each test controls their statuses and
+    durations without the process-reconcile that real running rows undergo.
+    """
+    import json
+    import yaml
+
+    snodo_dir = Path(tmp_dir) / ".snodo"
+    plan_dir = snodo_dir / "plans" / "wave"
+    plan_dir.mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text(yaml.dump({
+        "name": "wave", "intent": "A long wave",
+        "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_a"]}],
+    }))
+    (plan_dir / "status.json").write_text(json.dumps({
+        "tasks": {"1.1_a": {"status": "running"}}
+    }))
+
+    plan_job_dir = snodo_dir / "jobs" / "j_plan_hb"
+    plan_job_dir.mkdir(parents=True)
+    (plan_job_dir / "task.json").write_text(json.dumps({"plan_name": "wave"}))
+    (plan_job_dir / "state.json").write_text(json.dumps({"status": "running", "job_type": "plan"}))
+    (plan_job_dir / "stdout.log").write_text("")
+
+
+def _running_child_rows(duration: float) -> list[dict]:
+    return [
+        {
+            "id": "j_plan_hb", "status": "running", "plan": "wave",
+            "parent_job": "", "task_ref": "", "created_at": 900,
+            "duration_seconds": None,
+        },
+        {
+            "id": "j_child_hb", "status": "running", "plan": "",
+            "parent_job": "j_plan_hb", "task_ref": "1.1_a",
+            "created_at": 950, "duration_seconds": duration,
+        },
+    ]
+
+
+def _install_fake_clock(monkeypatch, start: float = 1000.0, stop_after: int = 12):
+    """Give logs_cmd a clock where one sleep advances time by exactly one second.
+
+    Replaces the whole ``time`` module on the command's namespace, so only the
+    watch is on fake time and the test's own timing stays real. Raises
+    KeyboardInterrupt out of the loop after *stop_after* polls.
+    """
+    from snodo.cli.commands import logs_cmd
+
+    clock = {"now": start, "polls": 0}
+
+    def fake_sleep(_secs):
+        clock["polls"] += 1
+        clock["now"] += 1.0
+        if clock["polls"] >= stop_after:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        logs_cmd, "time",
+        SimpleNamespace(time=lambda: clock["now"], sleep=fake_sleep),
+    )
+    return clock
+
+
+def test_watch_updates_elapsed_with_no_status_change(capsys, monkeypatch):
+    """A tty plan watch keeps the elapsed time of what is running current between
+    transitions (#316): the healthy nothing-to-report wave that used to freeze
+    the screen now redraws one in-place line whose numbers move.
+    """
+    clock = _install_fake_clock(monkeypatch)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _plan_watch_tree(tmp_dir)
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            from snodo.jobs import JobManager
+
+            def get_status(jid):
+                return {
+                    "status": "running",
+                    "job_type": "plan",
+                    "started_at": 900.0,
+                    "task": {"plan_name": "wave"},
+                }
+
+            def list_jobs():
+                # The child holds one status across every poll; only its
+                # running time moves, exactly as a healthy coder's does.
+                return _running_child_rows(round(clock["now"] - 950.0, 1))
+
+            with patch.object(JobManager, "get_status", side_effect=get_status), \
+                 patch.object(JobManager, "list_jobs", side_effect=list_jobs), \
+                 patch("snodo.engine.progress.color_enabled", return_value=True):
+                args = SimpleNamespace(composite_id="j_plan_hb", watch=True)
+                assert logs_command(args) == 0
+
+    out = capsys.readouterr().out
+    # The liveness line: drawn in place (a cursor move is present), naming
+    # the elapsed time of the run and of what is still running.
+    assert "\x1b[K" in out, out
+    heartbeats = [ln for ln in _strip_ansi(out).splitlines() if "no status change" in ln]
+    assert len(heartbeats) >= 2, heartbeats
+    # It keeps the elapsed time *current*: plan 1:45 at the first draw grew to
+    # 1:50 at the next, and the child crossed from seconds into minutes.
+    assert any("plan 1:45" in ln for ln in heartbeats), heartbeats
+    assert any("plan 1:50" in ln for ln in heartbeats), heartbeats
+    assert any("1:00" in ln for ln in heartbeats), heartbeats
+    # Alive without being a busy repaint: the status block is not reprinted,
+    # only the one heartbeat line moves.
+    assert out.count("Following plan run j_plan_hb") == 1
+    assert "Intent: A long wave" in _strip_ansi(out)
+
+
+def test_watch_non_tty_never_repaints(capsys, monkeypatch):
+    """A piped / redirected plan watch stays today's plain append-only lines
+    (#316): no cursor movement, no repeated blocks, nothing to flood the pipe.
+    """
+    clock = _install_fake_clock(monkeypatch)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _plan_watch_tree(tmp_dir)
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            from snodo.jobs import JobManager
+
+            def get_status(jid):
+                return {
+                    "status": "running",
+                    "job_type": "plan",
+                    "started_at": 900.0,
+                    "task": {"plan_name": "wave"},
+                }
+
+            def list_jobs():
+                return _running_child_rows(round(clock["now"] - 950.0, 1))
+
+            # No colour patch at all: a non-tty stdout yields renderer None,
+            # which is the real condition behind a pipe or a redirect.
+            with patch.object(JobManager, "get_status", side_effect=get_status), \
+                 patch.object(JobManager, "list_jobs", side_effect=list_jobs):
+                args = SimpleNamespace(composite_id="j_plan_hb", watch=True)
+                assert logs_command(args) == 0
+
+    out = capsys.readouterr().out
+    assert "\x1b" not in out, out
+    assert "no status change" not in out, out
+    # Exactly what it emits today: the opening snapshot, and nothing further
+    # while no status changes.
+    assert out.count("Following plan run j_plan_hb") == 1
+    assert out.count("1.1_a") == 1
+    assert "1.1_a: running" in out
+
+
+def test_watch_duration_crosses_units(capsys, monkeypatch):
+    """A duration shown by the watch reads in its larger unit as it grows (#316):
+    1355.5 seconds is "22:35", and one under a minute still reads as seconds.
+    """
+    _install_fake_clock(monkeypatch, stop_after=2)
+    polls = {"n": 0}
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _plan_watch_tree(tmp_dir)
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            from snodo.jobs import JobManager
+
+            def get_status(jid):
+                if polls["n"] >= 1:
+                    return {
+                        "status": "completed", "exit_code": 0,
+                        "job_type": "plan", "task": {"plan_name": "wave"},
+                    }
+                return {
+                    "status": "running", "job_type": "plan",
+                    "task": {"plan_name": "wave"},
+                }
+
+            def list_jobs():
+                rows = _running_child_rows(7.5)
+                if polls["n"] >= 1:
+                    # The child lands with 22m35s of work.
+                    rows[1]["status"] = "completed"
+                    rows[1]["duration_seconds"] = 1355.5
+                polls["n"] += 1
+                return rows
+
+            with patch.object(JobManager, "get_status", side_effect=get_status), \
+                 patch.object(JobManager, "list_jobs", side_effect=list_jobs):
+                args = SimpleNamespace(composite_id="j_plan_hb", watch=True)
+                assert logs_command(args) == 0
+
+    out = capsys.readouterr().out
+    # Minutes once past a minute, still plain seconds under one.
+    assert "in 22:35" in out, out
+    assert "in 7.5s" in out, out
+    assert "1355.5s" not in out, out
