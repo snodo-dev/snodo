@@ -25,6 +25,17 @@ snodo uses [Semantic Versioning](https://semver.org/).
   was restored recorded in `spec_authoring`. A spec that carries no evidence is
   reauthored exactly as before, and the attempts bound, the `judges_spec`
   filter and the rewrite path are unchanged. (Fixes #320)
+- `intent.yml`'s `spec-manners` validator warned specs inconsistently on its
+  "code-prescriptive" criterion: the wording asked a judge to separate
+  evidence (a file and line naming where a symptom was OBSERVED) from
+  prescription (a transcribed implementation) without ever stating the
+  distinction, so a judge scanning for "mentions code" flagged both alike. On
+  a real project this produced opposite verdicts for two tasks of the same
+  shape. The criterion now says the distinction itself: evidence grounds a
+  claim about the present state and is allowed; prescription dictates the
+  shape of the change (a described sequence of edits, or code the coder is
+  meant to reproduce) and is what gets warned, with the judge asked to cite
+  the specific prescriptive text. (Fixes #322)
 
 - A gate's output now lands in rows on the operator's terminal instead of
   marching off as a staircase. #304 ran the gate over a terminal (`ssh -tt`) so
