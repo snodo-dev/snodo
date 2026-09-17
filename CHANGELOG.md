@@ -9,64 +9,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- A spec redefinition now keeps the evidence the original carried. When a
-  `judges_spec` validator sends a spec back to be reauthored, the rewrite is
-  what every later validator judges and what the coder is given, so anything
-  it dropped was gone from the run. The rewriter named the file and line where
-  a symptom was seen one attempt and not the next: the citation was removed,
-  the task was broadened to the ground the citation had bounded, and the next
-  validator escalated on a task vaguer than the one it was rewritten from. The
-  reauthored spec now carries its concrete anchors — file paths, `path:line`
-  citations, line references, named tests and code literals — forward
-  verbatim: they are named to the author to reword the ask around, and any the
-  author drops are put back before anyone downstream sees the spec, with what
-  was restored recorded in `spec_authoring`. A spec that carries no evidence is
-  reauthored exactly as before, and the attempts bound, the `judges_spec`
-  filter and the rewrite path are unchanged. (Fixes #320)
-- `intent.yml`'s `spec-manners` validator warned specs inconsistently on its
-  "code-prescriptive" criterion: the wording asked a judge to separate
-  evidence (a file and line naming where a symptom was OBSERVED) from
-  prescription (a transcribed implementation) without ever stating the
-  distinction, so a judge scanning for "mentions code" flagged both alike. On
-  a real project this produced opposite verdicts for two tasks of the same
-  shape. The criterion now says the distinction itself: evidence grounds a
-  claim about the present state and is allowed; prescription dictates the
-  shape of the change (a described sequence of edits, or code the coder is
-  meant to reproduce) and is what gets warned, with the judge asked to cite
-  the specific prescriptive text. (Fixes #322)
-
-- A gate's output now lands in rows on the operator's terminal instead of
-  marching off as a staircase. #304 ran the gate over a terminal (`ssh -tt`) so
-  a hangup reaches the remote process group, but `ssh` also copies the
-  operator's raw termios onto the remote pty, which leaves `opost` off — and
-  with `opost` off `onlcr` is inert, so the `stty onlcr` the wrapper had been
-  making was a no-op and every bare LF moved down a row without returning to
-  column zero. A full pytest run printed its progress as a diagonal that
-  wrapped and overwrote until it was unreadable. `gate_supervise` now sets
-  `stty opost onlcr` on the connection's tty (only where one exists) and no
-  longer discards its error, because the output's readability depends on it.
-  The checks, their order, the exit status and the #304 lifetime behaviour —
-  an interrupted gate still leaves nothing running on the host — are unchanged,
-  and a clean gate prints exactly what it always did. (Fixes #310)
-
-- A gate run now ends on the gate host when it ends on the operator's. `make
-  gate` and `make gate-ci` ran `ssh` with no terminal and nothing tying the
-  remote process tree to the connection, so an interrupted gate, a dropped
-  link or a killed `make` left the remote pytest and its workers running with
-  no parent watching them. A few abandoned runs plus a few live ones
-  oversubscribed the host until forking a login shell took tens of seconds —
-  sshd still accepted connections, so the box answered ping but looked
-  unreachable over SSH. The gate now runs over a terminal (`ssh -tt`) so a
-  hangup reaches the remote process group, and `scripts/gate_remote.sh` (new)
-  traps that hangup and reaps the whole tree, including children that
-  daemonise (`snodo.jobs.runner.spawn_background` starts jobs in a new
-  session). The checks themselves, their order, the per-worktree gate
-  directory and the exit status are unchanged, and a clean gate prints exactly
-  what it always did. Concurrent gates are bounded rather than forbidden: two
-  `flock` slots per host, so several worktrees can still gate at once without
-  saturating it. (Fixes #304)
+## [0.10.0] — 2026-09-17
 
 ### Added
 
@@ -189,6 +132,29 @@ snodo uses [Semantic Versioning](https://semver.org/).
   value cannot be laundered in. It runs in the local gate, the CI gate and the
   release. (Fixes #280)
 
+- `snodo intake` proposes validator criteria from a repository's own decision
+  records, one at a time, each naming the record it came from, and writes the
+  protocol only after the operator accepts. Survey derives the extension of
+  governance from code — which modules exist, how each is verified, where
+  decisions live — and deliberately does not derive the protocol's normative
+  content, because that content is prose a human wrote. But the prose is often
+  in the repository: a real project's decision records stated the very rules
+  its protocol encoded by hand. The boundary is not "a human must author the
+  normative part" — it is that intake never opened the records. Intake does,
+  and offers what they state. A sentence is proposable only from a record's
+  **Decision** section: Context is background, Consequences are effects rather
+  than rules, Alternatives considered is the road not taken, and Status is
+  metadata, so none of them is offered and a record with no Decision section
+  proposes nothing. The citation discipline is the one a boundary judge
+  already uses on source files — every proposal cites its record, resolved
+  against the repository before the proposal is built, so a criterion without
+  a record is never proposed. `snodo intake --json` reports the proposals and
+  writes nothing; `--reject-all` writes nothing; `--validator <id>` chooses the
+  target (default: the protocol's architecture validator, else its first).
+  This is a sibling of survey rather than part of it: survey's contract is that
+  it writes nothing, and making that conditional would weaken it for every
+  caller (Fixes #259).
+
 ### Changed
 
 - The run stream now distinguishes the kinds of line the engine already emits —
@@ -223,7 +189,79 @@ snodo uses [Semantic Versioning](https://semver.org/).
   are no longer refused for want of a verdict about a task that does not
   exist yet. (Fixes #312)
 
+- The rule that binds a model name for litellm has one home. Every completion
+  this system issues must bind litellm's routing name together with its
+  `api_base` and `api_key`; a provider block named for itself is not a provider
+  litellm knows. That rule was written three times, and the third copy —
+  `protocol_adherence` — passed the configured name straight through, so a
+  validator failed against a gateway-style provider while the engine path, which
+  had it right, worked. Two implementations that disagree, one of them wrong, is
+  the worst arrangement to debug. `build_completion_fn` in the validator runner
+  is now the single implementation; `_build_completion_fn` in the engine loop is
+  gone and its four call sites import the shared factory, and
+  `protocol_adherence` no longer overrides the bound name. A guard test walks
+  both package trees and fails if a second implementation reappears under any
+  name. (Fixes #255, Fixes #256)
+
 ### Fixed
+
+- A spec redefinition now keeps the evidence the original carried. When a
+  `judges_spec` validator sends a spec back to be reauthored, the rewrite is
+  what every later validator judges and what the coder is given, so anything
+  it dropped was gone from the run. The rewriter named the file and line where
+  a symptom was seen one attempt and not the next: the citation was removed,
+  the task was broadened to the ground the citation had bounded, and the next
+  validator escalated on a task vaguer than the one it was rewritten from. The
+  reauthored spec now carries its concrete anchors — file paths, `path:line`
+  citations, line references, named tests and code literals — forward
+  verbatim: they are named to the author to reword the ask around, and any the
+  author drops are put back before anyone downstream sees the spec, with what
+  was restored recorded in `spec_authoring`. A spec that carries no evidence is
+  reauthored exactly as before, and the attempts bound, the `judges_spec`
+  filter and the rewrite path are unchanged. (Fixes #320)
+- `intent.yml`'s `spec-manners` validator warned specs inconsistently on its
+  "code-prescriptive" criterion: the wording asked a judge to separate
+  evidence (a file and line naming where a symptom was OBSERVED) from
+  prescription (a transcribed implementation) without ever stating the
+  distinction, so a judge scanning for "mentions code" flagged both alike. On
+  a real project this produced opposite verdicts for two tasks of the same
+  shape. The criterion now says the distinction itself: evidence grounds a
+  claim about the present state and is allowed; prescription dictates the
+  shape of the change (a described sequence of edits, or code the coder is
+  meant to reproduce) and is what gets warned, with the judge asked to cite
+  the specific prescriptive text. (Fixes #322)
+
+- A gate's output now lands in rows on the operator's terminal instead of
+  marching off as a staircase. #304 ran the gate over a terminal (`ssh -tt`) so
+  a hangup reaches the remote process group, but `ssh` also copies the
+  operator's raw termios onto the remote pty, which leaves `opost` off — and
+  with `opost` off `onlcr` is inert, so the `stty onlcr` the wrapper had been
+  making was a no-op and every bare LF moved down a row without returning to
+  column zero. A full pytest run printed its progress as a diagonal that
+  wrapped and overwrote until it was unreadable. `gate_supervise` now sets
+  `stty opost onlcr` on the connection's tty (only where one exists) and no
+  longer discards its error, because the output's readability depends on it.
+  The checks, their order, the exit status and the #304 lifetime behaviour —
+  an interrupted gate still leaves nothing running on the host — are unchanged,
+  and a clean gate prints exactly what it always did. (Fixes #310)
+
+- A gate run now ends on the gate host when it ends on the operator's. `make
+  gate` and `make gate-ci` ran `ssh` with no terminal and nothing tying the
+  remote process tree to the connection, so an interrupted gate, a dropped
+  link or a killed `make` left the remote pytest and its workers running with
+  no parent watching them. A few abandoned runs plus a few live ones
+  oversubscribed the host until forking a login shell took tens of seconds —
+  sshd still accepted connections, so the box answered ping but looked
+  unreachable over SSH. The gate now runs over a terminal (`ssh -tt`) so a
+  hangup reaches the remote process group, and `scripts/gate_remote.sh` (new)
+  traps that hangup and reaps the whole tree, including children that
+  daemonise (`snodo.jobs.runner.spawn_background` starts jobs in a new
+  session). The checks themselves, their order, the per-worktree gate
+  directory and the exit status are unchanged, and a clean gate prints exactly
+  what it always did. Concurrent gates are bounded rather than forbidden: two
+  `flock` slots per host, so several worktrees can still gate at once without
+  saturating it. (Fixes #304)
+
 
 - An `llm.*` config key that is not a setting of its section now fails loudly
   instead of being silently discarded. The `llm` section is owned end to end by
@@ -340,50 +378,6 @@ snodo uses [Semantic Versioning](https://semver.org/).
   when that flag is set, and otherwise say what the operator can do instead. No
   state, status or halt type was added, and nothing mints a decision to make the
   suggestion true. (Fixes #288)
-## [0.10.0] — 2026-09-14
-
-### Added
-
-- `snodo intake` proposes validator criteria from a repository's own decision
-  records, one at a time, each naming the record it came from, and writes the
-  protocol only after the operator accepts. Survey derives the extension of
-  governance from code — which modules exist, how each is verified, where
-  decisions live — and deliberately does not derive the protocol's normative
-  content, because that content is prose a human wrote. But the prose is often
-  in the repository: a real project's decision records stated the very rules
-  its protocol encoded by hand. The boundary is not "a human must author the
-  normative part" — it is that intake never opened the records. Intake does,
-  and offers what they state. A sentence is proposable only from a record's
-  **Decision** section: Context is background, Consequences are effects rather
-  than rules, Alternatives considered is the road not taken, and Status is
-  metadata, so none of them is offered and a record with no Decision section
-  proposes nothing. The citation discipline is the one a boundary judge
-  already uses on source files — every proposal cites its record, resolved
-  against the repository before the proposal is built, so a criterion without
-  a record is never proposed. `snodo intake --json` reports the proposals and
-  writes nothing; `--reject-all` writes nothing; `--validator <id>` chooses the
-  target (default: the protocol's architecture validator, else its first).
-  This is a sibling of survey rather than part of it: survey's contract is that
-  it writes nothing, and making that conditional would weaken it for every
-  caller (Fixes #259).
-
-### Changed
-
-- The rule that binds a model name for litellm has one home. Every completion
-  this system issues must bind litellm's routing name together with its
-  `api_base` and `api_key`; a provider block named for itself is not a provider
-  litellm knows. That rule was written three times, and the third copy —
-  `protocol_adherence` — passed the configured name straight through, so a
-  validator failed against a gateway-style provider while the engine path, which
-  had it right, worked. Two implementations that disagree, one of them wrong, is
-  the worst arrangement to debug. `build_completion_fn` in the validator runner
-  is now the single implementation; `_build_completion_fn` in the engine loop is
-  gone and its four call sites import the shared factory, and
-  `protocol_adherence` no longer overrides the bound name. A guard test walks
-  both package trees and fails if a second implementation reappears under any
-  name. (Fixes #255, Fixes #256)
-
-### Fixed
 
 - A judge returns a verdict, and a non-verdict is an error. The abstention
   state — `severity=None` plus `abstention_reason`, `unexamined_tools`,
