@@ -12,6 +12,7 @@ working tree via subprocess invocation. Base class handles:
 - .snodo/ mutation protection and git commit (inherited from InPlaceCoderAdapter)
 """
 
+import json
 import logging
 import os
 import shutil
@@ -28,6 +29,11 @@ from snodo.coders.base import (
     InPlaceCoderAdapter,
     LLMCallError,
 )
+from snodo.coders.report import (
+    STOP_REASONS,
+    CoderReport,
+    parse_coder_report,
+)
 from snodo.core.interfaces import CodeArtifact, FileArtifact, TaskSpec
 
 _logger = logging.getLogger(__name__)
@@ -39,6 +45,35 @@ _logger = logging.getLogger(__name__)
 #: reason, and the same fault must leave the same record no matter which path
 #: produced it.
 _OUTPUT_TAIL_CHARS = 2000
+
+#: Name of the file a subprocess coder is invited to write its report into,
+#: relative to the JOB's own state directory (``.snodo/jobs/<job_id>/``). It is
+#: never the user's project and never the worktree, and it is removed after the
+#: run whether or not the coder wrote it (ADR 048; see :meth:`_report_path`).
+_REPORT_FILENAME = "coder-report.json"
+
+#: The stop-reason vocabulary, read from its single source so the invitation
+#: cannot drift from the shape the engine parses (ADR 048).
+_REPORT_STOP_REASONS = "|".join(sorted(STOP_REASONS))
+
+#: Instruction appended to a subprocess coder's prompt when the engine can offer
+#: somewhere to write. It asks ONLY for the report — it must never change what
+#: the coder is asked to build — and it says the report is optional, because a
+#: coder that does the work and forgets is the ordinary case (ADR 048).
+_REPORT_INSTRUCTION = (
+    "\n\n## Report (optional)\n"
+    "Before you exit, write a JSON object describing this run to:\n"
+    "  {report_path}\n"
+    "Use this shape and omit any field you do not know (do not invent "
+    "fields):\n"
+    '{{"files": [{{"path": "<workspace-relative>", "kind": '
+    '"created|modified|deleted"}}], "turns_used": <int>, '
+    '"turns_available": <int>, "tokens_used": <int>, '
+    '"context_window": <int>, "wall_time_ms": <int>, "stop_reason": '
+    '"{stop_reasons}"}}\n'
+    "The engine reads this file and deletes it afterwards. It is not part of "
+    "the task; leaving it unwritten changes nothing about your work."
+)
 
 
 class SubprocessCoderAdapter(InPlaceCoderAdapter):
@@ -64,6 +99,13 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
     #: fact (Fixes #290).
     last_binary_path: str = ""
     last_binary_version: str = ""
+
+    #: This run's best-effort account of what it did and why it stopped (ADR
+    #: 048), read back from the file the coder was invited to write. ``None``
+    #: when the coder wrote nothing, wrote a malformed report, or was never
+    #: offered a path — the ordinary case, and never an error. Nothing reads it
+    #: yet; it is recorded and that is all (Fixes #318).
+    last_report: Optional[CoderReport] = None
 
     #: What a subprocess coder can actually honour: the model reaches the argv
     #: (prefix-gated, see :meth:`_bare_model`) and ``timeout_seconds`` bounds
@@ -159,6 +201,99 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         """
         self.last_binary_path = self._resolve_binary_path()
         self.last_binary_version = self._read_binary_version(self.last_binary_path)
+
+    def _coder_report_dir(self) -> Optional[Path]:
+        """Return the snodo-state directory a coder may write its report in.
+
+        The report lives in the JOB's own state (``.snodo/jobs/<job_id>/``),
+        never in the user's project or the granted workspace. The project root
+        is read from ``SNODO_PROJECT_ROOT`` — the same authoritative source
+        ``UsageTracker`` uses — and never guessed by walking the filesystem
+        (ADR 024/025). A task-state directory is the fallback for an inline run
+        with no job. The directory must already exist: the engine does not
+        create state to hold an optional report, so a run with no job state
+        simply never gets an invitation (the ordinary case, ADR 048).
+        """
+        project_root = os.environ.get("SNODO_PROJECT_ROOT", "")
+        if not project_root:
+            return None
+        try:
+            root = Path(project_root)
+            job_id = getattr(self, "_job_id", "") or os.environ.get("SNODO_JOB_ID", "")
+            if job_id.startswith("j_"):
+                job_dir = root / ".snodo" / "jobs" / job_id
+                if job_dir.is_dir():
+                    return job_dir
+            task_id = getattr(self, "_task_id", "") or ""
+            if task_id.startswith("task_"):
+                task_dir = root / ".snodo" / "tasks" / task_id
+                if task_dir.is_dir():
+                    return task_dir
+        except (OSError, ValueError):
+            return None
+        return None
+
+    def _report_path(self) -> Optional[Path]:
+        """The agreed path a coder is invited to write its report to."""
+        report_dir = self._coder_report_dir()
+        return (report_dir / _REPORT_FILENAME) if report_dir else None
+
+    def _invite_report(self, prompt: str) -> str:
+        """Append the report invitation to *prompt*, or leave it untouched.
+
+        The invitation asks only for the report and says it is optional: the
+        presence or absence of the instruction must not change what the coder
+        is asked to build (ADR 048). When no job state can host the file, the
+        prompt is returned verbatim — exactly today's prompt.
+        """
+        report_path = self._report_path()
+        if report_path is None:
+            return prompt
+        return prompt + _REPORT_INSTRUCTION.format(
+            report_path=str(report_path),
+            stop_reasons=_REPORT_STOP_REASONS,
+        )
+
+    def _read_coder_report(self, report_path: Optional[Path]) -> Optional[CoderReport]:
+        """Read and parse the report a coder may have written, or ``None``.
+
+        A missing file is the ordinary case and silent; a file that is not
+        valid JSON, or that does not fit the shape, is discarded with one log
+        line by :func:`parse_coder_report` and treated exactly like an absent
+        report. Never raises — a coder's misstatement must not fail a run the
+        worktree can be judged on its own for (ADR 048).
+        """
+        if report_path is None:
+            return None
+        try:
+            if not report_path.is_file():
+                return None
+            raw = json.loads(report_path.read_text())
+        except (OSError, ValueError) as exc:
+            _logger.warning(
+                "%s: discarding unreadable coder report at %s: %s: %s",
+                self.binary, report_path, type(exc).__name__, exc,
+            )
+            return None
+        return parse_coder_report(raw)
+
+    def _discard_coder_report(self, report_path: Optional[Path]) -> None:
+        """Remove the report file so nothing is left behind, best-effort.
+
+        The report is engine scratch, not the coder's deliverable: it must not
+        survive the run to appear in a diff, a commit or a later worktree read.
+        A failure to remove it is recorded and swallowed — it is not the run's
+        fault and not the run's outcome (ADR 048).
+        """
+        if report_path is None:
+            return
+        try:
+            report_path.unlink(missing_ok=True)
+        except OSError as exc:
+            _logger.warning(
+                "%s: could not remove coder report at %s: %s",
+                self.binary, report_path, exc,
+            )
 
     def _bare_model(self) -> str:
         """Return the model to pass to the CLI, or "" to let it choose.
@@ -329,7 +464,25 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         return out_tail or err_tail
 
     def _implement_in_place(self, spec: TaskSpec) -> CodeArtifact:
-        prompt = self._build_prompt(spec)
+        """Run the coder, then read back any report it was invited to write.
+
+        The report is per-run scratch: it is reset here, the coder is offered
+        somewhere in the job's own state to write it, and whatever it left
+        behind is read and deleted no matter how the run ends — success, a
+        non-zero exit, or a timeout (ADR 048). Reading it changes nothing about
+        the artifact or the outcome; a missing report is the ordinary case and
+        is silent (Fixes #318).
+        """
+        report_path = self._report_path()
+        self.last_report = None
+        try:
+            return self._run_in_place(spec)
+        finally:
+            self.last_report = self._read_coder_report(report_path)
+            self._discard_coder_report(report_path)
+
+    def _run_in_place(self, spec: TaskSpec) -> CodeArtifact:
+        prompt = self._invite_report(self._build_prompt(spec))
         project_root = str(self._workspace)
         bare_model = self._bare_model()
         argv = self._build_argv(prompt, project_root, bare_model)
