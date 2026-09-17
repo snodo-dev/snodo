@@ -48,7 +48,7 @@ record, ADR 048.
 from __future__ import annotations
 
 import logging
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Mapping, Optional
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -60,6 +60,7 @@ __all__ = [
     "CoderFileChange",
     "CoderReport",
     "parse_coder_report",
+    "build_coder_report",
 ]
 
 #: The file operation a coder claims to have performed. ``created``,
@@ -191,3 +192,72 @@ def parse_coder_report(raw: object) -> Optional[CoderReport]:
             ),
         )
         return None
+
+
+def build_coder_report(
+    stop_reason: Optional[StopReason] = None,
+    submitted_files: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    turns_used: Optional[int] = None,
+    turns_available: Optional[int] = None,
+    tokens_used: Optional[int] = None,
+    elapsed_ms: Optional[int] = None,
+    workspace: Any = None,
+) -> Optional[CoderReport]:
+    """Assemble the report a coder's loop already holds the facts for.
+
+    The loop knows the files it staged, the turns it used, the tokens it saw,
+    how long it ran and why it stopped; this shapes those into the ADR 048
+    report. Best-effort by construction: it never raises and returns ``None``
+    when the facts cannot be shaped, so a coder's own accounting can never
+    fail a run the worktree could be judged on its own merits.
+    """
+    try:
+        return CoderReport(
+            files=_reported_file_changes(submitted_files, workspace),
+            turns_used=turns_used,
+            turns_available=turns_available,
+            tokens_used=tokens_used,
+            wall_time_ms=elapsed_ms,
+            stop_reason=stop_reason,
+        )
+    except Exception as e:
+        _logger.warning(
+            "Discarding unbuildable coder report (run unaffected; a coder's "
+            "report is evidence, never a halt): %s: %s", type(e).__name__, e,
+        )
+        return None
+
+
+def _reported_file_changes(
+    submitted_files: Optional[Mapping[str, Mapping[str, Any]]],
+    workspace: Any,
+) -> Optional[List[CoderFileChange]]:
+    """Shape the loop's staged file operations into reported file changes."""
+    changes: List[CoderFileChange] = []
+    for path, operation in (submitted_files or {}).items():
+        action = (operation or {}).get("action", "write")
+        if action == "delete":
+            changes.append(CoderFileChange(path=str(path), kind="deleted"))
+        else:
+            changes.append(CoderFileChange(
+                path=str(path),
+                kind="created" if _is_new_path(path, workspace) else "modified",
+            ))
+    return changes or None
+
+
+def _is_new_path(path: str, workspace: Any) -> bool:
+    """Whether the pre-write tree has no file at *path* (best-effort).
+
+    The loop stages writes in memory, so the workspace still holds the tree as
+    the coder found it: a path that exists is being modified, one that does
+    not is being created. When the workspace cannot answer, the report says
+    ``modified`` rather than over-claiming a creation.
+    """
+    probe = getattr(workspace, "file_exists", None)
+    if not callable(probe):
+        return False
+    try:
+        return not bool(probe(path))
+    except Exception:
+        return False

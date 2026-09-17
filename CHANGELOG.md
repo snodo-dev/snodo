@@ -44,6 +44,17 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The litellm coder now fills its own `CoderReport` from what its tool loop
+  already holds: the files it staged, the turns it used against
+  `max_tool_turns`, the tokens each response reported, its wall time, and why
+  it stopped. The stop reason comes from the exits the loop already takes — a
+  normal finalize is `completed`, `TurnBudgetExhausted` is `turn_budget`, a
+  truncation at `max_tokens` is `context_budget`, and an `LLMCallError` from
+  the completion call is `provider_fault` — rather than a second judgement
+  about the same event. Nothing changes about what the coder does, submits or
+  how it fails, and a report that cannot be built leaves `last_report` absent
+  instead of failing the run. Nothing reads it yet (ADR 048). (Fixes #317)
+
 - A coder can now say, in structured terms, what a run did and how it ended —
   and the engine has a shape to receive it. `snodo/coders/report.py` (new)
   declares `CoderReport`: the files a coder believes it created/modified/
