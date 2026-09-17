@@ -377,6 +377,13 @@ class Protocol(BaseModel):
         default_factory=list,
         description="Protocol-wide constraints"
     )
+    protected_paths: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Repository-relative paths that a task may not change. The engine "
+            "checks the task branch diff after execution."
+        ),
+    )
     execution: ExecutionConfig = Field(
         default_factory=ExecutionConfig,
         description="Branch isolation and retry configuration"
@@ -426,6 +433,13 @@ class Protocol(BaseModel):
         # Note: Cross-field validation happens in model_validator
         if not v or not v.strip():
             raise ValueError("initial_mode cannot be empty")
+        return v
+
+    @field_validator('protected_paths')
+    @classmethod
+    def validate_protected_paths(cls, v: List[str]) -> List[str]:
+        if any(not path.strip() for path in v):
+            raise ValueError("protected_paths must not contain empty strings")
         return v
     
     @field_validator('modes')

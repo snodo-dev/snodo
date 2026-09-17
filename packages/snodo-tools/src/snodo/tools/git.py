@@ -333,6 +333,20 @@ class GitMCP:
         except GitCommandError as e:
             raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
+    def changed_paths_between_refs(self, ref1: str, ref2: str) -> List[str]:
+        """Return every path changed between two refs, including rename sides."""
+        try:
+            changes = self.repo.commit(ref1).diff(self.repo.commit(ref2))
+            paths = {
+                path
+                for change in changes
+                for path in (change.a_path, change.b_path)
+                if path
+            }
+            return sorted(paths)
+        except Exception as e:
+            raise GitError(f"Git path diff failed: {e}") from e
+
     def show(self, ref: str, path: str) -> str:
         """Read a file's content at a specific git ref.
 

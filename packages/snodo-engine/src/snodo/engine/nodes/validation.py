@@ -1,3 +1,4 @@
+from pathlib import PurePosixPath
 from typing import Dict, Any, List
 from snodo.engine.state import LoopStage, LoopState, _build_audit_results
 from snodo.core.interfaces import ValidatorResult, ExecutionError, NoFileOperationsError, result_record
@@ -598,6 +599,46 @@ class ValidationNodeMixin:
             base_ref=loop_state.base_ref,
         )
 
+    def _protected_path_result(self, loop_state: LoopState) -> Any:
+        """Return a blocker when the task branch changed a declared path."""
+        protected = [
+            str(PurePosixPath(path.replace("\\", "/"))).strip("/")
+            for path in getattr(self.protocol, "protected_paths", [])
+            if str(path).strip()
+        ]
+        if not protected or not loop_state.base_ref or self.git_mcp is None:
+            return None
+        try:
+            changed = self.git_mcp.changed_paths_between_refs(
+                loop_state.base_ref, self.git_mcp.get_head_sha()
+            )
+        except Exception as exc:
+            self._audit("protected_paths_unchecked", {
+                "op": "protected_paths_unchecked",
+                "task_ref": loop_state.task.id,
+                "error": str(exc),
+            })
+            return None
+
+        changed_normalized = [str(PurePosixPath(path.replace("\\", "/"))) for path in changed]
+        touched = sorted({
+            declared
+            for declared in protected
+            if any(
+                changed_path == declared or changed_path.startswith(declared + "/")
+                for changed_path in changed_normalized
+            )
+        })
+        if not touched:
+            return None
+        return ValidatorResult(
+            validator_id="protected_paths",
+            severity="blocker",
+            justification=(
+                "Protected path changed in the task branch: " + ", ".join(touched)
+            ),
+        )
+
     def _detect_validator_contradictions(
         self, loop_state: LoopState, results: List[ValidatorResult]
     ) -> None:
@@ -645,7 +686,24 @@ class ValidationNodeMixin:
         current_mode, post_validators = self._validator_runner.resolve_validators(
             loop_state.current_mode, "post_execute"
         )
+        protected_result = self._protected_path_result(loop_state)
         if not current_mode or not post_validators:
+            if protected_result is not None:
+                loop_state.is_blocked = True
+                loop_state.halt_type = "blocked"
+                loop_state.validation_results.append(protected_result)
+                loop_state.constraint_violations.append(protected_result.justification)
+                loop_state.metadata["post_validation"] = {
+                    "outcome": "blocked",
+                    "validator_results": [protected_result.model_dump()],
+                }
+                self._audit("protected_path_blocked", {
+                    "op": "protected_path_blocked",
+                    "task_ref": loop_state.task.id,
+                    "justification": protected_result.justification,
+                })
+                self._auto_write_failure_context(loop_state, [protected_result])
+                return self._state_to_dict(loop_state)
             self._audit("post_validate_bypassed", {
                 "task_ref": loop_state.task.id if loop_state.task else None,
                 "mode": loop_state.current_mode,
@@ -658,6 +716,8 @@ class ValidationNodeMixin:
             f"  Post-validating: {', '.join(v.validator_id for v in post_validators)}"
         )
         results = self._run_post_validators(loop_state, post_validators)
+        if protected_result is not None:
+            results.append(protected_result)
 
         # Detect contradictions between execution validators (quality) and read-only judges (acceptance)
         self._detect_validator_contradictions(loop_state, results)
@@ -677,7 +737,14 @@ class ValidationNodeMixin:
         loop_state.validation_results = loop_state.validation_results + results
 
         post_outcome = "passed"
-        if decision.action == PolicyAction.HALT:
+        if protected_result is not None:
+            # A protected-path finding is terminal and is not eligible for
+            # recovery, regardless of the configured disagreement policy.
+            loop_state.is_blocked = True
+            loop_state.halt_type = "blocked"
+            loop_state.constraint_violations.append(protected_result.justification)
+            post_outcome = "blocked"
+        elif decision.action == PolicyAction.HALT:
             has_errors = any(getattr(r, 'error', False) for r in results)
             if has_errors:
                 # Validator error — TERMINAL (INV3)
@@ -703,6 +770,14 @@ class ValidationNodeMixin:
             # ESCALATE is always RECOVERABLE — spawn fix subtask
             self._spawn_recovery_subtask(loop_state, results, decision)
             post_outcome = "recovery"
+
+        if protected_result is not None:
+            loop_state.needs_recovery = False
+            self._audit("protected_path_blocked", {
+                "op": "protected_path_blocked",
+                "task_ref": loop_state.task.id,
+                "justification": protected_result.justification,
+            })
 
         loop_state.policy_decision = decision
         loop_state.metadata["post_validation"] = {
@@ -755,4 +830,3 @@ class ValidationNodeMixin:
             "decision": decision,
         })
         return decision
-
