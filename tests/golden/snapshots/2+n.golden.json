@@ -111,6 +111,7 @@
   ],
   "modules": [],
   "name": "2+N Reference Protocol",
+  "protected_paths": [],
   "protocol_id": "2+n",
   "roles": [],
   "validators": [

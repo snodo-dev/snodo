@@ -97,6 +97,7 @@
   ],
   "modules": [],
   "name": "Default Snodo Protocol",
+  "protected_paths": [],
   "protocol_id": "default",
   "roles": [],
   "validators": [

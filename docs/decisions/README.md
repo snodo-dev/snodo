@@ -52,3 +52,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [046](046-unknown-llm-config-key-fails-loud.md) | An unknown `llm` config key is rejected, not silently dropped | 2026-09-16 | `infrastructure/config.py` (`LlmConfig` + section models) |
 | [047](047-mcp-tools-governed-not-token-gated.md) | An MCP tool is governed by the protocol, not by a token the caller must hold | 2026-09-16 | `mcp/server.py` + `mcp/tools.py` (supersedes 017 as the tool-surface record) |
 | [048](048-coder-report-shape.md) | A coder report is best-effort evidence; it carries a shape, never a verdict | 2026-09-16 | `coders/report.py` (`CoderReport` + `parse_coder_report`) |
+| [049](049-protected-paths-detect-before-prevention.md) | Declared protected paths are detected from the task branch diff | 2026-09-17 | `Protocol.protected_paths` + post-execute gate |
