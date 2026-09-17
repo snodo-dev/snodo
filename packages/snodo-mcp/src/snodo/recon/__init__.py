@@ -56,6 +56,11 @@ class ReconError(Exception):
     """Recon system error."""
 
 
+# A recon that has stopped, whether or not it succeeded. Its results file
+# holds what it recorded — the answers, or the reason it failed.
+_TERMINAL_STATUSES = frozenset({"complete", "failed"})
+
+
 # Module-level thread registry so shutdown() can join threads from any
 # ReconManager instance (needed for test teardown where handler creates
 # its own manager internally).
@@ -597,24 +602,35 @@ class ReconManager:
         _threads.clear()
 
     def get_status(self, recon_id: str) -> dict:
-        """Get the current status of a recon."""
+        """Get the current status of a recon.
+
+        A recon that has stopped — complete or failed — carries whatever was
+        recorded about it, including the reason a failed one stopped. A recon
+        still running has nothing to report yet.
+        """
         recon_dir = self._recon_dir(recon_id)
         state = self._load_state(recon_dir)
-        results = self._load_results(recon_dir) if state.get("status") == "complete" else []
+        status = state.get("status")
+        results = self._load_results(recon_dir) if status in _TERMINAL_STATUSES else []
         return {**state, "results": results}
 
     def get_results(self, recon_id: str) -> dict:
-        """Get the raw results of a completed recon."""
+        """Get the raw results of a terminal recon.
+
+        A failure is a result too: a failed recon reports what stopped it
+        rather than refusing. A recon still running has nothing to hand over.
+        """
         recon_dir = self._recon_dir(recon_id)
         state = self._load_state(recon_dir)
-        if state.get("status") != "complete":
+        status = state.get("status")
+        if status not in _TERMINAL_STATUSES:
             raise ReconError(
-                f"Recon {recon_id} is not complete (status: {state.get('status')})"
+                f"Recon {recon_id} is not complete (status: {status})"
             )
         results = self._load_results(recon_dir)
         return {
             "recon_id": recon_id,
-            "status": state["status"],
+            "status": status,
             "results": results,
         }
 
