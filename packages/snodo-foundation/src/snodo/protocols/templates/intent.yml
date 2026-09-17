@@ -30,7 +30,7 @@ validators:
       - "Treat the input as INTENT. A good spec, authored from it, restates the desired outcome in one or two sentences \u2014 not a copy of the raw issue."
       - "WARN if no explicit acceptance criterion is present (how we'll know it's resolved)."
       - "WARN if scope is unstated (which area/behavior the change should touch)."
-      - "WARN if the spec is code-prescriptive (transcribed implementation) rather than intent + constraints."
+      - "WARN if the spec is code-prescriptive (transcribed implementation) rather than intent + constraints. Evidence is not prescription: a spec that cites a file and line as the location of an OBSERVED symptom is grounding a claim about the present state, not dictating the fix — that is allowed, however many times it happens. Code-prescriptive means the spec dictates the shape of the change itself: a described sequence of edits, or code the coder is meant to reproduce, is prescription. When raising this warning, cite the specific text that prescribes rather than merely locates."
       - "Do not block: these are good-manners nudges meant to improve the spec on the next iteration, not stop the work."
 
 # NOTE: a post_execute "review" validator was removed intentionally. The coder
