@@ -9,6 +9,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The liveness snapshot now carries `last_activity_at`: when something last
+  happened in the session across everything the snapshot reports — plan and
+  task status writes included, not only audit events. A status write appends
+  no audit event, so `last_event` (unchanged in meaning: the last recorded
+  decision) could stay pinned hours behind the very change that fired the
+  push, and a consumer rendering it as last activity saw a working machine as
+  idle. `last_activity_at` is the newest of the record files' modification
+  times and the audit tail's own timestamp — no new state, no audit event
+  appended, no trigger or throttle change. (Fixes #324)
+
 ## [0.10.0] — 2026-09-17
 
 ### Added

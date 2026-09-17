@@ -343,7 +343,12 @@ def build_liveness_snapshot(session_id: str, project_root: str) -> Optional[dict
 
     Read-only over the same records the plan-status view reads — plan files,
     task and job ``state.json`` — plus the session file and the audit tail
-    for "what the last event was and when". A torn or corrupt read is skipped,
+    for "what the last event was and when". ``last_event`` is exactly that:
+    the last decision recorded in the governance log, nothing more. When a
+    status write moved without appending an audit event, the file's mtime
+    still says so, and ``last_activity_at`` carries the newest of those
+    marks: when something last happened, across everything this snapshot
+    reports (Fixes #324). A torn or corrupt read is skipped,
     never fatal: a snapshot missing one job still carries the truth about the
     rest.
     """
@@ -354,6 +359,7 @@ def build_liveness_snapshot(session_id: str, project_root: str) -> Optional[dict
     plans, tallied_refs, detailed_refs, tallied_job_ids, nested_job_ids = \
         _collect_plans(root, task_rows, job_rows)
     last_event = _last_audit_event(root / ".snodo" / "audit.log")
+    last_activity_at = _last_activity_at(root, last_event)
 
     if not _anything_running(plans, task_rows, job_rows):
         return None
@@ -387,6 +393,7 @@ def build_liveness_snapshot(session_id: str, project_root: str) -> Optional[dict
         "task_status_counts": task_counts,
         "job_status_counts": job_counts,
         "last_event": last_event,
+        "last_activity_at": last_activity_at,
         "snapshot_at": _now_iso(),
     }
     return snapshot
@@ -702,6 +709,69 @@ def _last_audit_event(audit_path: Path) -> Optional[dict]:
                 "timestamp": str(event.get("timestamp") or ""),
             }
     return None
+
+
+def _mtime_or_none(path: Path) -> Optional[float]:
+    """A record file's mtime, or None when it cannot be read."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _iso_epoch(value: Any) -> Optional[float]:
+    """Epoch seconds of an ISO timestamp string; None when absent or unparseable."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.timestamp()
+
+
+def _last_activity_at(root: Path, last_event: Optional[dict]) -> Optional[str]:
+    """When something last happened in this session, across everything the
+    snapshot reports — not only what the audit log recorded (Fixes #324).
+
+    ``last_event`` answers "when was the last decision recorded". A plan or
+    task status write changes what is running and appends no audit event, so
+    the audit tail can sit hours behind the very change that woke the push.
+    The evidence of a status write is already on disk — the mtime of the file
+    the write rewrote — so the newest of the plan ``status.json`` and task/job
+    ``state.json`` mtimes, and the audit tail's own timestamp, is when this
+    session last did something. Nothing is stored to make the clock move: the
+    same records the snapshot already reports carry it, and no audit event is
+    appended here (the audit log stays the governance record it is).
+    """
+    snodo_dir = root / ".snodo"
+    epochs: list = []
+    for runs_dir, job_dirs in (
+        (snodo_dir / "tasks", False), (snodo_dir / "jobs", True),
+    ):
+        if runs_dir.is_dir():
+            for entry in runs_dir.iterdir():
+                if not entry.is_dir():
+                    continue
+                if job_dirs and not entry.name.startswith("j_"):
+                    continue
+                epoch = _mtime_or_none(entry / "state.json")
+                if epoch is not None:
+                    epochs.append(epoch)
+    plans_dir = snodo_dir / "plans"
+    if plans_dir.is_dir():
+        for plan_path in plans_dir.iterdir():
+            epoch = _mtime_or_none(plan_path / "status.json")
+            if epoch is not None:
+                epochs.append(epoch)
+    audit_epoch = _iso_epoch((last_event or {}).get("timestamp"))
+    if audit_epoch is not None:
+        epochs.append(audit_epoch)
+    if not epochs:
+        return None
+    return datetime.fromtimestamp(max(epochs), UTC).isoformat()
 
 
 def _anything_running(plans: list, tasks: list, jobs: list) -> bool:

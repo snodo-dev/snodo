@@ -691,6 +691,10 @@ class PlannerMCP:
         # forces past the throttle; a start or a not-yet-started task pushes
         # at the normal once-per-minute budget, coalescing with its neighbours.
         # A session with nothing started, and sync disabled, send nothing.
+        # The snapshot's ``last_event`` will not move for this write — it
+        # reports the last audit event, and this appends none — but its
+        # ``last_activity_at`` will: the file this write rewrote carries the
+        # mark of when the change happened (Fixes #324).
         try:
             from snodo.infrastructure import cloud_liveness
             cloud_liveness.note_transition(
