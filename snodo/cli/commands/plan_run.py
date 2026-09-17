@@ -4,6 +4,7 @@ Extracted from cli/commands/run_cmd.py to isolate plan execution logic.
 """
 
 import json
+import logging
 import os
 import sys
 import time
@@ -14,6 +15,8 @@ from snodo.core.interfaces import Task
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol
 from snodo.cli.commands import followup
+
+_logger = logging.getLogger(__name__)
 
 
 def _task_completed(tasks_status: dict, task_id: str) -> bool:
@@ -166,6 +169,65 @@ def _task_is_unmerged(tasks_status: dict, task_id: str) -> bool:
     if isinstance(entry, dict):
         return entry.get("status") == "unmerged"
     return entry == "unmerged"
+
+
+def _correct_stale_unmerged(planner, args, task_id: str, spec: str) -> bool:
+    """Reconcile a stale ``unmerged`` record against the repository.
+
+    ``unmerged`` is a claim about the tree, and the tree can move underneath
+    it: an operator who merges the branch by hand leaves the plan still saying
+    ``unmerged``, and a rerun would dispatch a coder against work that is
+    already there. Before executing, ask the repository whether the task's
+    branch is contained in the base branch — never the plan record, which is
+    the thing that can be stale. When it is, the task is done: record
+    ``completed``, say the status was corrected and why, and return True so
+    the caller moves on. When the branch is genuinely unmerged, or absent,
+    return False and let the caller keep today's behaviour.
+    """
+    from snodo.infrastructure.worktree import task_branch_is_merged, task_branch_name
+    from snodo.tools.git import resolve_base_branch
+
+    project_root = str(planner.project_root)
+    if task_branch_is_merged(project_root, task_id, spec) is not True:
+        return False
+
+    branch = task_branch_name(task_id, spec)
+    base = resolve_base_branch(project_root)
+    reason = f"branch {branch} is already on {base}"
+
+    planner.update_status(
+        args.plan,
+        task_id,
+        "completed",
+        corrected_from="unmerged",
+        corrected_reason=reason,
+    )
+    from snodo.cli.commands.run_cmd import _record_task_completion
+    _record_task_completion(project_root, task_id, "completed")
+
+    audit_log = getattr(args, "audit_log", None)
+    if audit_log is None:
+        from snodo.infrastructure.audit import AuditLog
+        audit_log_path = planner.project_root / ".snodo" / "audit.log"
+        if audit_log_path.exists():
+            audit_log = AuditLog(str(audit_log_path))
+    if audit_log is not None:
+        try:
+            audit_log.append_event("task_status_corrected", {
+                "op": "task_status_corrected",
+                "task_ref": task_id,
+                "plan": args.plan,
+                "from": "unmerged",
+                "to": "completed",
+                "branch": branch,
+                "base": base,
+                "reason": reason,
+            })
+        except Exception as e:  # noqa: BLE001 — the correction stands without the audit tail
+            _logger.debug("Could not audit stale-unmerged correction: %s", e)
+
+    print(f"  [{task_id}] stale 'unmerged' corrected to 'completed': {reason}")
+    return True
 
 
 def _resolve_failure_context(session, task_id: str) -> Optional[dict]:
@@ -326,6 +388,8 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
     status_data = planner.get_status(args.plan)
     tasks_status = status_data.get("tasks", {})
     if _task_is_unmerged(tasks_status, task_id):
+        if _correct_stale_unmerged(planner, args, task_id, spec):
+            return True
         print(f"  [{task_id}] unmerged branch found; attempting fast-path merge")
         start_mono = time.monotonic()
         start_wall = time.time()
@@ -580,6 +644,8 @@ def _execute_wave_tasks_concurrent(
         spec = spec_file.read_text()
         tasks_status = planner.get_status(args.plan).get("tasks", {})
         if _task_is_unmerged(tasks_status, task_id):
+            if _correct_stale_unmerged(planner, args, task_id, spec):
+                continue
             print(f"  [{task_id}] unmerged branch found; attempting fast-path merge")
             start_mono = time.monotonic()
             start_wall = time.time()

@@ -1590,6 +1590,182 @@ disagreement_policy: "unanimous"
     assert status2["tasks"]["task_1_a"]["status"] == "completed"
 
 
+def _init_git_project(project_dir):
+    """Init a git repo in *project_dir* with one commit on a branch named main."""
+    from git import Repo
+
+    repo = Repo.init(str(project_dir))
+    repo.config_writer().set_value("user", "name", "Test User").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    (project_dir / "README.md").write_text("# Project\n")
+    repo.index.add(["README.md"])
+    repo.index.commit("Initial commit")
+    repo.git.branch("-M", "main")
+    return repo
+
+
+def _merge_task_branch_by_hand(repo, project_dir, task_id, spec, filename):
+    """Create *task_id*'s branch, commit work, and merge it into main by hand."""
+    from snodo.infrastructure.worktree import task_branch_name
+
+    branch = task_branch_name(task_id, spec)
+    repo.create_head(branch).checkout()
+    (project_dir / filename).write_text("done\n")
+    repo.index.add([filename])
+    repo.index.commit(f"Do {task_id}")
+    repo.heads["main"].checkout()
+    repo.git.merge(branch)
+    return branch
+
+
+def test_plan_run_hand_merged_unmerged_task_is_completed_not_dispatched(plan_project_env, capsys):
+    """An unmerged task whose branch was merged by hand is recorded done, not re-run."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+    from snodo.infrastructure.worktree import task_branch_name
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "hand_merged_plan")
+    planner.update_status(plan_name, "task_1_1", "unmerged")
+
+    repo = _init_git_project(plan_project_env)
+    spec = "Spec for task 1.1"
+    branch = _merge_task_branch_by_hand(repo, plan_project_env, "task_1_1", spec, "work.txt")
+    assert branch == task_branch_name("task_1_1", spec)
+
+    args = _make_plan_args(plan_name, wave=1)
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=1))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._execute_task") as mock_exec:
+            with patch("snodo.cli.commands.run_cmd._try_merge_unmerged_task") as mock_merge:
+                result = _run_plan(args)
+
+    assert result == 0
+    assert not mock_exec.called
+    assert not mock_merge.called
+    out = capsys.readouterr().out
+    assert "stale 'unmerged' corrected to 'completed'" in out
+
+    entry = planner.get_status(plan_name)["tasks"]["task_1_1"]
+    assert entry["status"] == "completed"
+    assert entry["corrected_from"] == "unmerged"
+    assert "already on main" in entry["corrected_reason"]
+    repo.close()
+
+
+def test_plan_run_genuinely_unmerged_task_still_runs(plan_project_env, capsys):
+    """An unmerged task whose branch is not in the base is still dispatched."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "genuinely_unmerged_plan")
+    planner.update_status(plan_name, "task_1_1", "unmerged")
+
+    repo = _init_git_project(plan_project_env)
+    spec = "Spec for task 1.1"
+    from snodo.infrastructure.worktree import task_branch_name
+    branch = task_branch_name("task_1_1", spec)
+    repo.create_head(branch).checkout()
+    (plan_project_env / "wip.txt").write_text("wip\n")
+    repo.index.add(["wip.txt"])
+    repo.index.commit("WIP")
+    repo.heads["main"].checkout()
+
+    args = _make_plan_args(plan_name, wave=1)
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=1))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._execute_task", return_value=0) as mock_exec:
+            result = _run_plan(args)
+
+    assert result == 0
+    assert mock_exec.called
+    entry = planner.get_status(plan_name)["tasks"]["task_1_1"]
+    assert entry["status"] == "completed"
+    assert "corrected_from" not in entry
+    repo.close()
+
+
+def test_plan_run_unmerged_task_without_branch_is_unaffected(plan_project_env, capsys):
+    """An unmerged task with no branch at all keeps today's behaviour."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "no_branch_plan")
+    planner.update_status(plan_name, "task_1_1", "unmerged")
+
+    repo = _init_git_project(plan_project_env)
+
+    args = _make_plan_args(plan_name, wave=1)
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=1))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch("snodo.cli.commands.run_cmd._execute_task", return_value=0) as mock_exec:
+            result = _run_plan(args)
+
+    assert result == 0
+    assert mock_exec.called
+    entry = planner.get_status(plan_name)["tasks"]["task_1_1"]
+    assert entry["status"] == "completed"
+    assert "corrected_from" not in entry
+    repo.close()
+
+
+def test_concurrent_wave_hand_merged_unmerged_task_is_not_dispatched(plan_project_env, capsys):
+    """A concurrent wave's hand-merged task is corrected, not submitted as a job."""
+    from snodo.infrastructure.config import LlmConfig, CoderConfig
+    from snodo.jobs import JobManager
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_multi_task_wave_plan(planner, "concurrent_hand_merged_plan")
+    planner.update_status(plan_name, "task_1_a", "unmerged")
+
+    protocol_content = """
+protocol_id: "concurrent_p"
+name: "Concurrent Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["quality"]
+    concurrency: 2
+validators:
+  - validator_id: "quality"
+    validator_type: "quality"
+    criteria: ["Pass quality"]
+disagreement_policy: "unanimous"
+""".strip()
+    (plan_project_env / ".snodo" / "protocol.yml").write_text(protocol_content)
+
+    repo = _init_git_project(plan_project_env)
+    _merge_task_branch_by_hand(repo, plan_project_env, "task_1_a", "Spec for task 1.a", "a.txt")
+
+    args = _make_plan_args(plan_name)
+    submitted = {}
+
+    def mock_submit(self, task_args):
+        job_id = f"j_{task_args['task_id']}"
+        submitted[job_id] = task_args
+        return job_id
+
+    def mock_get_status(self, job_id):
+        return {"status": "completed", "exit_code": 0, "started_at": 100.0, "completed_at": 104.0}
+
+    custom_cfg = LlmConfig(coder=CoderConfig(concurrency=2))
+    with patch("snodo.infrastructure.config.load_llm_config", return_value=custom_cfg):
+        with patch.object(JobManager, "submit", mock_submit):
+            with patch.object(JobManager, "get_status", mock_get_status):
+                result = _run_plan(args)
+
+    assert result == 0
+    tasks_in_jobs = {job["task_id"] for job in submitted.values()}
+    assert "task_1_a" not in tasks_in_jobs
+    assert "task_1_b" in tasks_in_jobs
+    status = planner.get_status(plan_name)
+    assert status["tasks"]["task_1_a"]["status"] == "completed"
+    assert status["tasks"]["task_1_a"]["corrected_from"] == "unmerged"
+    repo.close()
+
+
 
 
 
