@@ -62,6 +62,7 @@
   ],
   "modules": [],
   "name": "Intent-Driven Protocol",
+  "protected_paths": [],
   "protocol_id": "intent",
   "roles": [],
   "validators": [
