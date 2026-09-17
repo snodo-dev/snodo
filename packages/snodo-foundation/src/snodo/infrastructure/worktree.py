@@ -439,6 +439,59 @@ def delete_merged_task_branches(project_root: str, task_id: str) -> List[str]:
     return deleted
 
 
+def task_branch_is_merged(project_root: str, task_id: str, spec: str) -> Optional[bool]:
+    """Whether *task_id*'s branch is already contained in the base branch.
+
+    Ground truth is the repository — the branch's tip and its relationship to
+    the resolved base branch — not the plan's status record, which is exactly
+    the thing that can be stale (an operator may merge the branch by hand and
+    leave ``unmerged`` behind). Returns:
+
+    * ``True``  — the branch exists and its tip is an ancestor of the base tip.
+    * ``False`` — the branch exists and its tip is not contained in the base.
+    * ``None``  — the branch does not exist, or git cannot answer. Callers
+      keep their existing behaviour rather than treating an unreadable
+      repository as a merge.
+
+    "No branch" is deliberately not folded into "not merged": a task with no
+    branch at all is unaffected by this check.
+    """
+    from snodo.tools.git import open_repo, resolve_base_branch
+
+    branch = task_branch_name(task_id, spec)
+    try:
+        base = resolve_base_branch(project_root)
+        with open_repo(project_root) as repo:
+            if branch not in repo.heads:
+                return None
+            try:
+                base_commit = repo.commit(base)
+            except Exception as e:
+                _logger.debug("Could not resolve base commit for %s: %s", base, e)
+                return None
+            if hasattr(repo, "is_ancestor"):
+                try:
+                    ancestor = repo.is_ancestor(repo.commit(branch), base_commit)
+                    if isinstance(ancestor, bool):
+                        return ancestor
+                except Exception as e:
+                    _logger.debug("Could not check ancestry of %s: %s", branch, e)
+            try:
+                raw = repo.git.branch("--merged", base)
+            except Exception as e:
+                _logger.debug("Could not read merged branches for %s: %s", branch, e)
+                return None
+            merged = {
+                line.strip().lstrip("*+ ").strip()
+                for line in raw.splitlines()
+                if line.strip().lstrip("*+ ").strip()
+            } if isinstance(raw, str) else set()
+            return branch in merged
+    except Exception as e:
+        _logger.debug("Could not determine whether %s is merged: %s", branch, e)
+        return None
+
+
 def teardown_task_worktree(project_root: str, task_id: str) -> None:
     """Tear down a task's isolation: worktree first, then its merged branches.
 

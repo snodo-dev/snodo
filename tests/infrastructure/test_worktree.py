@@ -348,3 +348,57 @@ def test_create_worktree_leaves_no_persistent_git_child(repo):
 
     leaked = {pid: cmd for pid, cmd in children().items() if pid not in before}
     assert not leaked, f"create_worktree leaked child processes: {leaked}"
+
+
+# === task_branch_is_merged ===
+
+def _init_repo_on_main(root: Path) -> None:
+    subprocess.run(["git", "init", "-qb", "main"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+    (root / "README.md").write_text("init\n")
+    subprocess.run(["git", "add", "README.md"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=root, check=True)
+
+
+def _make_task_branch_with_work(root: Path) -> str:
+    branch = task_branch_name("1.1_x", "Add feature")
+    subprocess.run(["git", "checkout", "-qb", branch], cwd=root, check=True)
+    (root / "foo.txt").write_text("foo\n")
+    subprocess.run(["git", "add", "foo.txt"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "work"], cwd=root, check=True)
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=root, check=True)
+    return branch
+
+
+def test_task_branch_is_merged_true_after_hand_merge(tmp_path):
+    from snodo.infrastructure.worktree import task_branch_is_merged
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    _init_repo_on_main(root)
+    branch = _make_task_branch_with_work(root)
+    subprocess.run(["git", "merge", "-q", "--no-ff", "-m", "merge", branch], cwd=root, check=True)
+
+    assert task_branch_is_merged(str(root), "1.1_x", "Add feature") is True
+
+
+def test_task_branch_is_merged_false_when_not_merged(tmp_path):
+    from snodo.infrastructure.worktree import task_branch_is_merged
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    _init_repo_on_main(root)
+    _make_task_branch_with_work(root)
+
+    assert task_branch_is_merged(str(root), "1.1_x", "Add feature") is False
+
+
+def test_task_branch_is_merged_none_when_branch_missing(tmp_path):
+    from snodo.infrastructure.worktree import task_branch_is_merged
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    _init_repo_on_main(root)
+
+    assert task_branch_is_merged(str(root), "1.1_x", "Add feature") is None

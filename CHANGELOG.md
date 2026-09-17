@@ -40,6 +40,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
   terminal transitions bypassing the throttle, and the sync/api-key gate.
   (Fixes #323)
 
+### Fixed
+
+- A task recorded `unmerged` whose branch an operator merged by hand is no
+  longer re-executed on a rerun. `unmerged` is a claim about the tree, and the
+  tree moves underneath it: after a manual merge the plan kept saying unmerged,
+  so the wave dispatched a coder against a tree that already held the work and
+  built its next change on a false premise. Before executing, the run now asks
+  the repository whether the task's branch is contained in the base branch —
+  never the plan record, which is the thing that can be stale — and when it is,
+  records the task `completed` with `corrected_from`/`corrected_reason` and says
+  so. A genuinely unmerged branch still runs as before, a task with no branch is
+  unaffected, and nothing is merged on the operator's behalf. (Fixes #325)
+
 ## [0.10.0] — 2026-09-17
 
 ### Added
