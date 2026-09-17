@@ -40,6 +40,24 @@ def recon_mgr(project_with_snodo, monkeypatch):
     mgr.shutdown()
 
 
+def _record_recon(mgr, status, results, recon_id="rec_recorded"):
+    """Write a recon to disk as the worker would, without running one."""
+    recon_dir = Path(mgr.recons_dir) / recon_id
+    recon_dir.mkdir()
+    state = {
+        "recon_id": recon_id,
+        "query": "what does this do?",
+        "paths": ["./"],
+        "agents": [["default"]],
+        "status": status,
+        "created_at": 1.0,
+        "completed_at": 2.0,
+    }
+    (recon_dir / "state.json").write_text(json.dumps(state))
+    (recon_dir / "results.json").write_text(json.dumps(results))
+    return recon_id, state
+
+
 # ------------------------------------------------------------------#
 # ReconManager tests
 # ------------------------------------------------------------------#
@@ -129,6 +147,92 @@ class TestReconManagerGetResults:
         recon_id = recon_mgr.submit("query", ["./"])
         with pytest.raises(ReconError, match="not complete"):
             recon_mgr.get_results(recon_id)
+
+
+# ------------------------------------------------------------------#
+# A terminal recon says why it stopped (Fixes #327)
+# ------------------------------------------------------------------#
+
+_FAILURE_REASON = (
+    "all models failed; tried m1 (litellm.BadRequestError: "
+    "LLM Provider NOT provided)"
+)
+
+
+def _failed_results():
+    return [{
+        "agent": "default",
+        "model": "m1",
+        "result": "",
+        "error": _FAILURE_REASON,
+        "attempts": [{"model": "m1", "error": "LLM Provider NOT provided"}],
+    }]
+
+
+class TestFailedReconCarriesItsReason:
+    def test_get_status_hands_over_the_reason(self, recon_mgr):
+        recon_id, state = _record_recon(recon_mgr, "failed", _failed_results())
+
+        status = recon_mgr.get_status(recon_id)
+
+        assert status["status"] == "failed"
+        assert status["results"] == _failed_results()
+        assert _FAILURE_REASON in status["results"][0]["error"]
+
+    def test_get_results_hands_over_the_reason(self, recon_mgr):
+        recon_id, state = _record_recon(recon_mgr, "failed", _failed_results())
+
+        out = recon_mgr.get_results(recon_id)
+
+        assert out["status"] == "failed"
+        assert out["results"] == _failed_results()
+        assert _FAILURE_REASON in out["results"][0]["error"]
+
+    def test_running_recon_still_has_nothing_to_report(self, recon_mgr):
+        recon_id = recon_mgr.submit("query", ["./"])
+
+        assert recon_mgr.get_status(recon_id)["results"] == []
+        with pytest.raises(ReconError, match="not complete"):
+            recon_mgr.get_results(recon_id)
+
+    def test_complete_recon_returns_exactly_what_it_did(self, recon_mgr):
+        results = [{
+            "agent": "default",
+            "model": "m1",
+            "result": "the answer",
+            "error": None,
+            "attempts": [{"model": "m1", "error": None}],
+        }]
+        recon_id, state = _record_recon(recon_mgr, "complete", results)
+
+        assert recon_mgr.get_status(recon_id) == {**state, "results": results}
+        assert recon_mgr.get_results(recon_id) == {
+            "recon_id": recon_id,
+            "status": "complete",
+            "results": results,
+        }
+
+    def test_mcp_status_handler_hands_over_the_reason(self, project_with_snodo):
+        from snodo.mcp.recon_handlers import ReconToolHandler
+
+        mgr = ReconManager(project_with_snodo)
+        recon_id, _ = _record_recon(mgr, "failed", _failed_results())
+        handler = ReconToolHandler(project_with_snodo)
+
+        out = handler.handle_get_recon_status({"recon_id": recon_id})
+
+        assert out["results"][0]["error"] == _FAILURE_REASON
+
+    def test_mcp_results_handler_hands_over_the_reason(self, project_with_snodo):
+        from snodo.mcp.recon_handlers import ReconToolHandler
+
+        mgr = ReconManager(project_with_snodo)
+        recon_id, _ = _record_recon(mgr, "failed", _failed_results())
+        handler = ReconToolHandler(project_with_snodo)
+
+        out = handler.handle_get_recon_results({"recon_id": recon_id})
+
+        assert out["results"][0]["error"] == _FAILURE_REASON
 
 
 class TestReconManagerListRecons:

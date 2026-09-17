@@ -9,6 +9,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A failed recon now carries its reason to whoever asks. `get_status` loaded
+  results only for `complete`, and `get_results` raised for any other status,
+  so a recon that recorded `failed` and wrote why into `results.json` answered
+  every caller with a bare `failed` — or an error — while the reason sat on
+  disk. A terminal recon, failed or complete, now reports the results it
+  recorded through both calls; a running recon is unchanged and still reports
+  nothing. No state, severity or task status was added. (Fixes #327)
+
 ## [0.10.1] — 2026-09-17
 
 ### Added
