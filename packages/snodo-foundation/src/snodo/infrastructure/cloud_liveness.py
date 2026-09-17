@@ -712,6 +712,9 @@ def _collect_plans(
                 # planner calls finished must surface, not vanish.
                 detailed_refs.add(task_id)
             tnode = {"id": task_id, "status": statuses[task_id]}
+            registry_wave_id = tasks_by_id.get(task_id, {}).get("wave_id")
+            if registry_wave_id:
+                tnode["wave_id"] = registry_wave_id
             live = live_for_ref.get(task_id, [])
             started = tasks_by_id.get(task_id, {}).get("started_at")
             if not started:
@@ -744,6 +747,13 @@ def _collect_plans(
                     "total": len(members),
                     "status_counts": _status_counts(statuses[t] for t in members),
                 }
+                registry_wave_ids = sorted({
+                    tasks_by_id[t]["wave_id"]
+                    for t in members
+                    if tasks_by_id.get(t, {}).get("wave_id")
+                })
+                if registry_wave_ids:
+                    wave_node["wave_ids"] = registry_wave_ids
                 settled_wave = members and all(
                     statuses[t] in TERMINAL_PLAN_STATUSES for t in members
                 )
@@ -794,6 +804,8 @@ def _unreported(rows: list, settled_claimed: set, live_claimed: set) -> tuple:
         if row["id"] in live_claimed:
             continue
         wire = {k: row[k] for k in ("id", "status", "started_at") if k in row}
+        if row.get("wave_id"):
+            wire["wave_id"] = row["wave_id"]
         if row.get("task_ref"):
             wire["task_ref"] = row["task_ref"]
         live.append(wire)
@@ -825,6 +837,8 @@ def _collect_runs(runs_dir: Path, job_dirs: bool = False) -> list:
             "status": str(state.get("status") or "unknown"),
             "started_at": _as_iso(state.get("started_at")),
         }
+        if state.get("wave_id"):
+            row["wave_id"] = str(state["wave_id"])
         if job_dirs:
             row["task_ref"] = _job_task_ref(entry)
         rows.append(row)

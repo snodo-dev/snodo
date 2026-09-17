@@ -158,9 +158,12 @@ tasks → the jobs beneath them, the structure `snodo plan status` renders. A
 branch that has completed — a wave whose every task has settled, a plan whose
 every wave has — is carried as a count plus the summary needed to render
 "wave 1: 3/3 done" (`total` and a per-status `status_counts`), not as a full
-list of its members. The running frontier keeps its detail, because that is
-the part a viewer is watching: unsettled waves enumerate their started tasks,
-and each task node carries the *live* jobs beneath it. Terminal jobs inside an
+list of its members. A collapsed wave also carries `wave_ids`, the distinct
+durable registry identifiers already carried by its tasks, when any exist. The
+running frontier keeps its detail, because that is the part a viewer is
+watching: unsettled waves enumerate their started tasks, and each enumerated
+task carries its own `wave_id` when classified. Each task node also carries the
+*live* jobs beneath it. Terminal jobs inside an
 incomplete plan stay in the picture as the plan's `job_status_counts`. Task or
 job records that no plan claims ride the top level: live ones enumerated in
 full, settled ones tallied in `task_status_counts` / `job_status_counts`.
@@ -190,12 +193,13 @@ taken from it on the far side so a sender cannot claim to be someone else.
       "status_counts": {"completed": 4, "in_progress": 1, "pending": 1},
       "job_status_counts": {"completed": 8},
       "waves": [
-        {"id": 1, "total": 3, "status_counts": {"completed": 3}},
+        {"id": 1, "total": 3, "status_counts": {"completed": 3},
+         "wave_ids": ["w_0009"]},
         {
           "id": 2, "total": 3,
           "status_counts": {"completed": 1, "in_progress": 1, "pending": 1},
           "tasks": [
-            {"id": "2.1", "status": "completed"},
+            {"id": "2.1", "status": "completed", "wave_id": "w_0009"},
             {
               "id": "2.2", "status": "in_progress",
               "started_at": "2026-09-02T21:10:05+00:00",
@@ -222,6 +226,15 @@ taken from it on the far side so a sender cannot claim to be someone else.
   "snapshot_at": "2026-09-02T21:50:02.9+00:00"
 }
 ```
+
+The plan ordinal (`waves[].id`, such as `1` or `2`) and the registry identifier
+(`wave_id` / `wave_ids`, such as `w_0009`) are different groupings. The ordinal
+means execution order and membership in this plan; the registry identifier is
+assigned independently per task by classification and may be shared by tasks
+in different plan waves. One plan wave can therefore carry several registry
+identifiers, or none. Consumers must join history to liveness through the
+task-level `wave_id`, or a settled wave's `wave_ids`, not by treating the plan
+ordinal as a durable wave identifier.
 
 Statuses are the ones the machine already records — planner statuses, task
 and job `state.json` statuses — passed through verbatim; this path adds no
