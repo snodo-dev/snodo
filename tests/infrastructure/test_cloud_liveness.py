@@ -710,6 +710,13 @@ def _make_job(root: Path, job_id: str, status: str, task_ref: str,
     _write(job_dir / "task.json", {"task_id": task_ref, "description": "spec"})
 
 
+def _make_task(root: Path, task_id: str, status: str, wave_id: str = "") -> None:
+    state = {"status": status, "started_at": 1787000000.0}
+    if wave_id:
+        state["wave_id"] = wave_id
+    _write(root / ".snodo" / "tasks" / task_id / "state.json", state)
+
+
 def _snapshot(root: Path, session_id: str = "sess_shape") -> dict:
     """Build against an empty home: shape tests never read a real session."""
     with patch.object(
@@ -844,6 +851,62 @@ class TestSnapshotShape:
         assert "waves" not in done and "tasks" not in done
         assert done["job_status_counts"] == {"completed": 60}
         assert live["waves"][0]["tasks"][0]["id"] == "1.1"
+
+    def test_enumerated_task_carries_its_registry_wave_id(self, tmp_path):
+        root = tmp_path / "enumerated"
+        _make_plan(root, "plan", "waves:\n  - id: 1\n    tasks: ['1.1']\n", {
+            "1.1": "in_progress",
+        })
+        _make_task(root, "1.1", "in_progress", "w_0009")
+
+        body = _snapshot(root)
+
+        task = body["plans"][0]["waves"][0]["tasks"][0]
+        assert task["id"] == "1.1"
+        assert task["status"] == "in_progress"
+        assert task["wave_id"] == "w_0009"
+
+    def test_settled_wave_carries_ids_without_enumerating_tasks(self, tmp_path):
+        root = tmp_path / "settled"
+        _make_plan(root, "plan", "waves:\n  - id: 1\n    tasks: ['1.1', '1.2']\n  - id: 2\n    tasks: ['2.1']\n", {
+            "1.1": "completed", "1.2": "completed", "2.1": "in_progress",
+        })
+        _make_task(root, "1.1", "completed", "w_0009")
+        _make_task(root, "1.2", "completed", "w_0009")
+        _make_task(root, "2.1", "in_progress")
+
+        wave = _snapshot(root)["plans"][0]["waves"][0]
+
+        assert wave["wave_ids"] == ["w_0009"]
+        assert "tasks" not in wave
+
+    def test_settled_wave_reports_distinct_registry_ids(self, tmp_path):
+        root = tmp_path / "mixed"
+        _make_plan(root, "plan", "waves:\n  - id: 1\n    tasks: ['1.1', '1.2', '1.3']\n  - id: 2\n    tasks: ['2.1']\n", {
+            "1.1": "completed", "1.2": "completed", "1.3": "completed", "2.1": "in_progress",
+        })
+        _make_task(root, "1.1", "completed", "w_0009")
+        _make_task(root, "1.2", "completed", "w_000a")
+        _make_task(root, "1.3", "completed", "w_0009")
+        _make_task(root, "2.1", "in_progress")
+
+        wave = _snapshot(root)["plans"][0]["waves"][0]
+
+        assert wave["wave_ids"] == ["w_0009", "w_000a"]
+        assert "tasks" not in wave
+
+    def test_unclassified_tasks_do_not_invent_registry_ids(self, tmp_path):
+        root = tmp_path / "unclassified"
+        _make_plan(root, "plan", "waves:\n  - id: 1\n    tasks: ['1.1']\n  - id: 2\n    tasks: ['2.1']\n", {
+            "1.1": "completed", "2.1": "in_progress",
+        })
+        _make_task(root, "1.1", "completed")
+        _make_task(root, "2.1", "in_progress")
+
+        wave = _snapshot(root)["plans"][0]["waves"][0]
+
+        assert "wave_ids" not in wave
+        assert "wave_id" not in json.dumps(_snapshot(root))
 
     def test_a_record_the_plan_collapsed_away_still_surfaces_while_live(
         self, tmp_path,
