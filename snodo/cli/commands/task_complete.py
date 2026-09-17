@@ -159,52 +159,33 @@ def task_complete_command(args: Any) -> int:
             print(f"Error: {msg}", file=sys.stderr)
             return 1
 
-    # Update plan status if associated with a plan
-    if plan_name:
-        try:
-            from snodo.mcp.planner import PlannerMCP
-            planner = PlannerMCP(project_root)
-            planner.update_status(
-                plan_name,
-                task_id,
-                "completed",
-                completed_by=who,
-                completed_at=recorded_at,
-                judged=False,
-            )
-        except Exception as e:
-            msg = f"Could not update plan status: {e}"
-            if json_out:
-                return emit_error("task_complete", msg, 1)
-            print(f"Error: {msg}", file=sys.stderr)
-            return 1
-
-    # Append audit event
-    from snodo.infrastructure.audit import get_audit_log
-    audit_log_path = Path(project_root) / ".snodo" / "audit.log"
-    audit_log = get_audit_log(str(audit_log_path) if audit_log_path.exists() else None)
-    if audit_log is None:
+    # Record the status through the one implementation the MCP tool also
+    # uses: the same vocabulary, the same provenance, the same audit event.
+    # The plan's status.json advances from the record only when a plan is
+    # known; when none is, the record is audit-only (as it always was).
+    try:
+        from snodo.mcp.planner import PlannerMCP, PlannerError
+        planner = PlannerMCP(project_root)
+        planner.record_status(
+            plan_name,
+            task_id,
+            "completed",
+            who,
+            notes=notes_arg,
+            recorded_at=recorded_at,
+        )
+    except PlannerError as e:
+        msg = f"Could not record status: {e}"
         if json_out:
-            return emit_error("task_complete", "Audit log unavailable.", 1)
-        print("Error: Audit log unavailable.", file=sys.stderr)
+            return emit_error("task_complete", msg, 1)
+        print(f"Error: {msg}", file=sys.stderr)
         return 1
-
-    event_data: dict[str, Any] = {
-        "op": "task_completed_by_hand",
-        "task_ref": task_id,
-        "who": who,
-        "recorded_at": recorded_at,
-        "timestamp": recorded_at,
-        "judged": False,
-        "engine_judged": False,
-        "outside_loop": True,
-    }
-    if plan_name:
-        event_data["plan"] = plan_name
-    if notes_arg:
-        event_data["notes"] = notes_arg
-
-    audit_log.append_event("task_completed_by_hand", event_data)
+    except Exception as e:  # noqa: BLE001 — report, never record nothing silently
+        msg = f"Could not record status: {e}"
+        if json_out:
+            return emit_error("task_complete", msg, 1)
+        print(f"Error: {msg}", file=sys.stderr)
+        return 1
 
     # Clear failure context from active session
     try:

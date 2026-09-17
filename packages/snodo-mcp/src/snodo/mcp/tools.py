@@ -301,6 +301,38 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "record_task_status": {
+        "description": (
+            "Record a task's status as an operator's account made outside the "
+            "loop — the orchestrator equivalent of `snodo task complete`. Use "
+            "it when a person finished (or otherwise resolved) a task by hand "
+            "and that decision must advance the plan: it writes the same "
+            "status.json the loop writes and appends the same audit event the "
+            "CLI's `snodo task complete` appends, with the same vocabulary and "
+            "provenance. It records what a human decided and decides nothing: "
+            "it is not a validator verdict, cannot stand in for one, and the "
+            "audit entry says it was not engine-judged. A recorded `completed` "
+            "is never permission — only the engine's own quorum can pass a "
+            "task — and the tool mutates no other part of the plan."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "plan_name": {"type": "string", "description": "Plan the task belongs to"},
+                "task_id": {"type": "string", "description": "Task identifier"},
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "in_progress", "completed", "blocked", "errored", "unmerged"],
+                    "description": "The status the operator recorded — the plan's own vocabulary",
+                },
+                "who": {"type": "string", "description": "Person (or role) the status is recorded for"},
+                "notes": {"type": "string", "description": "Why the operator decided this, alongside who did"},
+            },
+            "required": ["plan_name", "task_id", "status", "who"],
+        },
+        "mcp": None,
+        "method": None,
+    },
     "run_plan": {
         "description": (
             "Start a plan run as a background job and return its job_id "
@@ -639,7 +671,7 @@ MODE_TOOL_MAP = {
     ],
     "plan": [
         "decompose", "generate_spec", "validate_plan",
-        "propose_plan", "get_plan", "run_plan",
+        "propose_plan", "get_plan", "run_plan", "record_task_status",
     ],
     "read": ["read_file", "list_files"],
 }
@@ -655,6 +687,7 @@ PLANNING_TOOLS = [
     "propose_plan",
     "get_plan",
     "run_plan",
+    "record_task_status",
 ]
 
 # The read-only job-observation surface: the tools that answer "how is the

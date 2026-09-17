@@ -31,6 +31,7 @@ EXPECTED_TOOL_KEYS = frozenset({
     "propose_plan",
     "get_plan",
     "run_plan",
+    "record_task_status",
     "dispatch_task",
     "get_job_status",
     "list_jobs",

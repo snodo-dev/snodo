@@ -52,6 +52,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
   records the task `completed` with `corrected_from`/`corrected_reason` and says
   so. A genuinely unmerged branch still runs as before, a task with no branch is
   unaffected, and nothing is merged on the operator's behalf. (Fixes #325)
+### Added
+
+- An orchestrator can now record a task's status outside the loop through the
+  planning surface: the `record_task_status` MCP tool (`plan_name`, `task_id`,
+  `status`, `who`, optional `notes`) is the machine-side `snodo task complete`.
+  Both call one implementation — `PlannerMCP.record_status` — so they share the
+  plan's status vocabulary, the provenance (who, when, why) and the audit
+  event; a task recorded through either leaves the same `status.json` and the
+  same audit entry, and later waves advance from it. The record is an
+  operator's account, never a verdict: the audit entry is marked unjudged and
+  `outside_loop`, an invalid status is refused exactly as the CLI refuses it,
+  and the tool mutates nothing else about the plan. (Fixes #326)
 
 ## [0.10.0] — 2026-09-17
 

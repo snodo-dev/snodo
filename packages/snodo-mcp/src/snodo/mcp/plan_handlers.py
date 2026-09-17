@@ -154,6 +154,58 @@ class PlanToolHandler:
             "validation": self._validation(plan_dir),
         }
 
+    def handle_record_task_status(self, arguments: Dict[str, Any]) -> dict:
+        """Record an operator's status for a task, outside the loop.
+
+        The one implementation is :meth:`PlannerMCP.record_status`, which
+        ``snodo task complete`` also calls: the same vocabulary, provenance
+        and audit event, so the two surfaces cannot drift. This records a
+        human's account and decides nothing — it can never pass a task in a
+        validator's place, and the audit entry is marked unjudged.
+        """
+        from snodo.mcp.server import MCPError
+
+        plan_name = str(arguments.get("plan_name") or "")
+        task_id = str(arguments.get("task_id") or "")
+        status = str(arguments.get("status") or "")
+        who = str(arguments.get("who") or "")
+        notes = arguments.get("notes")
+        notes = str(notes) if notes else None
+
+        if not plan_name.strip():
+            raise MCPError("record_task_status requires plan_name")
+        if not task_id.strip():
+            raise MCPError("record_task_status requires task_id")
+        if not who.strip():
+            raise MCPError(
+                "record_task_status requires who — a recorded status names who decided it"
+            )
+
+        self._plan_dir(plan_name)  # refuse an unknown plan before recording
+
+        try:
+            self._planner.record_status(
+                plan_name, task_id, status, who, notes=notes,
+            )
+        except PlannerError as e:
+            raise MCPError(str(e)) from e
+
+        return {
+            "status": "recorded",
+            "task_id": task_id,
+            "plan": plan_name,
+            "recorded_status": status,
+            "who": who,
+            "notes": notes,
+            "judged": False,
+            "instruction": (
+                "Recorded as an operator's account, not a validator verdict. "
+                "The plan's status.json is updated; read it with "
+                "get_plan(plan_name). This does not satisfy the engine's quorum "
+                "and does not complete any work the loop has not completed."
+            ),
+        }
+
     def handle_run_plan(self, arguments: Dict[str, Any]) -> dict:
         """Start a plan run as a job and return its id, without blocking.
 
@@ -301,4 +353,5 @@ class PlanToolHandler:
             "propose_plan": self.handle_propose_plan,
             "get_plan": self.handle_get_plan,
             "run_plan": self.handle_run_plan,
+            "record_task_status": self.handle_record_task_status,
         }
