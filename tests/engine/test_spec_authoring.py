@@ -311,3 +311,111 @@ class TestSpecAuthoringLiveSurface:
         assert prov["attempt"] == 1
         assert prov["original"] == original
         assert prov["authored"] == authored
+
+
+# ---------------------------------------------------------------------------
+# A redefinition keeps the evidence the original carried (Fixes #320)
+# ---------------------------------------------------------------------------
+
+_EVIDENCE_SPEC = (
+    "The crash happens in `packages/app/src/booking.py:42` when the widget "
+    "is clicked; test_booking_flow reproduces it."
+)
+
+
+class TestReauthoringKeepsEvidence:
+    """A rewrite that leaves the task vaguer than it found it has failed."""
+
+    def _builder_with_spec(self, spec, authored):
+        meta_spec = Validator(
+            validator_id="meta-spec", validator_type="architecture",
+            criteria=["Check spec shape"], judges_spec=True,
+        )
+        protocol = _protocol([meta_spec])
+        builder = GraphBuilder(protocol)
+        builder._classifier_completion_fn = MagicMock(
+            return_value=_make_response(authored)
+        )
+        loop_state = LoopState(
+            task=Task(id="task_001", spec=spec),
+            current_mode="producer",
+            needs_spec_authoring=True,
+            metadata={"spec_critique": [
+                {"validator_id": "meta-spec",
+                 "justification": "Spec is code-prescriptive"},
+            ]},
+        )
+        return builder, loop_state
+
+    def test_path_and_line_citation_survives_reauthorship(self):
+        """The citation that located the symptom is still in the spec."""
+        builder, loop_state = self._builder_with_spec(
+            _EVIDENCE_SPEC, "Fix the booking flow."
+        )
+
+        builder._spec_authoring_reentry(loop_state)
+
+        assert "packages/app/src/booking.py:42" in loop_state.task.spec
+        assert "test_booking_flow" in loop_state.task.spec
+
+    def test_reauthored_spec_not_broader_than_original(self):
+        """A generic rewrite is still bounded by the original's evidence."""
+        from snodo.engine.evidence import evidence_missing, extract_evidence
+
+        builder, loop_state = self._builder_with_spec(
+            _EVIDENCE_SPEC, "Fix the whole application everywhere."
+        )
+
+        builder._spec_authoring_reentry(loop_state)
+
+        assert evidence_missing(
+            loop_state.task.spec, extract_evidence(_EVIDENCE_SPEC)
+        ) == []
+
+    def test_spec_without_evidence_reauthored_unchanged(self):
+        """No anchors means the no-evidence path is exactly what it was."""
+        builder, loop_state = self._builder_with_spec(
+            "Implement feature X", "A clean, well-formed spec."
+        )
+
+        builder._spec_authoring_reentry(loop_state)
+
+        assert loop_state.task.spec == "A clean, well-formed spec."
+
+    def test_author_is_told_the_evidence(self):
+        """The rewriter prompt names the anchors it must carry forward."""
+        builder, loop_state = self._builder_with_spec(
+            _EVIDENCE_SPEC, "Fix the booking flow."
+        )
+
+        builder._spec_authoring_reentry(loop_state)
+
+        prompt = (
+            builder._classifier_completion_fn.call_args[1]["messages"][0]["content"]
+        )
+        assert "packages/app/src/booking.py:42" in prompt
+        assert "test_booking_flow" in prompt
+
+    def test_provenance_records_evidence_restored(self):
+        """What the rewrite would have dropped is visible, not silent."""
+        builder, loop_state = self._builder_with_spec(
+            _EVIDENCE_SPEC, "Fix the booking flow."
+        )
+
+        builder._spec_authoring_reentry(loop_state)
+
+        prov = loop_state.metadata["spec_authoring"]
+        assert "packages/app/src/booking.py:42" in prov["evidence"]
+        assert "packages/app/src/booking.py:42" in prov["evidence_restored"]
+        assert "test_booking_flow" in prov["evidence_restored"]
+
+    def test_kept_evidence_is_not_appended_twice(self):
+        """An anchor the author kept is not restored again."""
+        builder, loop_state = self._builder_with_spec(
+            _EVIDENCE_SPEC, "Fix the crash in `packages/app/src/booking.py:42`."
+        )
+
+        builder._spec_authoring_reentry(loop_state)
+
+        assert loop_state.task.spec.count("packages/app/src/booking.py:42") == 1
+        assert "test_booking_flow" in loop_state.task.spec

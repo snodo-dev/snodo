@@ -11,6 +11,21 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A spec redefinition now keeps the evidence the original carried. When a
+  `judges_spec` validator sends a spec back to be reauthored, the rewrite is
+  what every later validator judges and what the coder is given, so anything
+  it dropped was gone from the run. The rewriter named the file and line where
+  a symptom was seen one attempt and not the next: the citation was removed,
+  the task was broadened to the ground the citation had bounded, and the next
+  validator escalated on a task vaguer than the one it was rewritten from. The
+  reauthored spec now carries its concrete anchors — file paths, `path:line`
+  citations, line references, named tests and code literals — forward
+  verbatim: they are named to the author to reword the ask around, and any the
+  author drops are put back before anyone downstream sees the spec, with what
+  was restored recorded in `spec_authoring`. A spec that carries no evidence is
+  reauthored exactly as before, and the attempts bound, the `judges_spec`
+  filter and the rewrite path are unchanged. (Fixes #320)
+
 - A gate's output now lands in rows on the operator's terminal instead of
   marching off as a staircase. #304 ran the gate over a terminal (`ssh -tt`) so
   a hangup reaches the remote process group, but `ssh` also copies the
