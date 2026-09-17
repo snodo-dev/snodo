@@ -32,6 +32,15 @@ unrecognised line passes through verbatim rather than being dropped or
 guessed at, nothing here is decision input (ADR 034), and the record stays
 raw — the capture lists, a job's stdout.log and any non-tty or NO_COLOR
 stream all still see the coder's bytes exactly as written.
+
+One row per run of heartbeats (Issue #321): a watch's liveness line arrives
+every few seconds differing from the last only by the elapsed time it shows,
+so identical-collapse never catches it and an hour of quiet watching stacked
+hundreds of near-identical rows. Consecutive heartbeat lines share one row
+that is repainted with the newest text — a distinct rule for a distinct kind,
+narrowed to the watch's own line shape. Any other line ends the run and takes
+its own row below, and the next heartbeat starts a fresh row beneath that, so
+the history of real events stays intact and only the waiting collapses.
 """
 
 import json
@@ -194,6 +203,9 @@ GATE_WARN = "gate_warn"
 GATE_FAIL = "gate_fail"
 ACTIVITY = "activity"
 PLAIN = "plain"
+#: The plan-run watch's liveness line (#321): the only kind that repaints the
+#: row it shares with the heartbeat before it rather than claiming its own.
+HEARTBEAT = "heartbeat"
 
 _RESET = "\x1b[0m"
 _DIM = "\x1b[2m"
@@ -251,6 +263,11 @@ _ACTIVITY_RES = (
     re.compile(r"^\s*\S+:\s+finished\s*$"),
     re.compile(r"^\s+(Original|Authored|Critique):"),
 )
+#: The watch loop's liveness line ("  ~ watching · plan 1:20 · no status
+#: change"), the one line that states it is only waiting (#321). Matched by
+#: its full leading shape — the marker and the word together — so no engine
+#: line other than the heartbeat itself claims the repaint rule.
+_HEARTBEAT_RE = re.compile(r"^\s*~\s+watching\b")
 
 _KIND_STYLE = {
     PHASE: _BOLD + _CYAN,
@@ -261,6 +278,7 @@ _KIND_STYLE = {
     GATE_FAIL: _RED,
     HALT: _BOLD + _RED,
     ACTIVITY: _DIM,
+    HEARTBEAT: _DIM,
     PLAIN: "",
 }
 
@@ -271,6 +289,8 @@ def classify_progress_line(line: str) -> str:
     Classification reads only the shape of the line the engine already emits —
     it is a rendering decision, not telemetry, and adds no state or vocabulary.
     """
+    if _HEARTBEAT_RE.match(line):
+        return HEARTBEAT
     if _TURN_RE.match(line):
         return TURN
     if any(pattern.match(line) for pattern in _PHASE_RES):
@@ -453,9 +473,13 @@ class ProgressRenderer:
     replaced by the very next turn. Only an *identical* consecutive turn line —
     a judge repeating the same read — collapses into the row it repeats,
     counted rather than each claiming a row of its own; any other line, turn or
-    not, is a distinct event and gets its own row. On this path only, a raw
-    coder line whose shape states what the coder did is first composed into a
-    turn line, so the coder's live stream reads like a validator's (Issue #306).
+    not, is a distinct event and gets its own row. Consecutive heartbeat lines
+    are the one exception to that (#321): they share a row which is repainted
+    with each new text, so a run of waiting costs one row rather than one each,
+    while the first non-heartbeat line ends the run and takes its own row below.
+    On this path only, a raw coder line whose shape states what the coder did
+    is first composed into a turn line, so the coder's live stream reads like
+    a validator's (Issue #306).
 
     Compaction is presentation only: it never suppresses a line from the log or
     the audit trail, both of which receive the plain text. A writer that shares
@@ -516,7 +540,12 @@ class ProgressRenderer:
         line, kind = self._shape_coder_line(line, kind)
         last = self._rows[-1] if self._rows else None
 
-        if kind == TURN and last is not None and last["kind"] == TURN and last["text"] == line:
+        if kind == HEARTBEAT and last is not None and last["kind"] == HEARTBEAT:
+            # A run of heartbeats is one row, repainted with the newest text
+            # (#321): unlike the identical-turn collapse this does not count —
+            # the point of the row is that its numbers move.
+            last["text"] = line
+        elif kind == TURN and last is not None and last["kind"] == TURN and last["text"] == line:
             last["count"] += 1
         else:
             self._rows.append({"text": line, "kind": kind, "count": 1})
@@ -555,6 +584,10 @@ class ProgressRenderer:
         if kind in (PHASE, HALT):
             # Another engine phase took the sink back; the coder's stream is over.
             self._coder_phase = None
+            return line, kind
+        if kind == HEARTBEAT:
+            # The watch's liveness line passes between a coder's turns without
+            # ending the coder's stream and without being shaped by it (#321).
             return line, kind
         if self._coder_phase is None or kind == TURN:
             # Outside a coder phase, or already a composed turn line (a

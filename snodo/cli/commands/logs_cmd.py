@@ -403,36 +403,33 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
 
     watch_renderer = _watch_renderer()
 
-    # Liveness (#316): the loop polls every second but prints only when a
-    # child's status CHANGES, so a wave of healthy coders can leave the
+    # Liveness (#316, #321): the loop polls every second but prints only when a
+    # child's status CHANGES, so a wave that runs healthy can leave the
     # terminal motionless for twenty minutes — a quiet run is
     # indistinguishable from a dead process, and killing a frozen screen is
     # the wrong remedy for a healthy one. On an interactive stream only, one
-    # line at the foot of the output keeps the elapsed time of what is
-    # running current: drawn in place every few polls, never a block
-    # repaint, committed to history only when real output needs to follow it.
-    # The poll itself is unchanged, and a non-tty, redirected or NO_COLOR
-    # watch (renderer None) never draws or commits a heartbeat, so its
-    # append-only lines stay exactly what they are today — nothing to flood
-    # a log or a pipe. This is presentation only: it adds no state and no
-    # status, changes what is emitted by a transition in no way, and touches
-    # no log or audit record.
+    # line at the foot of the output keeps the elapsed time of what is running
+    # current. It goes through the renderer as a heartbeat line, so a run of
+    # heartbeats shares one row that is repainted with the newest numbers
+    # rather than committing a row per poll: an hour of quiet watching costs
+    # one row, and a real turn, transition or halt arriving below ends the run
+    # so the next heartbeat starts a fresh row under it. The poll itself is
+    # unchanged, and a non-tty, redirected or NO_COLOR watch (renderer None)
+    # never draws or appends a heartbeat, so its append-only lines stay
+    # exactly what they are today — nothing to flood a log or a pipe. This is
+    # presentation only: it adds no state and no status, changes what is
+    # emitted by a transition in no way, and touches no log or audit record.
     _HEARTBEAT_POLLS = 5
-    heartbeat: dict = {"open": False, "polls": 0}
+    polls_since_heartbeat: dict = {"n": 0}
 
-    def _close_heartbeat() -> None:
-        """End the in-place line, so the next printed line starts fresh.
+    def _emit(text: str) -> None:
+        """One complete console line: through the window when it is live.
 
-        The renderer's painted window sits above the heartbeat; once one is
-        on screen the renderer must not move up over it, so the window is
-        forgotten and the next log line begins a fresh block.
+        A transition line goes through the renderer when one exists so the
+        painted block and the transition never fight for the cursor, and a
+        direct print otherwise — byte-for-byte what the watch printed before.
         """
-        if not heartbeat["open"]:
-            return
-        print(flush=True)
-        heartbeat["open"] = False
-        if watch_renderer is not None:
-            watch_renderer.reset()
+        _emit_watch_line(watch_renderer, text + "\n")
 
     def _draw_heartbeat(children: list[dict], plan_state: dict) -> None:
         if watch_renderer is None:
@@ -451,17 +448,12 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                 seg += f" {format_duration(dur)}"
             parts.append(seg)
         parts.append("no status change")
-        line = " · ".join(parts)
-        # Rewrite one short line in place, at most once every few seconds:
-        # an hour of a quiet watch costs tens of kilobytes of terminal, not
-        # a repaint of the status block.
-        sys.stdout.write("\r\x1b[K" + line)
-        sys.stdout.flush()
-        heartbeat["open"] = True
+        # The renderer owns the row: the first heartbeat claims it, each later
+        # one of the same run repaints it in place with the newer numbers.
+        watch_renderer(" · ".join(parts))
 
     try:
         while True:
-            _close_heartbeat()
             _drain_own()
             time.sleep(1.0)
             try:
@@ -482,12 +474,12 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                     seen_child_status[cid] = cstat
                     dur = cj.get("duration_seconds")
                     dur_str = f" in {format_duration(dur)}" if dur is not None and cstat in TERMINAL_STATUSES else ""
-                    print(f"  [{t_ref}] {cstat} (job {cid}){dur_str}", flush=True)
+                    _emit(f"  [{t_ref}] {cstat} (job {cid}){dur_str}")
                 elif prev != cstat:
                     seen_child_status[cid] = cstat
                     dur = cj.get("duration_seconds")
                     dur_str = f" in {format_duration(dur)}" if dur is not None and cstat in TERMINAL_STATUSES else ""
-                    print(f"  [{t_ref}] {cstat} (job {cid}){dur_str}", flush=True)
+                    _emit(f"  [{t_ref}] {cstat} (job {cid}){dur_str}")
 
             cur_tasks_status = _get_plan_tasks()
             for tid, raw in cur_tasks_status.items():
@@ -496,23 +488,26 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                 if prev_tstat != tstat:
                     seen_task_status[tid] = tstat
                     if tstat in ("blocked", "errored", "unmerged") and not any(cj.get("task_ref") == tid for cj in children):
-                        print(f"  [{tid}] {tstat}", flush=True)
+                        _emit(f"  [{tid}] {tstat}")
 
             if current_plan_status in TERMINAL_STATUSES:
                 _drain_own()
+                # The window is over: break it before the direct prints below
+                # so no repaint can climb up into the final status view.
+                if watch_renderer is not None:
+                    watch_renderer.reset()
                 print()
                 _print_status_view(cur_tasks_status, children)
                 print(f"Plan run {job_id} finished ({current_plan_status}).", flush=True)
                 return current_job.get("exit_code", 0) or 0
 
-            heartbeat["polls"] += 1
-            if heartbeat["polls"] >= _HEARTBEAT_POLLS:
-                heartbeat["polls"] = 0
+            polls_since_heartbeat["n"] += 1
+            if polls_since_heartbeat["n"] >= _HEARTBEAT_POLLS:
+                polls_since_heartbeat["n"] = 0
                 _draw_heartbeat(children, current_job)
     except KeyboardInterrupt:
         pass
     finally:
-        _close_heartbeat()
         if own_log is not None:
             own_log.close()
     return 0
