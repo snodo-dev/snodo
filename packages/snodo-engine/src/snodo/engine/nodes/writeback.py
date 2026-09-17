@@ -675,6 +675,110 @@ class WritebackMixin:
         tmp.write_text(json.dumps(state, indent=2))
         _os.replace(str(tmp), str(state_path))
 
+
+
+    def _build_coder_report_payload(self, report: Any, loop_state: Any) -> dict:
+        """Build the structured coder report section of the halt payload.
+
+        Evidence from the coder's own account, never a verdict: the worktree
+        remains the only authority on what was written. Surfaces disagreement
+        between what the coder claims and what the worktree holds.
+        """
+        report_dict: Dict[str, Any] = {
+            "source": "coder",
+            "evidence_only": True,
+        }
+        stop_reason = getattr(report, "stop_reason", None)
+        if stop_reason is not None:
+            report_dict["stop_reason"] = stop_reason
+        turns_used = getattr(report, "turns_used", None)
+        if turns_used is not None:
+            report_dict["turns_used"] = turns_used
+        turns_available = getattr(report, "turns_available", None)
+        if turns_available is not None:
+            report_dict["turns_available"] = turns_available
+        tokens_used = getattr(report, "tokens_used", None)
+        if tokens_used is not None:
+            report_dict["tokens_used"] = tokens_used
+        context_window = getattr(report, "context_window", None)
+        if context_window is not None:
+            report_dict["context_window"] = context_window
+        wall_time_ms = getattr(report, "wall_time_ms", None)
+        if wall_time_ms is not None:
+            report_dict["wall_time_ms"] = wall_time_ms
+        files = getattr(report, "files", None)
+        if files is not None:
+            report_dict["files"] = [
+                f.model_dump() if hasattr(f, "model_dump") else dict(f)
+                for f in files
+            ]
+
+        # Worktree files as recorded by the engine
+        artifacts = getattr(loop_state, "artifacts", []) or []
+        worktree_files: List[str] = []
+        for a in artifacts:
+            s = str(a).strip()
+            if not s or s == "git_commit" or s.startswith("git_error:") or s.startswith("code_generated_for_"):
+                continue
+            cleaned = s.lstrip("./")
+            if cleaned not in worktree_files:
+                worktree_files.append(cleaned)
+
+        meta = getattr(loop_state, "metadata", None) or {}
+        meta_writes = meta.get("attempt_written_files") or []
+        for a in meta_writes:
+            s = str(a).strip()
+            cleaned = s.lstrip("./")
+            if cleaned and cleaned not in worktree_files:
+                worktree_files.append(cleaned)
+
+        worktree_set = set(worktree_files)
+
+        claimed_files: List[str] = []
+        if files is not None:
+            for f in files:
+                p = getattr(f, "path", None)
+                if p is None and isinstance(f, dict):
+                    p = f.get("path")
+                if p is not None:
+                    cleaned = str(p).strip().lstrip("./")
+                    if cleaned and cleaned not in claimed_files:
+                        claimed_files.append(cleaned)
+        claimed_set = set(claimed_files)
+
+        workspace_mcp = getattr(self, "workspace_mcp", None)
+        claimed_but_missing: List[str] = []
+        for p in claimed_files:
+            if p in worktree_set:
+                continue
+            exists = False
+            if workspace_mcp is not None:
+                probe = getattr(workspace_mcp, "file_exists", None)
+                if callable(probe):
+                    try:
+                        exists = bool(probe(p))
+                    except Exception:  # noqa: S110
+                        pass
+                if not exists and hasattr(workspace_mcp, "project_root") and workspace_mcp.project_root:
+                    try:
+                        exists = (Path(workspace_mcp.project_root) / p).exists()
+                    except Exception:  # noqa: S110
+                        pass
+            if not exists:
+                claimed_but_missing.append(p)
+        claimed_but_missing.sort()
+
+        unclaimed_but_present = sorted([p for p in worktree_files if p not in claimed_set])
+
+        report_dict["claimed_but_missing"] = claimed_but_missing
+        report_dict["unclaimed_but_present"] = unclaimed_but_present
+        report_dict["disagreement"] = {
+            "claimed_but_missing": claimed_but_missing,
+            "unclaimed_but_present": unclaimed_but_present,
+        }
+        return report_dict
+
+
     def _build_halt_payload(self, loop_state: Any) -> dict:
         """Construct the structured halt payload from the loop state.
 
@@ -827,6 +931,13 @@ class WritebackMixin:
         output_tail = meta.get("output_tail")
         if output_tail:
             payload["output_tail"] = output_tail
+        coder_report = meta.get("coder_report")
+        if coder_report is not None:
+            from snodo.coders.report import parse_coder_report
+
+            parsed = parse_coder_report(coder_report)
+            if parsed is not None:
+                payload["coder_report"] = self._build_coder_report_payload(parsed, loop_state)
         return payload
 
     def _auto_write_halt_payload(self, loop_state: Any) -> None:

@@ -531,23 +531,29 @@ def task_show_command(args) -> int:
     if spec is None and isinstance(halt_entry, dict):
         spec = halt_entry.get("task_spec")
 
-    # Recover local operator diagnostic fields (e.g. output_tail) from local task/job state
+    # Recover local operator diagnostic fields (e.g. output_tail, coder_report) from local task/job state
     output_tail = None
+    coder_report = None
     if isinstance(halt_entry, dict):
         output_tail = halt_entry.get("output_tail")
+        coder_report = halt_entry.get("coder_report")
 
-    if not output_tail:
+    if not output_tail or not coder_report:
         task_state_file = Path(project_root) / ".snodo" / "tasks" / task_id / "state.json"
         if task_state_file.is_file():
             try:
                 import json
                 ts_data = json.loads(task_state_file.read_text())
                 if isinstance(ts_data, dict):
-                    output_tail = (ts_data.get("halt") or {}).get("output_tail")
+                    h = ts_data.get("halt") or {}
+                    if not output_tail:
+                        output_tail = h.get("output_tail")
+                    if not coder_report:
+                        coder_report = h.get("coder_report")
             except (OSError, ValueError, TypeError):
-                output_tail = None
+                pass
 
-    if not output_tail:
+    if not output_tail or not coder_report:
         jobs_dir = Path(project_root) / ".snodo" / "jobs"
         if jobs_dir.is_dir():
             try:
@@ -559,14 +565,19 @@ def task_show_command(args) -> int:
                         if isinstance(js_data, dict):
                             h = js_data.get("halt") or {}
                             if h.get("task_id") == task_id or js_data.get("task_id") == task_id:
-                                if h.get("output_tail"):
+                                if not output_tail and h.get("output_tail"):
                                     output_tail = h.get("output_tail")
+                                if not coder_report and h.get("coder_report"):
+                                    coder_report = h.get("coder_report")
+                                if output_tail and coder_report:
                                     break
             except (OSError, ValueError, TypeError):
-                output_tail = None
+                pass
 
     if output_tail and isinstance(halt_entry, dict):
         halt_entry["output_tail"] = output_tail
+    if coder_report and isinstance(halt_entry, dict):
+        halt_entry["coder_report"] = coder_report
 
     if json_out:
         from snodo.cli.json_output import emit_json, schema_name
@@ -606,6 +617,11 @@ def task_show_command(args) -> int:
             print("  validators:")
             for r in validator_results:
                 print(f"    {r.get('validator_id', '?')} [{r.get('severity')}]: {r.get('justification', '')}")
+        report = halt_entry.get("coder_report")
+        if report and isinstance(report, dict):
+            from snodo.coders.report import print_coder_report
+
+            print_coder_report(report)
 
     if isinstance(failure_entry, dict):
         print()

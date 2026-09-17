@@ -222,6 +222,7 @@ class ValidationNodeMixin:
             # bounded outcome (Fixes #282).
             self._last_turn_budget_exhausted = False
             self._last_existing_work_base_ref = None
+            self._last_coder_report = None
             try:
                 self._progress("  Coder dispatched")
                 artifacts = self.executor_fn(
@@ -236,6 +237,8 @@ class ValidationNodeMixin:
                 self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")
                 loop_state.metadata["attempt_written_files"] = list(self._last_execution_writes)
                 loop_state.metadata["attempt_read_files"] = dict(self._last_execution_reads)
+                if getattr(self, "_last_coder_report", None) is not None:
+                    loop_state.metadata["coder_report"] = self._last_coder_report.model_dump()
                 if getattr(self, "_last_output_tail", ""):
                     loop_state.metadata["output_tail"] = getattr(self, "_last_output_tail", "")
                 if getattr(self, "_last_timed_out", False):
@@ -353,6 +356,8 @@ class ValidationNodeMixin:
                     "outcome": "skipped",
                     "reason": str(e),
                 }
+                if getattr(self, "_last_coder_report", None) is not None:
+                    loop_state.metadata["coder_report"] = self._last_coder_report.model_dump()
                 self._audit("coder_timed_out", {
                     "op": "coder_timed_out",
                     "task_ref": loop_state.task.id,
@@ -378,6 +383,8 @@ class ValidationNodeMixin:
                     "outcome": "skipped",
                     "reason": str(e),
                 }
+                if getattr(self, "_last_coder_report", None) is not None:
+                    loop_state.metadata["coder_report"] = self._last_coder_report.model_dump()
                 self._audit("coder_unavailable", {
                     "op": "coder_unavailable",
                     "task_ref": loop_state.task.id,
@@ -406,6 +413,8 @@ class ValidationNodeMixin:
                 output_tail = getattr(self, "_last_output_tail", "")
                 if output_tail:
                     loop_state.metadata["output_tail"] = output_tail
+                if getattr(self, "_last_coder_report", None) is not None:
+                    loop_state.metadata["coder_report"] = self._last_coder_report.model_dump()
                 self._audit("execution_failed", {
                     "op": "execution_failed",
                     "task_ref": loop_state.task.id,
@@ -428,6 +437,8 @@ class ValidationNodeMixin:
                 output_tail = getattr(self, "_last_output_tail", "")
                 if output_tail:
                     loop_state.metadata["output_tail"] = output_tail
+                if getattr(self, "_last_coder_report", None) is not None:
+                    loop_state.metadata["coder_report"] = self._last_coder_report.model_dump()
                 self._audit("no_file_operations", {
                     "op": "no_file_operations",
                     "task_ref": loop_state.task.id,
@@ -446,6 +457,8 @@ class ValidationNodeMixin:
                     "outcome": "skipped",
                     "reason": str(e),
                 }
+                if getattr(self, "_last_coder_report", None) is not None:
+                    loop_state.metadata["coder_report"] = self._last_coder_report.model_dump()
                 self._audit("execution_failed", {
                     "op": "execution_failed",
                     "task_ref": loop_state.task.id,

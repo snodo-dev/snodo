@@ -70,6 +70,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The coder's own report is now surfaced in the halt payload and in
+  `snodo task show`. Disagreements between what the worktree recorded and what
+  the coder believed it wrote are plainly named as `claimed-but-missing` (files
+  claimed in the report that do not exist on disk) and `unclaimed-but-present`
+  (files on disk that the report never claimed). The report is explicitly labeled
+  as evidence from the coder's own account rather than an engine verdict. Runs
+  without a report remain byte-identical to before. (Fixes #319)
+
 - The litellm coder now fills its own `CoderReport` from what its tool loop
   already holds: the files it staged, the turns it used against
   `max_tool_turns`, the tokens each response reported, its wall time, and why
