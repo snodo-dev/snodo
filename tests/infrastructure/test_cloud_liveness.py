@@ -78,6 +78,21 @@ class _Posts:
         return type("R", (), {"status_code": 204, "text": ""})()
 
 
+def _wait_until(predicate, timeout: float = 5.0) -> bool:
+    """Poll *predicate* until true or *timeout*; real timers, so no fixed sleep."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.005)
+    return predicate()
+
+
+def _no_floor(*_args, **_kwargs):
+    """Disable the floor timer for tests about the ceiling alone."""
+    return None
+
+
 @pytest.fixture(autouse=True)
 def _sync_enabled():
     """Sync on via the config gate, clean throttle bookkeeping per test.
@@ -99,7 +114,7 @@ def _sync_enabled():
 
 
 # ------------------------------------------------------------------ #
-# Event-driven, not a timer
+# Change-driven, with a floor while something is running (Fixes #323)
 # ------------------------------------------------------------------ #
 
 
@@ -131,19 +146,26 @@ class TestTransitionDriven:
         assert body["run_started_at"] == "2026-09-02T21:10:04+00:00"
         assert "snapshot_at" in body
 
-    def test_nothing_is_pushed_without_a_transition(self, project):
-        """Time passing is not an event: with no transition, nothing is sent."""
+    def test_running_session_is_pushed_each_interval_without_a_transition(self, project):
+        """Time passing while running is now enough: a quiet run is heard.
+
+        A coder reading for twenty-four minutes produces no transition, so
+        the wire used to go silent and look exactly like a dead machine. The
+        floor sends the same true snapshot once per interval (Fixes #323).
+        """
         root, _ = project
         posts = _Posts()
         with patch("httpx.put", posts), \
-                patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.0):
-            cloud_liveness.request_liveness_push("sess_test_1", str(root))
+                patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.05):
+            assert cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
             assert len(posts.calls) == 1
-            # Window fully open; still no timer exists to fire another push.
-            for _ in range(3):
-                time.sleep(0.01)
-            assert len(posts.calls) == 1
+            assert _wait_until(lambda: len(posts.calls) > 1), \
+                "a running session was not heard from again without a transition"
+            # The ceiling holds too: no second push inside the interval.
+            settled = len(posts.calls)
+            time.sleep(0.01)
+            assert len(posts.calls) == settled
 
     def test_engine_transition_event_triggers_a_push(self, project):
         """An audit append of a trigger event pushes; a non-trigger does not."""
@@ -269,6 +291,7 @@ class TestThrottle:
         root, _ = project
         posts = _Posts()
         with patch("httpx.put", posts), \
+                patch.object(cloud_liveness, "_schedule_floor", _no_floor), \
                 patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.05):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
@@ -286,6 +309,88 @@ class TestThrottle:
             cloud_liveness.note_transition(str(root))  # session from the pointer
             cloud_liveness.wait_for_pushes()
         assert len(posts.calls) == 1
+
+
+# ------------------------------------------------------------------ #
+# The interval is also a floor while something is running (Fixes #323)
+# ------------------------------------------------------------------ #
+
+
+class TestFloor:
+    def test_a_busy_session_does_not_exceed_the_interval_rate(self, project):
+        """The floor adds nothing to a session already pushing at the
+        interval: transitions coalesce under the same ceiling."""
+        root, _ = project
+        posts = _Posts()
+        interval = 0.05
+        with patch("httpx.put", posts), \
+                patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", interval):
+            start = time.monotonic()
+            for _ in range(20):
+                cloud_liveness.request_liveness_push("sess_test_1", str(root))
+                time.sleep(0.005)
+                cloud_liveness.wait_for_pushes()
+            elapsed = time.monotonic() - start
+        # Twenty requests; one push per interval is about elapsed/interval.
+        assert len(posts.calls) < 20
+        assert len(posts.calls) <= elapsed / interval + 2
+
+    def test_a_settled_session_is_not_heard_from_again(self, project):
+        """The terminal push is the last word: once nothing runs, the floor
+        stops instead of repeating a finished snapshot as a heartbeat."""
+        root, _ = project
+        _write(root / ".snodo" / "tasks" / "t_alpha" / "state.json", {
+            "task_id": "t_alpha", "status": "completed",
+            "started_at": 1787000000.0,
+        })
+        _write(root / ".snodo" / "plans" / "wave8" / "status.json", {
+            "tasks": {"2.1": "completed"},
+        })
+        posts = _Posts()
+        with patch("httpx.put", posts), \
+                patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.05):
+            assert cloud_liveness.request_liveness_push(
+                "sess_test_1", str(root), force=True,
+            )
+            cloud_liveness.wait_for_pushes()
+            assert len(posts.calls) == 1
+            time.sleep(0.15)  # three intervals
+            cloud_liveness.wait_for_pushes()
+        assert len(posts.calls) == 1
+
+    def test_the_configured_interval_drives_the_floor(self, project):
+        """A deployment lowers ``cloud.liveness_interval_seconds`` to hear
+        from a quiet run more often; the default stays sixty seconds."""
+        root, _ = project
+        posts = _Posts()
+        config = {
+            "cloud": {
+                "sync_enabled": True,
+                "api_key": "sndo_live_testkey",
+                "api_url": "https://api.snodo.test",
+                "liveness_interval_seconds": 0.05,
+            },
+        }
+        with patch("snodo.config.ConfigManager") as mock_cm, patch("httpx.put", posts):
+            mock_cm.return_value.load.return_value = config
+            cloud_liveness.reset_liveness_state()
+            assert cloud_liveness.request_liveness_push("sess_test_1", str(root))
+            cloud_liveness.wait_for_pushes()
+            assert len(posts.calls) == 1
+            assert _wait_until(lambda: len(posts.calls) > 1), \
+                "the configured interval was not used for the floor"
+
+    def test_absent_or_unreadable_interval_falls_back_to_sixty(self, project):
+        assert cloud_liveness._interval_seconds({"cloud": {}}) == 60.0
+        assert cloud_liveness._interval_seconds({
+            "cloud": {"liveness_interval_seconds": "nonsense"},
+        }) == 60.0
+        assert cloud_liveness._interval_seconds({
+            "cloud": {"liveness_interval_seconds": 0},
+        }) == 60.0
+        assert cloud_liveness._interval_seconds({
+            "cloud": {"liveness_interval_seconds": 5},
+        }) == 5.0
 
 
 # ------------------------------------------------------------------ #
@@ -310,6 +415,21 @@ class TestIdleSession:
         posts = _Posts()
         with patch("httpx.put", posts):
             cloud_liveness.note_transition(str(root), session_id="sess_idle")
+            cloud_liveness.wait_for_pushes()
+        assert posts.calls == []
+
+    def test_idle_session_is_never_heard_from_over_time(self, tmp_path):
+        """Nothing running means nothing sent, interval after interval: the
+        floor is gated by "running", not by the clock (Fixes #323)."""
+        root = tmp_path / "idleproj"
+        _write(root / ".snodo" / "plans" / "p1" / "status.json",
+               {"tasks": {"1.1": "pending"}})
+        posts = _Posts()
+        with patch("httpx.put", posts), \
+                patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.05):
+            cloud_liveness.request_liveness_push("sess_idle", str(root))
+            cloud_liveness.wait_for_pushes()
+            time.sleep(0.15)  # three intervals
             cloud_liveness.wait_for_pushes()
         assert posts.calls == []
 
@@ -397,6 +517,7 @@ class TestFailureIsDrop:
             "tasks": {"2.1": "completed", "2.2": "in_progress"},
         })
         with patch("httpx.put", flaky_put), \
+                patch.object(cloud_liveness, "_schedule_floor", _no_floor), \
                 patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.0):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
@@ -548,6 +669,7 @@ class TestPayloadContent:
         root, _ = project
         posts = _Posts()
         with patch("httpx.put", posts), \
+                patch.object(cloud_liveness, "_schedule_floor", _no_floor), \
                 patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.0):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()

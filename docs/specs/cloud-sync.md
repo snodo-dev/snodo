@@ -106,19 +106,24 @@ Authorization: Bearer <account key>
 The machine pushes; nothing reaches inward. The tunnel remains a convenience,
 not a requirement.
 
-**Event-driven, never on a timer.** A push starts when something actually
-changes: a plan/task status write (planner `update_status`), or an engine
-transition observed through the audit log of a running process (`dispatch`,
-`transition`, `halt`, `task_complete`, `task_merged`, `token_consumed`,
-`post_validation_route`, `verification_executed`,
+**Change-driven, with a floor while running.** A push starts when something
+actually changes: a plan/task status write (planner `update_status`), or an
+engine transition observed through the audit log of a running process
+(`dispatch`, `transition`, `halt`, `task_complete`, `task_merged`,
+`token_consumed`, `post_validation_route`, `verification_executed`,
 `unverified_merge_blocked`, `execution_failed`, `session_started`,
 `session_task_changed`). The task's final word is on the wire regardless of
 when its `state.json` was last rewritten: every snapshot carries what the
 last event was, and a terminal event (`halt`, `task_complete`, …) forces the
-push past the throttle. No heartbeat, no keepalive — so silence means nothing
-changed, not that the machine died. A session with nothing running sends
-nothing: if no plan has begun and there is no task or job record, the snapshot
-is not built.
+push past the throttle. But a run that is quiet is still a run: while a
+session has work running, at least one push per interval is sent even when
+nothing changed, so silence on the far side means the machine stopped rather
+than that the session had nothing new to say (Fixes #323). The floor is not a
+heartbeat — a repeat carries the same true snapshot and no state is
+fabricated — and a session with nothing running still sends nothing: if no
+plan has begun and there is no task or job record, the snapshot is not built.
+Once every task and job has settled, the terminal push is the run's last
+word and the floor stops.
 
 **Two clocks, deliberately distinct** (Fixes #324). A plan/task status write
 changes what is running *and* fires a push, but it appends no audit event — so
@@ -134,13 +139,16 @@ read `last_event` for what was last decided. No audit event is appended to
 move either clock, and neither is a heartbeat: with nothing changing, both
 stand still.
 
-**At most one push per 60 seconds per session**, so a burst of transitions
-coalesces into one write. The snapshot is built at send time inside the worker,
-so the coalesced write carries the later state. A transition that ends a run's
-claim to be live — a terminal audit event or a plan-task status of
-`completed`/`blocked`/`errored`/`unmerged` — bypasses the throttle: dropping
-the sole record of "this stopped" would strand a false "running" until some
-later event displaced it.
+**At most one push per interval per session, and at least one while
+running**, so a burst of transitions coalesces into one write and a quiet
+session is still heard from. The interval is 60 seconds by default and
+configurable with `cloud.liveness_interval_seconds`; lowering it trades
+bandwidth for freshness. The snapshot is built at send time inside the
+worker, so the coalesced write carries the later state. A transition that
+ends a run's claim to be live — a terminal audit event or a plan-task status
+of `completed`/`blocked`/`errored`/`unmerged` — bypasses the throttle:
+dropping the sole record of "this stopped" would strand a false "running"
+until some later event displaced it.
 
 **A full snapshot, never a delta, and it carries the plan's shape.** A lost
 push is harmless; the next supersedes it entirely. A failed push is dropped —
@@ -390,7 +398,7 @@ to argue against this list.
 | Liveness triggering from engine events | `infrastructure/audit.py` — `register_event_listener` |
 | Run-teardown hook | `cli/commands/run_cmd.py` |
 | Connect / disconnect / status / sync | `cli/commands/cloud_cmd.py` |
-| Config schema | `snodo/config.py` — `cloud.api_key`, `cloud.api_url`, `cloud.sync_enabled` |
+| Config schema | `snodo/config.py` — `cloud.api_key`, `cloud.api_url`, `cloud.sync_enabled`, `cloud.liveness_interval_seconds` |
 
 ## History
 

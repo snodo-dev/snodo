@@ -9,16 +9,23 @@ true for forty minutes and then false, and replaying a stale status after a
 failed push is worse than the gap it covered. So liveness is a separate path
 with opposite mechanics (Fixes #291):
 
-- **Event-driven, not a heartbeat.** A push happens when something actually
+- **Change-driven, with a floor.** A push happens when something actually
   changes — a plan/task/job status transition, or an engine transition event
-  observed through the audit log — never on a timer. Silence means nothing
-  changed, not that the machine died.
-- **At most once per 60 seconds per session**, so a burst of transitions
-  coalesces into one write. The snapshot is built at send time inside the
-  worker, so the coalesced write carries the *later* state. A transition that
-  ends a run (a halt, a completion) bypasses the throttle: it is the only
-  record that will tell the far side the run stopped, and a throttle that ate
-  it would strand a false "running" until the next event.
+  observed through the audit log. But a quiet run is still a live run: while
+  something is running, at least one push per interval is sent even when
+  nothing changed, so silence on the far side once again means the machine
+  stopped rather than that the session had nothing new to say (Fixes #323).
+  It is still not a heartbeat: a repeat carries the same true snapshot, and a
+  session with nothing running still sends nothing.
+- **At most once per interval per session, and at least once while
+  something is running**, so a burst of transitions coalesces into one write
+  and a quiet run is still heard from. The interval defaults to 60 seconds
+  and is configurable (``cloud.liveness_interval_seconds``). The snapshot is
+  built at send time inside the worker, so the coalesced write carries the
+  *later* state. A transition that ends a run (a halt, a completion) bypasses
+  the throttle: it is the only record that will tell the far side the run
+  stopped, and a throttle that ate it would strand a false "running" until
+  the next event.
 - **A full snapshot, never a delta.** A lost push is harmless; the next one
   supersedes it entirely.
 - **The plan's shape, not its history.** Plans carry structure — plan, then
@@ -57,7 +64,11 @@ from snodo.project import scope_for_project_id
 
 _logger = logging.getLogger(__name__)
 
-#: Per-session push budget: a burst of transitions coalesces into one write.
+#: Default per-session push interval. It is a ceiling and a floor: at most one
+#: push per interval (a burst of transitions coalesces into one write) and, at
+#: least one while something is running, so a quiet run is still heard from
+#: (Fixes #323). A deployment may lower it with
+#: ``cloud.liveness_interval_seconds``; the default stays 60 seconds.
 LIVENESS_THROTTLE_SECONDS = 60.0
 
 #: Bounded tail read for "what the last event was and when".
@@ -115,8 +126,8 @@ _SETTLED_RUN_STATUSES = frozenset({
 })
 
 # Per-session push bookkeeping: session_id -> {"last_push": float|None,
-# "in_flight": bool}. Guards the throttle check and the in-flight flag, not
-# the network write.
+# "in_flight": bool, "timer": threading.Timer|None}. Guards the throttle
+# check, the in-flight flag and the floor timer, not the network write.
 _lock = threading.Lock()
 _sessions: dict = {}
 
@@ -129,8 +140,30 @@ _consecutive_rejections: int = 0
 #: Cache for the sync gate: it answers the same config question on every audit
 #: transition, and a config load per event would put file IO on the run's
 #: critical path. Re-read after _GATE_TTL_SECONDS or any explicit recheck.
+#: The loaded config is held beside the answer so the push interval can be
+#: read from it without a second load (Fixes #323).
 _GATE_TTL_SECONDS = 5.0
-_gate_cache: dict = {"value": None, "checked_at": 0.0}
+_gate_cache: dict = {"value": None, "config": None, "checked_at": 0.0}
+
+
+def _gate_config() -> Optional[dict]:
+    """The configuration behind the gate, loaded at most once per TTL."""
+    now = time.monotonic()
+    with _lock:
+        cached = _gate_cache["config"]
+        fresh = (
+            cached is not None
+            and now - _gate_cache["checked_at"] < _GATE_TTL_SECONDS
+        )
+        if fresh:
+            return cached
+    from snodo.config import ConfigManager
+    config = ConfigManager().load()
+    with _lock:
+        _gate_cache["config"] = config
+        _gate_cache["value"] = _should_sync(config)
+        _gate_cache["checked_at"] = now
+    return config
 
 
 def _sync_gate_open(config: Optional[dict] = None) -> bool:
@@ -145,20 +178,42 @@ def _sync_gate_open(config: Optional[dict] = None) -> bool:
         )
         if fresh:
             return bool(_gate_cache["value"])
-    value = _should_sync(config)
-    with _lock:
-        _gate_cache["value"] = value
-        _gate_cache["checked_at"] = now
-    return value
+    return _should_sync(_gate_config())
+
+
+def _interval_seconds(config: Optional[dict] = None) -> float:
+    """The push interval: ``cloud.liveness_interval_seconds`` or the default.
+
+    One knob drives both the ceiling and the floor. A non-positive or
+    unreadable value falls back to :data:`LIVENESS_THROTTLE_SECONDS` rather
+    than disabling the throttle (Fixes #323).
+    """
+    if config is None:
+        config = _gate_config()
+    raw = None
+    if isinstance(config, dict):
+        cloud = config.get("cloud")
+        if isinstance(cloud, dict):
+            raw = cloud.get("liveness_interval_seconds")
+    try:
+        interval = float(raw)
+    except (TypeError, ValueError):
+        interval = 0.0
+    return interval if interval > 0 else LIVENESS_THROTTLE_SECONDS
 
 
 def reset_liveness_state() -> None:
     """Forget all per-session throttle state and rejection counters. Test seam; production never calls it."""
     global _consecutive_rejections
     with _lock:
+        for st in _sessions.values():
+            timer = st.get("timer")
+            if timer is not None:
+                timer.cancel()
         _sessions.clear()
         _threads.clear()
         _gate_cache["value"] = None
+        _gate_cache["config"] = None
         _gate_cache["checked_at"] = 0.0
         _consecutive_rejections = 0
 
@@ -178,19 +233,24 @@ def request_liveness_push(
     Returns True when a push was started. A push in flight absorbs later
     transitions (the worker builds its snapshot at send time, so the wire
     write carries the newest state); a request inside the throttle window is
-    dropped, because the next transition will push current truth anyway and a
-    stale snapshot is worth less than nothing. ``force`` — reserved for
-    terminal transitions — bypasses the window, never the in-flight merge.
+    dropped, because a push already represents current truth and a stale
+    snapshot is worth less than nothing. The floor timer calls this same
+    function between transitions, so a running session is heard from even
+    when nothing changed (Fixes #323). ``force`` — reserved for terminal
+    transitions — bypasses the window, never the in-flight merge.
     """
     if not session_id or not _sync_gate_open(config):
         return False
     now = time.monotonic()
+    interval = _interval_seconds(config)
     with _lock:
-        st = _sessions.setdefault(session_id, {"last_push": None, "in_flight": False})
+        st = _sessions.setdefault(
+            session_id, {"last_push": None, "in_flight": False, "timer": None},
+        )
         if st["in_flight"]:
             return False
         if not force and st["last_push"] is not None \
-                and now - st["last_push"] < LIVENESS_THROTTLE_SECONDS:
+                and now - st["last_push"] < interval:
             return False
         st["in_flight"] = True
     from threading import Thread
@@ -236,7 +296,14 @@ atexit.register(wait_for_pushes)
 
 
 def _deliver(session_id: str, project_root: str) -> None:
-    """Build the snapshot at send time and push it once. Never raises, never retries."""
+    """Build the snapshot at send time and push it once. Never raises, never retries.
+
+    A push that leaves something running arms the floor timer for the next
+    interval, so the session is heard from even if no transition follows; a
+    push whose work has all settled (or that finds nothing at all) arms
+    nothing, and the silence after it is true (Fixes #323).
+    """
+    live = False
     try:
         snapshot = build_liveness_snapshot(session_id, project_root)
         if snapshot is None:
@@ -245,8 +312,9 @@ def _deliver(session_id: str, project_root: str) -> None:
             return
         with _lock:
             _sessions.setdefault(
-                session_id, {"last_push": None, "in_flight": False},
+                session_id, {"last_push": None, "in_flight": False, "timer": None},
             )["last_push"] = time.monotonic()
+        live = _snapshot_is_live(snapshot)
         _post_snapshot(snapshot)
     except Exception as exc:  # noqa: BLE001 — a liveness push never disturbs the run
         _logger.debug("Liveness push failed for %s (dropped, not queued): %s", session_id, exc)
@@ -258,6 +326,98 @@ def _deliver(session_id: str, project_root: str) -> None:
             me = threading.current_thread()
             if me in _threads:
                 _threads.remove(me)
+        # Arm the floor only after this delivery is no longer in flight: a
+        # beat that fires mid-delivery sees the in-flight flag and stands
+        # down, so the next one has to be armed here or the floor would die
+        # behind a slow push (Fixes #323).
+        if live:
+            try:
+                _schedule_floor(session_id, project_root)
+            except Exception as exc:  # noqa: BLE001 — a push never disturbs the run
+                _logger.debug("Liveness floor not armed for %s: %s", session_id, exc)
+
+
+def _schedule_floor(session_id: str, project_root: str) -> None:
+    """Arm the next floor push for *session_id*, replacing any pending one.
+
+    Called by a delivery that leaves work running. The timer is daemon and
+    single per session: replacing is cheaper to reason about than tracking
+    generations, and the throttle still caps the wire at one push per
+    interval even if two ever overlap.
+    """
+    interval = _interval_seconds()
+    token = object()
+    timer = threading.Timer(
+        interval, _floor_tick, args=(session_id, project_root, token),
+    )
+    timer.daemon = True
+    with _lock:
+        st = _sessions.get(session_id)
+        if st is None:
+            return
+        old = st.get("timer")
+        if old is not None:
+            old.cancel()
+        st["timer"] = timer
+        st["timer_token"] = token
+    timer.start()
+
+
+def _floor_tick(session_id: str, project_root: str, token: object) -> None:
+    """One floor beat: push again if the session is still running.
+
+    A stale beat — one whose timer was replaced by a newer delivery — stands
+    down, so it cannot clear the newer timer's bookkeeping. A beat that finds
+    a delivery in flight stands down too: that delivery's own completion arms
+    the next beat. A request inside the window is dropped by the throttle,
+    and the push that closed the window armed the next beat, so the floor is
+    never left unarmed by a drop.
+    """
+    with _lock:
+        st = _sessions.get(session_id)
+        if st is None or st.get("timer_token") is not token:
+            return
+        st["timer"] = None
+        st["timer_token"] = None
+        if st["in_flight"]:
+            return
+    request_liveness_push(session_id, project_root)
+
+
+def _snapshot_is_live(snapshot: dict) -> bool:
+    """True when the snapshot still has work running.
+
+    This is the floor's gate, and it is deliberately narrower than the
+    send gate: a session whose every task and job has settled is finished,
+    not running, and its terminal push is the last word — the floor must not
+    keep repeating a settled snapshot and turn a finished run into a
+    heartbeat (Fixes #323).
+
+    The collapsed snapshot is enough to decide. Enumerated top-level tasks
+    and jobs are live by construction; a plan counts as live while any of its
+    statuses is neither terminal nor ``pending``, and a job nested under a
+    settled node keeps its task live so a straggler cannot hide.
+    """
+    if snapshot.get("tasks") or snapshot.get("jobs"):
+        return True
+    for plan in snapshot.get("plans") or []:
+        counts = [plan.get("status_counts") or {}]
+        for wave in plan.get("waves") or []:
+            counts.append(wave.get("status_counts") or {})
+            for task in wave.get("tasks") or []:
+                if task.get("jobs"):
+                    return True
+        for task in plan.get("tasks") or []:
+            if task.get("jobs"):
+                return True
+        for bucket in counts:
+            if any(
+                count and status not in TERMINAL_PLAN_STATUSES
+                and status != _PENDING_TASK_STATUS
+                for status, count in bucket.items()
+            ):
+                return True
+    return False
 
 
 def _post_snapshot(snapshot: dict, config: Optional[dict] = None) -> None:
