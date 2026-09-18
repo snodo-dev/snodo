@@ -9,6 +9,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Long-running `snodo serve --tunnel` child process pipes are now continuously
+  drained in background threads. Previously, both the MCP server and
+  cloudflared were spawned with pipes that were never read after startup,
+  causing children to block inside `write()` once the OS pipe buffer filled up
+  after hours of traffic. cloudflared stdout is now routed to devnull, and
+  stderr streams are continuously drained while preserving diagnostic output on
+  startup failures and unexpected exits. (Fixes #333)
+
 ## [0.10.2] — 2026-09-17
 
 ### Fixed

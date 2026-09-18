@@ -3,7 +3,9 @@
 FILE: snodo/cli/commands/serve_cmd.py
 """
 
+import collections
 import hashlib
+import io
 import json
 import logging
 import os
@@ -13,10 +15,11 @@ import signal
 import string
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Optional
+from typing import Any, Callable, Optional
 
 import typer
 
@@ -867,6 +870,55 @@ def _print_tunnel_conflict(err: TunnelAPIError) -> None:
               file=sys.stderr)
 
 
+def _drain_stream(
+    stream: Any,
+    sink: Optional[collections.deque[str]] = None,
+    on_line: Optional[Callable[[str], None]] = None,
+) -> Optional[threading.Thread]:
+    """Continuously drain a child pipe in a background daemon thread.
+
+    A pipe with no reader holds a bounded OS buffer (tens of kilobytes). Once
+    full, the child's write() blocks indefinitely. This drainer reads lines
+    until EOF, optionally preserving recent lines in *sink* (a bounded deque)
+    for diagnostics and invoking *on_line* for each line.
+    """
+    if stream is None:
+        return None
+
+    # In unit tests, subprocess.Popen is often mocked with MagicMock where
+    # readline() returns repeatedly without blocking. Real child pipes are
+    # always io.IOBase instances; only spawn background drain threads on real
+    # IO streams.
+    if not isinstance(stream, io.IOBase):
+        return None
+
+    def _reader() -> None:
+        while True:
+            try:
+                line = stream.readline()
+            except (ValueError, OSError):
+                break
+            except UnicodeDecodeError:
+                continue
+            if not line:
+                break
+            if sink is not None:
+                sink.append(line)
+            if on_line is not None:
+                try:
+                    on_line(line)
+                except Exception:  # noqa: S110
+                    pass
+        try:
+            stream.close()
+        except OSError:
+            pass
+
+    t = threading.Thread(target=_reader, daemon=True)
+    t.start()
+    return t
+
+
 def _run_tunnel(args, protocol, protocol_path) -> int:
     """Start an MCP server behind a managed Cloudflare tunnel.
 
@@ -1020,13 +1072,20 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         text=True,
         start_new_session=True,
     )
+    mcp_stderr_tail: collections.deque[str] = collections.deque(maxlen=1000)
+    _drain_stream(mcp_process.stderr, sink=mcp_stderr_tail)
 
     # Verify the server actually bound before anything is called active. The
     # URL used to be printed as live before the child was even spawned, so a
     # bind failure handed the operator a public address routing to nothing
     # (Fixes #309).
     if not _wait_for_server_bind(mcp_process):
-        stderr_output = mcp_process.stderr.read() if mcp_process.stderr else ""
+        stderr_output = "".join(mcp_stderr_tail)
+        if not stderr_output and mcp_process.stderr:
+            try:
+                stderr_output = mcp_process.stderr.read()
+            except (ValueError, OSError):
+                stderr_output = ""
         print(f"Error: MCP server exited with code {mcp_process.returncode}.",
               file=sys.stderr)
         if stderr_output:
@@ -1054,20 +1113,33 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     ]
     cf_process = subprocess.Popen(  # noqa: S603 - argv list (no shell); the tunnel token is one argv element to cloudflared, never shell-interpreted
         cf_cmd,
-        stdout=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
     )
 
     # 7. Wait for cloudflared to connect
+    cf_connected = threading.Event()
+    cf_stderr_tail: collections.deque[str] = collections.deque(maxlen=1000)
+
+    def _on_cf_line(line: str) -> None:
+        if "Registered tunnel connection" in line:
+            cf_connected.set()
+
+    _drain_stream(cf_process.stderr, sink=cf_stderr_tail, on_line=_on_cf_line)
+
     connected = False
     deadline = time.time() + 30
     while time.time() < deadline:
-        line = cf_process.stderr.readline() if cf_process.stderr else ""
-        if "Registered tunnel connection" in line:
+        if cf_connected.is_set():
             connected = True
             break
+        if cf_process.stderr and not isinstance(cf_process.stderr, io.IOBase):
+            line = cf_process.stderr.readline()
+            if "Registered tunnel connection" in line:
+                connected = True
+                break
         if cf_process.poll() is not None:
             break
         time.sleep(0.1)
@@ -1101,7 +1173,12 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                 pass
             if mcp_process.poll() is not None:
                 print("Error: MCP server exited unexpectedly.", file=sys.stderr)
-                stderr_output = mcp_process.stderr.read() if mcp_process.stderr else ""
+                stderr_output = "".join(mcp_stderr_tail)
+                if not stderr_output and mcp_process.stderr:
+                    try:
+                        stderr_output = mcp_process.stderr.read()
+                    except (ValueError, OSError):
+                        stderr_output = ""
                 if stderr_output:
                     print(stderr_output, file=sys.stderr)
                 _cleanup()
