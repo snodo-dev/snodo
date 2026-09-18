@@ -152,6 +152,8 @@ class ValidatorResult(BaseModel):
     #: judgement was reused instead of presenting it as newly made.  An error
     #: and a skipped pass are never stored or reused.
     reused: bool = False
+    #: False when the provider forced a non-deterministic parameter fallback.
+    cacheable: bool = True
 
     def record(self) -> Dict[str, Any]:
         """The canonical audit/display record for this result. See result_record."""

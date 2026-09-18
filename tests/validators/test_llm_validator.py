@@ -230,6 +230,33 @@ class TestEvaluate:
         assert result.error is False
         assert result.severity == "pass"
 
+    def test_provider_named_parameter_rejection_retries_without_it(self, security_validator, task):
+        """Unknown LiteLLM parameter metadata still gets a provider fallback."""
+        from litellm.exceptions import BadRequestError
+
+        calls = []
+
+        def completion_fn(**kwargs):
+            calls.append(kwargs)
+            if "temperature" in kwargs:
+                raise BadRequestError(
+                    message="Unsupported parameter: 'temperature' is not supported with this model",
+                    model="custom/model",
+                    llm_provider="custom",
+                    response=None,
+                )
+            return _make_llm_response("pass", "All criteria satisfied")
+
+        validator = LLMValidator(security_validator, completion_fn, model="custom/model")
+        result = validator.evaluate(task)
+
+        assert result.error is False
+        assert result.severity == "pass"
+        assert len(calls) == 2
+        assert calls[0]["temperature"] == 0.0
+        assert "temperature" not in calls[1]
+        assert result.cacheable is False
+
     def test_evaluate_blocker(self, security_validator, task):
         completion_fn = _make_completion_fn("blocker", "XSS vulnerability detected")
         validator = LLMValidator(security_validator, completion_fn)
