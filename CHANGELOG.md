@@ -43,6 +43,20 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A validator's repeated reads no longer spend its turn budget. The tool loop
+  already intercepts a read identical to one from an earlier turn and points
+  the judge back at it instead of re-reading — the response even says
+  repeating "wastes a turn" — but the turn was charged against
+  `max_tool_turns` anyway, at exactly the moment the judge learned nothing.
+  On a real project a validator ran to turn 40 without ever reaching a
+  verdict; the cap had already been raised once, from 12 to 40, for the same
+  failure, and raising it again would not have helped, because a judge that
+  circles will circle through any budget. A turn whose tool calls are all
+  repeat-read hits is now free; a separate, small streak counter still stops
+  a judge that only ever repeats itself, sooner than the real budget rather
+  than looping through it, and it still either delivers a real verdict or
+  fails closed — no new severity, halt type, or task status. (Fixes #360,
+  ADR 050)
 - Validators recover from a provider that refuses a parameter. `drop_params`
   removes only what litellm knows is unsupported, and for a model whose entry
   carries no supported-parameter list it removes nothing — so the request went

@@ -23,6 +23,9 @@ Tool-loop (capability-grant):
   post-execute judge — tool-loop or single-completion, granted the diff tool
   or not — begins its turn with the change already in the prompt
   (snodo.validators.change).  Pre-execute judges never receive it.
+- A turn whose tool calls are all repeat-read hits is not charged against the
+  turn budget; a small, separate streak counter still stops a judge that only
+  ever repeats itself, sooner than the real budget (Fixes #360, ADR 050).
 """
 
 import json
@@ -57,6 +60,14 @@ _logger = logging.getLogger(__name__)
 # Maximum tool-use turns before forcing a verdict.
 _DEFAULT_MAX_TOOL_TURNS = 20
 _DEFAULT_MAX_TOKENS = 1500
+
+# A turn whose only tool calls were repeat-read hits made no progress and is
+# not charged against max_tool_turns (see _MAX_STALL_TURNS below and ADR 050)
+# — but a judge that only ever repeats itself must still be stopped, sooner
+# than the real budget rather than looping through it. This bounds how many
+# *consecutive* stalled turns are tolerated before the loop forces the same
+# verdict-only turn already used at the true end of budget.
+_MAX_STALL_TURNS = 3
 _RETRY_ATTEMPTS = 3
 _RETRY_BASE_DELAY_SECONDS = 1.0
 _RETRY_BUDGET_SECONDS = 30.0
@@ -512,8 +523,26 @@ class LLMValidator(ValidatorBase):
         if change is not None and change.readable and change.diff.strip():
             examination.append(f"prompt: preloaded diff {change.label}")
 
-        for turn in range(tool_turns):
-            is_final_turn = turn == tool_turns - 1
+        # turns_used is what max_tool_turns bounds — it only advances on a
+        # turn that made some kind of progress. A turn whose only tool calls
+        # were repeat-read hits made none, so it is free (Fixes #360): the
+        # judge is not charged for being told to look at a turn it already
+        # has. stall_streak counts *consecutive* free turns and forces the
+        # verdict-only turn once it reaches _MAX_STALL_TURNS, so a judge that
+        # only ever repeats itself is still stopped — sooner than the real
+        # budget, rather than looping through it (ADR 050). The raw loop
+        # bound below is a defensive ceiling only: every branch that can be
+        # reached with is_final_turn or retried_free_text true returns
+        # unconditionally, so the loop always terminates well before it.
+        turns_used = 0
+        stall_streak = 0
+        max_raw_turns = tool_turns * (_MAX_STALL_TURNS + 1) + _MAX_STALL_TURNS + 2
+
+        for turn in range(max_raw_turns):
+            is_final_turn = (
+                turns_used >= tool_turns - 1
+                or stall_streak >= _MAX_STALL_TURNS
+            )
             # Time is up on the final turn, and it is also up the moment the
             # loop asks the judge for its verdict after a prose answer: the
             # nudge and the final turn are the same moment. The read tools are
@@ -677,6 +706,13 @@ class LLMValidator(ValidatorBase):
                     ],
                 })
 
+                # Whether this turn is charged against the budget: a turn
+                # whose only tool calls were repeat-read hits made no
+                # progress and is free (Fixes #360) — every other outcome
+                # (a fresh read, a refusal, an invalid submit_verdict) is
+                # unrelated to the repeat-read tracker and still charges as
+                # before.
+                turn_progressed = False
                 for tc in tool_calls:
                     tool_name = tc.function.name
                     try:
@@ -693,6 +729,7 @@ class LLMValidator(ValidatorBase):
                         examination.append(
                             f"turn {turn + 1}: submit_verdict (rejected — invalid arguments)"
                         )
+                        turn_progressed = True
                     elif tool_name not in offered_names:
                         # The judge was not granted this tool (or it was
                         # withdrawn on the final turn). A model can only call a
@@ -707,6 +744,7 @@ class LLMValidator(ValidatorBase):
                         examination.append(
                             f"turn {turn + 1}: {tool_name} (refused — not declared)"
                         )
+                        turn_progressed = True
                     else:
                         prev_turn = read_tracker.check_read(tool_name, args)
                         if prev_turn is not None:
@@ -714,6 +752,7 @@ class LLMValidator(ValidatorBase):
                         else:
                             result = self._execute_tool(tool_name, args, workspace, git)
                             read_tracker.record_read(tool_name, args, turn + 1)
+                            turn_progressed = True
                         target = _normalize_path_arg(args) or json.dumps(args)[:60]
                         examination.append(f"turn {turn + 1}: {tool_name} {target}".rstrip())
                         self._emit_turn_telemetry(
@@ -731,6 +770,12 @@ class LLMValidator(ValidatorBase):
                         "tool_call_id": tc.id,
                         "content": str(result),
                     })
+
+                if turn_progressed:
+                    turns_used += 1
+                    stall_streak = 0
+                else:
+                    stall_streak += 1
                 continue
 
             # No submit_verdict — either free-text or empty response
@@ -747,6 +792,8 @@ class LLMValidator(ValidatorBase):
             # handed the menu it just chose to keep reading from (Fixes #285).
             if has_content and not retried_free_text:
                 retried_free_text = True
+                turns_used += 1
+                stall_streak = 0
                 examination.append(
                     f"turn {turn + 1}: free-text response (not a verdict; asked for submit_verdict)"
                 )
