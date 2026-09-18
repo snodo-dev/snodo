@@ -1167,8 +1167,16 @@ class TestPostExecuteToolLoop:
 
     def test_tool_loop_never_submitting_is_an_error_that_fails_closed(self, security_validator):
         """A judge that never calls submit_verdict produces an error, not a
-        fabricated verdict, and the engine fails closed on it."""
-        from snodo.validators.llm_validator import _DEFAULT_MAX_TOOL_TURNS
+        fabricated verdict, and the engine fails closed on it.
+
+        This judge only ever repeats the same read, so it never spends its
+        turn budget (Fixes #360): it is stopped by the stall streak well
+        short of the full turn allowance, rather than looping through it and
+        halting only when the cap is reached."""
+        from snodo.validators.llm_validator import (
+            _DEFAULT_MAX_TOOL_TURNS,
+            _MAX_STALL_TURNS,
+        )
 
         mock_git = MagicMock()
         mock_git.diff_between_refs.return_value = "+def login():"
@@ -1198,7 +1206,74 @@ class TestPostExecuteToolLoop:
         # The record of what the judge examined travels on the error result.
         assert any("preloaded diff" in e for e in result.examined)
         assert any("read_file x.py" in e for e in result.examined)
-        assert completion_fn.call_count == _DEFAULT_MAX_TOOL_TURNS
+        # One fresh read, _MAX_STALL_TURNS consecutive repeat-read stalls,
+        # then the forced verdict-only turn it also fails to comply with —
+        # nowhere near the full turn cap, because repeating bought it no
+        # extra turns.
+        assert completion_fn.call_count == 1 + _MAX_STALL_TURNS + 1
+        assert completion_fn.call_count < _DEFAULT_MAX_TOOL_TURNS
+
+    def test_repeat_reads_do_not_consume_the_turn_budget(self, security_validator):
+        """A judge that repeats a read a few times before reading something
+        new still has budget left to reach a real verdict (Fixes #360).
+
+        max_tool_turns is set to 3 here — far fewer real turns than the five
+        calls this exchange needs. Under the old accounting each of those
+        calls burned a budget slot and the judge would have been forced onto
+        a verdict-only turn (and failed closed) well before ever reading
+        y.py. Repeat-read turns are free, so the budget is only spent on the
+        two turns that actually examined something."""
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+        mock_workspace.read_file.side_effect = lambda path: f"contents of {path}"
+
+        call_count = [0]
+
+        def completion_side_effect(**kwargs):
+            call_count[0] += 1
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = None
+            tc = MagicMock()
+            if call_count[0] in (1, 2, 3):
+                # Turn 1: a fresh read of x.py. Turns 2-3: the SAME read,
+                # repeated — intercepted, and free.
+                tc.id = f"tc_{call_count[0]}"
+                tc.function.name = "read_file"
+                tc.function.arguments = '{"path": "x.py"}'
+            elif call_count[0] == 4:
+                # A different file: real progress, charges the second (and
+                # last, given max_tool_turns=3) budget slot.
+                tc.id = "tc_4"
+                tc.function.name = "read_file"
+                tc.function.arguments = '{"path": "y.py"}'
+            else:
+                tc.id = "tc_verdict"
+                tc.function.name = "submit_verdict"
+                tc.function.arguments = json.dumps({
+                    "severity": "pass",
+                    "justification": "Checked x.py and y.py",
+                })
+            resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+        ctx.max_tool_turns = 3
+
+        result = validator.evaluate(ctx)
+
+        assert result.error is False
+        assert result.severity == "pass"
+        # Five calls were needed — more than max_tool_turns=3 — because the
+        # two repeats of x.py were never charged against the budget.
+        assert completion_fn.call_count == 5
+        # Only the genuinely new reads reached the workspace.
+        assert mock_workspace.read_file.call_count == 2
+        mock_workspace.read_file.assert_any_call("x.py")
+        mock_workspace.read_file.assert_any_call("y.py")
 
     def test_final_turn_offers_no_read_tool(self, security_validator):
         """At the boundary of its budget the judge is asked for a verdict and

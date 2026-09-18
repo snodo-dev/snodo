@@ -23,6 +23,9 @@ Tool-loop (capability-grant):
   post-execute judge — tool-loop or single-completion, granted the diff tool
   or not — begins its turn with the change already in the prompt
   (snodo.validators.change).  Pre-execute judges never receive it.
+- A turn whose tool calls are all repeat-read hits is not charged against the
+  turn budget; a small, separate streak counter still stops a judge that only
+  ever repeats itself, sooner than the real budget (Fixes #360, ADR 050).
 """
 
 import json
@@ -48,6 +51,14 @@ from snodo.validators.context import ValidatorContext, ValidatorBase
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.coders.litellm import ReadMemoryTracker, _normalize_path_arg, format_repeat_read_response
+from snodo.validators.llm_provider_errors import (
+    _is_gemini3_plus,
+    _is_provider_rejection,
+    _is_transient_error,
+    _provider_rejected_parameter,
+    _provider_retry_delay,
+    _usage_tokens,
+)
 
 _litellm.drop_params = True
 
@@ -57,6 +68,14 @@ _logger = logging.getLogger(__name__)
 # Maximum tool-use turns before forcing a verdict.
 _DEFAULT_MAX_TOOL_TURNS = 20
 _DEFAULT_MAX_TOKENS = 1500
+
+# A turn whose only tool calls were repeat-read hits made no progress and is
+# not charged against max_tool_turns (see _MAX_STALL_TURNS below and ADR 050)
+# — but a judge that only ever repeats itself must still be stopped, sooner
+# than the real budget rather than looping through it. This bounds how many
+# *consecutive* stalled turns are tolerated before the loop forces the same
+# verdict-only turn already used at the true end of budget.
+_MAX_STALL_TURNS = 3
 _RETRY_ATTEMPTS = 3
 _RETRY_BASE_DELAY_SECONDS = 1.0
 _RETRY_BUDGET_SECONDS = 30.0
@@ -128,143 +147,6 @@ def _phase_frame(phase: str) -> str:
         "cited. Judge only this: if the proposal were carried out as "
         "described, would it violate a criterion below?"
     )
-
-
-def _is_gemini3_plus(model: str) -> bool:
-    m = re.search(r'gemini-(\d+)', model)
-    return bool(m and int(m.group(1)) >= 3)
-
-
-def _is_transient_error(e: Exception) -> bool:
-    """Return True if *e* is a transient provider/network error worth retrying.
-
-    Classifies on exception type and HTTP status code, not on error prose.
-    The previous predicate substring-matched the message against terms like
-    ``"500"``, ``"502"`` and ``"deepseekexception"``, so every error from a
-    provider whose name contained those letters was retryable, and a bare
-    status code matched those digits anywhere in the text. A 4xx (except 429)
-    is a client error — retrying it is not honest; a 5xx, 429, connection or
-    timeout is transient.
-    """
-    # Network-level builtins: genuinely transient.
-    if isinstance(e, (ConnectionError, TimeoutError)):
-        return True
-    # DNS resolution failure (errno 8: nodename nor servname).
-    if isinstance(e, OSError) and getattr(e, "errno", None) == 8:
-        return True
-
-    # litellm exception classes.
-    try:
-        from litellm.exceptions import (
-            APIConnectionError,
-            Timeout as LiteLLMTimeout,
-            RateLimitError,
-            InternalServerError,
-            BadGatewayError,
-            ServiceUnavailableError,
-        )
-        if isinstance(
-            e,
-            (APIConnectionError, LiteLLMTimeout, RateLimitError,
-             InternalServerError, BadGatewayError, ServiceUnavailableError),
-        ):
-            return True
-    except ImportError as e:
-        # The classifier's own degradation must be visible: without these
-        # classes a transient connection error is judged only by status code,
-        # and a caller that carries on should be able to see why the
-        # classification changed shape.
-        _logger.debug(
-            "litellm exception classes unavailable, transient check falls "
-            "back to status code: %s", e,
-        )
-
-    # Fall back to the HTTP status code when the exception carries one.
-    status = getattr(e, "status_code", None)
-    if isinstance(status, int):
-        return status in (429, 500, 502, 503, 504)
-    return False
-
-
-def _is_provider_rejection(e: Exception) -> bool:
-    """Return True if *e* is a provider rejecting the request (a 4xx client error).
-
-    Used to distinguish "the provider refused response_format" (a 400 like
-    DeepSeek's "This response_format type is unavailable now") or forced
-    tool_choice from "the model returned garbage" — only the former makes an
-    unparseable fallback an operational fault rather than a warn verdict (Fixes #84, #296).
-    """
-    try:
-        from litellm.exceptions import (
-            BadRequestError,
-            InvalidRequestError,
-            UnsupportedParamsError,
-        )
-        if isinstance(e, (BadRequestError, InvalidRequestError, UnsupportedParamsError)):
-            return True
-    except ImportError:
-        pass
-    status = getattr(e, "status_code", None)
-    if isinstance(status, int):
-        return 400 <= status < 500 and status != 429
-    return False
-
-
-def _provider_rejected_parameter(e: Exception) -> Optional[str]:
-    """Extract a parameter name from a provider's named-parameter rejection."""
-    if not _is_provider_rejection(e):
-        return None
-    message = str(e)
-    patterns = (
-        r"(?:unsupported|unrecognized|unknown|invalid)\s+(?:request\s+)?"
-        r"(?:parameter|param|argument)\s*[:=]?\s*[`'\"]?"
-        r"([A-Za-z_][A-Za-z0-9_.-]*)",
-        r"[`'\"]([A-Za-z_][A-Za-z0-9_.-]*)[`'\"]?\s+"
-        r"(?:is\s+)?(?:not\s+supported|unsupported|invalid)",
-        r"\b([A-Za-z_][A-Za-z0-9_.-]*)\b\s+is\s+not\s+supported",
-    )
-    for pattern in patterns:
-        match = re.search(pattern, message, re.IGNORECASE)
-        if match:
-            return match.group(1)
-    return None
-
-
-def _provider_retry_delay(e: Exception) -> Optional[float]:
-    """Return a provider-supplied retry delay, if the exception carries one."""
-    candidates = [getattr(e, "retry_after", None)]
-    headers = getattr(e, "headers", None)
-    response = getattr(e, "response", None)
-    response_headers = getattr(response, "headers", None)
-    for header_map in (headers, response_headers):
-        if header_map is not None:
-            candidates.append(header_map.get("retry-after"))
-            candidates.append(header_map.get("Retry-After"))
-
-    for value in candidates:
-        try:
-            delay = float(value)
-        except (TypeError, ValueError):
-            continue
-        if delay >= 0:
-            return delay
-    return None
-
-
-def _usage_tokens(response: Any, kind: str) -> int:
-    """Extract prompt/completion token counts from a litellm response.
-
-    Returns 0 when the response carries no usage (e.g. mock responses).
-    """
-    try:
-        usage = getattr(response, "usage", None)
-        if usage is None:
-            return 0
-        if kind == "prompt":
-            return int(getattr(usage, "prompt_tokens", 0) or 0)
-        return int(getattr(usage, "completion_tokens", 0) or 0)
-    except Exception:
-        return 0
 
 
 class LLMValidator(ValidatorBase):
@@ -512,8 +394,26 @@ class LLMValidator(ValidatorBase):
         if change is not None and change.readable and change.diff.strip():
             examination.append(f"prompt: preloaded diff {change.label}")
 
-        for turn in range(tool_turns):
-            is_final_turn = turn == tool_turns - 1
+        # turns_used is what max_tool_turns bounds — it only advances on a
+        # turn that made some kind of progress. A turn whose only tool calls
+        # were repeat-read hits made none, so it is free (Fixes #360): the
+        # judge is not charged for being told to look at a turn it already
+        # has. stall_streak counts *consecutive* free turns and forces the
+        # verdict-only turn once it reaches _MAX_STALL_TURNS, so a judge that
+        # only ever repeats itself is still stopped — sooner than the real
+        # budget, rather than looping through it (ADR 050). The raw loop
+        # bound below is a defensive ceiling only: every branch that can be
+        # reached with is_final_turn or retried_free_text true returns
+        # unconditionally, so the loop always terminates well before it.
+        turns_used = 0
+        stall_streak = 0
+        max_raw_turns = tool_turns * (_MAX_STALL_TURNS + 1) + _MAX_STALL_TURNS + 2
+
+        for turn in range(max_raw_turns):
+            is_final_turn = (
+                turns_used >= tool_turns - 1
+                or stall_streak >= _MAX_STALL_TURNS
+            )
             # Time is up on the final turn, and it is also up the moment the
             # loop asks the judge for its verdict after a prose answer: the
             # nudge and the final turn are the same moment. The read tools are
@@ -677,6 +577,13 @@ class LLMValidator(ValidatorBase):
                     ],
                 })
 
+                # Whether this turn is charged against the budget: a turn
+                # whose only tool calls were repeat-read hits made no
+                # progress and is free (Fixes #360) — every other outcome
+                # (a fresh read, a refusal, an invalid submit_verdict) is
+                # unrelated to the repeat-read tracker and still charges as
+                # before.
+                turn_progressed = False
                 for tc in tool_calls:
                     tool_name = tc.function.name
                     try:
@@ -693,6 +600,7 @@ class LLMValidator(ValidatorBase):
                         examination.append(
                             f"turn {turn + 1}: submit_verdict (rejected — invalid arguments)"
                         )
+                        turn_progressed = True
                     elif tool_name not in offered_names:
                         # The judge was not granted this tool (or it was
                         # withdrawn on the final turn). A model can only call a
@@ -707,6 +615,7 @@ class LLMValidator(ValidatorBase):
                         examination.append(
                             f"turn {turn + 1}: {tool_name} (refused — not declared)"
                         )
+                        turn_progressed = True
                     else:
                         prev_turn = read_tracker.check_read(tool_name, args)
                         if prev_turn is not None:
@@ -714,6 +623,7 @@ class LLMValidator(ValidatorBase):
                         else:
                             result = self._execute_tool(tool_name, args, workspace, git)
                             read_tracker.record_read(tool_name, args, turn + 1)
+                            turn_progressed = True
                         target = _normalize_path_arg(args) or json.dumps(args)[:60]
                         examination.append(f"turn {turn + 1}: {tool_name} {target}".rstrip())
                         self._emit_turn_telemetry(
@@ -731,6 +641,12 @@ class LLMValidator(ValidatorBase):
                         "tool_call_id": tc.id,
                         "content": str(result),
                     })
+
+                if turn_progressed:
+                    turns_used += 1
+                    stall_streak = 0
+                else:
+                    stall_streak += 1
                 continue
 
             # No submit_verdict — either free-text or empty response
@@ -747,6 +663,8 @@ class LLMValidator(ValidatorBase):
             # handed the menu it just chose to keep reading from (Fixes #285).
             if has_content and not retried_free_text:
                 retried_free_text = True
+                turns_used += 1
+                stall_streak = 0
                 examination.append(
                     f"turn {turn + 1}: free-text response (not a verdict; asked for submit_verdict)"
                 )

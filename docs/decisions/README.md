@@ -53,3 +53,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [047](047-mcp-tools-governed-not-token-gated.md) | An MCP tool is governed by the protocol, not by a token the caller must hold | 2026-09-16 | `mcp/server.py` + `mcp/tools.py` (supersedes 017 as the tool-surface record) |
 | [048](048-coder-report-shape.md) | A coder report is best-effort evidence; it carries a shape, never a verdict | 2026-09-16 | `coders/report.py` (`CoderReport` + `parse_coder_report`) |
 | [049](049-protected-paths-detect-before-prevention.md) | Declared protected paths are detected from the task branch diff | 2026-09-17 | `Protocol.protected_paths` + post-execute gate |
+| [050](050-repeat-reads-are-free-but-bounded.md) | A validator's repeat-read turns are free but separately bounded | 2026-09-18 | `validators/llm_validator.py` (`_evaluate_with_tools`) |
