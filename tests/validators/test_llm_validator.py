@@ -287,6 +287,7 @@ class TestFallback:
 
     def test_llm_transient_dns_error_retries_and_succeeds(self, security_validator, task, monkeypatch):
         monkeypatch.setattr("snodo.validators.llm_validator.supports_response_schema", lambda model: False)
+        monkeypatch.setattr("snodo.validators.llm_validator.time.sleep", lambda _: None)
         import socket
         dns_err = socket.gaierror(8, "nodename nor servname provided, or not known")
         ok_resp = _make_llm_response("pass", "all secure")
@@ -330,6 +331,7 @@ class TestFallback:
         from litellm.exceptions import InternalServerError
 
         monkeypatch.setattr("snodo.validators.llm_validator.supports_response_schema", lambda model: False)
+        monkeypatch.setattr("snodo.validators.llm_validator.time.sleep", lambda _: None)
         err = InternalServerError(
             message="boom", model="deepseek/deepseek-chat",
             llm_provider="deepseek", response=None,
@@ -343,6 +345,49 @@ class TestFallback:
         assert result.error is False
         assert result.severity == "pass"
         assert completion_fn.call_count == 3
+
+    def test_transient_retry_wait_is_long_enough(self, security_validator, task, monkeypatch):
+        """Retries leave enough time for a brief provider fault to clear."""
+        from litellm.exceptions import InternalServerError
+
+        monkeypatch.setattr(
+            "snodo.validators.llm_validator.supports_response_schema", lambda model: False,
+        )
+        monkeypatch.setattr(
+            "snodo.validators.llm_validator.random.uniform",
+            lambda lower, upper: upper,
+        )
+        sleep = MagicMock()
+        monkeypatch.setattr("snodo.validators.llm_validator.time.sleep", sleep)
+        err = InternalServerError(
+            message="brief outage", model="test", llm_provider="test", response=None,
+        )
+        completion_fn = MagicMock(side_effect=[err, err, _make_llm_response("pass", "ok")])
+
+        result = LLMValidator(security_validator, completion_fn).evaluate(task)
+
+        assert result.severity == "pass"
+        assert [call.args[0] for call in sleep.call_args_list] == [1.0, 2.0]
+
+    def test_provider_retry_after_delay_is_honored(self, security_validator, task, monkeypatch):
+        """A provider's Retry-After instruction overrides the local schedule."""
+        from litellm.exceptions import RateLimitError
+
+        monkeypatch.setattr(
+            "snodo.validators.llm_validator.supports_response_schema", lambda model: False,
+        )
+        sleep = MagicMock()
+        monkeypatch.setattr("snodo.validators.llm_validator.time.sleep", sleep)
+        err = RateLimitError(
+            message="slow down", model="test", llm_provider="test",
+            response=None, headers={"Retry-After": "7"},
+        )
+        completion_fn = MagicMock(side_effect=[err, _make_llm_response("pass", "ok")])
+
+        result = LLMValidator(security_validator, completion_fn).evaluate(task)
+
+        assert result.severity == "pass"
+        sleep.assert_called_once_with(7.0)
 
     def test_structured_rejection_degrades_to_unstructured(self, security_validator, task, monkeypatch):
         """A provider rejecting response_format must not take the validator down.
