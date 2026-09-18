@@ -1,11 +1,14 @@
 {
   "cloud_ingest": {
     "$defs": {
-      "CloudSyncEvent": {
-        "description": "One audit event in the published ingest payload.",
+      "AuditEventEnvelope": {
+        "additionalProperties": false,
+        "description": "The fields shared by every event sent to cloud ingest.",
         "properties": {
           "data": {
-            "title": "Data"
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
           },
           "event_hash": {
             "title": "Event Hash",
@@ -16,26 +19,14 @@
             "type": "string"
           },
           "previous_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Previous Hash"
+            "title": "Previous Hash",
+            "type": "string"
           },
           "project_id": {
             "title": "Project Id",
             "type": "string"
           },
           "scope": {
-            "enum": [
-              "",
-              "local",
-              "remote"
-            ],
             "title": "Scope",
             "type": "string"
           },
@@ -44,8 +35,7 @@
             "type": "integer"
           },
           "timestamp": {
-            "title": "Timestamp",
-            "type": "string"
+            "title": "Timestamp"
           }
         },
         "required": [
@@ -58,11 +48,12 @@
           "previous_hash",
           "event_hash"
         ],
-        "title": "CloudSyncEvent",
+        "title": "AuditEventEnvelope",
         "type": "object"
       }
     },
-    "description": "The published audit ingest payload.",
+    "additionalProperties": false,
+    "description": "A cloud ingest request, including its existing 1--50 event bound.",
     "properties": {
       "display_name": {
         "title": "Display Name",
@@ -70,8 +61,10 @@
       },
       "events": {
         "items": {
-          "$ref": "#/$defs/CloudSyncEvent"
+          "$ref": "#/$defs/AuditEventEnvelope"
         },
+        "maxItems": 50,
+        "minItems": 1,
         "title": "Events",
         "type": "array"
       },
@@ -90,7 +83,7 @@
       "display_name",
       "events"
     ],
-    "title": "CloudSyncPayload",
+    "title": "AuditIngestBatch",
     "type": "object"
   },
   "cloud_liveness": {

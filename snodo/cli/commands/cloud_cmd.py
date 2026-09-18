@@ -3,6 +3,7 @@
 FILE: snodo/cli/commands/cloud_cmd.py
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -52,6 +53,35 @@ def cloud_sync(
 ):
     """Ship unsynced audit events to snodo cloud."""
     return cloud_sync_command(sync_all=sync_all, session_id=session, force=force)
+
+
+@app.command(name="schema")
+def cloud_schema(
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit the cloud interface as JSON",
+    ),
+):
+    """Publish the versioned engine-to-cloud payload schemas."""
+    return cloud_schema_command(json_output=json_output)
+
+
+def cloud_schema_command(json_output: bool = True) -> int:
+    """Print the current schemas for the two cloud wire payloads."""
+    from pydantic import TypeAdapter
+
+    from snodo.infrastructure.cloud_interface import CLOUD_INTERFACE_VERSION
+    from snodo.infrastructure.cloud_liveness import LivenessSnapshot
+    from snodo.infrastructure.cloud_sync import AuditIngestBatch
+
+    publication = {
+        "interface_version": CLOUD_INTERFACE_VERSION,
+        "payloads": {
+            "cloud_ingest": TypeAdapter(AuditIngestBatch).json_schema(),
+            "cloud_liveness": TypeAdapter(LivenessSnapshot).json_schema(),
+        },
+    }
+    print(json.dumps(publication, indent=2, sort_keys=True))
+    return 0
 
 
 def cloud_connect_command(api_key: str) -> int:
