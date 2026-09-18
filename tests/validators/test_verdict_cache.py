@@ -143,6 +143,7 @@ def _run(
     git_mcp=None,
     task=None,
     audit_log=None,
+    wave_specs=None,
 ):
     return run_validators(
         protocol=protocol,
@@ -157,6 +158,7 @@ def _run(
         current_mode=protocol.initial_mode,
         audit_log=audit_log,
         verdict_cache=cache,
+        wave_specs=wave_specs,
     )
 
 
@@ -189,6 +191,45 @@ def test_unchanged_spec_and_criteria_reuse_verdict_and_mark_it(tmp_path):
     # says the judgement was reused.
     assert result_record(second[0])["reused"] is True
     assert "reused" not in result_record(first[0])
+
+
+def test_wave_scoped_judge_uses_one_stable_subject_for_siblings(tmp_path):
+    validator = _validator(tooling={"scope": "wave"})
+    protocol = _protocol([validator])
+    cache = _cache(tmp_path)
+    completion = _Completion()
+    wave_one = ["Implement the API", "Add the API tests"]
+    wave_two = ["Implement the UI"]
+
+    first, _ = _run(
+        protocol,
+        [validator],
+        cache,
+        completion,
+        task=Task(id="1.1_api", spec=wave_one[0], wave_id="wave-1"),
+        wave_specs=wave_one,
+    )
+    sibling, _ = _run(
+        protocol,
+        [validator],
+        cache,
+        completion,
+        task=Task(id="1.2_tests", spec=wave_one[1], wave_id="wave-1"),
+        wave_specs=wave_one,
+    )
+    other_wave, _ = _run(
+        protocol,
+        [validator],
+        cache,
+        completion,
+        task=Task(id="2.1_ui", spec=wave_two[0], wave_id="wave-2"),
+        wave_specs=wave_two,
+    )
+
+    assert first[0].reused is False
+    assert sibling[0].reused is True
+    assert other_wave[0].reused is False
+    assert completion.count() == 2
 
 
 def test_editing_one_criterion_invalidates_only_that_validator(tmp_path):

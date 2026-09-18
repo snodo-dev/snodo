@@ -61,6 +61,9 @@ class ValidatorContext:
     #: An optimisation only: a miss or a cache failure is a fresh judgement,
     #: never a halt and never a governance change.
     verdict_cache: Optional[Any] = None
+    #: Specifications for the wave being judged, when a validator ranges over
+    #: the wave rather than only the current task.
+    wave_specs: Optional[List[str]] = None
     #: Tree subject for verdict caching, computed ONCE per validate pass
     #: before the validator pool starts (#246).  The tree does not move within
     #: a pass, so every tree-reading judge must share one digest rather than
