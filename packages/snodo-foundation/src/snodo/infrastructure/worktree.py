@@ -12,6 +12,7 @@ Branch:         task/{id}/{slug}  (always off ``main``)
 import logging
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -185,6 +186,34 @@ def merge_lock(project_root: str):
     lock_path = Path(project_root) / ".snodo" / ".merge.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     return FileLock(str(lock_path), is_singleton=True)
+
+
+def stale_index_lock(project_root: str, error: Exception) -> bool:
+    """Return whether an index lock error names an unheld lock file.
+
+    ``lsof`` is used only as an observer. A missing command or an inspection
+    failure means the lock cannot be diagnosed here, not that it is stale.
+    """
+    if "index.lock" not in str(error):
+        return False
+
+    lock_path = Path(project_root) / ".git" / "index.lock"
+    if not lock_path.exists():
+        return False
+
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed argv; lock path is one argument
+            ["lsof", "-t", "--", str(lock_path)],  # noqa: S607 - resolved from PATH by design
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        _logger.debug("Could not inspect Git index lock %s", lock_path, exc_info=True)
+        return False
+
+    return result.returncode == 1 and not result.stdout.strip()
 
 
 def create_worktree(
@@ -592,4 +621,3 @@ def list_task_branches(project_root: str) -> Tuple[bool, dict]:
     except Exception as e:
         _logger.warning("Could not inspect git task branches: %s", e)
         return False, {}
-

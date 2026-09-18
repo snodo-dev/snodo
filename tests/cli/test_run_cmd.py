@@ -2045,7 +2045,7 @@ class TestUnmergedTaskHandling:
         lock_path.write_text("")
         with patch("snodo.infrastructure.worktree.merge_task_branch", side_effect=GitError("Unable to create '.git/index.lock': File exists.")):
             with patch(
-                "snodo.cli.commands.run_cmd.subprocess.run",
+                "snodo.infrastructure.worktree.subprocess.run",
                 return_value=SimpleNamespace(returncode=1, stdout=""),
             ):
                 success = _try_merge_unmerged_task(
@@ -2108,5 +2108,4 @@ class TestUnmergedTaskHandling:
 
         assert success is None
         repo.close()  # release the persistent git child (Fixes #258)
-
 
