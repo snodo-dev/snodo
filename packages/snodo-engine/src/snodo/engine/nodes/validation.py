@@ -238,8 +238,12 @@ class ValidationNodeMixin:
                 self._progress(f"  Coder returned ({len(artifacts)} artifact(s))")
                 loop_state.metadata["attempt_written_files"] = list(self._last_execution_writes)
                 loop_state.metadata["attempt_read_files"] = dict(self._last_execution_reads)
+                if getattr(self, "_last_findings", None) is not None:
+                    loop_state.metadata["findings"] = self._last_findings
                 if getattr(self, "_last_coder_report", None) is not None:
                     loop_state.metadata["coder_report"] = self._last_coder_report.model_dump()
+                    if "findings" not in loop_state.metadata and getattr(self._last_coder_report, "findings", None) is not None:
+                        loop_state.metadata["findings"] = self._last_coder_report.findings
                 if getattr(self, "_last_output_tail", ""):
                     loop_state.metadata["output_tail"] = getattr(self, "_last_output_tail", "")
                 if getattr(self, "_last_timed_out", False):

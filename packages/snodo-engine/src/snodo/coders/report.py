@@ -142,6 +142,11 @@ class CoderReport(BaseModel):
     #: coder does not say. Never mapped onto a halt here.
     stop_reason: Optional[StopReason] = None
 
+    # --- What it found (non-diff deliverables) -----------------------------
+    #: Findings produced by this task when its deliverable is findings
+    #: (a survey, investigation, or recommendation) rather than a file diff.
+    findings: Optional[Any] = None
+
     @classmethod
     def empty(cls) -> "CoderReport":
         """A report with every field absent — a coder that did the work and
@@ -203,6 +208,7 @@ def build_coder_report(
     tokens_used: Optional[int] = None,
     elapsed_ms: Optional[int] = None,
     workspace: Any = None,
+    findings: Optional[Any] = None,
 ) -> Optional[CoderReport]:
     """Assemble the report a coder's loop already holds the facts for.
 
@@ -220,6 +226,7 @@ def build_coder_report(
             tokens_used=tokens_used,
             wall_time_ms=elapsed_ms,
             stop_reason=stop_reason,
+            findings=findings,
         )
     except Exception as e:
         _logger.warning(
@@ -310,3 +317,6 @@ def print_coder_report(report: Any) -> None:
     unclaimed_present = report_data.get("unclaimed_but_present") or report_data.get("unclaimed_present") or []
     if unclaimed_present:
         print(f"    unclaimed-but-present: {', '.join(unclaimed_present)}")
+    findings = report_data.get("findings")
+    if findings:
+        print(f"    findings:              {findings}")

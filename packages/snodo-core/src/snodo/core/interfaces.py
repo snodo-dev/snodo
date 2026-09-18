@@ -65,6 +65,10 @@ class Coder(ABC):
     #: during implementation (e.g. LiteLLMAdapter with test runner access).
     #: Default False: the coder does not observe tests.
     observes_tests: bool = False
+    #: Best-effort coder report from the last implementation run.
+    last_report: Optional[Any] = None
+    #: Substantive findings from the last implementation run (for non-diff tasks).
+    last_findings: Optional[Any] = None
 
     @classmethod
     def availability_requirements(cls) -> tuple:
@@ -203,3 +207,4 @@ class CodeArtifact(BaseModel):
     """Generated code output — list of file operations."""
     files: List[FileArtifact] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    findings: Optional[Any] = None

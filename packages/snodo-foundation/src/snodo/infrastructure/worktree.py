@@ -661,3 +661,20 @@ def list_task_branches(project_root: str) -> Tuple[bool, dict]:
     except Exception as e:
         _logger.warning("Could not inspect git task branches: %s", e)
         return False, {}
+
+
+def task_branch_has_no_changes(project_root: str, task_id: str, spec: str = "") -> bool:
+    """True when the task branch HEAD matches the base branch commit (no diff produced)."""
+    try:
+        from snodo.tools.git import open_repo, resolve_base_branch
+        branch = task_branch_name(task_id, spec)
+        with open_repo(str(Path(project_root))) as repo:
+            base = resolve_base_branch(project_root)
+            return bool(
+                branch in repo.heads
+                and base in repo.heads
+                and repo.heads[branch].commit == repo.heads[base].commit
+            )
+    except Exception:
+        return False
+
