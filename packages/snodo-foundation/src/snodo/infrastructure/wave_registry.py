@@ -26,6 +26,7 @@ from filelock import FileLock
 from snodo.infrastructure.config import ClassifierConfig, WaveConfig
 
 _logger = logging.getLogger(__name__)
+_classifier_failure_streak = 0
 
 FLOW_TYPES = {"feature", "defect", "debt", "risk"}
 
@@ -279,26 +280,27 @@ class WaveRegistry:
         after retry, ``wave_id`` and ``task_summary`` are None — the caller
         must not mint a wave.
         """
+        removed_parameters: set[str] = set()
+        kwargs: dict = {
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": self._classifier.max_tokens,
+            "temperature": self._classifier.temperature,
+        }
         for attempt in range(2):
             try:
                 if completion_fn is None:
                     from litellm import completion as completion_fn
 
-                kwargs: dict = {
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": self._classifier.max_tokens,
-                    "temperature": self._classifier.temperature,
-                }
-
                 # Request structured JSON when the provider supports it (R4)
-                try:
-                    from litellm import supports_response_format
-                    if supports_response_format(
-                        model, {"type": "json_object"}
-                    ):
-                        kwargs["response_format"] = {"type": "json_object"}
-                except Exception as e:
-                    _logger.debug("Failed to check litellm response_format support: %s", e)
+                if "response_format" not in kwargs:
+                    try:
+                        from litellm import supports_response_format
+                        if supports_response_format(
+                            model, {"type": "json_object"}
+                        ):
+                            kwargs["response_format"] = {"type": "json_object"}
+                    except Exception as e:
+                        _logger.debug("Failed to check litellm response_format support: %s", e)
 
                 response = completion_fn(**kwargs)
                 content = response.choices[0].message.content
@@ -318,17 +320,66 @@ class WaveRegistry:
                         and task_summary
                         and (wave_id != "new" or parsed.get("feature_description"))
                     ):
+                        global _classifier_failure_streak
+                        _classifier_failure_streak = 0
                         return parsed
             except Exception as e:
+                parameter = _provider_rejected_parameter(e)
+                if (
+                    parameter
+                    and parameter in kwargs
+                    and parameter not in removed_parameters
+                ):
+                    removed_parameters.add(parameter)
+                    del kwargs[parameter]
+                    _logger.warning(
+                        "Classifier provider rejected parameter %s (model=%s): %s; "
+                        "retrying without it",
+                        parameter,
+                        model,
+                        e,
+                    )
+                    continue
                 _logger.warning(
                     "Classifier LLM call attempt %d failed: %s",
                     attempt + 1, e,
                 )
 
+        _classifier_failure_streak += 1
+        if _classifier_failure_streak == 1:
+            message = (
+                "Classifier failed after 2 attempts — leaving task unwaved "
+                "(non-fatal)"
+            )
+        else:
+            message = (
+                "Classifier has failed %d consecutive times — leaving task "
+                "unwaved (non-fatal; repeated failures may indicate a "
+                "provider or configuration problem)"
+            ) % _classifier_failure_streak
         _logger.warning(
-            "Classifier failed after 2 attempts — leaving task unwaved"
+            message
         )
         return _fallback()
+
+
+def _provider_rejected_parameter(e: Exception) -> Optional[str]:
+    """Extract a named request parameter rejected by an LLM provider."""
+    message = str(e)
+    patterns = (
+        r"(?:unsupported|unrecognized|unknown|invalid)\s+(?:request\s+)?"
+        r"(?:parameter|param|argument)\s*[:=]?\s*[`'\"]?"
+        r"([A-Za-z_][A-Za-z0-9_.-]*)",
+        r"[`'\"]([A-Za-z_][A-Za-z0-9_.-]*)[`'\"]?\s+"
+        r"(?:does\s+not\s+support|is\s+not\s+supported|not\s+supported|"
+        r"unsupported|invalid)",
+        r"\b([A-Za-z_][A-Za-z0-9_.-]*)\b\s+is\s+not\s+supported",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, message, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
 
 
 def _parse_json(content: str) -> Optional[dict]:
