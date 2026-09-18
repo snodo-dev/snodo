@@ -1181,9 +1181,7 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
     worktree is left for the caller's normal teardown. On a conflict the task
     is escalated: the branch and worktree survive for a human to resolve.
     """
-    from snodo.infrastructure.worktree import (
-        task_branch_name, merge_task_branch, merge_head_sha, merge_lock,
-    )
+    from snodo.infrastructure.worktree import task_branch_name, merge_task_branch, merge_head_sha, merge_lock, stale_index_lock
     from snodo.tools.git import GitError
 
     spec_for_branch = getattr(task, "root_spec", None) or task.spec
@@ -1253,6 +1251,8 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
                 outcome, conflicting_paths = res, []
         except GitError as e:
             print(f"✗ Merge failed for {branch}: {e}", file=sys.stderr)
+            if stale_index_lock(project_root, e):
+                print("  Stale Git index lock: no process is holding .git/index.lock. Clear it with: rm .git/index.lock", file=sys.stderr)
             print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
             if audit_log:
                 audit_log.append_event("merge_failed_escalated", {
@@ -1769,4 +1769,3 @@ def _record_task_completion(
         atomic_update_json(task_dir, "state.json", _update)
     except Exception as e:
         _logger.debug("Could not record task completion: %s", e)
-

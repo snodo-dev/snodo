@@ -2003,7 +2003,7 @@ class TestUnmergedTaskHandling:
         # `git cat-file` child until close (Fixes #258).
         repo.close()
 
-    def test_try_merge_unmerged_task_merge_failure(self, temp_project):
+    def test_try_merge_unmerged_task_merge_failure(self, temp_project, capsys):
         """_try_merge_unmerged_task returns False and marks unmerged when merge fails."""
         from git import Repo
         from snodo.cli.commands.run_cmd import _try_merge_unmerged_task
@@ -2041,15 +2041,26 @@ class TestUnmergedTaskHandling:
             "command": "pytest",
         })
 
+        lock_path = temp_project / ".git" / "index.lock"
+        lock_path.write_text("")
         with patch("snodo.infrastructure.worktree.merge_task_branch", side_effect=GitError("Unable to create '.git/index.lock': File exists.")):
-            success = _try_merge_unmerged_task(
-                str(temp_project),
-                task_id,
-                spec,
-                audit_log=audit_log,
-            )
+            with patch(
+                "snodo.infrastructure.worktree.subprocess.run",
+                return_value=SimpleNamespace(returncode=1, stdout=""),
+            ):
+                success = _try_merge_unmerged_task(
+                    str(temp_project),
+                    task_id,
+                    spec,
+                    audit_log=audit_log,
+                )
 
         assert success is False
+        err = capsys.readouterr().err
+        assert "Unable to create '.git/index.lock': File exists." in err
+        assert "Stale Git index lock" in err
+        assert "rm .git/index.lock" in err
+        assert lock_path.exists()
         state_file = temp_project / ".snodo" / "tasks" / task_id / "state.json"
         assert state_file.exists()
         import json
@@ -2097,6 +2108,4 @@ class TestUnmergedTaskHandling:
 
         assert success is None
         repo.close()  # release the persistent git child (Fixes #258)
-
-
 
