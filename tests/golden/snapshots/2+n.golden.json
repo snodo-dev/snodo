@@ -126,6 +126,7 @@
       "judges_spec": false,
       "max_tool_turns": null,
       "model": null,
+      "scope": "task",
       "severity_cap": null,
       "tooling": {},
       "tools": [
@@ -146,6 +147,7 @@
       "judges_spec": false,
       "max_tool_turns": null,
       "model": null,
+      "scope": "task",
       "severity_cap": null,
       "tooling": {},
       "tools": [
@@ -166,6 +168,7 @@
       "judges_spec": false,
       "max_tool_turns": null,
       "model": null,
+      "scope": "task",
       "severity_cap": null,
       "tooling": {},
       "tools": [
@@ -182,6 +185,7 @@
       "judges_spec": false,
       "max_tool_turns": null,
       "model": null,
+      "scope": "task",
       "severity_cap": null,
       "tooling": {
         "test_command": "echo 'snodo: no test_command configured; no tests executed'"
@@ -199,6 +203,7 @@
       "judges_spec": false,
       "max_tool_turns": null,
       "model": null,
+      "scope": "task",
       "severity_cap": "warn",
       "tooling": {},
       "tools": [],
@@ -218,6 +223,7 @@
       "judges_spec": true,
       "max_tool_turns": null,
       "model": null,
+      "scope": "task",
       "severity_cap": null,
       "tooling": {},
       "tools": [],
@@ -233,6 +239,7 @@
       "judges_spec": false,
       "max_tool_turns": null,
       "model": null,
+      "scope": "task",
       "severity_cap": "warn",
       "tooling": {},
       "tools": [
