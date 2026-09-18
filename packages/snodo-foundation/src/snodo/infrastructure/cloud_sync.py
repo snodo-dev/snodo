@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
 
@@ -26,6 +28,32 @@ _logger = logging.getLogger(__name__)
 
 _MAX_BATCH_SIZE = 50
 _MAX_RETRIES = 5
+
+
+class AuditEventEnvelope(BaseModel):
+    """The fields shared by every event sent to cloud ingest."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sequence: int
+    timestamp: Any
+    event_type: str
+    project_id: str
+    scope: str
+    data: dict[str, Any]
+    previous_hash: str
+    event_hash: str
+
+
+class AuditIngestBatch(BaseModel):
+    """A cloud ingest request, including its existing 1--50 event bound."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    project_path: str
+    display_name: str
+    events: list[AuditEventEnvelope] = Field(min_length=1, max_length=_MAX_BATCH_SIZE)
 
 
 class CloudSyncState:
@@ -294,12 +322,16 @@ class CloudSyncDispatcher:
             })
 
         display_name = Path(project_root).name if project_root else ""
-        body = json.dumps({
+        payload = {
             "session_id": session_id,
             "project_path": project_root,
             "display_name": display_name,
             "events": payload_events,
-        }).encode()
+        }
+        # Validate the contract without serializing the model: the original
+        # values and field set must remain byte-for-byte unchanged on the wire.
+        AuditIngestBatch.model_validate(payload)
+        body = json.dumps(payload).encode()
 
         url = f"{api_url.rstrip('/')}/ingest"
         first_seq = batch[0].sequence
