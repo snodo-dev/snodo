@@ -27,6 +27,7 @@ Tool-loop (capability-grant):
 
 import json
 import logging
+import random
 import re
 import time
 from typing import Any, Dict, List, Optional, Set
@@ -56,6 +57,10 @@ _logger = logging.getLogger(__name__)
 # Maximum tool-use turns before forcing a verdict.
 _DEFAULT_MAX_TOOL_TURNS = 20
 _DEFAULT_MAX_TOKENS = 1500
+_RETRY_ATTEMPTS = 3
+_RETRY_BASE_DELAY_SECONDS = 1.0
+_RETRY_BUDGET_SECONDS = 30.0
+_RETRY_JITTER_RATIO = 0.5
 
 # Fixed read-only tool names — the only tools a validator may ever use.
 _READ_ONLY_TOOL_NAMES: Set[str] = {
@@ -196,6 +201,27 @@ def _is_provider_rejection(e: Exception) -> bool:
     if isinstance(status, int):
         return 400 <= status < 500 and status != 429
     return False
+
+
+def _provider_retry_delay(e: Exception) -> Optional[float]:
+    """Return a provider-supplied retry delay, if the exception carries one."""
+    candidates = [getattr(e, "retry_after", None)]
+    headers = getattr(e, "headers", None)
+    response = getattr(e, "response", None)
+    response_headers = getattr(response, "headers", None)
+    for header_map in (headers, response_headers):
+        if header_map is not None:
+            candidates.append(header_map.get("retry-after"))
+            candidates.append(header_map.get("Retry-After"))
+
+    for value in candidates:
+        try:
+            delay = float(value)
+        except (TypeError, ValueError):
+            continue
+        if delay >= 0:
+            return delay
+    return None
 
 
 def _usage_tokens(response: Any, kind: str) -> int:
@@ -1064,22 +1090,37 @@ class LLMValidator(ValidatorBase):
         Retries up to 3 times on transient errors (5xx, 429, connection, DNS,
         timeout). Raises the underlying exception if retries are exhausted or
         the error is not transient (a 4xx other than 429 is a client error —
-        retrying it is not honest).
+        retrying it is not honest). The retry sleeps share a 30-second budget
+        per validator call so an unavailable provider cannot stall a run
+        indefinitely. Provider Retry-After hints take precedence.
         """
-        max_retries = 3
-        for attempt in range(max_retries):
+        retry_deadline = time.monotonic() + _RETRY_BUDGET_SECONDS
+        for attempt in range(_RETRY_ATTEMPTS):
             try:
                 return self._completion_fn(**kwargs)
             except Exception as e:
                 is_transient = _is_transient_error(e)
-                if is_transient and attempt < max_retries - 1:
+                if is_transient and attempt < _RETRY_ATTEMPTS - 1:
+                    remaining_budget = retry_deadline - time.monotonic()
+                    if remaining_budget <= 0:
+                        raise
+
+                    provider_delay = _provider_retry_delay(e)
+                    if provider_delay is None:
+                        exponential_delay = _RETRY_BASE_DELAY_SECONDS * (2 ** attempt)
+                        jitter_floor = exponential_delay * _RETRY_JITTER_RATIO
+                        delay = random.uniform(jitter_floor, exponential_delay)  # noqa: S311 - retry jitter is not security-sensitive
+                    else:
+                        delay = provider_delay
+                    delay = min(delay, remaining_budget)
                     _logger.warning(
-                        "Transient LLM provider error on attempt %d for validator %s: %s; retrying...",
+                        "Transient LLM provider error on attempt %d for validator %s: %s; retrying in %.2fs...",
                         attempt + 1,
                         self.validator_spec.validator_id,
                         e,
+                        delay,
                     )
-                    time.sleep(0.05 * (2 ** attempt))
+                    time.sleep(delay)
                 else:
                     raise
 
