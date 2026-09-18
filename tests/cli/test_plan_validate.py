@@ -352,3 +352,288 @@ def test_plan_validate_fails_on_corrupt_status_json(plan_env, capsys):
     err = capsys.readouterr().err
     assert "Failed to parse status.json" in err
 
+
+def test_plan_validate_reports_spec_validator_warn_without_dispatching(plan_env, capsys):
+    """A plan whose spec text draws a warn reports it at plan-validate time, without dispatching."""
+    snodo_dir = plan_env / ".snodo"
+    protocol_content = """
+protocol_id: "test_spec_judge"
+name: "Spec Judge Test Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit", "validate"]
+    validators: ["spec-manners", "architecture"]
+validators:
+  - validator_id: "spec-manners"
+    validator_type: "conventions"
+    evaluation_phase: "pre_execute"
+    severity_cap: "warn"
+    judges_spec: true
+    criteria:
+      - "WARN if the spec is code-prescriptive (transcribed implementation) rather than intent + constraints."
+  - validator_id: "architecture"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    tools:
+      - "read_file"
+      - "list_files"
+    criteria:
+      - "Check design patterns and separation of concerns"
+disagreement_policy: "unanimous"
+""".strip()
+    (snodo_dir / "protocol.yml").write_text(protocol_content)
+
+    plans_dir = snodo_dir / "plans" / "spec_warn_plan"
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    plan_data = {
+        "name": "spec_warn_plan",
+        "intent": "Test plan validation reports spec warn",
+        "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_setup"]}],
+    }
+    (plans_dir / "plan.yml").write_text(yaml.dump(plan_data))
+
+    w1_dir = plans_dir / "wave_1"
+    w1_dir.mkdir(parents=True, exist_ok=True)
+    prescriptive_spec = (
+        "Fix the crash when session expires.\n"
+        "Acceptance: no crash.\n"
+        "Implement it exactly as follows in src/auth/session.py:\n"
+        "```python\n"
+        "if session.user is None:\n"
+        "    raise ExpiredSessionError()\n"
+        "user = session.user\n"
+        "```\n"
+    )
+    (w1_dir / "1.1_setup_task.md").write_text(prescriptive_spec)
+
+    def fake_judge_completion(**kwargs):
+        from unittest.mock import MagicMock
+        msg = MagicMock()
+        msg.content = json.dumps({
+            "severity": "warn",
+            "justification": (
+                "The specification is heavily code-prescriptive, detailing exact "
+                "code paths rather than focusing purely on intent and constraints."
+            ),
+        })
+        resp = MagicMock()
+        resp.choices = [MagicMock(message=msg)]
+        return resp
+
+    dispatched = []
+    with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=lambda *a, **kw: dispatched.append(a)):
+        args = SimpleNamespace(
+            plan_action="validate",
+            name="spec_warn_plan",
+            json_output=False,
+            completion_fn=fake_judge_completion,
+        )
+        result = plan_command(args)
+
+    # 1. Advice, not a gate: validation must pass (exit code 0).
+    assert result == 0
+    # 2. No dispatch must have occurred.
+    assert len(dispatched) == 0
+    # 3. The warning must be reported at plan-validate time.
+    err = capsys.readouterr().err
+    assert "Warnings:" in err
+    assert "spec-manners" in err
+    assert "code-prescriptive" in err
+    assert "1.1_setup" in err
+
+
+def test_plan_validate_spec_warn_json_output(plan_env, capsys):
+    """snodo plan validate --json reports spec validator warning in warnings array with passed=True."""
+    snodo_dir = plan_env / ".snodo"
+    protocol_content = """
+protocol_id: "test_spec_judge_json"
+name: "Spec Judge Test Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["spec-manners"]
+validators:
+  - validator_id: "spec-manners"
+    validator_type: "conventions"
+    evaluation_phase: "pre_execute"
+    severity_cap: "warn"
+    judges_spec: true
+    criteria: ["WARN on code prescription"]
+disagreement_policy: "unanimous"
+""".strip()
+    (snodo_dir / "protocol.yml").write_text(protocol_content)
+
+    plans_dir = snodo_dir / "plans" / "spec_warn_json"
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    plan_data = {
+        "name": "spec_warn_json",
+        "intent": "Test JSON output reports warn",
+        "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_task"]}],
+    }
+    (plans_dir / "plan.yml").write_text(yaml.dump(plan_data))
+
+    w1_dir = plans_dir / "wave_1"
+    w1_dir.mkdir(parents=True, exist_ok=True)
+    (w1_dir / "1.1_task_task.md").write_text("Prescriptive task spec")
+
+    def fake_judge_completion(**kwargs):
+        from unittest.mock import MagicMock
+        msg = MagicMock()
+        msg.content = json.dumps({
+            "severity": "warn",
+            "justification": "Spec is code-prescriptive.",
+        })
+        resp = MagicMock()
+        resp.choices = [MagicMock(message=msg)]
+        return resp
+
+    args = SimpleNamespace(
+        plan_action="validate",
+        name="spec_warn_json",
+        json_output=True,
+        completion_fn=fake_judge_completion,
+    )
+    result = plan_command(args)
+    assert result == 0
+
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert data["schema"] == "snodo.plan_validate.v1"
+    assert data["plan"] == "spec_warn_json"
+    assert data["passed"] is True
+    assert data["errors"] == []
+    assert len(data["warnings"]) == 1
+    assert "spec-manners" in data["warnings"][0]
+    assert "1.1_task" in data["warnings"][0]
+
+
+def test_plan_validate_does_not_run_repo_reading_validators(plan_env, capsys):
+    """Repo-reading validators are NOT eligible and must never run during plan validation."""
+    snodo_dir = plan_env / ".snodo"
+    protocol_content = """
+protocol_id: "test_no_repo_reading"
+name: "Test Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["architecture", "security"]
+validators:
+  - validator_id: "architecture"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    tools: ["read_file", "list_files"]
+    criteria: ["Check architecture"]
+  - validator_id: "security"
+    validator_type: "security"
+    evaluation_phase: "pre_execute"
+    tools: ["read_file"]
+    criteria: ["Check security"]
+disagreement_policy: "unanimous"
+""".strip()
+    (snodo_dir / "protocol.yml").write_text(protocol_content)
+
+    plans_dir = snodo_dir / "plans" / "no_repo_plan"
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    plan_data = {
+        "name": "no_repo_plan",
+        "intent": "Test repo-reading validators do not run",
+        "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_setup"]}],
+    }
+    (plans_dir / "plan.yml").write_text(yaml.dump(plan_data))
+
+    w1_dir = plans_dir / "wave_1"
+    w1_dir.mkdir(parents=True, exist_ok=True)
+    (w1_dir / "1.1_setup_task.md").write_text("Clean spec")
+
+    called_validators = []
+
+    def tracking_completion(**kwargs):
+        called_validators.append(kwargs)
+        raise AssertionError("Should never be called for repo-reading validators")
+
+    args = SimpleNamespace(
+        plan_action="validate",
+        name="no_repo_plan",
+        json_output=False,
+        completion_fn=tracking_completion,
+    )
+    result = plan_command(args)
+    assert result == 0
+    assert len(called_validators) == 0
+
+
+def test_plan_validate_blocker_verdict_is_advisory_not_blocking(plan_env, capsys):
+    """A blocker verdict at plan-validate time is advice, not a gate: it must not fail validation."""
+    snodo_dir = plan_env / ".snodo"
+    protocol_content = """
+protocol_id: "test_spec_blocker"
+name: "Spec Blocker Protocol"
+version: "1.0.0"
+initial_mode: "producer"
+modes:
+  - mode_id: "producer"
+    name: "Producer"
+    tools: ["edit"]
+    validators: ["meta-spec"]
+validators:
+  - validator_id: "meta-spec"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    judges_spec: true
+    criteria: ["Block if spec is entirely code."]
+disagreement_policy: "unanimous"
+""".strip()
+    (snodo_dir / "protocol.yml").write_text(protocol_content)
+
+    plans_dir = snodo_dir / "plans" / "blocker_plan"
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    plan_data = {
+        "name": "blocker_plan",
+        "intent": "Test blocker is advice",
+        "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_task"]}],
+    }
+    (plans_dir / "plan.yml").write_text(yaml.dump(plan_data))
+
+    w1_dir = plans_dir / "wave_1"
+    w1_dir.mkdir(parents=True, exist_ok=True)
+    (w1_dir / "1.1_task_task.md").write_text("Pure code spec")
+
+    def fake_blocker_completion(**kwargs):
+        from unittest.mock import MagicMock
+        msg = MagicMock()
+        msg.content = json.dumps({
+            "severity": "blocker",
+            "justification": "Spec contains >40% transcribed code; must be intent-first.",
+        })
+        resp = MagicMock()
+        resp.choices = [MagicMock(message=msg)]
+        return resp
+
+    args = SimpleNamespace(
+        plan_action="validate",
+        name="blocker_plan",
+        json_output=True,
+        completion_fn=fake_blocker_completion,
+    )
+    result = plan_command(args)
+    # Crucial: advice, not a gate — validation does not fail (exit 0)
+    assert result == 0
+
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert data["passed"] is True
+    assert len(data["warnings"]) == 1
+    assert "meta-spec" in data["warnings"][0]
+    assert "[blocker]" in data["warnings"][0]
+
+
+
