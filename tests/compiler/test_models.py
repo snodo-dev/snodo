@@ -247,6 +247,19 @@ def test_validator_accepts_any_type():
     assert v.validator_type == "custom_my_checker"
 
 
+def test_validator_scope_defaults_to_task_and_accepts_wave():
+    """Validator scope is task by default and can target its containing wave."""
+    existing = Validator(validator_id="existing", validator_type="security")
+    wave_validator = Validator(
+        validator_id="architecture",
+        validator_type="architecture",
+        scope="wave",
+    )
+
+    assert existing.scope == "task"
+    assert wave_validator.scope == "wave"
+
+
 def test_constraint_invalid_id():
     """Test constraint with invalid ID."""
     with pytest.raises(ValidationError, match="constraint_id must be alphanumeric"):

@@ -79,6 +79,7 @@
       "judges_spec": true,
       "max_tool_turns": null,
       "model": null,
+      "scope": "task",
       "severity_cap": "warn",
       "tooling": {},
       "tools": [],
