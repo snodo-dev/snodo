@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -135,6 +136,41 @@ def _spec_referenced_paths(spec: str) -> List[str]:
     return found
 
 
+def workspace_roots(project_root: str) -> List[Path]:
+    """Return the repository root and explicitly declared workspace roots.
+
+    Workspace members come from the repository's ``uv`` workspace metadata.
+    We do not search arbitrary descendants: resolving a package-relative path
+    from an unrelated package would be worse than reporting it missing.
+    """
+    root = Path(project_root)
+    roots = [root]
+    metadata = root / "pyproject.toml"
+    try:
+        with metadata.open("rb") as handle:
+            members = tomllib.load(handle).get("tool", {}).get("uv", {}).get("workspace", {}).get("members", [])
+        for pattern in members:
+            for member in root.glob(str(pattern)):
+                if member.is_dir() and member not in roots:
+                    roots.append(member)
+    except (OSError, tomllib.TOMLDecodeError, TypeError):
+        pass
+    return roots
+
+
+def planned_spec_paths(spec: str) -> List[str]:
+    """Return cited paths this spec explicitly says it will create."""
+    paths: List[str] = []
+    for line in spec.splitlines():
+        lowered = line.lower()
+        if not re.search(r"\b(new file|create|created|will create|add .*file)\b", lowered):
+            continue
+        for path in _spec_referenced_paths(line):
+            if path not in paths:
+                paths.append(path)
+    return paths
+
+
 def check_spec_paths_exist(
     project_root: str,
     spec: str,
@@ -148,10 +184,14 @@ def check_spec_paths_exist(
     (issue #93). This is a warning, not a halt: specs legitimately name paths
     that are meant to be created, and only the operator can tell the two apart.
     """
-    base = Path(worktree) if worktree else Path(project_root)
+    roots = workspace_roots(project_root)
+    if worktree:
+        project_path = Path(project_root).resolve()
+        roots = [Path(worktree) / root.resolve().relative_to(project_path) for root in roots]
     missing = []
     for rel in _spec_referenced_paths(spec):
-        if not (base / rel).exists():
+        matches = [root / rel for root in roots if (root / rel).exists()]
+        if len(matches) != 1:
             missing.append(rel)
     return missing
 

@@ -9,6 +9,7 @@ import pytest
 import yaml
 from snodo.compiler.models import Plan
 from snodo.compiler.verifier import PlanWellFormednessError, verify_plan
+from snodo.compiler.verifier import verify_plan_dir
 from snodo.mcp.planner import PlannerError, PlannerMCP
 
 # ============================================================================
@@ -191,6 +192,48 @@ def test_verify_plan_missing_intent_or_waves():
     res = verify_plan(plan_no_waves)
     assert res.passed is False
     assert "No waves defined" in res.errors
+
+
+def _write_path_validation_plan(tmp_path, cited_path: str, spec_prefix: str = "Update"):
+    """Create a plan fixture with an explicit uv workspace member."""
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.uv.workspace]\nmembers = [\"packages/*\"]\n"
+    )
+    plan_dir = tmp_path / ".snodo" / "plans" / "path_plan"
+    wave_dir = plan_dir / "wave_1"
+    wave_dir.mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text(yaml.safe_dump({
+        "name": "path_plan",
+        "intent": "Validate cited paths",
+        "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_paths"]}],
+    }))
+    (wave_dir / "1.1_paths_task.md").write_text(
+        f"# Task\n\n{spec_prefix} `{cited_path}`.\n"
+    )
+    return plan_dir
+
+
+def test_verify_plan_resolves_package_relative_spec_path(tmp_path):
+    """A path relative to one declared workspace package is not missing."""
+    package_file = tmp_path / "packages" / "video" / "consumers" / "video-task.ts"
+    package_file.parent.mkdir(parents=True)
+    package_file.write_text("export {}\n")
+    plan_dir = _write_path_validation_plan(tmp_path, "consumers/video-task.ts")
+
+    result = verify_plan_dir(plan_dir, workspace_root=tmp_path)
+
+    assert result.passed
+    assert not any("video-task.ts" in error for error in result.errors)
+
+
+def test_verify_plan_rejects_spec_path_missing_from_all_workspace_roots(tmp_path):
+    """A cited path absent from the root and declared packages invalidates a plan."""
+    plan_dir = _write_path_validation_plan(tmp_path, "consumers/nowhere.ts")
+
+    result = verify_plan_dir(plan_dir, workspace_root=tmp_path)
+
+    assert result.passed is False
+    assert "Missing referenced path in spec 1.1_paths: consumers/nowhere.ts" in result.errors
 
 
 # ============================================================================

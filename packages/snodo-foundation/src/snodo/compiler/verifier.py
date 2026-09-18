@@ -472,7 +472,11 @@ class PlanWellFormednessError(Exception):
         )
 
 
-def verify_plan(plan: Plan, plan_dir: Optional[Path] = None) -> PlanVerificationResult:
+def verify_plan(
+    plan: Plan,
+    plan_dir: Optional[Path] = None,
+    workspace_root: Optional[Path] = None,
+) -> PlanVerificationResult:
     """Verify well-formedness of a Plan model.
 
     Checks:
@@ -482,7 +486,8 @@ def verify_plan(plan: Plan, plan_dir: Optional[Path] = None) -> PlanVerification
     4. Wave-number gaps (e.g. waves 1, 3 without 2)
     5. Status entries with no matching task in plan waves
     6. Tasks with missing spec files (when plan_dir is provided)
-    7. Unknown wave dependency references
+    7. Spec-referenced paths resolved from the repository and declared workspace roots
+    8. Unknown wave dependency references
 
     Args:
         plan: Plan model instance
@@ -574,14 +579,26 @@ def verify_plan(plan: Plan, plan_dir: Optional[Path] = None) -> PlanVerification
             else:
                 break
 
-    # Check tasks with no spec file (when plan_dir provided)
+    # Check tasks with no spec file and cited paths that cannot be resolved.
     if plan_dir and plan_dir.exists():
+        from snodo.infrastructure.worktree import check_spec_paths_exist, planned_spec_paths
+
+        root = workspace_root or plan_dir.parents[2]
+        earlier_created: Set[str] = set()
         for w in plan.waves:
             wave_dir = plan_dir / f"wave_{w.id}"
             for task_id in w.tasks:
                 spec_file = wave_dir / f"{task_id}_task.md"
                 if not spec_file.exists():
                     errors.append(f"Missing spec: {task_id}")
+                    continue
+                spec = spec_file.read_text()
+                created_by_task = set(planned_spec_paths(spec))
+                missing_paths = check_spec_paths_exist(str(root), spec)
+                for path in missing_paths:
+                    if path not in earlier_created and path not in created_by_task:
+                        errors.append(f"Missing referenced path in spec {task_id}: {path}")
+                earlier_created.update(created_by_task)
 
     return PlanVerificationResult(
         passed=len(errors) == 0,
@@ -590,7 +607,10 @@ def verify_plan(plan: Plan, plan_dir: Optional[Path] = None) -> PlanVerification
     )
 
 
-def verify_plan_dir(plan_dir: Path) -> PlanVerificationResult:
+def verify_plan_dir(
+    plan_dir: Path,
+    workspace_root: Optional[Path] = None,
+) -> PlanVerificationResult:
     """Load and verify a plan directory on disk.
 
     Args:
@@ -655,4 +675,4 @@ def verify_plan_dir(plan_dir: Path) -> PlanVerificationResult:
             warnings=[],
         )
 
-    return verify_plan(plan, plan_dir=plan_dir)
+    return verify_plan(plan, plan_dir=plan_dir, workspace_root=workspace_root)
