@@ -77,8 +77,8 @@ export SNODO_TOKEN_SECRET=$(openssl rand -hex 32)
 ### The full configuration file
 
 Configuration lives in `~/.snodo/config.yml` (`$SNODO_HOME` overrides the
-location). Manage it with `snodo config` rather than editing by hand; the file
-below is the whole surface, with the defaults and ranges shown.
+location). The file below is the whole surface, with the defaults and ranges
+shown.
 
 ```yaml
 model: deepseek/deepseek-v4                   # default for all roles
@@ -129,7 +129,8 @@ cloud:
                                             # hear from a quiet run more often
 ```
 
-Every key is settable without hand-editing:
+Three shapes of key are settable without hand-editing — the bare key
+`model`, anything under `engine.`, and anything under `llm.`:
 
 ```bash
 snodo config set model deepseek/deepseek-v4
@@ -138,6 +139,13 @@ snodo config set llm.validator.model openai/@cf/google/gemma-4
 snodo config set llm.recon.num_agents 2
 snodo config get llm.coder.max_tool_turns
 ```
+
+Anything else — and the keys an operator reaches for first are in this group,
+`cloud.sync_enabled`, `cloud.liveness_interval_seconds`, `cloud.api_url`, and
+the provider endpoint settings `base_url`, `litellm_provider` and
+`api_key_env` — is answered with `Unknown config key` and can only be changed
+by editing `~/.snodo/config.yml` by hand. The only provider field with its own
+commands is `api_key`: `snodo config add` and `snodo config remove` manage it.
 
 Anthropic, OpenAI, Google, OpenRouter, DeepSeek and Cloudflare Workers AI have
 built-in provider configuration. `litellm_provider: openai` is what makes an
