@@ -21,7 +21,7 @@ from litellm import supports_response_schema
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import ValidatorResult
 from snodo.validators.context import ValidatorContext, ValidatorBase
-from snodo.validators.llm_validator import _is_provider_rejection
+from snodo.validators.llm_validator import LLMValidator, _is_provider_rejection
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
 
@@ -271,7 +271,7 @@ class ProtocolAdherenceValidator(ValidatorBase):
     # ------------------------------------------------------------------
 
     def _call_llm(self, prompt: str) -> str:
-        response = self._completion_fn(
+        response = self._call_completion_with_retry(
             # No "model" here on purpose: the completion function is a partial
             # with model AND api_base already bound together (#237). Passing a
             # model kwarg overrides the bound model without its api_base, and
@@ -292,7 +292,7 @@ class ProtocolAdherenceValidator(ValidatorBase):
         is guaranteed to be valid JSON matching the ValidatorResult schema.
         Zero free-text parsing.
         """
-        response = self._completion_fn(
+        response = self._call_completion_with_retry(
             # No "model" here on purpose — see _call_llm (#255).
             _configured_model=self.model,
             messages=[{"role": "user", "content": prompt}],
@@ -302,6 +302,14 @@ class ProtocolAdherenceValidator(ValidatorBase):
         )
         content = response.choices[0].message.content
         return ValidatorResult.model_validate_json(content)
+
+    def _call_completion_with_retry(self, **kwargs) -> Any:
+        """Use the shared provider-parameter recovery used by LLM validators."""
+        return LLMValidator._call_completion_with_retry(self, **kwargs)
+
+    def _call_completion_with_transient_retry(self, **kwargs) -> Any:
+        """Provide the transient retry hook required by the shared wrapper."""
+        return LLMValidator._call_completion_with_transient_retry(self, **kwargs)
 
     def _parse_response(self, response_text: str) -> ValidatorResult:
         parsed = self._try_json_parse(response_text)
