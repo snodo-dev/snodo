@@ -268,6 +268,59 @@ def test_plan_dependency_blocking_fails(plan_project_env, capsys):
     assert "Wave 2: blocked (depends on: 1)" in out
 
 
+def test_plan_dependency_not_finished_names_that(plan_project_env, capsys):
+    """A dependency wave whose task has not run yet is reported as not finished,
+    not as unmerged — the operator should look at the task, not at a merge."""
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "not_finished_dep_plan")
+
+    # task_1_1 is left at its default "pending" status: never attempted.
+
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml",
+        model=None,
+        plan=plan_name,
+        wave="2",
+        mock=True,
+        interactive=False,
+        no_isolation=True,
+    )
+
+    result = _run_plan(args)
+    assert result == 1
+
+    out = capsys.readouterr().out
+    assert "Wave 2: blocked (depends on: 1)" in out
+    assert "unmerged" not in out
+    assert "merge" not in out
+
+
+def test_plan_dependency_unmerged_names_that(plan_project_env, capsys):
+    """A dependency wave whose task finished (gate-verified) but sits unmerged
+    must be reported as unmerged, naming the task waiting to merge — not as
+    an incomplete dependency (distinguish-unmerged-from-incomplete)."""
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "unmerged_dep_plan")
+
+    planner.update_status(plan_name, "task_1_1", "unmerged")
+
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml",
+        model=None,
+        plan=plan_name,
+        wave="2",
+        mock=True,
+        interactive=False,
+        no_isolation=True,
+    )
+
+    result = _run_plan(args)
+    assert result == 1
+
+    out = capsys.readouterr().out
+    assert "Wave 2: blocked (depends on: 1 (finished, waiting to merge: task_1_1))" in out
+
+
 def test_plan_task_execution_failure(plan_project_env, capsys):
     """Failure mode: when _execute_task fails (returns 1), task is marked blocked and plan halts."""
     planner = PlannerMCP(plan_project_env)
