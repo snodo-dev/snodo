@@ -31,6 +31,7 @@ up providers or cloud sync.
 | `snodo cloud disconnect` | Disconnect from Snodo Cloud and disable sync. |
 | `snodo cloud status` | Show cloud connection and sync status. |
 | `snodo cloud sync` | Ship unsynced audit events to Snodo Cloud. |
+| `snodo cloud schema` | Publish the versioned JSON schemas for the cloud wire interface. |
 | `snodo install` | Install MCP servers into the Claude Desktop configuration. |
 | `snodo uninstall` | Remove Snodo MCP servers from the Claude Desktop configuration. |
 
@@ -41,7 +42,13 @@ snodo init --template solo
 snodo config set engine.max_subtask_depth 3
 snodo mode show --json
 snodo cloud sync --all
+snodo cloud schema --json
 ```
+
+The schema command derives its two payload schemas from the engine's declared
+wire types at the installed version. The interface version is top-level because
+it applies to both the PUT snapshot and POST event batch; neither payload has
+to carry a version field that its own declared type does not know about.
 
 `snodo cloud connect` takes an API key as a required argument. Do not put a
 real key in shell history when a safer secret-handling method is available.
