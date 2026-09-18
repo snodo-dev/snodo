@@ -463,6 +463,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         worktree_degraded: bool = False,
         verbose: bool = False,
         verdict_cache: Any = None,
+        wave_results: Optional[dict] = None,
     ):
         """Initialize graph builder with real MCP services.
 
@@ -569,6 +570,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         # judge fresh every time, exactly as before the cache existed.
         self._verdict_cache = verdict_cache
         self._validator_runner._verdict_cache = verdict_cache
+        self._validator_runner._wave_results = wave_results
 
         self.governance_fn = governance_fn or self._default_governance
         self.validator_fn = validator_fn or self._validator_runner.run
@@ -1173,6 +1175,7 @@ def build_protocol_graph(
     verbose: bool = False,
     token_issuer: Optional[TokenIssuer] = None,
     verdict_cache: Any = None,
+    wave_results: Optional[dict] = None,
     **custom_functions
 ) -> StateGraph:
     """Convenience function to build graph with MCP integration.
@@ -1287,6 +1290,7 @@ def build_protocol_graph(
         verbose=verbose,
         token_issuer=token_issuer,
         verdict_cache=verdict_cache,
+        wave_results=wave_results,
         **custom_functions
     )
     return builder.build_graph()

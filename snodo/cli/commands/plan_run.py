@@ -19,6 +19,64 @@ from snodo.cli.commands import followup
 _logger = logging.getLogger(__name__)
 
 
+def _evaluate_wave_validators(protocol, mode_id: str, wave_id, specs: list) -> dict:
+    """Evaluate wave-scoped pre-execute validators before task dispatch."""
+    from snodo.core.interfaces import Task
+    from snodo.engine.policy import PolicyAction, PolicyEvaluator
+    from snodo.engine.validators import ValidatorRunner
+    from snodo.infrastructure.config import load_llm_config
+    from snodo.validators.runner import resolve_validator_completion
+
+    mode = protocol.get_mode(mode_id)
+    if mode is None:
+        return {}
+    validators = [
+        protocol.get_validator(vid)
+        for vid in mode.validators
+    ]
+    validators = [
+        v for v in validators
+        if v is not None and v.scope == "wave" and v.evaluation_phase == "pre_execute"
+    ]
+    if not validators:
+        return {}
+
+    completion_fn, model, validator_config = resolve_validator_completion()
+    runner = ValidatorRunner(
+        protocol=protocol,
+        completion_fn=completion_fn,
+        default_model=model,
+        validator_config=validator_config or load_llm_config().validator,
+        audit_log=None,
+        workspace_mcp=None,
+        git_mcp=None,
+        session_manager=None,
+    )
+    wave_task = Task(
+        id=f"wave:{wave_id}",
+        spec="\n\n".join(f"Task {i + 1}: {spec}" for i, spec in enumerate(specs)),
+        wave_id=str(wave_id),
+    )
+    results = runner.run(
+        wave_task,
+        validators,
+        None,
+        current_mode=mode_id,
+        phase="pre_execute",
+    )
+    decision = PolicyEvaluator().evaluate(
+        results,
+        protocol.disagreement_policy,
+        "pre_execute",
+        task_ref=wave_task.id,
+    )
+    if decision.action == PolicyAction.HALT:
+        raise RuntimeError(
+            f"Wave {wave_id} blocked by wave-scoped validators: {decision.justification}"
+        )
+    return {result.validator_id: result.model_dump() for result in results}
+
+
 def _task_completed(tasks_status: dict, task_id: str) -> bool:
     """Check if a task is completed, handling both string and dict entries."""
     entry = tasks_status.get(task_id)
@@ -811,17 +869,45 @@ def _execute_waves(waves, planner, args, protocol, model,
         if not tasks_to_run:
             continue
 
-        wave_start_mono = time.monotonic()
-        if effective_concurrency <= 1 or len(tasks_to_run) <= 1:
+        wave_specs = []
+        wave_dir = planner.plans_dir / args.plan / f"wave_{wave_id}"
+        try:
             for task_id in tasks_to_run:
-                if not _execute_wave_task(planner, args, protocol, model, wave_id, task_id):
-                    has_failed_or_blocked = True
-        else:
-            success = _execute_wave_tasks_concurrent(
-                planner, args, protocol, model, wave_id, tasks_to_run, effective_concurrency
+                wave_specs.append(
+                    (wave_dir / f"{task_id}_task.md").read_text()
+                )
+            wave_verdicts = _evaluate_wave_validators(
+                protocol, getattr(args, "mode", None) or protocol.initial_mode,
+                wave_id, wave_specs,
             )
-            if not success:
-                has_failed_or_blocked = True
+        except Exception as e:
+            for task_id in tasks_to_run:
+                planner.update_status(args.plan, task_id, "blocked")
+            print(f"Wave {wave_id}: blocked by wave-scoped validation: {e}", file=sys.stderr)
+            has_failed_or_blocked = True
+            continue
+
+        previous_wave_verdicts = os.environ.get("SNODO_WAVE_VERDICTS")
+        if wave_verdicts:
+            os.environ["SNODO_WAVE_VERDICTS"] = json.dumps(wave_verdicts)
+
+        wave_start_mono = time.monotonic()
+        try:
+            if effective_concurrency <= 1 or len(tasks_to_run) <= 1:
+                for task_id in tasks_to_run:
+                    if not _execute_wave_task(planner, args, protocol, model, wave_id, task_id):
+                        has_failed_or_blocked = True
+            else:
+                success = _execute_wave_tasks_concurrent(
+                    planner, args, protocol, model, wave_id, tasks_to_run, effective_concurrency
+                )
+                if not success:
+                    has_failed_or_blocked = True
+        finally:
+            if previous_wave_verdicts is None:
+                os.environ.pop("SNODO_WAVE_VERDICTS", None)
+            else:
+                os.environ["SNODO_WAVE_VERDICTS"] = previous_wave_verdicts
 
         wave_end_mono = time.monotonic()
         wave_dur = wave_end_mono - wave_start_mono

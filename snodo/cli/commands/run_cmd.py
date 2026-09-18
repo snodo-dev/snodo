@@ -1530,6 +1530,13 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
         # cannot cross projects.  An unusable cache degrades to fresh judgement.
         from snodo.validators.verdict_cache import cache_for_project
         verdict_cache = cache_for_project(project_root)
+        wave_results = None
+        encoded_wave_results = os.environ.get("SNODO_WAVE_VERDICTS")
+        if encoded_wave_results:
+            try:
+                wave_results = json.loads(encoded_wave_results)
+            except (TypeError, ValueError):
+                _logger.warning("Ignoring malformed SNODO_WAVE_VERDICTS")
 
         graph = build_protocol_graph(
             protocol,
@@ -1547,6 +1554,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             verbose=getattr(args, "verbose", False),
             token_issuer=token_issuer,
             verdict_cache=verdict_cache,
+            wave_results=wave_results,
         )
         compiled_graph = graph.compile(checkpointer=checkpointer)
         print("✓ Graph compiled with MCP integration")

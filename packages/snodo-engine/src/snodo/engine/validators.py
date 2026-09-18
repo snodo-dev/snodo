@@ -62,6 +62,7 @@ class ValidatorRunner:
         verdict_cb: Any = None,
         artifacts: Optional[List[str]] = None,
         base_ref: Optional[str] = None,
+        wave_results: Optional[dict] = None,
     ) -> List[ValidatorResult]:
         results, cap_originals = _run(
             protocol=self.protocol,
@@ -84,6 +85,10 @@ class ValidatorRunner:
             artifacts=artifacts,
             base_ref=base_ref,
             verdict_cache=self._verdict_cache,
+            wave_results=(
+                getattr(self, "_wave_results", None)
+                if wave_results is None else wave_results
+            ),
         )
         self.last_cap_originals = cap_originals
         return results
