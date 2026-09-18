@@ -19,6 +19,7 @@ from snodo.coders.base import (
 from snodo.coders.availability import check_coder_available as check_coder_available
 from snodo.coders.inert_settings import explicit_coder_settings as explicit_coder_settings
 from snodo.coders.inert_settings import report_inert_coder_settings as report_inert_coder_settings
+from snodo.coders.inert_settings import reset_reported_inert_settings as reset_reported_inert_settings
 from snodo.coders.litellm import LiteLLMAdapter
 from snodo.coders.mock import MockAdapter
 from snodo.coders.openai_adapter import OpenAIAdapter

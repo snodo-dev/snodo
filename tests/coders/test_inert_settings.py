@@ -295,3 +295,54 @@ def test_respawn_reports_the_setting_against_the_new_coder(caplog):
     text = _warning_text(caplog)
     assert "max_tool_turns" in text
     assert "opencode-cli" in text
+
+
+def test_repeated_task_dispatches_under_unchanged_config_emit_notice_once(
+    monkeypatch, tmp_path, caplog
+):
+    """Several tasks dispatch under one unchanged configuration; the inert-settings
+    notice is emitted once across the dispatches, not per dispatch (Fixes #355)."""
+    monkeypatch.setenv("SNODO_HOME", str(tmp_path))
+    (tmp_path / "config.yml").write_text(
+        "llm:\n"
+        "  coder:\n"
+        "    max_tool_turns: 100\n"
+        "    max_tokens: 128000\n"
+    )
+    protocol = _make_protocol()
+    with mock.patch("snodo.engine.loop.GraphBuilder"):
+        with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+            for _ in range(3):
+                build_protocol_graph(protocol=protocol, coder_name="opencode-cli")
+
+    records = [r for r in caplog.records if r.name == _INERT_LOGGER]
+    assert len(records) == 2
+    text = _warning_text(caplog)
+    assert text.count("max_tool_turns") == 1
+    assert text.count("max_tokens") == 1
+
+
+def test_report_inert_coder_settings_emits_once_for_same_pairing(caplog):
+    """Calling report_inert_coder_settings twice for the same coder and setting
+    emits the warning on the first call and is silent on the second (Fixes #355)."""
+    explicit = {"max_tool_turns": 42}
+    with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+        first = report_inert_coder_settings("opencode-cli", explicit)
+        assert first == ["max_tool_turns"]
+        assert len(caplog.records) == 1
+
+        second = report_inert_coder_settings("opencode-cli", explicit)
+        assert second == []
+        assert len(caplog.records) == 1
+
+        # A different coder with an inert setting is reported
+        third = report_inert_coder_settings("agy", explicit)
+        assert third == ["max_tool_turns"]
+        assert len(caplog.records) == 2
+
+        # A different setting for the first coder is reported
+        fourth = report_inert_coder_settings("opencode-cli", {"max_tokens": 1000})
+        assert fourth == ["max_tokens"]
+        assert len(caplog.records) == 3
+
+

@@ -318,6 +318,16 @@ def quiesce_cloud_liveness():
     cloud_liveness.reset_liveness_state()
 
 
+@pytest.fixture(autouse=True)
+def quiesce_inert_settings():
+    """Clear recorded inert coder-setting pairings around every test (Fixes #355)."""
+    from snodo.coders.inert_settings import reset_reported_inert_settings
+
+    reset_reported_inert_settings()
+    yield
+    reset_reported_inert_settings()
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Validate pytest rootdir at configuration time.
 
