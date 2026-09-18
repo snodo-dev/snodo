@@ -542,7 +542,7 @@ def _plan_validate(
     from snodo.compiler.verifier import verify_plan_dir
 
     plan_dir = planner.plans_dir / name
-    result = verify_plan_dir(plan_dir)
+    result = verify_plan_dir(plan_dir, workspace_root=planner.project_root)
 
     if result.passed:
         spec_warnings = _judge_plan_specs(
@@ -631,7 +631,7 @@ def _plan_add_task(planner, args) -> int:
 
     # The plan must remain verifiable — never silently produce a broken plan.
     from snodo.compiler.verifier import verify_plan_dir
-    result = verify_plan_dir(planner.plans_dir / plan)
+    result = verify_plan_dir(planner.plans_dir / plan, workspace_root=planner.project_root)
     if not result.passed:
         print("Error: plan is now invalid:", file=sys.stderr)
         for err in result.errors:
@@ -718,7 +718,7 @@ def _plan_add_wave(planner, args) -> int:
 
     # The plan must remain verifiable — never silently produce a broken plan.
     from snodo.compiler.verifier import verify_plan_dir
-    result = verify_plan_dir(plan_dir)
+    result = verify_plan_dir(plan_dir, workspace_root=planner.project_root)
     if not result.passed:
         print("Error: plan is now invalid:", file=sys.stderr)
         for err in result.errors:

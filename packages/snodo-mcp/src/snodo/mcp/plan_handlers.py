@@ -70,7 +70,7 @@ class PlanToolHandler:
 
     def _validation(self, plan_dir: Path) -> dict:
         """The authoritative verdict of the same verifier the CLI gates on."""
-        result = verify_plan_dir(plan_dir)
+        result = verify_plan_dir(plan_dir, workspace_root=self._planner.project_root)
         return {
             "valid": result.passed,
             "errors": list(result.errors),

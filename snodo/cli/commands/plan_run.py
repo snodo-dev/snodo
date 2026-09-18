@@ -836,7 +836,11 @@ def _run_plan(args) -> int:
 
         plan_dir = planner.plans_dir / args.plan
         from snodo.compiler.verifier import verify_plan
-        verification = verify_plan(plan_model, plan_dir=plan_dir)
+        verification = verify_plan(
+            plan_model,
+            plan_dir=plan_dir,
+            workspace_root=planner.project_root,
+        )
 
         if verification.warnings:
             print("Warnings:", file=sys.stderr)
