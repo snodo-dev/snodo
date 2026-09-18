@@ -17,7 +17,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,28 @@ from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
 
 _logger = logging.getLogger(__name__)
+
+
+class CloudSyncEvent(TypedDict):
+    """One audit event in the published ingest payload."""
+
+    sequence: int
+    timestamp: str
+    event_type: str
+    project_id: str
+    scope: Literal["", "local", "remote"]
+    data: Any
+    previous_hash: str | None
+    event_hash: str
+
+
+class CloudSyncPayload(TypedDict):
+    """The published audit ingest payload."""
+
+    session_id: str
+    project_path: str
+    display_name: str
+    events: list[CloudSyncEvent]
 
 _MAX_BATCH_SIZE = 50
 _MAX_RETRIES = 5

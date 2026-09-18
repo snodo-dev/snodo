@@ -1,0 +1,495 @@
+{
+  "cloud_ingest": {
+    "$defs": {
+      "CloudSyncEvent": {
+        "description": "One audit event in the published ingest payload.",
+        "properties": {
+          "data": {
+            "title": "Data"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Hash"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "CloudSyncEvent",
+        "type": "object"
+      }
+    },
+    "description": "The published audit ingest payload.",
+    "properties": {
+      "display_name": {
+        "title": "Display Name",
+        "type": "string"
+      },
+      "events": {
+        "items": {
+          "$ref": "#/$defs/CloudSyncEvent"
+        },
+        "title": "Events",
+        "type": "array"
+      },
+      "project_path": {
+        "title": "Project Path",
+        "type": "string"
+      },
+      "session_id": {
+        "title": "Session Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "session_id",
+      "project_path",
+      "display_name",
+      "events"
+    ],
+    "title": "CloudSyncPayload",
+    "type": "object"
+  },
+  "cloud_liveness": {
+    "$defs": {
+      "LivenessAuditEvent": {
+        "description": "The last audit event included in a snapshot.",
+        "properties": {
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_type",
+          "timestamp"
+        ],
+        "title": "LivenessAuditEvent",
+        "type": "object"
+      },
+      "LivenessJob": {
+        "description": "The identity and state of one live or counted job.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "in_progress",
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "unmerged",
+              "blocked",
+              "errored",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "LivenessJob",
+        "type": "object"
+      },
+      "LivenessPlan": {
+        "description": "A plan and its collapsed or detailed frontier.",
+        "properties": {
+          "job_status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "pending",
+                "in_progress",
+                "running",
+                "completed",
+                "failed",
+                "cancelled",
+                "unmerged",
+                "blocked",
+                "errored",
+                "unknown"
+              ]
+            },
+            "title": "Job Status Counts",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "pending",
+                "in_progress",
+                "running",
+                "completed",
+                "failed",
+                "cancelled",
+                "unmerged",
+                "blocked",
+                "errored",
+                "unknown"
+              ]
+            },
+            "title": "Status Counts",
+            "type": "object"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/$defs/LivenessTask"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "waves": {
+            "items": {
+              "$ref": "#/$defs/LivenessWave"
+            },
+            "title": "Waves",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "total",
+          "status_counts"
+        ],
+        "title": "LivenessPlan",
+        "type": "object"
+      },
+      "LivenessTask": {
+        "description": "A task at a plan frontier, optionally carrying its live jobs.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/$defs/LivenessJob"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "in_progress",
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "unmerged",
+              "blocked",
+              "errored",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "wave_id": {
+            "title": "Wave Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "LivenessTask",
+        "type": "object"
+      },
+      "LivenessWave": {
+        "description": "One wave in a plan's declared shape.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "pending",
+                "in_progress",
+                "running",
+                "completed",
+                "failed",
+                "cancelled",
+                "unmerged",
+                "blocked",
+                "errored",
+                "unknown"
+              ]
+            },
+            "title": "Status Counts",
+            "type": "object"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/$defs/LivenessTask"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "wave_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Wave Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "total",
+          "status_counts"
+        ],
+        "title": "LivenessWave",
+        "type": "object"
+      }
+    },
+    "description": "The complete wire payload for one session's liveness state.",
+    "properties": {
+      "display_name": {
+        "title": "Display Name",
+        "type": "string"
+      },
+      "job_status_counts": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "propertyNames": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "unmerged",
+            "blocked",
+            "errored",
+            "unknown"
+          ]
+        },
+        "title": "Job Status Counts",
+        "type": "object"
+      },
+      "jobs": {
+        "items": {
+          "$ref": "#/$defs/LivenessJob"
+        },
+        "title": "Jobs",
+        "type": "array"
+      },
+      "last_activity_at": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Last Activity At"
+      },
+      "last_event": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/LivenessAuditEvent"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "plans": {
+        "items": {
+          "$ref": "#/$defs/LivenessPlan"
+        },
+        "title": "Plans",
+        "type": "array"
+      },
+      "project_id": {
+        "title": "Project Id",
+        "type": "string"
+      },
+      "run_started_at": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Run Started At"
+      },
+      "scope": {
+        "enum": [
+          "",
+          "local",
+          "remote"
+        ],
+        "title": "Scope",
+        "type": "string"
+      },
+      "session_id": {
+        "title": "Session Id",
+        "type": "string"
+      },
+      "snapshot_at": {
+        "title": "Snapshot At",
+        "type": "string"
+      },
+      "task_status_counts": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "propertyNames": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "unmerged",
+            "blocked",
+            "errored",
+            "unknown"
+          ]
+        },
+        "title": "Task Status Counts",
+        "type": "object"
+      },
+      "tasks": {
+        "items": {
+          "$ref": "#/$defs/LivenessTask"
+        },
+        "title": "Tasks",
+        "type": "array"
+      }
+    },
+    "required": [
+      "session_id",
+      "project_id",
+      "scope",
+      "display_name",
+      "run_started_at",
+      "plans",
+      "tasks",
+      "jobs",
+      "task_status_counts",
+      "job_status_counts",
+      "last_event",
+      "last_activity_at",
+      "snapshot_at"
+    ],
+    "title": "LivenessSnapshot",
+    "type": "object"
+  }
+}
