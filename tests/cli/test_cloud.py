@@ -384,6 +384,35 @@ class TestCloudSyncDispatcher:
             assert ev_payload["scope"] == "remote"
             assert ev_payload["event_type"] == "tool_call"
 
+    def test_engine_batch_validates_against_ingest_envelope(self):
+        """The payload assembled for ingest has a declared batch envelope."""
+        from snodo.infrastructure.cloud_sync import AuditIngestBatch
+
+        events = self._make_events(1)
+        payload = {
+            "session_id": "sess_envelope",
+            "project_path": "/home/user/code/project",
+            "display_name": "project",
+            "events": [
+                {
+                    "sequence": events[0].sequence,
+                    "timestamp": events[0].timestamp,
+                    "event_type": events[0].event_type,
+                    "project_id": (
+                        events[0].project_id
+                        if isinstance(events[0].project_id, str)
+                        else ""
+                    ),
+                    "scope": "local",
+                    "data": events[0].data,
+                    "previous_hash": events[0].previous_hash,
+                    "event_hash": events[0].event_hash,
+                }
+            ],
+        }
+
+        assert AuditIngestBatch.model_validate(payload).model_dump() == payload
+
     def test_post_batch_carries_scope_alongside_local_id(self):
         """A local: project_id is transmitted with scope 'local' so a consumer can tell it apart."""
         from unittest.mock import patch, MagicMock
@@ -1139,5 +1168,3 @@ class TestCloudSyncCommand:
                             result = cloud_sync_command(session_id="sess_corrupt")
 
         assert result == 1
-
-
