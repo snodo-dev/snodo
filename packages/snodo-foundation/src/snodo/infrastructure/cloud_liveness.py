@@ -55,7 +55,7 @@ import time
 from collections import Counter
 from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Literal, NotRequired, Optional, TypedDict
 from urllib.parse import quote
 
 from snodo.infrastructure.cloud_sync import _should_sync
@@ -63,6 +63,76 @@ from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
 
 _logger = logging.getLogger(__name__)
+
+
+LivenessStatus = Literal[
+    "pending", "in_progress", "running", "completed", "failed",
+    "cancelled", "unmerged", "blocked", "errored", "unknown",
+]
+
+
+class LivenessJob(TypedDict):
+    """The identity and state of one live or counted job."""
+
+    id: str
+    status: LivenessStatus
+    started_at: NotRequired[str | None]
+
+
+class LivenessTask(TypedDict):
+    """A task at a plan frontier, optionally carrying its live jobs."""
+
+    id: str
+    status: LivenessStatus
+    wave_id: NotRequired[str]
+    started_at: NotRequired[str | None]
+    jobs: NotRequired[list[LivenessJob]]
+
+
+class LivenessWave(TypedDict):
+    """One wave in a plan's declared shape."""
+
+    id: int | str | None
+    total: int
+    status_counts: dict[LivenessStatus, int]
+    wave_ids: NotRequired[list[str]]
+    tasks: NotRequired[list[LivenessTask]]
+
+
+class LivenessPlan(TypedDict):
+    """A plan and its collapsed or detailed frontier."""
+
+    name: str
+    total: int
+    status_counts: dict[LivenessStatus, int]
+    job_status_counts: NotRequired[dict[LivenessStatus, int]]
+    waves: NotRequired[list[LivenessWave]]
+    tasks: NotRequired[list[LivenessTask]]
+
+
+class LivenessAuditEvent(TypedDict):
+    """The last audit event included in a snapshot."""
+
+    event_type: str
+    timestamp: str
+
+
+class LivenessSnapshot(TypedDict):
+    """The complete wire payload for one session's liveness state."""
+
+    session_id: str
+    project_id: str
+    scope: Literal["", "local", "remote"]
+    display_name: str
+    run_started_at: str | None
+    plans: list[LivenessPlan]
+    tasks: list[LivenessTask]
+    jobs: list[LivenessJob]
+    task_status_counts: dict[LivenessStatus, int]
+    job_status_counts: dict[LivenessStatus, int]
+    last_event: LivenessAuditEvent | None
+    last_activity_at: str | None
+    snapshot_at: str
 
 #: Default per-session push interval. It is a ceiling and a floor: at most one
 #: push per interval (a burst of transitions coalesces into one write) and, at
@@ -384,7 +454,7 @@ def _floor_tick(session_id: str, project_root: str, token: object) -> None:
     request_liveness_push(session_id, project_root)
 
 
-def _snapshot_is_live(snapshot: dict) -> bool:
+def _snapshot_is_live(snapshot: LivenessSnapshot) -> bool:
     """True when the snapshot still has work running.
 
     This is the floor's gate, and it is deliberately narrower than the
@@ -420,7 +490,9 @@ def _snapshot_is_live(snapshot: dict) -> bool:
     return False
 
 
-def _post_snapshot(snapshot: dict, config: Optional[dict] = None) -> None:
+def _post_snapshot(
+    snapshot: LivenessSnapshot, config: Optional[dict] = None,
+) -> None:
     """PUT the snapshot to ``{liveness_url}/live/{session_id}``. Drop on any failure.
 
     Deliberately unlike the ingest path: no retry loop, no cursor, no
@@ -489,7 +561,9 @@ def _post_snapshot(snapshot: dict, config: Optional[dict] = None) -> None:
 # ---------------------------------------------------------------------------
 
 
-def build_liveness_snapshot(session_id: str, project_root: str) -> Optional[dict]:
+def build_liveness_snapshot(
+    session_id: str, project_root: str,
+) -> Optional[LivenessSnapshot]:
     """Assemble the full current state for *session_id*, or None when the
     session has nothing running (Fixes #291).
 
@@ -541,7 +615,7 @@ def build_liveness_snapshot(session_id: str, project_root: str) -> Optional[dict
     # (Fixes #303).
     live_tasks, task_counts = _unreported(task_rows, tallied_refs, detailed_refs)
     live_jobs, job_counts = _unreported(job_rows, tallied_job_ids, nested_job_ids)
-    snapshot: dict = {
+    snapshot: LivenessSnapshot = {
         "session_id": session_id,
         "project_id": project_id,
         "scope": scope_for_project_id(project_id) if project_id else "",
@@ -620,7 +694,7 @@ def _collect_plans(
     root: Path,
     task_rows: list,
     job_rows: list,
-) -> tuple:
+) -> tuple[list[LivenessPlan], set[str], set[str], set[str], set[str]]:
     """One entry per plan that has begun, carrying the plan's shape.
 
     Returns ``(plan_nodes, tallied_refs, detailed_refs, tallied_job_ids,
@@ -785,7 +859,9 @@ def _collect_plans(
     return nodes, started_refs, detailed_refs, settled_job_ids, nested_job_ids
 
 
-def _unreported(rows: list, settled_claimed: set, live_claimed: set) -> tuple:
+def _unreported(
+    rows: list, settled_claimed: set, live_claimed: set,
+) -> tuple[list[LivenessTask | LivenessJob], dict[LivenessStatus, int]]:
     """Split top-level records into live detail and a settled tally.
 
     A settled record already tallied by the plan structure (*settled_claimed*)
@@ -812,7 +888,9 @@ def _unreported(rows: list, settled_claimed: set, live_claimed: set) -> tuple:
     return live, dict(sorted(counts.items()))
 
 
-def _collect_runs(runs_dir: Path, job_dirs: bool = False) -> list:
+def _collect_runs(
+    runs_dir: Path, job_dirs: bool = False,
+) -> list[LivenessTask | LivenessJob]:
     """Task or job records: id, status, started_at — nothing more.
 
     ``description`` (the spec), ``halt`` payloads and ``usage`` stay on the
@@ -858,7 +936,7 @@ def _job_task_ref(job_dir: Path) -> str:
     return str(task.get("task_id") or task.get("retry_task_id") or "")
 
 
-def _last_audit_event(audit_path: Path) -> Optional[dict]:
+def _last_audit_event(audit_path: Path) -> Optional[LivenessAuditEvent]:
     """The last well-formed audit line: its event_type and timestamp."""
     try:
         with open(audit_path, "rb") as f:
@@ -906,7 +984,9 @@ def _iso_epoch(value: Any) -> Optional[float]:
     return dt.timestamp()
 
 
-def _last_activity_at(root: Path, last_event: Optional[dict]) -> Optional[str]:
+def _last_activity_at(
+    root: Path, last_event: Optional[LivenessAuditEvent],
+) -> Optional[str]:
     """When something last happened in this session, across everything the
     snapshot reports — not only what the audit log recorded (Fixes #324).
 
@@ -948,7 +1028,11 @@ def _last_activity_at(root: Path, last_event: Optional[dict]) -> Optional[str]:
     return datetime.fromtimestamp(max(epochs), UTC).isoformat()
 
 
-def _anything_running(plans: list, tasks: list, jobs: list) -> bool:
+def _anything_running(
+    plans: list[LivenessPlan],
+    tasks: list[LivenessTask | LivenessJob],
+    jobs: list[LivenessTask | LivenessJob],
+) -> bool:
     """True when the session has a state worth publishing.
 
     A plan that started or a task/job record: a session with nothing running
