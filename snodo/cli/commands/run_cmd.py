@@ -1521,18 +1521,12 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             print("  Memory: persistent (SqliteSaver)")
         print()
 
-        # Constructed with the same defaults GraphBuilder used for its
-        # implicit issuer — only the ownership site moves.
         token_issuer = TokenIssuer()
 
-        # The verdict cache is project state (#246): it lives beside the audit
-        # log under the project's .snodo/, never in the operator's home, so it
-        # cannot cross projects.  An unusable cache degrades to fresh judgement.
         from snodo.validators.verdict_cache import cache_for_project
         verdict_cache = cache_for_project(project_root)
         wave_results = None
-        encoded_wave_results = os.environ.get("SNODO_WAVE_VERDICTS")
-        if encoded_wave_results:
+        if encoded_wave_results := os.environ.get("SNODO_WAVE_VERDICTS"):
             try:
                 wave_results = json.loads(encoded_wave_results)
             except (TypeError, ValueError):
