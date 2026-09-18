@@ -7,15 +7,41 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.10.3] — 2026-09-18
+
+### Added
+
+- A complete CLI command reference, covering every command and its options
+  with worked examples. The surface had grown faster than the pages
+  describing it; the reference cut the documentation-coverage baseline from
+  53 undocumented surfaces to 23 in one commit. (Fixes #332)
+- The liveness snapshot payload now has a declared type at every level —
+  the snapshot itself and the plan, wave, task and job shapes nested beneath
+  it. The format previously existed only as the code that assembled it and,
+  in another repository, the code that read it: two independent
+  implementations of something nobody had written down. Nothing on the wire
+  changed. (Fixes #335)
+- The audit ingest batch and its event envelope now have declared types, on
+  the same terms and for the same reason. Values drawn from the engine's
+  closed vocabularies are constrained to those vocabularies, read from the
+  source `scripts/enforce_vocabularies.py` already derives them from rather
+  than a second transcribed list. Nothing on the wire changed. (Fixes #336)
+- `snodo cloud schema --json` publishes the OSS-to-cloud contract. Everything
+  the engine sends a cloud backend goes through two calls — a PUT carrying the
+  session snapshot and a POST carrying a batch of audit events — and that is
+  the whole interface. It is now emitted as JSON Schema, generated from the
+  declared types rather than transcribed beside them, so an integrator runs
+  the command against the engine version they are targeting and gets that
+  version's truth. The interface carries a version a consumer can use to
+  decide whether it understands a payload. (Fixes #338)
+- The published schema is now gated. A change to either payload's shape that
+  does not match the recorded schema fails the build and names what moved,
+  because once the interface is published a shape change is a change to
+  somebody else's software and must be a deliberate version bump rather than
+  an ordinary edit. (Fixes #337)
 
 ### Fixed
 
-- The greenfield runbook stated that `snodo init` commits `.snodo/` and
-  `.gitignore` safety guards. It commits only `.gitignore` so that `git clean -fd`
-  cannot remove the ignore file and expose `.snodo/`, while keeping `.snodo/`
-  ignored and local so that project state does not travel with a clone.
-  (Fixes #343)
 - Long-running `snodo serve --tunnel` child process pipes are now continuously
   drained in background threads. Previously, both the MCP server and
   cloudflared were spawned with pipes that were never read after startup,
@@ -23,6 +49,54 @@ snodo uses [Semantic Versioning](https://semver.org/).
   after hours of traffic. cloudflared stdout is now routed to devnull, and
   stderr streams are continuously drained while preserving diagnostic output on
   startup failures and unexpected exits. (Fixes #333)
+- A cloudflared exit no longer orphans the MCP child. The tunnel's wait loop
+  treated the tunnel process ending as a normal finish: it returned success
+  without stopping the server it had started, and because that child sits in
+  its own session nothing else took it down either. It stayed alive holding
+  the port, and the next `snodo serve --tunnel` died on a raw EADDRINUSE with
+  nothing naming the holder. (Fixes #334)
+- Validators no longer fail on models that refuse a parameter they send. Every
+  validator passed `temperature=0.0`, and a model that does not accept it
+  rejects the whole request — so the validator reported an operational error
+  instead of a judgement and the task could not proceed on that model at all.
+  A hardcoded exclusion for one model family had been standing in for a
+  general answer, and needed editing each time a provider shipped a model, by
+  which point someone's run had already failed. The coder path had solved this
+  generically; the validator path now does the same. Deterministic judging is
+  unchanged where the model supports it, and a request the provider refuses
+  still arrives as `validator_error`, never as a verdict about the spec.
+  (Fixes #339)
+- The validator retry now waits long enough to matter. Transient provider
+  faults — 5xx, 429, connection, DNS, timeout — were retried three times with
+  50 and then 100 milliseconds between attempts, so all three landed inside
+  about a sixth of a second. The code read as resilient and behaved as if
+  there were no retry at all; a 429 was answered with three requests in a
+  tenth of a second, which is the behaviour a rate limit exists to stop. A
+  provider-supplied retry delay is now honoured, the total time spent retrying
+  stays bounded, and an exhausted retry still surfaces as `validator_error`.
+  (Fixes #340)
+- `docs/machine-interface.md` said JSON errors are written to stderr and never
+  to stdout. The error emitter writes them to stdout, and says so in its own
+  docstring. The page now describes what the code does, keeping the guarantee
+  it was reaching for — that stdout is always one parseable document — which
+  is true and is the reason the error goes there. (Fixes #341)
+- `docs/authoring-a-plan.md` listed four plan task statuses where the runner
+  writes five. `errored` was missing, along with the reason it is distinct
+  from `blocked`: a blocked task is retried with its failure as context and an
+  errored one is not, because handing an operational fault to a faultless
+  coder as a critique is how a sound specification gets rewritten to chase a
+  problem it did not cause. No status value was added; the page now documents
+  the one that already existed. (Fixes #342)
+- `docs/runbook.md` claimed every configuration key is settable without
+  hand-editing. The setter accepts `model`, anything under `engine.` and
+  anything under `llm.`, and answers everything else with an unknown-key
+  error — the `cloud.` keys among them. The page now says which keys are
+  settable and how the rest are changed. (Fixes #344)
+- The greenfield runbook said `snodo init` commits `.snodo/`. It writes
+  `.snodo/`, adds it to `.gitignore`, and commits only the `.gitignore` —
+  deliberately, so a `git clean -fd` cannot remove the ignore file and thereby
+  expose `.snodo/` to the next clean. A reader who believed otherwise would
+  expect project state to travel with a clone. (Fixes #343)
 
 ## [0.10.2] — 2026-09-17
 
