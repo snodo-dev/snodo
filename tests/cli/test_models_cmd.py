@@ -221,6 +221,14 @@ def test_apply_discrete_filters(monkeypatch):
     filtered = _apply_discrete_filters(models, id_contains="gpt")
     assert len(filtered) == 2
 
+    filtered_exact = _apply_discrete_filters(
+        [{"id": "gemini-3.1-flash-lite"},
+         {"id": "gemini-3.1-flash-lite-preview"},
+         {"id": "gemini-3.1-flash-lite-image"}],
+        model_id="gemini-3.1-flash-lite",
+    )
+    assert [m["id"] for m in filtered_exact] == ["gemini-3.1-flash-lite"]
+
     # Filter by min context
     filtered_ctx = _apply_discrete_filters(models, min_context=100000)
     assert len(filtered_ctx) == 2

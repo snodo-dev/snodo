@@ -35,6 +35,7 @@ def register(app: typer.Typer) -> None:
             1, "--benchmark-runs", min=1, max=_MAX_BENCHMARK_RUNS,
             help=f"Number of sequential benchmark calls (1-{_MAX_BENCHMARK_RUNS}).",
         ),
+        id: Optional[str] = typer.Option(None, "--id", help="Exact model id"),
         id_contains: Optional[str] = typer.Option(None, "--id-contains", help="Substring on id/display_name (case-insensitive)"),
         max_output_cost: Optional[float] = typer.Option(None, "--max-output-cost", help="Output cost/1M <= value. Excludes unknown costs."),
         min_output_cost: Optional[float] = typer.Option(None, "--min-output-cost", help="Output cost/1M >= value. Excludes unknown costs."),
@@ -48,6 +49,7 @@ def register(app: typer.Typer) -> None:
             stats=stats,
             benchmark=benchmark,
             benchmark_runs=benchmark_runs,
+            id=id,
             id_contains=id_contains,
             max_output_cost=max_output_cost,
             min_output_cost=min_output_cost,
@@ -103,6 +105,7 @@ def models_command(args) -> int:
     flush = getattr(args, "flush", False)
 
     # Discrete filter flags
+    model_id = getattr(args, "id", None)
     id_contains = getattr(args, "id_contains", None)
     max_output_cost = getattr(args, "max_output_cost", None)
     min_output_cost = getattr(args, "min_output_cost", None)
@@ -129,7 +132,8 @@ def models_command(args) -> int:
         return 0
 
     # Apply filters
-    if (id_contains is not None or
+    if (model_id is not None or
+        id_contains is not None or
         max_output_cost is not None or
         min_output_cost is not None or
         max_input_cost is not None or
@@ -137,6 +141,7 @@ def models_command(args) -> int:
 
         models = _apply_discrete_filters(
             models,
+            model_id=model_id,
             id_contains=id_contains,
             max_output_cost=max_output_cost,
             min_output_cost=min_output_cost,
@@ -246,6 +251,7 @@ def _lookup_context(full_string: str) -> str:
 
 def _apply_discrete_filters(
     models: list,
+    model_id: Optional[str] = None,
     id_contains: Optional[str] = None,
     max_output_cost: Optional[float] = None,
     min_output_cost: Optional[float] = None,
@@ -255,7 +261,9 @@ def _apply_discrete_filters(
     """Filter models using discrete shell-safe criteria combined with AND."""
     filtered = []
     for m in models:
-        # 1. ID / display name check (case-insensitive substring match)
+        # 1. Exact ID and ID / display name substring checks
+        if model_id is not None and m.get("id") != model_id:
+            continue
         if id_contains:
             mid = str(m.get("id", "")).lower()
             disp = str(m.get("display_name", "")).lower()
@@ -790,6 +798,7 @@ def _select_benchmark_model(provider_name: str, args) -> Optional[str]:
 
     models = _apply_discrete_filters(
         models,
+        model_id=getattr(args, "id", None),
         id_contains=getattr(args, "id_contains", None),
         max_output_cost=getattr(args, "max_output_cost", None),
         min_output_cost=getattr(args, "min_output_cost", None),
@@ -797,13 +806,17 @@ def _select_benchmark_model(provider_name: str, args) -> Optional[str]:
         min_context=getattr(args, "min_context", None),
     )
     if not models:
-        print("No models matched the specified filters.", file=sys.stderr)
+        model_id = getattr(args, "id", None)
+        if model_id is not None:
+            print(f"No model matched --id={model_id}.", file=sys.stderr)
+        else:
+            print("No models matched the specified filters.", file=sys.stderr)
         return None
 
     if len(models) > 1:
         print(
             f"--benchmark needs exactly one model, but {len(models)} matched. "
-            "Narrow with --id-contains:",
+            "Select one with --id=<exact-id> or --id-contains=<substring>:",
             file=sys.stderr,
         )
         for m in models:
@@ -992,7 +1005,7 @@ def models_benchmark_command(args) -> int:
     if not provider_name:
         print(
             "--benchmark requires --provider=<name> (and, when a provider has "
-            "more than one model, --id-contains=<substring>).",
+            "more than one model, --id=<exact-id> or --id-contains=<substring>).",
             file=sys.stderr,
         )
         return 1

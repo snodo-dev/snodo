@@ -299,7 +299,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
   repository rather than assembled at runtime, and is the same every run
   (changing it makes past numbers incomparable, which the file states). The
   command is scoped by the flags that already select a model (`--provider`,
-  `--id-contains`, the cost/context bounds), requires exactly one model, and
+  `--id`, `--id-contains`, the cost/context bounds), requires exactly one model, and
   reports both decode throughput (after the first token) and overall throughput
   (including the first-token wait) because a model that streams fast after a
   slow start is a different proposition for a coder than for a validator. It

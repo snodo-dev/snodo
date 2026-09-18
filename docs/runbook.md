@@ -344,8 +344,12 @@ Changing the prompt file makes past numbers incomparable; the file says so.
 Narrow the run to a single model with the same flags that filter a listing:
 
 ```bash
-snodo models --benchmark --provider=deepseek --id-contains=chat
+snodo models --benchmark --provider=deepseek --id=deepseek-chat
 ```
+
+Use `--id` when the model ID is a prefix of other IDs. `--id-contains` remains
+useful for browsing by a remembered substring; an exact ID that matches nothing
+is reported as no match and is never widened to a substring search.
 
 `--benchmark` makes one **real, billed API call**. It is never reachable from
 any other command and runs only when you pass the flag; the command prints the
