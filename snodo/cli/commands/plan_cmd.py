@@ -9,7 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Optional
+from typing import Any, List, Optional, Set
 
 import typer
 
@@ -87,10 +87,16 @@ def plan_validate(
     json_output: bool = typer.Option(
         False, "--json", help="Output validation result as JSON",
     ),
+    protocol: str = typer.Option(
+        ".snodo/protocol.yml", "--protocol", help="Path to protocol file",
+    ),
 ):
     """Validate a plan's structure and spec files."""
-    args = SimpleNamespace(plan_action="validate", name=name, json_output=json_output)
+    args = SimpleNamespace(
+        plan_action="validate", name=name, json_output=json_output, protocol=protocol,
+    )
     return plan_command(args)
+
 
 
 @app.command("run")
@@ -189,7 +195,12 @@ def plan_command(args) -> int:
         return _plan_create(planner, args)
     elif args.plan_action == "validate":
         json_out = getattr(args, "json_output", False)
-        return _plan_validate(planner, args.name, json_output=json_out)
+        protocol = getattr(args, "protocol", ".snodo/protocol.yml")
+        completion_fn = getattr(args, "completion_fn", None)
+        return _plan_validate(
+            planner, args.name, json_output=json_out,
+            protocol_path=protocol, completion_fn=completion_fn,
+        )
     elif args.plan_action == "run":
         return _plan_run(args)
     elif args.plan_action == "add-task":
@@ -353,12 +364,194 @@ def _print_plan_summary(tasks: dict) -> None:
     print()
 
 
-def _plan_validate(planner, name: str, json_output: bool = False) -> int:
+def _is_spec_only_validator(v: Any) -> bool:
+    """Return True if *v* evaluates the spec prose alone without repository access.
+
+    A validator is eligible iff:
+    1. It explicitly declares that it judges the specification (judges_spec: true,
+       established in ADR 023).
+    2. It declares no repository read tools (tools list is empty).
+    3. Its evaluation phase is pre_execute.
+    4. It declares no tooling commands (e.g. test_command).
+
+    Requiring judges_spec and no tools prevents running repo-dependent judges
+    against a repo they cannot see (Fixes #350).
+    """
+    return bool(
+        getattr(v, "judges_spec", False)
+        and not getattr(v, "tools", None)
+        and getattr(v, "evaluation_phase", "pre_execute") == "pre_execute"
+        and not getattr(v, "tooling", {}).get("test_command")
+    )
+
+
+def _judge_plan_specs(
+    planner: Any,
+    plan_dir: Path,
+    protocol_path: Optional[str] = ".snodo/protocol.yml",
+    completion_fn: Any = None,
+) -> List[str]:
+    """Run eligible spec-only validators against task specs in *plan_dir*.
+
+    A verdict reached at plan-validate time is advice, not a gate: it produces
+    advisory warnings before dispatching without blocking validation or dispatching.
+    No repo-reading validators run, and plan-time verdicts are never cached for
+    loop reuse (Fixes #350).
+    """
+    if not protocol_path:
+        return []
+
+    p_path = Path(protocol_path)
+    if not p_path.is_absolute():
+        p_path = Path(planner.project_root) / p_path
+    if not p_path.is_file():
+        return []
+
+    try:
+        from snodo.protocols import load_protocol
+        protocol = load_protocol(p_path)
+    except Exception as e:
+        _logger.debug("Could not load protocol from %s for plan validation: %s", p_path, e)
+        return []
+
+    if protocol is None:
+        return []
+
+    mode_id = protocol.initial_mode
+    mode = protocol.get_mode(mode_id)
+    if mode:
+        candidate_validators = [protocol.get_validator(vid) for vid in mode.validators]
+        candidate_validators = [v for v in candidate_validators if v is not None]
+    else:
+        candidate_validators = protocol.validators
+
+    eligible_validators = []
+    seen: Set[str] = set()
+    for v in candidate_validators:
+        if v.validator_id not in seen and _is_spec_only_validator(v):
+            seen.add(v.validator_id)
+            eligible_validators.append(v)
+
+    if not eligible_validators:
+        return []
+
+    default_model = None
+    if completion_fn is None:
+        try:
+            from snodo.validators.runner import resolve_validator_completion
+            completion_fn, default_model, _ = resolve_validator_completion()
+        except Exception as e:
+            _logger.debug("Could not resolve validator completion for plan validate: %s", e)
+            return []
+    else:
+        from snodo.infrastructure.config import DEFAULT_MODEL
+        default_model = DEFAULT_MODEL
+
+    plan_file = plan_dir / "plan.yml"
+    if not plan_file.is_file():
+        return []
+
+    import yaml
+    try:
+        with open(plan_file) as f:
+            plan_data = yaml.safe_load(f) or {}
+    except Exception:
+        return []
+
+    waves = plan_data.get("waves", [])
+    if not isinstance(waves, list):
+        return []
+
+    from snodo.compiler.models import Severity
+    from snodo.core.interfaces import Task, ValidatorResult
+    from snodo.validators.context import ValidatorContext
+    from snodo.validators.llm_validator import LLMValidator
+    from snodo.validators.registry import _default_registry as reg
+    from snodo.validators.runner import enrich_result_with_criteria
+
+    warnings: List[str] = []
+    for wave in waves:
+        if not isinstance(wave, dict):
+            continue
+        wave_id = wave.get("id")
+        tasks = wave.get("tasks", [])
+        if not isinstance(tasks, list):
+            continue
+        wave_dir = plan_dir / f"wave_{wave_id}"
+        for task_id in tasks:
+            spec_file = wave_dir / f"{task_id}_task.md"
+            if not spec_file.is_file():
+                continue
+            try:
+                spec_text = spec_file.read_text(encoding="utf-8")
+            except Exception as e:
+                _logger.debug("Could not read spec file %s: %s", spec_file, e)
+                continue
+
+            task = Task(id=task_id, spec=spec_text)
+
+            for v in eligible_validators:
+                effective_model = v.model or default_model
+                cls = reg.lookup(v.validator_type) or LLMValidator
+                try:
+                    instance = cls(validator_spec=v, completion_fn=completion_fn, model=effective_model)
+                    ctx = ValidatorContext(
+                        task=task,
+                        current_mode=mode,
+                        protocol=protocol,
+                        completion_fn=completion_fn,
+                        model=effective_model,
+                        phase="pre_execute",
+                        task_id=task.id,
+                        verdict_cache=None,  # Do not cache plan-time verdicts for loop reuse
+                    )
+                    res = instance.evaluate(ctx)
+                    res = enrich_result_with_criteria(res, v.criteria)
+                    if v.severity_cap is not None and not getattr(res, "error", False) and res.severity is not None:
+                        try:
+                            if Severity(res.severity) > v.severity_cap:
+                                res = ValidatorResult(
+                                    validator_id=res.validator_id,
+                                    severity=v.severity_cap.value,
+                                    justification=res.justification,
+                                    cited_criteria=res.cited_criteria,
+                                    severity_original=res.severity,
+                                )
+                        except (ValueError, KeyError):
+                            pass
+                    if not getattr(res, "error", False) and res.severity in ("warn", "blocker"):
+                        warnings.append(
+                            f"[{task_id}] {res.validator_id} [{res.severity}]: {res.justification}"
+                        )
+                except Exception as e:
+                    _logger.debug(
+                        "Plan validate: validator %s failed on task %s: %s",
+                        v.validator_id, task_id, e,
+                    )
+    return warnings
+
+
+def _plan_validate(
+    planner,
+    name: str,
+    json_output: bool = False,
+    protocol_path: Optional[str] = ".snodo/protocol.yml",
+    completion_fn: Any = None,
+) -> int:
     """Validate a plan's structure and spec files."""
     from snodo.compiler.verifier import verify_plan_dir
 
     plan_dir = planner.plans_dir / name
     result = verify_plan_dir(plan_dir)
+
+    if result.passed:
+        spec_warnings = _judge_plan_specs(
+            planner,
+            plan_dir,
+            protocol_path=protocol_path,
+            completion_fn=completion_fn,
+        )
+        result.warnings.extend(spec_warnings)
 
     if json_output:
         from snodo.cli.json_output import emit_json, schema_name
