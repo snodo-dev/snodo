@@ -16,6 +16,7 @@ import typer
 from snodo.infrastructure.paths import resolve_home, resolve_project_root
 
 _logger = logging.getLogger(__name__)
+_MAX_BENCHMARK_RUNS = 10
 
 
 def register(app: typer.Typer) -> None:
@@ -28,7 +29,11 @@ def register(app: typer.Typer) -> None:
         stats: bool = typer.Option(False, "--stats", help="Report actual model and coder usage from project records"),
         benchmark: bool = typer.Option(
             False, "--benchmark",
-            help="Time one fixed prompt against the selected model. Makes a real, billed API call.",
+            help="Time a fixed prompt against the selected model. Makes real, billed API calls.",
+        ),
+        benchmark_runs: int = typer.Option(
+            1, "--benchmark-runs", min=1, max=_MAX_BENCHMARK_RUNS,
+            help=f"Number of sequential benchmark calls (1-{_MAX_BENCHMARK_RUNS}).",
         ),
         id_contains: Optional[str] = typer.Option(None, "--id-contains", help="Substring on id/display_name (case-insensitive)"),
         max_output_cost: Optional[float] = typer.Option(None, "--max-output-cost", help="Output cost/1M <= value. Excludes unknown costs."),
@@ -42,6 +47,7 @@ def register(app: typer.Typer) -> None:
             flush=flush,
             stats=stats,
             benchmark=benchmark,
+            benchmark_runs=benchmark_runs,
             id_contains=id_contains,
             max_output_cost=max_output_cost,
             min_output_cost=min_output_cost,
@@ -807,13 +813,13 @@ def _select_benchmark_model(provider_name: str, args) -> Optional[str]:
     return models[0].get("full_string") or models[0].get("id")
 
 
-def _print_benchmark_intent(model: str, prompt: str) -> None:
+def _print_benchmark_intent(model: str, prompt: str, runs: int) -> None:
     """Say what is about to be spent, before it is spent."""
-    print("About to benchmark one model with one fixed prompt.")
+    print(f"About to benchmark one model with one fixed prompt ({runs} run(s)).")
     print(f"  model:  {model}")
     print(f"  prompt: {_benchmark_prompt_identity(prompt)}")
     print(f"  source: {_BENCHMARK_PROMPT_PATH}")
-    print("  This makes one real, billed API call.")
+    print(f"  This makes {runs} real, billed API call(s).")
     print()
 
 
@@ -949,6 +955,37 @@ def _print_benchmark_report(model: str, prompt: str, result: Dict[str, Any]) -> 
     )
 
 
+def _print_benchmark_distribution(
+    model: str,
+    prompt: str,
+    results: list,
+    attempted_runs: int,
+) -> None:
+    """Print statistics over successful runs without averaging output lengths."""
+    def _stats(key: str) -> Optional[Tuple[float, float]]:
+        values = [r[key] for r in results if r.get(key) is not None]
+        if not values:
+            return None
+        return statistics.median(values), statistics.mean(values)
+
+    def _format_stats(stats: Optional[Tuple[float, float]], suffix: str) -> str:
+        if stats is None:
+            return "n/a"
+        median, mean = stats
+        return f"median {median:.2f}{suffix}, mean {mean:.2f}{suffix}"
+
+    print(f"Benchmark result: {model}")
+    print(f"  runs         {len(results)} succeeded / {attempted_runs} attempted")
+    print(f"  prompt       {_benchmark_prompt_identity(prompt)}")
+    print(f"  prompt file  {_BENCHMARK_PROMPT_PATH}")
+    print("  statistics   successful runs only; output lengths are not averaged")
+    print(f"  timing       first token {_format_stats(_stats('time_to_first_token'), 's')}")
+    print(
+        f"  throughput   decode "
+        f"{_format_stats(_stats('decode_tok_per_sec'), ' output tok/s')}"
+    )
+
+
 def models_benchmark_command(args) -> int:
     """Benchmark one fixed prompt against one model selected by the model flags."""
     provider_name = getattr(args, "provider", None)
@@ -965,14 +1002,31 @@ def models_benchmark_command(args) -> int:
         return 1
 
     prompt = _load_benchmark_prompt()
-    _print_benchmark_intent(model, prompt)
-
-    try:
-        result = _run_benchmark_call(model, prompt)
-    except Exception as e:
-        print(f"Benchmark call failed: {e}", file=sys.stderr)
+    runs = getattr(args, "benchmark_runs", 1)
+    if runs < 1 or runs > _MAX_BENCHMARK_RUNS:
+        print(
+            f"--benchmark-runs must be between 1 and {_MAX_BENCHMARK_RUNS}.",
+            file=sys.stderr,
+        )
         return 1
 
-    _print_benchmark_report(model, prompt, result)
-    return 0
+    _print_benchmark_intent(model, prompt, runs)
+    results = []
+    for run_number in range(1, runs + 1):
+        try:
+            results.append(_run_benchmark_call(model, prompt))
+        except Exception as e:
+            if runs == 1:
+                print(f"Benchmark call failed: {e}", file=sys.stderr)
+            else:
+                print(f"Benchmark run {run_number}/{runs} failed: {e}", file=sys.stderr)
 
+    if not results:
+        print(f"All {runs} benchmark run(s) failed.", file=sys.stderr)
+        return 1
+
+    if runs == 1:
+        _print_benchmark_report(model, prompt, results[0])
+    else:
+        _print_benchmark_distribution(model, prompt, results, runs)
+    return 0
