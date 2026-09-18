@@ -260,6 +260,35 @@ class TestClassifyTask:
         assert result["wave_id"] is None
         assert result["task_summary"] is None
 
+    def test_provider_rejected_parameter_retries_without_it(self, tmp_path):
+        """A provider parameter refusal does not discard the classification."""
+        calls = []
+
+        def completion_fn(**kwargs):
+            calls.append(kwargs)
+            if "temperature" in kwargs:
+                raise ValueError(
+                    "'temperature' is not supported with this model"
+                )
+            response = MagicMock()
+            response.choices[0].message.content = json.dumps({
+                "flow_type": "feature",
+                "wave_id": "new",
+                "task_summary": "Build login system",
+                "feature_description": "Authentication system",
+            })
+            return response
+
+        reg = _make_registry(tmp_path)
+        result = reg.classify_task(
+            "build login system", "task_001", completion_fn, "custom/model"
+        )
+
+        assert result["wave_id"].startswith("w_")
+        assert len(calls) == 2
+        assert calls[0]["temperature"] == 0.0
+        assert "temperature" not in calls[1]
+
     def test_invalid_flow_type_defaults_to_feature_unwaved(self, tmp_path):
         reg = _make_registry(tmp_path)
         mock_completion = MagicMock()
