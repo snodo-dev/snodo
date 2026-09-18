@@ -102,6 +102,17 @@ def inert_settings(
     return sorted(key for key in explicit if key not in honoured)
 
 
+_REPORTED_PAIRINGS: set[tuple[str, str]] = set()
+
+
+def reset_reported_inert_settings() -> None:
+    """Clear the set of reported inert (coder, setting) pairings.
+
+    Test-support seam so each test begins with a clean slate.
+    """
+    _REPORTED_PAIRINGS.clear()
+
+
 def report_inert_coder_settings(
     coder_name: str,
     explicit: Mapping[str, Any],
@@ -111,9 +122,11 @@ def report_inert_coder_settings(
     Called where a coder is selected — graph build and the governance-driven
     respawn — so the operator hears "this coder cannot honour that setting"
     at the moment the pairing is made, not after a halted run is being
-    explained. Returns the reported setting names. Never raises: the setting
-    is real and correct for another coder, and rejecting the config of an
-    operator who just switched coders would be its own fault.
+    explained. Reports each pairing once rather than repeating on every
+    task dispatch (Fixes #355). Returns the newly reported setting names.
+    Never raises: the setting is real and correct for another coder, and
+    rejecting the config of an operator who just switched coders would be its
+    own fault.
     """
     from snodo.coders import CODER_REGISTRY
 
@@ -123,7 +136,13 @@ def report_inert_coder_settings(
         return []
     inert = inert_settings(adapter_cls, explicit)
     honoured = sorted(getattr(adapter_cls, "honoured_settings", frozenset()))
+    reported: List[str] = []
     for key in inert:
+        pairing = (coder_name, key)
+        if pairing in _REPORTED_PAIRINGS:
+            continue
+        _REPORTED_PAIRINGS.add(pairing)
+        reported.append(key)
         source = (
             f"llm.coder.{key}"
             if key in JUDGED_CONFIG_FIELDS
@@ -139,4 +158,5 @@ def report_inert_coder_settings(
             coder_name,
             ", ".join(honoured) or "none",
         )
-    return inert
+    return reported
+
