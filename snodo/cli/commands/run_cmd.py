@@ -1517,9 +1517,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
         print("Building execution graph with MCP services...")
         print(f"  Project root: {project_root}\n  MCP root: {mcp_root}")
         print(f"  MCPs: workspace, git, shell\n  Coder: {coder_name}")
-        if checkpointer:
-            print("  Memory: persistent (SqliteSaver)")
-        print()
+        print("  Memory: persistent (SqliteSaver)" if checkpointer else "")
 
         token_issuer = TokenIssuer()
 
