@@ -9,7 +9,7 @@ bumps the schema version so a consumer can detect it before parsing.
 - `--json` is **additive**. Human output is unchanged; `--json` only changes
   what is written to stdout.
 - Every `--json` command writes a **single JSON object** to stdout. Errors are
-  written to stderr, never stdout, so stdout is always one parseable document.
+  emitted to stdout as that object, so stdout is always one parseable document.
 - Every payload carries a `schema` field of the form `snodo.<command>.v<N>`.
   A consumer must check this field first; a mismatch means the payload shape
   changed and the consumer should refuse to parse rather than misread it.
