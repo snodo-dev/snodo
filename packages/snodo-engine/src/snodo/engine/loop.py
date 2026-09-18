@@ -1267,6 +1267,13 @@ def build_protocol_graph(
             **coder_kwargs,
         )
 
+    if isinstance(wave_results, str):
+        import json
+        try:
+            wave_results = json.loads(wave_results)
+        except (TypeError, ValueError):
+            wave_results = None
+
     custom_functions.pop("workspace_mcp", None)
     custom_functions.pop("git_mcp", None)
     custom_functions.pop("shell_mcp", None)

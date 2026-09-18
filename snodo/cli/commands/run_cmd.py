@@ -1525,12 +1525,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
 
         from snodo.validators.verdict_cache import cache_for_project
         verdict_cache = cache_for_project(project_root)
-        wave_results = None
-        if encoded_wave_results := os.environ.get("SNODO_WAVE_VERDICTS"):
-            try:
-                wave_results = json.loads(encoded_wave_results)
-            except (TypeError, ValueError):
-                _logger.warning("Ignoring malformed SNODO_WAVE_VERDICTS")
+        wave_results = os.environ.get("SNODO_WAVE_VERDICTS")
 
         graph = build_protocol_graph(
             protocol,
