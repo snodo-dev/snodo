@@ -1517,19 +1517,13 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
         print("Building execution graph with MCP services...")
         print(f"  Project root: {project_root}\n  MCP root: {mcp_root}")
         print(f"  MCPs: workspace, git, shell\n  Coder: {coder_name}")
-        if checkpointer:
-            print("  Memory: persistent (SqliteSaver)")
-        print()
+        print("  Memory: persistent (SqliteSaver)" if checkpointer else "")
 
-        # Constructed with the same defaults GraphBuilder used for its
-        # implicit issuer — only the ownership site moves.
         token_issuer = TokenIssuer()
 
-        # The verdict cache is project state (#246): it lives beside the audit
-        # log under the project's .snodo/, never in the operator's home, so it
-        # cannot cross projects.  An unusable cache degrades to fresh judgement.
         from snodo.validators.verdict_cache import cache_for_project
         verdict_cache = cache_for_project(project_root)
+        wave_results = os.environ.get("SNODO_WAVE_VERDICTS")
 
         graph = build_protocol_graph(
             protocol,
@@ -1547,6 +1541,7 @@ def _build_graph(args, protocol: Protocol, project_root: str, model: str,
             verbose=getattr(args, "verbose", False),
             token_issuer=token_issuer,
             verdict_cache=verdict_cache,
+            wave_results=wave_results,
         )
         compiled_graph = graph.compile(checkpointer=checkpointer)
         print("✓ Graph compiled with MCP integration")

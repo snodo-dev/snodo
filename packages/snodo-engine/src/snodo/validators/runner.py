@@ -458,6 +458,7 @@ def run_validators(
     base_ref: Optional[str] = None,
     verdict_cache: Any = None,
     wave_specs: Optional[List[str]] = None,
+    wave_results: Optional[Dict[str, ValidatorResult]] = None,
 ) -> Tuple[List[ValidatorResult], Dict[str, str]]:
     """Run a list of validators against a task and return ordered results.
 
@@ -579,6 +580,19 @@ def run_validators(
     results_by_id: Dict[str, ValidatorResult] = {}
     cap_originals: Dict[str, str] = {}
 
+    # A plan runner supplies wave verdicts computed before any task dispatch.
+    # They remain in each task's quorum; only their evaluation moves out of the
+    # task pool.  A missing mapping preserves direct task-runner behaviour for
+    # callers that do not participate in plan wave dispatch.
+    if wave_results is not None:
+        for v in validators:
+            if v.scope == "wave":
+                result = wave_results.get(v.validator_id)
+                if result is not None:
+                    if isinstance(result, dict):
+                        result = ValidatorResult.model_validate(result)
+                    results_by_id[v.validator_id] = copy.deepcopy(result)
+
     def _dispatch_with_progress(v: Validator, ctx: ValidatorContext) -> ValidatorResult:
         # Emitted from inside the worker, not at submit time: with a bounded
         # pool a queued validator has not started yet, and an operator watching
@@ -590,6 +604,8 @@ def run_validators(
     with ThreadPoolExecutor(max_workers=min(len(validators), 4)) as executor:
         futures = {}
         for v in validators:
+            if v.validator_id in results_by_id:
+                continue
             override_model = overrides.get(v.validator_id)
             effective_model = override_model or v.model or default_model or DEFAULT_MODEL
             ctx = copy.copy(context)

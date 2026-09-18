@@ -6,7 +6,7 @@ All models are immutable and include validation logic.
 
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Set
-from pydantic import BaseModel, Field, field_validator, field_serializer, ConfigDict
+from pydantic import BaseModel, Field, field_validator, field_serializer, model_validator, ConfigDict
 
 
 class ExecutionConfig(BaseModel):
@@ -139,6 +139,10 @@ class Validator(BaseModel):
         default="pre_execute",
         description="When to run this validator (e.g., pre_execute, post_execute)"
     )
+    scope: Literal["task", "wave"] = Field(
+        default="task",
+        description="Whether this validator is evaluated for each task or once per wave",
+    )
     tooling: Dict[str, Any] = Field(
         default_factory=dict,
         description="Tooling configuration (e.g., test_command, timeout)"
@@ -206,6 +210,14 @@ class Validator(BaseModel):
                 f"evaluation_phase must be one of {sorted(EVALUATION_PHASES)}, got '{v}'"
             )
         return v
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "Validator":
+        if self.scope == "wave" and self.evaluation_phase != "pre_execute":
+            raise ValueError(
+                "wave-scoped validators are only valid for pre_execute"
+            )
+        return self
 
     @field_validator('tools')
     @classmethod
