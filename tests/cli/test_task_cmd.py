@@ -1187,3 +1187,37 @@ def test_task_list_job_executed_task_produces_single_row_under_task_identity(tmp
     assert len(tasks) == 1
 
 
+def test_task_show_displays_findings(tmp_path, monkeypatch, capsys):
+    """task show displays findings in both text and json output."""
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    mgr, session = _setup_project_with_session(tmp_path, mode="dev", monkeypatch=monkeypatch)
+
+    findings_text = "Analysis complete: auth module requires OAuth2 refactoring."
+    halt_data = {
+        "t_investigate": {
+            "final_decision": "completed",
+            "halt_type": "completed",
+            "phase": "post_execute",
+            "findings": findings_text,
+        }
+    }
+    mgr.update_decision(session.session_id, "halt", halt_data)
+
+    # Text mode
+    res = task_show_command(SimpleNamespace(task_id="t_investigate", json=False))
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "Task:    t_investigate" in out
+    assert "Findings:" in out
+    assert findings_text in out
+
+    # JSON mode
+    res = task_show_command(SimpleNamespace(task_id="t_investigate", json=True))
+    assert res == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["ok"] is True
+    assert data["findings"] == findings_text
+    assert data["halt"]["findings"] == findings_text
+
+
+

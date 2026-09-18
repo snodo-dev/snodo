@@ -70,7 +70,7 @@ _REPORT_INSTRUCTION = (
     '"created|modified|deleted"}}], "turns_used": <int>, '
     '"turns_available": <int>, "tokens_used": <int>, '
     '"context_window": <int>, "wall_time_ms": <int>, "stop_reason": '
-    '"{stop_reasons}"}}\n'
+    '"{stop_reasons}", "findings": "<findings text if non-diff task>"}}\n'
     "The engine reads this file and deletes it afterwards. It is not part of "
     "the task; leaving it unwritten changes nothing about your work."
 )
@@ -642,11 +642,15 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
 
             files.append(FileArtifact(path=path, content=content, action="write"))
 
+        findings = getattr(self.last_report, "findings", None) if self.last_report else None
+        if findings is not None:
+            meta["findings"] = findings
+
         if not files:
             _logger.warning("%s returned no files — task completed with no changes", self.binary)
-            return CodeArtifact(files=[], metadata=meta)
+            return CodeArtifact(files=[], metadata=meta, findings=findings)
 
-        return CodeArtifact(files=files, metadata=meta)
+        return CodeArtifact(files=files, metadata=meta, findings=findings)
 
     def _build_prompt(self, spec: TaskSpec) -> str:
         """Build prompt from TaskSpec."""

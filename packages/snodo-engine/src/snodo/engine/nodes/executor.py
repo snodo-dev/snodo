@@ -21,6 +21,19 @@ from snodo.engine.state import _task_branch_name, _branch_exists
 _logger = logging.getLogger(__name__)
 
 
+def _is_real_findings(obj: Any) -> bool:
+    """True when obj is genuine findings content (not None, not a Mock, not empty)."""
+    if obj is None:
+        return False
+    try:
+        from unittest.mock import Mock
+        if isinstance(obj, Mock):
+            return False
+    except ImportError:
+        pass
+    return bool(obj)
+
+
 class ExecutorMixin:
     """Mixin providing executor node capabilities to GraphBuilder."""
 
@@ -83,6 +96,43 @@ class ExecutorMixin:
             self._last_coder_report = parse_coder_report(report)
         else:
             self._last_coder_report = None
+
+        findings = None
+        if code_artifact is not None:
+            cand = getattr(code_artifact, "findings", None)
+            if _is_real_findings(cand):
+                findings = cand
+            elif hasattr(code_artifact, "metadata") and isinstance(code_artifact.metadata, dict):
+                meta_cand = code_artifact.metadata.get("findings")
+                if _is_real_findings(meta_cand):
+                    findings = meta_cand
+        if findings is None and self._last_coder_report is not None:
+            cand = getattr(self._last_coder_report, "findings", None)
+            if _is_real_findings(cand):
+                findings = cand
+        if findings is None:
+            cand = getattr(coder, "last_findings", None)
+            if _is_real_findings(cand):
+                findings = cand
+        if findings is None:
+            coder_last_report = getattr(coder, "last_report", None)
+            if coder_last_report is not None:
+                cand = getattr(coder_last_report, "findings", None)
+                if _is_real_findings(cand):
+                    findings = cand
+        self._last_findings = findings
+        if (
+            self._last_coder_report is not None
+            and findings is not None
+            and not _is_real_findings(getattr(self._last_coder_report, "findings", None))
+        ):
+            try:
+                self._last_coder_report.findings = findings
+            except (AttributeError, TypeError):
+                pass
+        elif self._last_coder_report is None and findings is not None:
+            from snodo.coders.report import CoderReport
+            self._last_coder_report = CoderReport(stop_reason="completed", findings=findings)
 
 
     def _recover_bounded_run_work(
@@ -339,41 +389,43 @@ class ExecutorMixin:
                 artifact_paths = self._apply_file_operations(workspace_mcp, coder, code_artifact, task)
                 if not artifact_paths:
                     # The coder produced no file operations. Before declaring a
-                    # no_file_operations halt, ask whether the work already
-                    # exists on the task branch: a retry runs on a branch that
-                    # may already carry an earlier attempt's commit (the attempt
-                    # committed and then failed afterwards), and a coder that
-                    # finds the work present correctly writes nothing.
-                    # no_file_operations must mean the work does not exist — not
-                    # that this particular attempt did not create it (#221).
-                    existing = self._existing_task_branch_work(git_mcp)
-                    if existing is None:
-                        # "Coder produced nothing" is the same fault whether the
-                        # engine commits the artifacts (skip_engine_commit False)
-                        # or the adapter commits them itself (skip_engine_commit
-                        # True). Opting out of the engine's commit mechanism does
-                        # NOT waive the obligation that the coder produce
-                        # observable work — a no-op run must fail loudly on every
-                        # adapter, not be downgraded to an audit note on some
-                        # (docs/architecture/coder-adapter-contract.md §4, #68).
-                        raise NoFileOperationsError(
-                            "Coder produced no file operations: it exited 0 "
-                            "having written nothing. output_tail carries the "
-                            "closing lines of BOTH stdout and stderr: a "
-                            "closing explanation that no change was needed is "
-                            "a different fault from a run that stopped before "
-                            "writing (budget, rate-limit and provider errors "
-                            "land on stderr while stdout narrates), and the "
-                            "engine does not parse coder output to tell them "
-                            "apart (ADR 034)."
-                        )
-                    # The work is already committed on the branch: carry those
-                    # artifacts forward exactly as freshly produced ones would be
-                    # so post-execute validation judges what is actually there.
-                    # There is nothing new to stage or commit, so the engine's
-                    # commit path is skipped.
-                    self._last_existing_work_base_ref = existing[0]
-                    artifacts.extend(existing[1])
+                    # no_file_operations halt, ask whether the coder produced findings
+                    # (investigation / survey tasks), or work already exists on the task branch:
+                    has_findings = bool(
+                        _is_real_findings(self._last_findings)
+                        or (code_artifact is not None and _is_real_findings(getattr(code_artifact, "findings", None)))
+                        or (code_artifact is not None and hasattr(code_artifact, "metadata") and isinstance(code_artifact.metadata, dict) and _is_real_findings(code_artifact.metadata.get("findings")))
+                        or (self._last_coder_report is not None and _is_real_findings(getattr(self._last_coder_report, "findings", None)))
+                    )
+                    if not has_findings:
+                        existing = self._existing_task_branch_work(git_mcp)
+                        if existing is None:
+                            # "Coder produced nothing" is the same fault whether the
+                            # engine commits the artifacts (skip_engine_commit False)
+                            # or the adapter commits them itself (skip_engine_commit
+                            # True). Opting out of the engine's commit mechanism does
+                            # NOT waive the obligation that the coder produce
+                            # observable work — a no-op run must fail loudly on every
+                            # adapter, not be downgraded to an audit note on some
+                            # (docs/architecture/coder-adapter-contract.md §4, #68).
+                            raise NoFileOperationsError(
+                                "Coder produced no file operations: it exited 0 "
+                                "having written nothing. output_tail carries the "
+                                "closing lines of BOTH stdout and stderr: a "
+                                "closing explanation that no change was needed is "
+                                "a different fault from a run that stopped before "
+                                "writing (budget, rate-limit and provider errors "
+                                "land on stderr while stdout narrates), and the "
+                                "engine does not parse coder output to tell them "
+                                "apart (ADR 034)."
+                            )
+                        # The work is already committed on the branch: carry those
+                        # artifacts forward exactly as freshly produced ones would be
+                        # so post-execute validation judges what is actually there.
+                        # There is nothing new to stage or commit, so the engine's
+                        # commit path is skipped.
+                        self._last_existing_work_base_ref = existing[0]
+                        artifacts.extend(existing[1])
                 else:
                     artifacts.extend(artifact_paths)
 

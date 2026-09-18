@@ -11,7 +11,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from snodo.core.interfaces import Coder, CodeArtifact, TaskSpec
 from snodo.paths import get_project_local_home_rel, is_protected_workspace_path
@@ -147,6 +147,8 @@ class InPlaceCoderAdapter(Coder, ABC):
     _workspace: Path
     last_commit_reason: Optional[str] = None
     _head_before_run: Optional[str] = None
+    last_report: Optional[Any] = None
+    last_findings: Optional[Any] = None
 
     @property
     def workspace(self) -> Path:
@@ -170,6 +172,12 @@ class InPlaceCoderAdapter(Coder, ABC):
         t0 = time.perf_counter()
         artifact = self._implement_in_place(spec)
         duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+        findings = getattr(artifact, "findings", None)
+        if findings is None and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
+            findings = artifact.metadata.get("findings")
+        if findings is None and getattr(self, "last_report", None) is not None:
+            findings = getattr(self.last_report, "findings", None)
+        self.last_findings = findings
         changed = self._changed_snodo_paths(before)
         if changed:
             raise SnodoMutationError(sorted(changed))

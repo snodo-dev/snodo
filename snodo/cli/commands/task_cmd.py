@@ -534,11 +534,13 @@ def task_show_command(args) -> int:
     # Recover local operator diagnostic fields (e.g. output_tail, coder_report) from local task/job state
     output_tail = None
     coder_report = None
+    findings = None
     if isinstance(halt_entry, dict):
         output_tail = halt_entry.get("output_tail")
         coder_report = halt_entry.get("coder_report")
+        findings = halt_entry.get("findings")
 
-    if not output_tail or not coder_report:
+    if not output_tail or not coder_report or findings is None:
         task_state_file = Path(project_root) / ".snodo" / "tasks" / task_id / "state.json"
         if task_state_file.is_file():
             try:
@@ -550,10 +552,12 @@ def task_show_command(args) -> int:
                         output_tail = h.get("output_tail")
                     if not coder_report:
                         coder_report = h.get("coder_report")
+                    if findings is None:
+                        findings = ts_data.get("findings") or h.get("findings")
             except (OSError, ValueError, TypeError):
                 pass
 
-    if not output_tail or not coder_report:
+    if not output_tail or not coder_report or findings is None:
         jobs_dir = Path(project_root) / ".snodo" / "jobs"
         if jobs_dir.is_dir():
             try:
@@ -569,7 +573,9 @@ def task_show_command(args) -> int:
                                     output_tail = h.get("output_tail")
                                 if not coder_report and h.get("coder_report"):
                                     coder_report = h.get("coder_report")
-                                if output_tail and coder_report:
+                                if findings is None:
+                                    findings = js_data.get("findings") or h.get("findings")
+                                if output_tail and coder_report and findings is not None:
                                     break
             except (OSError, ValueError, TypeError):
                 pass
@@ -578,6 +584,8 @@ def task_show_command(args) -> int:
         halt_entry["output_tail"] = output_tail
     if coder_report and isinstance(halt_entry, dict):
         halt_entry["coder_report"] = coder_report
+    if findings is not None and isinstance(halt_entry, dict):
+        halt_entry["findings"] = findings
 
     if json_out:
         from snodo.cli.json_output import emit_json, schema_name
@@ -591,6 +599,8 @@ def task_show_command(args) -> int:
             "failure": failure_entry if isinstance(failure_entry, dict) else None,
             "spec": spec,
         }
+        if findings is not None:
+            payload["findings"] = findings
         if hand_completion is not None:
             payload["hand_completion"] = hand_completion
         return emit_json(payload)
@@ -622,6 +632,17 @@ def task_show_command(args) -> int:
             from snodo.coders.report import print_coder_report
 
             print_coder_report(report)
+
+        if findings is not None:
+            print()
+            print("Findings:")
+            if isinstance(findings, (dict, list)):
+                import json
+                print(json.dumps(findings, indent=2))
+            else:
+                for line in str(findings).strip().splitlines():
+                    print(f"  {line}")
+
 
     if isinstance(failure_entry, dict):
         print()

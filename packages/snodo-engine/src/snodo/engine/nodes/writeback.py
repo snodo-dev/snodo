@@ -712,6 +712,9 @@ class WritebackMixin:
                 f.model_dump() if hasattr(f, "model_dump") else dict(f)
                 for f in files
             ]
+        findings = getattr(report, "findings", None)
+        if findings is not None:
+            report_dict["findings"] = findings
 
         # Worktree files as recorded by the engine
         artifacts = getattr(loop_state, "artifacts", []) or []
@@ -938,6 +941,11 @@ class WritebackMixin:
             parsed = parse_coder_report(coder_report)
             if parsed is not None:
                 payload["coder_report"] = self._build_coder_report_payload(parsed, loop_state)
+        findings = meta.get("findings")
+        if findings is None and payload.get("coder_report"):
+            findings = payload["coder_report"].get("findings")
+        if findings is not None:
+            payload["findings"] = findings
         return payload
 
     def _auto_write_halt_payload(self, loop_state: Any) -> None:
@@ -953,7 +961,34 @@ class WritebackMixin:
         loop_state.metadata["halt_payload"] = halt_payload
 
         # Direct write to job state.json
-        self._merge_into_job_state({"halt": halt_payload})
+        job_updates: Dict[str, Any] = {"halt": halt_payload}
+        findings = halt_payload.get("findings")
+        if findings is not None:
+            job_updates["findings"] = findings
+        self._merge_into_job_state(job_updates)
+
+        # Direct write to task state.json if task directory exists under .snodo/tasks/
+        if getattr(self, "_project_root", None) and getattr(loop_state, "task", None):
+            task_id = getattr(loop_state.task, "id", None)
+            if task_id:
+                task_dir = Path(self._project_root) / ".snodo" / "tasks" / task_id
+                if task_dir.is_dir():
+                    task_state_path = task_dir / "state.json"
+                    task_state: dict = {}
+                    if task_state_path.exists():
+                        try:
+                            task_state = json.loads(task_state_path.read_text())
+                        except Exception:
+                            task_state = {}
+                    if not isinstance(task_state, dict):
+                        task_state = {}
+                    task_state["halt"] = halt_payload
+                    if findings is not None:
+                        task_state["findings"] = findings
+                    tmp = task_dir / "state.json.tmp"
+                    tmp.write_text(json.dumps(task_state, indent=2))
+                    _os.replace(str(tmp), str(task_state_path))
+
 
         # Dual-write to session for orchestrator / dashboard
         if not self._session_manager or not self._session_id:
