@@ -124,6 +124,7 @@ def enrich_result_with_criteria(
         examined=getattr(result, "examined", None),
         skipped=getattr(result, "skipped", False),
         reused=getattr(result, "reused", False),
+        cacheable=getattr(result, "cacheable", True),
     )
 
 
@@ -141,6 +142,8 @@ def _is_cacheable_verdict(result: Any) -> bool:
     if getattr(result, "error", False):
         return False
     if getattr(result, "skipped", False):
+        return False
+    if not getattr(result, "cacheable", True):
         return False
     return True
 

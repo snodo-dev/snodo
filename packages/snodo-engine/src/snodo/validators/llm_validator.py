@@ -203,6 +203,26 @@ def _is_provider_rejection(e: Exception) -> bool:
     return False
 
 
+def _provider_rejected_parameter(e: Exception) -> Optional[str]:
+    """Extract a parameter name from a provider's named-parameter rejection."""
+    if not _is_provider_rejection(e):
+        return None
+    message = str(e)
+    patterns = (
+        r"(?:unsupported|unrecognized|unknown|invalid)\s+(?:request\s+)?"
+        r"(?:parameter|param|argument)\s*[:=]?\s*[`'\"]?"
+        r"([A-Za-z_][A-Za-z0-9_.-]*)",
+        r"[`'\"]([A-Za-z_][A-Za-z0-9_.-]*)[`'\"]?\s+"
+        r"(?:is\s+)?(?:not\s+supported|unsupported|invalid)",
+        r"\b([A-Za-z_][A-Za-z0-9_.-]*)\b\s+is\s+not\s+supported",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, message, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
 def _provider_retry_delay(e: Exception) -> Optional[float]:
     """Return a provider-supplied retry delay, if the exception carries one."""
     candidates = [getattr(e, "retry_after", None)]
@@ -269,6 +289,13 @@ class LLMValidator(ValidatorBase):
         self._task_id: str = ""
         self._depth: int = 0
         self._attempt: int = 1
+        self._parameter_fallback_used = False
+
+    def _finalize_result(self, result: ValidatorResult) -> ValidatorResult:
+        """Prevent caching a verdict produced after changing judge parameters."""
+        if self._parameter_fallback_used:
+            result.cacheable = False
+        return result
 
     def _emit_turn_telemetry(
         self,
@@ -350,7 +377,7 @@ class LLMValidator(ValidatorBase):
             and self._completion_fn is not None
         ):
             res = self._evaluate_with_tools(context)
-            return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
+            return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
 
         # Pre-execute or fallback: single-completion path
         prompt = self._build_prompt(context)
@@ -364,7 +391,7 @@ class LLMValidator(ValidatorBase):
         if self._completion_fn is not None and supports_response_schema(self.model):
             try:
                 res = self._call_llm_structured(prompt)
-                return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
+                return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
             except Exception as e:
                 structured_rejected = _is_provider_rejection(e)
 
@@ -376,7 +403,7 @@ class LLMValidator(ValidatorBase):
                 justification="No completion_fn available",
                 error=True,
             )
-            return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
+            return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
         try:
             response_text = self._call_llm(prompt)
             res = self._parse_response(response_text)
@@ -413,7 +440,7 @@ class LLMValidator(ValidatorBase):
                 ),
                 error=True,
             )
-        return enrich_result_with_criteria(res, getattr(self.validator_spec, "criteria", []))
+        return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
 
     # ------------------------------------------------------------------
     # Post-execute bounded tool-use loop
@@ -1085,15 +1112,35 @@ class LLMValidator(ValidatorBase):
         )
 
     def _call_completion_with_retry(self, **kwargs) -> Any:
-        """Call completion_fn with retries for transient provider/network errors.
+        """Call completion_fn with transient retries and parameter fallback.
 
-        Retries up to 3 times on transient errors (5xx, 429, connection, DNS,
+        Retries each named provider-rejected parameter once, then retries up to
+        3 times on transient errors (5xx, 429, connection, DNS,
         timeout). Raises the underlying exception if retries are exhausted or
         the error is not transient (a 4xx other than 429 is a client error —
         retrying it is not honest). The retry sleeps share a 30-second budget
         per validator call so an unavailable provider cannot stall a run
         indefinitely. Provider Retry-After hints take precedence.
         """
+        removed: Set[str] = set()
+        while True:
+            try:
+                return self._call_completion_with_transient_retry(**kwargs)
+            except Exception as e:
+                parameter = _provider_rejected_parameter(e)
+                if parameter and parameter in kwargs and parameter not in removed:
+                    removed.add(parameter)
+                    del kwargs[parameter]
+                    self._parameter_fallback_used = True
+                    _logger.warning(
+                        "Validator %s provider rejected parameter %s (model=%s): %s; retrying without it",
+                        self.validator_spec.validator_id, parameter, self.model, e,
+                    )
+                    continue
+                raise
+
+    def _call_completion_with_transient_retry(self, **kwargs) -> Any:
+        """Call completion_fn with retries for transient provider/network errors."""
         retry_deadline = time.monotonic() + _RETRY_BUDGET_SECONDS
         for attempt in range(_RETRY_ATTEMPTS):
             try:
