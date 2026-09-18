@@ -11,6 +11,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The greenfield runbook stated that `snodo init` commits `.snodo/` and
+  `.gitignore` safety guards. It commits only `.gitignore` so that `git clean -fd`
+  cannot remove the ignore file and expose `.snodo/`, while keeping `.snodo/`
+  ignored and local so that project state does not travel with a clone.
+  (Fixes #343)
 - Long-running `snodo serve --tunnel` child process pipes are now continuously
   drained in background threads. Previously, both the MCP server and
   cloudflared were spawned with pipes that were never read after startup,
