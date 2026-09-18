@@ -397,6 +397,8 @@ disagreement_policy: "unanimous"
 
     w1_dir = plans_dir / "wave_1"
     w1_dir.mkdir(parents=True, exist_ok=True)
+    (plan_env / "src" / "auth").mkdir(parents=True, exist_ok=True)
+    (plan_env / "src" / "auth" / "session.py").write_text("class Session: pass\n")
     prescriptive_spec = (
         "Fix the crash when session expires.\n"
         "Acceptance: no crash.\n"
@@ -634,6 +636,5 @@ disagreement_policy: "unanimous"
     assert len(data["warnings"]) == 1
     assert "meta-spec" in data["warnings"][0]
     assert "[blocker]" in data["warnings"][0]
-
 
 

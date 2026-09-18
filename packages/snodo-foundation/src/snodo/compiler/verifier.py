@@ -593,6 +593,8 @@ def verify_plan(
                     errors.append(f"Missing spec: {task_id}")
                     continue
                 spec = spec_file.read_text()
+                if not isinstance(spec, str):
+                    continue
                 created_by_task = set(planned_spec_paths(spec))
                 missing_paths = check_spec_paths_exist(str(root), spec)
                 for path in missing_paths:
