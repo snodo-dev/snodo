@@ -21,7 +21,8 @@ from litellm import supports_response_schema
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import ValidatorResult
 from snodo.validators.context import ValidatorContext, ValidatorBase
-from snodo.validators.llm_validator import LLMValidator, _is_provider_rejection
+from snodo.validators.llm_validator import LLMValidator
+from snodo.validators.llm_provider_errors import _is_provider_rejection
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
 
