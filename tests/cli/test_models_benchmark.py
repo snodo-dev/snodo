@@ -306,6 +306,40 @@ def test_report_states_prompt_counts_and_timing_basis(monkeypatch, capsys):
     assert "overall 28.0 output tok/s" in out
 
 
+def test_repeated_benchmark_reports_median_and_mean(monkeypatch, capsys):
+    """Several sequential completion samples are reported as distributions."""
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.get_providers",
+        lambda self: {"openai": SimpleNamespace(api_key="sk-test")},
+    )
+    monkeypatch.setattr(
+        models_cmd, "_get_models",
+        lambda p, pc, force_refresh: [{"id": "gpt-4o", "full_string": "openai/gpt-4o"}],
+    )
+
+    samples = iter([
+        {"time_to_first_token": 1.0, "decode_tok_per_sec": 10.0},
+        {"time_to_first_token": 2.0, "decode_tok_per_sec": 20.0},
+        {"time_to_first_token": 10.0, "decode_tok_per_sec": 100.0},
+    ])
+
+    def _fake_completion(model, prompt):
+        return next(samples)
+
+    monkeypatch.setattr(models_cmd, "_run_benchmark_call", _fake_completion)
+    args = SimpleNamespace(
+        provider="openai", flush=False, benchmark=True, benchmark_runs=3,
+        id_contains=None, max_output_cost=None, min_output_cost=None,
+        max_input_cost=None, min_context=None,
+    )
+
+    assert models_benchmark_command(args) == 0
+    out = capsys.readouterr().out
+    assert "3 succeeded / 3 attempted" in out
+    assert "first token median 2.00s, mean 4.33s" in out
+    assert "decode median 20.00 output tok/s, mean 43.33 output tok/s" in out
+
+
 def test_benchmark_intent_says_it_will_spend(monkeypatch, capsys):
     """Before the call, the command states the model, the prompt and the cost."""
     monkeypatch.setattr(
