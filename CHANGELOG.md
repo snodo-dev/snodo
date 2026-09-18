@@ -7,6 +7,74 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `snodo models --benchmark` can repeat its measurement. A single sample could
+  not answer the question the flag exists to answer: four consecutive runs
+  against one model gave first-token times of 2.71s, 1.51s, 0.98s and 1.65s,
+  so any comparison drawn from one of them was drawn from noise. The command
+  now reports median and mean for first-token latency and decode rate, says
+  how many runs succeeded out of how many were attempted, and states the run
+  count in the confirmation line before billing the operator for all of them.
+  Output lengths are not averaged: they vary per run, so wall-clock totals are
+  not commensurable and only the rates are. Runs are sequential — concurrent
+  requests would measure the provider's concurrency, not its latency — and a
+  failed run is reported rather than retried, because a silent retry would
+  hide the provider flakiness the flag is used to detect. Default behaviour is
+  unchanged: with no run count, one call, printed as before. (Fixes #346)
+- A model can be selected by exact id. Where a model's id is a prefix of other
+  ids, no substring selects it alone, so the advice to narrow the selection
+  with `--id-contains` named a filter that could not express the request —
+  `gemini-3.1-flash-lite` matched three models and the intended one was the
+  shortest. An exact name matches one model or none, and matching none says
+  so rather than falling back to substring matching and benchmarking a model
+  the operator did not choose. (Fixes #347)
+- Validators that judge only the specification now run when a plan is
+  validated, so a verdict computable from the spec text arrives before any
+  dispatch. One task failed three times on a conventions verdict about how its
+  spec was written — a judgement needing no repository access at all — and
+  three coder cycles were spent learning it. A validator is eligible only if it
+  declares `judges_spec` and reads no repository tools, so a repo-dependent
+  judge is never run against a repository it cannot see. Plan-time verdicts are
+  advisory: they do not block, they do not dispatch, and they are never cached
+  for reuse in the loop, whose quorum is unchanged. (Fixes #350)
+
+### Fixed
+
+- Validators recover from a provider that refuses a parameter. `drop_params`
+  removes only what litellm knows is unsupported, and for a model whose entry
+  carries no supported-parameter list it removes nothing — so the request went
+  out whole and was refused whole, and the validator reported an operational
+  error instead of a judgement. This is not a gap that closes with time: the
+  models worth trying are the new ones, and those are exactly the ones whose
+  entries are unfilled. A refusal that names a parameter now sends the request
+  again without it, following the pattern the tool loop already used for
+  `tool_choice`. Deterministic judging is unchanged where the model supports
+  it, and a refusal that names nothing still arrives as `validator_error`.
+  (Fixes #345)
+- The wave classifier no longer fails on every run. It sent `temperature` on
+  every call, and where the model refused it the classifier tried twice, gave
+  up and left the task unwaved — on every run of an overnight session, never
+  blocking anything, which is the kind of noise that teaches an operator to
+  stop reading stderr. Two provider refusals were seen: one rejecting the
+  value ("does not support 0.0 ... only the default (1)"), one rejecting the
+  parameter outright. Clamping answers the first and not the second, so the
+  classifier now retries without the refused parameter, and a removed
+  parameter stays removed on the following attempt. An unwaved task remains a
+  non-fatal outcome. (Fixes #348)
+- A validator that cannot be forced to commit is now told to. The final turn
+  already narrows the offered tools to `submit_verdict` and requires it via
+  `tool_choice`; when a provider refused that parameter the fallback deleted
+  it and retried unforced, which on the final turn removed the only thing
+  compelling a verdict. A judge then explored to its turn cap and halted
+  having judged nothing, twice, at about fifty-five minutes each. The
+  requirement now travels in the prompt when the provider cannot enforce it as
+  a parameter. A judge that still returns nothing remains fail-closed and
+  arrives as `validator_error`: no halt type, severity or status was added to
+  hold a missing verdict. (Fixes #349)
+
 ## [0.10.3] — 2026-09-18
 
 ### Added
