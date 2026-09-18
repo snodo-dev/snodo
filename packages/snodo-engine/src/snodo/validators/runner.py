@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -148,9 +149,25 @@ def _is_cacheable_verdict(result: Any) -> bool:
     return True
 
 
-def _spec_subject(context: ValidatorContext) -> str:
-    """Digest the specification a single-completion judge reads."""
+def _spec_subject(context: ValidatorContext, v: Optional[Validator] = None) -> str:
+    """Digest the specification a judge reads.
+
+    A wave-scoped judge sees every task specification in its wave.  Sort the
+    collection before hashing so the subject does not depend on which sibling
+    task happened to dispatch the judge first.
+    """
     spec = getattr(getattr(context, "task", None), "spec", "") or ""
+    tooling = getattr(v, "tooling", None) or {}
+    wave_specs = getattr(context, "wave_specs", None)
+    if wave_specs is None:
+        wave_specs = (getattr(context, "metadata", None) or {}).get("wave_specs")
+    if tooling.get("scope") == "wave" and wave_specs:
+        payload = json.dumps(
+            sorted(str(item) for item in wave_specs),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        spec = payload
     return "spec:" + hashlib.sha256(spec.encode("utf-8")).hexdigest()
 
 
@@ -279,9 +296,9 @@ def _verdict_subject(
         tree = _tree_subject_for(context)
         if tree is None:
             return None, False
-        return _spec_subject(context) + "|" + tree, True
+        return _spec_subject(context, v) + "|" + tree, True
     if kind == "spec":
-        return _spec_subject(context), True
+        return _spec_subject(context, v), True
     return None, False
 
 
@@ -440,6 +457,7 @@ def run_validators(
     artifacts: Optional[List[str]] = None,
     base_ref: Optional[str] = None,
     verdict_cache: Any = None,
+    wave_specs: Optional[List[str]] = None,
 ) -> Tuple[List[ValidatorResult], Dict[str, str]]:
     """Run a list of validators against a task and return ordered results.
 
@@ -525,6 +543,7 @@ def run_validators(
         verdict_callback=verdict_sink,
         base_ref=base_ref,
         verdict_cache=verdict_cache,
+        wave_specs=list(wave_specs) if wave_specs is not None else None,
     )
 
     # The produced change is read ONCE here, before the validator pool
