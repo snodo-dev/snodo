@@ -37,7 +37,10 @@ from snodo.engine.progress import (
     format_tool_call_summary,
 )
 
+import litellm as _litellm
 from litellm import supports_response_schema
+
+_litellm.drop_params = True
 
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import Task, ValidatorResult
