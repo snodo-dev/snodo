@@ -1466,8 +1466,13 @@ class TestTunnelRunErrors:
                                             # wait and the 0.1s poll both advance
                                             # instantly instead of sleeping.
                                             with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
-                                                # Return immediately so the function doesn't block
-                                                mock_sub.wait.return_value = 0
+                                                # Simulate the operator hitting Ctrl+C so the wait
+                                                # loop returns immediately instead of blocking; a
+                                                # cloudflared exit would itself be a failure now
+                                                # (Fixes #290, #334), so it can't stand in for "the
+                                                # function doesn't block" here anymore. The extra
+                                                # 0s satisfy the two proc.wait() calls cleanup makes.
+                                                mock_sub.wait.side_effect = [KeyboardInterrupt(), 0, 0]
                                                 result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
         assert result == 0
@@ -1511,7 +1516,9 @@ class TestTunnelRunErrors:
                                         # Injected clock: the 2s uvicorn bind wait
                                         # advances instantly instead of sleeping.
                                         with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
-                                            mock_sub.wait.return_value = 0
+                                            # See test_first_run_provisions_and_starts_services:
+                                            # Ctrl+C, not a cloudflared exit, stands for "success".
+                                            mock_sub.wait.side_effect = [KeyboardInterrupt(), 0, 0]
                                             result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
         assert result == 0
