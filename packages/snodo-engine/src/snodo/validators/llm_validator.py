@@ -87,6 +87,13 @@ _VERDICT_ONLY_INSTRUCTION = (
     "partial, say so in the justification and use \"warn\"."
 )
 
+_UNFORCED_VERDICT_INSTRUCTION = (
+    "The provider could not enforce the required tool choice, so you must "
+    "follow this instruction from the prompt: call submit_verdict(severity, "
+    "justification) now. Do not answer with prose or remain silent; this is "
+    "the final opportunity to deliver a verdict."
+)
+
 
 def _phase_frame(phase: str) -> str:
     """Return the phase statement that tells the judge what it is looking at.
@@ -553,7 +560,14 @@ class LLMValidator(ValidatorBase):
                         "function": {"name": "submit_verdict"},
                     }
                 try:
-                    response = self._call_completion_with_retry(**kwargs)
+                    response = self._call_completion_with_retry(
+                        parameter_fallback_instruction=(
+                            _UNFORCED_VERDICT_INSTRUCTION
+                            if is_final_turn or retried_free_text
+                            else None
+                        ),
+                        **kwargs,
+                    )
                 except Exception as e:
                     # Not all providers honour a forced function choice; if
                     # rejected for that reason (4xx client error), fall back to
@@ -566,6 +580,13 @@ class LLMValidator(ValidatorBase):
                             self.validator_spec.validator_id, turn + 1, self.model, e,
                         )
                         del kwargs["tool_choice"]
+                        # Keep the provider-independent requirement when the
+                        # provider cannot enforce tool_choice itself.
+                        if is_final_turn or retried_free_text:
+                            messages.append({
+                                "role": "user",
+                                "content": _UNFORCED_VERDICT_INSTRUCTION,
+                            })
                         response = self._call_completion_with_retry(**kwargs)
                     else:
                         raise
@@ -1111,7 +1132,11 @@ class LLMValidator(ValidatorBase):
             f'{{"severity": "pass", "justification": "Task meets all security criteria."}}\n'
         )
 
-    def _call_completion_with_retry(self, **kwargs) -> Any:
+    def _call_completion_with_retry(
+        self,
+        parameter_fallback_instruction: Optional[str] = None,
+        **kwargs,
+    ) -> Any:
         """Call completion_fn with transient retries and parameter fallback.
 
         Retries each named provider-rejected parameter once, then retries up to
@@ -1132,6 +1157,11 @@ class LLMValidator(ValidatorBase):
                     removed.add(parameter)
                     del kwargs[parameter]
                     self._parameter_fallback_used = True
+                    if parameter_fallback_instruction and parameter == "tool_choice":
+                        kwargs["messages"].append({
+                            "role": "user",
+                            "content": parameter_fallback_instruction,
+                        })
                     _logger.warning(
                         "Validator %s provider rejected parameter %s (model=%s): %s; retrying without it",
                         self.validator_spec.validator_id, parameter, self.model, e,

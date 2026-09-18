@@ -1841,6 +1841,67 @@ class TestPostExecuteToolLoop:
         assert "tool_choice" in calls[1]
         assert "tool_choice" not in calls[2]
 
+    def test_final_turn_tool_choice_rejection_retries_with_verdict_instruction(self, security_validator):
+        """A final-turn provider rejection preserves the prompt requirement
+        and still obtains a real verdict without inventing one (Fixes #349)."""
+        from litellm.exceptions import BadRequestError
+
+        mock_git = MagicMock()
+        mock_git.diff_between_refs.return_value = "+def login():"
+        mock_workspace = MagicMock()
+        calls = []
+
+        def completion_side_effect(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                resp = MagicMock()
+                resp.choices = [MagicMock()]
+                tc = MagicMock()
+                tc.id = "tc_read"
+                tc.function.name = "read_file"
+                tc.function.arguments = '{"path": "auth.py"}'
+                resp.choices[0].message.content = None
+                resp.choices[0].message.tool_calls = [tc]
+                return resp
+            if len(calls) == 2:
+                assert kwargs["tool_choice"]["function"]["name"] == "submit_verdict"
+                raise BadRequestError(
+                    message="tool_choice is not supported by this provider",
+                    model="custom/model",
+                    llm_provider="custom",
+                    response=None,
+                )
+
+            assert "tool_choice" not in kwargs
+            assert any(
+                "provider could not enforce" in (message.get("content") or "")
+                for message in kwargs["messages"]
+            )
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            tc = MagicMock()
+            tc.id = "tc_verdict"
+            tc.function.name = "submit_verdict"
+            tc.function.arguments = json.dumps({
+                "severity": "warn",
+                "justification": "Partial reading; provider accepted the prompt requirement.",
+            })
+            resp.choices[0].message.content = None
+            resp.choices[0].message.tool_calls = [tc]
+            return resp
+
+        completion_fn = MagicMock(side_effect=completion_side_effect)
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn)
+        ctx = self._make_post_context(completion_fn, mock_workspace, mock_git)
+        ctx.max_tool_turns = 2
+
+        result = validator.evaluate(ctx)
+
+        assert result.error is False
+        assert result.severity == "warn"
+        assert "Partial reading" in result.justification
+        assert len(calls) == 3
+
     def test_provider_rejecting_tool_choice_with_status_code_falls_back(self, security_validator):
         """A generic 4xx exception with status_code falls back to unforced request."""
         mock_git = MagicMock()
