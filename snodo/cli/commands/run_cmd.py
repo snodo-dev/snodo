@@ -6,6 +6,7 @@ FILE: snodo/cli/commands/run_cmd.py
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -1253,6 +1254,12 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
                 outcome, conflicting_paths = res, []
         except GitError as e:
             print(f"✗ Merge failed for {branch}: {e}", file=sys.stderr)
+            if _stale_index_lock(project_root, e):
+                print(
+                    "  Stale Git index lock: no process is holding .git/index.lock. "
+                    "Clear it with: rm .git/index.lock",
+                    file=sys.stderr,
+                )
             print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
             if audit_log:
                 audit_log.append_event("merge_failed_escalated", {
@@ -1292,6 +1299,34 @@ def _merge_on_success(project_root, task, result, session_id, audit_log) -> tupl
                 "session_id": session_id,
             })
         return 1, True, None
+
+
+def _stale_index_lock(project_root: str, error: Exception) -> bool:
+    """Return whether an index lock error names an unheld lock file.
+
+    ``lsof`` is used only as an observer. A missing command or an inspection
+    failure means the lock cannot be diagnosed here, not that it is stale.
+    """
+    if "index.lock" not in str(error):
+        return False
+
+    lock_path = Path(project_root) / ".git" / "index.lock"
+    if not lock_path.exists():
+        return False
+
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed argv; lock path is one argument
+            ["lsof", "-t", "--", str(lock_path)],  # noqa: S607 - resolved from PATH by design
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        _logger.debug("Could not inspect Git index lock %s", lock_path, exc_info=True)
+        return False
+
+    return result.returncode == 1 and not result.stdout.strip()
 
 
 def _try_merge_unmerged_task(
@@ -1769,4 +1804,3 @@ def _record_task_completion(
         atomic_update_json(task_dir, "state.json", _update)
     except Exception as e:
         _logger.debug("Could not record task completion: %s", e)
-
