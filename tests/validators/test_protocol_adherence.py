@@ -257,6 +257,40 @@ def test_evaluate_llm_failure_is_operational_blocker(task, producer_mode, protoc
     assert "defaulting to warn" not in result.justification.lower()
 
 
+def test_evaluate_retries_without_provider_rejected_parameter(
+    task, producer_mode, protocol, validator_spec
+):
+    """A named provider-parameter refusal is recovered without losing the verdict."""
+    response = Mock(
+        choices=[Mock(message=Mock(content='{"severity":"pass","justification":"ok"}'))]
+    )
+    calls = []
+
+    def completion_fn(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            error = Exception("temperature is not supported")
+            error.status_code = 400
+            raise error
+        return response
+
+    val = ProtocolAdherenceValidator(validator_spec, completion_fn)
+    ctx = ValidatorContext(
+        task=task, current_mode=producer_mode, protocol=protocol,
+        mode_name=producer_mode.name,
+        mode_tools=list(producer_mode.tools),
+        mode_transitions=dict(producer_mode.transitions),
+        mode_validator_refs=list(producer_mode.validators),
+    )
+
+    result = val.evaluate(ctx)
+
+    assert result.severity == "pass"
+    assert not result.error
+    assert calls[0]["temperature"] == 0.0
+    assert "temperature" not in calls[1]
+
+
 # ---------------------------------------------------------------------------
 # Single-mode protocol (solo-like)
 # ---------------------------------------------------------------------------
