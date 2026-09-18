@@ -1096,7 +1096,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         while True:
             try:
                 cf_process.wait(timeout=5)
-                break  # cloudflared exited normally
+                break  # cloudflared exited on its own — not a success, handled below
             except subprocess.TimeoutExpired:
                 pass
             if mcp_process.poll() is not None:
@@ -1108,8 +1108,19 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                 return 1
     except KeyboardInterrupt:
         _cleanup()
+        return 0
 
-    return 0
+    # cloudflared exited on its own while the MCP child was still healthy. That
+    # child was started with start_new_session so nothing else can reap it —
+    # left alone here it outlives the tunnel, still holding the port, and the
+    # next `snodo serve --tunnel` dies on a raw EADDRINUSE (Fixes #290, #334).
+    print(f"Error: cloudflared exited unexpectedly (code {cf_process.returncode}).",
+          file=sys.stderr)
+    stderr_output = cf_process.stderr.read() if cf_process.stderr else ""
+    if stderr_output:
+        print(stderr_output, file=sys.stderr)
+    _cleanup()
+    return 1
 
 
 def _print_first_run_info(hostname: str) -> None:

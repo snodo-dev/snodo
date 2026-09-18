@@ -495,7 +495,11 @@ def test_tunnel_targets_the_port_it_chose(tmp_path):
     cf.pid = 999
     cf.poll.return_value = None
     cf.stderr.readline.return_value = "Registered tunnel connection\n"
-    cf.wait.return_value = 0
+    # Simulate the operator hitting Ctrl+C while the wait loop is blocked in
+    # cf_process.wait(); this is the success exit (result 0), distinct from
+    # cloudflared exiting on its own (see test_serve_tunnel_cloudflared_exit.py).
+    # The second call is the one _terminate_process_group makes during cleanup.
+    cf.wait.side_effect = [KeyboardInterrupt(), 0]
 
     captured = {}
 
@@ -534,5 +538,66 @@ def test_tunnel_targets_the_port_it_chose(tmp_path):
     assert isinstance(chosen, int)
     assert captured["mcp_cmd"][captured["mcp_cmd"].index("--port") + 1] == str(chosen)
     assert f"using free port {chosen}" in err.getvalue()
+
+
+# === cloudflared exiting on its own must not orphan the MCP child (#290, #334) ===
+
+
+def test_cloudflared_exit_terminates_the_mcp_child_and_fails(tmp_path):
+    """cloudflared dying on its own is not a success: the still-healthy MCP
+    child must be stopped, not left holding the port for the next start to
+    trip over (Fixes #290, #334)."""
+    import io
+    from contextlib import redirect_stderr
+
+    mock_protocol = MagicMock()
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=None,
+        transport="streamable-http", port=None, rotate=False, delete=False,
+    )
+    provisioned = {"hostname": "proj-all-abc123.tunnel.snodo.dev", "tunnel_token": "tok"}
+
+    cf = MagicMock()
+    cf.pid = 999
+    cf.poll.return_value = None
+    cf.stderr.readline.return_value = "Registered tunnel connection\n"
+    cf.stderr.read.return_value = ""
+    cf.wait.return_value = 0  # cloudflared exits on its own, immediately
+    cf.returncode = 1
+
+    mcp = MagicMock()
+    mcp.pid = 12345
+    mcp.poll.return_value = None  # still healthy when cloudflared dies
+
+    def fake_popen(cmd, **kwargs):
+        return cf if cmd[0] == "cloudflared" else mcp
+
+    terminated = []
+
+    err = io.StringIO()
+    with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+        with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+            with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
+                with patch("snodo.cli.commands.serve_cmd._provision_tunnel",
+                           return_value=provisioned):
+                    with patch("snodo.cli.commands.serve_cmd._save_tunnel_config"):
+                        with patch("snodo.cli.commands.serve_cmd._port_holder_pid",
+                                   return_value=None):
+                            with patch("snodo.cli.commands.serve_cmd.subprocess.Popen",
+                                       side_effect=fake_popen):
+                                with patch("snodo.cli.commands.serve_cmd.signal.signal"):
+                                    with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
+                                        with patch(
+                                            "snodo.cli.commands.serve_cmd._terminate_process_group",
+                                            side_effect=lambda proc, timeout=5.0: terminated.append(proc),
+                                        ):
+                                            with redirect_stderr(err):
+                                                result = serve_cmd._run_tunnel(
+                                                    args, mock_protocol, ".snodo/protocol.yml")
+
+    assert result != 0
+    assert mcp in terminated, "the MCP child's process group must be terminated"
+    assert "cloudflared" in err.getvalue().lower()
+    assert "exited" in err.getvalue().lower()
 
 
