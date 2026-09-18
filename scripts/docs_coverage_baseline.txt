@@ -9,26 +9,6 @@
 # on purpose: an undocumented user-facing surface is a docs bug, not a
 # style choice.
 
-command audit verify
-command cache clear
-command cloud connect
-command cloud disconnect
-command cloud status
-command cloud sync
-command job archive
-command job prune
-command job retry
-command job unarchive
-command logs
-command plan add-task
-command plan delete
-command session new
-command session switch
-command task abandon
-command task list
-command task prune
-command worktree prune
-command worktree remove
 config llm.classifier.max_tokens
 config llm.classifier.model
 config llm.classifier.temperature
