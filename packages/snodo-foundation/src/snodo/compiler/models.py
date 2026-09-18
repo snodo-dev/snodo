@@ -5,7 +5,7 @@ All models are immutable and include validation logic.
 """
 
 from enum import Enum
-from typing import List, Optional, Dict, Any, Set
+from typing import Any, Dict, List, Literal, Optional, Set
 from pydantic import BaseModel, Field, field_validator, field_serializer, ConfigDict
 
 
@@ -127,7 +127,7 @@ class Constraint(BaseModel):
 
 
 class Validator(BaseModel):
-    """Evaluation criteria for tasks."""
+    """Evaluation criteria and judging scope for a validator."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -162,6 +162,13 @@ class Validator(BaseModel):
                     "work. Only judges_spec validators' critique feeds the "
                     "spec-authoring rewriter; a non-spec objection must not "
                     "silently reshape the spec (Fixes #35)."
+    )
+    scope: Literal["task", "wave"] = Field(
+        default="task",
+        description=(
+            "Unit this validator judges. A wave-scoped validator judges the "
+            "wave containing the task; outside a plan, the task is its own wave."
+        ),
     )
     model: Optional[str] = Field(
         default=None,
