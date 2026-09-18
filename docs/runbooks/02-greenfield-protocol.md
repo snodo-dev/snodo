@@ -47,7 +47,6 @@ mkdir ~/Dev/mycard && cd ~/Dev/mycard
 git init
 git commit --allow-empty -m "init"
 snodo init --template greenfield
-git add .gitignore && git commit -m "chore: commit .gitignore"
 ```
 
 **The initial commit is required.** Worktrees branch off `main`, which does not
@@ -55,8 +54,13 @@ resolve on a repo with no commits. (In snodo v0.7.0+, unborn-HEAD worktree creat
 fails loud with `WorktreeError` per ADR 025 / Fixes #29, rather than degrading to
 no isolation).
 
-**Commit `.gitignore` immediately.** `init` writes `.snodo/` and adds it to `.gitignore`.
-In snodo v0.7.0+ (Fixes #24), `snodo init` commits `.snodo/` and `.gitignore` safety guards.
+**`snodo init` commits `.gitignore`, not `.snodo/`.** `init` writes `.snodo/`,
+adds it to `.gitignore` so that git ignores it, and automatically commits only
+the `.gitignore` (Fixes #24). `.snodo/` is deliberately left untracked and
+ignored: project state (sessions, keys, audit chain) is local and must not
+travel with a clone. The `.gitignore` is committed so that a `git clean -fd`
+cannot remove the untracked ignore file and thereby expose `.snodo/` to the next
+clean.
 
 Note: `greenfield` template registration was fixed in Issue #19 (`snodo init --template greenfield` works out of the box).
 
