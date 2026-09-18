@@ -14,6 +14,7 @@ in --help.
 
 ## New flags on `snodo models`
 Replace --filter with:
+  --id TEXT                  exact match on id
   --id-contains TEXT        substring match on id/display_name (case-insensitive)
   --max-output-cost FLOAT   keep models with output cost per 1M <= value
   --min-output-cost FLOAT   keep models with output cost per 1M >= value
@@ -28,6 +29,7 @@ Models with unknown price (unpriced CF models) or context_window==0:
   unknown (can't satisfy a numeric bound). This is the desired effect:
   --max-output-cost=5 naturally drops the embedding/image models that
   show "unknown", leaving only priced chat models. Document this.
+- --id is independent of price/context and matches the id exactly.
 - --id-contains is independent of price/context, matches on text only.
 
 ## Remove
@@ -36,6 +38,7 @@ Delete _apply_filter expression parser and the --filter option.
 
 ## Tests
 - --id-contains=gemma -> only gemma* models
+- --id=gemini-3.1-flash-lite -> only that exact model, not its preview/image variants
 - --max-output-cost=5 -> only priced models <=5/1M out (excludes unknowns)
 - --max-output-cost=1 -> Gemma + Mistral (the cheap ones)
 - --min-context=100000 -> only models with context >= 100k (excludes

@@ -163,6 +163,51 @@ def test_benchmark_requires_a_single_model(monkeypatch, capsys):
     assert "exactly one model" in err
 
 
+def test_benchmark_exact_id_selects_shortest_prefix(monkeypatch):
+    """An exact ID selects the shortest model when longer IDs share its prefix."""
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.get_providers",
+        lambda self: {"openai": SimpleNamespace(api_key="sk-test")},
+    )
+    monkeypatch.setattr(
+        models_cmd, "_get_models",
+        lambda p, pc, force_refresh: [
+            {"id": "gemini-3.1-flash-lite", "full_string": "openai/gemini-3.1-flash-lite"},
+            {"id": "gemini-3.1-flash-lite-preview", "full_string": "openai/gemini-3.1-flash-lite-preview"},
+            {"id": "gemini-3.1-flash-lite-image", "full_string": "openai/gemini-3.1-flash-lite-image"},
+        ],
+    )
+
+    args = SimpleNamespace(
+        provider="openai", flush=False, benchmark=True,
+        id="gemini-3.1-flash-lite", id_contains=None,
+        max_output_cost=None, min_output_cost=None,
+        max_input_cost=None, min_context=None,
+    )
+    assert models_cmd._select_benchmark_model("openai", args) == "openai/gemini-3.1-flash-lite"
+
+
+def test_benchmark_exact_id_reports_no_match(monkeypatch, capsys):
+    """An unknown exact ID is not widened into a substring search."""
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.get_providers",
+        lambda self: {"openai": SimpleNamespace(api_key="sk-test")},
+    )
+    monkeypatch.setattr(
+        models_cmd, "_get_models",
+        lambda p, pc, force_refresh: [{"id": "gpt-4o", "full_string": "openai/gpt-4o"}],
+    )
+
+    args = SimpleNamespace(
+        provider="openai", flush=False, benchmark=True,
+        id="gpt-4o-does-not-exist", id_contains="gpt",
+        max_output_cost=None, min_output_cost=None,
+        max_input_cost=None, min_context=None,
+    )
+    assert models_cmd._select_benchmark_model("openai", args) is None
+    assert "No model matched --id=gpt-4o-does-not-exist." in capsys.readouterr().err
+
+
 # ---------------------------------------------------------------------------
 # 2. The prompt is read from the repository, not constructed at runtime
 # ---------------------------------------------------------------------------

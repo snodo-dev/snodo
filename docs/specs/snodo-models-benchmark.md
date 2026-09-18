@@ -12,10 +12,10 @@ A benchmark sends one fixed prompt and times the result. That answers the
 question the aggregate only gestures at.
 
 ## Command shape
-  snodo models --benchmark --provider=deepseek --id-contains=chat
+  snodo models --benchmark --provider=deepseek --id=deepseek-chat
 
 The benchmark is scoped by the flags that already select a model: `--provider`
-and the discrete filters (`--id-contains`, cost/context bounds). It is not a new
+and the discrete filters (`--id`, `--id-contains`, cost/context bounds). It is not a new
 top-level command; `snodo models` already owns this surface. It never runs
 unless `--benchmark` is passed.
 
