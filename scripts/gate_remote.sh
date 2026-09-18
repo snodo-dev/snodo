@@ -51,7 +51,8 @@ gate_run() {
     && uv run lint-imports \
     && uv run python scripts/enforce_file_length.py \
     && uv run python scripts/enforce_docs_coverage.py \
-    && uv run python scripts/enforce_vocabularies.py
+    && uv run python scripts/enforce_vocabularies.py \
+    && uv run python scripts/enforce_cloud_schema.py
 }
 
 # Take one of GATE_SLOTS flock slots for this host, or wait for one. The lock
