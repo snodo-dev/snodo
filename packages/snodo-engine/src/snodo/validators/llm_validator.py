@@ -37,6 +37,7 @@ from snodo.engine.progress import (
     format_tool_call_summary,
 )
 
+import litellm as _litellm
 from litellm import supports_response_schema
 
 from snodo.compiler.models import Validator
@@ -46,6 +47,8 @@ from snodo.validators.context import ValidatorContext, ValidatorBase
 from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.coders.litellm import ReadMemoryTracker, _normalize_path_arg, format_repeat_read_response
+
+_litellm.drop_params = True
 
 _logger = logging.getLogger(__name__)
 

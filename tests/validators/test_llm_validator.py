@@ -213,6 +213,23 @@ class TestEvaluate:
         call_kwargs = completion_fn.call_args[1]
         assert call_kwargs["temperature"] == 0.0
 
+    def test_provider_unsupported_temperature_is_dropped(self, security_validator, task):
+        """A provider can reject unsupported params without losing the verdict."""
+        import litellm
+
+        def completion_fn(**kwargs):
+            if "temperature" in kwargs and not litellm.drop_params:
+                raise ValueError("temperature is not supported by this model")
+            kwargs.pop("temperature", None)
+            return _make_llm_response("pass", "All criteria satisfied")
+
+        validator = LLMValidator(security_validator, completion_fn, model="gpt-4")
+
+        result = validator.evaluate(task)
+
+        assert result.error is False
+        assert result.severity == "pass"
+
     def test_evaluate_blocker(self, security_validator, task):
         completion_fn = _make_completion_fn("blocker", "XSS vulnerability detected")
         validator = LLMValidator(security_validator, completion_fn)
