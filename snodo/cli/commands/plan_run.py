@@ -287,6 +287,36 @@ def _plan_retry_decision(planner, args, protocol, task_id: str) -> str:
     return "retry"
 
 
+def _unmet_dependency_label(all_waves: list, tasks_status: dict, dep_id) -> str:
+    """Describe why dependency wave *dep_id* is unmet, in operator-actionable terms.
+
+    A wave reaches ``completed`` only once every task in it is both
+    gate-verified and merged (``_task_completed``). That single gate collapses
+    two different situations into the same "blocked" message: a wave whose
+    tasks have not finished (still pending, in progress, blocked, or errored)
+    needs the operator to look at the tasks, while a wave whose tasks have all
+    finished and are sitting ``unmerged`` needs the operator to look at the
+    merge, not rerun anything. The distinction is already in the task
+    records — no new status, wave state, or halt type is introduced.
+
+    Returns the dependency id alone when the wave has not finished (today's
+    wording, unchanged), or the id plus the unmerged task ids when every task
+    in the wave has finished but none have landed.
+    """
+    wave = next(
+        (w for w in all_waves if str(w.get("id")) == str(dep_id)), None
+    )
+    wave_tasks = wave.get("tasks", []) if wave else []
+    unmerged = [t for t in wave_tasks if _task_is_unmerged(tasks_status, t)]
+    not_finished = [
+        t for t in wave_tasks
+        if not _task_completed(tasks_status, t) and not _task_is_unmerged(tasks_status, t)
+    ]
+    if not_finished or not unmerged:
+        return str(dep_id)
+    return f"{dep_id} (finished, waiting to merge: {', '.join(unmerged)})"
+
+
 def _get_completed_waves(waves: list, tasks_status: dict) -> set:
     """Determine which waves are fully completed.
 
@@ -766,7 +796,8 @@ def _execute_waves(waves, planner, args, protocol, model,
 
         unmet = [d for d in deps if d not in completed_waves and str(d) not in completed_waves]
         if unmet:
-            print(f"Wave {wave_id}: blocked (depends on: {', '.join(str(d) for d in unmet)})")
+            labels = [_unmet_dependency_label(all_waves, tasks_status, d) for d in unmet]
+            print(f"Wave {wave_id}: blocked (depends on: {', '.join(labels)})")
             has_failed_or_blocked = True
             continue
 
