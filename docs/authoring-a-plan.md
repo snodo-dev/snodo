@@ -87,8 +87,13 @@ waves:
 
 That is the whole file for a new plan. snodo fills it in as tasks run, giving
 each an entry of `{status, parent_task_ref, depth, spec_hash}` where status is
-one of `pending`, `in_progress`, `completed`, `blocked`. Do not pre-populate
-it — an entry naming a task that no wave lists is an error.
+one of `pending`, `in_progress`, `completed`, `blocked`, `errored`. A blocked
+task has a task-level failure and is retried with that failure as context. An
+errored task means the runner hit an operational or internal fault instead of
+receiving a task result; it is not retried, because passing that fault to a
+faultless coder as critique could cause a sound specification to be rewritten
+to chase a problem it did not cause. Do not pre-populate it — an entry naming a
+task that no wave lists is an error.
 
 ### Task ids
 
