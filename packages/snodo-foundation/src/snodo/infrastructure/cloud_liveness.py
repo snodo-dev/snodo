@@ -538,15 +538,28 @@ def _post_snapshot(
     session_id = snapshot["session_id"]
     if state.is_refused(session_id):
         return False, None, False
+
+    from snodo.config import get_cloud_lease_url
+    from snodo.infrastructure.cloud_lease import get_admission_lease
+
+    lease_url = get_cloud_lease_url(config)
+    lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state)
+    if lease is None:
+        # No lease, no send. Reported as transient so the caller backs off
+        # rather than re-asking on every beat: a terminal refusal at the
+        # exchange has already been latched by get_admission_lease, and
+        # is_refused stops the next attempt before it reaches here.
+        return False, None, True
+
     liveness_url = get_cloud_liveness_url(config)
-    url = f"{liveness_url.rstrip('/')}/live/{quote(session_id, safe='')}"
+    url = f"{liveness_url.rstrip('/')}/live/{quote(session_id, safe='')}/{quote(lease.lease_id, safe='')}"
     body = json.dumps(snapshot).encode()
     try:
         response = httpx.put(
             url,
             content=body,
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {lease.token}",
                 "Content-Type": "application/json",
             },
             timeout=10.0,

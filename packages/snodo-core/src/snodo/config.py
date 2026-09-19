@@ -193,6 +193,27 @@ def get_cloud_liveness_url(config: dict) -> str:
     return derive_liveness_url(api_url)
 
 
+def get_cloud_lease_url(config: dict) -> str:
+    """Return the cloud admission lease exchange endpoint URL.
+
+    Defaults to ``{cloud.api_url}/lease``. Can be overridden with
+    ``cloud.lease_url`` or ``cloud.lease_api_url``.
+    """
+    cloud = config.get("cloud") if isinstance(config, dict) else None
+    if isinstance(cloud, dict):
+        for key in ("lease_url", "lease_api_url"):
+            override = cloud.get(key)
+            if isinstance(override, str) and override.strip():
+                ov = override.strip()
+                parsed = urlsplit(ov)
+                if not parsed.path:
+                    return f"{ov.rstrip('/')}/lease"
+                return ov
+
+    api_url = get_cloud_ingest_url(config)
+    return f"{api_url.rstrip('/')}/lease"
+
+
 def _cloud_url(config: dict, key: str, default: str) -> str:
     cloud = config.get("cloud") if isinstance(config, dict) else None
     value = cloud.get(key) if isinstance(cloud, dict) else None

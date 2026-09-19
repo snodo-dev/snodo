@@ -47,6 +47,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   recorded. The field rides the published engine-to-cloud interface, whose
   version moves to 2. (Fixes #377)
 
+- Cloud-bound senders (`cloud_sync` and `cloud_liveness`) now exchange the API
+  key once for a short-lived lease before sending, addressing paths containing the
+  lease identifier with the opaque bearer token instead of presenting the API key
+  directly to fixed endpoints. (Fixes #376)
 
 ## [0.12.0] — 2026-09-19
 
