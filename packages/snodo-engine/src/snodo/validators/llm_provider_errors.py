@@ -9,7 +9,7 @@ repo's file-length limit. Nothing here changed in the move.
 
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional
 
 # ``usage_tokens_of`` lives with the response-field readers in
 # snodo.infrastructure.usage_tracker; the name stays importable from here for
@@ -116,6 +116,25 @@ def _provider_rejected_parameter(e: Exception) -> Optional[str]:
         match = re.search(pattern, message, re.IGNORECASE)
         if match:
             return match.group(1)
+    return None
+
+
+def _remove_rejected_parameter(
+    e: Exception,
+    kwargs: dict[str, Any],
+    removed: set[str],
+) -> Optional[str]:
+    """Remove one provider-rejected request parameter, at most once.
+
+    The caller decides how to retry and how to report the fallback. Keeping
+    the parameter decision here makes the canary and validator use the same
+    provider-error interpretation.
+    """
+    parameter = _provider_rejected_parameter(e)
+    if parameter and parameter in kwargs and parameter not in removed:
+        removed.add(parameter)
+        del kwargs[parameter]
+        return parameter
     return None
 
 

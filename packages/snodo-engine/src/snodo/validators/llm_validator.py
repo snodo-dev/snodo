@@ -55,7 +55,7 @@ from snodo.validators.llm_provider_errors import (
     _is_gemini3_plus,
     _is_provider_rejection,
     _is_transient_error,
-    _provider_rejected_parameter,
+    _remove_rejected_parameter,
     _provider_retry_delay,
     _usage_tokens,
 )
@@ -1084,10 +1084,8 @@ class LLMValidator(ValidatorBase):
             try:
                 return self._call_completion_with_transient_retry(**kwargs)
             except Exception as e:
-                parameter = _provider_rejected_parameter(e)
-                if parameter and parameter in kwargs and parameter not in removed:
-                    removed.add(parameter)
-                    del kwargs[parameter]
+                parameter = _remove_rejected_parameter(e, kwargs, removed)
+                if parameter:
                     self._parameter_fallback_used = True
                     if parameter_fallback_instruction and parameter == "tool_choice":
                         kwargs["messages"].append({

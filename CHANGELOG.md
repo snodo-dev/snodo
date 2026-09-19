@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Configured-model canaries now recover from provider-rejected temperature and
+  forced tool-choice parameters the same way as the real validator call, while
+  still reporting credential failures. (Fixes #383)
 - Liveness pushes now share the audit sender's persisted terminal-refusal state,
   stopping repeated authentication failures across transitions and restarts
   while leaving rate limits and server failures retryable. (Fixes #374)
