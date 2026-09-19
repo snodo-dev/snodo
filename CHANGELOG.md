@@ -28,10 +28,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
   pending changelog section instead of a dated release section. (Fixes #372)
 - Completed-task audit events now preserve the final task-branch commit SHA, or
   explicit null provenance when the task committed nothing. (Fixes #373)
-- Cloud liveness and audit sync now share bounded exponential backoff for
-  transient cloud failures, honoring server delays and adding jitter so
-  clients do not retry in lockstep. Authentication failures remain terminal.
-  (Fixes #375)
+ - Cloud liveness and audit sync now share bounded exponential backoff for
+   transient cloud failures, honoring server delays and adding jitter so
+   clients do not retry in lockstep. Authentication failures remain terminal.
+   (Fixes #375)
+ - A send rejection now discards the cached lease and permits one replacement
+   exchange; a second rejection persists the refusal and stops future pushes.
+   (Fixes #378)
    pending changelog section instead of a dated release section. (Fixes #372)
 
 ### Added
