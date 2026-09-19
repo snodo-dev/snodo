@@ -20,6 +20,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   the same file, naming both tasks and the possible overlap. The advisory is
   based on plan-time citations and does not block validation or dispatch.
   (Fixes #363)
+- The CI gate now runs the existing strict documentation build, so broken
+  internal links and missing navigation pages fail before deployment. (Fixes #364)
 - Issue-closing commits are now checked against the branch range before they
   land. The gate names an undocumented issue and asks its author to explain the
   change, without rechecking older history or generating release notes from a
