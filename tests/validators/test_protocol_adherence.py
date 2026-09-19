@@ -269,7 +269,9 @@ def test_evaluate_retries_without_provider_rejected_parameter(
     def completion_fn(**kwargs):
         calls.append(kwargs)
         if len(calls) == 1:
-            error = Exception("temperature is not supported")
+            error = Exception(
+                "Unsupported parameter: 'temperature' is not supported with this model"
+            )
             error.status_code = 400
             raise error
         return response
