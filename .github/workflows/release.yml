@@ -43,6 +43,8 @@ jobs:
         run: uv run python scripts/enforce_docs_coverage.py
       - name: Closed-vocabulary check
         run: uv run python scripts/enforce_vocabularies.py
+      - name: Cloud-schema ratchet
+        run: uv run python scripts/enforce_cloud_schema.py
       - name: Build all packages
         run: uv build --all-packages
       - name: Publish all artifacts
