@@ -73,6 +73,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
   never an assumed match. Provenance only: the field never feeds routing,
   selection or failover, and a mismatch raises no warning. (Fixes #381)
 
+### Changed
+- The task start and completion recording path moved whole from
+  `snodo/cli/commands/run_cmd.py` into `snodo/cli/commands/task_record.py`,
+  bringing run_cmd back under its file-length baseline (it had grown 64 lines
+  past it, blocking unrelated merges at the gate). A pure move: the recorded
+  bytes, the order of operations and every import path are unchanged —
+  `run_cmd` re-exports both functions. (Fixes #382)
+
 ## [0.12.0] — 2026-09-19
 
 ### Fixed
