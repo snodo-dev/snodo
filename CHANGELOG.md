@@ -19,6 +19,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
   each gets when an adapter does not override it — and points at the
   class's current location. (Fixes #366)
 
+### Added
+
+- `snodo models --benchmark --json` now emits a versioned, machine-readable
+  result containing prompt and model provenance, every attempted sample,
+  successful and attempted run counts, and successful-run aggregates. The
+  listing and usage-statistics forms have separate JSON schemas. (Fixes #367)
+
 ## [0.11.0] — 2026-09-19
 
 ### Added
