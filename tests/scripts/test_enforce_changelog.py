@@ -47,3 +47,27 @@ def test_chore_commit_closing_nothing_passes(tmp_path: Path) -> None:
     repo, base = _repo(tmp_path, "chore: tidy the test fixture")
 
     assert changelog_check.check(repo, base, repo / "CHANGELOG.md") == []
+
+
+def test_issue_entry_in_released_section_fails_and_names_section(tmp_path: Path) -> None:
+    repo, base = _repo(
+        tmp_path,
+        "fix: close the broken path (Fixes #987)",
+        "# Changelog\n\n## [0.12.0] — 2026-09-19\n\n- Fix the broken path. (Fixes #987)\n",
+    )
+
+    failures = changelog_check.check(repo, base, repo / "CHANGELOG.md")
+
+    assert len(failures) == 1
+    assert "released section '[0.12.0] — 2026-09-19'" in failures[0]
+    assert "[Unreleased]" in failures[0]
+
+
+def test_issue_entry_in_pending_section_passes(tmp_path: Path) -> None:
+    repo, base = _repo(
+        tmp_path,
+        "fix: close the broken path (Fixes #987)",
+        "# Changelog\n\n## [Unreleased]\n\n- Fix the broken path. (Fixes #987)\n",
+    )
+
+    assert changelog_check.check(repo, base, repo / "CHANGELOG.md") == []
