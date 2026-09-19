@@ -150,7 +150,7 @@ deploy-docs: docs
 # clobbering each other's checkout or venv.
 #
 #   make gate        the fast loop: non-e2e suite, ruff, import contracts,
-#                    file-length ratchet, docs-coverage ratchet, vocabulary check
+#                    file-length ratchet, docs-coverage ratchet, vocabulary and changelog checks
 #   make gate-ci     what CI decides on: full suite with coverage
 #   make gate-init   one-time (implied by the above): create the remote repo
 #
@@ -188,6 +188,9 @@ GATE_ENV   = GATE_HOME=$(GATE_HOME) GATE_ROOT=$(GATE_ROOT) GATE_JOBS=$(GATE_JOBS
 # -q keeps ssh's own "Connection closed" notice out of a run; the remote
 # wrapper supplies the terminal (`-tt`) the hangup needs.
 GATE_SSH   = ssh -q -tt $(GATE_HOST)
+# The remote gate receives this explicitly because its checkout is a mirror of
+# the pushed HEAD and cannot infer the agent branch's base after the push.
+GATE_BASE  ?= $(shell git merge-base origin/main HEAD 2>/dev/null)
 
 .PHONY: gate gate-ci gate-init _gate-push
 
@@ -208,10 +211,10 @@ _gate-push:
 # The wrapper runs from the pushed HEAD, so it is always the same revision the
 # gate is testing; GATE_DIR is this worktree's checkout after _gate-push.
 gate: gate-init _gate-push
-	@$(GATE_SSH) '$(GATE_PATH); cd $(GATE_DIR) && $(GATE_ENV) bash scripts/gate_remote.sh gate'
+	@$(GATE_SSH) '$(GATE_PATH); cd $(GATE_DIR) && $(GATE_ENV) CHANGELOG_BASE=$(GATE_BASE) bash scripts/gate_remote.sh gate'
 
 gate-ci: gate-init _gate-push
-	@$(GATE_SSH) '$(GATE_PATH); cd $(GATE_DIR) && $(GATE_ENV) bash scripts/gate_remote.sh gate-ci'
+	@$(GATE_SSH) '$(GATE_PATH); cd $(GATE_DIR) && $(GATE_ENV) CHANGELOG_BASE=$(GATE_BASE) bash scripts/gate_remote.sh gate-ci'
 
 # ──────────────────────────────────────────────
 # Agent worktrees

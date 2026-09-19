@@ -11,6 +11,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Issue-closing commits are now checked against the branch range before they
+  land. The gate names an undocumented issue and asks its author to explain the
+  change, without rechecking older history or generating release notes from a
+  commit subject. (Fixes #361)
 - `snodo models --benchmark` can repeat its measurement. A single sample could
   not answer the question the flag exists to answer: four consecutive runs
   against one model gave first-token times of 2.71s, 1.51s, 0.98s and 1.65s,
