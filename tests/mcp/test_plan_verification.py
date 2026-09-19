@@ -236,6 +236,57 @@ def test_verify_plan_rejects_spec_path_missing_from_all_workspace_roots(tmp_path
     assert "Missing referenced path in spec 1.1_paths: consumers/nowhere.ts" in result.errors
 
 
+def test_verify_plan_warns_when_same_wave_specs_cite_same_file(tmp_path):
+    """Same-wave citations name both tasks and the possible shared file."""
+    shared_file = tmp_path / "src" / "shared.py"
+    shared_file.parent.mkdir()
+    shared_file.write_text("VALUE = 1\n")
+    plan_dir = tmp_path / ".snodo" / "plans" / "same_wave"
+    (plan_dir / "wave_1").mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text(yaml.safe_dump({
+        "name": "same_wave",
+        "intent": "Warn about same-wave overlap",
+        "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_first", "1.2_second"]}],
+    }))
+    for task_id in ("1.1_first", "1.2_second"):
+        (plan_dir / "wave_1" / f"{task_id}_task.md").write_text(
+            "Update `src/shared.py`.\n"
+        )
+
+    result = verify_plan_dir(plan_dir, workspace_root=tmp_path)
+
+    assert result.passed
+    assert len(result.warnings) == 1
+    assert "1.1_first" in result.warnings[0]
+    assert "1.2_second" in result.warnings[0]
+    assert "src/shared.py" in result.warnings[0]
+
+
+def test_verify_plan_does_not_warn_for_citations_in_different_waves(tmp_path):
+    """The same citation in separate waves is not a same-wave overlap."""
+    shared_file = tmp_path / "src" / "shared.py"
+    shared_file.parent.mkdir()
+    shared_file.write_text("VALUE = 1\n")
+    plan_dir = tmp_path / ".snodo" / "plans" / "different_waves"
+    for wave_id in (1, 2):
+        (plan_dir / f"wave_{wave_id}").mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text(yaml.safe_dump({
+        "name": "different_waves",
+        "intent": "Ignore serialized overlap",
+        "waves": [
+            {"id": 1, "depends_on": [], "tasks": ["1.1_first"]},
+            {"id": 2, "depends_on": [1], "tasks": ["2.1_second"]},
+        ],
+    }))
+    (plan_dir / "wave_1" / "1.1_first_task.md").write_text("Update `src/shared.py`.\n")
+    (plan_dir / "wave_2" / "2.1_second_task.md").write_text("Update `src/shared.py`.\n")
+
+    result = verify_plan_dir(plan_dir, workspace_root=tmp_path)
+
+    assert result.passed
+    assert not any("same-wave file overlap" in warning for warning in result.warnings)
+
+
 # ============================================================================
 # 4. PlannerMCP Integration: validate_plan and get_plan
 # ============================================================================
