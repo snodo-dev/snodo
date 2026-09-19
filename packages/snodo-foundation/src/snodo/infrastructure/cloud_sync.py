@@ -152,8 +152,8 @@ class CloudSyncState:
         self,
         session_id: str,
         reason: str,
-        first_seq: int,
-        last_seq: int,
+        first_seq: Optional[int] = None,
+        last_seq: Optional[int] = None,
         status_code: Optional[int] = None,
     ) -> None:
         """Record that a batch for *session_id* was refused by the cloud server."""
@@ -163,7 +163,10 @@ class CloudSyncState:
         sess = data[session_id]
         sess["refused"] = True
         sess["refused_reason"] = reason
-        sess["refused_range"] = [first_seq, last_seq]
+        if first_seq is not None and last_seq is not None:
+            sess["refused_range"] = [first_seq, last_seq]
+        else:
+            sess.pop("refused_range", None)
         sess["refused_at"] = time.time()
         if status_code is not None:
             sess["refused_status_code"] = status_code

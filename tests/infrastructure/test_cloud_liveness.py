@@ -964,70 +964,61 @@ class TestLivenessUrlDerivation:
         assert url == "http://localhost:9000/v1/live/sess_local_1"
 
 
-class TestRejectionLogging:
-    def test_single_rejection_logs_debug_and_repeated_logs_warning(self, caplog):
-        """A single dropped push logs at debug; repeated rejection warns (Fixes #293)."""
-        import logging
+class TestTerminalRefusal:
+    def test_authentication_failure_stops_later_liveness_pushes(self, tmp_path):
+        """A terminal 401 is persisted and prevents a later PUT."""
+        from snodo.infrastructure.cloud_sync import CloudSyncState
 
-        caplog.set_level(logging.DEBUG)
-        snap = {"session_id": "sess_rej_1"}
-        cloud_liveness.reset_liveness_state()
+        snap = {"session_id": "sess_auth_1"}
+        refused = type("R", (), {"status_code": 401, "text": "revoked"})()
 
-        fail_response = type("R", (), {"status_code": 404, "text": "Not Found"})()
+        with patch.object(cloud_liveness, "resolve_home", lambda: tmp_path), \
+                patch("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path):
+            with patch("httpx.put", return_value=refused) as put:
+                cloud_liveness._post_snapshot(snap)
+                cloud_liveness._post_snapshot(snap)
 
-        with patch("httpx.put", return_value=fail_response):
-            # First rejection: logged at DEBUG, no WARNING
-            cloud_liveness._post_snapshot(snap)
-            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-            debugs = [r for r in caplog.records if r.levelno == logging.DEBUG]
-            assert len(warnings) == 0
-            assert any("404 (dropped)" in d.message for d in debugs)
+            assert put.call_count == 1
+            assert CloudSyncState(tmp_path / "cloud_sync.json").is_refused("sess_auth_1")
 
-            # Second rejection: repeating rejection surfaces at WARNING
-            cloud_liveness._post_snapshot(snap)
-            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-            assert len(warnings) == 1
-            assert "repeated rejection, dropped" in warnings[0].message
+    def test_terminal_refusal_survives_restart(self, tmp_path):
+        """Resetting in-memory liveness bookkeeping does not clear refusal state."""
+        from snodo.infrastructure.cloud_sync import CloudSyncState
 
-    def test_success_resets_rejection_streak(self, caplog):
-        """A 2xx response clears the rejection streak."""
-        import logging
+        snap = {"session_id": "sess_auth_restart"}
+        refused = type("R", (), {"status_code": 403, "text": "invalid key"})()
 
-        caplog.set_level(logging.DEBUG)
-        snap = {"session_id": "sess_rej_2"}
-        cloud_liveness.reset_liveness_state()
+        with patch.object(cloud_liveness, "resolve_home", lambda: tmp_path), \
+                patch("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path):
+            with patch("httpx.put", return_value=refused):
+                cloud_liveness._post_snapshot(snap)
+            cloud_liveness.reset_liveness_state()
+            with patch("httpx.put") as put:
+                cloud_liveness._post_snapshot(snap)
 
-        fail_resp = type("R", (), {"status_code": 500, "text": "Server Error"})()
-        ok_resp = type("R", (), {"status_code": 204, "text": ""})()
+            put.assert_not_called()
+            assert CloudSyncState(tmp_path / "cloud_sync.json").is_refused(
+                "sess_auth_restart",
+            )
 
-        with patch("httpx.put", return_value=fail_resp):
-            cloud_liveness._post_snapshot(snap)
-        with patch("httpx.put", return_value=ok_resp):
-            cloud_liveness._post_snapshot(snap)
+    def test_rate_limit_does_not_stop_later_liveness_pushes(self, tmp_path):
+        """A 429 is retryable and does not create a persisted refusal."""
+        from snodo.infrastructure.cloud_sync import CloudSyncState
 
-        caplog.clear()
-        # Next failure is the first in a new streak: must log at DEBUG, not WARNING
-        with patch("httpx.put", return_value=fail_resp):
-            cloud_liveness._post_snapshot(snap)
-        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-        assert len(warnings) == 0
+        snap = {"session_id": "sess_rate_limit"}
+        limited = type("R", (), {"status_code": 429, "text": "slow down"})()
+        accepted = type("R", (), {"status_code": 204, "text": ""})()
 
-    def test_repeated_network_exception_logs_warning(self, caplog):
-        """Repeated network failures (e.g. connection error) surface at WARNING."""
-        import logging
+        with patch.object(cloud_liveness, "resolve_home", lambda: tmp_path), \
+                patch("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path):
+            with patch("httpx.put", side_effect=[limited, accepted]) as put:
+                cloud_liveness._post_snapshot(snap)
+                cloud_liveness._post_snapshot(snap)
 
-        caplog.set_level(logging.DEBUG)
-        snap = {"session_id": "sess_rej_3"}
-        cloud_liveness.reset_liveness_state()
-
-        with patch("httpx.put", side_effect=OSError("connection refused")):
-            cloud_liveness._post_snapshot(snap)
-            assert not [r for r in caplog.records if r.levelno == logging.WARNING]
-
-            cloud_liveness._post_snapshot(snap)
-            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-            assert len(warnings) == 1
-            assert "repeated rejection, dropped" in warnings[0].message
+            assert put.call_count == 2
+            assert not CloudSyncState(tmp_path / "cloud_sync.json").is_refused(
+                "sess_rate_limit",
+            )
 
 
 # ------------------------------------------------------------------ #

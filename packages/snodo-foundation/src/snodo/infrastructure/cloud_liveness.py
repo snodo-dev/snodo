@@ -36,8 +36,9 @@ with opposite mechanics (Fixes #291):
 - **Keyed by session**, which is already project-scoped, already persisted,
   and already survives a restart. The project rides along so the far side can
   join on it.
-- **A failed push is dropped**: no queue, no retry, no cursor, and no touch of
-  ``CloudSyncState``. The next transition pushes current truth again.
+- **A failed push is dropped**: no queue, no retry, and no cursor. Retryable
+   failures are superseded by the next transition; terminal refusals are
+   recorded in the shared ``CloudSyncState`` and stop later pushes.
 - **Status and identity only** — never payloads, prompts, diffs, file
   contents, paths with home directories, or any user identifier. The
   credential in the Authorization header identifies the person; attribution
@@ -58,7 +59,7 @@ from pathlib import Path
 from typing import Any, Iterable, Literal, NotRequired, Optional, TypedDict
 from urllib.parse import quote
 
-from snodo.infrastructure.cloud_sync import _should_sync
+from snodo.infrastructure.cloud_sync import CloudSyncState, _should_sync
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
 
@@ -201,12 +202,6 @@ _SETTLED_RUN_STATUSES = frozenset({
 _lock = threading.Lock()
 _sessions: dict = {}
 
-#: Consecutive failed or rejected liveness pushes across transitions.
-#: A single rejection stays quiet (debug level), but a repeating rejection
-#: is surfaced at warning level so the operator sees the wire is disconnected
-#: without raising the log level (Fixes #293).
-_consecutive_rejections: int = 0
-
 #: Cache for the sync gate: it answers the same config question on every audit
 #: transition, and a config load per event would put file IO on the run's
 #: critical path. Re-read after _GATE_TTL_SECONDS or any explicit recheck.
@@ -273,8 +268,7 @@ def _interval_seconds(config: Optional[dict] = None) -> float:
 
 
 def reset_liveness_state() -> None:
-    """Forget all per-session throttle state and rejection counters. Test seam; production never calls it."""
-    global _consecutive_rejections
+    """Forget all per-session throttle state. Test seam; production never calls it."""
     with _lock:
         for st in _sessions.values():
             timer = st.get("timer")
@@ -285,7 +279,6 @@ def reset_liveness_state() -> None:
         _gate_cache["value"] = None
         _gate_cache["config"] = None
         _gate_cache["checked_at"] = 0.0
-        _consecutive_rejections = 0
 
 
 def _now_iso() -> str:
@@ -310,6 +303,8 @@ def request_liveness_push(
     transitions — bypasses the window, never the in-flight merge.
     """
     if not session_id or not _sync_gate_open(config):
+        return False
+    if CloudSyncState().is_refused(session_id):
         return False
     now = time.monotonic()
     interval = _interval_seconds(config)
@@ -495,14 +490,12 @@ def _post_snapshot(
 ) -> None:
     """PUT the snapshot to ``{liveness_url}/live/{session_id}``. Drop on any failure.
 
-    Deliberately unlike the ingest path: no retry loop, no cursor, no
-    CloudSyncState touch. A failed liveness push is superseded by the next
-    transition's snapshot, which carries the *current* truth (Fixes #291).
-    A single rejection is logged at debug level, but a repeating rejection is
-    surfaced at warning level so disconnection is visible without raising the
-    log level (Fixes #293).
+    Deliberately unlike the ingest path: no retry loop and no cursor. A
+    retryable failed liveness push is superseded by the next transition's
+    snapshot, which carries the *current* truth (Fixes #291). A terminal
+    refusal is recorded in the same persisted state as audit sync, so both
+    senders stop until an explicit operator retry succeeds.
     """
-    global _consecutive_rejections
     import httpx
 
     from snodo.config import ConfigManager, get_cloud_liveness_url
@@ -513,8 +506,12 @@ def _post_snapshot(
     api_key = (cloud.get("api_key") or "").strip()
     if not api_key:
         return
+    state = CloudSyncState()
+    session_id = snapshot["session_id"]
+    if state.is_refused(session_id):
+        return
     liveness_url = get_cloud_liveness_url(config)
-    url = f"{liveness_url.rstrip('/')}/live/{quote(snapshot['session_id'], safe='')}"
+    url = f"{liveness_url.rstrip('/')}/live/{quote(session_id, safe='')}"
     body = json.dumps(snapshot).encode()
     try:
         response = httpx.put(
@@ -527,33 +524,23 @@ def _post_snapshot(
             timeout=10.0,
         )
         if 200 <= response.status_code < 300:
-            with _lock:
-                _consecutive_rejections = 0
-        else:
-            with _lock:
-                _consecutive_rejections += 1
-                streak = _consecutive_rejections
-            if streak > 1:
-                _logger.warning(
-                    "Liveness push %s -> HTTP %d (repeated rejection, dropped): %s",
-                    url, response.status_code, response.text[:200],
-                )
-            else:
-                _logger.debug(
-                    "Liveness push %s -> HTTP %d (dropped): %s",
-                    url, response.status_code, response.text[:200],
-                )
-    except Exception as exc:  # noqa: BLE001 — dropped; the next transition re-pushes
-        with _lock:
-            _consecutive_rejections += 1
-            streak = _consecutive_rejections
-        if streak > 1:
+            state.clear_refusal(session_id)
+        elif 400 <= response.status_code < 500 and response.status_code != 429:
+            reason = f"HTTP {response.status_code}: {response.text[:500].strip() or 'Client error'}"
+            state.record_refusal(
+                session_id, reason=reason, status_code=response.status_code,
+            )
             _logger.warning(
-                "Liveness push %s failed (repeated rejection, dropped): %s",
-                url, exc,
+                "Liveness push %s -> HTTP %d (refused, stopped): %s",
+                url, response.status_code, response.text[:200],
             )
         else:
-            _logger.debug("Liveness push %s failed (dropped): %s", url, exc)
+            _logger.debug(
+                "Liveness push %s -> HTTP %d (dropped): %s",
+                url, response.status_code, response.text[:200],
+            )
+    except Exception as exc:  # noqa: BLE001 — dropped; the next transition re-pushes
+        _logger.debug("Liveness push %s failed (dropped): %s", url, exc)
 
 
 # ---------------------------------------------------------------------------
