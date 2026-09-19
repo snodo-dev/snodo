@@ -7,6 +7,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- The extension guide's "Coder adapters" section showed `Coder` as a single
+  abstract method and cited a line range that no longer contains the class.
+  It now documents the full attribute contract — the workspace, progress
+  sink, correlation ids, and the two commit/write behavioural switches the
+  engine sets on every adapter instance unconditionally, with the default
+  each gets when an adapter does not override it — and points at the
+  class's current location. (Fixes #366)
+
 ## [0.11.0] — 2026-09-19
 
 ### Added
