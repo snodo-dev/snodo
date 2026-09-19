@@ -89,6 +89,8 @@ jobs:
         run: uv run python scripts/enforce_file_length.py
       - name: Docs-coverage ratchet
         run: uv run python scripts/enforce_docs_coverage.py
+      - name: Strict docs build
+        run: make docs
       - name: Closed-vocabulary check
         run: uv run python scripts/enforce_vocabularies.py
       - name: Changelog issue coverage
