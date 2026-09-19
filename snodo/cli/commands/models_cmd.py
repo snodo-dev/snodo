@@ -1035,9 +1035,8 @@ def _run_benchmark_call(
     one provider's count by another's timing would be a comparison of
     accounting systems rather than of speed.
     """
-    from contextlib import nullcontext
     import litellm
-    from snodo.config import ConfigManager, provider_env
+    from snodo.config import ConfigManager
 
     if completion_fn is None:
         completion_fn = litellm.completion
