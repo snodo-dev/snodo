@@ -4,13 +4,44 @@ FILE: tests/recon/test_recon.py
 """
 
 import json
+import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import snodo.recon as recon_module
 from snodo.recon import ReconError, ReconManager, ReconResult, ReconState
+
+
+def test_call_agent_passes_each_model_key_without_environment_state(monkeypatch):
+    """Routed and native providers keep credentials isolated in one process."""
+    from snodo.config import ConfigManager
+
+    keys = {
+        "custom/model": "custom-secret",
+        "gpt-4o": "openai-secret",
+    }
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: keys.get(model))
+    monkeypatch.setattr(ConfigManager, "resolve_litellm_model", staticmethod(
+        lambda model: "openai/model" if model == "custom/model" else model
+    ))
+    monkeypatch.setattr(ConfigManager, "resolve_api_base", staticmethod(lambda model: None))
+    monkeypatch.setattr(ConfigManager, "resolve_extra_headers", staticmethod(lambda model, task_id=None: None))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return MagicMock(choices=[MagicMock(message=MagicMock(content="answer", tool_calls=[]))])
+
+    with patch("litellm.completion", side_effect=completion):
+        recon_module.call_agent(".", "custom/model", "query", [], "custom", max_turns=1)
+        recon_module.call_agent(".", "gpt-4o", "query", [], "openai", max_turns=1)
+
+    assert [call["api_key"] for call in calls] == ["custom-secret", "openai-secret"]
+    assert "OPENAI_API_KEY" not in os.environ
 
 
 @pytest.fixture

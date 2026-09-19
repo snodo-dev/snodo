@@ -798,15 +798,14 @@ def resolve_validator_completion() -> Tuple[Any, str, Any]:
     """
     from litellm import completion as litellm_completion
 
-    from snodo.config import ConfigManager, provider_env
+    from snodo.config import ConfigManager
     from snodo.infrastructure.config import load_llm_config
 
     config = ConfigManager().load()
     validator_model = resolve_model_for_role(config, "validator", DEFAULT_MODEL)
     validator_config = load_llm_config().validator
 
-    with provider_env(validator_model):
-        completion_fn = build_completion_fn(validator_model, litellm_completion)
+    completion_fn = build_completion_fn(validator_model, litellm_completion)
 
     return completion_fn, validator_model, validator_config
 

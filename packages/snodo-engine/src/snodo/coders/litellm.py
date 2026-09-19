@@ -313,9 +313,9 @@ Return ONLY the JSON array, no other text.
                     "role": "coder",
                 },
             }
+            kwargs["api_key"] = ConfigManager().get_key_for_model(self.model)
             api_base = self._resolve_api_base()
-            if api_base:
-                kwargs["api_base"] = api_base
+            kwargs.update({"api_base": api_base} if api_base else {})
             extra_headers = self._resolve_extra_headers()
             if extra_headers:
                 kwargs["extra_headers"] = extra_headers
@@ -417,9 +417,9 @@ Return ONLY the JSON array, no other text.
                         "role": "coder",
                     },
                 }
+                kwargs["api_key"] = ConfigManager().get_key_for_model(self.model)
                 api_base = self._resolve_api_base()
-                if api_base:
-                    kwargs["api_base"] = api_base
+                kwargs.update({"api_base": api_base} if api_base else {})
                 extra_headers = self._resolve_extra_headers()
                 if extra_headers:
                     kwargs["extra_headers"] = extra_headers

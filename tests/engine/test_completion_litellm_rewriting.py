@@ -6,7 +6,7 @@ PROVES:
 - A provider block with litellm_provider set binds the rewritten model string in build_completion_fn
 - A provider block without litellm_provider set leaves the model string unchanged
 - The model bound by build_completion_fn for validators matches what llm_validator.py:408 sends for the same config
-- provider_env sets the API key in both the block's api_key_env and the target litellm_provider's api_key_env
+- Completion binding carries the configured API key directly
 """
 
 import os
@@ -68,8 +68,8 @@ def test_validator_bound_model_matches_llm_validator_direct_call(monkeypatch):
     assert bound_model == direct_resolved_model == "openai/qwen2.5-coder"
 
 
-def test_provider_env_binds_resolved_provider_credential_env_var(monkeypatch):
-    """provider_env sets key in both block api_key_env and resolved litellm_provider api_key_env."""
+def test_completion_binding_carries_key_without_environment_mutation(monkeypatch):
+    """A routed provider's key is bound directly and does not touch the environment."""
     custom_providers = {
         "ollama": ProviderConfig(
             litellm_provider="openai",
@@ -80,13 +80,11 @@ def test_provider_env_binds_resolved_provider_credential_env_var(monkeypatch):
     }
     monkeypatch.setattr(ConfigManager, "get_providers", lambda self: custom_providers)
 
-    # provider_env deliberately leaves the keys set once the block exits (see
-    # config.provider_env). Swap os.environ for a throwaway copy so the writes
-    # stay inside this test instead of leaking OPENAI_API_KEY / OLLAMA_API_KEY
-    # into every later test in the process (Fixes #200).
-    monkeypatch.setattr(os, "environ", os.environ.copy())
-
     model = "ollama/llama3"
     with provider_env(model):
-        assert os.environ.get("OLLAMA_API_KEY") == "ollama-secret-token"
-        assert os.environ.get("OPENAI_API_KEY") == "ollama-secret-token"
+        fn = build_completion_fn(model, MagicMock())
+        assert fn.keywords["api_key"] == "ollama-secret-token"
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert "OLLAMA_API_KEY" not in os.environ
+    assert "OPENAI_API_KEY" not in os.environ

@@ -45,7 +45,6 @@ from snodo.cli.commands.run_cmd import (  # noqa: F401
     run_command, _execute_task, _fetch_pr_context,
 )
 from snodo.cli.commands.plan_run import _run_plan  # noqa: F401
-from snodo.config import _set_api_key_env  # noqa: F401
 
 
 app = typer.Typer(

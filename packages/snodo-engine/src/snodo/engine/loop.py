@@ -527,7 +527,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         coder_model_fallback = getattr(self.coder, "model", DEFAULT_MODEL)
 
         from litellm import completion as litellm_completion
-        from snodo.config import ConfigManager, provider_env
+        from snodo.config import ConfigManager
         from snodo.validators.runner import build_completion_fn
 
         config = ConfigManager().load()
@@ -541,9 +541,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             validator_completion_fn = build_completion_fn(validator_model, mock_base)
             classifier_completion_fn = build_completion_fn(classifier_model, mock_base)
         else:
-            with provider_env(validator_model), provider_env(classifier_model):
-                validator_completion_fn = build_completion_fn(validator_model, _base_fn or litellm_completion)
-                classifier_completion_fn = build_completion_fn(classifier_model, _base_fn or litellm_completion)
+            validator_completion_fn = build_completion_fn(validator_model, _base_fn or litellm_completion)
+            classifier_completion_fn = build_completion_fn(classifier_model, _base_fn or litellm_completion)
 
         if classifier_model == validator_model and not (is_mock_mode_active() or isinstance(self.coder, MockAdapter)):
             classifier_completion_fn = validator_completion_fn

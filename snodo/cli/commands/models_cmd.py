@@ -838,9 +838,8 @@ def _configured_models() -> list[tuple[str, str]]:
 
 def _run_canary_call(model: str, completion_fn: Optional[Any] = None) -> None:
     """Make the smallest request that exercises snodo's constrained LLM path."""
-    from contextlib import nullcontext
     import litellm
-    from snodo.config import ConfigManager, provider_env
+    from snodo.config import ConfigManager
 
     if completion_fn is None:
         completion_fn = litellm.completion
@@ -867,6 +866,9 @@ def _run_canary_call(model: str, completion_fn: Optional[Any] = None) -> None:
             "function": {"name": "submit_verdict"},
         },
     }
+    api_key = ConfigManager().get_key_for_model(model)
+    if api_key:
+        kwargs["api_key"] = api_key
     api_base = ConfigManager.resolve_api_base(model)
     if api_base:
         kwargs["api_base"] = api_base
@@ -874,9 +876,7 @@ def _run_canary_call(model: str, completion_fn: Optional[Any] = None) -> None:
     if extra_headers:
         kwargs["extra_headers"] = extra_headers
 
-    env_ctx = provider_env(model) if completion_fn is litellm.completion else nullcontext()
-    with env_ctx:
-        completion_fn(**kwargs)
+    completion_fn(**kwargs)
 
 
 def models_check_command(args) -> int:
@@ -1035,9 +1035,8 @@ def _run_benchmark_call(
     one provider's count by another's timing would be a comparison of
     accounting systems rather than of speed.
     """
-    from contextlib import nullcontext
     import litellm
-    from snodo.config import ConfigManager, provider_env
+    from snodo.config import ConfigManager
 
     if completion_fn is None:
         completion_fn = litellm.completion
@@ -1060,27 +1059,24 @@ def _run_benchmark_call(
     if extra_headers:
         kwargs["extra_headers"] = extra_headers
 
-    env_ctx = provider_env(model) if completion_fn is litellm.completion else nullcontext()
-
     start = time.perf_counter()
     ttft: Optional[float] = None
     text_parts: list = []
     usage: Any = None
 
-    with env_ctx:
-        for chunk in completion_fn(**kwargs):
-            content = None
-            try:
-                content = getattr(chunk.choices[0].delta, "content", None)
-            except (AttributeError, IndexError) as e:
-                _logger.debug("Skipping chunk without a content delta: %s", e)
-            if content:
-                if ttft is None:
-                    ttft = time.perf_counter() - start
-                text_parts.append(content)
-            chunk_usage = getattr(chunk, "usage", None)
-            if chunk_usage is not None:
-                usage = chunk_usage
+    for chunk in completion_fn(**kwargs):
+        content = None
+        try:
+            content = getattr(chunk.choices[0].delta, "content", None)
+        except (AttributeError, IndexError) as e:
+            _logger.debug("Skipping chunk without a content delta: %s", e)
+        if content:
+            if ttft is None:
+                ttft = time.perf_counter() - start
+            text_parts.append(content)
+        chunk_usage = getattr(chunk, "usage", None)
+        if chunk_usage is not None:
+            usage = chunk_usage
     wall = time.perf_counter() - start
     text = "".join(text_parts)
 

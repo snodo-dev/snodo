@@ -389,17 +389,20 @@ def call_agent(
 
     final_answer = ""
 
-    from snodo.config import provider_env, ConfigManager
-    _logger.debug("recon: injecting API key for model=%s", model)
+    from snodo.config import ConfigManager
+    _logger.debug("recon: resolving API key for model=%s", model)
     api_base = ConfigManager.resolve_api_base(model)
     model_param = ConfigManager.resolve_litellm_model(model)
     extra_headers = ConfigManager.resolve_extra_headers(model, task_id="recon")
+    api_key = ConfigManager().get_key_for_model(model)
 
     def _complete(with_read_tools: bool):
         kwargs = {
             "model": model_param,
             "messages": messages,
         }
+        if api_key:
+            kwargs["api_key"] = api_key
         if with_read_tools:
             kwargs["tools"] = _READ_ONLY_TOOLS
         if api_base:
@@ -408,105 +411,104 @@ def call_agent(
             kwargs["extra_headers"] = extra_headers
         return litellm.completion(**kwargs)
 
-    with provider_env(model):
-        for _turn in range(max_turns):
-            try:
-                response = _complete(with_read_tools=True)
-            except Exception as e:
-                return ReconResult(
-                    agent=agent_label,
-                    model=model,
-                    result="",
-                    error=str(e),
-                )
-
-            choice = response.choices[0]
-            msg = choice.message
-            text = msg.content or ""
-
-            if not hasattr(msg, "tool_calls") or not msg.tool_calls:
-                if _turn == 0 and not text:
-                    _logger.warning(
-                        "Recon agent disengaged on turn 0 — model=%s, "
-                        "content=%r",
-                        model, msg.content,
-                    )
-                # Prose delivered without a tool call is the agent
-                # concluding: its text is the answer. Prose on a
-                # tool-calling turn is narration between reads, never
-                # the answer, so it is not accumulated here (Fixes #299).
-                final_answer = text
-                break
-
-            # Execute read-only tool calls
-            messages.append({"role": "assistant", "content": text, "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
-                for tc in msg.tool_calls
-            ]})
-
-            for tc in msg.tool_calls:
-                name = tc.function.name
-                try:
-                    args = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    args = {}
-
-                if name == "read_file":
-                    result = _read_file(project_root, args.get("path", ""))
-                elif name == "list_files":
-                    result = _list_files(project_root, args.get("directory", "."))
-                else:
-                    result = f"Error: unknown tool: {name}"
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result,
-                })
-        else:
-            # Reached only when the loop was never broken: the reading
-            # budget is spent and the agent was still calling tools on
-            # its last budgeted turn. Ask once more with the read tools
-            # withdrawn — the same terminal step the validator loop uses
-            # (llm_validator._VERDICT_ONLY_INSTRUCTION) — and return the
-            # answer from what it gathered. A hallucinated tool call
-            # here is not honoured: the tools were withdrawn precisely
-            # so the agent would say what it found (Fixes #299).
-            messages.append({
-                "role": "user",
-                "content": _ANSWER_ONLY_INSTRUCTION,
-            })
-            try:
-                response = _complete(with_read_tools=False)
-            except Exception as e:
-                return ReconResult(
-                    agent=agent_label,
-                    model=model,
-                    result="",
-                    error=str(e),
-                )
-            final_answer = response.choices[0].message.content or ""
-
-        if not final_answer.strip():
-            _logger.warning(
-                "Recon agent returned empty result on model=%s — "
-                "possible model disengagement or auth issue",
-                model,
-            )
+    for _turn in range(max_turns):
+        try:
+            response = _complete(with_read_tools=True)
+        except Exception as e:
             return ReconResult(
-                agent=agent_label, model=model,
-                result="", error="Agent returned empty result",
+                agent=agent_label,
+                model=model,
+                result="",
+                error=str(e),
             )
 
-        return ReconResult(
-            agent=agent_label,
-            model=model,
-            result=final_answer.strip(),
+        choice = response.choices[0]
+        msg = choice.message
+        text = msg.content or ""
+
+        if not hasattr(msg, "tool_calls") or not msg.tool_calls:
+            if _turn == 0 and not text:
+                _logger.warning(
+                    "Recon agent disengaged on turn 0 — model=%s, "
+                    "content=%r",
+                    model, msg.content,
+                )
+            # Prose delivered without a tool call is the agent
+            # concluding: its text is the answer. Prose on a
+            # tool-calling turn is narration between reads, never
+            # the answer, so it is not accumulated here (Fixes #299).
+            final_answer = text
+            break
+
+        # Execute read-only tool calls
+        messages.append({"role": "assistant", "content": text, "tool_calls": [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+            }
+            for tc in msg.tool_calls
+        ]})
+
+        for tc in msg.tool_calls:
+            name = tc.function.name
+            try:
+                args = json.loads(tc.function.arguments)
+            except json.JSONDecodeError:
+                args = {}
+
+            if name == "read_file":
+                result = _read_file(project_root, args.get("path", ""))
+            elif name == "list_files":
+                result = _list_files(project_root, args.get("directory", "."))
+            else:
+                result = f"Error: unknown tool: {name}"
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result,
+            })
+    else:
+        # Reached only when the loop was never broken: the reading
+        # budget is spent and the agent was still calling tools on
+        # its last budgeted turn. Ask once more with the read tools
+        # withdrawn — the same terminal step the validator loop uses
+        # (llm_validator._VERDICT_ONLY_INSTRUCTION) — and return the
+        # answer from what it gathered. A hallucinated tool call
+        # here is not honoured: the tools were withdrawn precisely
+        # so the agent would say what it found (Fixes #299).
+        messages.append({
+            "role": "user",
+            "content": _ANSWER_ONLY_INSTRUCTION,
+        })
+        try:
+            response = _complete(with_read_tools=False)
+        except Exception as e:
+            return ReconResult(
+                agent=agent_label,
+                model=model,
+                result="",
+                error=str(e),
+            )
+        final_answer = response.choices[0].message.content or ""
+
+    if not final_answer.strip():
+        _logger.warning(
+            "Recon agent returned empty result on model=%s — "
+            "possible model disengagement or auth issue",
+            model,
         )
+        return ReconResult(
+            agent=agent_label, model=model,
+            result="", error="Agent returned empty result",
+        )
+
+    return ReconResult(
+        agent=agent_label,
+        model=model,
+        result=final_answer.strip(),
+    )
 
 
 class ReconManager:
