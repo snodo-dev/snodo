@@ -207,6 +207,7 @@ _SETTLED_RUN_STATUSES = frozenset({
 # check, the in-flight flag and the floor timer, not the network write.
 _lock = threading.Lock()
 _sessions: dict = {}
+_consecutive_rejections = 0
 
 #: Cache for the sync gate: it answers the same config question on every audit
 #: transition, and a config load per event would put file IO on the run's
@@ -275,6 +276,7 @@ def _interval_seconds(config: Optional[dict] = None) -> float:
 
 def reset_liveness_state() -> None:
     """Forget all per-session throttle state. Test seam; production never calls it."""
+    global _consecutive_rejections
     with _lock:
         for st in _sessions.values():
             timer = st.get("timer")
@@ -282,6 +284,7 @@ def reset_liveness_state() -> None:
                 timer.cancel()
         _sessions.clear()
         _threads.clear()
+        _consecutive_rejections = 0
         _gate_cache["value"] = None
         _gate_cache["config"] = None
         _gate_cache["checked_at"] = 0.0
