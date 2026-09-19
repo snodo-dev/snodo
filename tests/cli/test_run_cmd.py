@@ -17,6 +17,7 @@ Covers the uncovered paths in snodo/cli/commands/run_cmd.py:
 - run_command with --plan
 """
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -25,7 +26,59 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from snodo.cli.commands.run_cmd import _record_task_completion
+
 # === Helper fixtures ===
+
+
+def test_completed_task_records_cost_and_provenance(tmp_path, monkeypatch):
+    task_dir = tmp_path / ".snodo" / "tasks" / "task_cost"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text(json.dumps({
+        "task_id": "task_cost", "description": "fixture task", "started_at": 100.0,
+        "usage": [{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}],
+    }))
+    monkeypatch.delenv("SNODO_JOB_ID", raising=False)
+
+    _record_task_completion(
+        str(tmp_path), "task_cost", "completed",
+        halt_payload={
+            "task_spec": "fixture task", "coder": "mock", "coder_model": "model-a",
+            "attempts": {"total": 2}, "coder_report": {"turns_used": 3},
+            "change_size": {"added_lines": 4},
+        },
+        protocol=SimpleNamespace(protocol_id="p", version="2"), model="model-a",
+    )
+
+    cost = json.loads((task_dir / "state.json").read_text())["cost"]
+    assert cost["tokens"] == {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+    assert cost["turns"] == 3
+    assert cost["attempts"] == 2
+    assert cost["change_size"] == {"added_lines": 4}
+    assert cost["provenance"]["protocol_id"] == "p"
+    assert cost["provenance"]["fixture"]
+    assert cost["provenance"]["model"] == "model-a"
+
+
+def test_task_cost_keeps_unmeasured_tokens_distinct_from_zero(tmp_path, monkeypatch):
+    measured_dir = tmp_path / ".snodo" / "tasks" / "task_zero"
+    measured_dir.mkdir(parents=True)
+    (measured_dir / "state.json").write_text(json.dumps({
+        "task_id": "task_zero", "description": "zero task", "started_at": 100.0,
+        "usage": [{"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}],
+    }))
+    monkeypatch.delenv("SNODO_JOB_ID", raising=False)
+    protocol = SimpleNamespace(protocol_id="p", version="2")
+    _record_task_completion(str(tmp_path), "task_zero", "completed", protocol=protocol)
+    assert json.loads((measured_dir / "state.json").read_text())["cost"]["tokens"]["total_tokens"] == 0
+
+    missing_dir = tmp_path / ".snodo" / "tasks" / "task_missing"
+    missing_dir.mkdir()
+    (missing_dir / "state.json").write_text(json.dumps({
+        "task_id": "task_missing", "description": "missing task", "started_at": 100.0,
+    }))
+    _record_task_completion(str(tmp_path), "task_missing", "completed", protocol=protocol)
+    assert json.loads((missing_dir / "state.json").read_text())["cost"]["tokens"] is None
 
 @pytest.fixture
 def temp_project():
@@ -2108,4 +2161,3 @@ class TestUnmergedTaskHandling:
 
         assert success is None
         repo.close()  # release the persistent git child (Fixes #258)
-

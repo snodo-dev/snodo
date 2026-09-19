@@ -1006,6 +1006,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
 
         self._clear_failure_context(loop_state)
 
+        change_size = self._task_change_size()
+        loop_state.metadata["change_size"] = change_size
         task_complete_audit = {
             "op": "task_complete",
             "task_ref": loop_state.task.id,
@@ -1013,7 +1015,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             # Explicit null distinguishes a completed no-op from an old event
             # that predates commit provenance.
             "commit": loop_state.metadata.get("commit"),
-            "change_size": self._task_change_size(),
+            "change_size": change_size,
         }
         if loop_state.metadata.get("timed_out"):
             task_complete_audit["timed_out"] = True

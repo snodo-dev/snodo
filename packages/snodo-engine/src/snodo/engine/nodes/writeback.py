@@ -880,6 +880,7 @@ class WritebackMixin:
             "task_id": loop_state.task.id,
             "task_spec": authoritative_spec,
             "iteration": loop_state.iteration,
+            "change_size": meta.get("change_size"),
             "current_mode": loop_state.current_mode,
             "phase": phase,
             "coder": coder_name,
