@@ -19,6 +19,7 @@ INV3 (non-overridable validation) is structural/emergent — no single site:
   blocks mutation tools → validation cannot be bypassed.
 """
 
+import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -47,10 +48,12 @@ from snodo.engine.state import (  # noqa: F401 — re-exported for existing impo
 from snodo.engine.validators import ValidatorRunner
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.infrastructure.tokens import TokenIssuer
-from snodo.tools.git import GitMCP
+from snodo.tools.git import GitMCP, resolve_base_branch
 from snodo.tools.shell import ShellMCP
 from snodo.tools.workspace import WorkspaceMCP
 from snodo.validators.context import ValidatorContext
+
+_logger = logging.getLogger(__name__)
 
 
 from snodo.engine.nodes.context import ContextMixin  # noqa: E402
@@ -959,6 +962,43 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._auto_write_halt_payload(loop_state)
         return self._state_to_dict(loop_state)
     
+    def _task_change_size(self) -> Optional[Dict[str, Any]]:
+        """How much the task's branch changed, against the point it branched from.
+
+        The size — line totals and per-shape file counts — never the diff:
+        the record answers "was this night's work substantial?" without
+        shipping content off the machine. The base is the merge-base of the
+        resolved base branch and the task branch (the same branch and base
+        the merge path resolves), so a long-running task reports its own
+        work, not everything anyone else merged while it ran.
+
+        ``None`` is the honest absence of a measurement — no git, no task
+        branch, an unresolvable base — never a fabricated zero. A degraded
+        or non-isolated run sits on the operator's own branch, which the
+        task-branch guard reads as unmeasurable. The completion record is
+        an observer: a git failure here must not break the run, so it
+        returns None and says so in the log (Fixes #377).
+        """
+        git = self.git_mcp
+        if git is None:
+            return None
+        try:
+            branch = git.repo.active_branch.name
+        except Exception:
+            return None
+        if not self._active_branch_is_task_branch(branch):
+            return None
+        try:
+            head = git.repo.head.commit
+            base_tip = git.repo.commit(resolve_base_branch(str(git.project_root)))
+            merge_bases = git.repo.merge_base(base_tip, head)
+            if not merge_bases:
+                return None
+            return git.change_size(merge_bases[0].hexsha, head.hexsha)
+        except Exception as e:
+            _logger.debug("Could not record change size for %s: %s", branch, e)
+            return None
+
     def _complete_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Terminal node: Work complete."""
         loop_state = self._dict_to_state(state)
@@ -973,6 +1013,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             # Explicit null distinguishes a completed no-op from an old event
             # that predates commit provenance.
             "commit": loop_state.metadata.get("commit"),
+            "change_size": self._task_change_size(),
         }
         if loop_state.metadata.get("timed_out"):
             task_complete_audit["timed_out"] = True

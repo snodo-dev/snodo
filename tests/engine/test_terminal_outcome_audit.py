@@ -187,15 +187,20 @@ class TestTerminalOutcomeAudit:
         assert "final_decision" not in data
 
 
-def _documented_halt_keys():
-    """The `data` keys the cloud-sync spec documents for the halt event."""
+def _documented_event_keys(event_type: str):
+    """The `data` keys the cloud-sync spec documents for *event_type*."""
     for line in _SPEC_PATH.read_text().splitlines():
         if not line.lstrip().startswith("|"):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) >= 2 and cells[0].strip("`") == "halt":
+        if len(cells) >= 2 and cells[0].strip("`") == event_type:
             return {k.strip().strip("`") for k in cells[1].split(",")}
-    raise AssertionError("no `halt` row found in cloud-sync.md")
+    raise AssertionError(f"no `{event_type}` row found in cloud-sync.md")
+
+
+def _documented_halt_keys():
+    """The `data` keys the cloud-sync spec documents for the halt event."""
+    return _documented_event_keys("halt")
 
 
 class TestHaltEventShape:
@@ -218,3 +223,38 @@ class TestHaltEventShape:
         _, data = audit.append_event.call_args[0]
         emitted = set(data) - {"op"}
         assert emitted == _documented_halt_keys()
+
+
+class TestTaskCompleteEventShape:
+    def test_emitted_task_complete_keys_match_documented_shape(self):
+        """The keys on the emitted task_complete event are exactly the
+        documented shape (minus ``op``). The change-size field rides the
+        published interface, so this test is what refuses a silent change
+        to the completed-task record (#377)."""
+        protocol = _make_protocol()
+        audit = MagicMock(spec=AuditLog)
+        builder = GraphBuilder(protocol, audit_log=audit, session_id="sess_shape")
+
+        state = {
+            "task": {"id": "task_001", "spec": "Implement feature"},
+            "current_mode": "producer",
+            "iteration": 1,
+            "stage": "move_next",
+            "validation_results": [],
+            "validation_token": None,
+            "artifacts": ["src/app.py"],
+            "constraints_passed": True,
+            "constraint_violations": [],
+            "policy_decision": None,
+            "is_complete": True,
+            "is_blocked": False,
+            "halt_type": None,
+            "metadata": {},
+            "messages": [],
+        }
+        builder._complete_node(state)
+
+        _, data = audit.append_event.call_args[0]
+        emitted = set(data) - {"op"}
+        assert emitted == _documented_event_keys("task_complete")
+        assert data["change_size"] is None  # no git here: unmeasured, not zero
