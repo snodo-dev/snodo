@@ -16,6 +16,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   reports each model as healthy or names the provider refusal, unknown model,
   or other error. It is an operator instrument, not a dispatch gate, and does
   not run the engine loop. (Fixes #362)
+- Plan validation now warns when two task specifications in the same wave cite
+  the same file, naming both tasks and the possible overlap. The advisory is
+  based on plan-time citations and does not block validation or dispatch.
+  (Fixes #363)
 - Issue-closing commits are now checked against the branch range before they
   land. The gate names an undocumented issue and asks its author to explain the
   change, without rechecking older history or generating release notes from a
