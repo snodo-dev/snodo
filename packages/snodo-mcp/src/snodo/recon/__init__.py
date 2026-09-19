@@ -50,6 +50,11 @@ class ReconResult(BaseModel):
     result: str
     error: Optional[str] = None
     attempts: list[ReconAttempt] = []
+    #: The model the provider said it served, beside the one asked for
+    #: (Fixes #381). None means the provider reported nothing usable —
+    #: absence recorded as absence, never an assumed match. Provenance only:
+    #: it does not feed failover, selection or routing.
+    served_model: Optional[str] = None
 
 
 class ReconError(Exception):
@@ -372,6 +377,7 @@ def call_agent(
     ReconManager state directories.
     """
     import litellm
+    from snodo.infrastructure.model_provenance import served_model_of
     litellm.suppress_debug_info = True
 
     path_context = ", ".join(paths) if paths else "./"
@@ -388,6 +394,7 @@ def call_agent(
     ]
 
     final_answer = ""
+    served_model: Optional[str] = None
 
     from snodo.config import ConfigManager
     _logger.debug("recon: resolving API key for model=%s", model)
@@ -421,6 +428,7 @@ def call_agent(
                 result="",
                 error=str(e),
             )
+        served_model = served_model_of(response)
 
         choice = response.choices[0]
         msg = choice.message
@@ -491,6 +499,7 @@ def call_agent(
                 result="",
                 error=str(e),
             )
+        served_model = served_model_of(response)
         final_answer = response.choices[0].message.content or ""
 
     if not final_answer.strip():
@@ -502,12 +511,14 @@ def call_agent(
         return ReconResult(
             agent=agent_label, model=model,
             result="", error="Agent returned empty result",
+            served_model=served_model,
         )
 
     return ReconResult(
         agent=agent_label,
         model=model,
         result=final_answer.strip(),
+        served_model=served_model,
     )
 
 

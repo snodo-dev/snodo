@@ -195,17 +195,25 @@ class LLMValidator(ValidatorBase):
         tokens_in: int,
         tokens_out: int,
         elapsed_ms: float,
+        model_requested: str = "",
+        response: Any = None,
     ) -> None:
         """Emit one per-turn telemetry record to the job's state.json.
 
         Operational telemetry, not part of the audit chain (ADR 034). Never
         raises — telemetry must not crash the tool loop.
+
+        ``model`` is the name sent in the request; ``served_model`` is the
+        provider's own name for what answered, beside it as provenance
+        (Fixes #381). None served means the provider reported nothing — not
+        a match, and not a substitution either.
         """
         try:
             from snodo.infrastructure.tool_telemetry import (
                 canonical_target_path,
                 persist_tool_telemetry,
             )
+            from snodo.infrastructure.model_provenance import served_model_of
 
             record = {
                 "task_ref": self._task_id or "unknown",
@@ -217,6 +225,8 @@ class LLMValidator(ValidatorBase):
                 "tool": tool,
                 "target_path": canonical_target_path(target_path),
                 "read_hit": bool(read_hit),
+                "model": model_requested,
+                "served_model": served_model_of(response),
                 "tokens_in": int(tokens_in or 0),
                 "tokens_out": int(tokens_out or 0),
                 "elapsed_ms": round(float(elapsed_ms or 0), 1),
@@ -529,6 +539,8 @@ class LLMValidator(ValidatorBase):
                     tokens_in=_usage_tokens(response, "prompt"),
                     tokens_out=_usage_tokens(response, "completion"),
                     elapsed_ms=(time.monotonic() - turn_start) * 1000,
+                    model_requested=kwargs.get("model", ""),
+                    response=response,
                 )
                 return verdict
 
@@ -634,6 +646,8 @@ class LLMValidator(ValidatorBase):
                             tokens_in=_usage_tokens(response, "prompt"),
                             tokens_out=_usage_tokens(response, "completion"),
                             elapsed_ms=(time.monotonic() - turn_start) * 1000,
+                            model_requested=kwargs.get("model", ""),
+                            response=response,
                         )
 
                     messages.append({

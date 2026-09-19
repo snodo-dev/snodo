@@ -9,7 +9,12 @@ repo's file-length limit. Nothing here changed in the move.
 
 import logging
 import re
-from typing import Any, Optional
+from typing import Optional
+
+# ``usage_tokens_of`` lives with the response-field readers in
+# snodo.infrastructure.usage_tracker; the name stays importable from here for
+# the judge loop (Fixes #381 moved it, nothing else).
+from snodo.infrastructure.usage_tracker import usage_tokens_of as _usage_tokens  # noqa: F401 - re-export for the judge loop
 
 _logger = logging.getLogger(__name__)
 
@@ -133,19 +138,3 @@ def _provider_retry_delay(e: Exception) -> Optional[float]:
         if delay >= 0:
             return delay
     return None
-
-
-def _usage_tokens(response: Any, kind: str) -> int:
-    """Extract prompt/completion token counts from a litellm response.
-
-    Returns 0 when the response carries no usage (e.g. mock responses).
-    """
-    try:
-        usage = getattr(response, "usage", None)
-        if usage is None:
-            return 0
-        if kind == "prompt":
-            return int(getattr(usage, "prompt_tokens", 0) or 0)
-        return int(getattr(usage, "completion_tokens", 0) or 0)
-    except Exception:
-        return 0

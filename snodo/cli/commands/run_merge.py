@@ -190,7 +190,7 @@ def _try_merge_unmerged_task(
     if not matching_passes and not matching_ungated:
         return None
 
-    from snodo.cli.commands.run_cmd import _record_task_completion
+    from snodo.cli.commands.task_record import _record_task_completion
 
     task = Task(id=task_id, spec=spec)
     merge_result, preserve_worktree, merged_branch = _merge_on_success(

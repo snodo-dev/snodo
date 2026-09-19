@@ -322,7 +322,7 @@ def _correct_stale_unmerged(planner, args, task_id: str, spec: str) -> bool:
         corrected_from="unmerged",
         corrected_reason=reason,
     )
-    from snodo.cli.commands.run_cmd import _record_task_completion
+    from snodo.cli.commands.task_record import _record_task_completion
     _record_task_completion(project_root, task_id, "completed")
 
     audit_log = getattr(args, "audit_log", None)
