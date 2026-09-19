@@ -22,6 +22,7 @@ from snodo.cli.commands.models_cmd import (
     models_command,
     register,
 )
+from snodo.cli.commands.models_check import run_canary_call
 
 
 @pytest.fixture
@@ -73,23 +74,82 @@ def test_models_command_no_providers_configured(monkeypatch, capsys):
     assert "No providers configured." in out
 
 
-def test_models_check_reports_parameter_refusal_per_model(monkeypatch, capsys):
-    """A refused canary request names the broken model while others stay healthy."""
+def test_models_check_recovers_from_temperature_refusal(monkeypatch, capsys):
+    """A model refusing temperature is still healthy when the call recovers."""
     monkeypatch.setattr(
         "snodo.cli.commands.models_cmd._configured_models",
-        lambda: [("coder", "openai/broken"), ("classifier", "openai/healthy")],
+        lambda: [("coder", "openai/temperature-limited")],
+    )
+
+    calls = []
+
+    def canary(model):
+        def completion(**kwargs):
+            calls.append(kwargs.copy())
+            if "temperature" in kwargs:
+                error = RuntimeError("Unsupported parameter: 'temperature' is not supported")
+                error.status_code = 400
+                raise error
+
+        run_canary_call(model, completion)
+
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
+
+    assert models_check_command(SimpleNamespace()) == 0
+    out = capsys.readouterr().out
+    assert "OK       openai/temperature-limited (coder)" in out
+    assert len(calls) == 2
+    assert "temperature" not in calls[1]
+
+
+def test_models_check_recovers_from_forced_tool_choice_refusal(monkeypatch, capsys):
+    """A model refusing forced tool choice is still healthy when unforced."""
+    monkeypatch.setattr(
+        "snodo.cli.commands.models_cmd._configured_models",
+        lambda: [("validator", "openai/unforced-tools")],
+    )
+
+    calls = []
+
+    def canary(model):
+        def completion(**kwargs):
+            calls.append(kwargs.copy())
+            if "tool_choice" in kwargs:
+                error = RuntimeError("tool_choice is not supported by this provider")
+                error.status_code = 400
+                raise error
+
+        run_canary_call(model, completion)
+
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
+
+    assert models_check_command(SimpleNamespace()) == 0
+    out = capsys.readouterr().out
+    assert "OK       openai/unforced-tools (validator)" in out
+    assert len(calls) == 2
+    assert "tool_choice" not in calls[1]
+
+
+def test_models_check_keeps_credential_rejection_failed(monkeypatch, capsys):
+    """A credential rejection is not a recoverable parameter refusal."""
+    monkeypatch.setattr(
+        "snodo.cli.commands.models_cmd._configured_models",
+        lambda: [("coder", "openai/bad-credential")],
     )
 
     def canary(model):
-        if model == "openai/broken":
-            raise RuntimeError("temperature is not supported")
+        def completion(**kwargs):
+            error = RuntimeError("invalid_api_key: authentication failed")
+            error.status_code = 401
+            raise error
+
+        run_canary_call(model, completion)
 
     monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
 
     assert models_check_command(SimpleNamespace()) == 1
     out = capsys.readouterr().out
-    assert "FAILED   openai/broken (coder): temperature is not supported" in out
-    assert "OK       openai/healthy (classifier)" in out
+    assert "FAILED   openai/bad-credential (coder): invalid_api_key" in out
 
 
 def test_models_check_does_not_send_subprocess_coder_to_litellm(monkeypatch, capsys):

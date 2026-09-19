@@ -7,6 +7,7 @@ def run_canary_call(model: str, completion_fn: Optional[Any] = None) -> None:
     """Make the smallest request that exercises snodo's constrained LLM path."""
     import litellm
     from snodo.config import ConfigManager
+    from snodo.validators.llm_provider_errors import _remove_rejected_parameter
 
     if completion_fn is None:
         completion_fn = litellm.completion
@@ -42,7 +43,14 @@ def run_canary_call(model: str, completion_fn: Optional[Any] = None) -> None:
     extra_headers = ConfigManager.resolve_extra_headers(model, task_id="model-check")
     if extra_headers:
         kwargs["extra_headers"] = extra_headers
-    completion_fn(**kwargs)
+    removed = set()
+    while True:
+        try:
+            completion_fn(**kwargs)
+            return
+        except Exception as error:
+            if _remove_rejected_parameter(error, kwargs, removed) is None:
+                raise
 
 
 def _subprocess_coder_for_model(model: str) -> Optional[str]:

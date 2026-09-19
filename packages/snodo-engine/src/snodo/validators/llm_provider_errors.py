@@ -119,6 +119,25 @@ def _provider_rejected_parameter(e: Exception) -> Optional[str]:
     return None
 
 
+def _remove_rejected_parameter(
+    e: Exception,
+    kwargs: dict[str, Any],
+    removed: set[str],
+) -> Optional[str]:
+    """Remove one provider-rejected request parameter, at most once.
+
+    The caller decides how to retry and how to report the fallback. Keeping
+    the parameter decision here makes the canary and validator use the same
+    provider-error interpretation.
+    """
+    parameter = _provider_rejected_parameter(e)
+    if parameter and parameter in kwargs and parameter not in removed:
+        removed.add(parameter)
+        del kwargs[parameter]
+        return parameter
+    return None
+
+
 def _provider_retry_delay(e: Exception) -> Optional[float]:
     """Return a provider-supplied retry delay, if the exception carries one."""
     candidates = [getattr(e, "retry_after", None)]
