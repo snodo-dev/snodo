@@ -15,6 +15,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   sharing provider environment variables, so routed custom providers remain
   isolated during concurrent recon and leave no credential behind. (Fixes #369)
 
+- An interactive plan watch now appends a refreshed task tree when a task
+  changes status, so the opening snapshot is not mistaken for the current
+  state. Quiet watches still use one heartbeat row, and redirected output is
+  unchanged. (Fixes #368)
 - The extension guide's "Coder adapters" section showed `Coder` as a single
   abstract method and cited a line range that no longer contains the class.
   It now documents the full attribute contract — the workspace, progress
