@@ -488,6 +488,7 @@ def verify_plan(
     6. Tasks with missing spec files (when plan_dir is provided)
     7. Spec-referenced paths resolved from the repository and declared workspace roots
     8. Unknown wave dependency references
+    9. Same-wave task specifications citing the same file (warning only)
 
     Args:
         plan: Plan model instance
@@ -581,12 +582,17 @@ def verify_plan(
 
     # Check tasks with no spec file and cited paths that cannot be resolved.
     if plan_dir and plan_dir.exists():
-        from snodo.infrastructure.worktree import check_spec_paths_exist, planned_spec_paths
+        from snodo.infrastructure.worktree import (
+            _spec_referenced_paths,
+            check_spec_paths_exist,
+            planned_spec_paths,
+        )
 
         root = workspace_root or plan_dir.parents[2]
         earlier_created: Set[str] = set()
         for w in plan.waves:
             wave_dir = plan_dir / f"wave_{w.id}"
+            cited_by_path: Dict[str, List[str]] = {}
             for task_id in w.tasks:
                 spec_file = wave_dir / f"{task_id}_task.md"
                 if not spec_file.exists():
@@ -595,12 +601,24 @@ def verify_plan(
                 spec = spec_file.read_text()
                 if not isinstance(spec, str):
                     continue
+                for path in _spec_referenced_paths(spec):
+                    cited_by_path.setdefault(path, []).append(task_id)
                 created_by_task = set(planned_spec_paths(spec))
                 missing_paths = check_spec_paths_exist(str(root), spec)
                 for path in missing_paths:
                     if path not in earlier_created and path not in created_by_task:
                         errors.append(f"Missing referenced path in spec {task_id}: {path}")
                 earlier_created.update(created_by_task)
+
+            for path, task_ids in cited_by_path.items():
+                for index, first_task in enumerate(task_ids):
+                    for second_task in task_ids[index + 1:]:
+                        warnings.append(
+                            f"Possible same-wave file overlap in wave {w.id}: tasks "
+                            f"'{first_task}' and '{second_task}' both cite '{path}'. "
+                            "This is based on plan-time citations and may not reflect "
+                            "the files either task will actually change."
+                        )
 
     return PlanVerificationResult(
         passed=len(errors) == 0,
