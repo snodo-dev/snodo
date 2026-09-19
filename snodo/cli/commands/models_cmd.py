@@ -1052,6 +1052,9 @@ def _run_benchmark_call(
         "stream": True,
         "stream_options": {"include_usage": True},
     }
+    api_key = ConfigManager().get_key_for_model(model)
+    if api_key:
+        kwargs["api_key"] = api_key
     api_base = ConfigManager.resolve_api_base(model)
     if api_base:
         kwargs["api_base"] = api_base
