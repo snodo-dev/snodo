@@ -153,7 +153,7 @@ Three predicates ship for reference (`snodo/predicates/`):
 
 ### Interface
 
-Implement `Coder` (`snodo/core/interfaces.py:11-17`):
+Implement `Coder` (`snodo/core/interfaces.py:24-89`):
 
 ```python
 from snodo.core.interfaces import Coder, TaskSpec, CodeArtifact
@@ -168,7 +168,21 @@ class MyCoder(Coder):
         return CodeArtifact(files=[...])
 ```
 
-A `CodeArtifact` is a list of `FileArtifact` objects (path, content, action="write"|"delete"). Two adapters ship: `LiteLLMAdapter` (routes to 100+ LLM backends via litellm) and `MockAdapter` (deterministic stub for testing).
+`implement()` is the only abstract method, but it is not the whole contract. `Coder` also declares several optional capabilities as class attributes with defaults, and the engine sets these on every adapter instance **unconditionally** — never behind a `hasattr` guard — so that an adapter's non-support of a capability is a visible default rather than a silently skipped line:
+
+| Attribute | What the engine gives you | Default if you don't override it |
+|---|---|---|
+| `workspace_mcp` | The workspace the task runs under, when the task runs under one | `None` — no workspace access |
+| `progress_callback` | A sink to emit per-turn progress to | `None` — the adapter reports no progress |
+| `_job_id`, `_task_id` | Correlation ids for adapter-side logging/telemetry | `""` — unset |
+| `skip_workspace_write` | Set `True` if your adapter writes the working tree itself; the executor then does **not** replay the returned artifacts through `WorkspaceMCP` | `False` — the executor writes the returned artifacts |
+| `skip_engine_commit` | Set `True` if your adapter (or its base class) owns the commit; the executor then does **not** stage or commit | `False` — the executor commits |
+
+A coder that overrides none of these is a complete, valid adapter: it gets no workspace, reports no progress, and has the executor write and commit its `CodeArtifact` on its behalf. That's a legitimate choice, but make it deliberately — the way to find out otherwise is a task that reports no progress or ignores a workspace it needed.
+
+Opting into `skip_workspace_write` or `skip_engine_commit` does not waive the underlying obligation: an adapter that owns its own commit still has to leave the workspace in a state where what changed is observable and attributable. "The coder produced nothing" is a fault regardless of who commits.
+
+A `CodeArtifact` is a list of `FileArtifact` objects (path, content, action="write"|"delete"). `LiteLLMAdapter` (routes to 100+ LLM backends via litellm) and `MockAdapter` (deterministic stub for testing) are two of the adapters that ship with snodo.
 
 ### Wiring
 
