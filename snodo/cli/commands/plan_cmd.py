@@ -114,6 +114,7 @@ def plan_run(
     mock: bool = exec_option("mock"),
     retain_worktree: bool = exec_option("retain_worktree"),
     no_isolation: bool = exec_option("no_isolation"),
+    fixture: Optional[str] = exec_option("fixture"),
 ):
     """Execute a plan's tasks through the protocol loop."""
     from snodo.cli.commands.run_cmd import RunArgs
@@ -122,7 +123,7 @@ def plan_run(
         plan=name, wave=wave, interactive=interactive,
         protocol=protocol, model=model, coder=coder, mode=mode,
         verbose=verbose, mock=mock,
-        retain_worktree=retain_worktree, no_isolation=no_isolation,
+        retain_worktree=retain_worktree, no_isolation=no_isolation, fixture=fixture,
     )
     return _plan_run(args)
 
