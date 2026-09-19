@@ -27,6 +27,7 @@ def register(app: typer.Typer) -> None:
         provider: Optional[str] = typer.Option(None, "--provider", "-p", help="Provider to list models for"),
         flush: bool = typer.Option(False, "--flush", help="Ignore cache and refetch"),
         stats: bool = typer.Option(False, "--stats", help="Report actual model and coder usage from project records"),
+        check: bool = typer.Option(False, "--check", help="Make one cheap live call against each configured model"),
         benchmark: bool = typer.Option(
             False, "--benchmark",
             help="Time a fixed prompt against the selected model. Makes real, billed API calls.",
@@ -47,6 +48,7 @@ def register(app: typer.Typer) -> None:
             provider=provider,
             flush=flush,
             stats=stats,
+            check=check,
             benchmark=benchmark,
             benchmark_runs=benchmark_runs,
             id=id,
@@ -97,6 +99,9 @@ def models_command(args) -> int:
     """List configured providers, their models, or project usage stats."""
     if getattr(args, "stats", False):
         return models_stats_command(args)
+
+    if getattr(args, "check", False):
+        return models_check_command(args)
 
     if getattr(args, "benchmark", False):
         return models_benchmark_command(args)
@@ -721,6 +726,108 @@ def models_stats_command(args) -> int:
     print()
     _print_coder_stats_table(coder_stats)
     return 0
+
+
+def _configured_models() -> list[tuple[str, str]]:
+    """Return the distinct models named by the project's LLM role config."""
+    from snodo.config import ConfigManager
+
+    config = ConfigManager().load()
+    llm = config.get("llm", {})
+    if not isinstance(llm, dict):
+        llm = {}
+    default_model = config.get("model") or ConfigManager().get_model()
+
+    configured: list[tuple[str, str]] = []
+    role_models = [
+        ("coder", llm.get("coder", {})),
+        ("validator", llm.get("validator") or llm.get("validator_llm") or {}),
+        ("classifier", llm.get("classifier", {})),
+    ]
+    for role, section in role_models:
+        model = section.get("model") if isinstance(section, dict) else None
+        configured.append((role, model or default_model))
+
+    recon = llm.get("recon", {})
+    recon_models = recon.get("models", []) if isinstance(recon, dict) else []
+    if recon_models:
+        configured.extend(("recon", model) for model in recon_models if model)
+    else:
+        configured.append(("recon", default_model))
+
+    seen = set()
+    return [
+        (role, model)
+        for role, model in configured
+        if model and not (model in seen or seen.add(model))
+    ]
+
+
+def _run_canary_call(model: str, completion_fn: Optional[Any] = None) -> None:
+    """Make the smallest request that exercises snodo's constrained LLM path."""
+    from contextlib import nullcontext
+    import litellm
+    from snodo.config import ConfigManager, provider_env
+
+    if completion_fn is None:
+        completion_fn = litellm.completion
+
+    kwargs: Dict[str, Any] = {
+        "model": ConfigManager.resolve_litellm_model(model),
+        "messages": [{"role": "user", "content": "Reply with OK."}],
+        "max_tokens": 1,
+        "temperature": 0.0,
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "submit_verdict",
+                "description": "Return the result.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"result": {"type": "string"}},
+                    "required": ["result"],
+                },
+            },
+        }],
+        "tool_choice": {
+            "type": "function",
+            "function": {"name": "submit_verdict"},
+        },
+    }
+    api_base = ConfigManager.resolve_api_base(model)
+    if api_base:
+        kwargs["api_base"] = api_base
+    extra_headers = ConfigManager.resolve_extra_headers(model, task_id="model-check")
+    if extra_headers:
+        kwargs["extra_headers"] = extra_headers
+
+    env_ctx = provider_env(model) if completion_fn is litellm.completion else nullcontext()
+    with env_ctx:
+        completion_fn(**kwargs)
+
+
+def models_check_command(args) -> int:
+    """Check each distinct configured role model without changing engine state."""
+    results = []
+    for role, model in _configured_models():
+        try:
+            _run_canary_call(model)
+        except Exception as error:
+            results.append((role, model, False, str(error)))
+        else:
+            results.append((role, model, True, ""))
+
+    if not results:
+        print("No models configured.")
+        return 0
+
+    print("Configured model check:")
+    for role, model, healthy, reason in results:
+        if healthy:
+            print(f"  OK       {model} ({role})")
+        else:
+            print(f"  FAILED   {model} ({role}): {reason}")
+    return 0 if all(healthy for _, _, healthy, _ in results) else 1
 
 
 # ============================================================================
