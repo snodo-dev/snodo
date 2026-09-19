@@ -38,6 +38,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
    pending changelog section instead of a dated release section. (Fixes #372)
 
 ### Added
+- Benchmark plan runs can now use an external clean Git fixture, cloning it into
+  a disposable execution directory and reporting its committed-tree identity so
+  repeated runs begin from the same state. (Fixes #379)
+
 - A completed task now records how much it changed, not just which files it
   touched: `task_complete` carries a `change_size` of line totals and per-shape
   file counts, computed against the merge-base the task branched from — never

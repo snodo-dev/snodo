@@ -3,10 +3,13 @@
 Extracted from cli/commands/run_cmd.py to isolate plan execution logic.
 """
 
+import hashlib
 import json
 import logging
 import os
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -17,6 +20,65 @@ from snodo.cli.commands import load_protocol
 from snodo.cli.commands import followup
 
 _logger = logging.getLogger(__name__)
+
+
+def _fixture_tree_identity(fixture: Path) -> str:
+    """Return the identity of the committed tree supplied as a fixture."""
+    result = subprocess.run(  # noqa: S603 - fixed git argv; fixture path is one argument
+        ["git", "-C", str(fixture), "ls-tree", "-r", "--full-tree", "-z", "HEAD"],  # noqa: S607 - git resolved from PATH by design
+        capture_output=True,
+        check=True,
+    )
+    return hashlib.sha256(result.stdout).hexdigest()
+
+
+def _run_fixture(args) -> int:
+    """Run a plan in a disposable clone of an external benchmark fixture.
+
+    The fixture is deliberately a clean Git repository rather than a plan
+    format extension. Its committed tree is the starting state; the source is
+    never used as the execution directory and therefore cannot be mutated.
+    """
+    source = Path(args.fixture).expanduser().resolve()
+    if not source.is_dir() or not (source / ".git").exists():
+        print(f"Error: benchmark fixture is not a Git repository: {source}", file=sys.stderr)
+        return 1
+    try:
+        status = subprocess.run(  # noqa: S603 - fixed git argv; fixture path is one argument
+            ["git", "-C", str(source), "status", "--porcelain"],  # noqa: S607 - git resolved from PATH by design
+            capture_output=True, text=True, check=True,
+        )
+        identity = _fixture_tree_identity(source)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"Error: could not inspect benchmark fixture {source}: {exc}", file=sys.stderr)
+        return 1
+    if status.stdout:
+        print("Error: benchmark fixture must have a clean working tree", file=sys.stderr)
+        return 1
+
+    with tempfile.TemporaryDirectory(prefix="snodo-benchmark-") as directory:
+        clone = Path(directory) / "fixture"
+        try:
+            subprocess.run(  # noqa: S603 - fixed git argv; source and clone are path arguments
+                ["git", "clone", "--no-hardlinks", "--quiet", str(source), str(clone)],  # noqa: S607 - git resolved from PATH by design
+                check=True, capture_output=True, text=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            print(f"Error: could not clone benchmark fixture: {exc}", file=sys.stderr)
+            return 1
+
+        old_cwd = Path.cwd()
+        old_root = os.environ.get("SNODO_PROJECT_ROOT")
+        os.chdir(clone)
+        os.environ["SNODO_PROJECT_ROOT"] = str(clone)
+        try:
+            return _run_plan(args, fixture_identity=identity)
+        finally:
+            os.chdir(old_cwd)
+            if old_root is None:
+                os.environ.pop("SNODO_PROJECT_ROOT", None)
+            else:
+                os.environ["SNODO_PROJECT_ROOT"] = old_root
 
 
 def _evaluate_wave_validators(protocol, mode_id: str, wave_id, specs: list) -> dict:
@@ -925,7 +987,7 @@ def _print_plan_progress(planner, plan_name: str) -> None:
     print(f"\nPlan progress: {done}/{len(tasks)} completed")
 
 
-def _run_plan(args) -> int:
+def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
     """Execute a plan's tasks through the protocol loop."""
     from snodo.mcp.planner import PlannerMCP, PlannerError
 
@@ -970,6 +1032,8 @@ def _run_plan(args) -> int:
                 print(f"  - {err}", file=sys.stderr)
             return 1
 
+        if fixture_identity:
+            print(f"Benchmark fixture: {fixture_identity}")
         print(f"Plan: {plan_data.get('name', args.plan)}")
         print(f"Intent: {plan_data.get('intent', 'N/A')}")
         print()

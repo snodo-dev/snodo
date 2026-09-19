@@ -11,13 +11,15 @@ Covers:
   invalid wave filter, planner error, missing protocol.
 """
 
+import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from snodo.mcp.planner import PlannerMCP
 
-from snodo.cli.commands.plan_run import _run_plan
+from snodo.cli.commands.plan_run import _run_fixture, _run_plan
 from snodo.cli.main import main
 
 
@@ -141,6 +143,45 @@ def test_full_plan_execution_happy_path(plan_project_env, capsys):
     out = capsys.readouterr().out
     assert "Plan: happy_plan" in out
     assert "Plan progress: 2/2 completed" in out
+
+
+def test_benchmark_fixture_repeated_runs_start_from_same_state(plan_project_env):
+    """Each fixture run gets a fresh clone, while the fixture stays untouched."""
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "benchmark_plan")
+    subprocess.run(["git", "init", "-q"], cwd=plan_project_env, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=plan_project_env, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=plan_project_env, check=True)
+    subprocess.run(["git", "add", "."], cwd=plan_project_env, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=plan_project_env, check=True)
+    source_status = (plan_project_env / ".snodo" / "plans" / plan_name / "status.json").read_text()
+
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml",
+        model=None,
+        plan=plan_name,
+        wave=None,
+        mock=True,
+        interactive=False,
+        no_isolation=True,
+        fixture=str(plan_project_env),
+    )
+    seen = []
+
+    def execute_task(_args, _protocol, task, _model):
+        marker = Path.cwd() / f"run-marker-{task.id}"
+        seen.append(marker.exists())
+        marker.write_text("mutated by run")
+        return 0
+
+    with patch("snodo.infrastructure.paths.require_project_root", side_effect=lambda: str(Path.cwd())):
+        with patch("snodo.cli.commands.run_cmd._execute_task", side_effect=execute_task):
+            assert _run_fixture(args) == 0
+            assert _run_fixture(args) == 0
+
+    assert seen == [False, False, False, False]
+    assert not list(plan_project_env.glob("run-marker-*"))
+    assert (plan_project_env / ".snodo" / "plans" / plan_name / "status.json").read_text() == source_status
 
 
 def test_plan_resume_skips_completed_tasks(plan_project_env, capsys):
@@ -1817,8 +1858,3 @@ disagreement_policy: "unanimous"
     assert status["tasks"]["task_1_a"]["status"] == "completed"
     assert status["tasks"]["task_1_a"]["corrected_from"] == "unmerged"
     repo.close()
-
-
-
-
-

@@ -76,6 +76,8 @@ def _build_execution_options() -> dict:
                                           "Never set automatically: losing isolation is a warning, not an error."),
         "retain_worktree": typer.Option(False, "--retain-worktree",
                                         help="Keep the task worktree regardless of outcome"),
+        "fixture": typer.Option(None, "--fixture",
+                                 help="Run a plan from an external benchmark fixture repository"),
     }
 
 
@@ -105,6 +107,7 @@ class RunArgs:
     replace_spec: Optional[str] = None
     retain_worktree: bool = False
     no_isolation: bool = False
+    fixture: Optional[str] = None
     audit_log: Optional[Any] = None
     session_manager: Optional[Any] = None
 
@@ -159,6 +162,7 @@ def register(app: typer.Typer) -> None:
         ),
         retain_worktree: bool = _execution_option("retain_worktree"),
         no_isolation: bool = _execution_option("no_isolation"),
+        fixture: Optional[str] = _execution_option("fixture"),
     ):
         """Execute a task through the protocol."""
         args = RunArgs(
@@ -168,6 +172,7 @@ def register(app: typer.Typer) -> None:
             sandbox=sandbox, resume=resume, retry=retry,
             append_spec=append_spec, replace_spec=replace_spec,
             retain_worktree=retain_worktree, no_isolation=no_isolation,
+            fixture=fixture,
         )
         return run_command(args)
 
@@ -306,6 +311,10 @@ def run_command(args) -> int:
     from snodo.infrastructure.paths import require_project_root
     from snodo.cli.commands.plan_run import _run_plan
     from snodo.cli.commands.sandbox_run import _run_in_sandbox, _submit_background_job
+
+    if getattr(args, "fixture", None) and getattr(args, "plan", None):
+        from snodo.cli.commands.plan_run import _run_fixture
+        return _run_fixture(args)
 
     project_root = require_project_root()
     # The retry spec flags are only meaningful for a retry, and two of the three
