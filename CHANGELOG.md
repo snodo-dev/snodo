@@ -63,6 +63,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
   lease identifier with the opaque bearer token instead of presenting the API key
   directly to fixed endpoints. (Fixes #376)
 
+- Completion records now carry the model the provider said it served, beside
+  the model that was asked for. Per-turn coder and validator telemetry gained
+  `model`/`served_model`, usage records gained `served_model`, and recon
+  results gained a `served_model` field, so a model substituted behind a
+  stable name is visible in the record instead of only inferable from weeks
+  of behaviour. Requested-equals-served is recorded too — it is the evidence
+  that nothing changed — and a provider that reports nothing records `null`,
+  never an assumed match. Provenance only: the field never feeds routing,
+  selection or failover, and a mismatch raises no warning. (Fixes #381)
+
 ## [0.12.0] — 2026-09-19
 
 ### Fixed

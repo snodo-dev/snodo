@@ -10,5 +10,5 @@
 # There is no suppression mechanism on purpose. If you think you need
 # an exception here, the file wants splitting.
 
- 1225 snodo/cli/commands/run_cmd.py
- 1195 packages/snodo-engine/src/snodo/coders/litellm.py
+ 1193 packages/snodo-engine/src/snodo/coders/litellm.py
+ 1104 snodo/cli/commands/run_cmd.py

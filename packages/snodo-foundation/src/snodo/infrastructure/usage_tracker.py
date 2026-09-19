@@ -3,7 +3,9 @@
 FILE: snodo/infrastructure/usage_tracker.py
 
 Captures per-call token usage, cost, timing, and correlation
-(job_id/task_id/role) from litellm's log_success_event callback.
+(job_id/task_id/role) from litellm's log_success_event callback, plus the
+model the provider reported serving beside the one requested
+(see snodo.infrastructure.model_provenance).
 Persists records to job state.json keyed by job_id.
 """
 
@@ -16,6 +18,22 @@ from typing import Optional
 from litellm import CustomLogger
 
 _logger = logging.getLogger(__name__)
+
+
+def usage_tokens_of(response, kind: str) -> int:
+    """Extract prompt/completion token counts from a litellm response.
+
+    Returns 0 when the response carries no usage (e.g. mock responses).
+    """
+    try:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return 0
+        if kind == "prompt":
+            return int(getattr(usage, "prompt_tokens", 0) or 0)
+        return int(getattr(usage, "completion_tokens", 0) or 0)
+    except Exception:
+        return 0
 
 
 class UsageTracker(CustomLogger):
@@ -81,6 +99,11 @@ class UsageTracker(CustomLogger):
         task_id = meta.get("task_id", "unknown")
         role = meta.get("role", "unknown")
         model = kwargs.get("model", "unknown") if isinstance(kwargs, dict) else "unknown"
+        # Provenance, not configuration: the provider's own name for what it
+        # served, recorded beside the requested one. None means the provider
+        # reported nothing usable — absence, never an assumed match.
+        from snodo.infrastructure.model_provenance import served_model_of
+        served_model = served_model_of(response_obj)
 
         # Handle duration_ms safely without assuming float or int
         duration_ms = 0.0
@@ -97,6 +120,7 @@ class UsageTracker(CustomLogger):
         record = {
             "timestamp": time.time(),
             "model": model,
+            "served_model": served_model,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": prompt_tokens + completion_tokens,
