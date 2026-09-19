@@ -9,7 +9,7 @@ repo's file-length limit. Nothing here changed in the move.
 
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional
 
 # ``usage_tokens_of`` lives with the response-field readers in
 # snodo.infrastructure.usage_tracker; the name stays importable from here for
