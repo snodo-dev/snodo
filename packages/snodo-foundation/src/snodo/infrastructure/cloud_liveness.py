@@ -565,31 +565,20 @@ def _post_snapshot(
             timeout=10.0,
         )
         if 200 <= response.status_code < 300:
-            state.clear_refusal(session_id)
             with _lock:
                 _consecutive_rejections = 0
             return True, None, False
-        # Two independent questions about one response: whether the refusal is
-        # terminal (the latch, #374) and whether to slow down (the backoff,
-        # #375). A 4xx that is not 429 stops the sender for good; a 429 or 5xx
-        # only delays it. Conflating them would either retry a revoked key or
-        # latch on a transient outage.
-        terminal = 400 <= response.status_code < 500 and response.status_code != 429
+        # Admission is the lease's business now (#376). A 4xx here means the
+        # LEASE was rejected — expired or rotated — not that the credential is
+        # dead, so the session is not latched: get_admission_lease owns the
+        # latch and the re-exchange. Latching here would let one expired lease
+        # disable sync for good. What stays is how fast to come back (#375).
         transient = is_transient_status(response.status_code)
         server_delay = retry_after_seconds(getattr(response, "headers", None)) if transient else None
         with _lock:
             _consecutive_rejections += 1
             streak = _consecutive_rejections
-        if terminal:
-            reason = f"HTTP {response.status_code}: {response.text[:500].strip() or 'Client error'}"
-            state.record_refusal(
-                session_id, reason=reason, status_code=response.status_code,
-            )
-            _logger.warning(
-                "Liveness push %s -> HTTP %d (refused, stopped): %s",
-                url, response.status_code, response.text[:200],
-            )
-        elif streak > 1:
+        if streak > 1:
             _logger.warning(
                 "Liveness push %s -> HTTP %d (repeated rejection, dropped): %s",
                 url, response.status_code, response.text[:200],

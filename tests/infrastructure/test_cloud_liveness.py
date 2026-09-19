@@ -104,13 +104,23 @@ def _sync_enabled():
     listener through ``_execute_task``, and this file's inert-listener test
     depends on a disarmed start.
     """
+    from snodo.infrastructure import cloud_lease
+
     cloud_liveness.uninstall()
-    with patch("snodo.config.ConfigManager") as mock_cm:
+    cloud_lease.reset_admission_state()
+    test_lease = cloud_lease.CloudLease(
+        lease_id="ls_test_lease",
+        token="tok_test_lease",
+        expires_at=time.time() + 3600,
+    )
+    with patch.object(cloud_lease, "_current_lease", test_lease), \
+            patch("snodo.config.ConfigManager") as mock_cm:
         mock_cm.return_value.load.return_value = _TEST_CONFIG
         cloud_liveness.reset_liveness_state()
         yield mock_cm
     cloud_liveness.reset_liveness_state()
     cloud_liveness.uninstall()
+    cloud_lease.reset_admission_state()
 
 
 # ------------------------------------------------------------------ #
@@ -128,7 +138,7 @@ class TestTransitionDriven:
 
         assert len(posts.calls) == 1
         url, body = posts.calls[0]
-        assert url == "https://app.snodo.test/v1/live/sess_test_1"
+        assert url == "https://app.snodo.test/v1/live/sess_test_1/ls_test_lease"
         assert body["session_id"] == "sess_test_1"
         assert body["project_id"] == "local:test123"
         assert body["scope"] == "local"
@@ -622,7 +632,7 @@ class TestPayloadContent:
         with patch("httpx.put", put):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
-        assert seen["headers"]["Authorization"] == "Bearer sndo_live_testkey"
+        assert seen["headers"]["Authorization"] == "Bearer tok_test_lease"
 
     def test_jobs_are_reported_with_status(self, project):
         root, _ = project
@@ -948,7 +958,7 @@ class TestLivenessUrlDerivation:
             cloud_liveness._post_snapshot({"session_id": "sess_default_1"}, config=default_config)
         assert len(posts.calls) == 1
         url, _ = posts.calls[0]
-        assert url == "https://app.snodo.dev/v1/live/sess_default_1"
+        assert url == "https://app.snodo.dev/v1/live/sess_default_1/ls_test_lease"
 
     def test_non_production_shape_composes_usable_url(self):
         """Localhost or unlabelled hosts retain origin and append /v1."""
@@ -964,7 +974,7 @@ class TestLivenessUrlDerivation:
             cloud_liveness._post_snapshot({"session_id": "sess_local_1"}, config=local_config)
         assert len(posts.calls) == 1
         url, _ = posts.calls[0]
-        assert url == "http://localhost:9000/v1/live/sess_local_1"
+        assert url == "http://localhost:9000/v1/live/sess_local_1/ls_test_lease"
 
 
 class TestTerminalRefusal:

@@ -84,11 +84,12 @@ def get_admission_lease(
     lease_url: str,
     session_id: Optional[str] = None,
     sync_state: Optional[CloudSyncState] = None,
+    force: bool = False,
 ) -> Optional[CloudLease]:
     """Obtain or renew a lease, exchanging the API key if needed.
 
     Returns None if:
-    - The session/API key has been permanently refused.
+    - The session/API key has been permanently refused (unless force=True).
     - The exchange is in a quiet window after an unreachable attempt.
     - The exchange failed (refused or unreachable).
     """
@@ -96,7 +97,7 @@ def get_admission_lease(
     sid = session_id or ""
 
     # 1. Check if terminal refusal is recorded across processes
-    if state.is_refused(sid):
+    if not force and state.is_refused(sid):
         _logger.debug("Cloud admission skipped: session %s is permanently refused", sid)
         return None
 

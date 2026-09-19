@@ -288,10 +288,11 @@ class CloudSyncDispatcher:
             first_seq = batch[0].sequence
             max_seq = batch[-1].sequence
             outcome, reason, status_code = self._post_batch(
-                session_id, project_root, batch, api_key, api_url,
+                session_id, project_root, batch, api_key, api_url, force=force,
             )
 
             if outcome == "delivered":
+                state.clear_refusal(session_id)
                 state.advance_cursor(session_id, max_seq)
                 _logger.debug("Cursor advanced to sequence %d", max_seq)
                 synced += len(batch)
@@ -329,6 +330,7 @@ class CloudSyncDispatcher:
         batch: list,
         api_key: str,
         api_url: str,
+        force: bool = False,
     ) -> tuple:
         """POST a batch of events.
 
@@ -374,9 +376,9 @@ class CloudSyncDispatcher:
 
         state = CloudSyncState()
         lease_url = get_cloud_lease_url({"cloud": {"api_url": api_url, "api_key": api_key}})
-        lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state)
+        lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state, force=force)
         if lease is None:
-            if state.is_refused(session_id):
+            if not force and state.is_refused(session_id):
                 info = state._load().get(session_id, {})
                 reason = info.get("refused_reason", "Cloud admission refused")
                 return ("refused", reason, info.get("refused_status_code", 401))
