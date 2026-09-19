@@ -96,7 +96,7 @@ class TestTerminalOutcomeAudit:
         assert "final_decision" not in data
 
     def test_completed_task_leaves_task_complete_audit_event(self):
-        """A completed task records task_complete in the audit log."""
+        """A completed task records its committed SHA in the audit log."""
         protocol = _make_protocol()
         audit = MagicMock(spec=AuditLog)
         builder = GraphBuilder(protocol, audit_log=audit)
@@ -115,7 +115,7 @@ class TestTerminalOutcomeAudit:
             "is_complete": True,
             "is_blocked": False,
             "halt_type": None,
-            "metadata": {},
+            "metadata": {"commit": "a" * 40},
             "messages": [],
         }
 
@@ -127,6 +127,25 @@ class TestTerminalOutcomeAudit:
         assert data["op"] == "task_complete"
         assert data["task_ref"] == "task_001"
         assert data["artifacts"] == ["src/app.py"]
+        assert data["commit"] == "a" * 40
+
+    def test_completed_task_without_commit_records_null_commit(self):
+        """A completed task with no commit has explicit null provenance."""
+        protocol = _make_protocol()
+        audit = MagicMock(spec=AuditLog)
+        builder = GraphBuilder(protocol, audit_log=audit)
+
+        state = _make_loop_state_dict()
+        state.update({
+            "is_complete": True,
+            "is_blocked": False,
+            "stage": "move_next",
+        })
+
+        builder._complete_node(state)
+
+        _, data = audit.append_event.call_args[0]
+        assert data["commit"] is None
 
     @pytest.mark.parametrize(
         ("raw_halt", "expected_coarse"),

@@ -508,6 +508,7 @@ class ValidationNodeMixin:
             # post-execute judges would diff base_ref..HEAD = an empty range
             # (or worse, review the previous unrelated commit) and pass. This
             # is a nameable fault, not the generic blocked path (Fixes #103).
+            current_head = None
             if (
                 loop_state.artifacts
                 and loop_state.base_ref
@@ -544,6 +545,23 @@ class ValidationNodeMixin:
                     })
                     self._auto_write_failure_context(loop_state, [])
                     return self._state_to_dict(loop_state)
+
+            # Persist the final branch commit while it is available. A retry
+            # that reuses an earlier attempt's committed work resets base_ref
+            # to the merge anchor above, so its surviving HEAD is recorded too.
+            if loop_state.artifacts and self.git_mcp is not None:
+                if current_head is None:
+                    try:
+                        current_head = self.git_mcp.get_head_sha()
+                    except Exception:
+                        current_head = None
+                loop_state.metadata["commit"] = (
+                    current_head
+                    if current_head and current_head != loop_state.base_ref
+                    else None
+                )
+            else:
+                loop_state.metadata["commit"] = None
 
             # Housekeeping: clear the in-memory slot (enforcement is the store).
             loop_state.validation_token = None
