@@ -11,6 +11,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- LiteLLM completions now receive each model's API key per call instead of
+  sharing provider environment variables, so routed custom providers remain
+  isolated during concurrent recon and leave no credential behind. (Fixes #369)
+
 - The extension guide's "Coder adapters" section showed `Coder` as a single
   abstract method and cited a line range that no longer contains the class.
   It now documents the full attribute contract — the workspace, progress
