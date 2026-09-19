@@ -309,6 +309,28 @@ def test_run_benchmark_call_reports_both_rates_and_ttft():
     assert result["decode_tok_per_sec"] is not None
 
 
+def test_run_benchmark_call_passes_model_credential(monkeypatch):
+    """The benchmark binds the configured model credential to its call."""
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.get_key_for_model",
+        lambda self, model: "configured-key",
+    )
+    seen = {}
+
+    def _completion(**kwargs):
+        seen.update(kwargs)
+        return iter([_Chunk("ok"), _Chunk(usage=_Usage(prompt_tokens=1, completion_tokens=1))])
+
+    _run_benchmark_call(
+        "gemini/gemini-2.5-flash",
+        "Write a FIFO queue.",
+        completion_fn=_completion,
+        token_counter_fn=lambda **k: 1,
+    )
+
+    assert seen["api_key"] == "configured-key"
+
+
 def test_report_states_prompt_counts_and_timing_basis(monkeypatch, capsys):
     """The report a reader sees carries prompt identity, counts basis and timing."""
     monkeypatch.setattr(
