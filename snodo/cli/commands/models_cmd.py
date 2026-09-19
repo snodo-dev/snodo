@@ -36,6 +36,7 @@ def register(app: typer.Typer) -> None:
             1, "--benchmark-runs", min=1, max=_MAX_BENCHMARK_RUNS,
             help=f"Number of sequential benchmark calls (1-{_MAX_BENCHMARK_RUNS}).",
         ),
+        json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
         id: Optional[str] = typer.Option(None, "--id", help="Exact model id"),
         id_contains: Optional[str] = typer.Option(None, "--id-contains", help="Substring on id/display_name (case-insensitive)"),
         max_output_cost: Optional[float] = typer.Option(None, "--max-output-cost", help="Output cost/1M <= value. Excludes unknown costs."),
@@ -51,6 +52,7 @@ def register(app: typer.Typer) -> None:
             check=check,
             benchmark=benchmark,
             benchmark_runs=benchmark_runs,
+            json=json,
             id=id,
             id_contains=id_contains,
             max_output_cost=max_output_cost,
@@ -122,10 +124,22 @@ def models_command(args) -> int:
     providers = mgr.get_providers()
 
     if not provider_name:
+        if getattr(args, "json", False):
+            from snodo.cli.json_output import emit_json, schema_name
+            return emit_json({
+                "schema": schema_name("models"),
+                "ok": True,
+                "provider": None,
+                "models": [],
+                "providers": _configured_provider_names(providers),
+            })
         return _list_providers(providers)
 
     pc = providers.get(provider_name)
     if not pc:
+        if getattr(args, "json", False):
+            from snodo.cli.json_output import emit_error
+            return emit_error("models", f"Provider not configured: {provider_name}", 1)
         print(f"Provider not configured: {provider_name}", file=sys.stderr)
         print(f"  Configured: {', '.join(sorted(providers.keys()))}",
               file=sys.stderr)
@@ -133,6 +147,12 @@ def models_command(args) -> int:
 
     models = _get_models(provider_name, pc, force_refresh=flush)
     if not models:
+        if getattr(args, "json", False):
+            from snodo.cli.json_output import emit_json, schema_name
+            return emit_json({
+                "schema": schema_name("models"), "ok": True,
+                "provider": provider_name, "models": [],
+            })
         print(f"No models discovered for {provider_name}")
         return 0
 
@@ -154,13 +174,34 @@ def models_command(args) -> int:
             min_context=min_context,
         )
         if not models:
+            if getattr(args, "json", False):
+                from snodo.cli.json_output import emit_json, schema_name
+                return emit_json({
+                    "schema": schema_name("models"), "ok": True,
+                    "provider": provider_name, "models": [],
+                })
             print("No models matched the specified filters.")
             return 0
+
+    if getattr(args, "json", False):
+        from snodo.cli.json_output import emit_json, schema_name
+        return emit_json({
+            "schema": schema_name("models"), "ok": True,
+            "provider": provider_name, "models": models,
+        })
 
     _print_model_table(provider_name, models)
     print()
     print(f"{len(models)} model(s) from {provider_name}")
     return 0
+
+
+def _configured_provider_names(providers: dict) -> list[str]:
+    """Return configured providers whose credentials are available."""
+    return sorted(
+        name for name, pc in providers.items()
+        if pc.api_key or (pc.api_key_env and os.environ.get(pc.api_key_env))
+    )
 
 
 def _list_providers(providers: dict) -> int:
@@ -706,11 +747,15 @@ def models_stats_command(args) -> int:
             root = str(cwd)
 
     if root is None:
+        if getattr(args, "json", False):
+            return _emit_models_stats_json(args, None, None, 0, root)
         print("No jobs recorded for this project.")
         return 0
 
     jobs_dir = Path(root) / ".snodo" / "jobs"
     if not jobs_dir.is_dir():
+        if getattr(args, "json", False):
+            return _emit_models_stats_json(args, None, None, 0, root)
         print("No jobs recorded for this project.")
         return 0
 
@@ -719,13 +764,41 @@ def models_stats_command(args) -> int:
         Path(root), provider_filter=provider_filter
     )
     if total_jobs == 0:
+        if getattr(args, "json", False):
+            return _emit_models_stats_json(args, model_stats, coder_stats, total_jobs, root)
         print("No jobs recorded for this project.")
         return 0
+
+    if getattr(args, "json", False):
+        return _emit_models_stats_json(args, model_stats, coder_stats, total_jobs, root)
 
     _print_model_stats_table(model_stats)
     print()
     _print_coder_stats_table(coder_stats)
     return 0
+
+
+def _emit_models_stats_json(args, model_stats, coder_stats, total_jobs, root) -> int:
+    """Emit the raw, re-aggregatable usage records for ``--stats --json``."""
+    if not getattr(args, "json", False):
+        return 0
+    from snodo.cli.json_output import emit_json, schema_name
+
+    models = {}
+    for model, values in (model_stats or {}).items():
+        models[model] = {
+            **values,
+            "roles": sorted(values.get("roles", set())),
+        }
+    return emit_json({
+        "schema": schema_name("models-stats"),
+        "ok": True,
+        "project_root": str(root) if root is not None else None,
+        "provider": getattr(args, "provider", None),
+        "total_jobs": total_jobs,
+        "models": models,
+        "coders": coder_stats or {},
+    })
 
 
 def _configured_models() -> list[tuple[str, str]]:
@@ -1106,10 +1179,51 @@ def _print_benchmark_distribution(
     )
 
 
+def _benchmark_json_payload(
+    model: str,
+    prompt: str,
+    samples: list,
+    attempted_runs: int,
+) -> dict:
+    """Build the stable machine payload without changing benchmark arithmetic."""
+    successful = [sample for sample in samples if sample.get("ok")]
+
+    def _distribution(key: str) -> Optional[dict]:
+        values = [sample[key] for sample in successful if sample.get(key) is not None]
+        if not values:
+            return None
+        return {"median": statistics.median(values), "mean": statistics.mean(values)}
+
+    import hashlib
+    from snodo.version import __version__
+    return {
+        "schema": "snodo.models-benchmark.v1",
+        "ok": bool(successful),
+        "model": model,
+        "snodo_version": __version__,
+        "prompt": {
+            "file": str(_BENCHMARK_PROMPT_PATH),
+            "chars": len(prompt),
+            "sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        },
+        "attempted_runs": attempted_runs,
+        "succeeded_runs": len(successful),
+        "samples": samples,
+        "statistics": {
+            "time_to_first_token": _distribution("time_to_first_token"),
+            "decode_tok_per_sec": _distribution("decode_tok_per_sec"),
+            "overall_tok_per_sec": _distribution("overall_tok_per_sec"),
+        },
+    }
+
+
 def models_benchmark_command(args) -> int:
     """Benchmark one fixed prompt against one model selected by the model flags."""
     provider_name = getattr(args, "provider", None)
     if not provider_name:
+        if getattr(args, "json", False):
+            from snodo.cli.json_output import emit_error
+            return emit_error("models-benchmark", "--benchmark requires --provider=<name>", 1)
         print(
             "--benchmark requires --provider=<name> (and, when a provider has "
             "more than one model, --id=<exact-id> or --id-contains=<substring>).",
@@ -1119,31 +1233,54 @@ def models_benchmark_command(args) -> int:
 
     model = _select_benchmark_model(provider_name, args)
     if model is None:
+        if getattr(args, "json", False):
+            from snodo.cli.json_output import emit_error
+            return emit_error("models-benchmark", "Could not select exactly one benchmark model", 1)
         return 1
 
     prompt = _load_benchmark_prompt()
     runs = getattr(args, "benchmark_runs", 1)
     if runs < 1 or runs > _MAX_BENCHMARK_RUNS:
+        if getattr(args, "json", False):
+            from snodo.cli.json_output import emit_error
+            return emit_error(
+                "models-benchmark",
+                f"--benchmark-runs must be between 1 and {_MAX_BENCHMARK_RUNS}.",
+                1,
+            )
         print(
             f"--benchmark-runs must be between 1 and {_MAX_BENCHMARK_RUNS}.",
             file=sys.stderr,
         )
         return 1
 
-    _print_benchmark_intent(model, prompt, runs)
+    json_mode = getattr(args, "json", False)
+    if not json_mode:
+        _print_benchmark_intent(model, prompt, runs)
     results = []
+    samples = []
     for run_number in range(1, runs + 1):
         try:
-            results.append(_run_benchmark_call(model, prompt))
+            result = _run_benchmark_call(model, prompt)
+            results.append(result)
+            samples.append({"run": run_number, "ok": True, **result})
         except Exception as e:
+            samples.append({"run": run_number, "ok": False, "error": str(e)})
             if runs == 1:
                 print(f"Benchmark call failed: {e}", file=sys.stderr)
             else:
                 print(f"Benchmark run {run_number}/{runs} failed: {e}", file=sys.stderr)
 
     if not results:
+        if json_mode:
+            from snodo.cli.json_output import emit_json
+            emit_json(_benchmark_json_payload(model, prompt, samples, runs), exit_code=1)
         print(f"All {runs} benchmark run(s) failed.", file=sys.stderr)
         return 1
+
+    if json_mode:
+        from snodo.cli.json_output import emit_json
+        return emit_json(_benchmark_json_payload(model, prompt, samples, runs))
 
     if runs == 1:
         _print_benchmark_report(model, prompt, results[0])

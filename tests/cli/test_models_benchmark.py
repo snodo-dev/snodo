@@ -9,6 +9,7 @@ assembles. Both are pinned here.
 """
 
 import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -414,3 +415,46 @@ def test_benchmark_intent_says_it_will_spend(monkeypatch, capsys):
     assert "openai/gpt-4o" in captured.out
     assert "FIFO queue" in captured.out
     assert "Benchmark call failed" in captured.err
+
+
+def test_benchmark_json_preserves_schema_samples_and_failed_attempt(monkeypatch, capsys):
+    """JSON is a re-aggregatable record, including an unsuccessful call."""
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.get_providers",
+        lambda self: {"openai": SimpleNamespace(api_key="sk-test")},
+    )
+    monkeypatch.setattr(
+        models_cmd,
+        "_get_models",
+        lambda p, pc, force_refresh: [{"id": "gpt-4o", "full_string": "openai/gpt-4o"}],
+    )
+    calls = iter([
+        {"output_tokens": 4, "prompt_tokens": 8, "counts_basis": "provider-reported usage",
+         "time_to_first_token": 0.5, "wall_seconds": 1.0,
+         "decode_tok_per_sec": 6.0, "overall_tok_per_sec": 4.0},
+        RuntimeError("rate limited"),
+    ])
+
+    def _fake_call(model, prompt):
+        sample = next(calls)
+        if isinstance(sample, Exception):
+            raise sample
+        return sample
+
+    monkeypatch.setattr(models_cmd, "_run_benchmark_call", _fake_call)
+    args = SimpleNamespace(
+        provider="openai", flush=False, benchmark=True, benchmark_runs=2, json=True,
+        id_contains=None, max_output_cost=None, min_output_cost=None,
+        max_input_cost=None, min_context=None,
+    )
+
+    assert models_benchmark_command(args) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["schema"] == "snodo.models-benchmark.v1"
+    assert payload["attempted_runs"] == 2
+    assert payload["succeeded_runs"] == 1
+    assert len(payload["samples"]) == 2
+    assert payload["samples"][0]["time_to_first_token"] == 0.5
+    assert payload["samples"][1] == {"run": 2, "ok": False, "error": "rate limited"}
+    assert "About to benchmark" not in captured.out
