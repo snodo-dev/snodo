@@ -200,6 +200,68 @@ found is never proposed. A non-zero exit from `intake --json` means no
 proposals could be produced (no git repository, no protocol, or an unloadable
 one), and it writes nothing.
 
+### `snodo models --json`
+
+Schema: `snodo.models.v1`
+
+Lists discovered models without the human table. With no `--provider`, the
+`models` array is empty and `providers` lists configured providers with usable
+credentials. With a provider, `models` contains the discovery records; filters
+are applied before the payload is emitted.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.models.v1` |
+| `ok` | bool | `true` on success |
+| `provider` | string \| null | selected provider, or `null` when listing providers |
+| `providers` | array | configured providers when no provider was selected |
+| `models` | array | discovered model records, or `[]` when none match |
+
+### `snodo models --stats --json`
+
+Schema: `snodo.models-stats.v1`
+
+Returns recorded usage aggregates without the human tables. Raw duration arrays
+and call counts remain available so a consumer can choose its own aggregation.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.models-stats.v1` |
+| `ok` | bool | `true` when the stats report was produced |
+| `project_root` | string \| null | project whose records were read |
+| `provider` | string \| null | provider filter, if supplied |
+| `total_jobs` | int | jobs found in the project |
+| `models` | object | model id to usage record, including calls, token totals, durations, costs and roles |
+| `coders` | object | coder id to job totals and durations |
+
+### `snodo models --benchmark --json`
+
+Schema: `snodo.models-benchmark.v1`
+
+Runs the same fixed prompt and performs the same measurements as human mode,
+but emits one JSON object instead of the intent and report prose. A failed API
+call is still a sample, so `attempted_runs` can exceed `succeeded_runs`.
+Aggregates in `statistics` cover successful samples only; consumers that need
+to combine runs retain the individual `samples`.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.models-benchmark.v1` |
+| `ok` | bool | `true` when at least one run succeeded |
+| `model` | string | fully qualified model selected for the benchmark |
+| `snodo_version` | string | snodo version that produced the result |
+| `prompt` | object | `{file, chars, sha256}` identity of the measured prompt |
+| `attempted_runs` | int | requested and attempted calls |
+| `succeeded_runs` | int | calls that returned a measurement |
+| `samples` | array | one `{run, ok, ...metrics}` object per attempt; failures have `error` |
+| `statistics` | object | successful-sample-only median and mean for first-token and throughput metrics |
+
+Each successful sample preserves `output_tokens`, `prompt_tokens`,
+`counts_basis`, `time_to_first_token`, `wall_seconds`, `decode_tok_per_sec`,
+and `overall_tok_per_sec`. `--json` without `--benchmark` therefore has the
+separate listing or stats schema above; it never mixes those payloads with a
+benchmark result.
+
 ## Exit codes
 
 `snodo validate` (and any command that returns a validation outcome) uses exit
