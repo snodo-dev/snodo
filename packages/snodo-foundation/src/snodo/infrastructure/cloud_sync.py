@@ -160,7 +160,7 @@ class CloudSyncState:
         last_seq: Optional[int] = None,
         status_code: Optional[int] = None,
     ) -> None:
-        """Record that a batch for *session_id* was refused by the cloud server."""
+        """Record that a batch or admission for *session_id* was refused by the cloud server."""
         data = self._load()
         if session_id not in data or not isinstance(data.get(session_id), dict):
             data[session_id] = {}
@@ -179,21 +179,26 @@ class CloudSyncState:
     def clear_refusal(self, session_id: str) -> None:
         """Clear refused status for *session_id*."""
         data = self._load()
-        if session_id in data and isinstance(data[session_id], dict):
-            sess = data[session_id]
-            sess["refused"] = False
-            sess.pop("refused_reason", None)
-            sess.pop("refused_range", None)
-            sess.pop("refused_at", None)
-            sess.pop("refused_status_code", None)
-            self._save(data)
+        for key in (session_id, ""):
+            if key in data and isinstance(data[key], dict):
+                sess = data[key]
+                sess["refused"] = False
+                sess.pop("refused_reason", None)
+                sess.pop("refused_range", None)
+                sess.pop("refused_at", None)
+                sess.pop("refused_status_code", None)
+        self._save(data)
 
     def is_refused(self, session_id: str) -> bool:
         """Return True if *session_id* sync is currently refused."""
         data = self._load()
         sess = data.get(session_id)
-        if isinstance(sess, dict):
-            return bool(sess.get("refused"))
+        if isinstance(sess, dict) and sess.get("refused"):
+            return True
+        if session_id:
+            glob = data.get("")
+            if isinstance(glob, dict) and glob.get("refused"):
+                return True
         return False
 
     def get_summary(self) -> dict:
@@ -283,10 +288,11 @@ class CloudSyncDispatcher:
             first_seq = batch[0].sequence
             max_seq = batch[-1].sequence
             outcome, reason, status_code = self._post_batch(
-                session_id, project_root, batch, api_key, api_url,
+                session_id, project_root, batch, api_key, api_url, force=force,
             )
 
             if outcome == "delivered":
+                state.clear_refusal(session_id)
                 state.advance_cursor(session_id, max_seq)
                 _logger.debug("Cursor advanced to sequence %d", max_seq)
                 synced += len(batch)
@@ -324,6 +330,7 @@ class CloudSyncDispatcher:
         batch: list,
         api_key: str,
         api_url: str,
+        force: bool = False,
     ) -> tuple:
         """POST a batch of events.
 
@@ -362,19 +369,37 @@ class CloudSyncDispatcher:
         AuditIngestBatch.model_validate(payload)
         body = json.dumps(payload).encode()
 
-        url = f"{api_url.rstrip('/')}/ingest"
+        from urllib.parse import quote
+
+        from snodo.config import get_cloud_lease_url
+        from snodo.infrastructure.cloud_lease import (
+            get_admission_lease, get_current_lease, invalidate_lease,
+        )
+
+        state = CloudSyncState()
+        lease_url = get_cloud_lease_url({"cloud": {"api_url": api_url, "api_key": api_key}})
+        cached_lease = get_current_lease()
+        lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state, force=force)
+        if lease is None:
+            if not force and state.is_refused(session_id):
+                info = state._load().get(session_id, {})
+                reason = info.get("refused_reason", "Cloud admission refused")
+                return ("refused", reason, info.get("refused_status_code", 401))
+            return ("retryable", "Cloud admission unreachable", None)
+
+        url = f"{api_url.rstrip('/')}/ingest/{quote(lease.lease_id, safe='')}"
         first_seq = batch[0].sequence
         last_seq = batch[-1].sequence
         _logger.debug(
             "POST %s — %d events (seq %d-%d)",
             url, len(batch), first_seq, last_seq,
         )
-        _logger.debug("Authorization: Bearer %s...", api_key[:16])
 
         headers = {
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {lease.token}",
             "Content-Type": "application/json",
         }
+        lease_replaced = False
 
         for attempt in range(_MAX_RETRIES + 1):
             try:
@@ -416,9 +441,28 @@ class CloudSyncDispatcher:
                     continue
 
                 reason = f"HTTP {response.status_code}: {body_text.strip() or 'Client error'}"
+                if not lease_replaced and cached_lease is None:
+                    invalidate_lease(lease)
+                    lease = get_admission_lease(
+                        api_key, lease_url, session_id=session_id,
+                        sync_state=state,
+                    )
+                    if lease is None:
+                        if state.is_refused(session_id):
+                            info = state._load().get(session_id, {})
+                            return ("refused", info.get("refused_reason", reason),
+                                    info.get("refused_status_code", response.status_code))
+                        return ("retryable", "Cloud admission unreachable", None)
+                    url = f"{api_url.rstrip('/')}/ingest/{quote(lease.lease_id, safe='')}"
+                    headers["Authorization"] = f"Bearer {lease.token}"
+                    lease_replaced = True
+                    continue
                 _logger.warning(
                     "Cloud sync HTTP %d REFUSED on session=%s: %s",
                     response.status_code, session_id, body_text,
+                )
+                state.record_refusal(
+                    session_id, reason=reason, status_code=response.status_code,
                 )
                 return ("refused", reason, response.status_code)
 
