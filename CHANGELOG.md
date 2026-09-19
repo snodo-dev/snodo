@@ -7,9 +7,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.12.0] — 2026-09-19
 
 ### Fixed
+- The published cloud interface schema ratchet is now invoked in CI and release
+  workflows. The check was merged to guard against silent payload shape changes
+  without a version bump, but was previously omitted from both workflow files.
+  (Fixes #365)
 
 - LiteLLM completions now receive each model's API key per call instead of
   sharing provider environment variables, so routed custom providers remain
@@ -28,16 +32,6 @@ snodo uses [Semantic Versioning](https://semver.org/).
   class's current location. (Fixes #366)
 
 ### Added
-
-- `snodo models --benchmark --json` now emits a versioned, machine-readable
-  result containing prompt and model provenance, every attempted sample,
-  successful and attempted run counts, and successful-run aggregates. The
-  listing and usage-statistics forms have separate JSON schemas. (Fixes #367)
-
-## [0.11.0] — 2026-09-19
-
-### Added
-
 - `snodo models --check` makes one cheap live request against each distinct
   model configured for the coder, validators, classifier and recon, then
   reports each model as healthy or names the provider refusal, unknown model,
@@ -49,6 +43,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
   (Fixes #363)
 - The CI gate now runs the existing strict documentation build, so broken
   internal links and missing navigation pages fail before deployment. (Fixes #364)
+
+- `snodo models --benchmark --json` now emits a versioned, machine-readable
+  result containing prompt and model provenance, every attempted sample,
+  successful and attempted run counts, and successful-run aggregates. The
+  listing and usage-statistics forms have separate JSON schemas. (Fixes #367)
+
+## [0.11.0] — 2026-09-19
+
+### Added
+
 - Issue-closing commits are now checked against the branch range before they
   land. The gate names an undocumented issue and asks its author to explain the
   change, without rechecking older history or generating release notes from a
@@ -117,10 +121,6 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- The published cloud interface schema ratchet is now invoked in CI and release
-  workflows. The check was merged to guard against silent payload shape changes
-  without a version bump, but was previously omitted from both workflow files.
-  (Fixes #365)
 
 - A validator's repeated reads no longer spend its turn budget. The tool loop
   already intercepts a read identical to one from an earlier turn and points
