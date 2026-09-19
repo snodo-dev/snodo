@@ -11,7 +11,8 @@ Only commit messages that claim to close an issue are considered. Merge,
 revert, and release commits are excluded because they do not represent a new
 authorial change that owes the changelog an explanation. The changelog itself
 is never generated: the author must write the explanation and mention the
-issue number in it.
+issue number in it, and put it in the pending section rather than a dated
+release section.
 """
 
 from __future__ import annotations
@@ -28,6 +29,9 @@ ISSUE_CLOSING = re.compile(
     r"\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s+#(\d+)\b", re.IGNORECASE
 )
 ISSUE_REFERENCE = re.compile(r"\B#(\d+)\b")
+SECTION = re.compile(r"(?m)^## (.+?)\s*$")
+PENDING_SECTION = re.compile(r"^\[Unreleased\]$", re.IGNORECASE)
+DATED_SECTION = re.compile(r"^\[[^\]]+\]\s+[—-]\s+\d{4}-\d{2}-\d{2}$")
 
 
 class ChangelogCheckError(Exception):
@@ -73,17 +77,44 @@ def _closing_issues(subject: str, message: str, parent_count: int) -> set[str]:
     return {match.group(1) for match in ISSUE_CLOSING.finditer(f"{subject}\n{message}")}
 
 
+def _issue_sections(changelog: str) -> dict[str, list[str]]:
+    matches = list(SECTION.finditer(changelog))
+    sections: dict[str, list[str]] = {}
+    for index, match in enumerate(matches):
+        name = match.group(1).strip()
+        body_end = matches[index + 1].start() if index + 1 < len(matches) else len(changelog)
+        for issue_match in ISSUE_REFERENCE.finditer(changelog, match.end(), body_end):
+            sections.setdefault(issue_match.group(1), []).append(name)
+    return sections
+
+
 def check(repo_root: Path, base: str, changelog_path: Path) -> list[str]:
     """Return one failure for every issue-closing commit lacking a changelog reference."""
     changelog = changelog_path.read_text(encoding="utf-8")
-    documented = {match.group(1) for match in ISSUE_REFERENCE.finditer(changelog)}
+    issue_sections = _issue_sections(changelog)
     failures: list[str] = []
     for sha, subject, message, parent_count in _commits(repo_root, base):
         for issue in sorted(_closing_issues(subject, message, parent_count), key=int):
-            if issue not in documented:
+            sections = issue_sections.get(issue, [])
+            if not sections:
                 failures.append(
                     f"commit {sha[:12]} closes issue #{issue} but CHANGELOG.md does not "
                     f"mention #{issue}; add a changelog entry explaining what changed."
+                )
+                continue
+            pending = [section for section in sections if PENDING_SECTION.fullmatch(section)]
+            if pending:
+                continue
+            released = [section for section in sections if DATED_SECTION.fullmatch(section)]
+            if released:
+                failures.append(
+                    f"commit {sha[:12]} closes issue #{issue} but its CHANGELOG entry is in "
+                    f"released section {released[0]!r}; add it under [Unreleased]."
+                )
+            else:
+                failures.append(
+                    f"commit {sha[:12]} closes issue #{issue} but its CHANGELOG entry is in "
+                    f"section {sections[0]!r}; add it under [Unreleased]."
                 )
     return failures
 

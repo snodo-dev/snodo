@@ -18,6 +18,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
   LiteLLM, which previously reported working coders as provider failures. The
   check now reports these models as not checkable by the provider canary and
   separately identifies missing coder binaries. (Fixes #371)
+## [Unreleased]
+
+### Fixed
+- Issue-closing commits are now required to document their changes in the
+  pending changelog section instead of a dated release section. (Fixes #372)
 
 ## [0.12.0] — 2026-09-19
 
