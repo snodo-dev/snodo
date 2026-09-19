@@ -21,6 +21,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Liveness pushes now share the audit sender's persisted terminal-refusal state,
+  stopping repeated authentication failures across transitions and restarts
+  while leaving rate limits and server failures retryable. (Fixes #374)
 - Issue-closing commits are now required to document their changes in the
   pending changelog section instead of a dated release section. (Fixes #372)
 - Completed-task audit events now preserve the final task-branch commit SHA, or
