@@ -23,6 +23,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
+from snodo.infrastructure.cloud_backoff import (
+    cloud_backoff_seconds,
+    retry_after_seconds,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -386,11 +390,10 @@ class CloudSyncDispatcher:
                 body_text = response.text[:500]
 
                 if response.status_code == 429:
-                    retry_after = response.headers.get("Retry-After", "5")
-                    try:
-                        wait = int(retry_after)
-                    except ValueError:
-                        wait = 5
+                    retry_after = response.headers.get("Retry-After")
+                    wait = cloud_backoff_seconds(
+                        attempt + 1, retry_after_seconds(response.headers),
+                    )
                     _logger.warning(
                         "Cloud sync HTTP 429 retry_after=%s (session=%s): %s",
                         retry_after, session_id, body_text,
@@ -409,8 +412,7 @@ class CloudSyncDispatcher:
                         "Cloud sync HTTP %d attempt %d (session=%s): %s",
                         response.status_code, attempt, session_id, body_text,
                     )
-                    backoff = 2 ** attempt
-                    time.sleep(backoff)
+                    time.sleep(cloud_backoff_seconds(attempt + 1, retry_after_seconds(response.headers)))
                     continue
 
                 reason = f"HTTP {response.status_code}: {body_text.strip() or 'Client error'}"
@@ -427,8 +429,7 @@ class CloudSyncDispatcher:
                         session_id, exc, exc_info=True,
                     )
                     return ("retryable", f"Network error: {exc}", None)
-                backoff = 2 ** attempt
-                time.sleep(backoff)
+                time.sleep(cloud_backoff_seconds(attempt + 1))
 
         return ("retryable", "Retries exhausted", None)
 
