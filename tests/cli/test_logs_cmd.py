@@ -750,6 +750,47 @@ def test_watch_updates_elapsed_with_no_status_change(capsys, monkeypatch):
     assert "Intent: A long wave" in _strip_ansi(out)
 
 
+def test_watch_appends_current_tree_when_task_completes(capsys, monkeypatch):
+    """A completion gets a new interactive tree instead of leaving the opening snapshot live."""
+    _install_fake_clock(monkeypatch, stop_after=7)
+    polls = {"n": 0}
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _plan_watch_tree(tmp_dir)
+        status_path = Path(tmp_dir) / ".snodo" / "plans" / "wave" / "status.json"
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            from snodo.jobs import JobManager
+
+            def get_status(jid):
+                return {
+                    "status": "running",
+                    "job_type": "plan",
+                    "started_at": 900.0,
+                    "task": {"plan_name": "wave"},
+                }
+
+            def list_jobs():
+                polls["n"] += 1
+                rows = _running_child_rows(7.5)
+                if polls["n"] >= 2:
+                    rows[1]["status"] = "completed"
+                    rows[1]["duration_seconds"] = 8.0
+                    status_path.write_text('{"tasks": {"1.1_a": {"status": "completed"}}}')
+                return rows
+
+            with patch.object(JobManager, "get_status", side_effect=get_status), \
+                 patch.object(JobManager, "list_jobs", side_effect=list_jobs), \
+                 patch("snodo.engine.progress.color_enabled", return_value=True):
+                args = SimpleNamespace(composite_id="j_plan_hb", watch=True)
+                assert logs_command(args) == 0
+
+    out = _strip_ansi(capsys.readouterr().out)
+    assert out.count("1.1_a: running") == 1
+    assert "1.1_a: completed" in out
+    current_tree = out.rsplit("Progress: 1/1 completed", 1)[-1]
+    assert "1.1_a: running" not in current_tree
+
+
 def test_watch_event_between_heartbeats_keeps_its_row(capsys, monkeypatch):
     """A real turn arriving between heartbeats ends the first run of waiting
     (#321): the turn keeps its own row and the next heartbeat paints a fresh

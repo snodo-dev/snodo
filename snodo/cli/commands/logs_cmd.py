@@ -464,6 +464,7 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
 
             current_plan_status = current_job.get("status", "unknown")
             children = _fetch_child_jobs()
+            status_changed = False
 
             for cj in children:
                 cid = cj["id"]
@@ -472,11 +473,13 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                 prev = seen_child_status.get(cid)
                 if prev is None:
                     seen_child_status[cid] = cstat
+                    status_changed = True
                     dur = cj.get("duration_seconds")
                     dur_str = f" in {format_duration(dur)}" if dur is not None and cstat in TERMINAL_STATUSES else ""
                     _emit(f"  [{t_ref}] {cstat} (job {cid}){dur_str}")
                 elif prev != cstat:
                     seen_child_status[cid] = cstat
+                    status_changed = True
                     dur = cj.get("duration_seconds")
                     dur_str = f" in {format_duration(dur)}" if dur is not None and cstat in TERMINAL_STATUSES else ""
                     _emit(f"  [{t_ref}] {cstat} (job {cid}){dur_str}")
@@ -487,8 +490,18 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                 prev_tstat = seen_task_status.get(tid)
                 if prev_tstat != tstat:
                     seen_task_status[tid] = tstat
+                    status_changed = True
                     if tstat in ("blocked", "errored", "unmerged") and not any(cj.get("task_ref") == tid for cj in children):
                         _emit(f"  [{tid}] {tstat}")
+
+            if status_changed and watch_renderer is not None and current_plan_status not in TERMINAL_STATUSES:
+                # The opening tree is a snapshot. End the heartbeat window and
+                # append a fresh one after a real status change so it cannot be
+                # mistaken for the current plan state. Redirected watches keep
+                # their historical append-only output unchanged.
+                watch_renderer.reset()
+                print()
+                _print_status_view(cur_tasks_status, children)
 
             if current_plan_status in TERMINAL_STATUSES:
                 _drain_own()
