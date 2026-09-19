@@ -92,6 +92,28 @@ def test_models_check_reports_parameter_refusal_per_model(monkeypatch, capsys):
     assert "OK       openai/healthy (classifier)" in out
 
 
+def test_models_check_does_not_send_subprocess_coder_to_litellm(monkeypatch, capsys):
+    """A subprocess coder is not a provider canary and must not be failed by litellm."""
+    monkeypatch.setattr(
+        "snodo.cli.commands.models_cmd._configured_models",
+        lambda: [("coder", "opencode-cli/openai/gpt-4o")],
+    )
+    monkeypatch.setattr(
+        "snodo.coders.availability.check_coder_available",
+        lambda coder_name: None,
+    )
+
+    def canary(_model):
+        raise AssertionError("subprocess coder must not reach litellm")
+
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
+
+    assert models_check_command(SimpleNamespace()) == 0
+    out = capsys.readouterr().out
+    assert "NOT CHECKABLE opencode-cli/openai/gpt-4o (coder)" in out
+    assert "LLM Provider" not in out
+
+
 def test_models_command_unconfigured_provider_failure(mock_providers_config, monkeypatch, capsys):
     """models_command returns 1 when requested provider is not configured."""
     monkeypatch.setattr("snodo.config.ConfigManager.get_providers", lambda self: mock_providers_config)

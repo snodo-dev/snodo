@@ -879,10 +879,46 @@ def _run_canary_call(model: str, completion_fn: Optional[Any] = None) -> None:
     completion_fn(**kwargs)
 
 
+def _subprocess_coder_for_model(model: str) -> Optional[tuple[str, Any]]:
+    """Return the subprocess adapter named by *model*, if it has one."""
+    from snodo.coders import CODER_REGISTRY
+    from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
+
+    for coder_name, adapter_cls in CODER_REGISTRY.items():
+        if not issubclass(adapter_cls, SubprocessCoderAdapter):
+            continue
+        if any(model.startswith(prefix) for prefix in adapter_cls.model_prefixes()):
+            return coder_name, adapter_cls
+    return None
+
+
 def models_check_command(args) -> int:
-    """Check each distinct configured role model without changing engine state."""
+    """Check each configured role model without changing engine state.
+
+    Subprocess coders are deliberately not sent to litellm: a provider call
+    cannot test whether their host binary works. Their availability is reported
+    as not checkable here instead, while a missing binary remains a real failure.
+    """
+    from snodo.coders.availability import check_coder_available
+
     results = []
     for role, model in _configured_models():
+        subprocess_coder = _subprocess_coder_for_model(model)
+        if subprocess_coder is not None:
+            coder_name, _ = subprocess_coder
+            missing = check_coder_available(coder_name)
+            if missing:
+                binary, remediation = missing
+                results.append((
+                    role, model, False,
+                    f"{coder_name} binary {binary!r} is unavailable: {remediation}",
+                ))
+            else:
+                results.append((
+                    role, model, None,
+                    f"{coder_name} uses a subprocess; provider canary not applicable",
+                ))
+            continue
         try:
             _run_canary_call(model)
         except Exception as error:
@@ -898,9 +934,11 @@ def models_check_command(args) -> int:
     for role, model, healthy, reason in results:
         if healthy:
             print(f"  OK       {model} ({role})")
+        elif healthy is None:
+            print(f"  NOT CHECKABLE {model} ({role}): {reason}")
         else:
             print(f"  FAILED   {model} ({role}): {reason}")
-    return 0 if all(healthy for _, _, healthy, _ in results) else 1
+    return 0 if all(healthy is not False for _, _, healthy, _ in results) else 1
 
 
 # ============================================================================

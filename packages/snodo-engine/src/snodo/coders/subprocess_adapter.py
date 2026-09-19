@@ -319,13 +319,18 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         model = self.model
         if not self.model_prefix:
             return model
-        prefixes = (self.model_prefix,)
-        if self.model_prefix == "opencode-cli/":
-            prefixes = ("opencode-cli/", "opencode/")
-        for prefix in prefixes:
+        for prefix in self.model_prefixes():
             if model.startswith(prefix):
                 return model[len(prefix):]
         return ""
+
+    @classmethod
+    def model_prefixes(cls) -> tuple[str, ...]:
+        """Return namespaces this adapter accepts in configured model names."""
+        prefixes = (cls.model_prefix,)
+        if cls.model_prefix == "opencode-cli/":
+            prefixes = ("opencode-cli/", "opencode/")
+        return prefixes
 
     @abstractmethod
     def _build_argv(self, prompt: str, project_root: str, model: str) -> list[str]:
