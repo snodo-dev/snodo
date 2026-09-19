@@ -15,6 +15,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   without a version bump, but was previously omitted from both workflow files.
   (Fixes #365)
 
+- Model benchmarks now pass the credential resolved for their selected model on
+  each completion call, so configured providers work without shell credentials.
+  (Fixes #370)
+
 - LiteLLM completions now receive each model's API key per call instead of
   sharing provider environment variables, so routed custom providers remain
   isolated during concurrent recon and leave no credential behind. (Fixes #369)
