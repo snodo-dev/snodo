@@ -7,7 +7,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.12.1] — 2026-09-19
 
 ### Fixed
 
