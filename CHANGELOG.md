@@ -11,6 +11,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `snodo models --check` makes one cheap live request against each distinct
+  model configured for the coder, validators, classifier and recon, then
+  reports each model as healthy or names the provider refusal, unknown model,
+  or other error. It is an operator instrument, not a dispatch gate, and does
+  not run the engine loop. (Fixes #362)
 - Issue-closing commits are now checked against the branch range before they
   land. The gate names an undocumented issue and asks its author to explain the
   change, without rechecking older history or generating release notes from a
