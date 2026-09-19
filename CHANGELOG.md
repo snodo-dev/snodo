@@ -40,6 +40,38 @@ snodo uses [Semantic Versioning](https://semver.org/).
   judge is never run against a repository it cannot see. Plan-time verdicts are
   advisory: they do not block, they do not dispatch, and they are never cached
   for reuse in the loop, whose quorum is unchanged. (Fixes #350)
+- A validator can declare what it judges: the task, or the wave the task
+  belongs to. A judge asking whether a ticket is too large is asking about that
+  ticket; a judge asking whether a design is coherent is asking about a body of
+  work, and a wave is that body. Given the same subject the two could only
+  disagree, and they did. The declaration defaults to the task, so every
+  existing protocol keeps its behaviour with no edit. This is a property of a
+  validator in a protocol — no engine state, severity, halt type or task status
+  was added. (Fixes #356)
+- A wave-scoped judge is keyed on the wave's specifications rather than on one
+  task's, so two sibling tasks ask the same question under the same key and the
+  verdict cache serves the second from the first. The structural rules are
+  unchanged: a judge that reads the repository is still keyed on the tree, and
+  every post-execute judge still is, because a judgement about produced work is
+  a judgement about the work. (Fixes #357)
+- A wave-scoped judge is now evaluated once, as the wave is entered, and its
+  verdict carried by every task in that wave. Running it per task meant running
+  it once per sibling, and where siblings run concurrently a shared cache does
+  not help — all of them start together, all of them miss, all of them compute
+  the same verdict. Moving when the judgement happens removes the duplication
+  rather than coordinating it, so no lock or single-flight guard was needed.
+  The in-loop quorum is unchanged: no task skips validation because a wave
+  verdict existed. (Fixes #358)
+- Findings are a first-class deliverable. An investigation or survey task
+  produces no diff, and every path through the engine assumed a task ends in
+  one — so an agent asked for a written survey produced it, found nowhere to
+  put it, and reasoned its way to an empty commit which the gate then verified.
+  The findings existed only in that agent's narration, and a task that touched
+  nothing looked exactly like a task that did nothing. Findings now travel on
+  the coder contract, surface in writeback and halt payloads, and persist to the
+  task record, so an operator can read them without going back through a
+  transcript. No state, severity, halt type or task status was added.
+  (Fixes #359)
 
 ### Fixed
 
@@ -88,6 +120,42 @@ snodo uses [Semantic Versioning](https://semver.org/).
   a parameter. A judge that still returns nothing remains fail-closed and
   arrives as `validator_error`: no halt type, severity or status was added to
   hold a missing verdict. (Fixes #349)
+- The protocol adherence validator recovers from a refused parameter. It sent
+  temperature directly on both its completion calls, bypassing the wrapper that
+  retries without a parameter the provider names — so it had none of the
+  recovery the other validators had gained, and the same refusal had by then
+  been fixed in three other places without this one being noticed.
+  (Fixes #351)
+- A task spec citing paths that do not exist is caught when the plan is
+  validated rather than as the task goes out. The coder cannot see a file it
+  was told to change, so it invents one and the validators then judge the
+  invention as though it were the work asked for. The warning said exactly that
+  and arrived after the ticket was already committed. In a monorepo the natural
+  way to write a path is relative to its package, which resolved to nothing
+  from the repository root; such a citation is now resolved against the
+  repository's workspace roots before being called missing. The dispatch-time
+  warning remains — the worktree can differ from the plan's view for reasons a
+  plan check cannot see. (Fixes #352)
+- A stale git index lock is diagnosed as itself. When a merge failed because the
+  lock file could not be created, snodo reported git's error and moved on; the
+  next merge failed the same way, for hours, blocking every dependent wave while
+  the work was finished and verified. Where nothing is holding the lock, that is
+  now named as the diagnosis — this is not a merge that failed, it is a machine
+  that cannot merge anything — and the command that clears it is printed. The
+  lock is never removed automatically: an operator removing one is making a
+  judgement about their own machine, and a program doing it silently can destroy
+  a concurrent operation's work. (Fixes #353)
+- A wave blocked by unmerged work no longer reads identically to one blocked by
+  unfinished work. Both reported "blocked (depends on: N)", though the first
+  needs someone to look at merges and the second needs someone to look at tasks.
+  The dependency wave's task statuses now decide which situation is named, and
+  the tasks waiting to merge are listed when that is what is blocking. No status
+  value was added; the information was already in the task records. (Fixes #354)
+- The inert-settings notice is emitted once per configuration rather than once
+  per dispatch. Telling an operator that the selected coder cannot honour a
+  setting is useful; telling them twelve times during one plan run is how they
+  learn to skip that shape of line. The message is unchanged and still names
+  the setting and the coder. (Fixes #355)
 
 ## [0.10.3] — 2026-09-18
 
