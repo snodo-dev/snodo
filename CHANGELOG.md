@@ -7,6 +7,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- Model benchmarks now pass the credential resolved for their selected model on
+  each completion call, so configured providers work without shell credentials.
+  (Fixes #370)
+- `snodo models --check` no longer sends subprocess-coder model namespaces to
+  LiteLLM, which previously reported working coders as provider failures. The
+  check now reports these models as not checkable by the provider canary and
+  separately identifies missing coder binaries. (Fixes #371)
+
 ## [0.12.0] — 2026-09-19
 
 ### Fixed
@@ -15,14 +27,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
   without a version bump, but was previously omitted from both workflow files.
   (Fixes #365)
 
-- Model benchmarks now pass the credential resolved for their selected model on
-  each completion call, so configured providers work without shell credentials.
-  (Fixes #370)
 
-- `snodo models --check` no longer sends subprocess-coder model namespaces to
-  LiteLLM, which previously reported working coders as provider failures. The
-  check now reports these models as not checkable by the provider canary and
-  separately identifies missing coder binaries. (Fixes #371)
 
 - LiteLLM completions now receive each model's API key per call instead of
   sharing provider environment variables, so routed custom providers remain
