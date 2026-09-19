@@ -275,7 +275,7 @@ All 24 event types are transmitted.
 | `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision |
 | `task_classified` | task_ref, flow_type, wave_id, task_summary |
 | `wave_created` | wave_id, feature_description |
-| `task_complete` | task_ref, artifacts, session_id, change_size |
+| `task_complete` | task_ref, artifacts, session_id, commit, change_size |
 | `task_merged` | task_ref, branch, merge_sha, spec, session_id |
 | `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type |
 | `transition` | from_mode, to_mode, task_ref |
@@ -295,6 +295,12 @@ All 24 event types are transmitted.
 
 `session_id` is injected into every engine event by `_audit()`, so it is
 present on events whose call site does not name it.
+
+`task_complete.commit` is the commit the completed task produced, or `null`.
+An explicit null is the honest answer for a task that completed without
+committing — a documentation task, an investigation, a no-op outcome — and is
+deliberately distinguishable from an older event recorded before the field
+existed, which carries no key at all.
 
 `task_complete.change_size` records how much the task changed, not what
 changed: line totals and per-shape file counts of the task branch against
