@@ -90,6 +90,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The published cloud interface schema ratchet is now invoked in CI and release
+  workflows. The check was merged to guard against silent payload shape changes
+  without a version bump, but was previously omitted from both workflow files.
+  (Fixes #365)
+
 - A validator's repeated reads no longer spend its turn budget. The tool loop
   already intercepts a read identical to one from an earlier turn and points
   the judge back at it instead of re-reading — the response even says
