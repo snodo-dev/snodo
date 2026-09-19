@@ -18,6 +18,7 @@ from snodo.cli.commands.models_cmd import (
     _lookup_price,
     _read_cache,
     _write_cache,
+    models_check_command,
     models_command,
     register,
 )
@@ -70,6 +71,25 @@ def test_models_command_no_providers_configured(monkeypatch, capsys):
     assert res == 0
     out = capsys.readouterr().out
     assert "No providers configured." in out
+
+
+def test_models_check_reports_parameter_refusal_per_model(monkeypatch, capsys):
+    """A refused canary request names the broken model while others stay healthy."""
+    monkeypatch.setattr(
+        "snodo.cli.commands.models_cmd._configured_models",
+        lambda: [("coder", "openai/broken"), ("classifier", "openai/healthy")],
+    )
+
+    def canary(model):
+        if model == "openai/broken":
+            raise RuntimeError("temperature is not supported")
+
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
+
+    assert models_check_command(SimpleNamespace()) == 1
+    out = capsys.readouterr().out
+    assert "FAILED   openai/broken (coder): temperature is not supported" in out
+    assert "OK       openai/healthy (classifier)" in out
 
 
 def test_models_command_unconfigured_provider_failure(mock_providers_config, monkeypatch, capsys):
