@@ -42,6 +42,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   a disposable execution directory and reporting its committed-tree identity so
   repeated runs begin from the same state. (Fixes #379)
 
+- Completed task records now include a nullable effort cost containing measured
+  tokens, turns, attempts, runtime, and change size, with Snodo, protocol,
+  fixture, coder, and model provenance. Missing measurements remain null rather
+  than being conflated with measured zero values. (Fixes #380)
 - A completed task now records how much it changed, not just which files it
   touched: `task_complete` carries a `change_size` of line totals and per-shape
   file counts, computed against the merge-base the task branched from — never
