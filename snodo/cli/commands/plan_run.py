@@ -24,8 +24,8 @@ _logger = logging.getLogger(__name__)
 
 def _fixture_tree_identity(fixture: Path) -> str:
     """Return the identity of the committed tree supplied as a fixture."""
-    result = subprocess.run(
-        ["git", "-C", str(fixture), "ls-tree", "-r", "--full-tree", "-z", "HEAD"],
+    result = subprocess.run(  # noqa: S603 - fixed git argv; fixture path is one argument
+        ["git", "-C", str(fixture), "ls-tree", "-r", "--full-tree", "-z", "HEAD"],  # noqa: S607 - git resolved from PATH by design
         capture_output=True,
         check=True,
     )
@@ -44,8 +44,8 @@ def _run_fixture(args) -> int:
         print(f"Error: benchmark fixture is not a Git repository: {source}", file=sys.stderr)
         return 1
     try:
-        status = subprocess.run(
-            ["git", "-C", str(source), "status", "--porcelain"],
+        status = subprocess.run(  # noqa: S603 - fixed git argv; fixture path is one argument
+            ["git", "-C", str(source), "status", "--porcelain"],  # noqa: S607 - git resolved from PATH by design
             capture_output=True, text=True, check=True,
         )
         identity = _fixture_tree_identity(source)
@@ -59,8 +59,8 @@ def _run_fixture(args) -> int:
     with tempfile.TemporaryDirectory(prefix="snodo-benchmark-") as directory:
         clone = Path(directory) / "fixture"
         try:
-            subprocess.run(
-                ["git", "clone", "--no-hardlinks", "--quiet", str(source), str(clone)],
+            subprocess.run(  # noqa: S603 - fixed git argv; source and clone are path arguments
+                ["git", "clone", "--no-hardlinks", "--quiet", str(source), str(clone)],  # noqa: S607 - git resolved from PATH by design
                 check=True, capture_output=True, text=True,
             )
         except (OSError, subprocess.CalledProcessError) as exc:
