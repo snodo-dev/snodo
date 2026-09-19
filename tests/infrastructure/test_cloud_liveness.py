@@ -522,6 +522,9 @@ class TestFailureIsDrop:
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
             assert posts.calls == []  # the failed push is dropped, not held
+            # The next scheduled push is delayed after a transient failure;
+            # advance the test seam rather than retrying it immediately.
+            cloud_liveness._sessions["sess_test_1"]["blocked_until"] = 0
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
 

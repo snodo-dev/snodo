@@ -60,6 +60,12 @@ from typing import Any, Iterable, Literal, NotRequired, Optional, TypedDict
 from urllib.parse import quote
 
 from snodo.infrastructure.cloud_sync import CloudSyncState, _should_sync
+from snodo.infrastructure.cloud_backoff import (
+    MAX_CLOUD_BACKOFF_SECONDS,
+    cloud_backoff_seconds,
+    is_transient_status,
+    retry_after_seconds,
+)
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
 
@@ -310,9 +316,12 @@ def request_liveness_push(
     interval = _interval_seconds(config)
     with _lock:
         st = _sessions.setdefault(
-            session_id, {"last_push": None, "in_flight": False, "timer": None},
+            session_id, {"last_push": None, "in_flight": False, "timer": None,
+                          "failures": 0, "blocked_until": 0.0},
         )
         if st["in_flight"]:
+            return False
+        if now < st.get("blocked_until", 0.0):
             return False
         if not force and st["last_push"] is not None \
                 and now - st["last_push"] < interval:
@@ -377,10 +386,24 @@ def _deliver(session_id: str, project_root: str) -> None:
             return
         with _lock:
             _sessions.setdefault(
-                session_id, {"last_push": None, "in_flight": False, "timer": None},
+                session_id, {"last_push": None, "in_flight": False, "timer": None,
+                              "failures": 0, "blocked_until": 0.0},
             )["last_push"] = time.monotonic()
         live = _snapshot_is_live(snapshot)
-        _post_snapshot(snapshot)
+        success, server_delay, transient = _post_snapshot(snapshot)
+        with _lock:
+            st = _sessions[session_id]
+            if success or not transient:
+                st["failures"] = 0
+                st["blocked_until"] = 0.0
+            else:
+                st["failures"] += 1
+                delay = cloud_backoff_seconds(
+                    st["failures"], server_delay,
+                    cap=MAX_CLOUD_BACKOFF_SECONDS,
+                )
+                st["blocked_until"] = time.monotonic() + delay
+                live_delay = delay
     except Exception as exc:  # noqa: BLE001 — a liveness push never disturbs the run
         _logger.debug("Liveness push failed for %s (dropped, not queued): %s", session_id, exc)
     finally:
@@ -397,12 +420,14 @@ def _deliver(session_id: str, project_root: str) -> None:
         # behind a slow push (Fixes #323).
         if live:
             try:
-                _schedule_floor(session_id, project_root)
+                _schedule_floor(session_id, project_root, locals().get("live_delay"))
             except Exception as exc:  # noqa: BLE001 — a push never disturbs the run
                 _logger.debug("Liveness floor not armed for %s: %s", session_id, exc)
 
 
-def _schedule_floor(session_id: str, project_root: str) -> None:
+def _schedule_floor(
+    session_id: str, project_root: str, delay: Optional[float] = None,
+) -> None:
     """Arm the next floor push for *session_id*, replacing any pending one.
 
     Called by a delivery that leaves work running. The timer is daemon and
@@ -411,9 +436,10 @@ def _schedule_floor(session_id: str, project_root: str) -> None:
     interval even if two ever overlap.
     """
     interval = _interval_seconds()
+    delay = interval if delay is None else max(interval, delay)
     token = object()
     timer = threading.Timer(
-        interval, _floor_tick, args=(session_id, project_root, token),
+        delay, _floor_tick, args=(session_id, project_root, token),
     )
     timer.daemon = True
     with _lock:
@@ -487,7 +513,7 @@ def _snapshot_is_live(snapshot: LivenessSnapshot) -> bool:
 
 def _post_snapshot(
     snapshot: LivenessSnapshot, config: Optional[dict] = None,
-) -> None:
+) -> tuple[bool, float | None, bool]:
     """PUT the snapshot to ``{liveness_url}/live/{session_id}``. Drop on any failure.
 
     Deliberately unlike the ingest path: no retry loop and no cursor. A
@@ -496,6 +522,8 @@ def _post_snapshot(
     refusal is recorded in the same persisted state as audit sync, so both
     senders stop until an explicit operator retry succeeds.
     """
+    global _consecutive_rejections
+
     import httpx
 
     from snodo.config import ConfigManager, get_cloud_liveness_url
@@ -505,11 +533,11 @@ def _post_snapshot(
     cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
     api_key = (cloud.get("api_key") or "").strip()
     if not api_key:
-        return
+        return False, None, False
     state = CloudSyncState()
     session_id = snapshot["session_id"]
     if state.is_refused(session_id):
-        return
+        return False, None, False
     liveness_url = get_cloud_liveness_url(config)
     url = f"{liveness_url.rstrip('/')}/live/{quote(session_id, safe='')}"
     body = json.dumps(snapshot).encode()
@@ -525,7 +553,21 @@ def _post_snapshot(
         )
         if 200 <= response.status_code < 300:
             state.clear_refusal(session_id)
-        elif 400 <= response.status_code < 500 and response.status_code != 429:
+            with _lock:
+                _consecutive_rejections = 0
+            return True, None, False
+        # Two independent questions about one response: whether the refusal is
+        # terminal (the latch, #374) and whether to slow down (the backoff,
+        # #375). A 4xx that is not 429 stops the sender for good; a 429 or 5xx
+        # only delays it. Conflating them would either retry a revoked key or
+        # latch on a transient outage.
+        terminal = 400 <= response.status_code < 500 and response.status_code != 429
+        transient = is_transient_status(response.status_code)
+        server_delay = retry_after_seconds(getattr(response, "headers", None)) if transient else None
+        with _lock:
+            _consecutive_rejections += 1
+            streak = _consecutive_rejections
+        if terminal:
             reason = f"HTTP {response.status_code}: {response.text[:500].strip() or 'Client error'}"
             state.record_refusal(
                 session_id, reason=reason, status_code=response.status_code,
@@ -534,13 +576,26 @@ def _post_snapshot(
                 "Liveness push %s -> HTTP %d (refused, stopped): %s",
                 url, response.status_code, response.text[:200],
             )
+        elif streak > 1:
+            _logger.warning(
+                "Liveness push %s -> HTTP %d (repeated rejection, dropped): %s",
+                url, response.status_code, response.text[:200],
+            )
         else:
             _logger.debug(
                 "Liveness push %s -> HTTP %d (dropped): %s",
                 url, response.status_code, response.text[:200],
             )
+        return False, server_delay, transient
     except Exception as exc:  # noqa: BLE001 — dropped; the next transition re-pushes
-        _logger.debug("Liveness push %s failed (dropped): %s", url, exc)
+        with _lock:
+            _consecutive_rejections += 1
+            streak = _consecutive_rejections
+        if streak > 1:
+            _logger.warning("Liveness push %s failed (dropped): %s", url, exc)
+        else:
+            _logger.debug("Liveness push %s failed (dropped): %s", url, exc)
+        return False, None, True
 
 
 # ---------------------------------------------------------------------------
