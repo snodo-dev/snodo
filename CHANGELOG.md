@@ -32,6 +32,21 @@ snodo uses [Semantic Versioning](https://semver.org/).
   transient cloud failures, honoring server delays and adding jitter so
   clients do not retry in lockstep. Authentication failures remain terminal.
   (Fixes #375)
+   pending changelog section instead of a dated release section. (Fixes #372)
+
+### Added
+- A completed task now records how much it changed, not just which files it
+  touched: `task_complete` carries a `change_size` of line totals and per-shape
+  file counts, computed against the merge-base the task branched from — never
+  the base branch's later tip — so a typo fix and a subsystem rewrite are
+  distinguishable and other people's merged work is never attributed to the
+  task. Changes whose lines are not countable (binary, rename, mode-only)
+  report their own counters instead of a zero, and a change past
+  `CHANGE_SIZE_MAX_FILES` reports `lines_added: null` with `capped: true`
+  rather than stalling the run on the comparison. The diff itself is never
+  recorded. The field rides the published engine-to-cloud interface, whose
+  version moves to 2. (Fixes #377)
+
 
 ## [0.12.0] — 2026-09-19
 

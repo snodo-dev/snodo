@@ -275,7 +275,7 @@ All 24 event types are transmitted.
 | `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision |
 | `task_classified` | task_ref, flow_type, wave_id, task_summary |
 | `wave_created` | wave_id, feature_description |
-| `task_complete` | task_ref, artifacts, session_id |
+| `task_complete` | task_ref, artifacts, session_id, change_size |
 | `task_merged` | task_ref, branch, merge_sha, spec, session_id |
 | `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type |
 | `transition` | from_mode, to_mode, task_ref |
@@ -295,6 +295,26 @@ All 24 event types are transmitted.
 
 `session_id` is injected into every engine event by `_audit()`, so it is
 present on events whose call site does not name it.
+
+`task_complete.change_size` records how much the task changed, not what
+changed: line totals and per-shape file counts of the task branch against
+its own branch point — the merge-base of the resolved base branch and the
+branch, never the base branch's current tip, so a long-running task is
+never credited with work others merged while it ran. The diff itself is
+never recorded; only counts leave the machine. A `null` `change_size` is
+the honest absence of a measurement (no repository, no task branch, an
+unresolvable base), never a fabricated zero. Inside the record:
+`lines_added`/`lines_deleted` count only lines that exist to be counted; a
+binary file carries no line count and appears in `files_binary`, so a
+zero-line binary change is distinguishable from a zero-line text change;
+renames appear in `files_renamed` (line totals still reflect any content
+edit they carry); a mode-only change moves no line and appears in
+`files_mode_only`; a deletion's removed text lines land in
+`lines_deleted`. Past `CHANGE_SIZE_MAX_FILES` changed files the line
+totals are not computed at all — `lines_added`/`lines_deleted` are `null`
+and `capped` is true — because a plan run must never stall on a statistic
+nobody is waiting for; `files_changed` stays real. The interface version
+moved to 2 for this field.
 
 `readiness_checked.findings` carries repository method scaffolding findings
 with relative paths only and never workstation detail (such as local binaries on

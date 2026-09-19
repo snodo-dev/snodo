@@ -55,6 +55,153 @@ class GitError(Exception):
     """Raised when a git operation fails."""
 
 
+#: How many changed files :meth:`GitMCP.change_size` will count lines for.
+#: Counting files is a tree walk; counting lines compares the content of
+#: every changed file. A plan run must never stall on a statistic nobody is
+#: waiting for, so past this bound the line totals are not computed at all
+#: and the record says so (``capped``), rather than a wide diff being
+#: presented as a fast one (Fixes #377).
+CHANGE_SIZE_MAX_FILES = 500
+
+
+def _split_nul_fields(raw: str) -> List[str]:
+    """Split NUL-terminated git output into fields, dropping the empty tail."""
+    return [f for f in raw.split("\0") if f != ""]
+
+
+def _name_status_records(raw: str) -> List[str]:
+    """The status letter of each ``--name-status -z`` record, in order.
+
+    Under ``-z`` every field is its own NUL-terminated string: ``M\\0path``
+    or ``R100\\0from\\0to``. A record's field count follows its letter, so
+    the walk advances by that, never by guessing which field is next.
+    """
+    fields = _split_nul_fields(raw)
+    letters: List[str] = []
+    i = 0
+    while i < len(fields):
+        letter = fields[i][:1] if fields[i] else "?"
+        letters.append(letter)
+        i += 3 if letter in ("R", "C") else 2
+    return letters
+
+
+def _numstat_records(raw: str) -> List[tuple]:
+    """``(added, deleted)`` counts per ``--numstat -z`` record, in order.
+
+    A record is ``added<TAB>deleted<TAB>path\\0``; a rename carries an
+    empty path and its two sides as the following fields. ``-`` — git's
+    own marker for a file whose lines cannot be counted — stays ``None``
+    and is never folded into ``0``.
+    """
+    fields = _split_nul_fields(raw)
+    records: List[tuple] = []
+    i = 0
+    while i < len(fields):
+        try:
+            raw_add, raw_del, path = fields[i].split("\t", 2)
+        except ValueError:
+            break
+        i += 1
+        if path == "":
+            # ``R100``-style record: the two paths follow as separate fields.
+            i += 2
+        added = None if raw_add == "-" else int(raw_add)
+        deleted = None if raw_del == "-" else int(raw_del)
+        records.append((added, deleted))
+    return records
+
+
+def _count_change_shapes(name_status_raw: str, numstat_raw: str) -> dict:
+    """Reduce the two metadata diff outputs to per-shape file and line counts.
+
+    ``--name-status -z`` and ``--numstat -z`` report the same records in
+    the same order for the same range, so pairing them is what separates
+    the line-neutral shapes from each other: a modified file with no line
+    movement is a mode or type change, a zero-line ``A`` is a new empty
+    file, and neither may be reported as the other.
+
+    A file whose lines cannot be counted (binary) is reported in
+    ``files_binary`` and contributes nothing to the line totals: "no
+    lines" and "not countable" must not share a zero. A renamed file's own
+    edits are countable lines and land in the totals; a deletion's removed
+    lines are counted, honestly, as deletions — never as additions.
+    """
+    letters = _name_status_records(name_status_raw)
+    stats = _numstat_records(numstat_raw)
+    counts = {
+        "files_changed": 0,
+        "files_added": 0,
+        "files_deleted": 0,
+        "files_renamed": 0,
+        "files_mode_only": 0,
+        "files_binary": 0,
+        "lines_added": 0,
+        "lines_deleted": 0,
+    }
+    for letter, (added, deleted) in zip(letters, stats):
+        counts["files_changed"] += 1
+        if letter == "A":
+            counts["files_added"] += 1
+        elif letter == "D":
+            counts["files_deleted"] += 1
+        elif letter in ("R", "C"):
+            counts["files_renamed"] += 1
+        if added is None or deleted is None:
+            counts["files_binary"] += 1
+            continue
+        counts["lines_added"] += added
+        counts["lines_deleted"] += deleted
+        if letter not in ("A", "D", "R", "C") and added == 0 and deleted == 0:
+            counts["files_mode_only"] += 1
+    return counts
+
+
+def _change_size_capped(base_sha: str, head_sha: str, files_changed: int) -> dict:
+    """The record for a change too wide to count lines for.
+
+    ``files_changed`` stays real; everything that would have needed the
+    content comparison is ``None`` — not measured — with ``capped`` True.
+    A null is not a zero: the consumer can tell "no lines" from "no
+    counting was done".
+    """
+    return {
+        "base_sha": base_sha,
+        "head_sha": head_sha,
+        "files_changed": files_changed,
+        "files_added": None,
+        "files_deleted": None,
+        "files_renamed": None,
+        "files_mode_only": None,
+        "files_binary": None,
+        "lines_added": None,
+        "lines_deleted": None,
+        "capped": True,
+    }
+
+
+def _measure_change_size(repo, base_sha: str, head_sha: str, max_files: int) -> dict:
+    """Count how much changed between two commits, bounded by *max_files*.
+
+    At most two git operations, neither of which produces patch text: a
+    name-only tree comparison bounds the work before any content is
+    compared, and one ``--name-status``/``--numstat`` pair supplies the
+    counts. Past the bound the line totals are simply not computed — the
+    run is never stalled on a statistic nobody is waiting for.
+    """
+    names = repo.git.diff("--name-only", "-z", base_sha, head_sha, "--")
+    files_changed = len(_split_nul_fields(names))
+    if files_changed > max_files:
+        return _change_size_capped(base_sha, head_sha, files_changed)
+    common = ("--find-renames", base_sha, head_sha, "--")
+    status_raw = repo.git.diff("--name-status", "-z", *common)
+    numstat_raw = repo.git.diff("--numstat", "-z", *common)
+    record = {"base_sha": base_sha, "head_sha": head_sha}
+    record.update(_count_change_shapes(status_raw, numstat_raw))
+    record["capped"] = False
+    return record
+
+
 class MergeConflictError(GitError):
     """Raised when a merge conflicts and is left unresolved.
 
@@ -346,6 +493,35 @@ class GitMCP:
             return sorted(paths)
         except Exception as e:
             raise GitError(f"Git path diff failed: {e}") from e
+
+    def change_size(
+        self,
+        base: str,
+        head: str = "HEAD",
+        *,
+        max_files: int = CHANGE_SIZE_MAX_FILES,
+    ) -> dict:
+        """Count how much changed between two refs — sizes, never content.
+
+        Returns a record of line totals and per-shape file counts over
+        ``base..head`` (see :func:`_measure_change_size`). The diff itself
+        is never included: the size of the change is the ask, its content
+        leaves the machine only by a different decision.
+
+        Raises:
+            GitError: if either ref cannot be resolved or the diff fails.
+        """
+        try:
+            base_sha = self.repo.commit(base).hexsha
+            head_sha = self.repo.commit(head).hexsha
+        except Exception as e:
+            raise GitError(f"Could not resolve refs for change size: {e}") from e
+        try:
+            return _measure_change_size(self.repo, base_sha, head_sha, max_files)
+        except GitError:
+            raise
+        except Exception as e:
+            raise GitError(f"Git change-size diff failed: {e}") from e
 
     def show(self, ref: str, path: str) -> str:
         """Read a file's content at a specific git ref.
