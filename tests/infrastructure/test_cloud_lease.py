@@ -34,6 +34,73 @@ def clean_lease_state(tmp_path):
 
 
 class TestCloudAdmission:
+    def test_rejected_granted_lease_is_replaced_once(self, tmp_path):
+        responses = iter([
+            {"lease_id": "old", "token": "old-token"},
+            {"lease_id": "new", "token": "new-token"},
+        ])
+        puts = []
+
+        def exchange(url, **kwargs):
+            response = MagicMock(spec=httpx.Response)
+            response.status_code = 200
+            response.json.return_value = {**next(responses), "expires_in": 300}
+            return response
+
+        def send(url, **kwargs):
+            puts.append(str(url))
+            response = MagicMock(spec=httpx.Response)
+            response.status_code = 401 if len(puts) == 1 else 204
+            response.text = "revoked"
+            return response
+
+        snapshot = {"session_id": "sess_replace", "project_id": "", "scope": "",
+                    "display_name": "", "run_started_at": None, "plans": [],
+                    "tasks": [], "jobs": [], "task_status_counts": {},
+                    "job_status_counts": {}, "last_event": None,
+                    "last_activity_at": None, "snapshot_at": "now"}
+        config = {"cloud": {"api_key": "key", "api_url": "https://api.test",
+                             "liveness_url": "https://app.test/v1"}}
+        with patch("httpx.post", side_effect=exchange), patch("httpx.put", side_effect=send):
+            assert _post_snapshot(snapshot, config=config)[0] is True
+        assert puts == [
+            "https://app.test/v1/live/sess_replace/old",
+            "https://app.test/v1/live/sess_replace/new",
+        ]
+
+    def test_replacement_rejection_latches_and_stops(self, tmp_path):
+        exchanges = []
+        sends = []
+
+        def exchange(url, **kwargs):
+            exchanges.append(url)
+            response = MagicMock(spec=httpx.Response)
+            response.status_code = 200
+            response.json.return_value = {"lease_id": f"lease-{len(exchanges)}",
+                                          "token": "token", "expires_in": 300}
+            return response
+
+        def send(url, **kwargs):
+            sends.append(url)
+            response = MagicMock(spec=httpx.Response)
+            response.status_code = 401
+            response.text = "revoked"
+            return response
+
+        snapshot = {"session_id": "sess_stop", "project_id": "", "scope": "",
+                    "display_name": "", "run_started_at": None, "plans": [],
+                    "tasks": [], "jobs": [], "task_status_counts": {},
+                    "job_status_counts": {}, "last_event": None,
+                    "last_activity_at": None, "snapshot_at": "now"}
+        config = {"cloud": {"api_key": "key", "api_url": "https://api.test",
+                             "liveness_url": "https://app.test/v1"}}
+        with patch("httpx.post", side_effect=exchange), patch("httpx.put", side_effect=send):
+            assert _post_snapshot(snapshot, config=config)[0] is False
+            assert _post_snapshot(snapshot, config=config)[0] is False
+        assert len(exchanges) == 2
+        assert len(sends) == 2
+        assert CloudSyncState().is_refused("sess_stop")
+
     def test_sending_without_lease_performs_exchange_first(self, tmp_path):
         """Sending without a lease performs the exchange first and uses the path containing lease_id."""
         calls = []

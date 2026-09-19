@@ -79,6 +79,14 @@ def get_current_lease() -> Optional[CloudLease]:
     return None
 
 
+def invalidate_lease(lease: CloudLease) -> None:
+    """Discard *lease* when the send endpoint rejects its credential."""
+    global _current_lease
+    with _lock:
+        if _current_lease is lease:
+            _current_lease = None
+
+
 def get_admission_lease(
     api_key: str,
     lease_url: str,

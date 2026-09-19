@@ -372,10 +372,13 @@ class CloudSyncDispatcher:
         from urllib.parse import quote
 
         from snodo.config import get_cloud_lease_url
-        from snodo.infrastructure.cloud_lease import get_admission_lease
+        from snodo.infrastructure.cloud_lease import (
+            get_admission_lease, get_current_lease, invalidate_lease,
+        )
 
         state = CloudSyncState()
         lease_url = get_cloud_lease_url({"cloud": {"api_url": api_url, "api_key": api_key}})
+        cached_lease = get_current_lease()
         lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state, force=force)
         if lease is None:
             if not force and state.is_refused(session_id):
@@ -396,6 +399,7 @@ class CloudSyncDispatcher:
             "Authorization": f"Bearer {lease.token}",
             "Content-Type": "application/json",
         }
+        lease_replaced = False
 
         for attempt in range(_MAX_RETRIES + 1):
             try:
@@ -437,9 +441,28 @@ class CloudSyncDispatcher:
                     continue
 
                 reason = f"HTTP {response.status_code}: {body_text.strip() or 'Client error'}"
+                if not lease_replaced and cached_lease is None:
+                    invalidate_lease(lease)
+                    lease = get_admission_lease(
+                        api_key, lease_url, session_id=session_id,
+                        sync_state=state,
+                    )
+                    if lease is None:
+                        if state.is_refused(session_id):
+                            info = state._load().get(session_id, {})
+                            return ("refused", info.get("refused_reason", reason),
+                                    info.get("refused_status_code", response.status_code))
+                        return ("retryable", "Cloud admission unreachable", None)
+                    url = f"{api_url.rstrip('/')}/ingest/{quote(lease.lease_id, safe='')}"
+                    headers["Authorization"] = f"Bearer {lease.token}"
+                    lease_replaced = True
+                    continue
                 _logger.warning(
                     "Cloud sync HTTP %d REFUSED on session=%s: %s",
                     response.status_code, session_id, body_text,
+                )
+                state.record_refusal(
+                    session_id, reason=reason, status_code=response.status_code,
                 )
                 return ("refused", reason, response.status_code)
 

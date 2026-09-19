@@ -540,39 +540,66 @@ def _post_snapshot(
         return False, None, False
 
     from snodo.config import get_cloud_lease_url
-    from snodo.infrastructure.cloud_lease import get_admission_lease
+    from snodo.infrastructure.cloud_lease import (
+        get_admission_lease, get_current_lease, invalidate_lease,
+    )
 
     lease_url = get_cloud_lease_url(config)
-    lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state)
-    if lease is None:
-        # No lease, no send. Reported as transient so the caller backs off
-        # rather than re-asking on every beat: a terminal refusal at the
-        # exchange has already been latched by get_admission_lease, and
-        # is_refused stops the next attempt before it reaches here.
-        return False, None, True
-
     liveness_url = get_cloud_liveness_url(config)
-    url = f"{liveness_url.rstrip('/')}/live/{quote(session_id, safe='')}/{quote(lease.lease_id, safe='')}"
     body = json.dumps(snapshot).encode()
-    try:
-        response = httpx.put(
-            url,
-            content=body,
-            headers={
-                "Authorization": f"Bearer {lease.token}",
-                "Content-Type": "application/json",
-            },
-            timeout=10.0,
+    cached_lease = get_current_lease()
+    for lease_attempt in range(2):
+        lease = get_admission_lease(
+            api_key, lease_url, session_id=session_id, sync_state=state,
         )
+        if lease is None:
+            # Exchange refusal is already persisted; an unreachable exchange
+            # is quieted by the admission layer until a later beat.
+            return False, None, not state.is_refused(session_id)
+        url = f"{liveness_url.rstrip('/')}/live/{quote(session_id, safe='')}/{quote(lease.lease_id, safe='')}"
+        try:
+            response = httpx.put(
+                url,
+                content=body,
+                headers={
+                    "Authorization": f"Bearer {lease.token}",
+                    "Content-Type": "application/json",
+                },
+                timeout=10.0,
+            )
+        except Exception as exc:  # noqa: BLE001 — dropped; the next transition re-pushes
+            with _lock:
+                _consecutive_rejections += 1
+                streak = _consecutive_rejections
+            if streak > 1:
+                _logger.warning("Liveness push %s failed (dropped): %s", url, exc)
+            else:
+                _logger.debug("Liveness push %s failed (dropped): %s", url, exc)
+            return False, None, True
+
         if 200 <= response.status_code < 300:
             with _lock:
                 _consecutive_rejections = 0
             return True, None, False
-        # Admission is the lease's business now (#376). A 4xx here means the
-        # LEASE was rejected — expired or rotated — not that the credential is
-        # dead, so the session is not latched: get_admission_lease owns the
-        # latch and the re-exchange. Latching here would let one expired lease
-        # disable sync for good. What stays is how fast to come back (#375).
+
+        terminal = 400 <= response.status_code < 500 and response.status_code != 429
+        if terminal and lease_attempt == 0 and cached_lease is None:
+            # A rejected cached lease may be stale or revoked. Replace it once;
+            # the second rejection is terminal rather than an exchange loop.
+            invalidate_lease(lease)
+            continue
+
+        if terminal:
+            reason = f"HTTP {response.status_code}: {response.text[:500].strip() or 'Client error'}"
+            state.record_refusal(
+                session_id, reason=reason, status_code=response.status_code,
+            )
+            _logger.warning(
+                "Liveness push %s -> HTTP %d (refused, stopped): %s",
+                url, response.status_code, response.text[:200],
+            )
+            return False, None, False
+
         transient = is_transient_status(response.status_code)
         server_delay = retry_after_seconds(getattr(response, "headers", None)) if transient else None
         with _lock:
@@ -589,15 +616,7 @@ def _post_snapshot(
                 url, response.status_code, response.text[:200],
             )
         return False, server_delay, transient
-    except Exception as exc:  # noqa: BLE001 — dropped; the next transition re-pushes
-        with _lock:
-            _consecutive_rejections += 1
-            streak = _consecutive_rejections
-        if streak > 1:
-            _logger.warning("Liveness push %s failed (dropped): %s", url, exc)
-        else:
-            _logger.debug("Liveness push %s failed (dropped): %s", url, exc)
-        return False, None, True
+    return False, None, False
 
 
 # ---------------------------------------------------------------------------
