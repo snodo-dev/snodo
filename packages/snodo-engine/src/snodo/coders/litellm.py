@@ -313,6 +313,9 @@ Return ONLY the JSON array, no other text.
                     "role": "coder",
                 },
             }
+            api_key = ConfigManager().get_key_for_model(self.model)
+            if api_key:
+                kwargs["api_key"] = api_key
             api_base = self._resolve_api_base()
             if api_base:
                 kwargs["api_base"] = api_base
@@ -417,6 +420,9 @@ Return ONLY the JSON array, no other text.
                         "role": "coder",
                     },
                 }
+                api_key = ConfigManager().get_key_for_model(self.model)
+                if api_key:
+                    kwargs["api_key"] = api_key
                 api_base = self._resolve_api_base()
                 if api_base:
                     kwargs["api_base"] = api_base

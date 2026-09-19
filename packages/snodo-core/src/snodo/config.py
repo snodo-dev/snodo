@@ -218,33 +218,16 @@ _PROVIDER_ALIASES: dict[str, str] = {
 }
 
 
-def _set_api_key_env(mgr: "ConfigManager", model: str) -> None:
-    """Set API key in environment if available from config."""
-    api_key = mgr.get_key_for_model(model)
-    if api_key:
-        provider_name = ConfigManager._provider_for_model(model)
-        if provider_name:
-            providers = mgr.get_providers()
-            pc = providers.get(provider_name)
-            if pc and pc.api_key_env:
-                os.environ[pc.api_key_env] = api_key
-            if pc and pc.account_id_env and pc.account_id:
-                os.environ[pc.account_id_env] = pc.account_id
-            if pc and pc.litellm_provider:
-                target_pc = DEFAULT_PROVIDER_CATALOG.get(pc.litellm_provider)
-                if target_pc and target_pc.api_key_env:
-                    os.environ[target_pc.api_key_env] = api_key
-
-
 @contextmanager
 def provider_env(model: str):
-    """Injects provider API keys for model into os.environ."""
+    """Expose model configuration without injecting credentials into the process.
+
+    In-process LiteLLM calls receive ``api_key`` directly.  The context remains
+    for callers that use it as a configuration scope, but deliberately does not
+    write API keys to environment variables shared by concurrent calls.
+    """
     mgr = ConfigManager()
-    _set_api_key_env(mgr, model)
-    try:
-        yield mgr
-    finally:
-        pass  # env vars intentionally left set
+    yield mgr
 
 
 class ConfigError(Exception):
@@ -495,6 +478,8 @@ class ConfigManager:
         pc = self.get_providers().get(provider)
         if pc and pc.api_key:
             return pc.api_key
+        if pc and pc.api_key_env:
+            return os.environ.get(pc.api_key_env) or None
         return None
 
     def remove_key(self, provider: str) -> bool:
@@ -637,8 +622,7 @@ class ConfigManager:
 
         model = pc.probe_model
 
-        env_var = pc.api_key_env
-        if not env_var and not pc.litellm_provider:
+        if not pc.api_key_env and not pc.litellm_provider:
             return "untestable"
 
         try:
@@ -646,26 +630,12 @@ class ConfigManager:
         except (ImportError, Exception):
             return "untestable"
 
-        target_env_vars = []
-        if env_var:
-            target_env_vars.append((env_var, key))
-        if pc.litellm_provider:
-            target_pc = DEFAULT_PROVIDER_CATALOG.get(pc.litellm_provider)
-            if target_pc and target_pc.api_key_env:
-                target_env_vars.append((target_pc.api_key_env, key))
-        if pc.account_id_env and pc.account_id:
-            target_env_vars.append((pc.account_id_env, pc.account_id))
-
-        saved_env = {}
-        for ev, val in target_env_vars:
-            saved_env[ev] = os.environ.get(ev)
-            os.environ[ev] = val
-
         try:
             kwargs: dict[str, Any] = {
                 "model": ConfigManager.resolve_litellm_model(model),
                 "messages": [{"role": "user", "content": "hi"}],
                 "max_tokens": 1,
+                "api_key": key,
             }
             api_base = ConfigManager.resolve_api_base(model) or pc.base_url
             if api_base:
@@ -678,13 +648,6 @@ class ConfigManager:
             return "valid"
         except Exception:
             return "invalid"
-        finally:
-            for ev, _ in target_env_vars:
-                old = saved_env.get(ev)
-                if old is not None:
-                    os.environ[ev] = old
-                elif ev in os.environ:
-                    del os.environ[ev]
 
     @staticmethod
     def mask_key(key: str) -> str:
