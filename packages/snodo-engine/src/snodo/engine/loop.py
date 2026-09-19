@@ -970,6 +970,9 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             "op": "task_complete",
             "task_ref": loop_state.task.id,
             "artifacts": loop_state.artifacts,
+            # Explicit null distinguishes a completed no-op from an old event
+            # that predates commit provenance.
+            "commit": loop_state.metadata.get("commit"),
         }
         if loop_state.metadata.get("timed_out"):
             task_complete_audit["timed_out"] = True

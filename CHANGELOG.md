@@ -23,6 +23,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Issue-closing commits are now required to document their changes in the
   pending changelog section instead of a dated release section. (Fixes #372)
+- Completed-task audit events now preserve the final task-branch commit SHA, or
+  explicit null provenance when the task committed nothing. (Fixes #373)
 
 ## [0.12.0] — 2026-09-19
 
