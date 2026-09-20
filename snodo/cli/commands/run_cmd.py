@@ -396,11 +396,7 @@ def run_command(args) -> int:
 
     from snodo.paths import derive_task_id
 
-    task = Task(
-        id=derive_task_id(description),
-        spec=description,
-        module_id=getattr(args, "module", None),
-    )
+    task = Task(id=derive_task_id(description), spec=description, module_id=getattr(args, "module", None))
 
     with provider_env(model) as mgr:
         return _execute_task(args, protocol, task, model)
@@ -771,12 +767,7 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
     mgr = ConfigManager()
     model = args.model or mgr.get_coder_model()
 
-    task = Task(
-        id=task_id,
-        spec=augmented,
-        root_spec=authoritative_spec,
-        module_id=getattr(args, "module", None),
-    )
+    task = Task(id=task_id, spec=augmented, root_spec=authoritative_spec, module_id=getattr(args, "module", None))
     print(f"Retrying task {task_id} (attempt {attempt + 1}/{max_retries})")
     if replacement:
         print(f"  Spec REPLACED. Previous spec kept: {followup.task_inspect(task_id)}")
@@ -854,11 +845,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             stored = mgr._load_task(job_dir)
             stored_task_id = stored.get("task_id") or stored.get("retry_task_id")
             if stored_task_id and stored_task_id != task.id:
-                task = Task(
-                    id=stored_task_id,
-                    spec=task.spec,
-                    module_id=task.module_id,
-                )
+                task = Task(id=stored_task_id, spec=task.spec, module_id=task.module_id)
 
             # Persist task_id into task.json for same-task retry lookup
             task_json_path = job_dir / "task.json"
