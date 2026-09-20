@@ -379,17 +379,26 @@ class PlannerMCP:
         """Parse and return the wave number from a task_id.
 
         Raises:
-            PlannerError: If task_id has no dot or wave part is not an integer
+            PlannerError: If task_id has no name or wave part is not an integer
         """
         if "." not in task_id:
             raise PlannerError(
-                f"Invalid task_id format: {task_id}. Expected: <wave>.<seq>_<name>"
+                f"Invalid task_id format: {task_id}. Expected a named ID such as "
+                "1.1_models (<wave>.<seq>_<name>)"
             )
         wave_str = task_id.split(".")[0]
         try:
-            return int(wave_str)
+            wave_num = int(wave_str)
         except ValueError as e:
             raise PlannerError(f"Invalid wave number in task_id: {task_id}") from e
+
+        name_part = task_id.split(".", 1)[1].split("_", 1)
+        if len(name_part) < 2 or not name_part[1].strip():
+            raise PlannerError(
+                f"Invalid task_id format: {task_id}. Expected a named ID such as "
+                "1.1_models (<wave>.<seq>_<name>)"
+            )
+        return wave_num
 
     def _handle_existing_task(
         self,

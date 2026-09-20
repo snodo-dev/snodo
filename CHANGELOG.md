@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Task IDs used to generate plan specs now require a readable name suffix, and
+  the MCP schema and server instructions show the required format. (Fixes #388)
 - MCP client registration now lives under `snodo serve --mcp-install` and its
   uninstall flags; the top-level install spellings remain working with a
   deprecation note. (Fixes #386)
