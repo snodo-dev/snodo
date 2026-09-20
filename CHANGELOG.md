@@ -13,6 +13,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Configured-model canaries now recover from provider-rejected temperature and
   forced tool-choice parameters the same way as the real validator call, while
   still reporting credential failures. (Fixes #383)
+- Managed tunnel interruption now stops both process groups quietly with a zero
+  exit, while cloudflared failures report the stderr already captured by the
+  drain thread. (Fixes #385)
 - Protocol-adherence validation now retries a completion without a provider-
   rejected temperature parameter, allowing affected models to return a verdict
   instead of turning the validator outage into an operational error. (Fixes #384)
