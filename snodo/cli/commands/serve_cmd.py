@@ -68,14 +68,32 @@ def register(app: typer.Typer) -> None:
             help="With --delete: deprovision a tunnel by hostname, even if this "
                  "project's local config does not record it (e.g. provisioned out of band)",
         ),
+        mcp_install: bool = typer.Option(
+            False, "--mcp-install", help="Install MCP servers into Claude Desktop config",
+        ),
+        mcp_uninstall: bool = typer.Option(
+            False, "--mcp-uninstall", help="Remove this project's MCP entries",
+        ),
+        mcp_uninstall_all: bool = typer.Option(
+            False, "--mcp-uninstall-all", help="Remove ALL snodo MCP entries",
+        ),
+        purge: bool = typer.Option(
+            False, "--purge", help="Also delete .snodo/ directory and sessions",
+        ),
+        orphans: bool = typer.Option(
+            False, "--orphans", help="Detect and remove orphan MCP entries",
+        ),
+        yes: bool = typer.Option(
+            False, "--yes", "-y", help="Skip confirmation prompts",
+        ),
         install: bool = typer.Option(
-            False, "--install", help="Install MCP servers into Claude Desktop config",
+            False, "--install", help="Deprecated alias for --mcp-install",
         ),
         uninstall: bool = typer.Option(
-            False, "--uninstall", help="Remove this project's MCP entries",
+            False, "--uninstall", help="Deprecated alias for --mcp-uninstall",
         ),
         uninstall_all: bool = typer.Option(
-            False, "--uninstall-all", help="Remove ALL snodo MCP entries",
+            False, "--uninstall-all", help="Deprecated alias for --mcp-uninstall-all",
         ),
         project_name: Optional[str] = typer.Option(
             None, "--project-name", help="Override project name for MCP entry naming",
@@ -85,8 +103,10 @@ def register(app: typer.Typer) -> None:
         args = SimpleNamespace(
             protocol=protocol, mode=mode, transport=transport, port=port,
             tunnel=tunnel, rotate=rotate, delete=delete, hostname=hostname,
-            install=install, uninstall=uninstall, uninstall_all=uninstall_all,
-            project_name=project_name,
+            mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
+            mcp_uninstall_all=mcp_uninstall_all, purge=purge, orphans=orphans,
+            yes=yes, install=install, uninstall=uninstall,
+            uninstall_all=uninstall_all, project_name=project_name,
         )
         return serve_command(args)
 
@@ -113,30 +133,57 @@ def _derive_project_root(protocol_path: str) -> str:
 
 def serve_command(args) -> int:
     """Start MCP server from protocol definition."""
+    if (
+        getattr(args, "mcp_install", False)
+        or getattr(args, "mcp_uninstall", False)
+        or getattr(args, "mcp_uninstall_all", False)
+    ):
+        return _handle_mcp_command(args)
+
     protocol_path = Path(args.protocol)
     protocol = load_protocol(protocol_path)
     if not protocol:
         return 1
 
-    if getattr(args, "tunnel", False):
-        return _run_tunnel(args, protocol, protocol_path)
-
-    if args.install:
-        print("Note: 'serve --install' is deprecated. Use 'snodo install' instead.",
-              file=sys.stderr)
+    if getattr(args, "install", False):
+        print("Note: 'snodo serve --install' is deprecated. "
+              "Use 'snodo serve --mcp-install' instead.", file=sys.stderr)
         return _handle_install(args, protocol, protocol_path)
 
     if getattr(args, "uninstall_all", False):
-        print("Note: 'serve --uninstall-all' is deprecated. Use 'snodo uninstall --all' instead.",
-              file=sys.stderr)
+        print("Note: 'snodo serve --uninstall-all' is deprecated. "
+              "Use 'snodo serve --mcp-uninstall-all' instead.", file=sys.stderr)
         return _handle_uninstall_all()
 
-    if args.uninstall:
-        print("Note: 'serve --uninstall' is deprecated. Use 'snodo uninstall' instead.",
-              file=sys.stderr)
+    if getattr(args, "uninstall", False):
+        print("Note: 'snodo serve --uninstall' is deprecated. "
+              "Use 'snodo serve --mcp-uninstall' instead.", file=sys.stderr)
         return _handle_uninstall(args, protocol, protocol_path)
 
+    if getattr(args, "tunnel", False):
+        return _run_tunnel(args, protocol, protocol_path)
+
     return _run_server(args, protocol)
+
+
+def _handle_mcp_command(args) -> int:
+    """Run MCP client configuration operations from the serve command."""
+    from snodo.cli.commands.install_cmd import install_command, uninstall_command
+
+    if getattr(args, "mcp_install", False):
+        return install_command(SimpleNamespace(
+            protocol=args.protocol,
+            project_name=getattr(args, "project_name", None),
+        ))
+
+    return uninstall_command(SimpleNamespace(
+        protocol=args.protocol,
+        mode=getattr(args, "mode", None),
+        all_entries=getattr(args, "mcp_uninstall_all", False),
+        purge=getattr(args, "purge", False),
+        orphans=getattr(args, "orphans", False),
+        yes=getattr(args, "yes", False),
+    ))
 
 
 def _run_server(args, protocol) -> int:
