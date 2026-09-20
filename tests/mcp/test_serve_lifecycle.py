@@ -561,7 +561,7 @@ def test_cloudflared_exit_terminates_the_mcp_child_and_fails(tmp_path):
     cf.pid = 999
     cf.poll.return_value = None
     cf.stderr.readline.return_value = "Registered tunnel connection\n"
-    cf.stderr.read.return_value = ""
+    cf.stderr.read.side_effect = ValueError("I/O operation on closed file")
     cf.wait.return_value = 0  # cloudflared exits on its own, immediately
     cf.returncode = 1
 
@@ -574,6 +574,12 @@ def test_cloudflared_exit_terminates_the_mcp_child_and_fails(tmp_path):
 
     terminated = []
 
+    def fake_drain(_stream, sink=None, on_line=None):
+        if sink is not None and on_line is not None:
+            sink.append("cloudflared failed: connection refused\n")
+            on_line("Registered tunnel connection\n")
+        return None
+
     err = io.StringIO()
     with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
         with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
@@ -585,19 +591,94 @@ def test_cloudflared_exit_terminates_the_mcp_child_and_fails(tmp_path):
                                    return_value=None):
                             with patch("snodo.cli.commands.serve_cmd.subprocess.Popen",
                                        side_effect=fake_popen):
-                                with patch("snodo.cli.commands.serve_cmd.signal.signal"):
-                                    with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
-                                        with patch(
-                                            "snodo.cli.commands.serve_cmd._terminate_process_group",
-                                            side_effect=lambda proc, timeout=5.0: terminated.append(proc),
-                                        ):
-                                            with redirect_stderr(err):
-                                                result = serve_cmd._run_tunnel(
-                                                    args, mock_protocol, ".snodo/protocol.yml")
+                                 with patch("snodo.cli.commands.serve_cmd.signal.signal"):
+                                     with patch("snodo.cli.commands.serve_cmd.time.sleep", lambda _: None):
+                                          with patch(
+                                              "snodo.cli.commands.serve_cmd._drain_stream",
+                                              side_effect=fake_drain,
+                                          ):
+                                              with patch(
+                                                  "snodo.cli.commands.serve_cmd._terminate_process_group",
+                                                  side_effect=lambda proc, timeout=5.0: terminated.append(proc),
+                                              ):
+                                                  with redirect_stderr(err):
+                                                      result = serve_cmd._run_tunnel(
+                                                          args, mock_protocol, ".snodo/protocol.yml")
 
     assert result != 0
     assert mcp in terminated, "the MCP child's process group must be terminated"
     assert "cloudflared" in err.getvalue().lower()
     assert "exited" in err.getvalue().lower()
+    assert "connection refused" in err.getvalue()
 
 
+def test_interrupting_a_running_tunnel_is_a_clean_shutdown(tmp_path):
+    """A signal-driven stop returns zero without reporting a crash."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    mock_protocol = MagicMock()
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=None,
+        transport="streamable-http", port=None, rotate=False, delete=False,
+    )
+    provisioned = {"hostname": "proj-all-abc123.tunnel.snodo.dev", "tunnel_token": "tok"}
+
+    cf = MagicMock()
+    cf.pid = 999
+    cf.poll.return_value = None
+    cf.stderr.readline.return_value = "Registered tunnel connection\n"
+    cf.returncode = 0
+
+    mcp = MagicMock()
+    mcp.pid = 12345
+    mcp.poll.return_value = None
+
+    def fake_popen(cmd, **kwargs):
+        return cf if cmd[0] == "cloudflared" else mcp
+
+    handlers = {}
+    wait_calls = 0
+
+    def fake_signal(signum, handler):
+        handlers[signum] = handler
+
+    def wait_until_interrupted(timeout):
+        nonlocal wait_calls
+        wait_calls += 1
+        if wait_calls == 1:
+            handlers[signal.SIGINT](signal.SIGINT, None)
+            raise subprocess.TimeoutExpired("cloudflared", timeout)
+        return 0
+
+    cf.wait.side_effect = wait_until_interrupted
+    terminated = []
+    out = io.StringIO()
+    err = io.StringIO()
+    with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+        with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+            with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
+                with patch("snodo.cli.commands.serve_cmd._provision_tunnel",
+                           return_value=provisioned):
+                    with patch("snodo.cli.commands.serve_cmd._save_tunnel_config"):
+                        with patch("snodo.cli.commands.serve_cmd._port_holder_pid",
+                                   return_value=None):
+                            with patch("snodo.cli.commands.serve_cmd.subprocess.Popen",
+                                       side_effect=fake_popen):
+                                with patch("snodo.cli.commands.serve_cmd.signal.signal",
+                                           side_effect=fake_signal):
+                                    with patch("snodo.cli.commands.serve_cmd.time.sleep",
+                                               lambda _: None):
+                                        with patch(
+                                            "snodo.cli.commands.serve_cmd._terminate_process_group",
+                                            side_effect=lambda proc, timeout=5.0: terminated.append(proc),
+                                        ):
+                                            with redirect_stdout(out), redirect_stderr(err):
+                                                result = serve_cmd._run_tunnel(
+                                                    args, mock_protocol, ".snodo/protocol.yml")
+
+    assert result == 0
+    assert cf in terminated and mcp in terminated
+    assert "Stopping..." in out.getvalue()
+    assert "unexpectedly" not in err.getvalue()
+    assert "Traceback" not in out.getvalue() + err.getvalue()

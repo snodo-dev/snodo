@@ -919,6 +919,17 @@ def _drain_stream(
     return t
 
 
+def _captured_stderr(process: Any, tail: collections.deque[str]) -> str:
+    """Return drained stderr, with a guarded read only as a test fallback."""
+    stderr_output = "".join(tail)
+    if not stderr_output and process.stderr:
+        try:
+            stderr_output = process.stderr.read()
+        except (ValueError, OSError):
+            stderr_output = ""
+    return stderr_output
+
+
 def _run_tunnel(args, protocol, protocol_path) -> int:
     """Start an MCP server behind a managed Cloudflare tunnel.
 
@@ -1080,12 +1091,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # bind failure handed the operator a public address routing to nothing
     # (Fixes #309).
     if not _wait_for_server_bind(mcp_process):
-        stderr_output = "".join(mcp_stderr_tail)
-        if not stderr_output and mcp_process.stderr:
-            try:
-                stderr_output = mcp_process.stderr.read()
-            except (ValueError, OSError):
-                stderr_output = ""
+        stderr_output = _captured_stderr(mcp_process, mcp_stderr_tail)
         print(f"Error: MCP server exited with code {mcp_process.returncode}.",
               file=sys.stderr)
         if stderr_output:
@@ -1151,7 +1157,11 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     print("Press Ctrl+C to stop.")
 
     # 8. Wait for Ctrl+C
+    stop_requested = False
+
     def _cleanup(*_):
+        nonlocal stop_requested
+        stop_requested = True
         print("\nStopping...")
         # Stop the whole process group of each child, so nothing either one
         # started outlives the server holding the port (Fixes #290).
@@ -1187,13 +1197,16 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         _cleanup()
         return 0
 
+    if stop_requested:
+        return 0
+
     # cloudflared exited on its own while the MCP child was still healthy. That
     # child was started with start_new_session so nothing else can reap it —
     # left alone here it outlives the tunnel, still holding the port, and the
     # next `snodo serve --tunnel` dies on a raw EADDRINUSE (Fixes #290, #334).
     print(f"Error: cloudflared exited unexpectedly (code {cf_process.returncode}).",
           file=sys.stderr)
-    stderr_output = cf_process.stderr.read() if cf_process.stderr else ""
+    stderr_output = _captured_stderr(cf_process, cf_stderr_tail)
     if stderr_output:
         print(stderr_output, file=sys.stderr)
     _cleanup()
