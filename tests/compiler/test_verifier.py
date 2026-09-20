@@ -30,6 +30,7 @@ from snodo.compiler.verifier import (
     MalformedModuleDeclarationError,
     verify_protocol,
 )
+from snodo.core.interfaces import Task
 
 # ========== HELPER FUNCTIONS ==========
 
@@ -924,6 +925,34 @@ def test_modules_no_modules_passes():
     protocol = _base_protocol()
     result = verify_protocol(protocol)
     assert result.passed
+
+
+def test_task_declared_module_resolves():
+    protocol = _base_protocol(modules=[Module(module_id="api", paths=["services/api"])])
+    task = Task(id="t1", spec="change the API", module_id="api")
+
+    assert protocol.resolve_module(task.module_id) is protocol.modules[0]
+
+
+def test_task_unknown_module_is_refused_with_available_names():
+    protocol = _base_protocol(
+        modules=[
+            Module(module_id="api", paths=["services/api"]),
+            Module(module_id="web", paths=["services/web"]),
+        ]
+    )
+    task = Task(id="t1", spec="change the API", module_id="missing")
+
+    with pytest.raises(ValueError, match="Unknown module 'missing'") as error:
+        protocol.resolve_module(task.module_id)
+    assert "api, web" in str(error.value)
+
+
+def test_task_without_module_remains_unscoped():
+    protocol = _base_protocol()
+    task = Task(id="t1", spec="change the repository")
+
+    assert protocol.resolve_module(task.module_id) is None
 
 
 def test_modules_empty_modules_list_passes():

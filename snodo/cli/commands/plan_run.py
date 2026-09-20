@@ -619,7 +619,13 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
 
     planner.update_status(args.plan, task_id, "in_progress")
 
-    task = Task(id=task_id, spec=spec)
+    status_entry = planner.get_status(args.plan).get("tasks", {}).get(task_id, {})
+    module_id = status_entry.get("module_id") if isinstance(status_entry, dict) else None
+    task = Task(
+        id=task_id,
+        spec=spec,
+        module_id=module_id,
+    )
     print(f"  [{task_id}] executing...")
     start_mono = time.monotonic()
     start_wall = time.time()

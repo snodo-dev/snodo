@@ -45,8 +45,10 @@ class ValidatorRunner:
         self.last_cap_originals: dict = {}
 
     def resolve_validators(
-        self, mode_id: str, phase: str = "pre_execute"
+        self, mode_id: str, phase: str = "pre_execute", task: Optional[Task] = None
     ) -> tuple:
+        if task is not None:
+            self.protocol.resolve_module(task.module_id)
         return _resolve(self.protocol, mode_id, phase)
 
     def run(

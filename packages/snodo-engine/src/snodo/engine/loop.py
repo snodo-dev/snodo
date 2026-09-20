@@ -877,6 +877,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         fix_task = Task(
             id=f"{root_id}_fix_{fix_number}",
             spec=spec,
+            module_id=loop_state.task.module_id,
             parent_task_ref=loop_state.task.id,
             root_task_ref=root_id,
             root_spec=root_spec,

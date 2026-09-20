@@ -50,7 +50,7 @@ class ValidationNodeMixin:
         outcome = "unknown"
 
         current_mode, validators = self._validator_runner.resolve_validators(
-            loop_state.current_mode, "pre_execute"
+            loop_state.current_mode, "pre_execute", task=loop_state.task
         )
         if not current_mode:
             loop_state.is_blocked = True
@@ -706,7 +706,7 @@ class ValidationNodeMixin:
         self._constraint_engine.evaluate(loop_state, "post_validate", self._audit)
 
         current_mode, post_validators = self._validator_runner.resolve_validators(
-            loop_state.current_mode, "post_execute"
+            loop_state.current_mode, "post_execute", task=loop_state.task
         )
         protected_result = self._protected_path_result(loop_state)
         if not current_mode or not post_validators:

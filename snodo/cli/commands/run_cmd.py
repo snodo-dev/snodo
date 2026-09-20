@@ -71,6 +71,7 @@ def _build_execution_options() -> dict:
         "coder": typer.Option(None, "--coder",
                               help="Coder backend name (e.g., litellm, opencode-cli, mock)"),
         "mode": typer.Option(None, "--mode", help="Execution mode override"),
+        "module": typer.Option(None, "--module", help="Module declared by the task"),
         "verbose": typer.Option(False, "--verbose", help="Show detailed output"),
         "mock": typer.Option(False, "--mock", help="Use mock coder instead of real LLM"),
         "wave": typer.Option(None, "--wave", "-w",
@@ -99,6 +100,7 @@ class RunArgs:
     model: Optional[str] = None
     coder: Optional[str] = None
     mode: Optional[str] = None
+    module: Optional[str] = None
     verbose: bool = False
     mock: bool = False
     plan: Optional[str] = None
@@ -135,6 +137,7 @@ def register(app: typer.Typer) -> None:
         model: Optional[str] = _execution_option("model"),
         coder: Optional[str] = _execution_option("coder"),
         mode: Optional[str] = _execution_option("mode"),
+        module: Optional[str] = _execution_option("module"),
         verbose: bool = _execution_option("verbose"),
         mock: bool = _execution_option("mock"),
         plan: Optional[str] = typer.Option(
@@ -173,7 +176,7 @@ def register(app: typer.Typer) -> None:
         """Execute a task through the protocol."""
         args = RunArgs(
             description=description, protocol=protocol, model=model, coder=coder, mode=mode,
-            verbose=verbose, mock=mock, plan=plan, wave=wave,
+            verbose=verbose, mock=mock, plan=plan, wave=wave, module=module,
             interactive=interactive, from_pr=from_pr, background=background,
             sandbox=sandbox, resume=resume, retry=retry,
             append_spec=append_spec, replace_spec=replace_spec,
@@ -393,10 +396,7 @@ def run_command(args) -> int:
 
     from snodo.paths import derive_task_id
 
-    task = Task(
-        id=derive_task_id(description),
-        spec=description
-    )
+    task = Task(id=derive_task_id(description), spec=description, module_id=getattr(args, "module", None))
 
     with provider_env(model) as mgr:
         return _execute_task(args, protocol, task, model)
@@ -767,7 +767,7 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
     mgr = ConfigManager()
     model = args.model or mgr.get_coder_model()
 
-    task = Task(id=task_id, spec=augmented, root_spec=authoritative_spec)
+    task = Task(id=task_id, spec=augmented, root_spec=authoritative_spec, module_id=getattr(args, "module", None))
     print(f"Retrying task {task_id} (attempt {attempt + 1}/{max_retries})")
     if replacement:
         print(f"  Spec REPLACED. Previous spec kept: {followup.task_inspect(task_id)}")
@@ -845,7 +845,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             stored = mgr._load_task(job_dir)
             stored_task_id = stored.get("task_id") or stored.get("retry_task_id")
             if stored_task_id and stored_task_id != task.id:
-                task = Task(id=stored_task_id, spec=task.spec)
+                task = Task(id=stored_task_id, spec=task.spec, module_id=task.module_id)
 
             # Persist task_id into task.json for same-task retry lookup
             task_json_path = job_dir / "task.json"

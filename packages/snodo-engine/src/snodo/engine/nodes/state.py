@@ -19,6 +19,7 @@ class SerdeMixin:
         task = Task(
             id=task_dict.get("id", ""),
             spec=task_dict.get("spec", ""),
+            module_id=task_dict.get("module_id"),
             parent_task_ref=task_dict.get("parent_task_ref"),
             root_task_ref=task_dict.get("root_task_ref"),
             root_spec=task_dict.get("root_spec"),
@@ -78,6 +79,7 @@ class SerdeMixin:
                 Task(
                     id=s.get("id", ""),
                     spec=s.get("spec", ""),
+                    module_id=s.get("module_id"),
                     parent_task_ref=s.get("parent_task_ref"),
                     root_task_ref=s.get("root_task_ref"),
                     root_spec=s.get("root_spec"),
@@ -105,6 +107,7 @@ class SerdeMixin:
             "task": {
                 "id": state.task.id,
                 "spec": state.task.spec,
+                "module_id": state.task.module_id,
                 "parent_task_ref": state.task.parent_task_ref,
                 "root_task_ref": state.task.root_task_ref,
                 "root_spec": state.task.root_spec,
@@ -138,6 +141,7 @@ class SerdeMixin:
                 {
                     "id": s.id,
                     "spec": s.spec,
+                    "module_id": s.module_id,
                     "parent_task_ref": s.parent_task_ref,
                     "root_task_ref": s.root_task_ref,
                     "root_spec": s.root_spec,
