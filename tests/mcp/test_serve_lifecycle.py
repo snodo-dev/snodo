@@ -682,3 +682,125 @@ def test_interrupting_a_running_tunnel_is_a_clean_shutdown(tmp_path):
     assert "Stopping..." in out.getvalue()
     assert "unexpectedly" not in err.getvalue()
     assert "Traceback" not in out.getvalue() + err.getvalue()
+
+
+# === A tunnel must reach the server that owns it (Fixes #389) ===
+
+
+def test_run_server_refuses_when_binding_port_differs_from_recorded_tunnel_port(capsys):
+    """Startup refuses, naming both ports, when the recorded tunnel port differs from the bound port."""
+    mock_protocol = MagicMock()
+    mock_protocol.protocol_id = "test"
+    mock_protocol.modes = []
+    mock_protocol.get_mode.return_value = None
+
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=None, transport="streamable-http", port=9000,
+    )
+    tunnel_stored = {
+        "hostname": "proj-tunnel.tunnel.snodo.dev",
+        "tunnel_token": "tok_123",
+        "port": 8000,
+    }
+
+    with patch("snodo.mcp.server.ProtocolMCPServer"):
+        with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+            mock_mcp = MagicMock()
+            mock_build.return_value = mock_mcp
+            with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=tunnel_stored):
+                with patch("snodo.cli.commands.serve_cmd._port_holder_pid", return_value=None):
+                    result = serve_cmd._run_server(args, mock_protocol)
+
+    assert result == 1
+    assert mock_mcp.run.call_count == 0
+    err = capsys.readouterr().err
+    assert "9000" in err
+    assert "8000" in err
+    assert "Error:" in err
+
+
+def test_run_server_proceeds_when_binding_port_agrees_with_recorded_tunnel_port():
+    """Startup proceeds when the port being bound agrees with the recorded tunnel port."""
+    mock_protocol = MagicMock()
+    mock_protocol.protocol_id = "test"
+    mock_protocol.modes = []
+    mock_protocol.get_mode.return_value = None
+
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=None, transport="streamable-http", port=8000,
+    )
+    tunnel_stored = {
+        "hostname": "proj-tunnel.tunnel.snodo.dev",
+        "tunnel_token": "tok_123",
+        "port": 8000,
+    }
+
+    with patch("snodo.mcp.server.ProtocolMCPServer"):
+        with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+            mock_mcp = MagicMock()
+            mock_build.return_value = mock_mcp
+            with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=tunnel_stored):
+                with patch("snodo.cli.commands.serve_cmd._port_holder_pid", return_value=None):
+                    result = serve_cmd._run_server(args, mock_protocol)
+
+    assert result == 0
+    assert mock_mcp.run.call_count == 1
+    assert mock_mcp.settings.port == 8000
+
+
+def test_run_server_no_port_given_with_tunnel_targets_recorded_tunnel_port(capsys):
+    """When no --port is given, the server targets the recorded tunnel port instead of drifting."""
+    mock_protocol = MagicMock()
+    mock_protocol.protocol_id = "test"
+    mock_protocol.modes = []
+    mock_protocol.get_mode.return_value = None
+
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=None, transport="streamable-http", port=None,
+    )
+    tunnel_stored = {
+        "hostname": "proj-tunnel.tunnel.snodo.dev",
+        "tunnel_token": "tok_123",
+        "port": 8000,
+    }
+
+    with patch("snodo.mcp.server.ProtocolMCPServer"):
+        with patch("snodo.mcp.transport.build_fastmcp_server") as mock_build:
+            mock_mcp = MagicMock()
+            mock_build.return_value = mock_mcp
+            with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=tunnel_stored):
+                with patch("snodo.cli.commands.serve_cmd._port_holder_pid", return_value=None):
+                    result = serve_cmd._run_server(args, mock_protocol)
+
+    assert result == 0
+    assert mock_mcp.run.call_count == 1
+    assert mock_mcp.settings.port == 8000
+    assert "Using recorded tunnel port 8000" in capsys.readouterr().err
+
+
+def test_run_tunnel_refuses_when_explicit_port_differs_from_recorded_tunnel_port(capsys):
+    """_run_tunnel refuses before spawning child processes if --port differs from tunnel port."""
+    mock_protocol = MagicMock()
+    args = SimpleNamespace(
+        protocol=".snodo/protocol.yml", mode=None,
+        transport="streamable-http", port=9000, rotate=False, delete=False,
+    )
+    tunnel_stored = {
+        "hostname": "proj-tunnel.tunnel.snodo.dev",
+        "tunnel_token": "tok_123",
+        "port": 8000,
+    }
+
+    with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+        with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+            with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=tunnel_stored):
+                with patch("snodo.cli.commands.serve_cmd._port_holder_pid", return_value=None):
+                    with patch("snodo.cli.commands.serve_cmd.subprocess.Popen") as mock_popen:
+                        result = serve_cmd._run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
+
+    assert result == 1
+    assert mock_popen.call_count == 0
+    err = capsys.readouterr().err
+    assert "9000" in err
+    assert "8000" in err
+
