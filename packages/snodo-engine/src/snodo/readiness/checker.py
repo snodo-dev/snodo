@@ -31,6 +31,7 @@ from snodo.readiness.models import (
     ReadinessFinding,
     ReadinessKind,
 )
+from snodo.survey.analyzer import _detect_decision_paths
 
 _logger = logging.getLogger(__name__)
 
@@ -328,14 +329,18 @@ def assess_readiness(
     for val in architecture_validators:
         total_repo_checks += 1
         modes = validator_modes.get(val.validator_id, all_mode_ids)
-        decisions_dir = project_root / "docs" / "decisions"
-        has_committed_decisions = _has_committed_markdown_files(repo, "docs/decisions", git_problems)
+        decision_paths = _detect_decision_paths(project_root)
+        committed_decision_path = next(
+            (
+                path for path in decision_paths
+                if _has_committed_markdown_files(repo, path, git_problems)
+            ),
+            None,
+        )
 
-        if not has_committed_decisions:
-            disk_md_files = (
-                list(decisions_dir.glob("*.md")) if decisions_dir.is_dir() else []
-            )
-            if disk_md_files:
+        if committed_decision_path is None:
+            if decision_paths:
+                decision_path = decision_paths[0]
                 repository_findings.append(
                     ReadinessFinding(
                         id=f"architecture_decisions_uncommitted:{val.validator_id}",
@@ -344,10 +349,10 @@ def assess_readiness(
                         modes=modes,
                         description=(
                             f"Validator '{val.validator_id}' ({val.validator_type}) requires recorded decisions. "
-                            f"Decision record(s) exist in 'docs/decisions/' on disk but are uncommitted in git HEAD; "
+                            f"Decision record(s) exist in '{decision_path}/' on disk but are uncommitted in git HEAD; "
                             "task worktrees will not see them."
                         ),
-                        remediation="git add docs/decisions/*.md && git commit -m 'docs: commit decision records'",
+                        remediation=f"git add {decision_path}/*.md && git commit -m 'docs: commit decision records'",
                         fix_cost=1,
                     )
                 )
@@ -360,9 +365,9 @@ def assess_readiness(
                         modes=modes,
                         description=(
                             f"Validator '{val.validator_id}' ({val.validator_type}) requires recorded decisions, "
-                            "but no decision records exist in 'docs/decisions/'."
+                            "but no decision records exist in the conventional decision-record locations."
                         ),
-                        remediation="Create 'docs/decisions/' and commit initial decision records (e.g. docs/decisions/001-init.md)",
+                        remediation="Create a conventional decision-record directory and commit initial decision records (e.g. docs/decisions/001-init.md)",
                         fix_cost=2,
                     )
                 )
