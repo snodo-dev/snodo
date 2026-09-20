@@ -33,6 +33,8 @@ def register(app: typer.Typer) -> None:
         ),
     ):
         """Install MCP servers into Claude Desktop config."""
+        print("Note: 'snodo install' is deprecated. Use 'snodo serve --mcp-install' instead.",
+              file=sys.stderr)
         return install_command(SimpleNamespace(protocol=protocol))
 
     @app.command(name="uninstall")
@@ -54,6 +56,12 @@ def register(app: typer.Typer) -> None:
         ),
     ):
         """Remove MCP servers from Claude Desktop config."""
+        replacement = (
+            "snodo serve --mcp-uninstall-all"
+            if all_entries else "snodo serve --mcp-uninstall"
+        )
+        print(f"Note: 'snodo uninstall' is deprecated. Use '{replacement}' instead.",
+              file=sys.stderr)
         return uninstall_command(SimpleNamespace(
             mode=mode, all_entries=all_entries, purge=purge, orphans=orphans, yes=yes,
         ))
@@ -79,7 +87,9 @@ def install_command(args) -> int:
         print(f"Error: Failed to load protocol: {e}", file=sys.stderr)
         return 1
 
-    project_name = derive_project_name(str(protocol_file.resolve()))
+    project_name = getattr(args, "project_name", None) or derive_project_name(
+        str(protocol_file.resolve())
+    )
     config_path = get_claude_config_path()
 
     try:

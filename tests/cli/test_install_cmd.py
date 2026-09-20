@@ -308,3 +308,75 @@ def test_cli_register_commands(temp_project, monkeypatch):
 
     res = runner.invoke(app, ["install", "--protocol", ".snodo/protocol.yml"])
     assert res.exit_code == 0
+    assert "serve --mcp-install" in res.stderr
+
+
+def test_serve_mcp_install_matches_deprecated_install_bytes(temp_project, monkeypatch):
+    """The supported serve spelling writes exactly what install wrote."""
+    from snodo.cli.commands.serve_cmd import register as register_serve
+
+    app = typer.Typer()
+    register_serve(app)
+    register(app)
+    runner = CliRunner()
+    config_path = temp_project / "claude.json"
+    monkeypatch.setattr("snodo.infrastructure.paths.require_project_root", lambda: str(temp_project))
+    monkeypatch.setattr("snodo.cli.commands.install_cmd.get_claude_config_path", lambda: config_path)
+    monkeypatch.setattr("snodo.cli.commands.install_cmd._audit_global", MagicMock())
+
+    supported = runner.invoke(app, [
+        "serve", "--mcp-install", "--protocol", ".snodo/protocol.yml",
+    ])
+    assert supported.exit_code == 0
+    supported_bytes = config_path.read_bytes()
+    config_path.unlink()
+
+    deprecated = runner.invoke(app, ["install", "--protocol", ".snodo/protocol.yml"])
+    assert deprecated.exit_code == 0
+    assert config_path.read_bytes() == supported_bytes
+    assert "serve --mcp-install" in deprecated.output
+
+
+def test_serve_mcp_uninstall_matches_deprecated_uninstall_bytes(temp_project, monkeypatch):
+    """The supported uninstall spelling preserves the old config rewrite."""
+    from snodo.cli.commands.serve_cmd import register as register_serve
+
+    app = typer.Typer()
+    register_serve(app)
+    register(app)
+    runner = CliRunner()
+    config_path = temp_project / "claude.json"
+    monkeypatch.setattr("snodo.infrastructure.paths.require_project_root", lambda: str(temp_project))
+    monkeypatch.setattr("snodo.cli.commands.install_cmd.get_claude_config_path", lambda: config_path)
+    monkeypatch.setattr("snodo.cli.commands.install_cmd._audit_global", MagicMock())
+
+    assert runner.invoke(app, ["install", "--protocol", ".snodo/protocol.yml"]).exit_code == 0
+    initial_bytes = config_path.read_bytes()
+    supported = runner.invoke(app, [
+        "serve", "--mcp-uninstall", "--mode", "dev",
+        "--protocol", ".snodo/protocol.yml",
+    ])
+    assert supported.exit_code == 0
+    supported_bytes = config_path.read_bytes()
+    config_path.write_bytes(initial_bytes)
+
+    deprecated = runner.invoke(app, ["uninstall", "--mode", "dev"])
+    assert deprecated.exit_code == 0
+    assert config_path.read_bytes() == supported_bytes
+    assert "serve --mcp-uninstall" in deprecated.output
+
+
+def test_deprecated_uninstall_names_serve_replacement(temp_project, monkeypatch):
+    """The top-level uninstall spelling remains usable and points to serve."""
+    app = typer.Typer()
+    register(app)
+    runner = CliRunner()
+    monkeypatch.setattr("snodo.cli.commands.install_cmd.get_claude_config_path",
+                        lambda: temp_project / "claude.json")
+    monkeypatch.setattr("snodo.cli.commands.install_cmd.uninstall_all", lambda config_path: [])
+    monkeypatch.setattr("snodo.cli.commands.install_cmd._audit_global", MagicMock())
+
+    result = runner.invoke(app, ["uninstall", "--all"])
+
+    assert result.exit_code == 0
+    assert "serve --mcp-uninstall-all" in result.output

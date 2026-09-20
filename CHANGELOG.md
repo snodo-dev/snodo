@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- MCP client registration now lives under `snodo serve --mcp-install` and its
+  uninstall flags; the top-level install spellings remain working with a
+  deprecation note. (Fixes #386)
 - Configured-model canaries now recover from provider-rejected temperature and
   forced tool-choice parameters the same way as the real validator call, while
   still reporting credential failures. (Fixes #383)
