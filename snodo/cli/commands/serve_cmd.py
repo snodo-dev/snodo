@@ -254,10 +254,25 @@ def _run_server(args, protocol) -> int:
     # (lsof/psutil); it never binds, so it cannot itself become the stale
     # holder it reports.
     explicit_port = getattr(args, "port", None)
+    raw_tunnel_port = tunnel_config.get("port")
+    try:
+        tunnel_port = int(raw_tunnel_port) if raw_tunnel_port is not None else None
+    except (ValueError, TypeError):
+        tunnel_port = None
+
     if transport != "stdio":
-        port = _choose_serve_port(explicit_port)
+        requested_port = explicit_port if explicit_port is not None else tunnel_port
+        port = _choose_serve_port(requested_port)
         if port is None:
             return 1
+        if tunnel_port is not None and port != tunnel_port:
+            print(
+                f"Error: {_tunnel_port_mismatch_explanation(port, tunnel_port, tunnel_hostname)}",
+                file=sys.stderr,
+            )
+            return 1
+        if explicit_port is None and tunnel_port is not None:
+            print(f"Using recorded tunnel port {port}", file=sys.stderr)
         mcp.settings.port = port
     else:
         port = explicit_port
@@ -791,6 +806,28 @@ def _port_in_use_explanation(port: int, host: str = "127.0.0.1") -> str:
     )
 
 
+def _tunnel_port_mismatch_explanation(
+    binding_port: int,
+    expected_port: int,
+    tunnel_hostname: Optional[str] = None,
+) -> str:
+    """A sentence, not a stack trace, for a server port mismatch with its tunnel.
+
+    A managed tunnel delivers to the port it was provisioned against. Binding a
+    different port leaves the tunnel routing to whatever else holds the old one
+    — on a machine with several projects, typically another project's MCP server
+    (Fixes #389).
+    """
+    target = f"configured tunnel ({tunnel_hostname})" if tunnel_hostname else "configured tunnel"
+    return (
+        f"Server cannot bind port {binding_port}: {target} expects port {expected_port}. "
+        f"Starting on port {binding_port} would leave the tunnel delivering to the old port "
+        f"{expected_port} (often another project's server). "
+        f"Start with --port {expected_port} to match the tunnel, or deprovision it first "
+        f"with 'snodo serve --tunnel --delete'."
+    )
+
+
 def _find_free_port(start: int = DEFAULT_PORT, attempts: int = _PORT_SCAN_ATTEMPTS) -> Optional[int]:
     """Return the first free port at or after *start*, or None if none is free.
 
@@ -1033,17 +1070,30 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # historical default its ingress was built with. Only a fresh tunnel with
     # no --port has a port chosen for it, and that choice is reported.
     has_existing_tunnel = bool(tunnel_config.get("tunnel_token"))
+    raw_tunnel_port = tunnel_config.get("port")
+    try:
+        tunnel_port = int(raw_tunnel_port) if raw_tunnel_port is not None else None
+    except (ValueError, TypeError):
+        tunnel_port = None
+
     explicit_port = getattr(args, "port", None)
     if explicit_port is not None:
         requested_port = explicit_port
-    elif tunnel_config.get("port") is not None:
-        requested_port = tunnel_config["port"]
+    elif tunnel_port is not None:
+        requested_port = tunnel_port
     elif has_existing_tunnel:
         requested_port = DEFAULT_PORT
     else:
         requested_port = None
     port = _choose_serve_port(requested_port)
     if port is None:
+        return 1
+    if tunnel_port is not None and port != tunnel_port:
+        tunnel_hostname = tunnel_config.get("hostname")
+        print(
+            f"Error: {_tunnel_port_mismatch_explanation(port, tunnel_port, tunnel_hostname)}",
+            file=sys.stderr,
+        )
         return 1
     if requested_port is not None:
         # _choose_serve_port already announced a freely-found port; an explicit

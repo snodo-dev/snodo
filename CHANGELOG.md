@@ -19,6 +19,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   status says it is superseded, or that another record declares it supersedes;
   every other status stays metadata and an unreadable status is never treated
   as a superseded one. (Fixes #391)
+- Server startup now refuses into a port mismatch when a project has a
+  configured tunnel expecting a different port, preventing the tunnel from
+  delivering traffic to another project's server. (Fixes #389)
 - MCP client registration now lives under `snodo serve --mcp-install` and its
   uninstall flags; the top-level install spellings remain working with a
   deprecation note. (Fixes #386)
