@@ -486,6 +486,30 @@ class Protocol(BaseModel):
                 return mode
         return None
 
+    def get_module(self, module_id: str) -> Optional[Module]:
+        """Retrieve a declared module by identifier."""
+        for module in self.modules:
+            if module.module_id == module_id:
+                return module
+        return None
+
+    def resolve_module(self, module_id: Optional[str]) -> Optional[Module]:
+        """Resolve an optional task module, refusing unknown identifiers.
+
+        An unscoped task remains unscoped, including for protocols without any
+        module declarations. A supplied identifier must name a declaration.
+        """
+        if module_id is None:
+            return None
+        module = self.get_module(module_id)
+        if module is None:
+            available = sorted(module.module_id for module in self.modules)
+            available_names = ", ".join(available) if available else "none"
+            raise ValueError(
+                f"Unknown module '{module_id}'. Available modules: {available_names}"
+            )
+        return module
+
     def resolve_mode_setting(self, mode_id: str, field_name: str) -> Any:
         """Resolve a setting for *mode_id*, falling back to protocol execution default.
 
@@ -567,6 +591,7 @@ class PlanTask(BaseModel):
 
     id: str
     status: str = Field(default="pending")
+    module_id: Optional[str] = Field(default=None)
     parent_task_ref: Optional[str] = Field(default=None)
     depth: int = Field(default=0, ge=0)
     spec_hash: Optional[str] = Field(default=None)
@@ -716,6 +741,7 @@ class Plan(BaseModel):
             completed_by_val = None
             completed_at_val = None
             judged_val = None
+            module_id_val = None
             if isinstance(entry, str):
                 status_str = entry
                 parent_ref = None
@@ -723,6 +749,9 @@ class Plan(BaseModel):
                 hash_val = None
             elif isinstance(entry, dict):
                 status_str = str(entry.get("status", "pending"))
+                module_id_val = entry.get("module_id")
+                if module_id_val is not None:
+                    module_id_val = str(module_id_val)
                 parent_ref = entry.get("parent_task_ref")
                 if parent_ref is not None:
                     parent_ref = str(parent_ref)
@@ -751,6 +780,7 @@ class Plan(BaseModel):
             tasks_map[tid_str] = PlanTask(
                 id=tid_str,
                 status=status_str,
+                module_id=module_id_val,
                 parent_task_ref=parent_ref,
                 depth=depth_val,
                 spec_hash=hash_val,

@@ -101,6 +101,7 @@ class Task(BaseModel):
     """A unit of work."""
     id: str
     spec: str
+    module_id: Optional[str] = None
     parent_task_ref: Optional[str] = None
     # The original task at the root of a recovery chain.  Recovery subtasks
     # derive their id (``<root>_fix_N``) and their spec (original intent +
