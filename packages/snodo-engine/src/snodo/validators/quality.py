@@ -113,28 +113,45 @@ class QualityValidator(ValidatorBase):
         if context is not None and context.working_directory:
             self.working_directory = Path(context.working_directory).resolve()
 
-        test_command = self._resolve_test_command()
+        test_command = self._resolve_test_command(context)
 
         timeout = self._get_timeout()
 
         return self._run_command(test_command, timeout, context=context)
 
-    def _resolve_test_command(self) -> str:
+    def _resolve_test_command(self, context=None) -> str:
         """Resolve the test command from tooling config or auto-detection.
 
         Precedence:
-            1. ``tooling.test_command`` — unless it is a placeholder (the
-               shipped no-op default or the legacy ``REPLACE_ME``), which means
-               "no test command configured yet";
-            2. auto-detection from repository marker files;
-            3. the no-op default (``NOOP_TEST_COMMAND``) — a POSIX shell
-               command that prints a notice and exits zero, so a project can
-               always run.
+            1. the scoped module's ``tooling.test_command``;
+            2. validator ``tooling.test_command`` — unless it is a placeholder
+               (the shipped no-op default or the legacy ``REPLACE_ME``), which
+               means "no test command configured yet";
+            3. auto-detection from repository marker files;
+            4. the no-op default (``NOOP_TEST_COMMAND``) — a POSIX shell
+                command that prints a notice and exits zero, so a project can
+                always run.
 
         Returns:
             A test command string. Never None.
         """
-        # 1. Check tooling config. The no-op sentinel is not a real command:
+        # A module command is only considered when the task explicitly names
+        # that module. An empty module tooling map falls through to the
+        # protocol-level validator command.
+        task = getattr(context, "task", None) if context is not None else None
+        module_id = getattr(task, "module_id", None)
+        protocol = getattr(context, "protocol", None) if context is not None else None
+        if module_id and protocol is not None:
+            module = next(
+                (m for m in getattr(protocol, "modules", []) if m.module_id == module_id),
+                None,
+            )
+            module_tooling = getattr(module, "tooling", {}) if module is not None else {}
+            module_command = module_tooling.get("test_command") if module_tooling else None
+            if module_command and module_command not in _PLACEHOLDER_COMMANDS:
+                return module_command
+
+        # Check protocol-level validator tooling. The no-op sentinel is not a real command:
         #    it is the shipped default, and auto-detection still takes
         #    precedence over it.
         tooling = self.validator_spec.tooling
