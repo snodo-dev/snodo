@@ -18,7 +18,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from snodo.compiler.models import DisagreementPolicy, Mode, Protocol, Validator
+from snodo.compiler.models import DisagreementPolicy, Mode, Module, Protocol, Validator
 from snodo.core.interfaces import ValidatorResult
 from snodo.engine.loop import GraphBuilder, LoopStage, build_protocol_graph
 from snodo.validators.quality import (
@@ -299,6 +299,93 @@ class TestTestCommandResolution:
         )
         qv = QualityValidator(spec, project_dir)
         assert qv._resolve_test_command() == "custom-test-runner"
+
+    def test_module_tooling_overrides_protocol_tooling(self, project_dir):
+        from snodo.core.interfaces import Task
+        from snodo.validators.context import ValidatorContext
+
+        protocol = Protocol(
+            protocol_id="modules",
+            name="Modules",
+            modes=[Mode(mode_id="m1", name="M", validators=["quality"])],
+            validators=[Validator(validator_id="quality", validator_type="quality")],
+            modules=[
+                Module(
+                    module_id="worker",
+                    paths=["worker"],
+                    tooling={"test_command": "npm --prefix worker test"},
+                ),
+            ],
+            initial_mode="m1",
+        )
+        spec = Validator(
+            validator_id="quality",
+            validator_type="quality",
+            tooling={"test_command": "make test"},
+        )
+        context = ValidatorContext(
+            task=Task(id="t1", spec="test", module_id="worker"),
+            protocol=protocol,
+            working_directory=project_dir,
+        )
+
+        assert QualityValidator(spec, project_dir)._resolve_test_command(context) == "npm --prefix worker test"
+
+    def test_module_without_tooling_falls_back_to_protocol_tooling(self, project_dir):
+        from snodo.core.interfaces import Task
+        from snodo.validators.context import ValidatorContext
+
+        protocol = Protocol(
+            protocol_id="modules",
+            name="Modules",
+            modes=[Mode(mode_id="m1", name="M", validators=["quality"])],
+            validators=[Validator(validator_id="quality", validator_type="quality")],
+            modules=[Module(module_id="worker", paths=["worker"])],
+            initial_mode="m1",
+        )
+        spec = Validator(
+            validator_id="quality",
+            validator_type="quality",
+            tooling={"test_command": "make test"},
+        )
+        context = ValidatorContext(
+            task=Task(id="t1", spec="test", module_id="worker"),
+            protocol=protocol,
+            working_directory=project_dir,
+        )
+
+        assert QualityValidator(spec, project_dir)._resolve_test_command(context) == "make test"
+
+    def test_unscoped_task_keeps_protocol_tooling(self, project_dir):
+        from snodo.core.interfaces import Task
+        from snodo.validators.context import ValidatorContext
+
+        protocol = Protocol(
+            protocol_id="modules",
+            name="Modules",
+            modes=[Mode(mode_id="m1", name="M", validators=["quality"])],
+            validators=[Validator(validator_id="quality", validator_type="quality")],
+            modules=[
+                Module(
+                    module_id="worker",
+                    paths=["worker"],
+                    tooling={"test_command": "npm --prefix worker test"},
+                ),
+            ],
+            initial_mode="m1",
+        )
+        spec = Validator(
+            validator_id="quality",
+            validator_type="quality",
+            tooling={"test_command": "make test"},
+        )
+        context = ValidatorContext(
+            task=Task(id="t1", spec="test"),
+            protocol=protocol,
+            working_directory=project_dir,
+        )
+
+        assert QualityValidator(spec, project_dir)._resolve_test_command(context) == "make test"
 
 
 # === QualityValidator: evaluate ===
@@ -973,4 +1060,3 @@ class TestQualityDispatch:
         assert len(results) == 1
         assert results[0].severity == "warn"
         assert cap_originals.get("quality") == "blocker"
-
