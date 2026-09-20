@@ -26,7 +26,15 @@ sections describe the record rather than constrain the code:
 * ``Alternatives considered`` names options that were rejected. A rejected
   alternative is the opposite of a rule; proposing one would ask the operator
   to add the road not taken.
-* ``Status`` is metadata about the record, not a rule about the repository.
+* ``Status`` is metadata about the record, not a rule about the repository —
+  with one exception, not an interpretation of a value: a record that says its
+  decision has been *superseded* is a record whose rule is no longer in force.
+  Supersession is not a status to weigh, it is a statement to honour: the
+  proposal pass proposes nothing from a record in that state. The superseding
+  record says so (``Supersedes ADR 1``) and the superseded one usually says so
+  too (``Superseded by ADR 2``, in its Status or even its title); either
+  statement is enough to know. Every other status — accepted, proposed, or one
+  this pass cannot read — is metadata and changes nothing.
 
 So a record with no ``## Decision`` section proposes nothing, and a record
 whose Decision section holds only headings, code fences or a bare link
@@ -75,6 +83,14 @@ _DECISION_HEADING_RE = re.compile(r"^decision\b", re.IGNORECASE)
 _ENUMERATION_RE = re.compile(r"^\d+[.)]\s+")
 _ADR_PREFIX_RE = re.compile(r"^(?:ADR\s*)?\d+\s*[—–-]?\s*", re.IGNORECASE)
 _TABLE_ROW_RE = re.compile(r"^\s*\|")
+_STATUS_HEADING_RE = re.compile(r"^status\b", re.IGNORECASE)
+_INLINE_STATUS_RE = re.compile(
+    r"^\s*(?:[-*+]\s*)?\*{0,2}Status\*{0,2}\s*:\s*(.*)$", re.IGNORECASE
+)
+_SUPERSEDED_RE = re.compile(r"\bsuperseded\b", re.IGNORECASE)
+_SUPERSEDES_RE = re.compile(r"\bsupersedes\b", re.IGNORECASE)
+_REF_NUMBER_RE = re.compile(r"(?:ADR[\s-]*)?(\d+)", re.IGNORECASE)
+_REF_PATH_RE = re.compile(r"[\w.-]+\.md")
 
 
 @dataclass(frozen=True)
@@ -213,11 +229,144 @@ def _statements(body_lines: Sequence[str]) -> List[str]:
     return statements
 
 
-def _proposals_from_record(
-    project_root: Path, record_rel: str, record_path: str
+def _status_text(text: str) -> Optional[str]:
+    """The record's status statement, or ``None`` when none can be read.
+
+    Status is metadata and this pass reads as little of it as possible: only a
+    ``## Status`` section or a ``Status:`` line (inline or bulleted) counts as
+    a place the record states its own state. Returning ``None`` means the
+    record states no status here — deliberately distinct from a status that is
+    present and readable, because an unreadable status is not a superseded one.
+    """
+    inline: List[str] = []
+    heading_body: List[str] = []
+    capturing = False
+    for line in text.splitlines():
+        match = _HEADING_RE.match(line)
+        if match:
+            if capturing:
+                break
+            if _STATUS_HEADING_RE.match(match.group(2).strip()):
+                capturing = True
+            continue
+        if capturing:
+            heading_body.append(line)
+        else:
+            inline_match = _INLINE_STATUS_RE.match(line)
+            if inline_match:
+                inline.append(inline_match.group(1))
+    if capturing:
+        joined = " ".join(heading_body).strip()
+        if joined:
+            return joined
+        return None
+    if inline:
+        return " ".join(inline).strip() or None
+    return None
+
+
+def _title_line(text: str) -> str:
+    """The record's title heading line, the first place it can state a state."""
+    for line in text.splitlines():
+        if _HEADING_RE.match(line):
+            return line
+    return ""
+
+
+def _supersession_scope(text: str) -> str:
+    """The statements of the record's own state: its title and its status.
+
+    Deliberately narrow. A decision's prose may use the word "supersede" to
+    describe an approach, not to declare a state, and reading claims there
+    would drop live records; a title or status that says ``superseded`` is the
+    record speaking about itself. A status that cannot be read contributes
+    nothing — an unreadable status is not a superseded one.
+    """
+    return _title_line(text) + "\n" + (_status_text(text) or "")
+
+
+def _is_superseded(scope: str) -> bool:
+    """Whether the record's own statements say its decision is no longer here.
+
+    Only the single word ``superseded`` counts. No other status value is
+    interpreted — a record's status is otherwise metadata, and this is one
+    specific state with one specific meaning.
+    """
+    return bool(_SUPERSEDED_RE.search(scope))
+
+
+def _supersedes_targets(scope: str) -> List[str]:
+    """Record citations the record declares it supersedes.
+
+    A record that replaces another says so (``Supersedes ADR 002 — …``), and
+    that statement is enough to know the cited record is no longer in force.
+    Each target is returned in the form the citation writes it (a number like
+    ``2`` or ``0002``, or a ``*.md`` name); the caller decides which sibling
+    record, if any, it names.
+    """
+    targets: List[str] = []
+    for line in scope.splitlines():
+        match = _SUPERSEDES_RE.search(line)
+        if not match:
+            continue
+        tail = line[match.end():]
+        path = _REF_PATH_RE.search(tail)
+        if path:
+            targets.append(path.group(0))
+            continue
+        number = _REF_NUMBER_RE.search(tail)
+        if number:
+            targets.append(number.group(1))
+    return targets
+
+
+def _record_matches_target(name: str, title: str, target: str) -> bool:
+    """Whether *target* (a number or ``*.md`` citation) names this record."""
+    if target.lower().endswith(".md"):
+        cited = target.split("/")[-1].lower()
+        return cited == name.lower()
+    target_num = target.lstrip("0") or "0"
+    stem = name[:-3] if name.lower().endswith(".md") else name
+    stem_num = re.match(r"^.*?(\d+)", stem)
+    if stem_num and stem_num.group(1).lstrip("0") == target_num:
+        return True
+    title_num = _ADR_PREFIX_RE.match(title)
+    if title_num:
+        digits = re.search(r"\d+", title_num.group(0))
+        if digits and digits.group(0).lstrip("0") == target_num:
+            return True
+    return False
+
+
+def _superseded_records(records: Dict[str, str]) -> set:
+    """The paths of records the batch agrees are no longer in force.
+
+    A record is superseded when its own title or status says it is, or when
+    another record in the same scan declares that it supersedes it. Either
+    statement is enough to know; nothing else about a record's state is
+    read or judged.
+    """
+    scopes = {path: _supersession_scope(text) for path, text in records.items()}
+    raw_titles: Dict[str, str] = {}
+    for path, text in records.items():
+        heading = _HEADING_RE.match(_title_line(text))
+        raw_titles[path] = heading.group(2).strip() if heading else ""
+    superseded = {path for path, scope in scopes.items() if _is_superseded(scope)}
+    for path, scope in scopes.items():
+        for target in _supersedes_targets(scope):
+            for other in records:
+                if other == path:
+                    continue
+                name = other.rsplit("/", 1)[-1]
+                if _record_matches_target(name, raw_titles[other], target):
+                    superseded.add(other)
+    return superseded
+
+
+def _proposals_from_text(
+    text: str, record_path: str
 ) -> List[CriterionProposal]:
-    """Propose the rules one record states, each citing that record."""
-    text = (project_root / record_rel).read_text(errors="replace")
+    """Propose the rules one record's text states, each citing that record."""
     section = _decision_section(text)
     if section is None:
         return []
@@ -246,12 +395,17 @@ def propose_criteria(
     record file it came from, and the citation is resolved against the
     repository with the analyzer's own discipline before the proposal is made:
     a criterion whose record cannot be found is not proposed.
+
+    A record whose decision has been superseded — by its own title or status,
+    or by the status of the record that replaced it — states no rule in force,
+    and nothing is proposed from it. Every other record is proposed from
+    exactly as before; no other part of a record's state is read.
     """
     root = Path(project_root)
     if decision_paths is None:
         decision_paths = _detect_decision_paths(root)
 
-    proposals: List[CriterionProposal] = []
+    found: Dict[str, tuple[str, str]] = {}
     for rel_dir in decision_paths:
         directory = root / rel_dir
         if not directory.is_dir():
@@ -261,7 +415,17 @@ def propose_criteria(
             resolved = _resolve_citation(root, rel_dir, record_rel)
             if resolved is None:
                 continue
-            proposals.extend(_proposals_from_record(root, record_rel, resolved))
+            found[record_rel] = (
+                resolved,
+                (root / record_rel).read_text(errors="replace"),
+            )
+
+    superseded = _superseded_records({rel: pair[1] for rel, pair in found.items()})
+    proposals: List[CriterionProposal] = []
+    for record_rel, (resolved, text) in found.items():
+        if record_rel in superseded:
+            continue
+        proposals.extend(_proposals_from_text(text, resolved))
     return proposals
 
 

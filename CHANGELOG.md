@@ -15,6 +15,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Readiness now checks all conventional decision-record locations, including
   `docs/adr`, and names the actual location when records are uncommitted instead
   of reporting a hard-coded `docs/decisions` path. (Fixes #387)
+- Intake no longer proposes criteria from a decision record whose own title or
+  status says it is superseded, or that another record declares it supersedes;
+  every other status stays metadata and an unreadable status is never treated
+  as a superseded one. (Fixes #391)
 - MCP client registration now lives under `snodo serve --mcp-install` and its
   uninstall flags; the top-level install spellings remain working with a
   deprecation note. (Fixes #386)
