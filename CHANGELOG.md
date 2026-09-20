@@ -22,6 +22,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Server startup now refuses into a port mismatch when a project has a
   configured tunnel expecting a different port, preventing the tunnel from
   delivering traffic to another project's server. (Fixes #389)
+- Job ids are now drawn from a CSPRNG (48 bits, `secrets.token_hex`) instead
+  of the low bits of `time.time_ns()`. The old 24-bit clock truncation
+  wrapped roughly 60x/second, so two jobs started milliseconds apart could
+  receive the same id, and the collision retry only checked the local jobs
+  directory — no defense once an id travels into the audit trail, the cloud,
+  or another machine. Existing 6-hex job ids still resolve unchanged.
+  (Fixes #390)
 - MCP client registration now lives under `snodo serve --mcp-install` and its
   uninstall flags; the top-level install spellings remain working with a
   deprecation note. (Fixes #386)
