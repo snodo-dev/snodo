@@ -12,6 +12,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Task IDs used to generate plan specs now require a readable name suffix, and
   the MCP schema and server instructions show the required format. (Fixes #388)
+- Readiness now checks all conventional decision-record locations, including
+  `docs/adr`, and names the actual location when records are uncommitted instead
+  of reporting a hard-coded `docs/decisions` path. (Fixes #387)
 - MCP client registration now lives under `snodo serve --mcp-install` and its
   uninstall flags; the top-level install spellings remain working with a
   deprecation note. (Fixes #386)
