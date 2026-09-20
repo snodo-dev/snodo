@@ -242,7 +242,13 @@ TOOL_REGISTRY = {
             "type": "object",
             "properties": {
                 "plan_name": {"type": "string", "description": "Plan name"},
-                "task_id": {"type": "string", "description": "Task ID (e.g., 1.1_models)"},
+                "task_id": {
+                    "type": "string",
+                    "description": (
+                        "Required format <wave>.<sequence>_<name>; the name is "
+                        "required (e.g., 1.1_models, not 1.1)"
+                    ),
+                },
                 "spec": {"type": "string", "description": "Task specification content"},
                 "parent_task_ref": {"type": "string", "description": "ID of parent task if this is a sub-task"},
                 "replace": {"type": "boolean", "description": "Allow overwriting existing task spec"},

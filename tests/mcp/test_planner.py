@@ -256,6 +256,16 @@ class TestGenerateSpec:
         with pytest.raises(PlannerError, match="Invalid task_id format"):
             planner.generate_spec("plan_a", "no_dot_id", "spec")
 
+    def test_task_id_without_name_raises_with_valid_example(self, planner):
+        planner.decompose("Intent", "plan_a")
+        with pytest.raises(PlannerError, match=r"1\.1_models"):
+            planner.generate_spec("plan_a", "1.1", "spec")
+
+    def test_named_task_id_is_accepted(self, planner):
+        planner.decompose("Intent", "plan_a")
+        path = planner.generate_spec("plan_a", "1.1_models", "spec")
+        assert path.endswith("1.1_models_task.md")
+
     def test_invalid_wave_number_raises(self, planner):
         planner.decompose("Intent", "plan_a")
         with pytest.raises(PlannerError, match="Invalid wave number"):
@@ -1391,4 +1401,3 @@ class TestListPlansMalformedDir:
         assert len(plans) == 1
         assert plans[0]["name"] == "plan_a"
         assert plans[0]["status_counts"] == {}
-
