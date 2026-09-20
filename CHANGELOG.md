@@ -57,6 +57,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
   (Fixes #378)
 
 ### Added
+- A task scoped to a module is now held to that module's declared paths by the
+  `files_in_scope` constraint: a write outside the module is a violation even
+  when the protocol's own scope covers the whole repository. An unscoped task
+  is judged against the protocol scope exactly as before, and a module never
+  narrows reads — only what is written. (Fixes #392)
 - Benchmark plan runs can now use an external clean Git fixture, cloning it into
   a disposable execution directory and reporting its committed-tree identity so
   repeated runs begin from the same state. (Fixes #379)

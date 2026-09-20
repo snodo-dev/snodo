@@ -365,6 +365,11 @@ Constraints can be placed at three levels:
 
 Shipped predicates: `files_in_scope`, `tests_exist_for_modified`, `no_secrets_in_diff`. Custom predicates can be registered via the PredicateRegistry API.
 
+A task scoped to a module (ADR 041) is bounded by that module's declared `paths`
+instead of `scope_paths` — writes outside the module fail the constraint even
+when the protocol scope covers the repository. Unscoped tasks are judged against
+`scope_paths` unchanged, and module scope never restricts reads.
+
 ---
 
 ## Token

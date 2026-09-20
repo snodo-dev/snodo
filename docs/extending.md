@@ -141,7 +141,7 @@ Constraints can be placed at three levels: `global_constraints` (every task), `m
 
 Three predicates ship for reference (`snodo/predicates/`):
 
-- `files_in_scope` — verifies all modified files match configured scope paths
+- `files_in_scope` — verifies all modified files match configured scope paths; a task scoped to a module (ADR 041) is instead bounded by that module's declared paths
 - `tests_exist_for_modified` — requires test files for each modified implementation file
 - `no_secrets_in_diff` — scans git diff for credential patterns
 
