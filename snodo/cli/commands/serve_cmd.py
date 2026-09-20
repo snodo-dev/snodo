@@ -86,6 +86,15 @@ def register(app: typer.Typer) -> None:
         yes: bool = typer.Option(
             False, "--yes", "-y", help="Skip confirmation prompts",
         ),
+        install: bool = typer.Option(
+            False, "--install", help="Deprecated alias for --mcp-install",
+        ),
+        uninstall: bool = typer.Option(
+            False, "--uninstall", help="Deprecated alias for --mcp-uninstall",
+        ),
+        uninstall_all: bool = typer.Option(
+            False, "--uninstall-all", help="Deprecated alias for --mcp-uninstall-all",
+        ),
         project_name: Optional[str] = typer.Option(
             None, "--project-name", help="Override project name for MCP entry naming",
         ),
@@ -96,7 +105,8 @@ def register(app: typer.Typer) -> None:
             tunnel=tunnel, rotate=rotate, delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
             mcp_uninstall_all=mcp_uninstall_all, purge=purge, orphans=orphans,
-            yes=yes, project_name=project_name,
+            yes=yes, install=install, uninstall=uninstall,
+            uninstall_all=uninstall_all, project_name=project_name,
         )
         return serve_command(args)
 
@@ -134,6 +144,21 @@ def serve_command(args) -> int:
     protocol = load_protocol(protocol_path)
     if not protocol:
         return 1
+
+    if getattr(args, "install", False):
+        print("Note: 'snodo serve --install' is deprecated. "
+              "Use 'snodo serve --mcp-install' instead.", file=sys.stderr)
+        return _handle_install(args, protocol, protocol_path)
+
+    if getattr(args, "uninstall_all", False):
+        print("Note: 'snodo serve --uninstall-all' is deprecated. "
+              "Use 'snodo serve --mcp-uninstall-all' instead.", file=sys.stderr)
+        return _handle_uninstall_all()
+
+    if getattr(args, "uninstall", False):
+        print("Note: 'snodo serve --uninstall' is deprecated. "
+              "Use 'snodo serve --mcp-uninstall' instead.", file=sys.stderr)
+        return _handle_uninstall(args, protocol, protocol_path)
 
     if getattr(args, "tunnel", False):
         return _run_tunnel(args, protocol, protocol_path)
