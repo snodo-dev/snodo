@@ -178,6 +178,59 @@ def test_uncommitted_decision_record_reported_as_missing_from_head(git_repo: Pat
     assert "uncommitted in git HEAD" in uncommitted[0].description
 
 
+def test_committed_decision_record_in_docs_adr_satisfies_readiness(git_repo: Path):
+    """Readiness accepts committed records in the shared docs/adr location."""
+    adr_dir = git_repo / "docs" / "adr"
+    adr_dir.mkdir(parents=True)
+    (adr_dir / "001-adr.md").write_text("# Decision\n")
+    subprocess.run(["git", "add", "docs/adr/001-adr.md"], cwd=git_repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "add adr"], cwd=git_repo, check=True)
+
+    protocol = _make_protocol(
+        validators=[
+            Validator(
+                validator_id="val_arch",
+                validator_type="architecture",
+                criteria=["Follow recorded decisions"],
+            )
+        ]
+    )
+
+    assessment = assess_readiness(git_repo, protocol)
+
+    assert not any(
+        f.id.startswith("architecture_decisions")
+        for f in assessment.repository_findings
+    )
+
+
+def test_uncommitted_decision_record_in_docs_adr_names_actual_path(git_repo: Path):
+    """Uncommitted records report the conventional directory they occupy."""
+    adr_dir = git_repo / "docs" / "adr"
+    adr_dir.mkdir(parents=True)
+    (adr_dir / "001-adr.md").write_text("# Decision\n")
+
+    protocol = _make_protocol(
+        validators=[
+            Validator(
+                validator_id="val_arch",
+                validator_type="architecture",
+                criteria=["Follow recorded decisions"],
+            )
+        ]
+    )
+
+    assessment = assess_readiness(git_repo, protocol)
+
+    uncommitted = [
+        f for f in assessment.repository_findings
+        if f.id == "architecture_decisions_uncommitted:val_arch"
+    ]
+    assert len(uncommitted) == 1
+    assert "docs/adr/" in uncommitted[0].description
+    assert "git add docs/adr/*.md" in uncommitted[0].remediation
+
+
 def test_unset_environment_variable_reported_without_altering_score(git_repo: Path, monkeypatch):
     """Unset API credentials appear in workstation report but do not move repository readiness score."""
     # Commit required scaffolding
@@ -456,4 +509,3 @@ def test_plaintext_api_key_reported_in_workstation_findings(git_repo: Path, tmp_
     assert pt_findings[0].kind == ReadinessKind.WORKSTATION
     assert "Plaintext API key configured for provider 'anthropic'" in pt_findings[0].description
     assert "ANTHROPIC_API_KEY" in pt_findings[0].description
-
