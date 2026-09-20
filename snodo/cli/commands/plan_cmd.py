@@ -110,6 +110,7 @@ def plan_run(
     model: Optional[str] = exec_option("model"),
     coder: Optional[str] = exec_option("coder"),
     mode: Optional[str] = exec_option("mode"),
+    module: Optional[str] = exec_option("module"),
     verbose: bool = exec_option("verbose"),
     mock: bool = exec_option("mock"),
     retain_worktree: bool = exec_option("retain_worktree"),
@@ -121,7 +122,7 @@ def plan_run(
 
     args = RunArgs(
         plan=name, wave=wave, interactive=interactive,
-        protocol=protocol, model=model, coder=coder, mode=mode,
+        protocol=protocol, model=model, coder=coder, mode=mode, module=module,
         verbose=verbose, mock=mock,
         retain_worktree=retain_worktree, no_isolation=no_isolation, fixture=fixture,
     )

@@ -71,6 +71,7 @@ def _build_execution_options() -> dict:
         "coder": typer.Option(None, "--coder",
                               help="Coder backend name (e.g., litellm, opencode-cli, mock)"),
         "mode": typer.Option(None, "--mode", help="Execution mode override"),
+        "module": typer.Option(None, "--module", help="Module declared by the task"),
         "verbose": typer.Option(False, "--verbose", help="Show detailed output"),
         "mock": typer.Option(False, "--mock", help="Use mock coder instead of real LLM"),
         "wave": typer.Option(None, "--wave", "-w",
@@ -136,9 +137,7 @@ def register(app: typer.Typer) -> None:
         model: Optional[str] = _execution_option("model"),
         coder: Optional[str] = _execution_option("coder"),
         mode: Optional[str] = _execution_option("mode"),
-        module: Optional[str] = typer.Option(
-            None, "--module", help="Module declared by the task",
-        ),
+        module: Optional[str] = _execution_option("module"),
         verbose: bool = _execution_option("verbose"),
         mock: bool = _execution_option("mock"),
         plan: Optional[str] = typer.Option(
