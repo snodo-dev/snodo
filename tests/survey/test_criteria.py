@@ -81,6 +81,54 @@ modules:
 [See the module spec](spec.md)
 """
 
+SUPERSEDED_RECORD = """\
+# ADR 001 — Route through the API gateway
+
+## Status
+
+Superseded by ADR 002
+
+## Context
+
+Callers each grew their own auth.
+
+## Decision
+
+Every external call is routed through the API gateway.
+
+## Consequences
+
+Gateway latency is on the hot path.
+"""
+
+SUPERSEDING_RECORD = """\
+# ADR 002 — Call services directly
+
+## Status
+
+Accepted, supersedes ADR 001
+
+## Context
+
+The gateway became a second runtime.
+
+## Decision
+
+Services call each other directly, over mTLS.
+
+## Consequences
+
+Each service owns its own retries.
+"""
+
+NO_STATUS_RECORD = """\
+# ADR 004 — Scope every query
+
+## Decision
+
+Every D1 query carries an org filter, derived server-side.
+"""
+
 
 def _write_records(root: Path, records: dict) -> Path:
     decisions = root / "docs" / "decisions"
@@ -135,6 +183,130 @@ class TestWhatIsProposable:
         (tmp_path / "src" / "main.py").write_text("x = 1\n")
 
         assert propose_criteria(tmp_path) == []
+
+
+class TestSupersededRecordsProposeNothing:
+    """A superseded decision is no longer in force, so it proposes no rule.
+
+    Either side of the statement is enough to know: the superseded record's
+    own title or status, or the claim in the record that replaced it. No other
+    status value is read — supersession is one state with one meaning.
+    """
+
+    def test_a_record_marked_superseded_proposes_nothing(self, tmp_path):
+        _write_records(tmp_path, {"001-gateway.md": SUPERSEDED_RECORD})
+
+        assert propose_criteria(tmp_path) == []
+
+    def test_the_record_superseding_it_proposes_normally(self, tmp_path):
+        _write_records(
+            tmp_path,
+            {"001-gateway.md": SUPERSEDED_RECORD, "002-direct.md": SUPERSEDING_RECORD},
+        )
+
+        proposals = propose_criteria(tmp_path)
+
+        assert {p.record_path for p in proposals} == {"docs/decisions/002-direct.md"}
+        joined = "\n".join(p.criterion for p in proposals)
+        assert "call each other directly" in joined
+        # The superseded rule is gone: the operator is never asked to enforce
+        # the architecture the project abandoned.
+        assert "API gateway" not in joined
+
+    def test_either_statement_alone_is_enough_to_know(self, tmp_path):
+        # The superseded record still says "Accepted"; only the replacement's
+        # status claims it. The claim alone is enough to stop proposing.
+        silent = SUPERSEDED_RECORD.replace("Superseded by ADR 002", "Accepted")
+        _write_records(
+            tmp_path,
+            {"001-gateway.md": silent, "002-direct.md": SUPERSEDING_RECORD},
+        )
+
+        proposals = propose_criteria(tmp_path)
+
+        assert {p.record_path for p in proposals} == {"docs/decisions/002-direct.md"}
+
+    def test_a_record_superseded_only_in_its_title_proposes_nothing(self, tmp_path):
+        titled = """\
+# ADR 007 — Wrote-ahead logging at render time (superseded by ADR 009)
+
+## Status
+
+Accepted
+
+## Decision
+
+WAL mode is enabled when the render worker starts.
+"""
+        _write_records(tmp_path, {"007-wal.md": titled})
+
+        assert propose_criteria(tmp_path) == []
+
+    def test_a_supersession_word_in_the_prose_is_not_a_state(self, tmp_path):
+        # "supersedes" in the Decision text describes the code, not the
+        # record's state; reading claims there would drop live records.
+        prose = """\
+# ADR 011 — Two-tier cache
+
+## Status
+
+Accepted
+
+## Decision
+
+The edge cache supersedes the origin cache for reads.
+"""
+        _write_records(tmp_path, {"011-cache.md": prose})
+
+        proposals = propose_criteria(tmp_path)
+
+        assert {p.record_path for p in proposals} == {"docs/decisions/011-cache.md"}
+
+    def test_a_record_with_no_status_section_is_unaffected(self, tmp_path):
+        _write_records(tmp_path, {"004-scoping.md": NO_STATUS_RECORD})
+
+        proposals = propose_criteria(tmp_path)
+
+        assert {p.criterion for p in proposals} == {
+            "Every D1 query carries an org filter, derived server-side."
+        }
+
+    def test_an_unreadable_status_is_not_a_superseded_one(self, tmp_path):
+        unreadable = """\
+# ADR 012 — Sign webhooks
+
+## Status
+
+| ▓▓▓ |
+
+## Decision
+
+Every webhook payload is signed before it leaves the origin.
+"""
+        _write_records(tmp_path, {"012-sign.md": unreadable})
+
+        proposals = propose_criteria(tmp_path)
+
+        assert {p.record_path for p in proposals} == {"docs/decisions/012-sign.md"}
+
+    def test_status_is_otherwise_still_metadata(self, tmp_path):
+        proposed = """\
+# ADR 013 — Consider a queue
+
+## Status
+
+Proposed
+
+## Decision
+
+Consider moving ingest onto a queue before the next release.
+"""
+        _write_records(tmp_path, {"013-queue.md": proposed})
+
+        proposals = propose_criteria(tmp_path)
+
+        # "Proposed" is metadata, not supersession: the record proposes.
+        assert {p.record_path for p in proposals} == {"docs/decisions/013-queue.md"}
 
 
 class TestWhatAcceptanceWrites:
