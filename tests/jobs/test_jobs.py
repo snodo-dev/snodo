@@ -120,10 +120,10 @@ class TestJobManagerInit:
 
 class TestIdGeneration:
     def test_id_format(self, manager):
-        """Generated IDs match j_<6-hex> format."""
+        """Generated IDs match j_<12-hex> format."""
         job_id = manager._generate_id()
         assert job_id.startswith("j_")
-        assert len(job_id) == 8  # j_ + 6 hex chars
+        assert len(job_id) == 14  # j_ + 12 hex chars
         int(job_id[2:], 16)  # Should parse as hex
 
     def test_ids_are_unique(self, manager):
@@ -135,6 +135,40 @@ class TestIdGeneration:
             (manager.jobs_dir / job_id).mkdir()
             ids.add(job_id)
         assert len(ids) == 5
+
+    def test_large_batch_minted_in_a_tight_loop_are_all_distinct(self, manager):
+        """A CSPRNG draw, not a truncated clock, makes collision negligible.
+
+        The old 24-bit time.time_ns() truncation wrapped ~60x/second, so a
+        tight loop was exactly the case most likely to collide. Mint without
+        creating directories (nothing here checks the jobs dir) to isolate
+        the generator's own collision behaviour.
+        """
+        ids = {manager._generate_id() for _ in range(20_000)}
+        assert len(ids) == 20_000
+
+    def test_existing_short_form_id_still_resolves(self, manager):
+        """A 6-hex id minted before the id was widened must keep resolving.
+
+        Job directories are matched by name, not by parsing a fixed-width
+        id, so an old-format directory on disk resolves exactly like a new
+        one.
+        """
+        old_job_dir = manager.jobs_dir / "j_abc123"
+        old_job_dir.mkdir()
+        state = {
+            "status": "completed",
+            "pid": None,
+            "created_at": time.time(),
+            "started_at": time.time(),
+            "completed_at": time.time(),
+            "exit_code": 0,
+        }
+        manager._save_state(old_job_dir, state)
+
+        result = manager.get_status("j_abc123")
+        assert result["id"] == "j_abc123"
+        assert result["status"] == "completed"
 
 
 # === State Management Tests ===

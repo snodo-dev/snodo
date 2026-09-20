@@ -8,6 +8,7 @@ No external dependencies beyond the standard library.
 
 import json
 import os
+import secrets
 import signal
 import time
 from pathlib import Path
@@ -109,16 +110,23 @@ class JobManager:
         self.project_root = project_root
 
     def _generate_id(self) -> str:
-        """Generate a unique job ID: j_<6-hex> from time.time_ns().
+        """Generate a unique job ID: j_<12-hex> from a CSPRNG.
 
-        Retries on collision (extremely unlikely).
+        Job ids travel beyond the machine that mints them — into the audit
+        trail, into the cloud, across projects — so uniqueness cannot rest on
+        checking this one jobs directory. The previous scheme took 6 hex
+        chars (24 bits) from the low bits of time.time_ns(): a truncated
+        clock, not a random draw, so it wrapped roughly 60x/second and two
+        jobs started 16ms apart could collide. Drawing 48 bits from
+        ``secrets`` (os.urandom) instead makes collision negligible across
+        machines, matching the width chosen for the same problem in
+        derive_task_id (snodo/paths.py). The local existence check below is
+        a cheap backstop for this directory, not what uniqueness depends on.
         """
         for _ in range(10):
-            raw = time.time_ns()
-            job_id = f"j_{raw & 0xffffff:06x}"
+            job_id = f"j_{secrets.token_hex(6)}"
             if not (self.jobs_dir / job_id).exists():
                 return job_id
-            time.sleep(0.001)  # Wait 1ms to get a different timestamp
         raise JobError("Failed to generate unique job ID after 10 attempts")
 
     def _job_dir(self, job_id: str) -> Path:
