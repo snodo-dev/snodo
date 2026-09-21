@@ -17,6 +17,7 @@ from snodo.mcp.installer import (
     install, uninstall, uninstall_all,
     print_install_result, print_uninstall_result,
     purge_project_state, scan_orphans, remove_orphans,
+    list_mcp_entries,
     derive_project_name, get_claude_config_path,
 )
 
@@ -160,6 +161,29 @@ def uninstall_command(args) -> int:
         "config_path": str(config_path),
         "project_name": project_name,
     })
+    return 0
+
+
+def list_command() -> int:
+    """List registered snodo MCP entries without changing Claude's config."""
+    try:
+        config_path = get_claude_config_path()
+        entries = list_mcp_entries(config_path=config_path)
+    except Exception as e:
+        print(f"Error listing MCP entries: {e}", file=sys.stderr)
+        return 1
+
+    if not entries:
+        print("No registered snodo MCP entries found.")
+        return 0
+
+    noun = "entry" if len(entries) == 1 else "entries"
+    print(f"Registered {len(entries)} snodo MCP {noun}:")
+    for entry in entries:
+        project = entry["project_path"] or "(project path unavailable)"
+        state = "exists" if entry["project_exists"] else "missing"
+        print(f"  {entry['entry_name']} -> {project} [{state}]")
+    print(f"  Config: {config_path}")
     return 0
 
 

@@ -77,6 +77,9 @@ def register(app: typer.Typer) -> None:
         mcp_uninstall_all: bool = typer.Option(
             False, "--mcp-uninstall-all", help="Remove ALL snodo MCP entries",
         ),
+        mcp_list: bool = typer.Option(
+            False, "--mcp-list", help="List registered snodo MCP entries",
+        ),
         purge: bool = typer.Option(
             False, "--purge", help="Also delete .snodo/ directory and sessions",
         ),
@@ -104,7 +107,8 @@ def register(app: typer.Typer) -> None:
             protocol=protocol, mode=mode, transport=transport, port=port,
             tunnel=tunnel, rotate=rotate, delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
-            mcp_uninstall_all=mcp_uninstall_all, purge=purge, orphans=orphans,
+            mcp_uninstall_all=mcp_uninstall_all, mcp_list=mcp_list,
+            purge=purge, orphans=orphans,
             yes=yes, install=install, uninstall=uninstall,
             uninstall_all=uninstall_all, project_name=project_name,
         )
@@ -137,6 +141,7 @@ def serve_command(args) -> int:
         getattr(args, "mcp_install", False)
         or getattr(args, "mcp_uninstall", False)
         or getattr(args, "mcp_uninstall_all", False)
+        or getattr(args, "mcp_list", False)
     ):
         return _handle_mcp_command(args)
 
@@ -168,13 +173,18 @@ def serve_command(args) -> int:
 
 def _handle_mcp_command(args) -> int:
     """Run MCP client configuration operations from the serve command."""
-    from snodo.cli.commands.install_cmd import install_command, uninstall_command
+    from snodo.cli.commands.install_cmd import (
+        install_command, list_command, uninstall_command,
+    )
 
     if getattr(args, "mcp_install", False):
         return install_command(SimpleNamespace(
             protocol=args.protocol,
             project_name=getattr(args, "project_name", None),
         ))
+
+    if getattr(args, "mcp_list", False):
+        return list_command()
 
     return uninstall_command(SimpleNamespace(
         protocol=args.protocol,
