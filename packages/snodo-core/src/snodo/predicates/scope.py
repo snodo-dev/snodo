@@ -4,7 +4,7 @@ FILE: snodo/predicates/scope.py (Task 7.8)
 """
 
 import fnmatch
-from typing import Any, List, Optional
+from typing import Any, List
 
 from snodo.predicates.base import Predicate, PredicateContext, PredicateResult
 from snodo.predicates.registry import _default_registry
@@ -55,7 +55,10 @@ class FilesInScope(Predicate):
     def _evaluate_against_module(
         self, context: PredicateContext, module_id: str
     ) -> PredicateResult:
-        module = _find_module(context, module_id)
+        try:
+            module = context.protocol.resolve_module(module_id)
+        except ValueError:
+            module = None
         if module is None:
             # The task names a bound the protocol does not declare. Resolving
             # it to the wider protocol scope would reintroduce exactly the
@@ -95,15 +98,6 @@ class FilesInScope(Predicate):
             ),
             evidence={"out_of_scope_files": out_of_scope},
         )
-
-
-def _find_module(context: PredicateContext, module_id: str) -> Optional[Any]:
-    """The protocol-declared module named by *module_id*, or None."""
-    modules = getattr(context.protocol, "modules", None) or []
-    for module in modules:
-        if module.module_id == module_id:
-            return module
-    return None
 
 
 def _path_under_module(path: str, module_paths: List[str]) -> bool:

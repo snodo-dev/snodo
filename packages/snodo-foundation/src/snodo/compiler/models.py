@@ -486,13 +486,6 @@ class Protocol(BaseModel):
                 return mode
         return None
 
-    def get_module(self, module_id: str) -> Optional[Module]:
-        """Retrieve a declared module by identifier."""
-        for module in self.modules:
-            if module.module_id == module_id:
-                return module
-        return None
-
     def resolve_module(self, module_id: Optional[str]) -> Optional[Module]:
         """Resolve an optional task module, refusing unknown identifiers.
 
@@ -501,7 +494,10 @@ class Protocol(BaseModel):
         """
         if module_id is None:
             return None
-        module = self.get_module(module_id)
+        module = next(
+            (module for module in self.modules if module.module_id == module_id),
+            None,
+        )
         if module is None:
             available = sorted(module.module_id for module in self.modules)
             available_names = ", ".join(available) if available else "none"
