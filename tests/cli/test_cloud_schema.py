@@ -83,11 +83,13 @@ def test_cloud_schema_declares_every_event_data_key_from_contract():
         "test_modified": {"mutations", "task_id", "job_id"},
         "unverified_merge_blocked": {"task_ref", "branch", "target_commit", "reason", "session_id"},
     }
-    branches = ingest["properties"]["events"]["items"]["oneOf"]
+    item_schema = ingest["properties"]["events"]["items"]
+    branches = item_schema["oneOf"] if "oneOf" in item_schema else item_schema["anyOf"]
     by_type = {
         ingest["$defs"][branch["$ref"].split("/")[-1]]["properties"]["event_type"]["const"]:
         ingest["$defs"][branch["$ref"].split("/")[-1]]
         for branch in branches
+        if "const" in ingest["$defs"][branch["$ref"].split("/")[-1]]["properties"]["event_type"]
     }
 
     assert set(by_type) == set(expected)

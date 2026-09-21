@@ -475,7 +475,7 @@ class TestCloudSyncDispatcher:
         dispatcher = CloudSyncDispatcher()
         ev = AuditEvent(
             sequence=1,
-            timestamp=1234567.8,
+            timestamp="2026-09-17T12:00:00+00:00",
             event_type="wave_created",
             data={
                 "op": "wave_created",

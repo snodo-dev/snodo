@@ -116,9 +116,20 @@ def _event_models() -> tuple[type[BaseModel], ...]:
     return tuple(models)
 
 
-AuditEventEnvelope = Annotated[
-    Union[_event_models()], Field(discriminator="event_type")
-]
+_GenericAuditEvent = create_model(
+    "GenericAuditEvent",
+    __config__=ConfigDict(extra="forbid"),
+    sequence=(int, ...),
+    timestamp=(Annotated[StrictStr, Field(json_schema_extra={"format": "date-time"})], ...),
+    event_type=(StrictStr, ...),
+    project_id=(str, ...),
+    scope=(Literal["", "local", "remote"], ...),
+    data=(dict[str, Any], ...),
+    previous_hash=(str, ...),
+    event_hash=(str, ...),
+)
+
+AuditEventEnvelope = Union[*_event_models(), _GenericAuditEvent]
 
 
 class AuditIngestBatch(BaseModel):
