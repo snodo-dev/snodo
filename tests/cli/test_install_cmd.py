@@ -3,6 +3,7 @@
 FILE: tests/cli/test_install_cmd.py
 """
 
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -364,6 +365,47 @@ def test_serve_mcp_uninstall_matches_deprecated_uninstall_bytes(temp_project, mo
     assert deprecated.exit_code == 0
     assert config_path.read_bytes() == supported_bytes
     assert "serve --mcp-uninstall" in deprecated.output
+
+
+def test_serve_mcp_list_reports_projects_and_missing_entries(tmp_path, monkeypatch):
+    """The supported list spelling reports existing and removed projects."""
+    from snodo.cli.commands.serve_cmd import register as register_serve
+
+    existing_project = tmp_path / "existing"
+    existing_protocol = existing_project / ".snodo" / "protocol.yml"
+    existing_protocol.parent.mkdir(parents=True)
+    existing_protocol.touch()
+    missing_protocol = tmp_path / "removed" / ".snodo" / "protocol.yml"
+    config_path = tmp_path / "claude.json"
+    config_path.write_text(
+        json.dumps({
+            "mcpServers": {
+                "snodo-existing-dev": {
+                    "command": "snodo",
+                    "args": ["serve", "--protocol", str(existing_protocol)],
+                },
+                "snodo-removed-dev": {
+                    "command": "snodo",
+                    "args": ["serve", "--protocol", str(missing_protocol)],
+                },
+            }
+        })
+    )
+
+    app = typer.Typer()
+    register_serve(app)
+    runner = CliRunner()
+    monkeypatch.setattr(
+        "snodo.cli.commands.install_cmd.get_claude_config_path", lambda: config_path,
+    )
+
+    result = runner.invoke(app, ["--mcp-list"])
+
+    assert result.exit_code == 0
+    assert "snodo-existing-dev" in result.output
+    assert f"{existing_project} [exists]" in result.output
+    assert "snodo-removed-dev" in result.output
+    assert f"{tmp_path / 'removed'} [missing]" in result.output
 
 
 def test_deprecated_uninstall_names_serve_replacement(temp_project, monkeypatch):

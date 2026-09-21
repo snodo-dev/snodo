@@ -20,6 +20,7 @@ from snodo.mcp.installer import (
     generate_mcp_entries,
     get_claude_config_path,
     install,
+    list_mcp_entries,
     print_install_result,
     print_uninstall_result,
     read_claude_config,
@@ -761,6 +762,47 @@ class TestUninstallAll:
         uninstall_all(config_path)
         mtime_after = config_path.stat().st_mtime
         assert mtime_before == mtime_after
+
+
+class TestListMCPEntries:
+    def test_lists_projects_and_marks_missing_project(self, temp_dir, config_path):
+        existing_project = temp_dir / "existing-project"
+        existing_protocol = existing_project / ".snodo" / "protocol.yml"
+        existing_protocol.parent.mkdir(parents=True)
+        existing_protocol.touch()
+        missing_protocol = temp_dir / "removed-project" / ".snodo" / "protocol.yml"
+        config_path.parent.mkdir(parents=True)
+        config = {
+            "mcpServers": {
+                "snodo-existing-dev": {
+                    "command": "snodo",
+                    "args": ["serve", "--protocol", str(existing_protocol), "--mode", "dev"],
+                },
+                "snodo-removed-dev": {
+                    "command": "snodo",
+                    "args": ["serve", "--protocol", str(missing_protocol), "--mode", "dev"],
+                },
+                "other-tool": {"command": "other"},
+            }
+        }
+        config_path.write_text(json.dumps(config))
+        before = config_path.read_bytes()
+
+        entries = list_mcp_entries(config_path)
+
+        assert entries == [
+            {
+                "entry_name": "snodo-existing-dev",
+                "project_path": str(existing_project.resolve()),
+                "project_exists": True,
+            },
+            {
+                "entry_name": "snodo-removed-dev",
+                "project_path": str((temp_dir / "removed-project").resolve()),
+                "project_exists": False,
+            },
+        ]
+        assert config_path.read_bytes() == before
 
 
 # ---------------------------------------------------------------------------

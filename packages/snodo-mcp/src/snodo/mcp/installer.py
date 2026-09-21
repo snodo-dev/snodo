@@ -414,6 +414,48 @@ def scan_orphans(config_path: Optional[Path] = None) -> List[Dict[str, str]]:
     return orphans
 
 
+def list_mcp_entries(config_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Return registered snodo entries and the projects they point to.
+
+    This is deliberately read-only so operators can inspect stale
+    registrations without changing Claude's configuration.
+    """
+    if config_path is None:
+        config_path = get_claude_config_path()
+    config = read_claude_config(config_path)
+    servers = config.get("mcpServers", {})
+    entries: List[Dict[str, Any]] = []
+
+    for name, entry in servers.items():
+        if not name.startswith("snodo-"):
+            continue
+        args = entry.get("args", []) if isinstance(entry, dict) else []
+        protocol_path = None
+        if isinstance(args, list):
+            for i, arg in enumerate(args):
+                if arg == "--protocol" and i + 1 < len(args):
+                    protocol_path = args[i + 1]
+                    break
+
+        if not isinstance(protocol_path, str) or not protocol_path:
+            entries.append({
+                "entry_name": name,
+                "project_path": None,
+                "project_exists": False,
+            })
+            continue
+
+        protocol = Path(protocol_path).resolve()
+        project = protocol.parent.parent if protocol.parent.name == ".snodo" else protocol.parent
+        entries.append({
+            "entry_name": name,
+            "project_path": str(project),
+            "project_exists": project.is_dir(),
+        })
+
+    return entries
+
+
 def remove_orphans(config_path: Optional[Path] = None) -> List[str]:
     """Remove all orphan snodo-* entries from Claude Desktop config.
 
