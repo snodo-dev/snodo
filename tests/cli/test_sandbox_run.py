@@ -1,4 +1,4 @@
-"""Behavioral tests for sandbox and background job execution helpers (snodo/cli/commands/sandbox_run.py).
+"""Behavioral tests for sandbox and background job execution helpers.
 
 FILE: tests/cli/test_sandbox_run.py
 """
@@ -14,8 +14,8 @@ from snodo.cli.commands.sandbox_run import (
     _build_sandbox_env,
     _print_sandbox_result,
     _run_in_sandbox,
-    _submit_background_job,
 )
+from snodo.cli.commands.background_job import _submit_background_job
 
 # ============================================================================
 # 1. Helper Functions Unit Tests

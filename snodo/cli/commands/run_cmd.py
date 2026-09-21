@@ -319,7 +319,8 @@ def run_command(args) -> int:
     from snodo.infrastructure.session import SessionManager
     from snodo.infrastructure.paths import require_project_root
     from snodo.cli.commands.plan_run import _run_plan
-    from snodo.cli.commands.sandbox_run import _run_in_sandbox, _submit_background_job
+    from snodo.cli.commands.background_job import _submit_background_job
+    from snodo.cli.commands.sandbox_run import _run_in_sandbox
 
     if getattr(args, "fixture", None) and getattr(args, "plan", None):
         from snodo.cli.commands.plan_run import _run_fixture
