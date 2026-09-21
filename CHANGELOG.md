@@ -19,6 +19,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   credentials. Background job submission is unaffected.
 
 ### Fixed
+- Coverage uploads now fail CI when Codecov rejects or cannot process the
+  report, instead of leaving a successful run with stale published coverage.
+  (Fixes #397)
 - `snodo serve --tunnel --rotate` now revokes and replaces a rotatable service
   credential, shows the replacement secret once, and refuses clearly when the
   tunnel has no rotatable credential or has more than one to choose from.
