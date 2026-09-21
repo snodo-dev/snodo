@@ -71,6 +71,7 @@ def cloud_schema_command(json_output: bool = True) -> int:
 
     from snodo.infrastructure.cloud_interface import CLOUD_INTERFACE_VERSION
     from snodo.infrastructure.cloud_liveness import LivenessSnapshot
+    from snodo.infrastructure.cloud_runs import run_record_payload_schema
     from snodo.infrastructure.cloud_sync import AuditIngestBatch
 
     publication = {
@@ -78,6 +79,7 @@ def cloud_schema_command(json_output: bool = True) -> int:
         "payloads": {
             "cloud_ingest": TypeAdapter(AuditIngestBatch).json_schema(),
             "cloud_liveness": TypeAdapter(LivenessSnapshot).json_schema(),
+            "run_record": run_record_payload_schema(),
         },
     }
     print(json.dumps(publication, indent=2, sort_keys=True))

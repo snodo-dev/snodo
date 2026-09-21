@@ -49,6 +49,11 @@ def test_cloud_schema_validates_real_snapshot_and_event_batch():
 
     validate(batch, payloads["cloud_ingest"])
     validate(snapshot, payloads["cloud_liveness"])
+    validate({
+        "schema": "snodo.run-record",
+        "version": 1,
+        "record": {"task_id": "task_schema", "completed_at": 1.0},
+    }, payloads["run_record"])
 
 
 def test_cloud_schema_declares_every_event_data_key_from_contract():

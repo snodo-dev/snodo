@@ -17,9 +17,10 @@ def register(app: typer.Typer) -> None:
     @app.command("runs")
     def runs(
         json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+        send: bool = typer.Option(False, "--send", help="Send these run records to snodo cloud"),
     ):
         """List completed task run records."""
-        return runs_command(SimpleNamespace(json=json_output))
+        return runs_command(SimpleNamespace(json=json_output, send=send))
 
 
 def _without_absent(value: Any) -> Any:
@@ -73,6 +74,13 @@ def runs_command(args) -> int:
         return 1
 
     records = _completed_runs(Path(root))
+    if getattr(args, "send", False):
+        from snodo.config import ConfigManager
+        from snodo.infrastructure.cloud_runs import send_run_record
+
+        config = ConfigManager().load()
+        for record in records:
+            send_run_record(record, config)
     if getattr(args, "json", False):
         from snodo.cli.json_output import emit_json, schema_name
         return emit_json({

@@ -1,6 +1,7 @@
 """Tests for the machine-readable accumulated run-record report."""
 
 import json
+from unittest.mock import patch
 
 from snodo.cli.commands.runs_cmd import runs_command
 from types import SimpleNamespace
@@ -49,3 +50,18 @@ def test_runs_json_has_schema_one_row_per_completed_run_and_absent_measurements(
     assert "attempts" not in record["cost"]
     assert "change_size" not in record["cost"]
     assert "coder" not in record["cost"]["provenance"]
+
+
+def test_runs_without_send_makes_no_outbound_call(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".snodo").mkdir()
+    _write_task(tmp_path, "task_local", {
+        "task_id": "task_local", "completed_at": 20.0,
+    })
+
+    with patch(
+        "snodo.infrastructure.cloud_runs.send_run_record",
+    ) as send:
+        assert runs_command(SimpleNamespace(json=True, send=False)) == 0
+
+    send.assert_not_called()
