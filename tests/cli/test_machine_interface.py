@@ -251,7 +251,9 @@ class TestWorktreeJson:
         assert set(data.keys()) == {"schema", "ok", "project_root", "worktrees"}
         assert len(data["worktrees"]) == 1
         assert data["worktrees"][0]["task_id"] == "task_a"
-        assert set(data["worktrees"][0].keys()) == {"task_id", "path", "age_days"}
+        assert set(data["worktrees"][0].keys()) == {
+            "task_id", "path", "age_days", "merged", "dirty",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -452,4 +454,3 @@ class TestMetaJson:
         }
         assert data["tokens"] == {"prompt": 100, "completion": 50, "total": 150}
         assert len(data["tool_telemetry"]) == 1
-
