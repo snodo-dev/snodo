@@ -577,7 +577,10 @@ class TestPayloadContent:
             "started_at": 1787000000.0,
             "description": "the whole task spec",
             "halt": {"reason": "validator justification quoting file contents"},
-            "usage": [{"model": "claude", "cost": 0.25, "prompt": "secret"}],
+            # A cost that cannot occur as a substring of an ISO timestamp: the
+            # leak check below is a substring search over the serialised body,
+            # and 0.25 matched seconds like "50.251975".
+            "usage": [{"model": "claude", "cost": 987654.321, "prompt": "secret"}],
         })
         posts = _Posts()
         with patch("httpx.put", posts):
@@ -591,7 +594,7 @@ class TestPayloadContent:
         ).isoformat()
         flat = json.dumps(body)
         for leak in ("secret", "validator justification", "the whole task spec",
-                     str(root), "0.25", "usage"):
+                     str(root), "987654.321", "usage"):
             assert leak not in flat
 
     def test_last_event_and_timestamp_come_from_the_audit_tail(self, project):
