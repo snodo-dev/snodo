@@ -116,6 +116,24 @@ def test_plan_list_includes_task_without_plan(plan_env, capsys):
     assert "(unassigned) manual_task: errored" in capsys.readouterr().out
 
 
+def test_plan_list_pages_tty_output_but_not_piped_output(plan_env, monkeypatch):
+    """Interactive output uses the pager; redirected output remains a stream."""
+    from contextlib import nullcontext
+    from rich.console import Console
+    from unittest.mock import patch
+
+    planner = _planner(plan_env)
+    for index in range(25):
+        _create_plan(plan_env, f"p{index:02d}")
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    with patch.object(Console, "pager", return_value=nullcontext()) as pager:
+        assert _plan_list(planner) == 0
+        assert pager.call_count == 1
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    with patch.object(Console, "pager", side_effect=AssertionError("piped output paged")):
+        assert _plan_list(planner) == 0
+
+
 # ============================================================================
 # plan run
 # ============================================================================
