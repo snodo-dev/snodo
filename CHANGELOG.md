@@ -9,6 +9,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+- The `snodo sandbox` commands and the `snodo run --sandbox` flag, together
+  with the sandbox execution subsystem behind them. Decision record 014 places
+  sandboxing and containerisation out of scope under the trusted-repository
+  threat model, and the subsystem did not provide what its name implied: it
+  mounted the workspace read-write, fell back to local execution when Docker
+  was unavailable, and disabled the network while injecting provider
+  credentials. Background job submission is unaffected.
+
 ### Fixed
 - `snodo serve --tunnel --rotate` now revokes and replaces a rotatable service
   credential, shows the replacement secret once, and refuses clearly when the
