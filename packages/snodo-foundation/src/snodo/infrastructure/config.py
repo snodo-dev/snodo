@@ -48,6 +48,10 @@ class CoderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: Optional[str] = Field(default=None, description="Coder LLM model. None = use default_model.")
+    sandboxed: bool = Field(
+        default=False,
+        description="Run the coder against a discarded copy of the task workspace.",
+    )
     max_tokens: int = Field(default=_CODER_MAX_TOKENS_DEFAULT, ge=1)
     max_tool_turns: int = Field(default=_CODER_MAX_TOOL_TURNS_DEFAULT, ge=1, le=200)
     timeout_seconds: int = Field(default=_CODER_TIMEOUT_SECONDS_DEFAULT, ge=1)
