@@ -885,9 +885,6 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             attempt_provenance=provenance,
             attempt_reads=read_history,
             depth=current_depth + 1,
-            # Recovery continues the same work in the same place: the module
-            # bound that governs the parent's writes governs this fix too.
-            module_id=loop_state.task.module_id,
         )
         loop_state.spawned_subtasks.append(fix_task)
         loop_state.needs_recovery = True
