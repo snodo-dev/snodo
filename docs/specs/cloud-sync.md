@@ -323,7 +323,7 @@ and `capped` is true — because a plan run must never stall on a statistic
 nobody is waiting for; `files_changed` stays real. `paths` contains every
 changed path when the comparison is measured. When `capped` is true, it
 contains only the bounded prefix and is therefore incomplete; `files_changed`
-remains the real total. The interface version moved to 3 for this field.
+remains the real total. The interface version moved to 4 for this field.
 
 `readiness_checked.findings` carries repository method scaffolding findings
 with relative paths only and never workstation detail (such as local binaries on

@@ -88,6 +88,7 @@ def test_pure_rename_counts_once_and_moves_no_lines(repo):
 
     assert stat["files_changed"] == 1
     assert stat["files_renamed"] == 1
+    assert stat["paths"] == ["moved.txt"]
     assert stat["lines_added"] == 0
     assert stat["lines_deleted"] == 0
     assert stat["files_binary"] == 0
