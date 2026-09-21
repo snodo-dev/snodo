@@ -16,8 +16,9 @@ def test_concurrent_tasks_do_not_share_container(tmp_path):
     created = []
 
     def run(*args, **kwargs):
-        container = Mock()
-        container.id = f"container-{len(created)}"
+        # Docker reports a published port for every container it starts;
+        # a container that reports none is refused, so the fake reports one.
+        container = _container(61000 + len(created))
         created.append((container, kwargs))
         return container
 
