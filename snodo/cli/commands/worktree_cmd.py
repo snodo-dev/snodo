@@ -18,7 +18,12 @@ from typing import Optional
 import typer
 
 from snodo.infrastructure.paths import require_project_root
-from snodo.infrastructure.worktree import list_worktrees, remove_worktree, worktree_path
+from snodo.infrastructure.worktree import (
+    list_worktrees,
+    remove_worktree,
+    worktree_is_owned,
+    worktree_path,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -163,6 +168,10 @@ def worktree_remove_command(args) -> int:
         return 1
 
     project_root = require_project_root()
+
+    if not worktree_is_owned(project_root, task_id):
+        print(f"Worktree {task_id} does not belong to this project.", file=sys.stderr)
+        return 1
 
     # First remove the worktree directory and unregister it from git
     remove_worktree(project_root, task_id)
