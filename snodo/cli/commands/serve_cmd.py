@@ -618,7 +618,8 @@ def _provision_tunnel(
             "snodo_version": snodo_version,
             "port": port,
         }
-        payload["auth"] = auth or ["oauth"]
+        if auth:
+            payload["auth"] = auth
         resp = httpx.post(
             url,
             json=payload,
