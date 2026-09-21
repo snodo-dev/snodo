@@ -27,8 +27,15 @@ def test_concurrent_tasks_do_not_share_container(tmp_path):
     first._wait_ready = Mock()
     second._wait_ready = Mock()
 
-    first.start(Path(tmp_path / "one"), task_id="task-one")
-    second.start(Path(tmp_path / "two"), task_id="task-two")
+    # The workspace must exist: a container is refused a path the daemon
+    # could not mount.
+    workspace_one = tmp_path / "one"
+    workspace_two = tmp_path / "two"
+    workspace_one.mkdir()
+    workspace_two.mkdir()
+
+    first.start(workspace_one, task_id="task-one")
+    second.start(workspace_two, task_id="task-two")
 
     assert created[0][1]["labels"] == {"com.snodo.task-id": "task-one"}
     assert created[1][1]["labels"] == {"com.snodo.task-id": "task-two"}
