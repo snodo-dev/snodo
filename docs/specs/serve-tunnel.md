@@ -61,6 +61,9 @@ Subsequent runs (tunnel.json exists):
   Press Ctrl+C to stop.
 
 --rotate flag:
+  Select one rotatable service credential. If none exists, explain that OAuth
+  bearer credentials expire and cannot be rotated. If several exist, require
+  --credential <name> rather than guessing.
   DELETE api.snodo.dev/tunnel/{hostname}/token (revokes old token)
   POST api.snodo.dev/tunnel/{hostname}/token (creates new token)
   Update tunnel.json with new client_id

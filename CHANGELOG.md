@@ -10,6 +10,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- `snodo serve --tunnel --rotate` now revokes and replaces a rotatable service
+  credential, shows the replacement secret once, and refuses clearly when the
+  tunnel has no rotatable credential or has more than one to choose from.
+  (Fixes #396)
 - OpenCode now refuses to start when its Docker daemon is remote or the
   workspace is unavailable, rather than silently mounting a client-local path
   that resolves to an empty directory on the daemon. (Fixes #395)

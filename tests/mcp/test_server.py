@@ -1142,7 +1142,7 @@ class TestTunnelProvisioning:
         saved = _load_tunnel_config(project_root)
         assert saved["hostname"] == "test.tunnel.snodo.dev"
         assert saved["tunnel_token"] == "eyJ..."
-        assert "client_id" not in saved
+        assert saved["client_id"] == "abc123.access"
         assert "client_secret" not in saved
 
     def test_load_missing_tunnel_config(self, tmp_path):
@@ -1293,6 +1293,44 @@ class TestTunnelProvisioning:
         assert captured["url"] == "https://tunnel.snodo.example.test/tunnel/h.tunnel.snodo.dev"
         assert "ingest.snodo.example.test" not in captured["url"]
 
+    def test_rotate_replaces_and_revokes_service_token(self, tmp_path, monkeypatch):
+        """Rotation revokes before issuing against the tunnel worker."""
+        import httpx
+
+        from snodo.cli.commands import serve_cmd
+
+        self._write_cloud_config(
+            tmp_path,
+            "cloud:\n"
+            "  tunnel_api_url: https://tunnel.snodo.example.test\n",
+        )
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path))
+        calls = []
+
+        def fake_delete(url, **kwargs):
+            calls.append(("DELETE", url))
+            return MagicMock(status_code=204, text="")
+
+        def fake_post(url, **kwargs):
+            calls.append(("POST", url))
+            response = MagicMock(status_code=200)
+            response.json.return_value = {
+                "client_id": "client_new.access",
+                "client_secret": "secret_new",
+            }
+            return response
+
+        monkeypatch.setattr(httpx, "delete", fake_delete)
+        monkeypatch.setattr(httpx, "post", fake_post)
+
+        result = serve_cmd._rotate_tunnel_token("key", "h.tunnel.snodo.dev")
+
+        assert result["client_secret"] == "secret_new"
+        assert calls == [
+            ("DELETE", "https://tunnel.snodo.example.test/tunnel/h.tunnel.snodo.dev/token"),
+            ("POST", "https://tunnel.snodo.example.test/tunnel/h.tunnel.snodo.dev/token"),
+        ]
+
     # -- error reporting ----------------------------------------------
 
     def test_provision_failure_reports_actual_response(self, tmp_path, monkeypatch):
@@ -1405,8 +1443,8 @@ class TestTunnelRunErrors:
 
         assert result == 1
 
-    def test_rotate_is_no_op(self):
-        """--rotate is now a no-op that prints a message."""
+    def test_rotate_without_rotatable_credential_fails(self, capsys):
+        """OAuth-only tunnels explain that there is nothing to rotate."""
         from types import SimpleNamespace
         from unittest.mock import MagicMock, patch
 
@@ -1423,7 +1461,8 @@ class TestTunnelRunErrors:
                 with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value={}):
                     result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
-        assert result == 0
+        assert result == 1
+        assert "no rotatable credentials" in capsys.readouterr().err
 
     def test_first_run_provisions_and_starts_services(self):
         """First run provisions tunnel, saves config, starts subprocesses."""
@@ -1524,8 +1563,8 @@ class TestTunnelRunErrors:
         assert result == 0
         mock_provision.assert_not_called()  # No provisioning on subsequent run
 
-    def test_rotate_is_no_op_ignores_tunnel_config(self):
-        """--rotate is a no-op regardless of existing tunnel config."""
+    def test_rotate_replaces_service_token_and_shows_secret_once(self, capsys):
+        """Rotation revokes the old token, saves its ID, and shows the secret once."""
         from types import SimpleNamespace
         from unittest.mock import MagicMock, patch
 
@@ -1540,18 +1579,53 @@ class TestTunnelRunErrors:
         stored = {
             "hostname": "existing.tunnel.snodo.dev",
             "tunnel_token": "tok_old",
+            "client_id": "client_old.access",
         }
 
         with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
             with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
                 with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=stored):
-                    with patch("snodo.cli.commands.serve_cmd._rotate_tunnel_token") as mock_rotate:
+                    with patch("snodo.cli.commands.serve_cmd._rotate_tunnel_token",
+                               return_value={"client_id": "client_new.access", "client_secret": "secret_new"}) as mock_rotate:
                         with patch("snodo.cli.commands.serve_cmd._save_tunnel_config") as mock_save:
                             result = _run_tunnel(args, mock_protocol, ".snodo/protocol.yml")
 
         assert result == 0
+        mock_rotate.assert_called_once_with("key123", "existing.tunnel.snodo.dev")
+        mock_save.assert_called_once()
+        assert mock_save.call_args.args[1]["client_id"] == "client_new.access"
+        output = capsys.readouterr().out
+        assert "service token" in output
+        assert "client_new.access" in output
+        assert "secret_new" in output
+
+    def test_rotate_with_multiple_credentials_requires_selection(self, capsys):
+        """Multiple rotatable credentials are never selected implicitly."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from snodo.cli.commands.serve_cmd import _run_tunnel
+
+        args = SimpleNamespace(
+            protocol=".snodo/protocol.yml", mode=None,
+            transport="streamable-http", port=8000, rotate=True,
+        )
+        stored = {
+            "hostname": "existing.tunnel.snodo.dev",
+            "credentials": [
+                {"name": "primary", "type": "service_token"},
+                {"name": "backup", "type": "service_token"},
+            ],
+        }
+        with patch("snodo.cli.commands.serve_cmd._check_cloudflared", return_value=True):
+            with patch("snodo.cli.commands.serve_cmd._get_snodo_api_key", return_value="key123"):
+                with patch("snodo.cli.commands.serve_cmd._load_tunnel_config", return_value=stored):
+                    with patch("snodo.cli.commands.serve_cmd._rotate_tunnel_token") as mock_rotate:
+                        result = _run_tunnel(args, MagicMock(), ".snodo/protocol.yml")
+
+        assert result == 1
         mock_rotate.assert_not_called()
-        mock_save.assert_not_called()
+        assert "more than one rotatable credential" in capsys.readouterr().err
 
     def test_non_auth_provision_failure_does_not_blame_api_key(self, capsys):
         """A 400 from provisioning reports the response and does NOT tell
