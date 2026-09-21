@@ -54,3 +54,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [048](048-coder-report-shape.md) | A coder report is best-effort evidence; it carries a shape, never a verdict | 2026-09-16 | `coders/report.py` (`CoderReport` + `parse_coder_report`) |
 | [049](049-protected-paths-detect-before-prevention.md) | Declared protected paths are detected from the task branch diff | 2026-09-17 | `Protocol.protected_paths` + post-execute gate |
 | [050](050-repeat-reads-are-free-but-bounded.md) | A validator's repeat-read turns are free but separately bounded | 2026-09-18 | `validators/llm_validator.py` (`_evaluate_with_tools`) |
+| [051](051-coder-containment-is-declared-not-deployed.md) | Coder containment is a declared property, not a deployment detail | 2026-09-21 | `coders/opencode_container.py` + coder definition |
