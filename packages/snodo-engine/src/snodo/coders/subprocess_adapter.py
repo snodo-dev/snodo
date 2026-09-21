@@ -19,6 +19,7 @@ import shutil
 import signal
 import subprocess
 import threading
+import time
 from abc import abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -45,6 +46,10 @@ _logger = logging.getLogger(__name__)
 #: reason, and the same fault must leave the same record no matter which path
 #: produced it.
 _OUTPUT_TAIL_CHARS = 2000
+
+# A pipe held open by a detached grandchild must not make a completed coder
+# hang forever. This is deliberately only a join bound, not a run-time bound.
+_READER_JOIN_TIMEOUT_SECONDS = 5
 
 #: Name of the file a subprocess coder is invited to write its report into,
 #: relative to the JOB's own state directory (``.snodo/jobs/<job_id>/``). It is
@@ -86,6 +91,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
     model_prefix: str = ""
     install_hint: str = ""
     timeout_seconds: int = 1800
+    silence_timeout_seconds: int = 600
 
     #: Arguments that make the host CLI print its own version. Overridable per
     #: adapter because there is no cross-tool convention; a tool that does not
@@ -125,12 +131,15 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         workspace: Optional[Path] = None,
         workspace_mcp: Optional[Any] = None,
         timeout_seconds: Optional[int] = None,
+        silence_timeout_seconds: Optional[int] = None,
         **kwargs: Any,
     ):
         self.model = model or self.model_prefix
         self.temperature = temperature
         if timeout_seconds is not None:
             self.timeout_seconds = int(timeout_seconds)
+        if silence_timeout_seconds is not None:
+            self.silence_timeout_seconds = int(silence_timeout_seconds)
 
         if workspace is not None:
             self._workspace = Path(workspace)
@@ -373,11 +382,36 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         emit = getattr(self, "progress_callback", None)
         out_chunks: list[str] = []
         err_chunks: list[str] = []
+        output_seen = threading.Event()
+        silence_halted = threading.Event()
+        last_output_at = time.monotonic()
+        output_lock = threading.Lock()
+
+        def _halt_for_silence() -> None:
+            while proc.poll() is None and not silence_halted.is_set():
+                with output_lock:
+                    quiet_for = time.monotonic() - last_output_at
+                if quiet_for >= self.silence_timeout_seconds:
+                    silence_halted.set()
+                    try:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    except (ProcessLookupError, OSError):
+                        proc.kill()
+                    return
+                output_seen.wait(timeout=min(0.1, self.silence_timeout_seconds - quiet_for))
+                output_seen.clear()
+
+        silence_watcher = threading.Thread(target=_halt_for_silence, daemon=True)
+        silence_watcher.start()
 
         def _reader(stream: Any, sink: list[str]) -> None:
+            nonlocal last_output_at
             try:
                 for line in iter(stream.readline, ""):
                     sink.append(line)
+                    with output_lock:
+                        last_output_at = time.monotonic()
+                    output_seen.set()
                     if emit is not None:
                         self._emit_coder_line(emit, line)
             except (ValueError, OSError):
@@ -393,6 +427,12 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             threading.Thread(target=_reader, args=(proc.stdout, out_chunks), daemon=True),
             threading.Thread(target=_reader, args=(proc.stderr, err_chunks), daemon=True),
         ]
+
+        def _join_readers() -> None:
+            deadline = time.monotonic() + _READER_JOIN_TIMEOUT_SECONDS
+            for reader in readers:
+                reader.join(timeout=max(0, deadline - time.monotonic()))
+
         for t in readers:
             t.start()
 
@@ -406,17 +446,28 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             # The group is dead, so both pipes hit EOF; the bounded join keeps
             # the timeout path from hanging on a detached grandchild that the
             # kill never reached — partial output still beats no output.
-            for t in readers:
-                t.join(timeout=5)
-            raise subprocess.TimeoutExpired(
+            _join_readers()
+            timeout_error = subprocess.TimeoutExpired(
                 cmd=argv,
                 timeout=self.timeout_seconds,
                 output="".join(out_chunks),
                 stderr="".join(err_chunks),
-            ) from e
+            )
+            timeout_error.silence_halted = silence_halted.is_set()
+            raise timeout_error from e
 
-        for t in readers:
-            t.join()
+        if silence_halted.is_set():
+            _join_readers()
+            silence_error = subprocess.TimeoutExpired(
+                cmd=argv,
+                timeout=self.silence_timeout_seconds,
+                output="".join(out_chunks),
+                stderr="".join(err_chunks),
+            )
+            silence_error.silence_halted = True
+            raise silence_error
+
+        _join_readers()
 
         return subprocess.CompletedProcess(
             args=argv,
@@ -506,6 +557,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         )
 
         timed_out = False
+        silence_halted = False
         timeout_tail = ""
         proc = None
         self.last_timed_out = False
@@ -528,6 +580,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             ) from e
         except subprocess.TimeoutExpired as e:
             timed_out = True
+            silence_halted = bool(getattr(e, "silence_halted", False))
             self.last_timed_out = True
             self.last_timeout_seconds = self.timeout_seconds
             out_str = e.stdout or e.output or ""
@@ -542,7 +595,13 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             self.last_output_tail = timeout_tail
 
         if timed_out:
-            msg = f"{self.binary} run timed out after {self.timeout_seconds}s"
+            if silence_halted:
+                msg = (
+                    f"{self.binary} run halted after {self.silence_timeout_seconds}s "
+                    "of silence (no output received)"
+                )
+            else:
+                msg = f"{self.binary} run timed out after {self.timeout_seconds}s"
             if timeout_tail:
                 msg += f": {timeout_tail}"
             _logger.warning(msg)

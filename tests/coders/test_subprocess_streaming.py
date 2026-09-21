@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+from snodo.coders.base import CoderTimeoutError
 from snodo.coders.subprocess_adapter import SubprocessCoderAdapter
 from snodo.core.interfaces import TaskSpec
 
@@ -77,6 +78,26 @@ import sys
 
 sys.stderr.write("rate limit reached\\n")
 sys.stderr.flush()
+"""
+
+_SILENT = """
+import time
+time.sleep(120)
+"""
+
+_STEADY = """
+import time
+for _ in range(8):
+    print("heartbeat", flush=True)
+    time.sleep(0.08)
+"""
+
+_PIPE_HELD_OPEN = """
+import subprocess
+import sys
+import time
+subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+print("parent-exited", flush=True)
 """
 
 
@@ -192,6 +213,48 @@ class TestMidRunObservability:
 
 
 class TestTimeoutPromisesSurviveStreaming:
+    def test_silent_child_is_halted_before_the_wall_clock_budget(self, tmp_path, workspace):
+        script = _script(tmp_path, "silent", _SILENT)
+        adapter = _ScriptedAdapter(
+            workspace=workspace, timeout_seconds=10, silence_timeout_seconds=0.3
+        )
+        adapter._argv = [sys.executable, "-u", str(script)]
+
+        started = time.monotonic()
+        with pytest.raises(CoderTimeoutError, match="silence"):
+            adapter.implement(TaskSpec(description="silent", constraints=[]))
+
+        assert time.monotonic() - started < 5
+
+    def test_steady_output_is_not_halted_by_the_silence_window(self, tmp_path, workspace):
+        script = _script(tmp_path, "steady", _STEADY)
+        adapter = _ScriptedAdapter(
+            workspace=workspace, timeout_seconds=10, silence_timeout_seconds=1.0
+        )
+        adapter._argv = [sys.executable, "-u", str(script)]
+
+        result = adapter._run_subprocess(adapter._argv, str(workspace))
+
+        assert result.returncode == 0
+        assert result.stdout.count("heartbeat") == 8
+
+    def test_success_does_not_wait_forever_for_a_pipe_held_by_a_grandchild(
+        self, tmp_path, workspace
+    ):
+        script = _script(tmp_path, "pipe_holder", _PIPE_HELD_OPEN)
+        adapter = _ScriptedAdapter(
+            workspace=workspace, timeout_seconds=10, silence_timeout_seconds=5
+        )
+
+        started = time.monotonic()
+        result = adapter._run_subprocess(
+            [sys.executable, "-u", str(script)], str(workspace)
+        )
+
+        assert result.returncode == 0
+        assert "parent-exited" in result.stdout
+        assert time.monotonic() - started < 10
+
     def test_timeout_raises_with_partial_output_that_was_also_streamed(
         self, tmp_path, workspace
     ):
