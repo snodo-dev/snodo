@@ -16,9 +16,12 @@ from types import SimpleNamespace
 from typing import Optional
 
 import typer
+from rich.console import Console
+from rich.table import Table
 
 from snodo.infrastructure.paths import require_project_root
 from snodo.infrastructure.worktree import (
+    list_task_branches,
     list_worktrees,
     remove_worktree,
     worktree_is_owned,
@@ -113,28 +116,63 @@ def _has_failure_context(project_root: str, task_id: str) -> bool:
     return False
 
 
+def _worktree_facts(project_root: str, names: list[str]) -> list[dict]:
+    """Collect the facts shown by ``worktree list``.
+
+    ``None`` is intentional for a fact Git cannot determine. It must not be
+    rendered as a false value, since that would make removal unsafe.
+    """
+    try:
+        git_available, branches = list_task_branches(project_root)
+    except Exception as e:
+        _logger.debug("Could not inspect task branches: %s", e)
+        git_available, branches = False, {}
+
+    entries = []
+    for name in names:
+        path = worktree_path(project_root, name)
+        try:
+            age = datetime.now(timezone.utc) - datetime.fromtimestamp(
+                path.stat().st_mtime, tz=timezone.utc
+            )
+            age_days = int(age.total_seconds() // 86400)
+        except OSError:
+            age_days = None
+
+        merged = branches.get(name, {}).get("is_merged") if git_available else None
+        dirty = None
+        try:
+            from git import Repo
+
+            if path.is_dir():
+                dirty = Repo(str(path)).is_dirty(untracked_files=True)
+        except Exception as e:
+            _logger.debug("Could not inspect worktree %s: %s", name, e)
+
+        entries.append({
+            "task_id": name,
+            "path": str(path),
+            "age_days": age_days,
+            "merged": merged,
+            "dirty": dirty,
+        })
+    return entries
+
+
+def _fact_label(value) -> str:
+    if value is None:
+        return "unknown"
+    return "yes" if value else "no"
+
+
 def worktree_list_command(args) -> int:
     project_root = require_project_root()
     names = list_worktrees(project_root)
+    entries = _worktree_facts(project_root, names)
 
     if getattr(args, "json", False):
         from snodo.cli.json_output import emit_json, schema_name
 
-        entries = []
-        for name in names:
-            path = worktree_path(project_root, name)
-            try:
-                age = datetime.now(timezone.utc) - datetime.fromtimestamp(
-                    path.stat().st_mtime, tz=timezone.utc
-                )
-                age_days = int(age.total_seconds() // 86400)
-            except OSError:
-                age_days = None
-            entries.append({
-                "task_id": name,
-                "path": str(path),
-                "age_days": age_days,
-            })
         return emit_json({
             "schema": schema_name("worktree"),
             "ok": True,
@@ -146,18 +184,27 @@ def worktree_list_command(args) -> int:
         print("No retained worktrees.")
         return 0
 
-    print("Retained worktrees:")
-    for name in names:
-        path = worktree_path(project_root, name)
-        try:
-            age = datetime.now(timezone.utc) - datetime.fromtimestamp(
-                path.stat().st_mtime, tz=timezone.utc
-            )
-            age_str = f"{int(age.total_seconds() // 86400)}d ago"
-        except OSError:
-            age_str = "?"
-        print(f"  {name}  ({age_str})")
-        print(f"    remove: snodo worktree remove {name}")
+    table = Table(title="Retained worktrees")
+    table.add_column("TASK ID")
+    table.add_column("AGE")
+    table.add_column("MERGED")
+    table.add_column("DIRTY")
+    for entry in entries:
+        age = "?" if entry["age_days"] is None else f'{entry["age_days"]}d ago'
+        table.add_row(
+            entry["task_id"],
+            age,
+            _fact_label(entry["merged"]),
+            _fact_label(entry["dirty"]),
+        )
+
+    console = Console(file=sys.stdout, markup=False, highlight=False)
+    if getattr(sys.stdout, "isatty", lambda: False)():
+        with console.pager():
+            console.print(table)
+    else:
+        console.print(table)
+    print("Remove a worktree with: snodo worktree remove <task_id>")
     return 0
 
 
