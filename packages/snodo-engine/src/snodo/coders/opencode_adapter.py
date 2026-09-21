@@ -193,16 +193,12 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
         from snodo.coders.opencode_container import OpenCodeContainerError
 
         if not self._container.is_available():
-            # The container runtime is not reachable — an environment fault
-            # (a missing/unstarted Docker), not a coder-configuration fault
-            # and not a verdict about the task.
-            raise CoderUnavailableError("docker", _DOCKER_REMEDIATION)
-        if not self._container.image_exists():
-            _logger.info("Building opencode Docker image (first run)...")
-            try:
-                self._container.build_image()
-            except OpenCodeContainerError as e:
-                raise LLMCallError(f"Failed to build opencode image: {e}") from e
+            # The probe records the concrete operator action (daemon, remote
+            # connection, or image) without trying to repair the environment.
+            reason = getattr(self._container, "last_availability_reason", None)
+            if not isinstance(reason, str) or not reason:
+                reason = _DOCKER_REMEDIATION
+            raise CoderUnavailableError("docker", reason)
 
         try:
             self._container.start(
