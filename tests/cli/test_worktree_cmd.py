@@ -34,7 +34,41 @@ def _set_age(project_root, task_id, days_old):
     os.utime(str(p), (mtime, mtime))
 
 
+def _make_project(root):
+    root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+    (root / "README.md").write_text("init\n")
+    subprocess.run(["git", "add", "README.md"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=root, check=True)
+    return root
+
+
 class TestWorktreeCommands:
+    def test_shared_container_is_scoped_to_project(self, tmp_path, capsys):
+        from snodo.cli.commands.worktree_cmd import worktree_list_command, worktree_remove_command
+
+        project_a = _make_project(tmp_path / "project-a")
+        project_b = _make_project(tmp_path / "project-b")
+        create_worktree(str(project_a), "task_a", "project a")
+        create_worktree(str(project_b), "task_b", "project b")
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root", return_value=str(project_a)):
+            assert worktree_list_command(SimpleNamespace()) == 0
+        listing = capsys.readouterr().out
+        assert "task_a" in listing
+        assert "task_b" not in listing
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root", return_value=str(project_a)):
+            assert worktree_remove_command(SimpleNamespace(task_id="task_b")) == 1
+        assert worktree_path(project_b, "task_b").exists()
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root", return_value=str(project_a)):
+            assert worktree_remove_command(SimpleNamespace(task_id="task_a")) == 0
+        assert not worktree_path(project_a, "task_a").exists()
+        assert worktree_path(project_b, "task_b").exists()
+
     def test_list_lists_retained_worktrees(self, git_project, capsys):
         from snodo.cli.commands.worktree_cmd import worktree_list_command
 

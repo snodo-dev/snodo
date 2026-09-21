@@ -67,6 +67,29 @@ def worktree_path(project_root: str, task_id: str) -> Path:
     return worktree_dir(project_root) / task_id
 
 
+def _project_worktree_paths(project_root: str) -> set[Path]:
+    """Return worktree paths Git records as belonging to this repository."""
+    try:
+        from snodo.tools.git import open_repo
+
+        with open_repo(project_root) as repo:
+            raw = repo.git.worktree("list", "--porcelain")
+    except Exception as e:
+        _logger.debug("Could not inspect repository worktrees: %s", e)
+        return set()
+
+    return {
+        Path(line.removeprefix("worktree ")).resolve()
+        for line in raw.splitlines()
+        if line.startswith("worktree ")
+    }
+
+
+def worktree_is_owned(project_root: str, task_id: str) -> bool:
+    """Return whether Git records *task_id* as a worktree of this repository."""
+    return worktree_path(project_root, task_id).resolve() in _project_worktree_paths(project_root)
+
+
 # Paths a task spec may legitimately name that are not files the coder should
 # be able to read as authority. A spec that cites one of these is not silently
 # transferring authority to the coder.
@@ -364,6 +387,9 @@ def setup_for_task(
 def remove_worktree(project_root: str, task_id: str) -> None:
     """Remove the worktree for *task_id* (force, best-effort)."""
     wt_path = worktree_path(project_root, task_id)
+    if not worktree_is_owned(project_root, task_id):
+        _logger.warning("Worktree %s is not owned by project %s", wt_path, project_root)
+        return
     if not wt_path.exists():
         return
     with merge_lock(project_root):
@@ -588,7 +614,11 @@ def list_worktrees(project_root: str) -> list:
     d = worktree_dir(project_root)
     if not d.is_dir():
         return []
-    entries = [p for p in d.iterdir() if p.is_dir() and not p.name.startswith(".")]
+    owned = _project_worktree_paths(project_root)
+    entries = [
+        p for p in d.iterdir()
+        if p.is_dir() and not p.name.startswith(".") and p.resolve() in owned
+    ]
     entries.sort(key=lambda p: p.stat().st_mtime)
     return [p.name for p in entries]
 
@@ -677,4 +707,3 @@ def task_branch_has_no_changes(project_root: str, task_id: str, spec: str = "") 
             )
     except Exception:
         return False
-
