@@ -101,6 +101,18 @@ class OpenCodeContainer:
 
         Raises OpenCodeContainerError if startup fails.
         """
+        workspace = workspace.resolve()
+        if not workspace.is_dir():
+            raise OpenCodeContainerError(
+                f"Workspace cannot be made available to the container: {workspace} "
+                "is not a directory"
+            )
+        if self._host != "localhost":
+            raise OpenCodeContainerError(
+                "Workspace cannot be made available to the remote Docker daemon: "
+                f"{workspace} is on the client filesystem"
+            )
+
         # If we already hold a reference and it's healthy, skip
         if self._container is not None and self._is_container_healthy():
             return
@@ -118,7 +130,7 @@ class OpenCodeContainer:
         # Start fresh
         try:
             volumes = {
-                str(workspace.resolve()): {"bind": "/workspace", "mode": "rw"},
+                str(workspace): {"bind": "/workspace", "mode": "rw"},
             }
             env = _build_provider_env()
             env["OPENCODE_PORT"] = str(self._port)

@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- OpenCode now refuses to start when its Docker daemon is remote or the
+  workspace is unavailable, rather than silently mounting a client-local path
+  that resolves to an empty directory on the daemon. (Fixes #395)
+
 ## [0.13.0] — 2026-09-21
 
 ### Fixed

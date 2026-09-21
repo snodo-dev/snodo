@@ -10,10 +10,12 @@ look — not merely that the safe value was returned.
 
 import logging
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+import pytest
 from snodo.coders.base import InPlaceCoderAdapter
 from snodo.coders.litellm import LiteLLMAdapter
-from snodo.coders.opencode_container import OpenCodeContainer
+from snodo.coders.opencode_container import OpenCodeContainer, OpenCodeContainerError
 
 
 class _ProbeInPlaceAdapter(InPlaceCoderAdapter):
@@ -142,3 +144,32 @@ class TestOpenCodeContainerProbes:
 
         assert "Container reload failed" in _joined(caplog)
         assert "not found" in _joined(caplog)
+
+
+class TestOpenCodeWorkspaceAvailability:
+    """Workspace mounts must describe a path the daemon can actually reach."""
+
+    def test_remote_daemon_never_receives_client_local_mount(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DOCKER_HOST", "ssh://builder.example")
+        client = MagicMock()
+        container = OpenCodeContainer()
+        container._client = client
+
+        with pytest.raises(
+            OpenCodeContainerError,
+            match="Workspace cannot be made available to the remote Docker daemon",
+        ):
+            container.start(tmp_path)
+
+        client.containers.run.assert_not_called()
+
+    def test_unavailable_workspace_fails_before_container_start(self, tmp_path):
+        workspace = tmp_path / "missing"
+        client = MagicMock()
+        container = OpenCodeContainer()
+        container._client = client
+
+        with pytest.raises(OpenCodeContainerError, match="Workspace cannot be made available"):
+            container.start(workspace)
+
+        client.containers.run.assert_not_called()
