@@ -27,6 +27,8 @@ def register(app: typer.Typer) -> None:
         provider: Optional[str] = typer.Option(None, "--provider", "-p", help="Provider to list models for"),
         flush: bool = typer.Option(False, "--flush", help="Ignore cache and refetch"),
         stats: bool = typer.Option(False, "--stats", help="Report actual model and coder usage from project records"),
+        provenance: bool = typer.Option(False, "--provenance", help="Show requested versus served models from recent runs"),
+        provenance_limit: int = typer.Option(20, "--provenance-limit", min=1, help="Maximum recent provenance records to show"),
         check: bool = typer.Option(False, "--check", help="Make one cheap live call against each configured model"),
         benchmark: bool = typer.Option(
             False, "--benchmark",
@@ -49,6 +51,8 @@ def register(app: typer.Typer) -> None:
             provider=provider,
             flush=flush,
             stats=stats,
+            provenance=provenance,
+            provenance_limit=provenance_limit,
             check=check,
             benchmark=benchmark,
             benchmark_runs=benchmark_runs,
@@ -101,6 +105,9 @@ def models_command(args) -> int:
     """List configured providers, their models, or project usage stats."""
     if getattr(args, "stats", False):
         return models_stats_command(args)
+
+    if getattr(args, "provenance", False):
+        return models_provenance_command(args)
 
     if getattr(args, "check", False):
         return models_check_command(args)
@@ -736,6 +743,12 @@ def _print_coder_stats_table(coder_stats: dict) -> None:
         print(
             f" {r[0]:<{col_coder}}  {r[1]:>{col_jobs}}  {r[2]:<{col_comp}}  {r[3]:>{col_dur}}"
         )
+
+
+def models_provenance_command(args) -> int:
+    """Delegate provenance reporting while preserving the existing import path."""
+    from snodo.cli.commands.models_provenance import models_provenance_command as command
+    return command(args)
 
 
 def models_stats_command(args) -> int:

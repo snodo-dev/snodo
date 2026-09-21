@@ -60,6 +60,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   (Fixes #378)
 
 ### Added
+- `snodo models --provenance` now shows requested and provider-served model
+  names across recent runs, distinguishing matches, mismatches, and providers
+  that reported no served identity without changing run behavior. (Fixes #394)
 - A task scoped to a module is now held to that module's declared paths by the
   `files_in_scope` constraint: a write outside the module is a violation even
   when the protocol's own scope covers the whole repository. An unscoped task

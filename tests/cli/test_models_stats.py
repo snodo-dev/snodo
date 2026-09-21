@@ -318,3 +318,26 @@ def test_stats_via_cli_runner(tmp_path, monkeypatch):
     assert res.exit_code == 0
     assert "Coder outcomes:" in res.stdout
     assert "litellm" in res.stdout
+
+
+def test_provenance_distinguishes_match_mismatch_and_unreported(tmp_path, monkeypatch, capsys):
+    """Provenance reports the three direct outcomes without collapsing absence."""
+    monkeypatch.chdir(tmp_path)
+    jobs_dir = tmp_path / ".snodo" / "jobs"
+    usage = [
+        {"timestamp": 3, "model": "subscription/model", "served_model": "subscription/model", "role": "coder"},
+        {"timestamp": 2, "model": "subscription/model", "served_model": "deployment/model", "role": "validator"},
+        {"timestamp": 1, "model": "subscription/model", "served_model": None, "role": "judge"},
+    ]
+    _create_job(jobs_dir, "j_provenance", coder="litellm", usage=usage)
+
+    args = SimpleNamespace(provenance=True, provenance_limit=20, json=False)
+    res = models_command(args)
+
+    assert res == 0
+    out = capsys.readouterr().out
+    assert "subscription/model" in out
+    assert "deployment/model" in out
+    assert "match" in out
+    assert "mismatch" in out
+    assert "unreported" in out
