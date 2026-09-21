@@ -168,21 +168,20 @@ class TestOpenCodeContainerProbes:
 
 
 class TestOpenCodeWorkspaceAvailability:
-    """Workspace mounts must describe a path the daemon can actually reach."""
+    """Workspace transfer must match the daemon's filesystem boundary."""
 
-    def test_remote_daemon_never_receives_client_local_mount(self, tmp_path, monkeypatch):
+    def test_remote_daemon_receives_workspace_without_client_mount(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DOCKER_HOST", "ssh://builder.example")
         client = MagicMock()
         container = OpenCodeContainer()
         container._client = client
+        container._wait_ready = MagicMock()
+        container._log_readiness = MagicMock()
 
-        with pytest.raises(
-            OpenCodeContainerError,
-            match="Workspace cannot be made available to the remote Docker daemon",
-        ):
-            container.start(tmp_path)
+        container.start(tmp_path)
 
-        client.containers.run.assert_not_called()
+        assert "volumes" not in client.containers.run.call_args.kwargs
+        client.containers.run.return_value.put_archive.assert_called_once()
 
     def test_unavailable_workspace_fails_before_container_start(self, tmp_path):
         workspace = tmp_path / "missing"

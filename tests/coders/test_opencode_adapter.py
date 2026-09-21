@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from snodo.coders.base import LLMCallError
 from snodo.coders.opencode_adapter import OpenCodeAdapter
 from snodo.core.interfaces import TaskSpec
 from snodo.tools.workspace import WorkspaceMCP
@@ -430,5 +431,21 @@ class TestImplementFlow:
         with patch.object(adapter, "_create_session", side_effect=RuntimeError("halt")):
             with pytest.raises(RuntimeError, match="halt"):
                 adapter.implement(TaskSpec(description="test", constraints=[]))
+
+        container_mock.stop.assert_called_once()
+
+    def test_workspace_pull_failure_does_not_look_successful(self, git_workspace):
+        """A remote readback failure aborts before an artifact can be returned."""
+        adapter = OpenCodeAdapter(model="opencode/test", workspace=git_workspace)
+        container_mock = Mock()
+        container_mock.is_running.return_value = True
+        container_mock.base_url = "http://daemon.example:55440"
+        container_mock.sync_workspace_from_container.side_effect = OSError("connection lost")
+        adapter._container = container_mock
+
+        with patch.object(adapter, "_create_session", return_value="session-1"):
+            with patch.object(adapter, "_wait_for_completion"):
+                with pytest.raises(LLMCallError, match="retrieve opencode workspace"):
+                    adapter.implement(TaskSpec(description="test", constraints=[]))
 
         container_mock.stop.assert_called_once()
