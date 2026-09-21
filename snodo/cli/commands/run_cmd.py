@@ -17,8 +17,7 @@ from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
 from snodo.core.spec import same_spec, spec_text, spec_with_guidance
 from snodo.config import ConfigManager, provider_env
-from snodo.cli.commands import load_protocol
-from snodo.cli.commands import followup
+from snodo.cli.commands import load_protocol, followup
 from snodo.infrastructure import cloud_liveness
 # Task start/completion recording moved to task_record.py (Fixes #382);
 # the names stay importable from here — callers and tests reach them at
@@ -319,7 +318,8 @@ def run_command(args) -> int:
     from snodo.infrastructure.session import SessionManager
     from snodo.infrastructure.paths import require_project_root
     from snodo.cli.commands.plan_run import _run_plan
-    from snodo.cli.commands.sandbox_run import _run_in_sandbox, _submit_background_job
+    from snodo.cli.commands.background_job import _submit_background_job
+    from snodo.cli.commands.sandbox_run import _run_in_sandbox
 
     if getattr(args, "fixture", None) and getattr(args, "plan", None):
         from snodo.cli.commands.plan_run import _run_fixture
