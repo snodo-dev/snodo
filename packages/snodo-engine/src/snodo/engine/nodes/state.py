@@ -29,7 +29,6 @@ class SerdeMixin:
             depth=task_dict.get("depth", 0),
             flow_type=task_dict.get("flow_type"),
             wave_id=task_dict.get("wave_id"),
-            module_id=task_dict.get("module_id"),
         )
         
         results = []
@@ -90,7 +89,6 @@ class SerdeMixin:
                     depth=s.get("depth", 0),
                     flow_type=s.get("flow_type"),
                     wave_id=s.get("wave_id"),
-                    module_id=s.get("module_id"),
                 )
                 for s in d.get("spawned_subtasks", [])
             ],
@@ -119,7 +117,6 @@ class SerdeMixin:
                 "depth": state.task.depth,
                 "flow_type": state.task.flow_type,
                 "wave_id": state.task.wave_id,
-                "module_id": state.task.module_id,
             },
             "current_mode": state.current_mode,
             "validation_results": [state_result_dict(r) for r in state.validation_results],
@@ -154,7 +151,6 @@ class SerdeMixin:
                     "depth": s.depth,
                     "flow_type": s.flow_type,
                     "wave_id": s.wave_id,
-                    "module_id": s.module_id,
                 }
                 for s in state.spawned_subtasks
             ],
