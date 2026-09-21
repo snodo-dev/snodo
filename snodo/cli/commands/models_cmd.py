@@ -27,6 +27,8 @@ def register(app: typer.Typer) -> None:
         provider: Optional[str] = typer.Option(None, "--provider", "-p", help="Provider to list models for"),
         flush: bool = typer.Option(False, "--flush", help="Ignore cache and refetch"),
         stats: bool = typer.Option(False, "--stats", help="Report actual model and coder usage from project records"),
+        provenance: bool = typer.Option(False, "--provenance", help="Show requested versus served models from recent runs"),
+        provenance_limit: int = typer.Option(20, "--provenance-limit", min=1, help="Maximum recent provenance records to show"),
         check: bool = typer.Option(False, "--check", help="Make one cheap live call against each configured model"),
         benchmark: bool = typer.Option(
             False, "--benchmark",
@@ -49,6 +51,8 @@ def register(app: typer.Typer) -> None:
             provider=provider,
             flush=flush,
             stats=stats,
+            provenance=provenance,
+            provenance_limit=provenance_limit,
             check=check,
             benchmark=benchmark,
             benchmark_runs=benchmark_runs,
@@ -101,6 +105,9 @@ def models_command(args) -> int:
     """List configured providers, their models, or project usage stats."""
     if getattr(args, "stats", False):
         return models_stats_command(args)
+
+    if getattr(args, "provenance", False):
+        return models_provenance_command(args)
 
     if getattr(args, "check", False):
         return models_check_command(args)
@@ -736,6 +743,92 @@ def _print_coder_stats_table(coder_stats: dict) -> None:
         print(
             f" {r[0]:<{col_coder}}  {r[1]:>{col_jobs}}  {r[2]:<{col_comp}}  {r[3]:>{col_dur}}"
         )
+
+
+def _collect_model_provenance(project_root: Path, limit: int) -> list[dict]:
+    """Return recent requested/served pairs without interpreting other fields."""
+    jobs_dir = project_root / ".snodo" / "jobs"
+    records = []
+    if not jobs_dir.is_dir():
+        return records
+
+    try:
+        job_dirs = [entry for entry in jobs_dir.iterdir() if entry.is_dir()]
+    except OSError:
+        return records
+
+    for job_dir in job_dirs:
+        try:
+            state = json.loads((job_dir / "state.json").read_text())
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            continue
+
+        for record_type in ("usage", "tool_telemetry"):
+            source_records = state.get(record_type)
+            if not isinstance(source_records, list):
+                continue
+            for record in source_records:
+                if not isinstance(record, dict):
+                    continue
+                requested = record.get("model")
+                if not isinstance(requested, str) or not requested.strip():
+                    continue
+                served = record.get("served_model")
+                if isinstance(served, str):
+                    served = served.strip() or None
+                else:
+                    served = None
+                if served is None:
+                    comparison = "unreported"
+                elif served == requested:
+                    comparison = "match"
+                else:
+                    comparison = "mismatch"
+                records.append({
+                    "run": job_dir.name,
+                    "record_type": record_type,
+                    "timestamp": record.get("timestamp"),
+                    "role": record.get("role"),
+                    "requested": requested,
+                    "served": served,
+                    "comparison": comparison,
+                })
+
+    records.sort(key=lambda record: record["timestamp"] if isinstance(record["timestamp"], (int, float)) else float("-inf"), reverse=True)
+    return records[:limit]
+
+
+def models_provenance_command(args) -> int:
+    """Show directly recorded requested and provider-served model names."""
+    root = resolve_project_root()
+    if root is None:
+        cwd = Path.cwd()
+        if (cwd / ".snodo").is_dir():
+            root = str(cwd)
+
+    limit = getattr(args, "provenance_limit", 20)
+    records = _collect_model_provenance(Path(root), limit) if root is not None else []
+    if getattr(args, "json", False):
+        from snodo.cli.json_output import emit_json, schema_name
+        return emit_json({
+            "schema": schema_name("models-provenance"),
+            "ok": True,
+            "project_root": root,
+            "records": records,
+        })
+
+    print("Model provenance (requested -> served):")
+    if not records:
+        print("  No model provenance recorded.")
+        return 0
+    print("  RUN  TYPE             ROLE       REQUESTED                 SERVED                    COMPARISON")
+    for record in records:
+        print(
+            f"  {record['run']}  {record['record_type']:<16} "
+            f"{str(record['role'] or '-'):<10} {record['requested']:<25} "
+            f"{str(record['served'] or 'unreported'):<25} {record['comparison']}"
+        )
+    return 0
 
 
 def models_stats_command(args) -> int:
