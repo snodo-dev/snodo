@@ -28,6 +28,7 @@ from snodo.compiler.verifier import (
     verify_plan,
     PlanWellFormednessError as _BasePlanWellFormednessError,
 )
+from snodo.mcp.status import TASK_STATUSES
 
 _logger = logging.getLogger(__name__)
 
@@ -792,9 +793,8 @@ class PlannerMCP:
         exactly the same values. Widening it is a decision (ADR 045), not an
         edit: ``scripts/enforce_vocabularies.py`` reads this set.
         """
-        valid_statuses = {"pending", "in_progress", "completed", "blocked", "errored", "unmerged"}
-        if status not in valid_statuses:
-            raise PlannerError(f"Invalid status: {status}. Must be one of {valid_statuses}")
+        if status not in TASK_STATUSES:
+            raise PlannerError(f"Invalid status: {status}. Must be one of {TASK_STATUSES}")
 
     def record_status(
         self,

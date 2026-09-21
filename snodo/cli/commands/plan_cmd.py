@@ -483,9 +483,8 @@ def _print_plan_waves(waves: list, tasks: dict,
     the real command that reaches its logs, so the id a reader needs is beside
     the row it describes. Healthy and never-run rows stay free of that noise.
     """
-    _STATUS_MARKERS = {"completed": "+", "in_progress": "~",
-                       "blocked": "!", "errored": "?",
-                       "unmerged": "u", "pending": " "}
+    from snodo.mcp.status import status_marker
+
     task_jobs = task_jobs or {}
     for wave in waves:
         wave_id = wave.get("id")
@@ -495,7 +494,7 @@ def _print_plan_waves(waves: list, tasks: dict,
         for task_id in wave.get("tasks", []):
             raw = tasks.get(task_id, "pending")
             state = raw["status"] if isinstance(raw, dict) else raw
-            marker = _STATUS_MARKERS.get(state, "?")
+            marker = status_marker(state)
             job_id = task_jobs.get(task_id)
             if job_id and state not in ("completed", "pending"):
                 print(f"    [{marker}] {task_id}: {state}  ->  snodo logs {job_id}")
