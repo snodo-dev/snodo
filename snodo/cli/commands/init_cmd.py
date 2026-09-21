@@ -557,7 +557,7 @@ def init_command(args) -> int:
             if not oc.image_exists():
                 print()
                 print("OpenCode adapter: Docker detected. Build the image with:")
-                print("  docker build -t snodo-opencode:latest -f docker/Dockerfile.opencode .")
+                print("  docker build -t snodo-opencode:latest -f docker/Dockerfile.opencode docker")
             else:
                 print()
                 print("OpenCode adapter: Docker + image ready.")
