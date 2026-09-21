@@ -169,6 +169,7 @@ These commands do not start a task or change project state. After
 
 ```shell
 snodo status --json
+snodo runs --json
 snodo plan list
 snodo task list
 ```

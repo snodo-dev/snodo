@@ -234,6 +234,21 @@ and call counts remain available so a consumer can choose its own aggregation.
 | `models` | object | model id to usage record, including calls, token totals, durations, costs and roles |
 | `coders` | object | coder id to job totals and durations |
 
+### `snodo runs --json`
+
+Schema: `snodo.runs.v1`
+
+Emits the accumulated completed task run records. A task is one row; background
+job copies are not emitted as additional rows. Measurements that were not
+recorded are omitted, while measured zeroes remain zeroes.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.runs.v1` |
+| `ok` | bool | `true` when the report was produced |
+| `project_root` | string | absolute project root |
+| `runs` | array | completed run records, each with `task_id`, `completed_at`, and recorded `cost` fields |
+
 ### `snodo models --benchmark --json`
 
 Schema: `snodo.models-benchmark.v1`
