@@ -107,6 +107,9 @@ def _drive_opencode_adapter(name: str, workspace: Path, spec: TaskSpec):
     container.is_running.return_value = True
     container.base_url = "http://localhost:55440"
     coder._container = container
+    # This driver exercises in-place attribution, not the live server's model
+    # catalog; the adapter's dedicated tests cover that capability probe.
+    coder._validate_model_available = lambda: None
 
     def fake_wait(session_id, spec):
         # Simulate the container editing the volume-mounted workspace in place.
