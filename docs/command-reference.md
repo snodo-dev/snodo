@@ -149,15 +149,11 @@ snodo audit verify --json
 
 ## Run Infrastructure
 
-These commands operate the MCP server or Docker-backed sandbox rather than a
-single task.
+These commands operate the MCP server rather than a single task.
 
 | Command | Purpose |
 |---|---|
 | `snodo serve` | Start the MCP server from the protocol definition. |
-| `snodo sandbox build` | Build the `snodo-worker` Docker image. |
-| `snodo sandbox status` | Check Docker availability and image status. |
-
 `snodo serve` defaults to stdio. It can also serve SSE or streamable HTTP with
 `--transport`, and its help describes tunnel provisioning and Claude Desktop
 installation options.

@@ -11,8 +11,8 @@ The background dispatch path and the `job retry` path only.
 ## HARD do-not-touch
 - The shared inline _execute_task path must NOT require a job dir and must NOT
   call _load_task(_job_dir(job_id)) unconditionally. Inline / non-background runs
-  (--from-pr, --sandbox local, docker fallback, plain `snodo run`) have no job
-  dir and must execute exactly as before this change.
+  (--from-pr and plain `snodo run`) have no job dir and must execute exactly as
+  before this change.
 - Any load of a stored task from a job dir must be guarded: only when running as
   a real background job (job_id present AND the job dir exists). Otherwise skip
   silently and derive task_id as today.
@@ -25,8 +25,7 @@ The background dispatch path and the `job retry` path only.
 3. Inline runs are behaviorally unchanged.
 
 ## Acceptance
-- The four previously-broken inline tests (test_from_pr x2, sandbox local,
-  docker fallback) pass — no JobError from a missing job dir.
+- The previously-broken inline tests pass — no JobError from a missing job dir.
 - A backgrounded job's task.json contains its task_id.
 - `job retry` yields a new j_xxx with the SAME task_id, grouped under the same
   task in `snodo meta <task_id>`, carrying prior failure context.

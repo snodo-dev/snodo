@@ -38,7 +38,6 @@ from snodo.cli.commands.plan_cmd import plan_command  # noqa: F401
 from snodo.cli.commands.job_cmd import job_command  # noqa: F401
 from snodo.cli.commands.agent_cmd import agent_command  # noqa: F401
 from snodo.cli.commands.dashboard_cmd import dashboard_command  # noqa: F401
-from snodo.cli.commands.sandbox_cmd import sandbox_command  # noqa: F401
 from snodo.cli.commands.session_cmd import session_command  # noqa: F401
 from snodo.cli.commands.mode_cmd import mode_command  # noqa: F401
 from snodo.cli.commands.run_cmd import (  # noqa: F401
@@ -149,10 +148,6 @@ del _pkgutil, _importlib, _cli_commands, _mod_name, _mod, _sub_app, _cmd_name, _
 
 
 # mode sub-app is now defined in snodo/cli/commands/mode_cmd.py
-# and mounted automatically by the discovery loop above.
-
-
-# sandbox sub-app is now defined in snodo/cli/commands/sandbox_cmd.py
 # and mounted automatically by the discovery loop above.
 
 

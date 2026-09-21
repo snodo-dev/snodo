@@ -564,7 +564,7 @@ class TestRunCommandPlan:
         from snodo.cli.commands.run_cmd import run_command
 
         args = SimpleNamespace(plan="myplan", description=None,
-                               background=False, sandbox="local")
+                               background=False)
         result = run_command(args)
         assert result == 0
         mock_plan.assert_called_once_with(args)
@@ -733,7 +733,7 @@ class TestRunCommandSessionWiring:
         from snodo.cli.commands.run_cmd import run_command
 
         args = SimpleNamespace(plan="myplan", description=None,
-                               background=False, sandbox="local")
+                               background=False)
         run_command(args)
         # Verify args now have audit_log and session_manager
         assert hasattr(args, "audit_log")
@@ -762,7 +762,6 @@ class TestProviderCredentialPreflight:
             model=None,
             mock=False,
             background=False,
-            sandbox="local",
         )
         for k, v in overrides.items():
             setattr(args, k, v)

@@ -107,7 +107,6 @@ class RunArgs:
     interactive: bool = False
     from_pr: Optional[int] = None
     background: bool = False
-    sandbox: str = "local"
     resume: Optional[str] = None
     retry: Optional[str] = None
     append_spec: Optional[str] = None
@@ -150,9 +149,6 @@ def register(app: typer.Typer) -> None:
         background: bool = typer.Option(
             False, "--background", "-b", help="Run task in background",
         ),
-        sandbox: str = typer.Option(
-            "local", "--sandbox", help="Sandbox type: local or docker",
-        ),
         resume: Optional[str] = typer.Option(
             None, "--resume", help="Resume execution from session ID",
         ),
@@ -177,7 +173,7 @@ def register(app: typer.Typer) -> None:
             description=description, protocol=protocol, model=model, coder=coder, mode=mode,
             verbose=verbose, mock=mock, plan=plan, wave=wave, module=module,
             interactive=interactive, from_pr=from_pr, background=background,
-            sandbox=sandbox, resume=resume, retry=retry,
+            resume=resume, retry=retry,
             append_spec=append_spec, replace_spec=replace_spec,
             retain_worktree=retain_worktree, no_isolation=no_isolation,
             fixture=fixture,
@@ -319,7 +315,6 @@ def run_command(args) -> int:
     from snodo.infrastructure.paths import require_project_root
     from snodo.cli.commands.plan_run import _run_plan
     from snodo.cli.commands.background_job import _submit_background_job
-    from snodo.cli.commands.sandbox_run import _run_in_sandbox
 
     if getattr(args, "fixture", None) and getattr(args, "plan", None):
         from snodo.cli.commands.plan_run import _run_fixture
@@ -358,11 +353,6 @@ def run_command(args) -> int:
     if args.description is None:
         print("Error: task description required (or use --plan <name>)", file=sys.stderr)
         return 1
-
-    # Route through docker sandbox if requested
-    sandbox_type = getattr(args, "sandbox", "local")
-    if sandbox_type == "docker":
-        return _run_in_sandbox(args)
 
     mgr = ConfigManager()
     model = args.model or mgr.get_coder_model()

@@ -21,7 +21,6 @@ Generated inventory (printed as test output):
     config:  show, add, remove, test, set, get
     session: list, show, delete, prune
     mode:    show, change
-    sandbox: build, status
     cloud:   connect, disconnect, status, sync
     task:    list, abandon, prune
 """
@@ -52,7 +51,7 @@ def _help_ok(snodo_cli, *cmd_args) -> tuple[int, str]:
 TOP_LEVEL_NAMES = [
     "init", "run", "serve", "dashboard", "authorize",
     "recon", "models", "install", "uninstall", "meta", "logs",
-    "plan", "job", "agent", "config", "session", "mode", "sandbox",
+    "plan", "job", "agent", "config", "session", "mode",
     "cloud", "task", "validate",
 ]
 
@@ -65,7 +64,6 @@ GROUP_SUBCOMMANDS: dict[str, list[str]] = {
     "config":  ["show", "add", "remove", "test", "set", "get"],
     "session": ["list", "show", "delete", "prune"],
     "mode":    ["show", "change"],
-    "sandbox": ["build", "status"],
     "cloud":   ["connect", "disconnect", "status", "sync"],
     "task":    ["list", "abandon", "prune"],
 }

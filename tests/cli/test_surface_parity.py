@@ -23,7 +23,6 @@ from snodo.cli.commands.run_cmd import register
 RUN_ONLY_OPTIONS = {
     frozenset({"--plan", "-p"}),
     frozenset({"--background", "-b"}),
-    frozenset({"--sandbox"}),
     frozenset({"--resume"}),
     frozenset({"--retry"}),
     frozenset({"--append-spec"}),

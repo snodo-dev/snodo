@@ -578,7 +578,6 @@ def _dispatch_as_new_task(args, task_data: dict, job_id: str) -> int:
         background=False,
         plan=None,
         retry=None,
-        sandbox="local",
         from_pr=None,
         resume=None,
         audit_log=audit_log,

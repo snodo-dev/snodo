@@ -34,7 +34,7 @@ that tolerate absence (prompt command).
 Replace Path.cwd()-as-project-root with resolve_project_root() /
 require_project_root() at the command call sites:
   authorize_cmd, session_cmd, mode_cmd, run_cmd, plan_cmd, job_cmd,
-  install_cmd, dashboard_cmd, sandbox_cmd, plan_run, dashboard/app,
+   install_cmd, dashboard_cmd, plan_run, dashboard/app,
   mcp/decision_handlers
 - Engine/validator working_directory fallbacks (loop.py 691-692/1162,
   validators.py 90-91, quality.py 46) are a DIFFERENT concern (cwd for
