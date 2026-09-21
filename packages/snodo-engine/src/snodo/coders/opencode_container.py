@@ -17,6 +17,7 @@ _logger = logging.getLogger(__name__)
 
 _IMAGE = "snodo-opencode:latest"
 _PORT = 55440
+_DOCKER_REMEDIATION = "Install and start Docker: https://docs.docker.com/get-docker/"
 
 
 class OpenCodeContainerError(Exception):
@@ -38,6 +39,7 @@ class OpenCodeContainer:
         self._port = port
         self._client = None
         self._container = None
+        self._last_availability_reason = None
 
         docker_host = os.environ.get("DOCKER_HOST", "")
         if docker_host.startswith(("ssh://", "tcp://")):
@@ -53,16 +55,59 @@ class OpenCodeContainer:
         return self._client
 
     def is_available(self) -> bool:
-        """Check if Docker daemon is reachable."""
+        """Check whether Docker and the opencode image are usable."""
+        return self.availability_reason() is None
+
+    @property
+    def last_availability_reason(self):
+        """Return the diagnosis from the most recent availability probe."""
+        return self._last_availability_reason
+
+    def availability_reason(self):
+        """Return an operator-facing reason if the container path is unavailable.
+
+        This deliberately performs only the same cheap ping and image lookup
+        used by the lifecycle manager; it does not start, build, or repair
+        anything.
+        """
+        self._last_availability_reason = None
         try:
             self.client.ping()
-            return True
         except Exception as e:
-            # "Docker is absent" and "Docker is present but erroring" both
-            # fall back to False for the caller; only the log can tell the
-            # operator which world they are in.
             _logger.debug("Docker ping failed (daemon unreachable?): %s: %s", type(e).__name__, e)
-            return False
+            if isinstance(e, (ModuleNotFoundError, FileNotFoundError)):
+                reason = f"Docker is absent. {_DOCKER_REMEDIATION}"
+            elif isinstance(e, ConnectionError):
+                reason = (
+                    f"Docker daemon is unreachable at {self._host}. "
+                    f"Check the daemon, DOCKER_HOST, and SSH credentials. ({e})"
+                )
+            else:
+                reason = (
+                    f"Docker daemon check failed ({type(e).__name__}: {e}). "
+                    f"{_DOCKER_REMEDIATION}"
+                )
+            self._last_availability_reason = reason
+            return reason
+
+        try:
+            self.client.images.get(self._image)
+        except Exception as e:
+            _logger.debug("Image %s lookup failed: %s: %s", self._image, type(e).__name__, e)
+            if type(e).__name__ == "ImageNotFound" or "no such image" in str(e).lower():
+                reason = (
+                    f"Docker image {self._image!r} is missing. "
+                    f"Build it with 'docker build -t {self._image} -f docker/Dockerfile.opencode .'"
+                )
+            else:
+                reason = (
+                    f"Docker image {self._image!r} could not be checked "
+                    f"({type(e).__name__}: {e}). Check the daemon and registry access."
+                )
+            self._last_availability_reason = reason
+            return reason
+
+        return None
 
     def image_exists(self) -> bool:
         """Check if the opencode image exists locally."""

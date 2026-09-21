@@ -87,20 +87,41 @@ class TestCoderSubmitFilesParsing:
 
 
 class TestOpenCodeContainerProbes:
-    """Availability probes: False means "not available", but only the log
-    says whether the daemon is absent or the probe itself broke."""
+    """Availability probes preserve the operator-facing failure reason."""
 
-    def test_ping_failure_logs_reason(self, caplog):
+    def test_absent_docker_is_reported(self, caplog):
+        container = OpenCodeContainer()
+        container._client = SimpleNamespace(ping=lambda: (_ for _ in ()).throw(ModuleNotFoundError("docker")))
+
+        with caplog.at_level(logging.DEBUG, logger="snodo.coders.opencode_container"):
+            reason = container.availability_reason()
+
+        assert "Docker is absent" in reason
+        assert container.is_available() is False
+
+    def test_unreachable_docker_is_reported(self, caplog):
         def boom():
             raise ConnectionError("Cannot connect to the Docker daemon at tcp://dind:2375")
 
         container = OpenCodeContainer()
         container._client = SimpleNamespace(ping=boom)
         with caplog.at_level(logging.DEBUG, logger="snodo.coders.opencode_container"):
-            assert container.is_available() is False
+            reason = container.availability_reason()
 
-        assert "Docker ping failed" in _joined(caplog)
-        assert "Cannot connect to the Docker daemon" in _joined(caplog)
+        assert "unreachable" in reason
+        assert "DOCKER_HOST" in reason
+
+    def test_missing_image_is_reported(self):
+        def missing(name):
+            raise RuntimeError("No such image: snodo-opencode:latest")
+
+        container = OpenCodeContainer()
+        container._client = SimpleNamespace(ping=lambda: None, images=SimpleNamespace(get=missing))
+
+        reason = container.availability_reason()
+
+        assert "image 'snodo-opencode:latest' is missing" in reason
+        assert "docker build -t snodo-opencode:latest" in reason
 
     def test_image_lookup_failure_logs_reason(self, caplog):
         def boom(name):
