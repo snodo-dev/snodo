@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-09-21
+
 ### Fixed
 - A coder subprocess now starts with its standard input already at end of file.
   It previously inherited snodo's, which is not a terminal in a background job,
