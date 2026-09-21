@@ -104,7 +104,7 @@ class TestModelPayload:
                 assert body["model"] == {"providerID": "deepseek", "modelID": "deepseek-chat"}
                 assert body["parts"] == [{"type": "text", "text": prompt_text}]
 
-    def test_session_creation_also_has_model(self):
+    def test_session_creation_has_no_model(self):
         adapter = OpenCodeAdapter(model="opencode/deepseek/deepseek-chat")
         adapter._container = Mock()
         adapter._container.base_url = "http://localhost:55440"
@@ -120,7 +120,7 @@ class TestModelPayload:
 
             call_args = mock_post.call_args
             body = call_args[1]["json"]
-            assert "model" in body
+            assert body == {}
 
 
 # ========== GIT-DIFF READBACK ==========

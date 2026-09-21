@@ -47,8 +47,8 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
     skip_engine_commit: bool = True
     skip_workspace_write: bool = True
 
-    #: The container coder reads the model (into the session payload) and its
-    #: workspace/container. It does NOT honour ``timeout_seconds`` — the
+    #: The container coder reads the model and its workspace/container. It does
+    #: NOT honour ``timeout_seconds`` — the
     #: session budget is the hardcoded ``_SESSION_TIMEOUT`` below, and the
     #: value from config is absorbed by ``**kwargs`` and dropped — nor
     #: ``temperature``, which the constructor stores and nothing ever reads,
@@ -217,9 +217,7 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
         try:
             resp = httpx.post(
                 f"{self.base_url}/session",
-                json={
-                    "model": self._resolve_model_payload(),
-                },
+                json={},
                 timeout=10.0,
             )
             if resp.status_code != 200:
