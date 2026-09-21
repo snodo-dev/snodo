@@ -92,6 +92,9 @@ def register(app: typer.Typer) -> None:
         rotate: bool = typer.Option(
             False, "--rotate", help="Rotate the Cloudflare service token for an existing tunnel",
         ),
+        credential: Optional[str] = typer.Option(
+            None, "--credential", help="Credential name to rotate when a tunnel has more than one",
+        ),
         delete: bool = typer.Option(
             False, "--delete", help="Deprovision and remove the managed tunnel",
         ),
@@ -137,7 +140,8 @@ def register(app: typer.Typer) -> None:
         """Start MCP server from protocol definition."""
         args = SimpleNamespace(
             protocol=protocol, mode=mode, transport=transport, port=port,
-            tunnel=tunnel, auth=auth, rotate=rotate, delete=delete, hostname=hostname,
+            tunnel=tunnel, auth=auth, rotate=rotate, credential=credential,
+            delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
             mcp_uninstall_all=mcp_uninstall_all, mcp_list=mcp_list,
             purge=purge, orphans=orphans,
@@ -645,8 +649,88 @@ def _provision_tunnel(
 
 
 def _rotate_tunnel_token(api_key: str, hostname: str) -> dict:
-    """Deprecated — token rotation is no longer supported (OAuth 2.1 only)."""
-    raise RuntimeError("Token rotation is no longer supported (OAuth 2.1 only).")
+    """Revoke the current service token and issue its replacement.
+
+    The secret is returned by the cloud only in the issue response. Callers
+    must display it immediately and must not write it to tunnel.json.
+    """
+    try:
+        import httpx
+
+        api_url = _get_cloud_tunnel_api_url().rstrip("/")
+        headers = {"Authorization": f"Bearer {api_key}"}
+        revoke_url = f"{api_url}/tunnel/{hostname}/token"
+        revoked = httpx.delete(revoke_url, headers=headers, timeout=30.0)
+        if revoked.status_code not in (200, 204, 404):
+            raise TunnelAPIError(
+                f"Token revocation failed: DELETE {revoke_url} returned "
+                f"HTTP {revoked.status_code}: {revoked.text[:500]}",
+                status_code=revoked.status_code,
+            )
+
+        issued = httpx.post(revoke_url, headers=headers, timeout=30.0)
+        if issued.status_code != 200:
+            raise TunnelAPIError(
+                f"Token issuance failed: POST {revoke_url} returned "
+                f"HTTP {issued.status_code}: {issued.text[:500]}",
+                status_code=issued.status_code,
+            )
+        return issued.json()
+    except TunnelAPIError:
+        raise
+    except Exception as e:
+        raise TunnelAPIError(f"Token rotation failed: {e}") from e
+
+
+def _rotatable_tunnel_credentials(config: dict) -> list[dict]:
+    """Return named credentials that the tunnel can actually rotate.
+
+    OAuth bearer credentials are deliberately absent: their authorization
+    server expires them and there is no replacement operation here. The
+    ``credentials`` form is the cloud API's multi-credential representation;
+    the client_id form keeps existing service-token tunnel records usable.
+    """
+    credentials = config.get("credentials")
+    if isinstance(credentials, dict):
+        credentials = list(credentials.values())
+    if isinstance(credentials, list):
+        return [
+            item for item in credentials
+            if isinstance(item, dict)
+            and item.get("rotatable", True)
+            and str(item.get("type", "")).lower() not in {"oauth", "bearer", "oauth2"}
+        ]
+    if config.get("client_id") and str(config.get("auth_type", "")).lower() not in {
+        "oauth", "bearer", "oauth2",
+    }:
+        return [{"name": "service token", "type": "service_token"}]
+    return []
+
+
+def _select_tunnel_credential(config: dict, requested: Optional[str]) -> Optional[dict]:
+    """Select one rotatable credential, or report why selection is impossible."""
+    credentials = _rotatable_tunnel_credentials(config)
+    if requested:
+        selected = next(
+            (item for item in credentials
+             if requested in {item.get("name"), item.get("id"), item.get("type")}),
+            None,
+        )
+        if selected is None:
+            print(f"No rotatable tunnel credential named '{requested}'.", file=sys.stderr)
+        return selected
+    if len(credentials) == 1:
+        return credentials[0]
+    if not credentials:
+        print("This tunnel has no rotatable credentials. OAuth bearer tokens "
+              "expire through the authorization server and cannot be rotated.",
+              file=sys.stderr)
+        return None
+    names = ", ".join(str(item.get("name") or item.get("id") or item.get("type"))
+                     for item in credentials)
+    print(f"This tunnel has more than one rotatable credential: {names}.", file=sys.stderr)
+    print("Choose one with --credential <name>.", file=sys.stderr)
+    return None
 
 
 def _deprovision_tunnel(api_key: str, hostname: str) -> bool:
@@ -778,6 +862,14 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
         to_save["port"] = config["port"]
     if config.get("auth"):
         to_save["auth"] = list(config["auth"])
+    if config.get("client_id"):
+        to_save["client_id"] = config["client_id"]
+    if config.get("credentials"):
+        to_save["credentials"] = config["credentials"]
+    # A tunnel provisioned before the auth set was recorded carries a single
+    # auth_type; it is read when deciding what is rotatable.
+    if config.get("auth_type"):
+        to_save["auth_type"] = config["auth_type"]
     path.write_text(json.dumps(to_save, indent=2) + "\n")
 
 
@@ -1112,9 +1204,41 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         return _handle_tunnel_delete(project_root, tunnel_config, api_key,
                                      delete_hostname)
 
-    # --rotate flow (no-op)
+    # --rotate flow
     if rotate:
-        print("Token rotation is no longer supported (OAuth 2.1 only).")
+        credential = _select_tunnel_credential(
+            tunnel_config, getattr(args, "credential", None),
+        )
+        if credential is None:
+            return 1
+        credential_name = str(
+            credential.get("name") or credential.get("id") or credential.get("type")
+        )
+        if credential.get("type") != "service_token":
+            print(f"Rotation is not implemented for tunnel credential '{credential_name}'.",
+                  file=sys.stderr)
+            return 1
+        hostname = tunnel_config.get("hostname")
+        if not hostname:
+            print("Cannot rotate a tunnel without a hostname.", file=sys.stderr)
+            return 1
+        try:
+            replacement = _rotate_tunnel_token(api_key, hostname)
+        except TunnelAPIError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        new_client_id = replacement.get("client_id")
+        new_secret = replacement.get("client_secret")
+        if not new_client_id or not new_secret:
+            print("Error: token rotation returned no replacement client credentials.",
+                  file=sys.stderr)
+            return 1
+        tunnel_config["client_id"] = new_client_id
+        _save_tunnel_config(project_root, tunnel_config)
+        print(f"Rotated tunnel credential: {credential_name}")
+        print(f"  Client ID: {new_client_id}")
+        print(f"  Client secret: {new_secret}")
+        print("  Save the client secret now; it will not be shown again.")
         return 0
 
     # 4. Decide the port before anything is provisioned. The tunnel is told the
@@ -1216,6 +1340,9 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             "port": port,
             "auth": auth_methods,
         }
+        for key in ("client_id", "credentials", "auth_type"):
+            if provisioned.get(key) is not None:
+                tunnel_config[key] = provisioned[key]
         _save_tunnel_config(project_root, tunnel_config)
         newly_provisioned = True
 
