@@ -10,6 +10,25 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- A coder subprocess now starts with its standard input already at end of file.
+  It previously inherited snodo's, which is not a terminal in a background job,
+  so any tool below the coder that asked a question waited forever and the run
+  burned its whole budget producing nothing.
+- A coder that produces no output at all is now halted as an `environment_error`
+  once silence has lasted long enough to be a fault rather than a slow step, and
+  the reader threads are joined with a bound on the success path as they already
+  were on the timeout path, so a grandchild holding the pipes cannot hang a run
+  that has otherwise finished.
+- Retained worktrees are listed and removed per repository. The worktree
+  container is a sibling of the project root, so repositories kept under one
+  parent directory shared it: a listing showed every project's worktrees and
+  offered them all for removal.
+- Module resolution lives in one place with one answer for an unknown module
+  identifier. The scope predicate and the protocol model had grown separate
+  lookups that disagreed about that case.
+- Intake no longer proposes a Decision bullet that only introduces the points
+  beneath it. The lead-in carries no rule, and its content is already proposed
+  as those points.
 - Provider credentials may now be named by an `env:` or `command:` reference and
   resolved only at the moment of use, without persisting the resolved secret.
   (Fixes #394)
@@ -44,9 +63,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Managed tunnel interruption now stops both process groups quietly with a zero
   exit, while cloudflared failures report the stderr already captured by the
   drain thread. (Fixes #385)
-- Protocol-adherence validation now retries a completion without a provider-
-  rejected temperature parameter, allowing affected models to return a verdict
-  instead of turning the validator outage into an operational error. (Fixes #384)
+- The protocol-adherence validator's provider-refusal test now asserts on the
+  exact message providers return (`Unsupported parameter: 'temperature' is not
+  supported with this model`) rather than a paraphrase. The validator already
+  routed both of its completions through the shared parameter recovery; the
+  test was the only thing that did not match reality. (Fixes #384)
 - Liveness pushes now share the audit sender's persisted terminal-refusal state,
   stopping repeated authentication failures across transitions and restarts
   while leaving rate limits and server failures retryable. (Fixes #374)
@@ -63,6 +84,31 @@ snodo uses [Semantic Versioning](https://semver.org/).
   (Fixes #378)
 
 ### Added
+- `snodo worktree list` is a table: task id, age, whether the branch is merged
+  into the base branch, and whether the worktree holds uncommitted changes.
+  Paged when attached to a terminal, with `--json` for the same facts as data.
+- `snodo plan list` is a table ordered newest first, with a one-line intent, last
+  activity, progress and a status derived from the plan's tasks. Paged, with
+  `--json`, and the plan/wave/task hierarchy available on request. A task that
+  belongs to no plan is still listed.
+- `snodo serve --mcp-list` reports the MCP entries registered on this machine,
+  which project each belongs to, and whether that project still exists.
+- Accumulated run records can be emitted as machine-readable data carrying their
+  own schema name and version, so a scheduled job can collect the effort series
+  without knowing where snodo keeps its files.
+- A run record can be sent to the cloud on request. It goes the way everything
+  else outbound goes — exchanging the credential for a short-lived admission
+  lease first — and carries its own schema name and version, separate from the
+  audit interface. Sending is opt-in per run, and a failed send never fails the
+  run that produced the record.
+- `change_size` now names the paths it counted, alongside the line totals and
+  per-shape file counts. Paths, not categories: classification belongs to the
+  reader. A list that had to be cut short says so rather than reading as
+  complete, and the diff itself is still never recorded.
+- A protocol may declare modules, and a task may name the module it belongs to.
+  A task scoped to a module runs that module's test command where it declares
+  one, falling back to the protocol's. An unscoped task behaves exactly as
+  before, and a protocol declaring no modules is unaffected.
 - `snodo models --provenance` now shows requested and provider-served model
   names across recent runs, distinguishing matches, mismatches, and providers
   that reported no served identity without changing run behavior. (Fixes #394)
@@ -107,6 +153,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
   selection or failover, and a mismatch raises no warning. (Fixes #381)
 
 ### Changed
+- The engine-to-cloud interface version is now 4. It moved to 3 when the
+  published schema began declaring each event's data keys and typing the
+  envelope, and to 4 when `change_size` gained its paths.
+- Task status markers are rendered from one shared table rather than a literal
+  map in each of the plan and logs views, which had been maintained separately.
 - The task start and completion recording path moved whole from
   `snodo/cli/commands/run_cmd.py` into `snodo/cli/commands/task_record.py`,
   bringing run_cmd back under its file-length baseline (it had grown 64 lines
