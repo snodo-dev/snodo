@@ -1,9 +1,304 @@
 {
   "cloud_ingest": {
     "$defs": {
-      "AuditEventEnvelope": {
+      "CoderTestRunData": {
+        "additionalProperties": true,
+        "properties": {
+          "command_type": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Command Type"
+          },
+          "exit_code": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exit Code"
+          },
+          "job_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Job Id"
+          },
+          "test_path": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Test Path"
+          },
+          "turn_index": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Turn Index"
+          }
+        },
+        "title": "CoderTestRunData",
+        "type": "object"
+      },
+      "CoderTestRunEvent": {
         "additionalProperties": false,
-        "description": "The fields shared by every event sent to cloud ingest.",
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/CoderTestRunData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "coder_test_run",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "CoderTestRunEvent",
+        "type": "object"
+      },
+      "DispatchData": {
+        "additionalProperties": true,
+        "properties": {
+          "artifacts_count": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Artifacts Count"
+          },
+          "mode": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mode"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          },
+          "token_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Token Id"
+          }
+        },
+        "title": "DispatchData",
+        "type": "object"
+      },
+      "DispatchEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/DispatchData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "dispatch",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "DispatchEvent",
+        "type": "object"
+      },
+      "ExecutionFailedData": {
+        "additionalProperties": true,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          }
+        },
+        "title": "ExecutionFailedData",
+        "type": "object"
+      },
+      "ExecutionFailedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/ExecutionFailedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "execution_failed",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "ExecutionFailedEvent",
+        "type": "object"
+      },
+      "GenericAuditEvent": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "additionalProperties": true,
@@ -27,6 +322,11 @@
             "type": "string"
           },
           "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
             "title": "Scope",
             "type": "string"
           },
@@ -35,7 +335,9 @@
             "type": "integer"
           },
           "timestamp": {
-            "title": "Timestamp"
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -48,7 +350,2201 @@
           "previous_hash",
           "event_hash"
         ],
-        "title": "AuditEventEnvelope",
+        "title": "GenericAuditEvent",
+        "type": "object"
+      },
+      "GovernanceCheckData": {
+        "additionalProperties": true,
+        "properties": {
+          "constraints_checked": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Constraints Checked"
+          },
+          "mode": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mode"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          }
+        },
+        "title": "GovernanceCheckData",
+        "type": "object"
+      },
+      "GovernanceCheckEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/GovernanceCheckData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "governance_check",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "GovernanceCheckEvent",
+        "type": "object"
+      },
+      "HaltData": {
+        "additionalProperties": true,
+        "properties": {
+          "blocker_validators": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Blocker Validators"
+          },
+          "halt_type": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Halt Type"
+          },
+          "raw_halt_type": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Raw Halt Type"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          }
+        },
+        "title": "HaltData",
+        "type": "object"
+      },
+      "HaltEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/HaltData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "halt",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "HaltEvent",
+        "type": "object"
+      },
+      "PostValidateBypassedData": {
+        "additionalProperties": true,
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mode"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          }
+        },
+        "title": "PostValidateBypassedData",
+        "type": "object"
+      },
+      "PostValidateBypassedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/PostValidateBypassedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "post_validate_bypassed",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "PostValidateBypassedEvent",
+        "type": "object"
+      },
+      "PostValidationRouteData": {
+        "additionalProperties": true,
+        "properties": {
+          "decision": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          }
+        },
+        "title": "PostValidationRouteData",
+        "type": "object"
+      },
+      "PostValidationRouteEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/PostValidationRouteData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "post_validation_route",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "PostValidationRouteEvent",
+        "type": "object"
+      },
+      "ProjectAnnouncedData": {
+        "additionalProperties": true,
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Display Name"
+          },
+          "project_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Id"
+          },
+          "scope": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scope"
+          }
+        },
+        "title": "ProjectAnnouncedData",
+        "type": "object"
+      },
+      "ProjectAnnouncedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/ProjectAnnouncedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "project_announced",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "ProjectAnnouncedEvent",
+        "type": "object"
+      },
+      "ReadinessCheckedData": {
+        "additionalProperties": true,
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Display Name"
+          },
+          "findings": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Findings"
+          },
+          "passed_checks": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Passed Checks"
+          },
+          "project_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Id"
+          },
+          "protocol_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Protocol Id"
+          },
+          "repository_findings_count": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Repository Findings Count"
+          },
+          "scope": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scope"
+          },
+          "score": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Score"
+          },
+          "total_checks": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total Checks"
+          },
+          "workstation_findings_count": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Workstation Findings Count"
+          }
+        },
+        "title": "ReadinessCheckedData",
+        "type": "object"
+      },
+      "ReadinessCheckedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/ReadinessCheckedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "readiness_checked",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "ReadinessCheckedEvent",
+        "type": "object"
+      },
+      "RecoveryInternalErrorData": {
+        "additionalProperties": true,
+        "properties": {
+          "depth": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Depth"
+          },
+          "error": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error"
+          }
+        },
+        "title": "RecoveryInternalErrorData",
+        "type": "object"
+      },
+      "RecoveryInternalErrorEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/RecoveryInternalErrorData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "recovery_internal_error",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "RecoveryInternalErrorEvent",
+        "type": "object"
+      },
+      "RecoveryResolvedData": {
+        "additionalProperties": true,
+        "properties": {
+          "attempts_used": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Attempts Used"
+          },
+          "depth": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Depth"
+          }
+        },
+        "title": "RecoveryResolvedData",
+        "type": "object"
+      },
+      "RecoveryResolvedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/RecoveryResolvedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "recovery_resolved",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "RecoveryResolvedEvent",
+        "type": "object"
+      },
+      "SessionDecisionUpdatedData": {
+        "additionalProperties": true,
+        "properties": {
+          "key": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Key"
+          },
+          "value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Value"
+          }
+        },
+        "title": "SessionDecisionUpdatedData",
+        "type": "object"
+      },
+      "SessionDecisionUpdatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/SessionDecisionUpdatedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "session_decision_updated",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "SessionDecisionUpdatedEvent",
+        "type": "object"
+      },
+      "SessionStartedData": {
+        "additionalProperties": true,
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mode"
+          },
+          "project_root": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Root"
+          },
+          "session_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Session Id"
+          }
+        },
+        "title": "SessionStartedData",
+        "type": "object"
+      },
+      "SessionStartedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/SessionStartedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "session_started",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "SessionStartedEvent",
+        "type": "object"
+      },
+      "SessionTaskChangedData": {
+        "additionalProperties": true,
+        "properties": {
+          "new_task": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "New Task"
+          },
+          "old_task": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Old Task"
+          }
+        },
+        "title": "SessionTaskChangedData",
+        "type": "object"
+      },
+      "SessionTaskChangedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/SessionTaskChangedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "session_task_changed",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "SessionTaskChangedEvent",
+        "type": "object"
+      },
+      "TaskClassifiedData": {
+        "additionalProperties": true,
+        "properties": {
+          "flow_type": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Flow Type"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          },
+          "task_summary": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Summary"
+          },
+          "wave_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Wave Id"
+          }
+        },
+        "title": "TaskClassifiedData",
+        "type": "object"
+      },
+      "TaskClassifiedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TaskClassifiedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "task_classified",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TaskClassifiedEvent",
+        "type": "object"
+      },
+      "TaskCompleteData": {
+        "additionalProperties": true,
+        "properties": {
+          "artifacts": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Artifacts"
+          },
+          "change_size": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Size"
+          },
+          "commit": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Commit"
+          },
+          "session_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Session Id"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          }
+        },
+        "title": "TaskCompleteData",
+        "type": "object"
+      },
+      "TaskCompleteEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TaskCompleteData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "task_complete",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TaskCompleteEvent",
+        "type": "object"
+      },
+      "TaskMergedData": {
+        "additionalProperties": true,
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Branch"
+          },
+          "merge_sha": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Merge Sha"
+          },
+          "session_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Session Id"
+          },
+          "spec": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Spec"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          }
+        },
+        "title": "TaskMergedData",
+        "type": "object"
+      },
+      "TaskMergedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TaskMergedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "task_merged",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TaskMergedEvent",
+        "type": "object"
+      },
+      "TestModifiedData": {
+        "additionalProperties": true,
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Job Id"
+          },
+          "mutations": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mutations"
+          },
+          "task_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          }
+        },
+        "title": "TestModifiedData",
+        "type": "object"
+      },
+      "TestModifiedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TestModifiedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "test_modified",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TestModifiedEvent",
+        "type": "object"
+      },
+      "TokenConsumedData": {
+        "additionalProperties": true,
+        "properties": {
+          "session_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Session Id"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          }
+        },
+        "title": "TokenConsumedData",
+        "type": "object"
+      },
+      "TokenConsumedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TokenConsumedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "token_consumed",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TokenConsumedEvent",
+        "type": "object"
+      },
+      "TransitionData": {
+        "additionalProperties": true,
+        "properties": {
+          "from_mode": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "From Mode"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          },
+          "to_mode": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "To Mode"
+          }
+        },
+        "title": "TransitionData",
+        "type": "object"
+      },
+      "TransitionEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TransitionData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "transition",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TransitionEvent",
+        "type": "object"
+      },
+      "UnverifiedMergeBlockedData": {
+        "additionalProperties": true,
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Branch"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          },
+          "session_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Session Id"
+          },
+          "target_commit": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Commit"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          }
+        },
+        "title": "UnverifiedMergeBlockedData",
+        "type": "object"
+      },
+      "UnverifiedMergeBlockedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/UnverifiedMergeBlockedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "unverified_merge_blocked",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "UnverifiedMergeBlockedEvent",
+        "type": "object"
+      },
+      "ValidateData": {
+        "additionalProperties": true,
+        "properties": {
+          "outcome": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome"
+          },
+          "phase": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Phase"
+          },
+          "policy_decision": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Policy Decision"
+          },
+          "results": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Results"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          },
+          "validators_invoked": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Validators Invoked"
+          }
+        },
+        "title": "ValidateData",
+        "type": "object"
+      },
+      "ValidateEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/ValidateData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "validate",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "ValidateEvent",
+        "type": "object"
+      },
+      "VerificationExecutedData": {
+        "additionalProperties": true,
+        "properties": {
+          "command": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Command"
+          },
+          "commit": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Commit"
+          },
+          "outcome": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Outcome"
+          },
+          "output_tail": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Output Tail"
+          },
+          "returncode": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Returncode"
+          },
+          "validator_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Validator Id"
+          },
+          "working_directory": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Working Directory"
+          }
+        },
+        "title": "VerificationExecutedData",
+        "type": "object"
+      },
+      "VerificationExecutedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/VerificationExecutedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "verification_executed",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "VerificationExecutedEvent",
+        "type": "object"
+      },
+      "WaveCreatedData": {
+        "additionalProperties": true,
+        "properties": {
+          "feature_description": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Feature Description"
+          },
+          "wave_id": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Wave Id"
+          }
+        },
+        "title": "WaveCreatedData",
+        "type": "object"
+      },
+      "WaveCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/WaveCreatedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "wave_created",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "WaveCreatedEvent",
+        "type": "object"
+      },
+      "WorkAlreadyPresentData": {
+        "additionalProperties": true,
+        "properties": {
+          "artifacts_count": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Artifacts Count"
+          },
+          "base_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Ref"
+          },
+          "files": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Files"
+          },
+          "task_ref": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Ref"
+          }
+        },
+        "title": "WorkAlreadyPresentData",
+        "type": "object"
+      },
+      "WorkAlreadyPresentEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/WorkAlreadyPresentData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "work_already_present",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "WorkAlreadyPresentEvent",
         "type": "object"
       }
     },
@@ -61,7 +2557,86 @@
       },
       "events": {
         "items": {
-          "$ref": "#/$defs/AuditEventEnvelope"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectAnnouncedEvent"
+            },
+            {
+              "$ref": "#/$defs/ReadinessCheckedEvent"
+            },
+            {
+              "$ref": "#/$defs/DispatchEvent"
+            },
+            {
+              "$ref": "#/$defs/WorkAlreadyPresentEvent"
+            },
+            {
+              "$ref": "#/$defs/GovernanceCheckEvent"
+            },
+            {
+              "$ref": "#/$defs/ValidateEvent"
+            },
+            {
+              "$ref": "#/$defs/TaskClassifiedEvent"
+            },
+            {
+              "$ref": "#/$defs/WaveCreatedEvent"
+            },
+            {
+              "$ref": "#/$defs/TaskCompleteEvent"
+            },
+            {
+              "$ref": "#/$defs/TaskMergedEvent"
+            },
+            {
+              "$ref": "#/$defs/HaltEvent"
+            },
+            {
+              "$ref": "#/$defs/TransitionEvent"
+            },
+            {
+              "$ref": "#/$defs/TokenConsumedEvent"
+            },
+            {
+              "$ref": "#/$defs/PostValidationRouteEvent"
+            },
+            {
+              "$ref": "#/$defs/PostValidateBypassedEvent"
+            },
+            {
+              "$ref": "#/$defs/SessionStartedEvent"
+            },
+            {
+              "$ref": "#/$defs/SessionTaskChangedEvent"
+            },
+            {
+              "$ref": "#/$defs/SessionDecisionUpdatedEvent"
+            },
+            {
+              "$ref": "#/$defs/RecoveryResolvedEvent"
+            },
+            {
+              "$ref": "#/$defs/RecoveryInternalErrorEvent"
+            },
+            {
+              "$ref": "#/$defs/ExecutionFailedEvent"
+            },
+            {
+              "$ref": "#/$defs/VerificationExecutedEvent"
+            },
+            {
+              "$ref": "#/$defs/CoderTestRunEvent"
+            },
+            {
+              "$ref": "#/$defs/TestModifiedEvent"
+            },
+            {
+              "$ref": "#/$defs/UnverifiedMergeBlockedEvent"
+            },
+            {
+              "$ref": "#/$defs/GenericAuditEvent"
+            }
+          ]
         },
         "maxItems": 50,
         "minItems": 1,
