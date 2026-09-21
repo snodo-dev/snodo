@@ -152,6 +152,38 @@ class TestWhatIsProposable:
             assert (tmp_path / proposal.record_path).is_file()
             assert proposal.record_section.casefold().startswith("decision")
 
+    def test_a_lead_in_before_nested_points_is_not_proposed(self, tmp_path):
+        record = """\
+# ADR 005 — Keep boundaries explicit
+
+## Decision
+
+The service boundary is governed by these rules:
+
+  - Every request is authenticated before it reaches the service.
+  - Every response carries the request correlation identifier.
+"""
+        _write_records(tmp_path, {"005-boundaries.md": record})
+
+        assert [p.criterion for p in propose_criteria(tmp_path)] == [
+            "Every request is authenticated before it reaches the service.",
+            "Every response carries the request correlation identifier.",
+        ]
+
+    def test_a_colon_terminated_sentence_without_points_is_proposed(self, tmp_path):
+        record = """\
+# ADR 006 — Keep boundaries explicit
+
+## Decision
+
+The service boundary is governed by these rules:
+"""
+        _write_records(tmp_path, {"006-boundaries.md": record})
+
+        assert [p.criterion for p in propose_criteria(tmp_path)] == [
+            "The service boundary is governed by these rules:"
+        ]
+
     def test_a_record_without_a_decision_states_no_rule(self, tmp_path):
         _write_records(tmp_path, {"002-naming.md": NON_RULE_RECORD})
 
@@ -385,4 +417,3 @@ class TestWhatAcceptanceWrites:
 
     def test_an_explicit_decision_path_that_does_not_exist_proposes_nothing(self, tmp_path):
         assert propose_criteria(tmp_path, decision_paths=["docs/nowhere"]) == []
-
