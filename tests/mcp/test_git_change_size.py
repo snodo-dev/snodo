@@ -63,6 +63,7 @@ def test_text_edit_reports_known_line_totals(repo):
     assert stat["lines_added"] == 4      # TWO, four, a, b
     assert stat["lines_deleted"] == 1    # two
     assert stat["files_changed"] == 2
+    assert stat["paths"] == ["keep.txt", "new.txt"]
     assert stat["files_added"] == 1
     assert stat["capped"] is False
     assert stat["base_sha"] == GitMCP(str(repo)).repo.commit("main").hexsha
@@ -150,6 +151,8 @@ def test_past_the_bound_line_totals_are_not_measured(repo):
     assert stat["lines_added"] is None     # null, not a fabricated zero
     assert stat["lines_deleted"] is None
     assert stat["files_binary"] is None
+    assert stat["paths"] == ["f0.txt", "f1.txt", "f2.txt"]
+    assert len(stat["paths"]) < stat["files_changed"]
 
 
 def test_default_bound_is_a_real_bound(repo):
