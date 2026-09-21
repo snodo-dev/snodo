@@ -105,6 +105,23 @@ class TestChangeSizeRecorded:
         assert size["capped"] is False
         # The decoy on main never enters the range.
         assert size["files_added"] == 1
+        assert size["paths"] == ["added.txt", "keep.txt"]
+
+    def test_capped_change_size_marks_path_list_incomplete(self, tmp_path):
+        root = _base_repo(tmp_path)
+        _git(root, "checkout", "-qb", "task/task_001/implement-feature")
+        for name in ("a.txt", "b.txt", "c.txt"):
+            (root / name).write_text("changed\n")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-qm", "wide task change")
+
+        git = GitMCP(str(root))
+        size = git.change_size("main", "HEAD", max_files=2)
+
+        assert size["capped"] is True
+        assert size["files_changed"] == 3
+        assert size["paths"] == ["a.txt", "b.txt"]
+        assert len(size["paths"]) < size["files_changed"]
 
     def test_uncountable_change_is_not_the_same_zero_as_no_change(self, tmp_path):
         root = _base_repo(tmp_path)

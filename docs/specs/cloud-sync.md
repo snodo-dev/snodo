@@ -302,8 +302,9 @@ committing — a documentation task, an investigation, a no-op outcome — and i
 deliberately distinguishable from an older event recorded before the field
 existed, which carries no key at all.
 
-`task_complete.change_size` records how much the task changed, not what
-changed: line totals and per-shape file counts of the task branch against
+`task_complete.change_size` records how much the task changed and the
+repository-relative paths it covered, without recording what was in them:
+line totals and per-shape file counts of the task branch against
 its own branch point — the merge-base of the resolved base branch and the
 branch, never the base branch's current tip, so a long-running task is
 never credited with work others merged while it ran. The diff itself is
@@ -319,8 +320,10 @@ edit they carry); a mode-only change moves no line and appears in
 `lines_deleted`. Past `CHANGE_SIZE_MAX_FILES` changed files the line
 totals are not computed at all — `lines_added`/`lines_deleted` are `null`
 and `capped` is true — because a plan run must never stall on a statistic
-nobody is waiting for; `files_changed` stays real. The interface version
-moved to 2 for this field.
+nobody is waiting for; `files_changed` stays real. `paths` contains every
+changed path when the comparison is measured. When `capped` is true, it
+contains only the bounded prefix and is therefore incomplete; `files_changed`
+remains the real total. The interface version moved to 3 for this field.
 
 `readiness_checked.findings` carries repository method scaffolding findings
 with relative paths only and never workstation detail (such as local binaries on

@@ -157,7 +157,9 @@ def _count_change_shapes(name_status_raw: str, numstat_raw: str) -> dict:
     return counts
 
 
-def _change_size_capped(base_sha: str, head_sha: str, files_changed: int) -> dict:
+def _change_size_capped(
+    base_sha: str, head_sha: str, files_changed: int, paths: List[str], max_files: int
+) -> dict:
     """The record for a change too wide to count lines for.
 
     ``files_changed`` stays real; everything that would have needed the
@@ -169,6 +171,8 @@ def _change_size_capped(base_sha: str, head_sha: str, files_changed: int) -> dic
         "base_sha": base_sha,
         "head_sha": head_sha,
         "files_changed": files_changed,
+        # ``capped`` tells consumers this bounded prefix is incomplete.
+        "paths": paths[:max_files],
         "files_added": None,
         "files_deleted": None,
         "files_renamed": None,
@@ -190,14 +194,16 @@ def _measure_change_size(repo, base_sha: str, head_sha: str, max_files: int) -> 
     run is never stalled on a statistic nobody is waiting for.
     """
     names = repo.git.diff("--name-only", "-z", base_sha, head_sha, "--")
-    files_changed = len(_split_nul_fields(names))
+    paths = _split_nul_fields(names)
+    files_changed = len(paths)
     if files_changed > max_files:
-        return _change_size_capped(base_sha, head_sha, files_changed)
+        return _change_size_capped(base_sha, head_sha, files_changed, paths, max_files)
     common = ("--find-renames", base_sha, head_sha, "--")
     status_raw = repo.git.diff("--name-status", "-z", *common)
     numstat_raw = repo.git.diff("--numstat", "-z", *common)
     record = {"base_sha": base_sha, "head_sha": head_sha}
     record.update(_count_change_shapes(status_raw, numstat_raw))
+    record["paths"] = paths
     record["capped"] = False
     return record
 
@@ -503,7 +509,8 @@ class GitMCP:
     ) -> dict:
         """Count how much changed between two refs — sizes, never content.
 
-        Returns a record of line totals and per-shape file counts over
+        Returns a record of line totals, per-shape file counts, and repository-
+        relative paths over
         ``base..head`` (see :func:`_measure_change_size`). The diff itself
         is never included: the size of the change is the ask, its content
         leaves the machine only by a different decision.
