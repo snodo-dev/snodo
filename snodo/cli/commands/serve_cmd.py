@@ -6,6 +6,7 @@ FILE: snodo/cli/commands/serve_cmd.py
 import collections
 import hashlib
 import io
+import inspect
 import json
 import logging
 import os
@@ -32,8 +33,40 @@ _logger = logging.getLogger(__name__)
 #: port operators expect, and a second one walks upward from there.
 DEFAULT_PORT = 55441
 
+AUTH_METHODS = ("oauth", "service-token")
+
 #: How many consecutive ports a no---port server will try before giving up.
 _PORT_SCAN_ATTEMPTS = 64
+
+
+def _auth_methods(values: Optional[list[str]]) -> list[str]:
+    """Return the selected tunnel mechanisms, preserving repeat order."""
+    if not values:
+        return ["oauth"]
+    invalid = [value for value in values if value not in AUTH_METHODS]
+    if invalid:
+        raise ValueError(
+            f"invalid auth value {invalid[0]!r}; choose oauth or service-token"
+        )
+    return list(dict.fromkeys(values))
+
+
+def _provision_with_auth(api_key: str, project_slug: str, mode: str,
+                         short_id: str, version: str, port: int,
+                         auth_methods: list[str]) -> dict:
+    """Provision with an explicit auth set, tolerating legacy test doubles."""
+    kwargs = {"auth": auth_methods}
+    try:
+        parameters = inspect.signature(_provision_tunnel).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    if "auth" not in parameters and not any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()
+    ):
+        return _provision_tunnel(api_key, project_slug, mode, short_id, version, port)
+    return _provision_tunnel(
+        api_key, project_slug, mode, short_id, version, port, **kwargs
+    )
 
 
 def register(app: typer.Typer) -> None:
@@ -56,6 +89,10 @@ def register(app: typer.Typer) -> None:
         ),
         tunnel: bool = typer.Option(
             False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
+        ),
+        auth: Optional[list[str]] = typer.Option(
+            None, "--auth",
+            help="Tunnel authentication (oauth or service-token); repeat for any accepted mechanism",
         ),
         rotate: bool = typer.Option(
             False, "--rotate", help="Rotate the Cloudflare service token for an existing tunnel",
@@ -105,7 +142,7 @@ def register(app: typer.Typer) -> None:
         """Start MCP server from protocol definition."""
         args = SimpleNamespace(
             protocol=protocol, mode=mode, transport=transport, port=port,
-            tunnel=tunnel, rotate=rotate, delete=delete, hostname=hostname,
+            tunnel=tunnel, auth=auth, rotate=rotate, delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
             mcp_uninstall_all=mcp_uninstall_all, mcp_list=mcp_list,
             purge=purge, orphans=orphans,
@@ -137,6 +174,11 @@ def _derive_project_root(protocol_path: str) -> str:
 
 def serve_command(args) -> int:
     """Start MCP server from protocol definition."""
+    try:
+        _auth_methods(getattr(args, "auth", None))
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
     if (
         getattr(args, "mcp_install", False)
         or getattr(args, "mcp_uninstall", False)
@@ -220,11 +262,14 @@ def _run_server(args, protocol) -> int:
         print(f"Error: Failed to create MCP server: {e}", file=sys.stderr)
         return 1
 
-    # Detect tunnel mode and wire OAuth 2.1 if active
+    # Detect tunnel mode and wire the selected bearer verifier if active.
     tunnel_config = _load_tunnel_config(project_root)
     tunnel_hostname = tunnel_config.get("hostname")
+    auth_methods = _auth_methods(
+        getattr(args, "auth", None) or tunnel_config.get("auth")
+    )
     extra_kwargs = {}
-    if tunnel_hostname:
+    if tunnel_hostname and "oauth" in auth_methods:
         from snodo.infrastructure.jwks import JwksClient
         from snodo.infrastructure.oauth_verifier import JwksTokenVerifier
         from mcp.server.auth.settings import AuthSettings
@@ -557,7 +602,8 @@ def _tunnel_project_slug(project_root: str) -> str:
 
 
 def _provision_tunnel(
-    api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str, port: int = DEFAULT_PORT,
+    api_key: str, project_slug: str, mode: str, short_id: str, snodo_version: str,
+    port: int = DEFAULT_PORT, auth: Optional[list[str]] = None,
 ) -> dict:
     """Provision a tunnel via the snodo-cloud API.
 
@@ -577,6 +623,8 @@ def _provision_tunnel(
             "snodo_version": snodo_version,
             "port": port,
         }
+        if auth:
+            payload["auth"] = auth
         resp = httpx.post(
             url,
             json=payload,
@@ -733,6 +781,8 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
     }
     if config.get("port") is not None:
         to_save["port"] = config["port"]
+    if config.get("auth"):
+        to_save["auth"] = list(config["auth"])
     path.write_text(json.dumps(to_save, indent=2) + "\n")
 
 
@@ -1036,6 +1086,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     rotate = getattr(args, "rotate", False)
     delete = getattr(args, "delete", False)
     delete_hostname = getattr(args, "hostname", None) or None
+    requested_auth = getattr(args, "auth", None)
 
     # Prefer streamable-http for tunnels
     if transport == "stdio":
@@ -1059,6 +1110,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
     # 3. Load existing tunnel config
     tunnel_config = _load_tunnel_config(project_root)
+    auth_methods = _auth_methods(requested_auth or tunnel_config.get("auth"))
 
     # --delete flow
     if delete:
@@ -1113,6 +1165,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
 
     # First run: provision
     newly_provisioned = False
+    provisioned = {}
     if not tunnel_config.get("tunnel_token"):
         from snodo.version import __version__
         short_id = _generate_short_id()
@@ -1142,8 +1195,9 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                   file=sys.stderr)
 
         try:
-            provisioned = _provision_tunnel(
+            provisioned = _provision_with_auth(
                 api_key, project_slug, mode, short_id, __version__, port,
+                auth_methods,
             )
         except TunnelAPIError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -1165,6 +1219,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             "tunnel_token": provisioned["tunnel_token"],
             "created_at": provisioned.get("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ")),
             "port": port,
+            "auth": auth_methods,
         }
         _save_tunnel_config(project_root, tunnel_config)
         newly_provisioned = True
@@ -1176,6 +1231,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         "--transport", transport,
         "--port", str(port),
     ]
+    for method in auth_methods:
+        mcp_cmd.extend(["--auth", method])
     if mode != "all":
         mcp_cmd.extend(["--mode", mode])
 
@@ -1213,10 +1270,10 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # is its URL handed to the operator.
     _warn_if_unservable_hostname(tunnel_config["hostname"])
     if newly_provisioned:
-        _print_first_run_info(tunnel_config["hostname"])
+        _print_first_run_info(tunnel_config["hostname"], auth_methods, provisioned)
     else:
         print(f"✓ Snodo MCP tunnel active: https://{tunnel_config['hostname']}/mcp")
-        print("  (OAuth 2.1 — Bearer JWT from mcp-auth.snodo.dev)")
+        print(f"  Authentication: {', '.join(auth_methods)} (any accepted mechanism)")
         print()
 
     # 6. Start cloudflared
@@ -1320,16 +1377,22 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     return 1
 
 
-def _print_first_run_info(hostname: str) -> None:
+def _print_first_run_info(hostname: str, auth_methods: Optional[list[str]] = None,
+                          credentials: Optional[dict] = None) -> None:
     """Print the first-run tunnel configuration block."""
     print()
     print("✓ Snodo MCP tunnel active")
     print()
-    print("Configure your MCP client with OAuth 2.1:")
+    auth_methods = _auth_methods(auth_methods)
+    credentials = credentials or {}
+    print("Configure your MCP client with any accepted authentication mechanism:")
     print()
     print(f"  URL:              https://{hostname}/mcp")
-    print("  Auth server:      https://mcp-auth.snodo.dev")
+    if "oauth" in auth_methods:
+        print("  OAuth auth server: https://mcp-auth.snodo.dev")
+    if "service-token" in auth_methods:
+        print(f"  CF-Access-Client-Id: {credentials.get('client_id', '(not returned)')}")
+        print(f"  CF-Access-Client-Secret: {credentials.get('client_secret', '(not returned)')}")
+        print("  Save the service-token secret; it cannot be retrieved again.")
     print()
-    print("  Your MCP client will redirect to mcp-auth.snodo.dev")
-    print("  to obtain a Bearer JWT automatically.")
     print()
