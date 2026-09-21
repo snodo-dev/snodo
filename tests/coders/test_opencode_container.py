@@ -144,6 +144,21 @@ def test_remote_daemon_changes_arrive_in_workspace(tmp_path, monkeypatch):
     assert (tmp_path / "original.py").read_text() == "updated"
 
 
+def test_remote_daemon_archive_shape_is_required_before_deletion(tmp_path, monkeypatch):
+    monkeypatch.setenv("DOCKER_HOST", "tcp://daemon.example:2375")
+    original = tmp_path / "original.py"
+    original.write_text("keep me")
+    remote = _container(61009)
+    remote.get_archive.return_value = (_tar_archive_without_workspace_root({"new.py": b"new"}), {})
+    manager = OpenCodeContainer()
+    manager._container = remote
+
+    with pytest.raises(OpenCodeContainerError, match="workspace root"):
+        manager.sync_workspace_from_container(tmp_path)
+
+    assert original.read_text() == "keep me"
+
+
 def test_local_daemon_keeps_bind_mount(tmp_path, monkeypatch):
     monkeypatch.delenv("DOCKER_HOST", raising=False)
     remote = _container(61006)
@@ -188,6 +203,19 @@ def test_remote_workspace_pull_failure_is_reported(tmp_path, monkeypatch):
 
 
 def _tar_archive(files: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as tar:
+        root = tarfile.TarInfo("workspace")
+        root.type = tarfile.DIRTYPE
+        tar.addfile(root)
+        for name, content in files.items():
+            info = tarfile.TarInfo(f"workspace/{name}")
+            info.size = len(content)
+            tar.addfile(info, io.BytesIO(content))
+    return buffer.getvalue()
+
+
+def _tar_archive_without_workspace_root(files: dict[str, bytes]) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w") as tar:
         for name, content in files.items():

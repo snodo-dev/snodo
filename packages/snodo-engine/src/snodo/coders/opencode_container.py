@@ -6,8 +6,9 @@ Manages the opencode server container — start, stop, health check.
 Built on docker-py.
 """
 
-import logging
+import copy
 import io
+import logging
 import os
 import tarfile
 import time
@@ -236,7 +237,7 @@ class OpenCodeContainer:
             archive = io.BytesIO(_archive_bytes(stream))
             with tarfile.open(fileobj=archive, mode="r:") as tar:
                 members = tar.getmembers()
-                _validate_archive_members(members)
+                members = _normalise_workspace_archive(members)
                 remote_files = {
                     Path(member.name).as_posix()
                     for member in members
@@ -246,7 +247,7 @@ class OpenCodeContainer:
                     relative = path.relative_to(workspace).as_posix()
                     if relative not in remote_files:
                         path.unlink()
-                tar.extractall(path=workspace, filter="data")
+                tar.extractall(path=workspace, members=members, filter="data")
         except Exception as e:
             raise OpenCodeContainerError(
                 f"Failed to copy workspace from remote Docker daemon: {e}"
@@ -467,3 +468,34 @@ def _validate_archive_members(members) -> None:
             raise OpenCodeContainerError(
                 f"Remote workspace archive contains unsafe path: {name}"
             )
+
+
+def _normalise_workspace_archive(members):
+    """Return Docker's ``workspace/`` archive entries as worktree paths."""
+    _validate_archive_members(members)
+    if not members or not members[0].isdir():
+        raise OpenCodeContainerError(
+            "Remote workspace archive has no workspace root directory"
+        )
+
+    root = Path(members[0].name)
+    if root != Path("workspace"):
+        raise OpenCodeContainerError(
+            "Remote workspace archive does not have a workspace root directory"
+        )
+
+    normalised = []
+    for member in members[1:]:
+        parts = Path(member.name).parts
+        if len(parts) < 2 or parts[0] != "workspace":
+            raise OpenCodeContainerError(
+                f"Remote workspace archive has an unexpected member: {member.name}"
+            )
+        entry = copy.copy(member)
+        entry.name = Path(*parts[1:]).as_posix()
+        if entry.islnk() or entry.issym():
+            link_parts = Path(entry.linkname).parts
+            if link_parts and link_parts[0] == "workspace":
+                entry.linkname = Path(*link_parts[1:]).as_posix()
+        normalised.append(entry)
+    return normalised
