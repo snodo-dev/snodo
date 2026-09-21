@@ -1091,6 +1091,7 @@ class WritebackMixin:
             max_tokens=llm_cfg.coder.max_tokens,
             max_tool_turns=llm_cfg.coder.max_tool_turns,
             timeout_seconds=llm_cfg.coder.timeout_seconds,
+            silence_timeout_seconds=llm_cfg.coder.silence_timeout_seconds,
             workspace_mcp=self.workspace_mcp,
         )
         if hasattr(fresh_coder, "_job_id") and self._job_id:

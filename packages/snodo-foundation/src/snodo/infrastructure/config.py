@@ -34,6 +34,7 @@ __all__ = [
 _CODER_MAX_TOKENS_DEFAULT = 16000
 _CODER_MAX_TOOL_TURNS_DEFAULT = 6
 _CODER_TIMEOUT_SECONDS_DEFAULT = 1800
+_CODER_SILENCE_TIMEOUT_SECONDS_DEFAULT = 600
 _CODER_CONCURRENCY_DEFAULT = 1
 _VALIDATOR_MAX_TOKENS_DEFAULT = 1500
 _VALIDATOR_MAX_TOOL_TURNS_DEFAULT = 6
@@ -50,6 +51,11 @@ class CoderConfig(BaseModel):
     max_tokens: int = Field(default=_CODER_MAX_TOKENS_DEFAULT, ge=1)
     max_tool_turns: int = Field(default=_CODER_MAX_TOOL_TURNS_DEFAULT, ge=1, le=200)
     timeout_seconds: int = Field(default=_CODER_TIMEOUT_SECONDS_DEFAULT, ge=1)
+    silence_timeout_seconds: int = Field(
+        default=_CODER_SILENCE_TIMEOUT_SECONDS_DEFAULT,
+        ge=1,
+        description="Halt a subprocess coder after this long without output.",
+    )
     concurrency: int = Field(
         default=_CODER_CONCURRENCY_DEFAULT,
         ge=1,
