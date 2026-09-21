@@ -11,6 +11,7 @@ import os
 import time
 import urllib.parse
 from pathlib import Path
+from typing import Optional
 
 _logger = logging.getLogger(__name__)
 
@@ -93,8 +94,8 @@ class OpenCodeContainer:
         except Exception as e:
             raise OpenCodeContainerError(f"Failed to build image: {e}") from e
 
-    def start(self, workspace: Path) -> None:
-        """Start the opencode server container, reusing an existing one if healthy.
+    def start(self, workspace: Path, task_id: Optional[str] = None) -> None:
+        """Start the opencode server container owned by *task_id*.
 
         The *workspace* directory is mounted at /workspace inside the
         container so opencode can read project files.
@@ -113,16 +114,19 @@ class OpenCodeContainer:
                 f"{workspace} is on the client filesystem"
             )
 
-        # If we already hold a reference and it's healthy, skip
+        # If we already hold a reference and it's healthy, skip. This object
+        # owns only the container it started or adopted for this task.
         if self._container is not None and self._is_container_healthy():
             return
 
-        # Check for an existing container from a previous session
-        existing = self._find_existing_container()
+        # A container is workspace-bound. An image match alone is never enough
+        # to adopt one belonging to another task.
+        existing = self._find_existing_container(task_id)
         if existing is not None:
             self._container = existing
+            self._set_published_port()
             if self._is_container_healthy():
-                _logger.info("Reusing existing opencode container %s", existing.id[:12])
+                _logger.info("Reusing opencode container %s for task %s", existing.id[:12], task_id)
                 return
             _logger.debug("Existing container %s is unhealthy — removing", existing.id[:12])
             self.stop()
@@ -138,31 +142,58 @@ class OpenCodeContainer:
                 self._image,
                 detach=True,
                 volumes=volumes,
-                ports={f"{self._port}/tcp": self._port},
+                # Let Docker assign a free host port so concurrent tasks can
+                # each have their own container.
+                ports={f"{self._port}/tcp": None},
                 publish_all_ports=False,
                 remove=True,
                 environment=env,
+                labels={"com.snodo.task-id": task_id} if task_id else {},
             )
         except Exception as e:
             self._container = None
             raise OpenCodeContainerError(f"Failed to start container: {e}") from e
 
-        self._wait_ready()
+        self._set_published_port()
+        try:
+            self._wait_ready()
+        except Exception:
+            self.stop()
+            raise
 
         _logger.info("Started new opencode container")
         self._log_readiness()
 
-    def _find_existing_container(self):
-        """Return an existing running container with this image, or None."""
+    def _find_existing_container(self, task_id: Optional[str] = None):
+        """Return this task's running container, or None."""
+        if not task_id:
+            return None
         try:
             containers = self.client.containers.list(
-                filters={"ancestor": self._image, "status": "running"},
+                filters={
+                    "ancestor": self._image,
+                    "status": "running",
+                    "label": f"com.snodo.task-id={task_id}",
+                },
             )
             if containers:
                 return containers[0]
         except Exception as e:
             _logger.debug("Failed to list running container by image: %s", e)
         return None
+
+    def _set_published_port(self) -> None:
+        """Use Docker's assigned host port for the container HTTP endpoint."""
+        if self._container is None:
+            return
+        try:
+            self._container.reload()
+            ports = self._container.attrs.get("NetworkSettings", {}).get("Ports", {})
+            binding = ports.get(f"{_PORT}/tcp") or ports.get(f"{self._port}/tcp")
+            if binding and binding[0].get("HostPort"):
+                self._port = int(binding[0]["HostPort"])
+        except Exception as e:
+            _logger.debug("Could not resolve published opencode port: %s", e)
 
     def _is_container_healthy(self) -> bool:
         """Check if the container is running AND /global/health responds."""

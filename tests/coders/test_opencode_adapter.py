@@ -418,3 +418,17 @@ class TestImplementFlow:
                         spec = TaskSpec(description="test", constraints=[])
                         adapter.implement(spec)
                         container_mock.start.assert_called_once()
+
+    def test_container_stopped_when_task_halts(self):
+        """A failed task does not leave its opencode container running."""
+        adapter = OpenCodeAdapter(model="opencode/test", workspace=Path("/tmp"))
+        container_mock = Mock()
+        container_mock.is_running.return_value = True
+        container_mock.base_url = "http://localhost:55440"
+        adapter._container = container_mock
+
+        with patch.object(adapter, "_create_session", side_effect=RuntimeError("halt")):
+            with pytest.raises(RuntimeError, match="halt"):
+                adapter.implement(TaskSpec(description="test", constraints=[]))
+
+        container_mock.stop.assert_called_once()

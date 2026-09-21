@@ -111,8 +111,9 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
         if not self._container.is_running():
             self._start_container()
 
-        session_id = self._create_session()
+        session_id = None
         try:
+            session_id = self._create_session()
             self._wait_for_completion(session_id, spec)
             # Primary: read from the volume-mounted workspace (git diff)
             diff_entries = self._read_changes_from_disk()
@@ -122,7 +123,11 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
                 diff_entries = self._fetch_diff(session_id)
             return self._diff_to_artifact(diff_entries)
         finally:
-            self._cleanup_session(session_id)
+            if session_id is not None:
+                self._cleanup_session(session_id)
+            # Containers are task-scoped resources, including when execution
+            # raises or the task is halted.
+            self._container.stop()
 
     def _wait_for_completion(self, session_id: str, spec: TaskSpec) -> None:
         """Subscribe to SSE, send message, wait for session.idle event."""
@@ -200,7 +205,10 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
                 raise LLMCallError(f"Failed to build opencode image: {e}") from e
 
         try:
-            self._container.start(self._workspace)
+            self._container.start(
+                self._workspace,
+                task_id=getattr(self, "_task_id", None),
+            )
         except OpenCodeContainerError as e:
             raise LLMCallError(f"Failed to start opencode container: {e}") from e
 
