@@ -7,7 +7,9 @@ Built on docker-py (same dependency as DockerSandbox).
 """
 
 import logging
+import io
 import os
+import tarfile
 import time
 import urllib.parse
 from pathlib import Path
@@ -156,12 +158,6 @@ class OpenCodeContainer:
                 f"Workspace cannot be made available to the container: {workspace} "
                 "is not a directory"
             )
-        if self._host != "localhost":
-            raise OpenCodeContainerError(
-                "Workspace cannot be made available to the remote Docker daemon: "
-                f"{workspace} is on the client filesystem"
-            )
-
         # If we already hold a reference and it's healthy, skip. This object
         # owns only the container it started or adopted for this task.
         if self._container is not None and self._is_container_healthy():
@@ -174,6 +170,7 @@ class OpenCodeContainer:
             self._container = existing
             self._set_published_port()
             if self._is_container_healthy():
+                self._copy_workspace_to_container(workspace)
                 _logger.info("Reusing opencode container %s for task %s", existing.id[:12], task_id)
                 return
             _logger.debug("Existing container %s is unhealthy — removing", existing.id[:12])
@@ -181,28 +178,34 @@ class OpenCodeContainer:
 
         # Start fresh
         try:
-            volumes = {
-                str(workspace): {"bind": "/workspace", "mode": "rw"},
-            }
             env = _build_provider_env()
             env["OPENCODE_PORT"] = str(_PORT)
-            self._container = self.client.containers.run(
-                self._image,
-                detach=True,
-                volumes=volumes,
+            run_kwargs = {
+                "detach": True,
                 # The server's port inside the container is fixed by the
                 # image; 0 asks Docker to allocate a free host port, on the
                 # daemon, so concurrent tasks never contend for one.
-                ports={
+                "ports": {
                     f"{_PORT}/tcp": self._port if self._port is not None else 0,
                 },
-                publish_all_ports=False,
-                remove=True,
-                environment=env,
-                labels={"com.snodo.task-id": task_id} if task_id else {},
+                "publish_all_ports": False,
+                "remove": True,
+                "environment": env,
+                "labels": {"com.snodo.task-id": task_id} if task_id else {},
+            }
+            if self.uses_workspace_mount:
+                run_kwargs["volumes"] = {
+                    str(workspace): {"bind": "/workspace", "mode": "rw"},
+                }
+            self._container = self.client.containers.run(
+                self._image,
+                **run_kwargs,
             )
+            self._copy_workspace_to_container(workspace)
             self._port = self._published_port()
         except Exception as e:
+            if self._container is not None:
+                self.stop()
             self._container = None
             raise OpenCodeContainerError(f"Failed to start container: {e}") from e
 
@@ -215,6 +218,53 @@ class OpenCodeContainer:
 
         _logger.info("Started new opencode container")
         self._log_readiness()
+
+    @property
+    def uses_workspace_mount(self) -> bool:
+        """Whether the daemon shares the client's filesystem."""
+        return self._host == "localhost"
+
+    def sync_workspace_from_container(self, workspace: Path) -> None:
+        """Copy the remote container workspace back to the client worktree."""
+        if self.uses_workspace_mount:
+            return
+        if self._container is None:
+            raise OpenCodeContainerError("Cannot read workspace: container is not running")
+
+        try:
+            stream, _ = self._container.get_archive("/workspace")
+            archive = io.BytesIO(_archive_bytes(stream))
+            with tarfile.open(fileobj=archive, mode="r:") as tar:
+                members = tar.getmembers()
+                _validate_archive_members(members)
+                remote_files = {
+                    Path(member.name).as_posix()
+                    for member in members
+                    if member.isfile()
+                }
+                for path in _workspace_files(workspace):
+                    relative = path.relative_to(workspace).as_posix()
+                    if relative not in remote_files:
+                        path.unlink()
+                tar.extractall(path=workspace, filter="data")
+        except Exception as e:
+            raise OpenCodeContainerError(
+                f"Failed to copy workspace from remote Docker daemon: {e}"
+            ) from e
+
+    def _copy_workspace_to_container(self, workspace: Path) -> None:
+        """Copy the client workspace into a remote container via Docker API."""
+        if self.uses_workspace_mount:
+            return
+        try:
+            buffer = io.BytesIO()
+            with tarfile.open(fileobj=buffer, mode="w") as tar:
+                tar.add(workspace, arcname=".", recursive=True)
+            self._container.put_archive("/workspace", buffer.getvalue())
+        except Exception as e:
+            raise OpenCodeContainerError(
+                f"Failed to copy workspace to remote Docker daemon: {e}"
+            ) from e
 
     def _find_existing_container(self, task_id: Optional[str] = None):
         """Return this task's running container, or None."""
@@ -391,3 +441,29 @@ def _build_provider_env() -> dict:
     except Exception as e:
         _logger.warning("Failed to build provider env for opencode: %s", e)
     return env
+
+
+def _archive_bytes(stream) -> bytes:
+    """Read a Docker archive stream regardless of its concrete stream type."""
+    if isinstance(stream, bytes):
+        return stream
+    return b"".join(stream)
+
+
+def _workspace_files(workspace: Path):
+    """Yield regular files in a workspace without following directory links."""
+    return (
+        path
+        for path in workspace.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    )
+
+
+def _validate_archive_members(members) -> None:
+    """Reject archive paths that could write outside the task worktree."""
+    for member in members:
+        name = member.name
+        if name.startswith("/") or ".." in Path(name).parts:
+            raise OpenCodeContainerError(
+                f"Remote workspace archive contains unsafe path: {name}"
+            )

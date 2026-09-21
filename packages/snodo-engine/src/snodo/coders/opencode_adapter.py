@@ -115,6 +115,10 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
         try:
             session_id = self._create_session()
             self._wait_for_completion(session_id, spec)
+            try:
+                self._container.sync_workspace_from_container(self._workspace)
+            except Exception as e:
+                raise LLMCallError(f"Failed to retrieve opencode workspace: {e}") from e
             # Primary: read from the volume-mounted workspace (git diff)
             diff_entries = self._read_changes_from_disk()
             # Fallback: use the /diff API

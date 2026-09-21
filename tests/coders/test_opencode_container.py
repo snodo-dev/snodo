@@ -1,5 +1,7 @@
 """Tests for the OpenCode container lifecycle: task ownership and ports."""
 
+import io
+import tarfile
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
@@ -105,3 +107,91 @@ def test_unavailable_explicit_port_is_reported(tmp_path):
         container.start(tmp_path)
 
     assert client.containers.run.call_args.kwargs["ports"] == {"55440/tcp": 61003}
+
+
+def test_remote_daemon_receives_workspace_contents(tmp_path, monkeypatch):
+    monkeypatch.setenv("DOCKER_HOST", "tcp://daemon.example:2375")
+    (tmp_path / "asked.py").write_text("print('task')")
+    remote = _container(61004)
+    client = SimpleNamespace(
+        containers=SimpleNamespace(list=Mock(return_value=[]), run=Mock(return_value=remote)),
+    )
+    manager = OpenCodeContainer()
+    manager._client = client
+    manager._wait_ready = Mock()
+
+    manager.start(tmp_path, task_id="remote-task")
+
+    archive = io.BytesIO(remote.put_archive.call_args.args[1])
+    with tarfile.open(fileobj=archive, mode="r:") as tar:
+        assert tar.extractfile("./asked.py").read() == b"print('task')"
+    assert "volumes" not in client.containers.run.call_args.kwargs
+
+
+def test_remote_daemon_changes_arrive_in_workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv("DOCKER_HOST", "tcp://daemon.example:2375")
+    original = tmp_path / "original.py"
+    original.write_text("old")
+    changed = _tar_archive({"changed.py": b"new", "original.py": b"updated"})
+    remote = _container(61005)
+    remote.get_archive.return_value = (changed, {})
+    manager = OpenCodeContainer()
+    manager._container = remote
+
+    manager.sync_workspace_from_container(tmp_path)
+
+    assert (tmp_path / "changed.py").read_text() == "new"
+    assert (tmp_path / "original.py").read_text() == "updated"
+
+
+def test_local_daemon_keeps_bind_mount(tmp_path, monkeypatch):
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    remote = _container(61006)
+    client = SimpleNamespace(
+        containers=SimpleNamespace(list=Mock(return_value=[]), run=Mock(return_value=remote)),
+    )
+    manager = OpenCodeContainer()
+    manager._client = client
+    manager._wait_ready = Mock()
+
+    manager.start(tmp_path)
+
+    assert client.containers.run.call_args.kwargs["volumes"] == {
+        str(tmp_path.resolve()): {"bind": "/workspace", "mode": "rw"},
+    }
+    remote.put_archive.assert_not_called()
+
+
+def test_remote_workspace_push_failure_is_reported(tmp_path, monkeypatch):
+    monkeypatch.setenv("DOCKER_HOST", "tcp://daemon.example:2375")
+    remote = _container(61007)
+    remote.put_archive.side_effect = OSError("connection lost")
+    client = SimpleNamespace(
+        containers=SimpleNamespace(list=Mock(return_value=[]), run=Mock(return_value=remote)),
+    )
+    manager = OpenCodeContainer()
+    manager._client = client
+
+    with pytest.raises(OpenCodeContainerError, match="copy workspace to remote"):
+        manager.start(tmp_path)
+
+
+def test_remote_workspace_pull_failure_is_reported(tmp_path, monkeypatch):
+    monkeypatch.setenv("DOCKER_HOST", "tcp://daemon.example:2375")
+    remote = _container(61008)
+    remote.get_archive.side_effect = OSError("connection lost")
+    manager = OpenCodeContainer()
+    manager._container = remote
+
+    with pytest.raises(OpenCodeContainerError, match="copy workspace from remote"):
+        manager.sync_workspace_from_container(tmp_path)
+
+
+def _tar_archive(files: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as tar:
+        for name, content in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            tar.addfile(info, io.BytesIO(content))
+    return buffer.getvalue()
