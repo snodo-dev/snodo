@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from snodo.cli.commands.plan_cmd import plan_command
+from snodo.cli.commands.plan_cmd import _plan_list, plan_command
 
 
 @pytest.fixture
@@ -57,6 +57,63 @@ def _create_plan(project_dir, name="p1"):
 def _planner(project_dir):
     from snodo.mcp.planner import PlannerMCP
     return PlannerMCP(str(project_dir))
+
+
+def test_plan_list_is_newest_first_and_reports_derived_status(plan_env, capsys):
+    """The concise listing puts the recently active plan at the top."""
+    import os
+    import time
+
+    planner = _planner(plan_env)
+    _create_plan(plan_env, "older")
+    _create_plan(plan_env, "newer")
+    planner.generate_spec("older", "1.1_old", "spec")
+    planner.generate_spec("newer", "1.1_new", "spec")
+    planner.update_status("older", "1.1_old", "completed")
+    planner.update_status("newer", "1.1_new", "blocked")
+    now = time.time()
+    os.utime(planner.plans_dir / "older" / "status.json", (now - 20, now - 20))
+    os.utime(planner.plans_dir / "newer" / "status.json", (now, now))
+
+    assert _plan_list(planner) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines.index(next(line for line in lines if "newer" in line)) < lines.index(
+        next(line for line in lines if "older" in line)
+    )
+    assert "blocked" in next(line for line in lines if "newer" in line)
+    assert "1/1" in next(line for line in lines if "older" in line)
+
+
+def test_plan_list_json_contains_same_facts_without_paging(plan_env, capsys):
+    """JSON exposes the table facts and never invokes the pager."""
+    import json
+    from unittest.mock import patch
+
+    planner = _planner(plan_env)
+    _create_plan(plan_env, "p1")
+    planner.generate_spec("p1", "1.1_task", "spec")
+    planner.update_status("p1", "1.1_task", "in_progress")
+    with patch("rich.console.Console.pager", side_effect=AssertionError("paged JSON")):
+        assert _plan_list(planner, SimpleNamespace(json=True)) == 0
+    payload = json.loads(capsys.readouterr().out)
+    item = payload["plans"][0]
+    assert item["name"] == "p1"
+    assert item["progress"] == {"completed": 0, "total": 1}
+    assert item["status"] == "in_progress"
+
+
+def test_plan_list_includes_task_without_plan(plan_env, capsys):
+    """A manually run task remains visible outside the plan hierarchy."""
+    import json
+
+    planner = _planner(plan_env)
+    _create_plan(plan_env, "p1")
+    task_dir = plan_env / ".snodo" / "tasks" / "manual_task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text(json.dumps({"status": "errored"}))
+
+    assert _plan_list(planner, SimpleNamespace(tree=True)) == 0
+    assert "(unassigned) manual_task: errored" in capsys.readouterr().out
 
 
 # ============================================================================
@@ -497,4 +554,3 @@ def test_plan_status_blocked_row_carries_the_command_that_reaches_its_logs(plan_
     assert "j_childmodels" not in completed_line
     # Following the plan is one command that already exists.
     assert "snodo logs j_planrun --watch" in out
-

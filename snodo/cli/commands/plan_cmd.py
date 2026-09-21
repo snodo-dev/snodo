@@ -4,9 +4,11 @@ FILE: snodo/cli/commands/plan_cmd.py
 """
 
 import logging
+import json
 import re
 import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, List, Optional, Set
@@ -43,9 +45,12 @@ def _plan_callback(ctx: typer.Context):
 
 
 @app.command("list")
-def plan_list():
+def plan_list(
+    json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+    tree: bool = typer.Option(False, "--tree", help="Expand plans into waves and tasks"),
+):
     """List all plans."""
-    args = SimpleNamespace(plan_action="list")
+    args = SimpleNamespace(plan_action="list", json=json, tree=tree)
     return plan_command(args)
 
 
@@ -190,7 +195,7 @@ def plan_command(args) -> int:
         return 1
 
     if args.plan_action == "list":
-        return _plan_list(planner)
+        return _plan_list(planner, args)
     elif args.plan_action == "status":
         return _plan_status(planner, args.name)
     elif args.plan_action == "create":
@@ -216,21 +221,171 @@ def plan_command(args) -> int:
         return 1
 
 
-def _plan_list(planner) -> int:
-    """List all plans."""
-    plans = planner.list_plans()
-    if not plans:
+_PLAN_STATUSES = ("pending", "in_progress", "completed", "blocked", "errored", "unmerged")
+
+
+def _status_value(entry: Any) -> str:
+    value = entry.get("status", "pending") if isinstance(entry, dict) else entry
+    # Older task records used these names. They are presentation aliases, not
+    # additional plan states.
+    return {"failed": "errored", "running": "in_progress", "merged": "completed"}.get(
+        str(value), str(value)
+    )
+
+
+def _derived_plan_status(statuses: list[str]) -> str:
+    if not statuses:
+        return "pending"
+    for status in ("errored", "blocked", "unmerged", "in_progress"):
+        if status in statuses:
+            return status
+    return "completed" if all(s == "completed" for s in statuses) else "pending"
+
+
+def _summary(intent: Any) -> str:
+    return " ".join(str(intent or "").split())
+
+
+def _activity_timestamp(plan_dir: Path, status_data: dict, project_root: Path, plan_name: str) -> float:
+    """Return the latest activity timestamp available for a plan."""
+    stamps = []
+    for path in (plan_dir / "plan.yml", plan_dir / "status.json"):
+        try:
+            stamps.append(path.stat().st_mtime)
+        except OSError:
+            pass
+    for entry in status_data.get("tasks", {}).values():
+        if isinstance(entry, dict):
+            for key in ("updated_at", "completed_at", "started_at", "timestamp"):
+                value = entry.get(key)
+                if isinstance(value, (int, float)):
+                    stamps.append(float(value))
+                elif isinstance(value, str):
+                    try:
+                        stamps.append(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+                    except ValueError:
+                        pass
+    try:
+        from snodo.jobs import JobManager
+        for job in JobManager(str(project_root)).list_jobs():
+            if job.get("plan") == plan_name:
+                value = job.get("updated_at", job.get("created_at"))
+                if isinstance(value, (int, float)):
+                    stamps.append(float(value))
+    except Exception as e:
+        _logger.debug("Could not inspect activity for plan %s: %s", plan_name, e)
+    return max(stamps, default=0.0)
+
+
+def _unassigned_tasks(project_root: Path, planned: set[str]) -> list[dict]:
+    """Collect standalone task records, which do not live under a plan."""
+    tasks: dict[str, dict] = {}
+    task_root = project_root / ".snodo" / "tasks"
+    if task_root.is_dir():
+        for task_dir in task_root.iterdir():
+            state_file = task_dir / "state.json"
+            if not state_file.is_file() or task_dir.name in planned:
+                continue
+            try:
+                state = json.loads(state_file.read_text())
+            except (OSError, ValueError):
+                continue
+            if isinstance(state, dict):
+                tasks[task_dir.name] = {
+                    "task": task_dir.name,
+                    "status": _status_value(state),
+                    "last_active": state.get("updated_at") or state.get("started_at"),
+                }
+    try:
+        from snodo.jobs import JobManager
+        for job in JobManager(str(project_root)).list_jobs():
+            task = job.get("task_ref") or job.get("task_id")
+            if task and not job.get("plan") and task not in planned:
+                tasks.setdefault(task, {"task": task, "status": _status_value(job)})
+    except Exception as e:
+        _logger.debug("Could not inspect standalone tasks: %s", e)
+    return [tasks[key] for key in sorted(tasks)]
+
+
+def _plan_list(planner, args=None) -> int:
+    """List plans as concise, newest-first facts."""
+    args = args or SimpleNamespace()
+    project_root = Path(planner.project_root)
+    facts = []
+    planned_tasks: set[str] = set()
+    for p in planner.list_plans():
+        plan_dir = planner.plans_dir / p["name"]
+        plan = None
+        try:
+            status_data = planner.get_status(p["name"])
+        except Exception:
+            status_data = {"tasks": {}}
+        statuses = []
+        for task_id in status_data.get("tasks", {}):
+            planned_tasks.add(task_id)
+            statuses.append(_status_value(status_data["tasks"][task_id]))
+        # Include tasks declared in waves even when status.json is old.
+        try:
+            plan = planner.get_plan(p["name"])
+            for wave in plan.waves:
+                for task_id in wave.tasks:
+                    planned_tasks.add(task_id)
+                    if task_id not in status_data.get("tasks", {}):
+                        statuses.append("pending")
+        except Exception as e:
+            _logger.debug("Could not load plan hierarchy for %s: %s", p["name"], e)
+        active = _activity_timestamp(plan_dir, status_data, project_root, p["name"])
+        counts = {s: statuses.count(s) for s in _PLAN_STATUSES}
+        total = len(statuses)
+        facts.append({
+            "name": p["name"],
+            "summary": _summary(p.get("intent")),
+            "last_active": datetime.fromtimestamp(active, timezone.utc).isoformat() if active else None,
+            "progress": {"completed": counts["completed"], "total": total},
+            "status": _derived_plan_status(statuses),
+            "wave_count": p.get("wave_count", 0),
+            "task_count": total,
+            "waves": [
+                {"id": w.id, "tasks": list(w.tasks)} for w in getattr(plan, "waves", [])
+            ] if plan is not None else [],
+        })
+    facts.sort(key=lambda item: item["last_active"] or "", reverse=True)
+    unassigned = _unassigned_tasks(project_root, planned_tasks)
+    if getattr(args, "json", False):
+        from snodo.cli.json_output import emit_json, schema_name
+        return emit_json({"schema": schema_name("plan"), "ok": True, "plans": facts, "unassigned_tasks": unassigned})
+    if not facts and not unassigned:
         print("No plans found.")
         return 0
-
-    print("Plans:")
-    for p in plans:
-        counts = p.get("status_counts", {})
-        done = counts.get("completed", 0)
-        total = p["task_count"]
-        progress = f"{done}/{total}" if total else "0/0"
-        print(f"  {p['name']}: {p['intent']}")
-        print(f"    Waves: {p['wave_count']}  Tasks: {progress}")
+    from rich.console import Console
+    from rich.table import Table
+    table = Table(title="Plans")
+    for column in ("PLAN", "SUMMARY", "LAST ACTIVE", "PROGRESS", "STATUS"):
+        table.add_column(column)
+    for item in facts:
+        active = item["last_active"] or "never"
+        if active != "never":
+            active = active.replace("T", " ").split("+", 1)[0]
+        table.add_row(item["name"], item["summary"], active,
+                      f'{item["progress"]["completed"]}/{item["progress"]["total"]}', item["status"])
+    if unassigned:
+        for task in unassigned:
+            table.add_row(f'(unassigned) {task["task"]}', "", task.get("last_active") or "never", "-", task["status"])
+    console = Console(file=sys.stdout, markup=False, highlight=False)
+    if getattr(args, "tree", False):
+        for item in facts:
+            print(f"{item['name']} [{item['status']}]")
+            for wave in item["waves"]:
+                print(f"  Wave {wave['id']}")
+                for task in wave["tasks"]:
+                    print(f"    {task}")
+        for task in unassigned:
+            print(f"(unassigned) {task['task']}: {task['status']}")
+    elif getattr(sys.stdout, "isatty", lambda: False)():
+        with console.pager():
+            console.print(table)
+    else:
+        console.print(table)
     return 0
 
 
