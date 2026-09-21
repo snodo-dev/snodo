@@ -30,8 +30,11 @@ class OpenCodeContainer:
     workspace directory and exposes the HTTP API on localhost.
     """
 
-    def __init__(self, image: str = _IMAGE, port: int = _PORT):
+    def __init__(self, image: str = _IMAGE, port: int | None = None):
         self._image = image
+        # The server's port inside the container is fixed by the image. A
+        # missing host port is represented by Docker's atomic port allocation,
+        # rather than a local scan that could describe the wrong daemon.
         self._port = port
         self._client = None
         self._container = None
@@ -137,19 +140,23 @@ class OpenCodeContainer:
                 str(workspace): {"bind": "/workspace", "mode": "rw"},
             }
             env = _build_provider_env()
-            env["OPENCODE_PORT"] = str(self._port)
+            env["OPENCODE_PORT"] = str(_PORT)
             self._container = self.client.containers.run(
                 self._image,
                 detach=True,
                 volumes=volumes,
-                # Let Docker assign a free host port so concurrent tasks can
-                # each have their own container.
-                ports={f"{self._port}/tcp": None},
+                # The server's port inside the container is fixed by the
+                # image; 0 asks Docker to allocate a free host port, on the
+                # daemon, so concurrent tasks never contend for one.
+                ports={
+                    f"{_PORT}/tcp": self._port if self._port is not None else 0,
+                },
                 publish_all_ports=False,
                 remove=True,
                 environment=env,
                 labels={"com.snodo.task-id": task_id} if task_id else {},
             )
+            self._port = self._published_port()
         except Exception as e:
             self._container = None
             raise OpenCodeContainerError(f"Failed to start container: {e}") from e
@@ -181,6 +188,22 @@ class OpenCodeContainer:
         except Exception as e:
             _logger.debug("Failed to list running container by image: %s", e)
         return None
+    def _published_port(self) -> int:
+        """Return the host port Docker assigned to the container.
+
+        Docker performs the allocation on the daemon, which may be remote.
+        Reading the published binding after creation therefore avoids both a
+        local-only availability check and a check-then-bind race.
+        """
+        try:
+            self._container.reload()
+            bindings = self._container.attrs["NetworkSettings"]["Ports"]
+            binding = bindings[f"{_PORT}/tcp"][0]
+            return int(binding["HostPort"])
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError) as e:
+            raise OpenCodeContainerError(
+                f"Docker did not report the published port for {_PORT}/tcp: {e}"
+            ) from e
 
     def _set_published_port(self) -> None:
         """Use Docker's assigned host port for the container HTTP endpoint."""
