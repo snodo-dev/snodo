@@ -13,7 +13,7 @@ def test_cloud_schema_validates_real_snapshot_and_event_batch():
 
     assert result.exit_code == 0
     publication = json.loads(result.stdout)
-    assert publication["interface_version"] == 3
+    assert publication["interface_version"] == 4
 
     payloads = publication["payloads"]
     batch = {

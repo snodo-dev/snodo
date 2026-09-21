@@ -193,7 +193,9 @@ def _measure_change_size(repo, base_sha: str, head_sha: str, max_files: int) -> 
     counts. Past the bound the line totals are simply not computed — the
     run is never stalled on a statistic nobody is waiting for.
     """
-    names = repo.git.diff("--name-only", "-z", base_sha, head_sha, "--")
+    # Keep the path walk aligned with the rename-aware count walk below: a
+    # rename is one changed file and is represented by its destination path.
+    names = repo.git.diff("--name-only", "--find-renames", "-z", base_sha, head_sha, "--")
     paths = _split_nul_fields(names)
     files_changed = len(paths)
     if files_changed > max_files:
