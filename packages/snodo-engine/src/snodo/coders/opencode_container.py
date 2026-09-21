@@ -3,7 +3,7 @@
 FILE: snodo/coders/opencode_container.py
 
 Manages the opencode server container — start, stop, health check.
-Built on docker-py (same dependency as DockerSandbox).
+Built on docker-py.
 """
 
 import logging

@@ -23,7 +23,7 @@ CLI/TUI package.
 | Package | Responsibility | Key modules |
 |---------|---------------|-------------|
 | **root** (`snodo/`) | CLI (`snodo`), Textual dashboard, prompts | `cli/main.py`, `cli/commands/*.py` |
-| **snodo-core** | Kernel: path resolution, project identity, constraint predicates, sandbox | `paths.py` (`resolve_home()` → `SNODO_HOME`, default `~/.snodo`) |
+| **snodo-core** | Kernel: path resolution, project identity, constraint predicates | `paths.py` (`resolve_home()` → `SNODO_HOME`, default `~/.snodo`) |
 | **snodo-tools** | Tool primitives the agent acts through | `workspace.py` (INV2 path validation), `git.py`, `shell.py`, code-host providers |
 | **snodo-foundation** | Infrastructure + protocol compiler + shipped templates | `infrastructure/`: `tokens.py`, `audit.py`, `session.py`, `decisions.py`, `memory.py`, `cloud_sync.py` · `compiler/`: `models.py`, `verifier.py` (WF1–WF5) · `protocols/templates/*.yml` |
 | **snodo-engine** | The executable part | `engine/`: `loop.py` (graph builder), `closure.py` (recursive driver), `policy.py`, `constraints.py`, `nodes/*` · `validators/`: `runner.py`, `registry.py`, `llm_validator.py`, `quality.py`, `protocol_adherence.py`, `context.py` · `coders/` |

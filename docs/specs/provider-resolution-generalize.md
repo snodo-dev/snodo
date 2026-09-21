@@ -41,7 +41,7 @@ Recon listed them:
   - cli/config.py:149 (_provider_for_model itself)
   - coders/litellm.py:78 (_resolve_api_base)
   - engine/loop.py:175 (validator base_url)
-  - cli/commands/sandbox_run.py:33
+  - cli/commands/background_run.py:33
   - infrastructure/memory.py:288 (summary model)
 No change needed at the call sites — they all consume _provider_for_model's
 result. Just confirm the new resolution returns the same config-key names.

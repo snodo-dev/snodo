@@ -322,7 +322,7 @@ status is an operator's account — the audit entry is marked unjudged and
 | `serve` | Run the protocol as an MCP server (stdio or SSE) |
 | `cloud` | `connect`, `disconnect`, `status` for audit sync |
 | `dashboard` | TUI (`snop`) |
-| `agent` / `sandbox` / `install` / `uninstall` | Agent memory; Docker sandbox; Claude Desktop MCP entries |
+| `agent` / `install` / `uninstall` | Agent memory; Claude Desktop MCP entries |
 
 ### Models
 
@@ -425,15 +425,6 @@ edit `plan.yml` directly. A plan is re-verified on every load. See
 | `snodo job logs <id>` | Show job logs |
 | `snodo job wait <id>` | Wait for completion |
 | `snodo job cancel <id>` | Cancel a running job |
-
-### Docker sandbox
-
-| Command | Description |
-|---------|-------------|
-| `snodo sandbox build` | Build the worker image |
-| `snodo sandbox status` | Check Docker availability |
-
-Run with `snodo run ... --sandbox docker` to execute inside a container.
 
 ### Install / Uninstall (Claude Desktop)
 

@@ -16,7 +16,7 @@ root_package = snodo
 #
 # Module -> package map:
 #   core        snodo.core, snodo.config, snodo.paths, snodo.project,
-#               snodo.predicates, snodo.sandbox
+#               snodo.predicates
 #   tools       snodo.tools, snodo.providers
 #   foundation  snodo.infrastructure, snodo.compiler, snodo.protocols
 #   engine      snodo.engine, snodo.validators, snodo.coders
@@ -33,7 +33,6 @@ source_modules =
     snodo.paths
     snodo.project
     snodo.predicates
-    snodo.sandbox
 forbidden_modules =
     snodo.tools
     snodo.providers

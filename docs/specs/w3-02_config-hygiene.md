@@ -5,8 +5,6 @@ Five occurrences of "gpt-4" are hardcoded across coders/, validators/,
 and engine/. The engine cannot import from cli/ by design. The right
 home is infrastructure/config.py alongside the existing
 _CODER_MAX_TOKENS_DEFAULT / _VALIDATOR_MAX_TOKENS_DEFAULT pattern.
-Sandbox hardcodes (snodo-worker:latest, network:none) are left alone —
-no config.yml sandbox section exists and adding one is out of scope.
 
 ## What to change
 
@@ -54,6 +52,4 @@ with an import from infrastructure.config — single source of truth.
   the test was implicitly depending on gpt-4 behavior — fix the test.
 
 ## Constraints
-- Do not add a sandbox: section to config.yml
-- Do not touch sandbox/base.py
 - One commit, all files together
