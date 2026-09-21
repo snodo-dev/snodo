@@ -114,7 +114,7 @@ Using existing RS256 keypair:
   Public:  ~/.ssh/NO-AGENT/snodo.pub.pem
 
 OpenCode adapter: Docker detected. Build the image with:
-  docker build -t snodo-opencode:latest -f docker/Dockerfile.opencode .
+  docker build -t snodo-opencode:latest -f docker/Dockerfile.opencode docker
   Note: the opencode coder is EXPERIMENTAL — no per-turn progress
   or usage/cost records, and not used by any shipped template.
 

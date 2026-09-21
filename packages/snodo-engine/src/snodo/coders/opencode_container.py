@@ -100,7 +100,7 @@ class OpenCodeContainer:
             if type(e).__name__ == "ImageNotFound" or "no such image" in str(e).lower():
                 reason = (
                     f"Docker image {self._image!r} is missing. "
-                    f"Build it with 'docker build -t {self._image} -f docker/Dockerfile.opencode .'"
+                    f"Build it with 'docker build -t {self._image} -f docker/Dockerfile.opencode docker'"
                 )
             else:
                 reason = (
@@ -128,11 +128,18 @@ class OpenCodeContainer:
 
         Raises OpenCodeContainerError on failure.
         """
-        dockerfile_dir = Path(__file__).parent.parent.parent / "docker"
-        dockerfile_path = dockerfile_dir / "Dockerfile.opencode"
-        if not dockerfile_path.exists():
+        dockerfile_path = next(
+            (
+                parent / "docker" / "Dockerfile.opencode"
+                for parent in Path(__file__).resolve().parents
+                if (parent / "docker" / "Dockerfile.opencode").exists()
+            ),
+            None,
+        )
+        dockerfile_dir = dockerfile_path.parent if dockerfile_path else None
+        if dockerfile_path is None:
             raise OpenCodeContainerError(
-                f"Dockerfile not found at {dockerfile_path}"
+                "Dockerfile not found in a repository docker directory"
             )
         try:
             image, _ = self.client.images.build(
