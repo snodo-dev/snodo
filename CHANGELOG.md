@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- The published cloud ingest schema now declares each event's data keys and
+  types the envelope timestamp and scope instead of leaving them untyped.
+  (Fixes #393)
 - Task IDs used to generate plan specs now require a readable name suffix, and
   the MCP schema and server instructions show the required format. (Fixes #388)
 - Readiness now checks all conventional decision-record locations, including

@@ -17,9 +17,9 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, Literal, Optional, TypedDict
+from typing import Annotated, Any, Literal, Optional, TypedDict, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, create_model
 
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
@@ -56,19 +56,69 @@ _MAX_BATCH_SIZE = 50
 _MAX_RETRIES = 5
 
 
-class AuditEventEnvelope(BaseModel):
-    """The fields shared by every event sent to cloud ingest."""
+_EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
+    "project_announced": ("project_id", "scope", "display_name"),
+    "readiness_checked": (
+        "project_id", "scope", "display_name", "protocol_id", "score",
+        "total_checks", "passed_checks", "repository_findings_count",
+        "workstation_findings_count", "findings",
+    ),
+    "dispatch": ("task_ref", "mode", "token_id", "artifacts_count"),
+    "work_already_present": ("task_ref", "base_ref", "artifacts_count", "files"),
+    "governance_check": ("task_ref", "mode", "constraints_checked"),
+    "validate": ("phase", "task_ref", "validators_invoked", "results", "outcome", "policy_decision"),
+    "task_classified": ("task_ref", "flow_type", "wave_id", "task_summary"),
+    "wave_created": ("wave_id", "feature_description"),
+    "task_complete": ("task_ref", "artifacts", "session_id", "commit", "change_size"),
+    "task_merged": ("task_ref", "branch", "merge_sha", "spec", "session_id"),
+    "halt": ("task_ref", "reason", "blocker_validators", "halt_type", "raw_halt_type"),
+    "transition": ("from_mode", "to_mode", "task_ref"),
+    "token_consumed": ("task_ref", "session_id"),
+    "post_validation_route": ("decision", "task_ref"),
+    "post_validate_bypassed": ("mode", "reason", "task_ref"),
+    "session_started": ("session_id", "mode", "project_root"),
+    "session_task_changed": ("old_task", "new_task"),
+    "session_decision_updated": ("key", "value"),
+    "recovery_resolved": ("depth", "attempts_used"),
+    "recovery_internal_error": ("depth", "error"),
+    "execution_failed": ("error", "task_ref"),
+    "verification_executed": (
+        "command", "commit", "returncode", "outcome", "validator_id",
+        "working_directory", "output_tail",
+    ),
+    "coder_test_run": ("command_type", "exit_code", "test_path", "turn_index", "job_id"),
+    "test_modified": ("mutations", "task_id", "job_id"),
+    "unverified_merge_blocked": ("task_ref", "branch", "target_commit", "reason", "session_id"),
+}
 
-    model_config = ConfigDict(extra="forbid")
 
-    sequence: int
-    timestamp: Any
-    event_type: str
-    project_id: str
-    scope: str
-    data: dict[str, Any]
-    previous_hash: str
-    event_hash: str
+def _event_models() -> tuple[type[BaseModel], ...]:
+    """Build one schema branch for each event type in the cloud contract."""
+    models = []
+    for event_type, keys in _EVENT_DATA_KEYS.items():
+        data_model = create_model(
+            f"{event_type.title().replace('_', '')}Data",
+            __config__=ConfigDict(extra="allow"),
+            **{key: (Any | None, None) for key in keys},
+        )
+        models.append(create_model(
+            f"{event_type.title().replace('_', '')}Event",
+            __config__=ConfigDict(extra="forbid"),
+            sequence=(int, ...),
+            timestamp=(Annotated[StrictStr, Field(json_schema_extra={"format": "date-time"})], ...),
+            event_type=(Literal[event_type], ...),
+            project_id=(str, ...),
+            scope=(Literal["", "local", "remote"], ...),
+            data=(data_model, ...),
+            previous_hash=(str, ...),
+            event_hash=(str, ...),
+        ))
+    return tuple(models)
+
+
+AuditEventEnvelope = Annotated[
+    Union[_event_models()], Field(discriminator="event_type")
+]
 
 
 class AuditIngestBatch(BaseModel):
