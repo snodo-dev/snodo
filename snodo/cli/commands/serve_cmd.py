@@ -6,7 +6,6 @@ FILE: snodo/cli/commands/serve_cmd.py
 import collections
 import hashlib
 import io
-import inspect
 import json
 import logging
 import os
@@ -55,17 +54,13 @@ def _provision_with_auth(api_key: str, project_slug: str, mode: str,
                          short_id: str, version: str, port: int,
                          auth_methods: list[str]) -> dict:
     """Provision with an explicit auth set, tolerating legacy test doubles."""
-    kwargs = {"auth": auth_methods}
-    try:
-        parameters = inspect.signature(_provision_tunnel).parameters
-    except (TypeError, ValueError):
-        parameters = {}
-    if "auth" not in parameters and not any(
-        p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()
-    ):
+    # OAuth is the historical default. Keeping its call shape unchanged also
+    # lets older integrations that wrap the provisioning helper continue to
+    # work while the helper itself sends the explicit default to the API.
+    if auth_methods == ["oauth"]:
         return _provision_tunnel(api_key, project_slug, mode, short_id, version, port)
     return _provision_tunnel(
-        api_key, project_slug, mode, short_id, version, port, **kwargs
+        api_key, project_slug, mode, short_id, version, port, auth=auth_methods
     )
 
 
@@ -623,8 +618,7 @@ def _provision_tunnel(
             "snodo_version": snodo_version,
             "port": port,
         }
-        if auth:
-            payload["auth"] = auth
+        payload["auth"] = auth or ["oauth"]
         resp = httpx.post(
             url,
             json=payload,
