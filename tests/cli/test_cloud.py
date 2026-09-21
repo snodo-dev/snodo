@@ -208,8 +208,13 @@ class TestCloudSyncDispatcher:
             ev = MagicMock()
             ev.sequence = start_seq + i + 1
             ev.timestamp = "2026-01-01T00:00:00Z"
-            ev.event_type = "tool_call"
-            ev.data = {"key": "value"}
+            ev.event_type = "transition"
+            ev.data = {
+                "from_mode": "idle",
+                "to_mode": "running",
+                "task_ref": "task-1",
+                "key": "value",
+            }
             ev.previous_hash = "0" * 64
             ev.event_hash = "e" * 64
             events.append(ev)
@@ -400,7 +405,7 @@ class TestCloudSyncDispatcher:
         for ev_payload in captured_body["events"]:
             assert ev_payload["project_id"] == "github.com/snodo-dev/test-repo"
             assert ev_payload["scope"] == "remote"
-            assert ev_payload["event_type"] == "tool_call"
+            assert ev_payload["event_type"] == "transition"
 
     def test_engine_batch_validates_against_ingest_envelope(self):
         """The payload assembled for ingest has a declared batch envelope."""

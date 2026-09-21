@@ -100,5 +100,6 @@ def test_cloud_schema_declares_every_event_data_key_from_contract():
 
     envelope = ingest["$defs"]
     event_branches = [value for name, value in envelope.items() if name.endswith("Event")]
+    assert len(event_branches) == len(expected)
     assert all(branch["properties"]["timestamp"]["type"] == "string" for branch in event_branches)
     assert all(branch["properties"]["scope"]["enum"] == ["", "local", "remote"] for branch in event_branches)
