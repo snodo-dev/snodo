@@ -793,8 +793,9 @@ class PlannerMCP:
         exactly the same values. Widening it is a decision (ADR 045), not an
         edit: ``scripts/enforce_vocabularies.py`` reads this set.
         """
-        if status not in TASK_STATUSES:
-            raise PlannerError(f"Invalid status: {status}. Must be one of {TASK_STATUSES}")
+        valid_statuses = TASK_STATUSES
+        if status not in valid_statuses:
+            raise PlannerError(f"Invalid status: {status}. Must be one of {valid_statuses}")
 
     def record_status(
         self,

@@ -90,6 +90,15 @@ TASK_STATUS_SOURCES = {
     / "planner.py": {"valid_statuses"},
 }
 
+TASK_STATUS_SHARED_FILE = (
+    Path("packages")
+    / "snodo-mcp"
+    / "src"
+    / "snodo"
+    / "mcp"
+    / "status.py"
+)
+
 #: Variable names whose string-literal assignments are task statuses, and the
 #: dict key under which a reported status travels.
 STATUS_VARIABLE = "status"
@@ -210,7 +219,7 @@ def _string_collection(node: ast.expr, *, where: str) -> set[str]:
 
 
 def task_status_from_source(
-    source: str, *, where: str, anchors: set[str]
+    source: str, *, where: str, anchors: set[str], shared_source: str | None = None
 ) -> set[str]:
     """Task statuses reported by one source.
 
@@ -234,9 +243,34 @@ def task_status_from_source(
                     continue
                 if target.id in anchors:
                     seen_anchors.add(target.id)
-                    statuses |= _string_collection(
-                        node.value, where=f"{where}:{target.id}"
-                    )
+                    if (
+                        isinstance(node.value, ast.Name)
+                        and node.value.id == "TASK_STATUSES"
+                        and shared_source is not None
+                    ):
+                        shared_tree = ast.parse(shared_source)
+                        for shared_node in ast.walk(shared_tree):
+                            if (
+                                isinstance(shared_node, ast.Assign)
+                                and any(
+                                    isinstance(target, ast.Name)
+                                    and target.id == "TASK_STATUSES"
+                                    for target in shared_node.targets
+                                )
+                            ):
+                                statuses |= _string_collection(
+                                    shared_node.value,
+                                    where=f"{TASK_STATUS_SHARED_FILE}:TASK_STATUSES",
+                                )
+                                break
+                        else:
+                            raise VocabularySourceError(
+                                f"{TASK_STATUS_SHARED_FILE}:TASK_STATUSES not found"
+                            )
+                    else:
+                        statuses |= _string_collection(
+                            node.value, where=f"{where}:{target.id}"
+                        )
                 elif target.id == STATUS_VARIABLE and isinstance(
                     node.value, ast.Constant
                 ) and isinstance(node.value.value, str):
@@ -279,9 +313,17 @@ def collect_vocabularies(repo_root: Path) -> dict[str, set[str]]:
     }
 
     task_statuses: set[str] = set()
+    shared_source = (
+        read(TASK_STATUS_SHARED_FILE)
+        if (repo_root / TASK_STATUS_SHARED_FILE).is_file()
+        else None
+    )
     for path, anchors in TASK_STATUS_SOURCES.items():
         task_statuses |= task_status_from_source(
-            read(path), where=path.as_posix(), anchors=set(anchors)
+            read(path),
+            where=path.as_posix(),
+            anchors=set(anchors),
+            shared_source=shared_source,
         )
     discovered["task_status"] = task_statuses
     return discovered

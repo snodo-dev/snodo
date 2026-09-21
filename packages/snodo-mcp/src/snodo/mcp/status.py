@@ -1,13 +1,13 @@
 """The closed task-status vocabulary and its CLI markers."""
 
-TASK_STATUSES = frozenset({
+TASK_STATUSES = {
     "pending",
     "in_progress",
     "completed",
     "blocked",
     "errored",
     "unmerged",
-})
+}
 
 STATUS_MARKERS = {
     "completed": "+",
