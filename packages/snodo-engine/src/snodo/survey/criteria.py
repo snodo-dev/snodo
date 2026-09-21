@@ -43,11 +43,14 @@ about the records, and the proposal pass reports it by proposing nothing
 rather than by inventing a requirement to fill the gap.
 
 Within the Decision section every bullet item and every standalone paragraph
-is a proposal, each carrying the record it came from. The pass deliberately
-does not judge whether a decision sentence *ought* to be a validator
-criterion; that is the operator's question, answered one proposal at a time.
-What it does judge is attribution: a proposal without the record it came from
-is not made at all.
+is a proposal, each carrying the record it came from, except for a
+colon-terminated statement that introduces the bullet points beneath it. That
+statement is only a lead-in; the points are the rule and remain proposals. A
+colon-terminated sentence with no following points is still proposed. The pass
+deliberately does not judge whether a decision sentence *ought* to be a
+validator criterion; that is the operator's question, answered one proposal at
+a time. What it does judge is attribution: a proposal without the record it
+came from is not made at all.
 
 The citation discipline is the one a boundary judge already uses on source
 files: a claim carries the file it rests on, and the file is resolved against
@@ -219,6 +222,10 @@ def _statements(body_lines: Sequence[str]) -> List[str]:
         bullet = _BULLET_RE.match(raw)
         if bullet:
             flush()
+            # A colon-terminated statement immediately before a list names the
+            # list, but does not state a rule independently of its points.
+            if statements and statements[-1].endswith(":"):
+                statements.pop()
             block = [bullet.group(1)]
             continue
         if block is None:
