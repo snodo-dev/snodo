@@ -654,12 +654,13 @@ def assess_readiness(
             for prov_name, prov_data in sorted(raw_providers.items()):
                 if isinstance(prov_data, dict):
                     plaintext_key = str(prov_data.get("api_key") or "").strip()
+                    credential_ref = str(prov_data.get("api_key_ref") or "").strip()
                     env_var = str(prov_data.get("api_key_env") or "").strip()
                     if not env_var:
                         default_pc = DEFAULT_PROVIDER_CATALOG.get(prov_name)
                         if default_pc and default_pc.api_key_env:
                             env_var = default_pc.api_key_env
-                    if plaintext_key and env_var:
+                    if plaintext_key and env_var and not credential_ref:
                         workstation_findings.append(
                             ReadinessFinding(
                                 id=f"plaintext_key_configured:{prov_name}",

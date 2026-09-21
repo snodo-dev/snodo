@@ -158,6 +158,32 @@ class TestKeyForModel:
     def test_no_keys_configured_returns_none(self, mgr):
         assert mgr.get_key_for_model("gpt-4") is None
 
+    def test_literal_and_environment_credentials_are_unchanged(self, mgr, monkeypatch):
+        mgr.save({"providers": {"openai": {"api_key": "literal"}}})
+        assert mgr.get_key("openai") == "literal"
+
+        mgr.save({"providers": {"openai": {"api_key_env": "TEST_PROVIDER_KEY"}}})
+        monkeypatch.setenv("TEST_PROVIDER_KEY", "from-environment")
+        assert mgr.get_key("openai") == "from-environment"
+
+    def test_environment_reference_resolves_at_use_time(self, mgr, monkeypatch):
+        mgr.save({"providers": {"openai": {"api_key_ref": "env:TEST_PROVIDER_REF"}}})
+        monkeypatch.setenv("TEST_PROVIDER_REF", "referenced-secret")
+        assert mgr.get_key("openai") == "referenced-secret"
+
+    def test_command_reference_resolves_without_persisting_secret(self, mgr, monkeypatch):
+        monkeypatch.setenv("TEST_PROVIDER_COMMAND", "command-secret")
+        reference = "command:sh -c 'printf %s \"$TEST_PROVIDER_COMMAND\"'"
+        mgr.save({"providers": {"openai": {"api_key_ref": reference}}})
+        assert mgr.get_key("openai") == "command-secret"
+        assert "command-secret" not in mgr.config_path.read_text()
+
+    def test_unresolvable_reference_names_itself(self, mgr):
+        reference = "env:MISSING_PROVIDER_REF"
+        mgr.save({"providers": {"openai": {"api_key_ref": reference}}})
+        with pytest.raises(ConfigError, match=reference):
+            mgr.get_key("openai")
+
 
 # === ConfigManager.set_model / get_model ===
 
@@ -1038,4 +1064,3 @@ class TestCloudServiceUrls:
 
         override_without_path = {"cloud": {"liveness_api_url": "https://custom.app.snodo.dev"}}
         assert get_cloud_liveness_url(override_without_path) == "https://custom.app.snodo.dev/v1"
-

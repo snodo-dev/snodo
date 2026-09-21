@@ -9,7 +9,9 @@ Manages user configuration stored at ~/.snodo/config.yml:
 """
 
 import os
+import shlex
 import stat
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -25,6 +27,7 @@ class ProviderConfig(BaseModel):
     """Provider configuration with API credential env var and /models endpoint."""
     api_key: str = ""
     api_key_env: str = ""
+    api_key_ref: str = ""
     models_endpoint: str = ""
     account_id: str = ""
     account_id_env: str = ""
@@ -501,7 +504,43 @@ class ConfigManager:
             return pc.api_key
         if pc and pc.api_key_env:
             return os.environ.get(pc.api_key_env) or None
+        if pc and pc.api_key_ref:
+            return self._resolve_key_reference(pc.api_key_ref)
         return None
+
+    @staticmethod
+    def _resolve_key_reference(reference: str) -> str:
+        """Resolve a named credential reference without persisting its value."""
+        ref = reference.strip()
+        scheme, separator, target = ref.partition(":")
+        if not separator or not target.strip():
+            raise ConfigError(f"Unable to resolve credential reference '{reference}'")
+
+        if scheme == "env":
+            value = os.environ.get(target.strip())
+            if value:
+                return value
+            raise ConfigError(f"Unable to resolve credential reference '{reference}'")
+
+        if scheme == "command":
+            try:
+                argv = shlex.split(target)
+                if not argv:
+                    raise ValueError("empty command")
+                result = subprocess.run(  # noqa: S603 - command is explicitly operator-configured
+                    argv,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                value = result.stdout.strip()
+            except (OSError, ValueError, subprocess.SubprocessError):
+                raise ConfigError(f"Unable to resolve credential reference '{reference}'") from None
+            if value:
+                return value
+
+        raise ConfigError(f"Unable to resolve credential reference '{reference}'")
 
     def remove_key(self, provider: str) -> bool:
         """Remove an API key for a provider.

@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Provider credentials may now be named by an `env:` or `command:` reference and
+  resolved only at the moment of use, without persisting the resolved secret.
+  (Fixes #394)
 - The published cloud ingest schema now declares each event's data keys and
   types the envelope timestamp and scope instead of leaving them untyped.
   (Fixes #393)
