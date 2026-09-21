@@ -65,7 +65,7 @@ jobs:
           # `files:`, and picks up the tee'd pytest output (coverage-output.txt)
           # as if it were a coverage report.
           disable_search: true
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
   lint:
     runs-on: ubuntu-latest
