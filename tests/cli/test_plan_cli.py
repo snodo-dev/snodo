@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from snodo.cli.commands.plan_cmd import _plan_list, plan_command
+from snodo.mcp.status import STATUS_MARKERS, TASK_STATUSES, status_marker
 
 
 @pytest.fixture
@@ -572,3 +573,39 @@ def test_plan_status_blocked_row_carries_the_command_that_reaches_its_logs(plan_
     assert "j_childmodels" not in completed_line
     # Following the plan is one command that already exists.
     assert "snodo logs j_planrun --watch" in out
+
+
+def test_plan_and_logs_views_share_engine_status_markers(plan_env, capsys):
+    """Every engine task status has the same marker in both plan views."""
+    _create_plan(plan_env, "marker_plan")
+    planner = _planner(plan_env)
+    task_ids = {}
+    for index, status in enumerate(sorted(TASK_STATUSES), start=1):
+        task_id = f"1.{index}_{status}"
+        planner.generate_spec("marker_plan", task_id, "spec")
+        planner.update_status("marker_plan", task_id, status)
+        task_ids[status] = task_id
+
+    _write_job(
+        plan_env,
+        "j_marker_plan",
+        {"plan_name": "marker_plan"},
+        {"status": "completed", "job_type": "plan"},
+    )
+    job_dir = plan_env / ".snodo" / "jobs" / "j_marker_plan"
+    (job_dir / "stdout.log").write_text("")
+
+    assert set(STATUS_MARKERS) == TASK_STATUSES
+
+    assert plan_command(SimpleNamespace(plan_action="status", name="marker_plan")) == 0
+    plan_output = capsys.readouterr().out
+
+    from snodo.cli.commands.logs_cmd import logs_command
+
+    assert logs_command(SimpleNamespace(composite_id="j_marker_plan", watch=False)) == 0
+    logs_output = capsys.readouterr().out
+
+    for status, task_id in task_ids.items():
+        marker = f"[{status_marker(status)}] {task_id}: {status}"
+        assert marker in plan_output
+        assert marker in logs_output

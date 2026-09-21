@@ -266,10 +266,8 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
             return []
 
     def _print_status_view(tasks_status: dict, child_jobs: list[dict]) -> None:
-        _STATUS_MARKERS = {
-            "completed": "+", "in_progress": "~", "running": "~",
-            "blocked": "!", "errored": "?", "unmerged": "u", "pending": " ",
-        }
+        from snodo.mcp.status import status_marker
+
         task_children: dict[str, dict] = {}
         for cj in child_jobs:
             t_ref = cj.get("task_ref")
@@ -286,7 +284,7 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                 for task_id in task_list:
                     raw = tasks_status.get(task_id, "pending")
                     state = raw["status"] if isinstance(raw, dict) else raw
-                    marker = _STATUS_MARKERS.get(state, "?")
+                    marker = status_marker(state)
                     cj = task_children.get(task_id)
                     if cj:
                         cid = cj["id"]
