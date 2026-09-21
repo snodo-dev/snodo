@@ -3,9 +3,9 @@
 FILE: tests/predicates/test_scope.py (Task 7.8)
 """
 
-from types import SimpleNamespace
+import pytest
 
-from snodo.compiler.models import Module
+from snodo.compiler.models import Module, Protocol
 from snodo.core.interfaces import Task
 from snodo.predicates.base import PredicateContext
 from snodo.predicates.scope import FilesInScope
@@ -90,8 +90,8 @@ def test_glob_nested_pattern():
 
 
 def _protocol_with(*modules):
-    """A protocol stand-in carrying only what the predicate reads."""
-    return SimpleNamespace(modules=list(modules))
+    """A minimally constructed protocol for module-resolution tests."""
+    return Protocol.model_construct(modules=list(modules))
 
 
 def _module_scoped_context(artifacts, module_id, protocol):
@@ -189,3 +189,5 @@ def test_declared_module_absent_from_protocol_fails_loud():
     result = pred.evaluate(ctx, scope_paths=["**"])
     assert result.passed is False
     assert "ghost" in result.justification
+    with pytest.raises(ValueError, match="Unknown module 'ghost'"):
+        ctx.protocol.resolve_module("ghost")
