@@ -17,8 +17,7 @@ from snodo.compiler.models import Protocol
 from snodo.core.interfaces import Task
 from snodo.core.spec import same_spec, spec_text, spec_with_guidance
 from snodo.config import ConfigManager, provider_env
-from snodo.cli.commands import load_protocol
-from snodo.cli.commands import followup
+from snodo.cli.commands import load_protocol, followup
 from snodo.infrastructure import cloud_liveness
 # Task start/completion recording moved to task_record.py (Fixes #382);
 # the names stay importable from here — callers and tests reach them at
