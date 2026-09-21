@@ -50,10 +50,14 @@ class CoderUnavailableError(AdapterError):
         binary: str,
         remediation: str = "",
         search_path: Optional[str] = None,
+        message: Optional[str] = None,
     ):
         self.binary = binary
         self.remediation = remediation or f"Install {binary} and make sure it is on PATH"
         self.search_path = search_path
+        if message is not None:
+            super().__init__(message)
+            return
         # "Not on PATH" alone is unhelpful when the operator can see the binary
         # on THEIR PATH: the run executes in a process whose environment was
         # captured earlier (a long-running server), and naming the PATH it

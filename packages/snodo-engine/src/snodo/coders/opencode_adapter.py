@@ -113,6 +113,7 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
 
         session_id = None
         try:
+            self._validate_model_available()
             session_id = self._create_session()
             self._wait_for_completion(session_id, spec)
             try:
@@ -235,6 +236,86 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
             return session_id
         except (httpx.RequestError, json.JSONDecodeError) as e:
             raise LLMCallError(f"opencode session creation error: {e}") from e
+
+    def _validate_model_available(self) -> None:
+        """Refuse to dispatch a model the running server does not provide."""
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/config/providers",
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:500]}")
+            available = self._available_models(resp.json())
+        except (httpx.RequestError, json.JSONDecodeError, RuntimeError) as e:
+            raise CoderUnavailableError(
+                "opencode model",
+                message=(
+                    f"Could not verify requested opencode model '{self.model}': {e}"
+                ),
+            ) from e
+
+        payload = self._resolve_model_payload()
+        requested = (payload.get("providerID"), payload["modelID"])
+        if requested in available or (
+            requested[0] is None
+            and any(model_id == requested[1] for _, model_id in available)
+        ):
+            return
+
+        available_names = ", ".join(
+            f"{provider}/{model_id}" if provider else model_id
+            for provider, model_id in sorted(
+                available, key=lambda item: (item[0] or "", item[1])
+            )
+        ) or "none"
+        raise CoderUnavailableError(
+            "opencode model",
+            message=(
+                f"Requested opencode model '{self.model}' is not available; "
+                f"server provides: {available_names}"
+            ),
+        )
+
+    @staticmethod
+    def _available_models(data: Any) -> set[tuple[Optional[str], str]]:
+        """Extract provider/model pairs from the /config/providers response."""
+        providers = data.get("providers", data) if isinstance(data, dict) else data
+        available: set[tuple[Optional[str], str]] = set()
+
+        if isinstance(providers, list):
+            provider_items = (
+                (item.get("id"), item)
+                for item in providers
+                if isinstance(item, dict)
+            )
+        elif isinstance(providers, dict):
+            provider_items = providers.items()
+        else:
+            return available
+
+        for provider_id, provider in provider_items:
+            if not isinstance(provider, dict):
+                continue
+            models = provider.get("models", {})
+            if isinstance(models, dict):
+                model_items = models.items()
+            elif isinstance(models, list):
+                model_items = (
+                    (item.get("id"), item)
+                    for item in models
+                    if isinstance(item, dict)
+                )
+            else:
+                continue
+            for model_id, model in model_items:
+                if not model_id and isinstance(model, dict):
+                    model_id = model.get("id")
+                if isinstance(model_id, str) and model_id:
+                    available.add(
+                        (provider_id if isinstance(provider_id, str) else None, model_id)
+                    )
+        return available
 
     def _send_message(self, session_id: str, spec: TaskSpec) -> None:
         """POST /session/{id}/message — submit the task spec with model."""
