@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from snodo.coders.base import LLMCallError
+from snodo.coders.base import CoderUnavailableError, LLMCallError
 from snodo.coders.opencode_adapter import OpenCodeAdapter
 from snodo.core.interfaces import TaskSpec
 from snodo.tools.workspace import WorkspaceMCP
@@ -83,6 +83,57 @@ class TestModelPayload:
         adapter = OpenCodeAdapter(model="claude-sonnet-4-20250514")
         payload = adapter._resolve_model_payload()
         assert payload == {"modelID": "claude-sonnet-4-20250514"}
+
+    def test_model_validation_accepts_server_model(self):
+        adapter = OpenCodeAdapter(model="opencode/openai/gpt-5")
+        adapter._container = Mock(base_url="http://localhost:55440")
+        response = Mock(status_code=200)
+        response.json.return_value = {
+            "providers": {
+                "openai": {"models": {"gpt-5": {}}},
+            },
+        }
+
+        with patch("httpx.get", return_value=response) as mock_get:
+            adapter._validate_model_available()
+
+        mock_get.assert_called_once_with(
+            "http://localhost:55440/config/providers", timeout=10.0
+        )
+
+    def test_model_validation_names_requested_and_available_models(self):
+        adapter = OpenCodeAdapter(model="opencode-cli/openai/gpt-5.6-luna")
+        adapter._container = Mock(base_url="http://localhost:55440")
+        response = Mock(status_code=200)
+        response.json.return_value = {
+            "providers": {
+                "openai": {"models": {"gpt-5": {}}},
+                "anthropic": {"models": {"claude-sonnet": {}}},
+            },
+        }
+
+        with patch("httpx.get", return_value=response):
+            with pytest.raises(CoderUnavailableError) as exc_info:
+                adapter._validate_model_available()
+
+        message = str(exc_info.value)
+        assert "opencode-cli/openai/gpt-5.6-luna" in message
+        assert "openai/gpt-5" in message
+        assert "anthropic/claude-sonnet" in message
+
+    def test_model_validation_happens_before_session_creation(self):
+        adapter = OpenCodeAdapter(model="opencode-cli/openai/gpt-5.6-luna")
+        adapter._container = Mock(base_url="http://localhost:55440")
+        adapter._container.is_running.return_value = True
+        response = Mock(status_code=200)
+        response.json.return_value = {"providers": {"openai": {"models": {"gpt-5": {}}}}}
+
+        with patch("httpx.get", return_value=response):
+            with patch.object(adapter, "_create_session") as create_session:
+                with pytest.raises(CoderUnavailableError):
+                    adapter.implement(TaskSpec(description="test", constraints=[]))
+
+        create_session.assert_not_called()
 
     def test_message_body_includes_model(self):
         adapter = OpenCodeAdapter(model="opencode/deepseek/deepseek-chat")
@@ -319,6 +370,13 @@ class TestDiffToArtifact:
 
 class TestImplementFlow:
     """Full implement() flow with mocked HTTP + git."""
+
+    @pytest.fixture(autouse=True)
+    def model_validation(self, monkeypatch):
+        """Keep readback-flow tests focused on artifact handling."""
+        monkeypatch.setattr(
+            OpenCodeAdapter, "_validate_model_available", lambda self: None
+        )
 
     @pytest.fixture
     def git_workspace(self):
