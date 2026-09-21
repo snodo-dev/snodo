@@ -297,62 +297,6 @@
         "title": "ExecutionFailedEvent",
         "type": "object"
       },
-      "GenericAuditEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "additionalProperties": true,
-            "title": "Data",
-            "type": "object"
-          },
-          "event_hash": {
-            "title": "Event Hash",
-            "type": "string"
-          },
-          "event_type": {
-            "title": "Event Type",
-            "type": "string"
-          },
-          "previous_hash": {
-            "title": "Previous Hash",
-            "type": "string"
-          },
-          "project_id": {
-            "title": "Project Id",
-            "type": "string"
-          },
-          "scope": {
-            "enum": [
-              "",
-              "local",
-              "remote"
-            ],
-            "title": "Scope",
-            "type": "string"
-          },
-          "sequence": {
-            "title": "Sequence",
-            "type": "integer"
-          },
-          "timestamp": {
-            "format": "date-time",
-            "title": "Timestamp",
-            "type": "string"
-          }
-        },
-        "required": [
-          "sequence",
-          "timestamp",
-          "event_type",
-          "project_id",
-          "scope",
-          "data",
-          "previous_hash",
-          "event_hash"
-        ],
-        "title": "GenericAuditEvent",
-        "type": "object"
-      },
       "GovernanceCheckData": {
         "additionalProperties": true,
         "properties": {
@@ -2557,7 +2501,37 @@
       },
       "events": {
         "items": {
-          "anyOf": [
+          "discriminator": {
+            "mapping": {
+              "coder_test_run": "#/$defs/CoderTestRunEvent",
+              "dispatch": "#/$defs/DispatchEvent",
+              "execution_failed": "#/$defs/ExecutionFailedEvent",
+              "governance_check": "#/$defs/GovernanceCheckEvent",
+              "halt": "#/$defs/HaltEvent",
+              "post_validate_bypassed": "#/$defs/PostValidateBypassedEvent",
+              "post_validation_route": "#/$defs/PostValidationRouteEvent",
+              "project_announced": "#/$defs/ProjectAnnouncedEvent",
+              "readiness_checked": "#/$defs/ReadinessCheckedEvent",
+              "recovery_internal_error": "#/$defs/RecoveryInternalErrorEvent",
+              "recovery_resolved": "#/$defs/RecoveryResolvedEvent",
+              "session_decision_updated": "#/$defs/SessionDecisionUpdatedEvent",
+              "session_started": "#/$defs/SessionStartedEvent",
+              "session_task_changed": "#/$defs/SessionTaskChangedEvent",
+              "task_classified": "#/$defs/TaskClassifiedEvent",
+              "task_complete": "#/$defs/TaskCompleteEvent",
+              "task_merged": "#/$defs/TaskMergedEvent",
+              "test_modified": "#/$defs/TestModifiedEvent",
+              "token_consumed": "#/$defs/TokenConsumedEvent",
+              "transition": "#/$defs/TransitionEvent",
+              "unverified_merge_blocked": "#/$defs/UnverifiedMergeBlockedEvent",
+              "validate": "#/$defs/ValidateEvent",
+              "verification_executed": "#/$defs/VerificationExecutedEvent",
+              "wave_created": "#/$defs/WaveCreatedEvent",
+              "work_already_present": "#/$defs/WorkAlreadyPresentEvent"
+            },
+            "propertyName": "event_type"
+          },
+          "oneOf": [
             {
               "$ref": "#/$defs/ProjectAnnouncedEvent"
             },
@@ -2632,9 +2606,6 @@
             },
             {
               "$ref": "#/$defs/UnverifiedMergeBlockedEvent"
-            },
-            {
-              "$ref": "#/$defs/GenericAuditEvent"
             }
           ]
         },
