@@ -363,6 +363,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         proc = subprocess.Popen(  # noqa: S603
             argv,
             cwd=project_root,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

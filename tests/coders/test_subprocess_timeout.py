@@ -6,6 +6,7 @@ FILE: tests/coders/test_subprocess_timeout.py
 import io
 import signal
 import subprocess
+import sys
 from pathlib import Path
 from unittest import mock
 import pytest
@@ -35,6 +36,22 @@ def temp_workspace(tmp_path: Path) -> Path:
 
 
 class TestSubprocessTimeout:
+    def test_subprocess_coder_receives_eof_on_stdin(self, temp_workspace: Path):
+        """A coder cannot block waiting for input from a nonexistent human."""
+        adapter = AGYAdapter(workspace=temp_workspace, timeout_seconds=2)
+
+        result = adapter._run_subprocess(
+            [
+                sys.executable,
+                "-c",
+                "import sys; print('eof' if sys.stdin.read() == '' else 'input')",
+            ],
+            str(temp_workspace),
+        )
+
+        assert result.returncode == 0
+        assert result.stdout.strip() == "eof"
+
     def test_timed_out_run_with_commits_reports_commits_rather_than_zero_artifacts(
         self, temp_workspace: Path
     ):
