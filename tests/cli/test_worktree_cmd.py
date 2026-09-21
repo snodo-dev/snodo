@@ -3,6 +3,7 @@
 FILE: tests/cli/test_worktree_cmd.py
 """
 
+import json
 import os
 import subprocess
 import time
@@ -83,7 +84,60 @@ class TestWorktreeCommands:
         out = capsys.readouterr().out
         assert "task_a" in out
         assert "task_b" in out
-        assert "snodo worktree remove task_a" in out
+        assert "Remove a worktree with: snodo worktree remove <task_id>" in out
+        assert out.count("Remove a worktree with") == 1
+
+    def test_list_reports_merge_and_dirty_facts_in_json(self, git_project, capsys):
+        from snodo.cli.commands.worktree_cmd import worktree_list_command
+
+        merged_path = create_worktree(str(git_project), "merged", "merged work")
+        unmerged_path = create_worktree(str(git_project), "unmerged", "unmerged work")
+        (merged_path / "merged.txt").write_text("merged\n")
+        subprocess.run(["git", "add", "merged.txt"], cwd=merged_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "merged"], cwd=merged_path, check=True)
+        branch = subprocess.check_output(
+            ["git", "branch", "--show-current"], cwd=merged_path, text=True
+        ).strip()
+        subprocess.run(
+            ["git", "merge", "--no-ff", "-q", "-m", "merged", branch],
+            cwd=git_project,
+            check=True,
+        )
+        (unmerged_path / "unmerged.txt").write_text("unmerged\n")
+        subprocess.run(["git", "add", "unmerged.txt"], cwd=unmerged_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "unmerged"], cwd=unmerged_path, check=True)
+        (unmerged_path / "dirty.txt").write_text("dirty\n")
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root", return_value=str(git_project)):
+            result = worktree_list_command(SimpleNamespace(json=True))
+
+        assert result == 0
+        output = capsys.readouterr().out
+        data = json.loads(output)
+        facts = {entry["task_id"]: entry for entry in data["worktrees"]}
+        assert facts["merged"]["merged"] is True
+        assert facts["unmerged"]["merged"] is False
+        assert facts["unmerged"]["dirty"] is True
+        assert "Retained worktrees" not in output
+
+    def test_list_pages_terminal_output_but_not_piped_output(self, git_project, monkeypatch):
+        from snodo.cli.commands.worktree_cmd import worktree_list_command
+
+        for index in range(30):
+            create_worktree(str(git_project), f"task_page_{index}", "page spec")
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root", return_value=str(git_project)), \
+             patch("snodo.cli.commands.worktree_cmd.Console") as console_class:
+            console = console_class.return_value
+            console.pager.return_value.__enter__.return_value = console
+            monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+            worktree_list_command(SimpleNamespace())
+            console.pager.assert_called_once_with()
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root", return_value=str(git_project)), \
+             patch("snodo.cli.commands.worktree_cmd.Console") as console_class:
+            monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+            worktree_list_command(SimpleNamespace())
+            console_class.return_value.pager.assert_not_called()
 
     def test_remove_deletes_worktree_and_branch(self, git_project):
         from snodo.cli.commands.worktree_cmd import worktree_remove_command
