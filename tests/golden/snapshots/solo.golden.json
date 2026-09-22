@@ -53,6 +53,7 @@
   "roles": [],
   "validators": [
     {
+      "check_tool_access": false,
       "constraints": [],
       "criteria": [
         "Check for security vulnerabilities",
@@ -74,6 +75,7 @@
       "validator_type": "security"
     },
     {
+      "check_tool_access": false,
       "constraints": [],
       "criteria": [
         "Check design patterns",
@@ -95,6 +97,7 @@
       "validator_type": "architecture"
     },
     {
+      "check_tool_access": false,
       "constraints": [],
       "criteria": [],
       "evaluation_phase": "post_execute",
@@ -111,6 +114,7 @@
       "validator_type": "quality"
     },
     {
+      "check_tool_access": false,
       "constraints": [],
       "criteria": [
         "The task spec must define INTENT and CONSTRAINTS \u2014 what to build and the boundaries it must respect \u2014 and leave implementation decisions to the coder. A spec describes behavior and contracts; it does not transcribe the implementation.",
@@ -131,6 +135,7 @@
       "validator_type": "architecture"
     },
     {
+      "check_tool_access": false,
       "constraints": [],
       "criteria": [
         "Judge the produced artifacts against the acceptance criteria in the task spec. A criterion that is verifiable from the tree and unmet is a warn; a criterion that cannot be verified from the tree (device behaviour, human judgement) is uncheckable and never a finding."
