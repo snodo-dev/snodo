@@ -55,3 +55,4 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [049](049-protected-paths-detect-before-prevention.md) | Declared protected paths are detected from the task branch diff | 2026-09-17 | `Protocol.protected_paths` + post-execute gate |
 | [050](050-repeat-reads-are-free-but-bounded.md) | A validator's repeat-read turns are free but separately bounded | 2026-09-18 | `validators/llm_validator.py` (`_evaluate_with_tools`) |
 | [051](051-coder-containment-is-declared-not-deployed.md) | Coder containment is a declared property, not a deployment detail | 2026-09-21 | `coders/opencode_container.py` + coder definition |
+| [052](052-validator-tool-access-is-a-declared-opt-in.md) | A validator's fail-safe on unreachable verification is a declared, per-validator opt-in | 2026-09-22 | `ValidatorConfig` (`compiler/models.py`) + validator protocol entries |
