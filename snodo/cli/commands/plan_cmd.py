@@ -376,6 +376,7 @@ def _plan_list(planner, args=None) -> int:
         return 0
     from rich.console import Console
     from rich.table import Table
+    from snodo.cli.commands.task_cmd import _spec_excerpt
     table = Table(title="Plans")
     for column in ("PLAN", "SUMMARY", "AGE", "LAST ACTIVE", "PROGRESS", "STATUS"):
         table.add_column(column)
@@ -383,7 +384,7 @@ def _plan_list(planner, args=None) -> int:
         active = item["last_active"] or "never"
         if active != "never":
             active = active.replace("T", " ").split("+", 1)[0]
-        table.add_row(item["name"], item["summary"], _age_label(item["last_active"]), active,
+        table.add_row(item["name"], _spec_excerpt(item["summary"]), _age_label(item["last_active"]), active,
                       f'{item["progress"]["completed"]}/{item["progress"]["total"]}', item["status"])
     if unassigned:
         for task in unassigned:
@@ -401,11 +402,13 @@ def _plan_list(planner, args=None) -> int:
                     print(f"    {task}")
         for task in unassigned:
             print(f"(unassigned) {task['task']}: {task['status']}")
-    elif getattr(sys.stdout, "isatty", lambda: False)():
-        with console.pager():
-            console.print(table)
     else:
-        console.print(table)
+        print("Inspect a plan with: snodo plan status <name>")
+        if getattr(sys.stdout, "isatty", lambda: False)():
+            with console.pager():
+                console.print(table)
+        else:
+            console.print(table)
     return 0
 
 
