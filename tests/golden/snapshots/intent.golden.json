@@ -67,6 +67,7 @@
   "roles": [],
   "validators": [
     {
+      "check_tool_access": false,
       "constraints": [],
       "criteria": [
         "Treat the input as INTENT. A good spec, authored from it, restates the desired outcome in one or two sentences \u2014 not a copy of the raw issue.",
