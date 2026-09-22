@@ -1296,6 +1296,7 @@ def build_protocol_graph(
             "max_tokens": llm_cfg.coder.max_tokens,
             "max_tool_turns": llm_cfg.coder.max_tool_turns,
             "timeout_seconds": llm_cfg.coder.timeout_seconds,
+            "sandboxed": llm_cfg.coder.sandboxed,
             "workspace_mcp": workspace_mcp,
         }
         if mode_coder_config:

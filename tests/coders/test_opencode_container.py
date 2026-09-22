@@ -177,6 +177,42 @@ def test_local_daemon_keeps_bind_mount(tmp_path, monkeypatch):
     remote.put_archive.assert_not_called()
 
 
+def test_local_daemon_uses_archive_when_contained(tmp_path, monkeypatch):
+    """Declared containment never substitutes the operator's bind mount."""
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    (tmp_path / "asked.py").write_text("print('task')")
+    remote = _container(61010)
+    client = SimpleNamespace(
+        containers=SimpleNamespace(list=Mock(return_value=[]), run=Mock(return_value=remote)),
+    )
+    manager = OpenCodeContainer()
+    manager._client = client
+    manager._wait_ready = Mock()
+
+    manager.start(tmp_path, contained=True)
+
+    assert "volumes" not in client.containers.run.call_args.kwargs
+    remote.put_archive.assert_called_once()
+    assert manager._contained is True
+
+
+def test_contained_workspace_push_failure_is_reported(tmp_path, monkeypatch):
+    """A declared copy that cannot be transferred fails instead of mounting."""
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    remote = _container(61011)
+    remote.put_archive.side_effect = OSError("copy unavailable")
+    client = SimpleNamespace(
+        containers=SimpleNamespace(list=Mock(return_value=[]), run=Mock(return_value=remote)),
+    )
+    manager = OpenCodeContainer()
+    manager._client = client
+
+    with pytest.raises(OpenCodeContainerError, match="copy workspace to remote"):
+        manager.start(tmp_path, contained=True)
+
+    assert "volumes" not in client.containers.run.call_args.kwargs
+
+
 def test_remote_workspace_push_failure_is_reported(tmp_path, monkeypatch):
     monkeypatch.setenv("DOCKER_HOST", "tcp://daemon.example:2375")
     remote = _container(61007)

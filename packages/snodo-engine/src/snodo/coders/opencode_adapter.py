@@ -55,7 +55,7 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
     #: nor ``max_tokens``/``max_tool_turns``, which belong to a loop this
     #: adapter does not run (Fixes #311).
     honoured_settings: frozenset[str] = frozenset(
-        {"model", "workspace", "container"}
+        {"model", "workspace", "container", "sandboxed"}
     )
 
     @classmethod
@@ -70,10 +70,12 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
         workspace: Optional[Path] = None,
         container: Optional[Any] = None,
         workspace_mcp: Optional[Any] = None,
+        sandboxed: bool = False,
         **kwargs,
     ):
         self.model = model
         self.temperature = temperature
+        self.sandboxed = sandboxed
 
         if workspace is not None:
             self._workspace = workspace
@@ -108,7 +110,7 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
         7. Fall back to GET /session/{id}/diff if git readback is empty
         8. Build CodeArtifact from on-disk file contents
         """
-        if not self._container.is_running():
+        if self.sandboxed or not self._container.is_running():
             self._start_container()
 
         session_id = None
@@ -119,6 +121,10 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
             try:
                 self._container.sync_workspace_from_container(self._workspace)
             except Exception as e:
+                if self.sandboxed:
+                    raise self._containment_unavailable(
+                        f"Workspace cannot be read back from the contained container: {e}"
+                    ) from e
                 raise LLMCallError(f"Failed to retrieve opencode workspace: {e}") from e
             # Primary: read from the volume-mounted workspace (git diff)
             diff_entries = self._read_changes_from_disk()
@@ -209,9 +215,17 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
             self._container.start(
                 self._workspace,
                 task_id=getattr(self, "_task_id", None),
+                contained=self.sandboxed,
             )
         except OpenCodeContainerError as e:
+            if self.sandboxed:
+                raise self._containment_unavailable(str(e)) from e
             raise LLMCallError(f"Failed to start opencode container: {e}") from e
+
+    @staticmethod
+    def _containment_unavailable(message: str) -> CoderUnavailableError:
+        """Describe a contained-run capability failure as an environment error."""
+        return CoderUnavailableError("opencode containment", message=message)
 
     def _create_session(self) -> str:
         """POST /session — create a new session and return the ID."""

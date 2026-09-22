@@ -42,6 +42,7 @@ class OpenCodeContainer:
         self._port = port
         self._client = None
         self._container = None
+        self._contained = False
         self._last_availability_reason = None
 
         docker_host = os.environ.get("DOCKER_HOST", "")
@@ -152,7 +153,12 @@ class OpenCodeContainer:
         except Exception as e:
             raise OpenCodeContainerError(f"Failed to build image: {e}") from e
 
-    def start(self, workspace: Path, task_id: Optional[str] = None) -> None:
+    def start(
+        self,
+        workspace: Path,
+        task_id: Optional[str] = None,
+        contained: bool = False,
+    ) -> None:
         """Start the opencode server container owned by *task_id*.
 
         The *workspace* directory is mounted at /workspace inside the
@@ -168,12 +174,15 @@ class OpenCodeContainer:
             )
         # If we already hold a reference and it's healthy, skip. This object
         # owns only the container it started or adopted for this task.
+        self._contained = contained
         if self._container is not None and self._is_container_healthy():
+            if contained:
+                self._copy_workspace_to_container(workspace)
             return
 
         # A container is workspace-bound. An image match alone is never enough
         # to adopt one belonging to another task.
-        existing = self._find_existing_container(task_id)
+        existing = self._find_existing_container(task_id, contained=contained)
         if existing is not None:
             self._container = existing
             self._set_published_port()
@@ -199,9 +208,12 @@ class OpenCodeContainer:
                 "publish_all_ports": False,
                 "remove": True,
                 "environment": env,
-                "labels": {"com.snodo.task-id": task_id} if task_id else {},
+                "labels": {
+                    **({"com.snodo.task-id": task_id} if task_id else {}),
+                    **({"com.snodo.contained": "true"} if contained else {}),
+                },
             }
-            if self.uses_workspace_mount:
+            if self.uses_workspace_mount and not contained:
                 run_kwargs["volumes"] = {
                     str(workspace): {"bind": "/workspace", "mode": "rw"},
                 }
@@ -234,7 +246,7 @@ class OpenCodeContainer:
 
     def sync_workspace_from_container(self, workspace: Path) -> None:
         """Copy the remote container workspace back to the client worktree."""
-        if self.uses_workspace_mount:
+        if self.uses_workspace_mount and not self._contained:
             return
         if self._container is None:
             raise OpenCodeContainerError("Cannot read workspace: container is not running")
@@ -262,7 +274,7 @@ class OpenCodeContainer:
 
     def _copy_workspace_to_container(self, workspace: Path) -> None:
         """Copy the client workspace into a remote container via Docker API."""
-        if self.uses_workspace_mount:
+        if self.uses_workspace_mount and not self._contained:
             return
         try:
             buffer = io.BytesIO()
@@ -274,18 +286,26 @@ class OpenCodeContainer:
                 f"Failed to copy workspace to remote Docker daemon: {e}"
             ) from e
 
-    def _find_existing_container(self, task_id: Optional[str] = None):
+    def _find_existing_container(
+        self,
+        task_id: Optional[str] = None,
+        contained: bool = False,
+    ):
         """Return this task's running container, or None."""
         if not task_id:
             return None
         try:
-            containers = self.client.containers.list(
-                filters={
-                    "ancestor": self._image,
-                    "status": "running",
-                    "label": f"com.snodo.task-id={task_id}",
-                },
-            )
+            filters = {
+                "ancestor": self._image,
+                "status": "running",
+                "label": f"com.snodo.task-id={task_id}",
+            }
+            if contained:
+                filters["label"] = [
+                    f"com.snodo.task-id={task_id}",
+                    "com.snodo.contained=true",
+                ]
+            containers = self.client.containers.list(filters=filters)
             if containers:
                 return containers[0]
         except Exception as e:
