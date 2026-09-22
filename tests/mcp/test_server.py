@@ -2055,6 +2055,25 @@ class TestInstructions:
         assert "blocker" in text
         assert "environment_error" in text
 
+    def test_guide_automation_topic_and_menu_are_available(self, server):
+        exposed = {tool["name"] for tool in server.get_tools()}
+        menu = guide_text(server.project_root, exposed)
+        text = guide_text(server.project_root, exposed, "automation")
+
+        assert "`automation`" in menu
+        assert "intent-to-merged-work" in menu
+        assert "# Running Snodo unattended" in text
+        assert "get_job_status" in text
+        assert "record_task_status" in text
+        assert "auto-merge is opt-in" in text
+
+    def test_guide_automation_topic_filters_tools_withheld_by_mode(self, server):
+        text = guide_text(server.project_root, {"read_file"}, "automation")
+
+        assert "run_plan" not in text
+        assert "get_job_status" not in text
+        assert "generate_spec" not in text
+
 
 class TestResources:
     """Tests for MCP resources (read-only, URI-addressable)."""

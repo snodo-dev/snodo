@@ -8,6 +8,7 @@ from snodo.mcp.tools import TOOL_REGISTRY
 
 _SOURCES = {
     "authoring": "authoring-a-plan.md",
+    "automation": "running-unattended.md",
     "machine": "machine-interface.md",
     "runbook": "runbook.md",
 }
@@ -25,6 +26,7 @@ _TOPICS = {
         ("authoring", "## 7. Checklist for an orchestrator"),
     ),
     "planning": (("authoring", "## 8. The planning loop, end to end"),),
+    "automation": (("automation", "# Running Snodo unattended"),),
 }
 
 _TOPIC_ALIASES = {
@@ -86,14 +88,15 @@ def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -
     if topic:
         key = _TOPIC_ALIASES.get(topic.strip().lower(), topic.strip().lower())
         if key not in _TOPICS:
-            return "Unknown guide topic. Ask for one of: spec, waves, halts, run, mistakes, planning."
+            return "Unknown guide topic. Ask for one of: spec, waves, halts, run, mistakes, planning, automation."
         result = _read_topics(project_root, _TOPICS[key], exposed)
         return result or "That topic has no instructions for the tools exposed in this mode."
 
     chunks = [
         "# Snodo getting started",
-        "Call the guide with `spec`, `waves`, `halts`, `run`, `mistakes`, or `planning` for the next topic.",
+        "Call the guide with `spec`, `waves`, `halts`, `run`, `mistakes`, `planning`, or `automation` for the next topic.",
         "`planning` walks through writing intent, sizing waves and tasks, writing specs, validating, dispatching, following jobs, and reading the outcome.",
+        "`automation` covers intent-to-merged-work orchestration for long unattended runs.",
     ]
     if "run_plan" in exposed:
         chunks.append(
