@@ -37,6 +37,11 @@ class TestWorkspaceResolution:
         )
         assert adapter._workspace == Path("/custom/workspace")
 
+    def test_sandboxed_setting_is_honoured(self):
+        adapter = OpenCodeAdapter(model="opencode/test", sandboxed=True)
+        assert adapter.sandboxed is True
+        assert "sandboxed" in adapter.honoured_settings
+
     def test_workspace_mcp_with_project_root(self):
         workspace_mcp = Mock(spec=WorkspaceMCP)
         workspace_mcp.project_root = Path("/mcp/root")
@@ -507,3 +512,23 @@ class TestImplementFlow:
                     adapter.implement(TaskSpec(description="test", constraints=[]))
 
         container_mock.stop.assert_called_once()
+
+    def test_contained_workspace_pull_failure_is_environment_error(self, git_workspace):
+        """A declared run refuses when its copied workspace cannot return."""
+        adapter = OpenCodeAdapter(
+            model="opencode/test", workspace=git_workspace, sandboxed=True
+        )
+        container_mock = Mock()
+        container_mock.is_running.return_value = True
+        container_mock.base_url = "http://daemon.example:55440"
+        container_mock.sync_workspace_from_container.side_effect = OSError("copy unavailable")
+        adapter._container = container_mock
+
+        with patch.object(adapter, "_create_session", return_value="session-1"):
+            with patch.object(adapter, "_wait_for_completion"):
+                with pytest.raises(CoderUnavailableError, match="read back"):
+                    adapter.implement(TaskSpec(description="test", constraints=[]))
+
+        container_mock.start.assert_called_once_with(
+            git_workspace, task_id="", contained=True
+        )
