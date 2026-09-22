@@ -124,7 +124,7 @@ def test_init_yes_flag_on_non_tty_succeeds(temp_project_dir, no_keygen):
 # === .gitignore hygiene ===
 
 def test_init_appends_gitignore_entry(temp_project_dir, no_keygen):
-    """A successful init ensures exactly one .snodo/ entry in .gitignore."""
+    """A fresh init tracks authored specs but ignores machine state."""
     with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
         result = main()
     assert result == 0
@@ -132,6 +132,35 @@ def test_init_appends_gitignore_entry(temp_project_dir, no_keygen):
     gitignore = temp_project_dir / ".gitignore"
     assert gitignore.exists()
     assert gitignore.read_text().splitlines().count(".snodo/") == 1
+    (temp_project_dir / ".snodo" / "plans" / "example").mkdir(parents=True)
+    (temp_project_dir / ".snodo" / "plans" / "example" / "plan.yml").write_text("intent: keep\n")
+    (temp_project_dir / ".snodo" / "jobs").mkdir()
+    (temp_project_dir / ".snodo" / "jobs" / "state.json").write_text("{}")
+    assert subprocess.run(
+        ["git", "check-ignore", ".snodo/protocol.yml"],
+        cwd=temp_project_dir, capture_output=True,
+    ).returncode != 0
+    assert subprocess.run(
+        ["git", "check-ignore", ".snodo/plans/example/plan.yml"],
+        cwd=temp_project_dir, capture_output=True,
+    ).returncode != 0
+    assert subprocess.run(
+        ["git", "check-ignore", ".snodo/jobs/state.json"],
+        cwd=temp_project_dir, capture_output=True,
+    ).returncode == 0
+
+
+def test_init_preserves_legacy_broad_gitignore_entry(temp_project_dir, no_keygen):
+    """A legacy broad rule is not narrowed without operator action."""
+    (temp_project_dir / ".gitignore").write_text(".snodo/\n")
+    with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
+        result = main()
+    assert result == 0
+    assert (temp_project_dir / ".gitignore").read_text() == ".snodo/\n"
+    assert subprocess.run(
+        ["git", "check-ignore", ".snodo/protocol.yml"],
+        cwd=temp_project_dir, capture_output=True,
+    ).returncode == 0
 
 
 def test_init_gitignore_entry_idempotent(temp_project_dir, no_keygen):
@@ -188,18 +217,19 @@ def test_init_commits_gitignore(temp_project_dir, no_keygen):
 
 
 def test_git_clean_does_not_remove_snodo(temp_project_dir, no_keygen):
-    """After init, `git clean -fd` (twice) must not remove .snodo/."""
+    """After init, cleanup preserves machine state but not uncommitted specs."""
     with patch("sys.argv", ["snodo", "init", "--template", "solo", "--yes"]):
         result = main()
     assert result == 0
 
-    # Two cleans reproduce the failure mode: the first removes an untracked
-    # .gitignore, the second removes the now-unignored .snodo/.
+    # .gitignore is committed by init, so cleanup cannot remove the directory
+    # or its ignored machine state. The untracked protocol is intentionally
+    # visible and therefore remains the operator's responsibility to commit.
     subprocess.run(["git", "clean", "-fd"], cwd=temp_project_dir, check=True)
     subprocess.run(["git", "clean", "-fd"], cwd=temp_project_dir, check=True)
 
     assert (temp_project_dir / ".snodo").exists()
-    assert (temp_project_dir / ".snodo" / "protocol.yml").exists()
+    assert not (temp_project_dir / ".snodo" / "protocol.yml").exists()
 
 
 def test_init_commits_only_gitignore(temp_project_dir, no_keygen):
@@ -311,5 +341,3 @@ def test_init_external_home_changes_nothing_in_gitignore(temp_project_dir, no_ke
     assert ".snodo/" in content
     assert "global_snodo_home" not in content
     assert len([line for line in content.splitlines() if line.strip() == ".snodo/"]) == 1
-
-
