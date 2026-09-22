@@ -2055,6 +2055,13 @@ class TestInstructions:
         assert "blocker" in text
         assert "environment_error" in text
 
+    def test_spec_guide_explains_chain_as_required_state(self, server):
+        text = guide_text(server.project_root, {tool["name"] for tool in server.get_tools()}, "spec")
+        assert "state that must be true in it" in text
+        assert "an empty cart reports a total of zero is a good link" in text
+        assert "prescribes the solution" in text
+        assert "same-wave file overlap" in text
+
     def test_guide_automation_topic_and_menu_are_available(self, server):
         exposed = {tool["name"] for tool in server.get_tools()}
         menu = guide_text(server.project_root, exposed)
