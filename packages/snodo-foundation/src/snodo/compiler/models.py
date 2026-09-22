@@ -167,6 +167,12 @@ class Validator(BaseModel):
                     "spec-authoring rewriter; a non-spec objection must not "
                     "silently reshape the spec (Fixes #35)."
     )
+    check_tool_access: bool = Field(
+        default=False,
+        description="When True, if a criterion demands verification by a tool "
+                    "outside this validator's own declared tools list, refuse "
+                    "rather than silently pass.",
+    )
     scope: Literal["task", "wave"] = Field(
         default="task",
         description=(

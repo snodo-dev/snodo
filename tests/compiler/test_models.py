@@ -422,6 +422,24 @@ def test_validator_default_max_tool_turns_is_none():
     assert v.max_tool_turns is None
 
 
+def test_validator_check_tool_access_defaults_off_and_round_trips():
+    v = Validator(validator_id="v1", validator_type="architecture")
+
+    assert v.check_tool_access is False
+    assert Validator.model_validate(v.model_dump()).check_tool_access is False
+
+
+def test_validator_can_declare_check_tool_access():
+    v = Validator(
+        validator_id="v1",
+        validator_type="architecture",
+        check_tool_access=True,
+    )
+
+    assert v.check_tool_access is True
+    assert v.model_dump()["check_tool_access"] is True
+
+
 def test_validator_declares_own_max_tool_turns():
     v = Validator(
         validator_id="architecture",
