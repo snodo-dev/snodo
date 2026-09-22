@@ -292,6 +292,33 @@ class TestRunPlanGate:
         assert result["tasks"] == {"1.1_x": "blocked"}
         assert "BLOCKED" in result["output_tail"]
 
+    def test_get_plan_exposes_latest_child_job_timing(self, server):
+        _propose(server, name="runs")
+        _add_task(server, "runs", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
+
+        with patch(
+            "snodo.jobs.index_plan_jobs",
+            return_value=("j_plan", {
+                "1.1_x": {
+                    "id": "j_child", "status": "running",
+                    "started_at": 123.0, "completed_at": None,
+                    "duration_seconds": 4.5,
+                },
+            }),
+        ):
+            result = server.call_tool("get_plan", {"plan_name": "runs"})
+
+        assert result["tasks"] == {"1.1_x": "pending"}
+        assert result["task_runs"] == {
+            "1.1_x": {
+                "job_id": "j_child",
+                "status": "running",
+                "started_at": 123.0,
+                "completed_at": None,
+                "duration_seconds": 4.5,
+            },
+        }
+
     def test_wait_true_timeout_names_the_still_running_job(self, server, project_dir):
         """A wait that expires reports the job, never a phantom failure."""
         from snodo.jobs import JobError

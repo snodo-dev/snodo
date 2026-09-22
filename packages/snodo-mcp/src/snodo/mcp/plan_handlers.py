@@ -27,8 +27,10 @@ mirroring how snodo.jobs.wrapper invokes the CLI.
 
 import json
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import yaml
 
@@ -99,6 +101,22 @@ class PlanToolHandler:
                 statuses[tid] = str(entry)
         return statuses
 
+    def _task_runs(self, plan_name: str) -> dict[str, dict]:
+        """Join each plan task to its latest child job, when one exists."""
+        from snodo.jobs import index_plan_jobs
+
+        _, task_jobs = index_plan_jobs(str(self._planner.project_root), plan_name)
+        return {
+            task_id: {
+                "job_id": job.get("id"),
+                "status": job.get("status"),
+                "started_at": job.get("started_at"),
+                "completed_at": job.get("completed_at"),
+                "duration_seconds": job.get("duration_seconds"),
+            }
+            for task_id, job in task_jobs.items()
+        }
+
     # ------------------------------------------------------------------
     # Tools
     # ------------------------------------------------------------------
@@ -151,6 +169,7 @@ class PlanToolHandler:
             "intent": plan_data.get("intent", ""),
             "waves": plan_data.get("waves", []),
             "tasks": self._task_statuses(plan_name),
+            "task_runs": self._task_runs(plan_name),
             "validation": self._validation(plan_dir),
         }
 
@@ -206,7 +225,7 @@ class PlanToolHandler:
             ),
         }
 
-    def handle_run_plan(self, arguments: Dict[str, Any]) -> dict:
+    def handle_run_plan(self, arguments: Dict[str, Any], progress_sink=None) -> dict:
         """Start a plan run as a job and return its id, without blocking.
 
         The plan's structure is verified here, at the run boundary, rather
@@ -289,7 +308,7 @@ class PlanToolHandler:
 
         if arguments.get("wait"):
             return self._wait_for_plan_run(
-                job_mgr, job_id, plan_name, validation, arguments,
+                job_mgr, job_id, plan_name, validation, arguments, progress_sink,
             )
 
         return {
@@ -306,7 +325,7 @@ class PlanToolHandler:
 
     def _wait_for_plan_run(
         self, job_mgr, job_id: str, plan_name: str,
-        validation: dict, arguments: Dict[str, Any],
+        validation: dict, arguments: Dict[str, Any], progress_sink=None,
     ) -> dict:
         """Opt-in blocking wait for a plan-run job (used by tests/scripts)."""
         from snodo.jobs import JobError
@@ -321,14 +340,19 @@ class PlanToolHandler:
         except (TypeError, ValueError):
             timeout = _DEFAULT_WAIT_SECONDS
 
-        try:
-            final = job_mgr.wait_for(job_id, timeout=timeout)
-        except JobError as e:
-            raise MCPError(
-                f"Plan run '{plan_name}' (job {job_id}) was still running after "
-                f"{timeout:.0f}s; follow it with get_job_status({job_id}) and "
-                f"get_plan('{plan_name}')."
-            ) from e
+        if progress_sink is None:
+            try:
+                final = job_mgr.wait_for(job_id, timeout=timeout)
+            except JobError as e:
+                raise MCPError(
+                    f"Plan run '{plan_name}' (job {job_id}) was still running after "
+                    f"{timeout:.0f}s; follow it with get_job_status({job_id}) and "
+                    f"get_plan('{plan_name}')."
+                ) from e
+        else:
+            final = self._wait_with_progress(
+                job_mgr, job_id, plan_name, timeout, progress_sink,
+            )
 
         exit_code = final.get("exit_code")
         result: Dict[str, Any] = {
@@ -347,6 +371,60 @@ class PlanToolHandler:
                 job_mgr.get_logs(job_id, stream="stderr") or ""
             )
         return result
+
+    def _wait_with_progress(self, job_mgr, job_id: str, plan_name: str,
+                            timeout: float, progress_sink) -> dict:
+        """Wait for the run while reporting task status transitions."""
+        from snodo.mcp.server import MCPError
+        from snodo.jobs import JobError
+        deadline = time.monotonic() + timeout
+        seen = self._plan_progress_snapshot(plan_name, progress_sink=None)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(job_mgr.wait_for, job_id, timeout=timeout)
+            while True:
+                self._plan_progress_snapshot(plan_name, progress_sink=progress_sink, seen=seen)
+                if future.done():
+                    try:
+                        final = future.result()
+                    except JobError as e:
+                        raise MCPError(
+                            f"Plan run '{plan_name}' (job {job_id}) was still running after "
+                            f"{timeout:.0f}s; follow it with get_job_status({job_id}) and "
+                            f"get_plan('{plan_name}')."
+                        ) from e
+                    self._plan_progress_snapshot(
+                        plan_name, progress_sink=progress_sink, seen=seen,
+                    )
+                    return final
+                if time.monotonic() >= deadline:
+                    future.cancel()
+                    raise MCPError(
+                        f"Plan run '{plan_name}' (job {job_id}) was still running after "
+                        f"{timeout:.0f}s; follow it with get_job_status({job_id}) and "
+                        f"get_plan('{plan_name}')."
+                    )
+                time.sleep(0.1)
+
+    def _plan_progress_snapshot(self, plan_name: str, progress_sink=None,
+                                seen: Optional[dict[str, str]] = None) -> dict[str, str]:
+        """Read task status and optionally emit only changes from *seen*."""
+        from snodo.jobs import index_plan_jobs
+
+        current = self._task_statuses(plan_name)
+        if seen is None:
+            return current
+        try:
+            _, jobs = index_plan_jobs(str(self._planner.project_root), plan_name)
+            for task_id, status in current.items():
+                if seen.get(task_id) == status:
+                    continue
+                seen[task_id] = status
+                job = jobs.get(task_id, {})
+                suffix = f" (job {job['id']})" if job.get("id") else ""
+                progress_sink(f"[{task_id}] {status}{suffix}")
+        except Exception as e:  # noqa: BLE001 - progress is observational
+            logger.debug("Could not report plan progress: %s", e)
+        return current
 
     def tool_handlers(self) -> dict:
         return {

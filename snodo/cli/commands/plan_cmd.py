@@ -450,22 +450,10 @@ def _plan_job_index(project_root, plan_name: str) -> tuple[Optional[str], dict]:
     the row that needs them. Returns ``(latest_plan_job_id, {task_id: job_id})``
     or ``(None, {})`` when no job ran.
     """
-    try:
-        from snodo.jobs import JobManager
-        jobs = JobManager(str(project_root)).list_jobs()
-    except Exception as e:
-        _logger.debug("Could not list jobs for plan %s: %s", plan_name, e)
-        return None, {}
+    from snodo.jobs import index_plan_jobs
 
-    plan_jobs = [j for j in jobs if j.get("plan") == plan_name]
-    plan_job_id = plan_jobs[0]["id"] if plan_jobs else None
-
-    task_jobs: dict[str, str] = {}
-    for job in jobs:
-        ref = job.get("task_ref")
-        if ref and job.get("parent_job") == plan_job_id:
-            task_jobs[ref] = job["id"]
-    return plan_job_id, task_jobs
+    plan_job_id, task_jobs = index_plan_jobs(str(project_root), plan_name)
+    return plan_job_id, {task_id: job["id"] for task_id, job in task_jobs.items()}
 
 
 def _plan_create(planner, args) -> int:
