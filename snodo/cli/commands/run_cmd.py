@@ -858,6 +858,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         WorktreeIsolationError, setup_for_task, remove_worktree,
         teardown_task_worktree,
     )
+    from snodo.infrastructure.environment import EnvironmentPrepError
     existing_wt = os.environ.get("SNODO_WORKTREE_PATH")
     no_isolation = bool(getattr(args, "no_isolation", False))
 
@@ -866,6 +867,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             project_root, task.id, task.spec,
             existing_worktree_path=existing_wt,
             plan_name=worktree.task_plan_name(args),
+            protocol=protocol,
         )
         worktree_failure = None
     except Exception as exc:  # noqa: BLE001 — isolation loss must fail loud, never degrade silently
@@ -877,7 +879,9 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         # real working tree because isolation was unavailable. This is the
         # state every greenfield repo starts in (no commits → unborn HEAD),
         # and it requires a human decision, not a warning.
-        if isinstance(worktree_failure, WorktreeIsolationError):
+        if isinstance(worktree_failure, EnvironmentPrepError):
+            print(f"Error: {worktree_failure}", file=sys.stderr)
+        elif isinstance(worktree_failure, WorktreeIsolationError):
             print(f"Error: {worktree_failure}", file=sys.stderr)
         elif worktree_failure is not None:
             print(f"Error: Worktree creation failed: {worktree_failure}", file=sys.stderr)
@@ -897,11 +901,20 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         audit_log = getattr(args, "audit_log", None)
         if audit_log:
             try:
-                audit_log.append_event("worktree_isolation_failed", {
-                    "op": "worktree_isolation_failed",
-                    "task_ref": task.id,
-                    "reason": str(worktree_failure),
-                })
+                if isinstance(worktree_failure, EnvironmentPrepError):
+                    audit_log.append_event("environment_prep_failed", {
+                        "op": "environment_prep_failed",
+                        "task_ref": task.id,
+                        "command": worktree_failure.command,
+                        "exit_code": worktree_failure.exit_code,
+                        "output": worktree_failure.output,
+                    })
+                else:
+                    audit_log.append_event("worktree_isolation_failed", {
+                        "op": "worktree_isolation_failed",
+                        "task_ref": task.id,
+                        "reason": str(worktree_failure),
+                    })
             except Exception as e:
                 _logger.warning(
                     "Could not record worktree_isolation_failed audit event: %s", e,

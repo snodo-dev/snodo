@@ -422,6 +422,7 @@ def create_worktree(
     branch: Optional[str] = None,
     base: Optional[str] = None,
     plan_name: Optional[str] = None,
+    protocol: Optional[object] = None,
 ) -> Path:
     """Create a git worktree for *task_id*.
 
@@ -441,6 +442,7 @@ def create_worktree(
     # legacy plan identity; the selected path is the task's durable workspace.
     if wt_path.exists():
         _logger.info("Reusing existing worktree %s for task %s", wt_path, task_id)
+        _prepare_task_environment(wt_path, protocol)
         return wt_path
 
     with merge_lock(project_root):
@@ -496,7 +498,17 @@ def create_worktree(
             file=sys.stderr,
         )
 
+    _prepare_task_environment(wt_path, protocol)
     return wt_path
+
+
+def _prepare_task_environment(worktree_path: Path, protocol: Optional[object] = None) -> None:
+    """Install the worktree's dependencies before a coder can use it."""
+    from snodo.infrastructure.environment import prepare_environment
+
+    result = prepare_environment(worktree_path, protocol=protocol)
+    if result.status == "executed":
+        _logger.info("Prepared task environment with %s", result.command)
 
 
 def setup_for_task(
@@ -505,6 +517,7 @@ def setup_for_task(
     spec: str,
     existing_worktree_path: Optional[str] = None,
     plan_name: Optional[str] = None,
+    protocol: Optional[object] = None,
 ) -> Optional[str]:
     """Set up a worktree for *task_id* — create if needed, return path.
 
@@ -517,8 +530,11 @@ def setup_for_task(
     - ``_execute_task`` (CLI inline path — creates fresh)
     """
     if existing_worktree_path:
+        _prepare_task_environment(Path(existing_worktree_path), protocol)
         return existing_worktree_path
-    return str(create_worktree(project_root, task_id, spec, plan_name=plan_name))
+    return str(create_worktree(
+        project_root, task_id, spec, plan_name=plan_name, protocol=protocol,
+    ))
 
 
 def _remove_worktree_metadata(repo, wt_path: Path) -> None:
