@@ -18,7 +18,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from snodo.config import DEFAULT_MODEL, ConfigError, ConfigManager
+from snodo.config import DEFAULT_MODEL, DEFAULT_PROVIDER_CATALOG, ConfigError, ConfigManager
 
 from snodo.cli.main import main
 
@@ -35,6 +35,14 @@ def config_dir():
 def mgr(config_dir):
     """Create a ConfigManager with a temp directory."""
     return ConfigManager(config_dir=config_dir)
+
+
+@pytest.fixture(autouse=True)
+def no_provider_credentials(monkeypatch):
+    """Keep machine credentials from appearing as configured test keys."""
+    for provider in DEFAULT_PROVIDER_CATALOG.values():
+        if provider.api_key_env:
+            monkeypatch.delenv(provider.api_key_env, raising=False)
 
 
 # === ConfigManager.load / save ===
