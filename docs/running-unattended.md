@@ -59,9 +59,12 @@ The engine's canonical halt outcomes are `escalate`, `blocker`,
 `validator_error`, `internal_error`, and `environment_error` (ADR 015). A
 successful resolved task may merge only when auto-merge is enabled for its
 protocol/mode and merge conditions are met. Auto-merge is opt-in; no task is
-automatically landed merely because it ran. If a resolved task did not merge,
-report it as `unmerged` and leave it for attention. A merge conflict is an
-escalation and preserves the task branch/worktree for resolution.
+automatically landed merely because it ran. A resolved task with auto-merge
+disabled (or no eligible task worktree) is recorded `completed`, although its
+branch did not land on the base branch; the run reports why it stayed
+unmerged. The plan status `unmerged` is used when an enabled merge attempt
+fails. A merge conflict is an escalation and preserves the task
+branch/worktree for resolution.
 
 - **`blocker`**: a validator judged the work and rejected it. Never ask a human
   to authorize past it. Address the defect with a corrective follow-up task
@@ -79,9 +82,11 @@ escalation and preserves the task branch/worktree for resolution.
   a critique of the task spec.
 - **Clean resolved work**: check whether it actually merged. When auto-merge
   is enabled and succeeds, the task lands on the resolved base branch. If it is
-  not enabled, isolation was degraded, or merge otherwise did not happen, the
-  branch is not landed; report `unmerged`/the run's unmerged detail and get
-  attention rather than claiming success on the base branch.
+  not enabled or isolation was degraded, the task can be `completed` while its
+  branch remains off the base branch; report the run's unmerged detail and get
+  attention rather than claiming it landed. `unmerged` is the plan status when
+  an eligible auto-merge was attempted and failed; inspect that outcome and
+  leave the branch for attention.
 
 The plan's `completed`, `blocked`, `errored`, and `unmerged` statuses are plan
 tracking values, not new halt types. In particular, `record_task_status` writes
