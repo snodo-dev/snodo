@@ -430,6 +430,12 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
             if len(providers) == 1:
                 return {"providerID": providers.pop(), "modelID": model}
 
+            # Preserve the normal availability diagnostic for namespaced model
+            # strings belonging to another adapter; this adapter cannot infer
+            # their provider from the OpenCode model ID.
+            if not providers and "/" in model:
+                return {"modelID": model}
+
             reason = (
                 "no server provider serves it"
                 if not providers
