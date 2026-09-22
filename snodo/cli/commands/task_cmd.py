@@ -194,37 +194,6 @@ def _parse_timestamp(ts_val: Any) -> Any:
     return None
 
 
-def _task_age(timestamp: Any) -> str:
-    """Format a task timestamp as a compact relative age."""
-    from datetime import datetime, timezone
-
-    if timestamp is None:
-        return "?"
-    try:
-        seconds = max(0, (datetime.now(timezone.utc) - timestamp).total_seconds())
-    except (TypeError, AttributeError):
-        return "?"
-    if seconds < 60:
-        return f"{int(seconds)}s ago"
-    if seconds < 3600:
-        return f"{int(seconds // 60)}m ago"
-    if seconds < 86400:
-        return f"{int(seconds // 3600)}h ago"
-    return f"{int(seconds // 86400)}d ago"
-
-
-def _task_date(timestamp: Any) -> str:
-    """Format the timestamp used for age as a UTC date and time."""
-    from datetime import timezone
-
-    if timestamp is None:
-        return "?"
-    try:
-        return timestamp.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    except (TypeError, AttributeError, ValueError):
-        return "?"
-
-
 def _get_all_task_branches(project_root: str) -> dict:
     """Collect all task branches and task records from session state, audit log, and git."""
     from snodo.infrastructure.state import read_state
@@ -417,33 +386,13 @@ def task_list_command(args) -> int:
 
     from snodo.cli.commands import followup
 
-    from rich.console import Console
-    from rich.table import Table
-
     entries = sorted(
         tasks.values(),
         key=lambda info: info["timestamp"].timestamp() if info["timestamp"] else float("-inf"),
         reverse=True,
     )
-    table = Table(title="Tasks")
-    for column in ("TASK ID", "BRANCH", "ATTEMPT", "STATUS", "AGE", "DATE"):
-        table.add_column(column)
-    for info in entries:
-        table.add_row(
-            info["task_id"],
-            info["branch"],
-            str(info["attempt"]),
-            info["status"],
-            _task_age(info["timestamp"]),
-            _task_date(info["timestamp"]),
-        )
-
-    console = Console(file=sys.stdout, markup=False, highlight=False)
-    if getattr(sys.stdout, "isatty", lambda: False)():
-        with console.pager():
-            console.print(table)
-    else:
-        console.print(table)
+    from snodo.cli.task_list_display import render_task_table
+    render_task_table(entries)
 
     for info in entries:
         tid = info["task_id"]
