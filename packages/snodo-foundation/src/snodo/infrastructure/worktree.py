@@ -140,7 +140,7 @@ def _spec_referenced_paths(spec: str) -> List[str]:
     ignore set are never returned.
     """
     found: List[str] = []
-    for token in re.findall(r"[A-Za-z0-9_./-]+", spec):
+    for token in re.findall(r"[A-Za-z0-9_./-]+", _spec_citation_text(spec)):
         token = token.strip("/")
         if not token or token.startswith(".") or "/" not in token:
             continue
@@ -157,6 +157,54 @@ def _spec_referenced_paths(spec: str) -> List[str]:
         if token not in found:
             found.append(token)
     return found
+
+
+def _spec_citation_text(spec: str) -> str:
+    """Return spec prose with quoted evidence removed.
+
+    Specs are evidence-first documents, so fenced command output, JSON, and
+    log lines are not repository citations.  Inline quoted output is treated
+    the same way.  Ordinary inline-code citations remain available because
+    backticks are deliberately not treated as quotation marks here.
+    """
+    prose: List[str] = []
+    fenced = False
+    for line in spec.splitlines():
+        if re.match(r"^\s*(```|~~~)", line):
+            fenced = not fenced
+            continue
+        if fenced or re.match(r"^\s*>", line):
+            continue
+        # Double- and single-quoted spans commonly contain copied log output.
+        # Only remove spans that contain a slash, avoiding contractions.
+        line = re.sub(r'"[^"\n]*/[^"\n]*"', "", line)
+        line = re.sub(r"'[^'\n]*/[^'\n]*'", "", line)
+        prose.append(line)
+    return "\n".join(prose)
+
+
+_NON_TOUCH_CONTEXT_RE = re.compile(
+    r"(?:\b(?:do|does|did|must|should)\s+not\s+touch\b|\b(?:out\s+of\s+scope|owned\s+by|handled\s+by|belongs\s+to)\b|\bsibling\s+task\b)",
+    re.IGNORECASE,
+)
+
+
+def _spec_overlap_paths(spec: str) -> List[str]:
+    """Return cited paths that represent this task's potential file access.
+
+    A path explicitly marked as another task's responsibility or as forbidden
+    to touch remains subject to the missing-path guard, but is not evidence of
+    a same-wave write/read overlap.
+    """
+    paths = _spec_referenced_paths(spec)
+    excluded: Set[str] = set()
+    for line in spec.splitlines():
+        if not _NON_TOUCH_CONTEXT_RE.search(line):
+            continue
+        for path in paths:
+            if path in line:
+                excluded.add(path)
+    return [path for path in paths if path not in excluded]
 
 
 def workspace_roots(project_root: str) -> List[Path]:

@@ -287,6 +287,30 @@ def test_verify_plan_does_not_warn_for_citations_in_different_waves(tmp_path):
     assert not any("same-wave file overlap" in warning for warning in result.warnings)
 
 
+def test_verify_plan_does_not_warn_for_explicitly_non_touching_path(tmp_path):
+    shared_file = tmp_path / "src" / "shared.py"
+    shared_file.parent.mkdir()
+    shared_file.write_text("VALUE = 1\n")
+    plan_dir = tmp_path / ".snodo" / "plans" / "non_touching"
+    (plan_dir / "wave_1").mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text(yaml.safe_dump({
+        "name": "non_touching",
+        "intent": "Respect task ownership",
+        "waves": [{"id": 1, "depends_on": [], "tasks": ["1.1_first", "1.2_second"]}],
+    }))
+    (plan_dir / "wave_1" / "1.1_first_task.md").write_text(
+        "Do not touch `src/shared.py`; a sibling task owns it.\n"
+    )
+    (plan_dir / "wave_1" / "1.2_second_task.md").write_text(
+        "Update `src/shared.py`.\n"
+    )
+
+    result = verify_plan_dir(plan_dir, workspace_root=tmp_path)
+
+    assert result.passed
+    assert not any("same-wave file overlap" in warning for warning in result.warnings)
+
+
 # ============================================================================
 # 4. PlannerMCP Integration: validate_plan and get_plan
 # ============================================================================

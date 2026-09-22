@@ -583,7 +583,7 @@ def verify_plan(
     # Check tasks with no spec file and cited paths that cannot be resolved.
     if plan_dir and plan_dir.exists():
         from snodo.infrastructure.worktree import (
-            _spec_referenced_paths,
+            _spec_overlap_paths,
             check_spec_paths_exist,
             planned_spec_paths,
         )
@@ -601,7 +601,7 @@ def verify_plan(
                 spec = spec_file.read_text()
                 if not isinstance(spec, str):
                     continue
-                for path in _spec_referenced_paths(spec):
+                for path in _spec_overlap_paths(spec):
                     cited_by_path.setdefault(path, []).append(task_id)
                 created_by_task = set(planned_spec_paths(spec))
                 missing_paths = check_spec_paths_exist(str(root), spec)
