@@ -123,6 +123,32 @@ def test_create_worktree_branches_off_non_main_base(repo):
     assert (wt / "base_only.txt").exists()  # inherited from master, not main
 
 
+def test_plan_scopes_branch_and_worktree_names(repo):
+    first = create_worktree(str(repo), "task_1_1", "Add the shared feature", plan_name="alpha")
+    second = create_worktree(str(repo), "task_1_1", "Add the shared feature", plan_name="beta")
+
+    assert first != second
+    assert first == worktree_path(str(repo), "task_1_1", "alpha")
+    assert second == worktree_path(str(repo), "task_1_1", "beta")
+    branches = _branches(repo)
+    assert "task/alpha/task_1_1/add-the-shared-feature" in branches
+    assert "task/beta/task_1_1/add-the-shared-feature" in branches
+
+
+def test_plan_run_reuses_existing_legacy_worktree(repo):
+    legacy_path = create_worktree(str(repo), "task_1_1", "Add the shared feature")
+    legacy_branch = task_branch_name("task_1_1", "Add the shared feature")
+
+    reused = create_worktree(
+        str(repo), "task_1_1", "Add the shared feature", plan_name="alpha"
+    )
+
+    assert reused == legacy_path
+    assert legacy_path.exists()
+    assert legacy_branch in _branches(repo)
+    assert reused != worktree_path(str(repo), "task_1_1", "alpha")
+
+
 # === merge_task_branch ===
 
 def test_merge_task_branch_success(repo):

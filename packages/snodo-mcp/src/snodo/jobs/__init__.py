@@ -256,7 +256,12 @@ class JobManager:
         if not is_plan_run:
             try:
                 task_desc = task_args.get("description", "")
-                wt_path = str(create_worktree(self.project_root, task_id, task_desc))
+                wt_path = str(create_worktree(
+                    self.project_root,
+                    task_id,
+                    task_desc,
+                    plan_name=task_args.get("task_plan"),
+                ))
                 task_args["worktree_path"] = wt_path
                 with open(task_path, "w") as f:
                     json.dump(task_args, f, indent=2)

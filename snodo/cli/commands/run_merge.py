@@ -29,7 +29,14 @@ def _verified_commit_matches_merge_target(stored_commit: str, target_commit: str
     return stored_commit == target_commit or target_commit.startswith(stored_commit)
 
 
-def _merge_on_success(project_root: str, task: Any, result: int, session_id: Optional[str], audit_log: Any) -> tuple:
+def _merge_on_success(
+    project_root: str,
+    task: Any,
+    result: int,
+    session_id: Optional[str],
+    audit_log: Any,
+    plan_name: Optional[str] = None,
+) -> tuple:
     """Merge the completed task's branch into the base branch.
 
     Returns (result, preserve_worktree, merged_branch). On a clean merge the
@@ -38,7 +45,6 @@ def _merge_on_success(project_root: str, task: Any, result: int, session_id: Opt
     is escalated: the branch and worktree survive for a human to resolve.
     """
     from snodo.infrastructure.worktree import (
-        task_branch_name,
         merge_task_branch,
         merge_head_sha,
         merge_lock,
@@ -47,7 +53,8 @@ def _merge_on_success(project_root: str, task: Any, result: int, session_id: Opt
     from snodo.tools.git import GitError
 
     spec_for_branch = getattr(task, "root_spec", None) or task.spec
-    branch = task_branch_name(task.id, spec_for_branch)
+    from snodo.infrastructure.worktree import _task_identity
+    _, branch = _task_identity(project_root, task.id, spec_for_branch, plan_name)
 
     with merge_lock(project_root):
         # Resolve target commit on the branch to be merged
@@ -148,6 +155,7 @@ def _try_merge_unmerged_task(
     protocol: Optional[Protocol] = None,
     session_id: Optional[str] = None,
     audit_log: Optional[Any] = None,
+    plan_name: Optional[str] = None,
 ) -> Optional[bool]:
     """Attempt fast-path merge of an unmerged task branch.
 
@@ -156,11 +164,9 @@ def _try_merge_unmerged_task(
         False: Branch existed and passed gate, but merge failed (e.g. lock or conflict).
         None: Branch does not exist or does not pass merge gate (cannot fast-path merge).
     """
-    from snodo.infrastructure.worktree import (
-        task_branch_name,
-        teardown_task_worktree,
-    )
-    branch = task_branch_name(task_id, spec)
+    from snodo.infrastructure.worktree import teardown_task_worktree
+    from snodo.infrastructure.worktree import _task_identity
+    _, branch = _task_identity(project_root, task_id, spec, plan_name)
     try:
         with open_repo(str(Path(project_root))) as repo:
             if branch not in repo.heads:
@@ -194,11 +200,11 @@ def _try_merge_unmerged_task(
 
     task = Task(id=task_id, spec=spec)
     merge_result, preserve_worktree, merged_branch = _merge_on_success(
-        project_root, task, 0, session_id, audit_log
+        project_root, task, 0, session_id, audit_log, plan_name=plan_name
     )
     if merge_result == 0 and merged_branch:
         try:
-            teardown_task_worktree(project_root, task_id)
+            teardown_task_worktree(project_root, task_id, plan_name)
         except Exception as e:
             _logger.debug("Could not tear down worktree after merge for %s: %s", task_id, e)
         _record_task_completion(project_root, task_id, "completed")

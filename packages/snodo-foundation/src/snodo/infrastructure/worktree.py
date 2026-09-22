@@ -5,8 +5,12 @@ FILE: snodo/infrastructure/worktree.py
 Each task gets its own git worktree (sibling to the repo, outside .git
 tracking) so parallel tasks don't share filesystem state.
 
-Worktree path:  <project_root>/../.snodo-worktrees/task_{id}/
-Branch:         task/{id}/{slug}  (always off ``main``)
+Worktree path:  <project_root>/../.snodo-worktrees/<plan>/<task_id>/
+Branch:         task/<plan>/<task_id>/<slug>  (always off ``main``)
+
+When no plan is supplied, the original task-only names are retained. This is
+important for standalone tasks and for tasks already in flight under the old
+naming scheme.
 """
 
 import logging
@@ -38,8 +42,22 @@ def _slugify(spec: str, max_words: int = 5) -> str:
     return slug
 
 
-def task_branch_name(task_id: str, spec: str) -> str:
+def _name_component(value: str) -> str:
+    """Make a plan name safe for both a Git ref component and a directory."""
+    component = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(value).strip()).strip(".-")
+    return component or "plan"
+
+
+def legacy_task_branch_name(task_id: str, spec: str) -> str:
+    """Return the pre-plan-scoped branch name."""
     return f"task/{task_id}/{_slugify(spec)}"
+
+
+def task_branch_name(task_id: str, spec: str, plan_name: Optional[str] = None) -> str:
+    """Return the branch name for a task, scoped when it belongs to a plan."""
+    if plan_name:
+        return f"task/{_name_component(plan_name)}/{task_id}/{_slugify(spec)}"
+    return legacy_task_branch_name(task_id, spec)
 
 
 _WORKTREE_CONTAINER = ".snodo-worktrees"
@@ -63,8 +81,37 @@ def worktree_dir(project_root: str) -> Path:
     return p.parent / _WORKTREE_CONTAINER
 
 
-def worktree_path(project_root: str, task_id: str) -> Path:
+def worktree_path(
+    project_root: str, task_id: str, plan_name: Optional[str] = None
+) -> Path:
+    if plan_name:
+        return worktree_dir(project_root) / _name_component(plan_name) / task_id
     return worktree_dir(project_root) / task_id
+
+
+def _branch_exists(project_root: str, branch: str) -> bool:
+    try:
+        from snodo.tools.git import open_repo
+        with open_repo(project_root) as repo:
+            return branch in repo.heads
+    except Exception:
+        return False
+
+
+def _task_identity(
+    project_root: str, task_id: str, spec: str, plan_name: Optional[str]
+) -> Tuple[Path, str]:
+    """Select the new identity, falling back to an existing legacy identity."""
+    new_path = worktree_path(project_root, task_id, plan_name)
+    new_branch = task_branch_name(task_id, spec, plan_name)
+    if not plan_name:
+        return new_path, new_branch
+
+    old_path = worktree_path(project_root, task_id)
+    old_branch = legacy_task_branch_name(task_id, spec)
+    if old_path.exists() or _branch_exists(project_root, old_branch):
+        return old_path, old_branch
+    return new_path, new_branch
 
 
 def _project_worktree_paths(project_root: str) -> set[Path]:
@@ -85,9 +132,12 @@ def _project_worktree_paths(project_root: str) -> set[Path]:
     }
 
 
-def worktree_is_owned(project_root: str, task_id: str) -> bool:
+def worktree_is_owned(
+    project_root: str, task_id: str, plan_name: Optional[str] = None
+) -> bool:
     """Return whether Git records *task_id* as a worktree of this repository."""
-    return worktree_path(project_root, task_id).resolve() in _project_worktree_paths(project_root)
+    path, _ = _task_identity(project_root, task_id, "", plan_name)
+    return path.resolve() in _project_worktree_paths(project_root)
 
 
 # Paths a task spec may legitimately name that are not files the coder should
@@ -333,6 +383,7 @@ def create_worktree(
     spec: str,
     branch: Optional[str] = None,
     base: Optional[str] = None,
+    plan_name: Optional[str] = None,
 ) -> Path:
     """Create a git worktree for *task_id*.
 
@@ -345,9 +396,14 @@ def create_worktree(
     from git import GitCommandError
     from snodo.tools.git import open_repo, resolve_base_branch
 
-    wt_path = worktree_path(project_root, task_id)
-    branch_name = branch or task_branch_name(task_id, spec)
+    wt_path, resolved_branch = _task_identity(project_root, task_id, spec, plan_name)
+    branch_name = branch or resolved_branch
     base_branch = base or resolve_base_branch(project_root)
+    legacy_identity = bool(plan_name and branch_name == legacy_task_branch_name(task_id, spec))
+
+    # An older in-flight task keeps its original location and branch.
+    if legacy_identity and wt_path.exists():
+        return wt_path
 
     with merge_lock(project_root):
         with open_repo(project_root) as repo:
@@ -377,13 +433,18 @@ def create_worktree(
                 except GitCommandError:
                     shutil.rmtree(str(wt_path), ignore_errors=True)
 
-            # Remove stale branch if present
-            try:
-                repo.git.branch("-D", branch_name)
-            except GitCommandError:
-                pass
+            branch_exists = branch_name in repo.heads
+            if branch_exists and not legacy_identity:
+                try:
+                    repo.git.branch("-D", branch_name)
+                except GitCommandError:
+                    pass
+                branch_exists = False
 
-            repo.git.worktree("add", str(wt_path), "-b", branch_name, base_branch)
+            if branch_exists:
+                repo.git.worktree("add", str(wt_path), branch_name)
+            else:
+                repo.git.worktree("add", str(wt_path), "-b", branch_name, base_branch)
         _logger.info("Created worktree %s on branch %s (off %s)", wt_path, branch_name, base_branch)
 
     # Surface untracked files in the project root: a task worktree is built
@@ -416,6 +477,7 @@ def setup_for_task(
     task_id: str,
     spec: str,
     existing_worktree_path: Optional[str] = None,
+    plan_name: Optional[str] = None,
 ) -> Optional[str]:
     """Set up a worktree for *task_id* — create if needed, return path.
 
@@ -429,13 +491,15 @@ def setup_for_task(
     """
     if existing_worktree_path:
         return existing_worktree_path
-    return str(create_worktree(project_root, task_id, spec))
+    return str(create_worktree(project_root, task_id, spec, plan_name=plan_name))
 
 
-def remove_worktree(project_root: str, task_id: str) -> None:
+def remove_worktree(
+    project_root: str, task_id: str, plan_name: Optional[str] = None
+) -> None:
     """Remove the worktree for *task_id* (force, best-effort)."""
-    wt_path = worktree_path(project_root, task_id)
-    if not worktree_is_owned(project_root, task_id):
+    wt_path, _ = _task_identity(project_root, task_id, "", plan_name)
+    if not worktree_is_owned(project_root, task_id, plan_name):
         _logger.warning("Worktree %s is not owned by project %s", wt_path, project_root)
         return
     if not wt_path.exists():
@@ -518,7 +582,9 @@ def _delete_branch(repo, name: str) -> bool:
         return False
 
 
-def delete_task_branches(project_root: str, task_id: str) -> List[str]:
+def delete_task_branches(
+    project_root: str, task_id: str, plan_name: Optional[str] = None
+) -> List[str]:
     """Delete every branch for *task_id*.
 
     The worktree must already be removed: git refuses to delete a branch that
@@ -532,10 +598,12 @@ def delete_task_branches(project_root: str, task_id: str) -> List[str]:
         try:
             from snodo.tools.git import open_repo
             with open_repo(project_root) as repo:
-                prefix = f"task/{task_id}"
+                prefixes = [f"task/{task_id}"]
+                if plan_name:
+                    prefixes.insert(0, f"task/{_name_component(plan_name)}/{task_id}")
                 for name in [
                     head.name for head in repo.heads
-                    if head.name == prefix or head.name.startswith(f"{prefix}/")
+                    if any(head.name == prefix or head.name.startswith(f"{prefix}/") for prefix in prefixes)
                 ]:
                     if _delete_branch(repo, name):
                         deleted.append(name)
@@ -544,7 +612,9 @@ def delete_task_branches(project_root: str, task_id: str) -> List[str]:
     return deleted
 
 
-def delete_merged_task_branches(project_root: str, task_id: str) -> List[str]:
+def delete_merged_task_branches(
+    project_root: str, task_id: str, plan_name: Optional[str] = None
+) -> List[str]:
     """Delete branches for *task_id* whose work is already contained in the base.
 
     A branch that is not in the base holds work the operator has not merged;
@@ -569,9 +639,14 @@ def delete_merged_task_branches(project_root: str, task_id: str) -> List[str]:
                 except Exception as e:
                     _logger.debug("Could not read merged branches: %s", e)
                     merged = set()
-                prefix = f"task/{task_id}"
+                prefixes = [f"task/{task_id}"]
+                if plan_name:
+                    prefixes.insert(0, f"task/{_name_component(plan_name)}/{task_id}")
                 for head in list(repo.heads):
-                    if not (head.name == prefix or head.name.startswith(f"{prefix}/")):
+                    if not any(
+                        head.name == prefix or head.name.startswith(f"{prefix}/")
+                        for prefix in prefixes
+                    ):
                         continue
                     if head.name not in merged:
                         continue
@@ -582,7 +657,12 @@ def delete_merged_task_branches(project_root: str, task_id: str) -> List[str]:
     return deleted
 
 
-def task_branch_is_merged(project_root: str, task_id: str, spec: str) -> Optional[bool]:
+def task_branch_is_merged(
+    project_root: str,
+    task_id: str,
+    spec: str,
+    plan_name: Optional[str] = None,
+) -> Optional[bool]:
     """Whether *task_id*'s branch is already contained in the base branch.
 
     Ground truth is the repository — the branch's tip and its relationship to
@@ -601,7 +681,7 @@ def task_branch_is_merged(project_root: str, task_id: str, spec: str) -> Optiona
     """
     from snodo.tools.git import open_repo, resolve_base_branch
 
-    branch = task_branch_name(task_id, spec)
+    _, branch = _task_identity(project_root, task_id, spec, plan_name)
     try:
         base = resolve_base_branch(project_root)
         with open_repo(project_root) as repo:
@@ -635,7 +715,9 @@ def task_branch_is_merged(project_root: str, task_id: str, spec: str) -> Optiona
         return None
 
 
-def teardown_task_worktree(project_root: str, task_id: str) -> None:
+def teardown_task_worktree(
+    project_root: str, task_id: str, plan_name: Optional[str] = None
+) -> None:
     """Tear down a task's isolation: worktree first, then its merged branches.
 
     The single home for this sequence. A branch checked out in a worktree
@@ -647,8 +729,8 @@ def teardown_task_worktree(project_root: str, task_id: str) -> None:
     Both the CLI inline path and the background job wrapper route through this
     helper, so the two cannot disagree about the identity or the order.
     """
-    remove_worktree(project_root, task_id)
-    delete_merged_task_branches(project_root, task_id)
+    remove_worktree(project_root, task_id, plan_name)
+    delete_merged_task_branches(project_root, task_id, plan_name)
 
 
 def list_worktrees(project_root: str) -> list:
@@ -664,7 +746,7 @@ def list_worktrees(project_root: str) -> list:
         return []
     owned = _project_worktree_paths(project_root)
     entries = [
-        p for p in d.iterdir()
+        p for p in d.rglob("*")
         if p.is_dir() and not p.name.startswith(".") and p.resolve() in owned
     ]
     entries.sort(key=lambda p: p.stat().st_mtime)
@@ -705,7 +787,15 @@ def list_task_branches(project_root: str) -> Tuple[bool, dict]:
         for head in git.repo.heads:
             if head.name.startswith("task/"):
                 branch_suffix = head.name[5:]
-                task_id = branch_suffix.split("/")[0] if "/" in branch_suffix else branch_suffix
+                components = branch_suffix.split("/")
+                # New branches are task/<plan>/<task_id>/<slug>; retain both
+                # ownership components as the map key so equal task ids from
+                # different plans cannot collapse into one listing row.
+                task_id = (
+                    "/".join(components[:2])
+                    if len(components) >= 3
+                    else components[0]
+                )
                 try:
                     commit_ts = datetime.fromtimestamp(head.commit.committed_date, tz=timezone.utc)
                 except Exception:
@@ -741,11 +831,16 @@ def list_task_branches(project_root: str) -> Tuple[bool, dict]:
         return False, {}
 
 
-def task_branch_has_no_changes(project_root: str, task_id: str, spec: str = "") -> bool:
+def task_branch_has_no_changes(
+    project_root: str,
+    task_id: str,
+    spec: str = "",
+    plan_name: Optional[str] = None,
+) -> bool:
     """True when the task branch HEAD matches the base branch commit (no diff produced)."""
     try:
         from snodo.tools.git import open_repo, resolve_base_branch
-        branch = task_branch_name(task_id, spec)
+        _, branch = _task_identity(project_root, task_id, spec, plan_name)
         with open_repo(str(Path(project_root))) as repo:
             base = resolve_base_branch(project_root)
             return bool(

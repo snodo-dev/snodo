@@ -70,6 +70,10 @@ def main():
                 os.environ["SNODO_PLAN_JOB"] = "1"
             else:
                 os.environ.pop("SNODO_PLAN_JOB", None)
+            if task_data.get("task_plan"):
+                os.environ["SNODO_TASK_PLAN"] = str(task_data["task_plan"])
+            else:
+                os.environ.pop("SNODO_TASK_PLAN", None)
             task_id = resolve_task_identity(task_data, job_id)
     except Exception as e:
         _logger.debug("Failed to set SNODO_WORKTREE_PATH from task.json: %s", e)
@@ -102,7 +106,9 @@ def main():
                 try:
                     from snodo.infrastructure.worktree import teardown_task_worktree
                     project_root = str(Path(job_dir).parent.parent.parent)
-                    teardown_task_worktree(project_root, task_id)
+                    teardown_task_worktree(
+                        project_root, task_id, task_data.get("task_plan")
+                    )
                 except Exception as e:
                     _logger.debug("Failed to tear down worktree for completed job %s: %s", job_id, e)
 
