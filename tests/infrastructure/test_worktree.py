@@ -50,7 +50,10 @@ def _branches(root: Path) -> str:
 @pytest.fixture
 def repo():
     with tempfile.TemporaryDirectory() as d:
-        root = Path(d)
+        # Keep the sibling worktree container isolated per fixture. This also
+        # lets the retry tests prove preservation without cross-test paths.
+        root = Path(d) / "project"
+        root.mkdir()
         _init_repo(root)
         yield root
 
@@ -149,6 +152,38 @@ def test_plan_run_reuses_existing_legacy_worktree(repo):
     assert legacy_path.exists()
     assert legacy_branch in _branches(repo)
     assert reused != worktree_path(str(repo), "task_1_1", "alpha")
+
+
+def test_retry_reuses_existing_worktree_without_discarding_work(repo):
+    """A retry keeps artifacts in an existing task worktree (ticket 4TICKET)."""
+    wt = create_worktree(str(repo), "task_retry", "Implement the feature")
+    (wt / "finished.py").write_text("finished = True\n")
+    branch = task_branch_name("task_retry", "Implement the feature")
+
+    reused = create_worktree(str(repo), "task_retry", "Implement the feature")
+
+    assert reused == wt
+    assert (wt / "finished.py").read_text() == "finished = True\n"
+    assert branch in _branches(repo)
+
+
+def test_retry_reuses_existing_branch_without_deleting_commits(repo):
+    """A branch left without its checkout is reattached with its commits intact."""
+    wt = create_worktree(str(repo), "task_retry", "Implement the feature")
+    (wt / "finished.py").write_text("finished = True\n")
+    subprocess.run(["git", "add", "finished.py"], cwd=wt, check=True)
+    subprocess.run(["git", "commit", "-qm", "finished work"], cwd=wt, check=True)
+    branch = task_branch_name("task_retry", "Implement the feature")
+    head = subprocess.check_output(["git", "rev-parse", branch], cwd=repo, text=True).strip()
+    subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=repo, check=True)
+
+    reused = create_worktree(str(repo), "task_retry", "Implement the feature")
+
+    assert reused == wt
+    assert (wt / "finished.py").read_text() == "finished = True\n"
+    assert subprocess.check_output(
+        ["git", "rev-parse", branch], cwd=repo, text=True,
+    ).strip() == head
 
 
 # === merge_task_branch ===
