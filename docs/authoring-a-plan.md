@@ -261,3 +261,86 @@ hosting split and then discovering the second half was never written.
 - [ ] No spec mentions a mode.
 - [ ] `status.json` is `{"tasks": {}}`.
 - [ ] `snodo plan validate <name>` passes.
+
+---
+
+## 8. The planning loop, end to end
+
+### Write the intent
+
+Start with the outcome the whole plan should produce, in product terms. Keep
+the intent to one or two sentences; it is not a task list. `propose_plan`
+creates an inert plan scaffold from that intent. `decompose` creates a scaffold
+with the requested number of empty wave slots; it does not invent or populate
+the task breakdown. The orchestrator decides what work is needed and fills in
+the waves and tasks.
+
+### Break the work into waves of small tasks
+
+First ask what must already be true before each piece of work can start. Put
+tasks with the same prerequisite state in one wave; when one task needs
+another's output, put it in a later wave. Tasks in one wave are unordered and
+may run concurrently.
+
+A wave should usually hold several small, independently useful tasks. One task
+per wave is a common sizing mistake: it adds barriers without enabling useful
+parallel work. But splitting one fat task into two fat tasks does not fix the
+problem. Each task should have a narrow outcome, bounded scope, and its own
+clear acceptance check. If two tasks may edit the same code, separate them into
+different waves even if they look logically independent.
+
+### Write each spec
+
+Use `generate_spec` for each task id in the plan. Specs are standalone: include
+the expected repository state, authoritative records, constraints, and concrete
+acceptance checks in the spec itself. Lead with **intention**—what should
+become true—not a proposed implementation. Describe the symptom and evidence
+that establish the need, and cite the relevant files by path. Do not prescribe
+the fix or dictate edits. Quoted evidence is useful context, not a prescription:
+explain what it demonstrates, then leave the solution to the task runner.
+
+### Validate and review the human gate
+
+Call `validate_plan` after the plan and all specs are written. It reports
+structural errors that refuse execution, along with plan-time checks from
+`compiler/verifier.py`'s `verify_plan`:
+
+- **`Missing referenced path in spec`** is an error. The spec cites a path that
+  does not exist in the repository or is not created by this or an earlier
+  task. Correct the path, describe a genuinely new path as something the task
+  will create, or arrange for an earlier wave to create it.
+- **`Possible same-wave file overlap`** is a warning, not a refusal. It means
+  two same-wave specs cite the same path; citations are only a proxy for files
+  either task will actually change. Review whether the tasks could conflict. If
+  so, split or reorder them into separate waves; otherwise, keep the wave
+  intentionally parallel.
+
+Read the validation result and the complete proposed plan, including every
+spec. Validation is the human gate, not a substitute for reviewing whether the
+intent, sizing, ordering, and instructions are sound. Resolve refusals and make
+an explicit decision about each warning before dispatch.
+
+### Dispatch
+
+Once reviewed, call `run_plan`. It starts an asynchronous job and returns a
+`job_id` immediately; that response confirms that the run was queued, not that
+the plan ran or succeeded.
+
+### Listen to the run
+
+Poll the plan-run job with `get_job_status` until it has a terminal status. Use
+`list_jobs` to find child jobs: each child carries the plan-run id in
+`parent_job`. Pair each child's `task_ref` with the task id in the plan, and use
+`get_plan` for the plan's per-task and per-wave state. Do not stop at the
+parent's starter response or assume the plan is done because dispatch returned.
+Terminal job statuses are `completed`, `failed`, `cancelled`, and `unmerged`;
+stop polling once the parent job reaches one of them. Use `get_job_logs` on
+jobs that need diagnosis.
+
+### Read the outcome
+
+After the parent job is terminal, inspect `get_plan` and the child job results
+to see which tasks completed and whether any are blocked, errored, or unmerged.
+Confirm success from the recorded outcomes, not from the fact that `run_plan`
+returned. If work did not complete, use the task and job details to decide what
+to fix or resolve before running the plan again.

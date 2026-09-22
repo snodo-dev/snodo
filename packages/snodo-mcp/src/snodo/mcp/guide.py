@@ -24,6 +24,7 @@ _TOPICS = {
         ("authoring", "## 4. What gets the plan refused"),
         ("authoring", "## 7. Checklist for an orchestrator"),
     ),
+    "planning": (("authoring", "## 8. The planning loop, end to end"),),
 }
 
 _TOPIC_ALIASES = {
@@ -32,6 +33,7 @@ _TOPIC_ALIASES = {
     "sizing": "waves",
     "follow-run": "run",
     "common-mistakes": "mistakes",
+    "end-to-end": "planning",
 }
 
 
@@ -84,13 +86,14 @@ def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -
     if topic:
         key = _TOPIC_ALIASES.get(topic.strip().lower(), topic.strip().lower())
         if key not in _TOPICS:
-            return "Unknown guide topic. Ask for one of: spec, waves, halts, run, mistakes."
+            return "Unknown guide topic. Ask for one of: spec, waves, halts, run, mistakes, planning."
         result = _read_topics(project_root, _TOPICS[key], exposed)
         return result or "That topic has no instructions for the tools exposed in this mode."
 
     chunks = [
         "# Snodo getting started",
-        "Call the guide with `spec`, `waves`, `halts`, `run`, or `mistakes` for the next topic.",
+        "Call the guide with `spec`, `waves`, `halts`, `run`, `mistakes`, or `planning` for the next topic.",
+        "`planning` walks through writing intent, sizing waves and tasks, writing specs, validating, dispatching, following jobs, and reading the outcome.",
     ]
     if "run_plan" in exposed:
         chunks.append(
