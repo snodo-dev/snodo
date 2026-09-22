@@ -42,8 +42,10 @@ def register(app: typer.Typer) -> None:
             False, "--set-baseline",
             help="Capture a completed task solution as its local plan/task baseline.",
         ),
-        plan: Optional[str] = typer.Option(None, "--plan", help="Plan name for --set-baseline"),
-        task: Optional[str] = typer.Option(None, "--task", "--task-id", help="Task id for --set-baseline"),
+        compare: bool = typer.Option(False, "--compare", help="Compare a candidate job with a stored task baseline"),
+        plan: Optional[str] = typer.Option(None, "--plan", help="Plan owning the baseline task (--set-baseline / --compare)"),
+        task: Optional[str] = typer.Option(None, "--task", "--task-id", help="Plan task id (--set-baseline / --compare)"),
+        job: Optional[str] = typer.Option(None, "--job", help="Candidate job id for --compare (latest matching job by default)"),
         json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
         id: Optional[str] = typer.Option(None, "--id", help="Exact model id"),
         id_contains: Optional[str] = typer.Option(None, "--id-contains", help="Substring on id/display_name (case-insensitive)"),
@@ -63,8 +65,10 @@ def register(app: typer.Typer) -> None:
             benchmark=benchmark,
             benchmark_runs=benchmark_runs,
             set_baseline=set_baseline,
+            compare=compare,
             plan=plan,
             task=task,
+            job=job,
             json=json,
             id=id,
             id_contains=id_contains,
@@ -126,6 +130,10 @@ def models_command(args) -> int:
 
     if getattr(args, "benchmark", False):
         return models_benchmark_command(args)
+
+    if getattr(args, "compare", False):
+        from snodo.cli.commands.plan_compare import compare_models_command
+        return compare_models_command(args)
 
     provider_name = getattr(args, "provider", None)
     flush = getattr(args, "flush", False)
