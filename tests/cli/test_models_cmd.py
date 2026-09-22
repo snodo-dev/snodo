@@ -105,7 +105,7 @@ def test_set_baseline_stores_recorded_task_solution_and_replaces_it(tmp_path, mo
 
     plan_dir = root / ".snodo" / "plans" / "demo"
     assert plan_dir.is_dir()
-    monkeypatch.setattr("snodo.cli.commands.models_cmd.resolve_project_root", lambda: str(root))
+    monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(root))
 
     args = SimpleNamespace(set_baseline=True, plan="demo", task="1.3", json=False)
     assert models_set_baseline_command(args) == 0
@@ -132,7 +132,7 @@ def test_set_baseline_requires_completed_task(tmp_path, monkeypatch):
     task_dir = tmp_path / ".snodo" / "tasks" / "task-1"
     task_dir.mkdir(parents=True)
     (task_dir / "state.json").write_text('{"status": "blocked"}')
-    monkeypatch.setattr("snodo.cli.commands.models_cmd.resolve_project_root", lambda: str(tmp_path))
+    monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(tmp_path))
     args = SimpleNamespace(set_baseline=True, plan="demo", task="task-1", json=False)
     assert models_set_baseline_command(args) == 1
 
