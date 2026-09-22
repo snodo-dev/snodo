@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
+from snodo.cli.commands.models_baseline import _task_job
+
 _OUTCOME_RANK = {
     "pass": 1, "completed": 1, "warn": 0, "escalate": 0,
     "blocker": -1, "failed": -1, "validator_error": -1,
@@ -38,26 +40,14 @@ def _baseline(project_root: Path, plan: str, task: str) -> tuple[dict, Path]:
     return record, solution
 
 
-def _job_record(project_root: Path, task: str, job_id: Optional[str]) -> tuple[dict, Path]:
-    jobs = project_root / ".snodo" / "jobs"
-    paths = [jobs / job_id / "state.json"] if job_id else sorted(jobs.glob("*/state.json"))
-    candidates: list[tuple[float, Path, dict]] = []
-    for state_path in paths:
-        state = _read_json(state_path, "Candidate job state")
-        state_task = state.get("task_id") or (state.get("halt") or {}).get("task_id")
-        if state_task != task:
-            continue
-        timestamp = state.get("completed_at") or state.get("started_at") or state.get("created_at") or 0
-        try:
-            timestamp = float(timestamp)
-        except (TypeError, ValueError):
-            timestamp = 0
-        candidates.append((timestamp, state_path, state))
-    if not candidates:
-        suffix = f" for job {job_id}" if job_id else ""
-        raise ValueError(f"Candidate job evidence not found for task '{task}'{suffix}")
-    _, state_path, state = max(candidates, key=lambda item: item[0])
-    return state, state_path
+def _job_record(project_root: Path, plan: str, task: str, job_id: Optional[str]) -> tuple[dict, Path]:
+    job = _task_job(project_root, plan, task, job_id)
+    if not job:
+        if job_id:
+            raise ValueError(f"Job '{job_id}' does not belong to plan '{plan}' and task '{task}', or is not completed")
+        raise ValueError(f"Candidate job evidence not found for plan '{plan}' and task '{task}'")
+    job_dir = job["job_dir"]
+    return job["state"], job_dir / "state.json"
 
 
 def _change_size(record: dict) -> dict:
@@ -189,7 +179,7 @@ def compare_models_command(args) -> int:
         baseline, baseline_path = _baseline(Path(root), plan, task)
         if baseline.get("plan") not in (None, plan) or baseline.get("task") not in (None, task):
             raise ValueError("Baseline plan/task does not match the requested --plan/--task")
-        candidate, candidate_path = _job_record(Path(root), task, getattr(args, "job", None))
+        candidate, candidate_path = _job_record(Path(root), plan, task, getattr(args, "job", None))
         candidate_diff = _candidate_patch(Path(root), _change_size(candidate))
         expected_sha = baseline.get("diff_sha256")
         actual_sha = hashlib.sha256(baseline_path.with_name("solution.diff").read_bytes()).hexdigest()
