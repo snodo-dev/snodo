@@ -83,7 +83,6 @@ snodo plan create "Add a health endpoint" --name health-endpoint --mock
 snodo plan validate health-endpoint
 snodo plan run health-endpoint --mock
 ```
-
 `snodo run` accepts a description unless `--plan` is used. Its `--retry`
 option takes a task ID; use `--append-spec` to add guidance or
 `--replace-spec` to deliberately replace the existing spec.
