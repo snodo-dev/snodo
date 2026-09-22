@@ -307,6 +307,20 @@ def _unassigned_tasks(project_root: Path, planned: set[str]) -> list[dict]:
     return [tasks[key] for key in sorted(tasks)]
 
 
+def _age_label(last_active: str | None) -> str:
+    """Format an ISO activity timestamp like the worktree list age column."""
+    if not last_active:
+        return "never"
+    try:
+        active = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
+        if active.tzinfo is None:
+            active = active.replace(tzinfo=timezone.utc)
+        age_days = int((datetime.now(timezone.utc) - active).total_seconds() // 86400)
+    except (AttributeError, TypeError, ValueError):
+        return "never"
+    return f"{age_days}d ago"
+
+
 def _plan_list(planner, args=None) -> int:
     """List plans as concise, newest-first facts."""
     args = args or SimpleNamespace()
@@ -360,17 +374,20 @@ def _plan_list(planner, args=None) -> int:
     from rich.console import Console
     from rich.table import Table
     table = Table(title="Plans")
-    for column in ("PLAN", "SUMMARY", "LAST ACTIVE", "PROGRESS", "STATUS"):
+    for column in ("PLAN", "SUMMARY", "AGE", "LAST ACTIVE", "PROGRESS", "STATUS"):
         table.add_column(column)
     for item in facts:
         active = item["last_active"] or "never"
         if active != "never":
             active = active.replace("T", " ").split("+", 1)[0]
-        table.add_row(item["name"], item["summary"], active,
+        table.add_row(item["name"], item["summary"], _age_label(item["last_active"]), active,
                       f'{item["progress"]["completed"]}/{item["progress"]["total"]}', item["status"])
     if unassigned:
         for task in unassigned:
-            table.add_row(f'(unassigned) {task["task"]}', "", task.get("last_active") or "never", "-", task["status"])
+            table.add_row(
+                f'(unassigned) {task["task"]}', "", _age_label(task.get("last_active")),
+                task.get("last_active") or "never", "-", task["status"],
+            )
     console = Console(file=sys.stdout, markup=False, highlight=False)
     if getattr(args, "tree", False):
         for item in facts:
