@@ -138,6 +138,74 @@ def test_set_baseline_requires_completed_task(tmp_path, monkeypatch):
     assert models_set_baseline_command(args) == 1
 
 
+def _write_inline_plan_job(root, plan, cost_paths):
+    plan_dir = root / ".snodo" / "plans" / plan
+    plan_dir.mkdir(parents=True)
+    job_dir = root / ".snodo" / "jobs" / "j_plan"
+    job_dir.mkdir(parents=True)
+    (job_dir / "task.json").write_text(json.dumps({"plan_name": plan, "cwd": str(root), "wave": 1}))
+    (job_dir / "state.json").write_text(json.dumps({
+        "status": "completed",
+        "completed_at": 2,
+        "cost": {"change_size": {"paths": cost_paths}, "provenance": {"model": "inline/model", "coder": "test"}},
+    }))
+
+
+def _merge_inline_task(root, plan, task, filename, content):
+    branch = f"task/{plan}/{task}/attempt"
+    _git(root, "checkout", "-qb", branch)
+    (root / filename).write_text(content)
+    _git(root, "add", filename)
+    _git(root, "commit", "-qm", f"{task} solution")
+    _git(root, "checkout", "-q", "main")
+    _git(root, "merge", "--no-ff", "-m", f"merge {task}", branch)
+    merge_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    from snodo.infrastructure.audit import AuditLog
+    AuditLog(str(root / ".snodo" / "audit.log")).append_event(
+        "task_merged", {"op": "task_merged", "task_ref": task, "branch": branch, "merge_sha": merge_sha}
+    )
+
+
+def test_set_baseline_finds_single_inline_plan_task_in_real_git_history(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "README.md").write_text("base\n")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-qm", "base")
+    _write_inline_plan_job(root, "inline", ["other.txt"])
+    _merge_inline_task(root, "inline", "1.1", "one.txt", "one\n")
+    monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(root))
+
+    assert models_set_baseline_command(SimpleNamespace(plan="inline", task="1.1", json=False)) == 0
+    diff = (root / ".snodo" / "baselines" / "inline" / "1.1" / "solution.diff").read_text()
+    assert "one.txt" in diff
+    assert "other.txt" not in diff
+
+
+def test_set_baseline_keeps_two_inline_tasks_on_their_own_merge_ranges(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "README.md").write_text("base\n")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-qm", "base")
+    _write_inline_plan_job(root, "inline", ["shared-plan-range.txt"])
+    _merge_inline_task(root, "inline", "1.1", "one.txt", "one\n")
+    _merge_inline_task(root, "inline", "1.2", "two.txt", "two\n")
+    monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(root))
+
+    for task, own, other in (("1.1", "one.txt", "two.txt"), ("1.2", "two.txt", "one.txt")):
+        assert models_set_baseline_command(SimpleNamespace(plan="inline", task=task, json=False)) == 0
+        diff = (root / ".snodo" / "baselines" / "inline" / task / "solution.diff").read_text()
+        assert own in diff
+        assert other not in diff
+
+
 def test_benchmark_run_uses_wave_spec_base_and_explicit_job(tmp_path, monkeypatch, capsys):
     root = tmp_path / "project"
     plan_dir = root / ".snodo" / "plans" / "demo"
