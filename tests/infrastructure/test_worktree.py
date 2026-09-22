@@ -19,6 +19,7 @@ from snodo.infrastructure.worktree import (
     task_branch_name,
     teardown_task_worktree,
     worktree_path,
+    workspace_roots,
 )
 from snodo.infrastructure.worktree import _spec_overlap_paths, _spec_referenced_paths
 from snodo.tools.git import GitError, resolve_base_branch
@@ -372,6 +373,37 @@ def test_check_spec_paths_exist_against_worktree(repo, tmp_path):
         worktree=str(fake_worktree),
     )
     assert "docs/design/card-footer-qr.html" in missing
+
+
+def test_check_spec_paths_exist_resolves_package_json_workspace(repo):
+    package_file = repo / "app.droptrack.io" / "src" / "views" / "create" / "index.tsx"
+    package_file.parent.mkdir(parents=True)
+    package_file.write_text("export default function Create() {}\n")
+    (repo / "package.json").write_text('{"workspaces": ["app.*"]}\n')
+
+    assert check_spec_paths_exist(str(repo), "Update views/create/index.tsx") == []
+
+
+def test_check_spec_paths_exist_resolves_pnpm_workspace(repo):
+    package_file = repo / "packages" / "api" / "src" / "routes.ts"
+    package_file.parent.mkdir(parents=True)
+    package_file.write_text("export {}\n")
+    (repo / "pnpm-workspace.yaml").write_text("packages:\n  - 'packages/*'\n")
+
+    assert check_spec_paths_exist(str(repo), "Update src/routes.ts") == []
+
+
+def test_workspace_roots_keep_ambiguous_declared_members_ambiguous(repo):
+    for package in ("packages/one", "packages/two"):
+        path = repo / package / "src"
+        path.mkdir(parents=True)
+        (path / "shared.ts").write_text("export {}\n")
+    (repo / "package.json").write_text(
+        '{"workspaces": {"packages": ["packages/*"]}}\n'
+    )
+
+    assert len(workspace_roots(str(repo))) == 5
+    assert check_spec_paths_exist(str(repo), "Update src/shared.ts") == ["src/shared.ts"]
 
 
 def test_quoted_evidence_is_not_a_repository_citation(repo):

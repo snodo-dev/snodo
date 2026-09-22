@@ -14,6 +14,7 @@ naming scheme.
 """
 
 import logging
+import json
 import re
 import shutil
 import subprocess
@@ -21,6 +22,8 @@ import sys
 import tomllib
 from pathlib import Path
 from typing import List, Optional, Set, Tuple
+
+import yaml
 
 _logger = logging.getLogger(__name__)
 
@@ -266,21 +269,50 @@ def _spec_overlap_paths(spec: str) -> List[str]:
 def workspace_roots(project_root: str) -> List[Path]:
     """Return the repository root and explicitly declared workspace roots.
 
-    Workspace members come from the repository's ``uv`` workspace metadata.
-    We do not search arbitrary descendants: resolving a package-relative path
-    from an unrelated package would be worse than reporting it missing.
+    Workspace members come from the repository's ``uv``, npm/yarn, or pnpm
+    workspace metadata. We do not search arbitrary descendants: resolving a
+    package-relative path from an unrelated package would be worse than
+    reporting it missing.
     """
     root = Path(project_root)
     roots = [root]
-    metadata = root / "pyproject.toml"
-    try:
-        with metadata.open("rb") as handle:
-            members = tomllib.load(handle).get("tool", {}).get("uv", {}).get("workspace", {}).get("members", [])
-        for pattern in members:
-            for member in root.glob(str(pattern)):
+
+    def add_patterns(patterns, include_source_roots: bool = False) -> None:
+        if not isinstance(patterns, list):
+            return
+        for pattern in patterns:
+            if not isinstance(pattern, str):
+                continue
+            for member in root.glob(pattern):
                 if member.is_dir() and member not in roots:
                     roots.append(member)
+                    # JS/TS packages commonly describe files relative to their
+                    # source directory, even when the workspace member is the
+                    # package directory itself.
+                    source_root = member / "src"
+                    if include_source_roots and source_root.is_dir() and source_root not in roots:
+                        roots.append(source_root)
+
+    try:
+        with (root / "pyproject.toml").open("rb") as handle:
+            metadata = tomllib.load(handle)
+        add_patterns(metadata.get("tool", {}).get("uv", {}).get("workspace", {}).get("members", []))
     except (OSError, tomllib.TOMLDecodeError, TypeError):
+        pass
+
+    try:
+        with (root / "package.json").open(encoding="utf-8") as handle:
+            workspaces = json.load(handle).get("workspaces", [])
+        if isinstance(workspaces, dict):
+            workspaces = workspaces.get("packages", [])
+        add_patterns(workspaces, include_source_roots=True)
+    except (OSError, json.JSONDecodeError, TypeError, AttributeError):
+        pass
+
+    try:
+        with (root / "pnpm-workspace.yaml").open(encoding="utf-8") as handle:
+            add_patterns((yaml.safe_load(handle) or {}).get("packages", []), include_source_roots=True)
+    except (OSError, TypeError, AttributeError, yaml.YAMLError):
         pass
     return roots
 
