@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-09-22
+
 ### Removed
 - The `snodo sandbox` commands and the `snodo run --sandbox` flag, together
   with the sandbox execution subsystem behind them. Decision record 014 places
