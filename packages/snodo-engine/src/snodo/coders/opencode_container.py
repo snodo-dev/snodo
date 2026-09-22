@@ -20,6 +20,8 @@ _logger = logging.getLogger(__name__)
 
 _IMAGE = "snodo-opencode:latest"
 _PORT = 55440
+_MEMORY_LIMIT = "2g"
+_CPU_LIMIT = 2.0
 _DOCKER_REMEDIATION = "Install and start Docker: https://docs.docker.com/get-docker/"
 
 
@@ -207,6 +209,8 @@ class OpenCodeContainer:
                 },
                 "publish_all_ports": False,
                 "remove": True,
+                "mem_limit": _MEMORY_LIMIT,
+                "cpu_quota": int(_CPU_LIMIT * 100000),
                 "environment": env,
                 "labels": {
                     **({"com.snodo.task-id": task_id} if task_id else {}),

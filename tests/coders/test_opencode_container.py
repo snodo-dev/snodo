@@ -46,6 +46,9 @@ def test_concurrent_tasks_do_not_share_container(tmp_path):
 
     assert created[0][1]["labels"] == {"com.snodo.task-id": "task-one"}
     assert created[1][1]["labels"] == {"com.snodo.task-id": "task-two"}
+    assert created[0][1]["mem_limit"] == "2g"
+    assert created[0][1]["cpu_quota"] == 200000
+    assert "network_mode" not in created[0][1]
     assert first._container is not second._container
     assert client.containers.list.call_args_list == [
         (( ), {"filters": {
