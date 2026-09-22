@@ -18,7 +18,7 @@ from snodo.core.interfaces import Task
 from snodo.core.spec import same_spec, spec_text, spec_with_guidance
 from snodo.config import ConfigManager, provider_env
 from snodo.cli.commands import load_protocol, followup
-from snodo.infrastructure import cloud_liveness
+from snodo.infrastructure import cloud_liveness, worktree
 # Task start/completion recording moved to task_record.py (Fixes #382);
 # the names stay importable from here — callers and tests reach them at
 # this path, and _execute_task below calls them through this module.
@@ -182,11 +182,6 @@ def register(app: typer.Typer) -> None:
 
 
 _logger = logging.getLogger(__name__)
-
-
-def _task_plan_name(args) -> Optional[str]:
-    """Return the owning plan for inline and background plan child runs."""
-    return getattr(args, "plan", None) or os.environ.get("SNODO_TASK_PLAN")
 
 
 def _format_pr_comments(data: dict) -> list:
@@ -662,7 +657,7 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
                 protocol=protocol,
                 session_id=session.session_id if session else None,
                 audit_log=audit_log,
-                plan_name=_task_plan_name(args),
+                plan_name=worktree.task_plan_name(args),
             )
             if merge_res is True:
                 print(f"✓ Successfully merged unmerged task {task_id}")
@@ -870,7 +865,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         worktree_path_val = setup_for_task(
             project_root, task.id, task.spec,
             existing_worktree_path=existing_wt,
-            plan_name=_task_plan_name(args),
+            plan_name=worktree.task_plan_name(args),
         )
         worktree_failure = None
     except Exception as exc:  # noqa: BLE001 — isolation loss must fail loud, never degrade silently
@@ -1017,12 +1012,12 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         if resolved and not _should_auto_merge(
             protocol, mode, closure_tree, worktree_path_val, worktree_degraded,
             project_root=project_root, task=task,
-            plan_name=_task_plan_name(args),
+            plan_name=worktree.task_plan_name(args),
         ):
             _report_unmerged_branch(
                 project_root, task, protocol, mode, closure_tree,
                 worktree_path_val, worktree_degraded, session_id, audit_log,
-                plan_name=_task_plan_name(args),
+                plan_name=worktree.task_plan_name(args),
             )
 
         result = _report_closure(closure_tree, final_state, session_id=session_id)
@@ -1037,11 +1032,11 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         if _should_auto_merge(
             protocol, mode, closure_tree, worktree_path_val, worktree_degraded,
             project_root=project_root, task=task,
-            plan_name=_task_plan_name(args),
+            plan_name=worktree.task_plan_name(args),
         ):
             merge_result, preserve_worktree, merged_branch = _merge_on_success(
                 project_root, task, result, session_id, audit_log,
-                plan_name=_task_plan_name(args),
+                plan_name=worktree.task_plan_name(args),
             )
             if merge_result != 0:
                 result = 2
@@ -1075,12 +1070,12 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         if worktree_path_val:
             if preserve_worktree:
                 _print_worktree_retained(
-                    project_root, task, worktree_path_val, _task_plan_name(args)
+                    project_root, task, worktree_path_val, worktree.task_plan_name(args)
                 )
             else:
                 try:
                     teardown_task_worktree(
-                        project_root, task.id, _task_plan_name(args)
+                        project_root, task.id, worktree.task_plan_name(args)
                     )
                 except Exception as e:
                     _logger.warning(
@@ -1103,15 +1098,11 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             os.environ.pop("SNODO_PROJECT_ROOT", None)
 
 
-def _print_worktree_retained(
-    project_root, task, worktree_path_val, plan_name: Optional[str] = None
-) -> None:
+def _print_worktree_retained(project_root, task, worktree_path_val, plan_name: Optional[str] = None) -> None:
     """Tell the user where the retained worktree is and how to inspect/remove it."""
     from snodo.infrastructure.worktree import _task_identity
     spec_for_branch = getattr(task, "root_spec", None) or task.spec
-    _, branch = _task_identity(
-        project_root, task.id, spec_for_branch, plan_name
-    )
+    _, branch = _task_identity(project_root, task.id, spec_for_branch, plan_name)
     print()
     print(f"Worktree preserved for inspection: {worktree_path_val}")
     print(f"  Branch: {branch}")
@@ -1119,11 +1110,7 @@ def _print_worktree_retained(
     print(f"  List/remove: snodo worktree list / snodo worktree remove {task.id}")
 
 
-def _auto_merge_block_reason(
-    protocol, mode, closure_tree, worktree_path_val, worktree_degraded,
-    project_root: Optional[str] = None, task: Optional[Any] = None,
-    plan_name: Optional[str] = None,
-):
+def _auto_merge_block_reason(protocol, mode, closure_tree, worktree_path_val, worktree_degraded, project_root: Optional[str] = None, task: Optional[Any] = None, plan_name: Optional[str] = None):
     """Return None when the branch should be merged, else the reason it will not be.
 
     Tests the three conditions in order and names the first that blocks the
@@ -1150,11 +1137,7 @@ def _auto_merge_block_reason(
     return None
 
 
-def _should_auto_merge(
-    protocol, mode, closure_tree, worktree_path_val, worktree_degraded,
-    project_root: Optional[str] = None, task: Optional[Any] = None,
-    plan_name: Optional[str] = None,
-) -> bool:
+def _should_auto_merge(protocol, mode, closure_tree, worktree_path_val, worktree_degraded, project_root: Optional[str] = None, task: Optional[Any] = None, plan_name: Optional[str] = None) -> bool:
     """Decide whether a completed task's branch should be merged."""
     return _auto_merge_block_reason(
         protocol, mode, closure_tree, worktree_path_val, worktree_degraded,
@@ -1163,9 +1146,7 @@ def _should_auto_merge(
     ) is None
 
 
-def _report_unmerged_branch(project_root, task, protocol, mode, closure_tree,
-                            worktree_path_val, worktree_degraded, session_id, audit_log,
-                            plan_name: Optional[str] = None) -> None:
+def _report_unmerged_branch(project_root, task, protocol, mode, closure_tree, worktree_path_val, worktree_degraded, session_id, audit_log, plan_name: Optional[str] = None) -> None:
     """Report a resolved task whose branch was NOT merged, and audit it.
 
     A resolved closure that does not merge leaves the completed work on a task

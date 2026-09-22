@@ -48,6 +48,12 @@ def _name_component(value: str) -> str:
     return component or "plan"
 
 
+def task_plan_name(args) -> Optional[str]:
+    """Return the plan scope carried by inline or background task arguments."""
+    import os
+    return getattr(args, "plan", None) or os.environ.get("SNODO_TASK_PLAN")
+
+
 def legacy_task_branch_name(task_id: str, spec: str) -> str:
     """Return the pre-plan-scoped branch name."""
     return f"task/{task_id}/{_slugify(spec)}"
