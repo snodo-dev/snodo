@@ -376,6 +376,7 @@ class PlanToolHandler:
                             timeout: float, progress_sink) -> dict:
         """Wait for the run while reporting task status transitions."""
         from snodo.mcp.server import MCPError
+        from snodo.jobs import JobError
         deadline = time.monotonic() + timeout
         seen = self._plan_progress_snapshot(plan_name, progress_sink=None)
         with ThreadPoolExecutor(max_workers=1) as executor:
