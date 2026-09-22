@@ -425,22 +425,22 @@ def create_worktree(
 ) -> Path:
     """Create a git worktree for *task_id*.
 
-    Creates a branch off the resolved base branch at the worktree path.
-    If the worktree already exists (retry), it is force-removed first.
+    Creates a branch off the resolved base branch at the worktree path. Existing
+    task work is reused on retry instead of being destroyed. Operators who want
+    to discard it can explicitly run ``snodo worktree remove <task_id>`` first.
 
     Returns:
         Absolute path to the new worktree.
     """
-    from git import GitCommandError
     from snodo.tools.git import open_repo, resolve_base_branch
 
     wt_path, resolved_branch = _task_identity(project_root, task_id, spec, plan_name)
     branch_name = branch or resolved_branch
     base_branch = base or resolve_base_branch(project_root)
-    legacy_identity = bool(plan_name and branch_name == legacy_task_branch_name(task_id, spec))
-
-    # An older in-flight task keeps its original location and branch.
-    if legacy_identity and wt_path.exists():
+    # Retrying must not erase work from a halted attempt. This also covers the
+    # legacy plan identity; the selected path is the task's durable workspace.
+    if wt_path.exists():
+        _logger.info("Reusing existing worktree %s for task %s", wt_path, task_id)
         return wt_path
 
     with merge_lock(project_root):
@@ -464,22 +464,11 @@ def create_worktree(
                 ) from e
             del head_commit  # only used to prove a resolvable HEAD
 
-            # Remove existing worktree if present (retry / partial cleanup)
-            if wt_path.exists():
-                try:
-                    repo.git.worktree("remove", "--force", str(wt_path))
-                except GitCommandError:
-                    shutil.rmtree(str(wt_path), ignore_errors=True)
-
             branch_exists = branch_name in repo.heads
-            if branch_exists and not legacy_identity:
-                try:
-                    repo.git.branch("-D", branch_name)
-                except GitCommandError:
-                    pass
-                branch_exists = False
 
             if branch_exists:
+                # Keep a branch from an earlier attempt intact. Attaching it to
+                # the expected path carries committed work into the retry.
                 repo.git.worktree("add", str(wt_path), branch_name)
             else:
                 repo.git.worktree("add", str(wt_path), "-b", branch_name, base_branch)
