@@ -51,6 +51,7 @@ Opt-in exactly as sync is: with ``cloud.sync_enabled`` off or no
 import atexit
 import json
 import logging
+import os
 import threading
 import time
 from collections import Counter
@@ -201,6 +202,10 @@ _PENDING_TASK_STATUS = "pending"
 _SETTLED_RUN_STATUSES = frozenset({
     "completed", "failed", "cancelled", "unmerged", "blocked",
 })
+
+# Keep this in step with the CLI liveness view. A non-terminal state record is
+# not evidence of a live process by itself.
+_STALE_AFTER_SECONDS = 600.0
 
 # Per-session push bookkeeping: session_id -> {"last_push": float|None,
 # "in_flight": bool, "timer": threading.Timer|None}. Guards the throttle
@@ -661,7 +666,15 @@ def build_liveness_snapshot(
     last_event = _last_audit_event(root / ".snodo" / "audit.log")
     last_activity_at = _last_activity_at(root, last_event)
 
-    if not _anything_running(plans, task_rows, job_rows):
+    live_task_rows = [
+        row for row in task_rows
+        if not _run_is_stale(row, time.time())
+    ]
+    live_job_rows = [
+        row for row in job_rows
+        if not _run_is_stale(row, time.time())
+    ]
+    if not _anything_running(plans, live_task_rows, live_job_rows):
         return None
 
     project_id = ""
@@ -943,6 +956,8 @@ def _unreported(
             if row["id"] not in settled_claimed:
                 counts[row["status"]] += 1
             continue
+        if _run_is_stale(row, time.time()):
+            continue
         if row["id"] in live_claimed:
             continue
         wire = {k: row[k] for k in ("id", "status", "started_at") if k in row}
@@ -980,6 +995,8 @@ def _collect_runs(
             "id": entry.name,
             "status": str(state.get("status") or "unknown"),
             "started_at": _as_iso(state.get("started_at")),
+            "_pid": state.get("pid") if isinstance(state.get("pid"), int) else None,
+            "_last_activity": _mtime_or_none(entry / "state.json"),
         }
         if state.get("wave_id"):
             row["wave_id"] = str(state["wave_id"])
@@ -987,6 +1004,32 @@ def _collect_runs(
             row["task_ref"] = _job_task_ref(entry)
         rows.append(row)
     return rows
+
+
+def _pid_alive(pid: Any) -> Optional[bool]:
+    """Best-effort signal-0 probe, matching the dashboard's semantics."""
+    if pid is None:
+        return None
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (ValueError, OSError):
+        return None
+    return True
+
+
+def _run_is_stale(row: dict, now: float) -> bool:
+    """Whether a non-terminal run has neither a live pid nor recent activity."""
+    status = row.get("status")
+    if status in _SETTLED_RUN_STATUSES or status == _PENDING_TASK_STATUS:
+        return False
+    if _pid_alive(row.get("_pid")) is True:
+        return False
+    activity = row.get("_last_activity")
+    return activity is None or now - activity >= _STALE_AFTER_SECONDS
 
 
 def _job_task_ref(job_dir: Path) -> str:
