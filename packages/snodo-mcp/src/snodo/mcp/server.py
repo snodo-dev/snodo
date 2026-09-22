@@ -97,15 +97,9 @@ class ProtocolMCPServer:
         self._SLOW_TOOLS = {"validate_task", "run_tests", "run_plan"}
 
         # Tools whose handlers already narrate their work and can accept a
-        # per-call progress sink (narration only — the response is identical
-        # whether or not a sink is supplied). validate_task reaches the
-        # validator runner's progress_cb. run_plan is NOT here: it starts the
-        # run as a job and returns a job_id at once, so the call has nothing
-        # to report — the job's stdout.log carries the narration as it is
-        # produced (get_job_logs, `snodo job logs --watch`). run_tests has no
-        # narration sink to route. A tool with nothing to narrate gets no
-        # sink plumbed to it, rather than a mechanism kept for its own sake.
-        self._PROGRESS_TOOLS = {"validate_task"}
+        # per-call progress sink. run_plan uses it only for opt-in wait=true
+        # calls; the default remains an immediate job submission.
+        self._PROGRESS_TOOLS = {"validate_task", "run_plan"}
 
         # Initialize backing MCPs
         self.workspace = WorkspaceMCP(project_root)

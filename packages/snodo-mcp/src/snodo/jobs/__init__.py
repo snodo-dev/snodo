@@ -64,6 +64,28 @@ def resolve_task_identity(task_args: dict, job_id: str) -> Optional[str]:
     return job_id
 
 
+def index_plan_jobs(project_root: str, plan_name: str) -> tuple[Optional[str], dict[str, dict]]:
+    """Return the latest plan run and latest child job per task."""
+    try:
+        jobs = JobManager(project_root).list_jobs()
+    except Exception:
+        return None, {}
+    plan_jobs = [job for job in jobs if job.get("plan") == plan_name]
+    if not plan_jobs:
+        return None, {}
+    plan_job = max(plan_jobs, key=lambda job: job.get("created_at", 0))
+    plan_job_id = plan_job.get("id")
+    task_jobs: dict[str, dict] = {}
+    for job in jobs:
+        task_id = job.get("task_ref")
+        if job.get("parent_job") != plan_job_id or not task_id:
+            continue
+        previous = task_jobs.get(task_id)
+        if previous is None or job.get("created_at", 0) >= previous.get("created_at", 0):
+            task_jobs[task_id] = job
+    return plan_job_id, task_jobs
+
+
 def _title_from_description(description: object) -> str:
     """One-line bounded title from a job's task description.
 

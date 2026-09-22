@@ -252,6 +252,10 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
         return {}
 
     def _fetch_child_jobs() -> list[dict]:
+        from snodo.jobs import index_plan_jobs
+        _, indexed = index_plan_jobs(project_root, plan_name)
+        if indexed:
+            return sorted(indexed.values(), key=lambda j: j.get("created_at", 0))
         if hasattr(mgr, "get_child_jobs"):
             try:
                 return mgr.get_child_jobs(job_id)

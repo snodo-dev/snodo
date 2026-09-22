@@ -315,8 +315,9 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
     ]
     if "run_plan" in exposed:
         progress_lines.append(
-            "(`run_plan` needs no progress stream: it returns a job_id at once, and the\n"
-            "run's narration lands in the job's stdout.log as it is produced\n"
+            "(`run_plan` returns a job_id at once by default. With `wait=true`, it\n"
+            "also narrates task status changes when a progressToken is supplied; without\n"
+            "one it emits nothing extra. The run's full narration remains in stdout.log\n"
             "(get_job_logs, `snodo job logs --watch`).)\n"
         )
     sections.append("".join(progress_lines))
