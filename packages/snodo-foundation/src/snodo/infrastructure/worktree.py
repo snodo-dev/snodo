@@ -500,6 +500,33 @@ def setup_for_task(
     return str(create_worktree(project_root, task_id, spec, plan_name=plan_name))
 
 
+def _remove_worktree_metadata(repo, wt_path: Path) -> None:
+    """Remove only Git's admin entry for *wt_path*.
+
+    ``git worktree prune`` has no path filter and could remove unrelated stale
+    worktrees. Each linked worktree instead records its own checkout metadata
+    in ``common_dir/worktrees/<name>/gitdir``, so match that entry directly.
+    """
+    target_gitdir = (wt_path / ".git").resolve()
+    metadata_dir = Path(repo.common_dir).resolve() / "worktrees"
+    if not metadata_dir.is_dir():
+        return
+
+    for entry in metadata_dir.iterdir():
+        gitdir_file = entry / "gitdir"
+        if not gitdir_file.is_file():
+            continue
+        try:
+            gitdir = Path(gitdir_file.read_text().strip())
+            if not gitdir.is_absolute():
+                gitdir = entry / gitdir
+            if gitdir.resolve() == target_gitdir:
+                shutil.rmtree(entry, ignore_errors=True)
+                return
+        except OSError:
+            continue
+
+
 def remove_worktree(
     project_root: str, task_id: str, plan_name: Optional[str] = None
 ) -> None:
@@ -519,6 +546,7 @@ def remove_worktree(
                     repo.git.worktree("remove", "--force", str(wt_path))
                 except GitCommandError:
                     shutil.rmtree(str(wt_path), ignore_errors=True)
+                    _remove_worktree_metadata(repo, wt_path)
         except Exception:
             shutil.rmtree(str(wt_path), ignore_errors=True)
         _logger.info("Removed worktree %s", wt_path)
