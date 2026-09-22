@@ -62,6 +62,13 @@ def _make_set_model_jwt(signing_issuer, proposed_model, scope="coder"):
 # The map the ticket's substance rests on, established from the adapters:
 # (coder, explicitly-set field) pairs that are inert.
 INERT_PAIRS = [
+    ("litellm", "sandboxed"),
+    ("openai", "sandboxed"),
+    ("anthropic", "sandboxed"),
+    ("gemini", "sandboxed"),
+    ("mock", "sandboxed"),
+    ("opencode-cli", "sandboxed"),
+    ("agy", "sandboxed"),
     ("litellm", "timeout_seconds"),
     ("openai", "timeout_seconds"),
     ("anthropic", "timeout_seconds"),
@@ -80,6 +87,7 @@ HONOURED_PAIRS = [
     ("opencode-cli", "timeout_seconds"),
     ("agy", "timeout_seconds"),
     ("opencode", "model"),
+    ("opencode", "sandboxed"),
 ]
 
 
@@ -88,7 +96,13 @@ def test_explicit_setting_a_coder_cannot_honour_is_named_with_the_coder(
     coder, field, caplog
 ):
     """A configured-but-inert pairing is reported, naming setting and coder."""
-    value = "ollama/qwen3:32b" if field == "model" else 42
+    value = (
+        "ollama/qwen3:32b"
+        if field == "model"
+        else False
+        if field == "sandboxed"
+        else 42
+    )
     cfg = CoderConfig(**{field: value})
     explicit = explicit_coder_settings(cfg)
     assert field in explicit, "a written field is explicit regardless of value"
@@ -105,7 +119,13 @@ def test_explicit_setting_a_coder_cannot_honour_is_named_with_the_coder(
 
 @pytest.mark.parametrize("coder, field", HONOURED_PAIRS)
 def test_a_coder_that_honours_the_setting_reports_nothing(coder, field, caplog):
-    value = "ollama/qwen3:32b" if field == "model" else 42
+    value = (
+        "ollama/qwen3:32b"
+        if field == "model"
+        else True
+        if field == "sandboxed"
+        else 42
+    )
     cfg = CoderConfig(**{field: value})
     explicit = explicit_coder_settings(cfg)
 
@@ -344,5 +364,3 @@ def test_report_inert_coder_settings_emits_once_for_same_pairing(caplog):
         fourth = report_inert_coder_settings("opencode-cli", {"max_tokens": 1000})
         assert fourth == ["max_tokens"]
         assert len(caplog.records) == 3
-
-
