@@ -198,6 +198,8 @@ def extract_citations(spec: str) -> List[Citation]:
 
 
 def _normalise(text: str) -> str:
+    # A trailing comma is a formatting choice, not part of the construct.
+    text = re.sub(r",(?=\s*[\]\}\)])", "", text)
     return re.sub(r"\s+", " ", text)
 
 

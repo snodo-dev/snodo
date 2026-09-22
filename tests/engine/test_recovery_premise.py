@@ -83,6 +83,24 @@ class TestStaleCitationDetection:
         _write_tree(tmp_path, "const field = `<input   type=\"url\">`;")
         assert find_stale_citations(STALE_SPEC, tmp_path) == []
 
+    def test_trailing_commas_in_multiline_object_are_not_stale(self, tmp_path):
+        spec = (
+            '`guided_meditation` has '
+            'audio: { type: "tts", voiceField: "voiceover_text" }'
+        )
+        (tmp_path / "pipeline-configs.ts").write_text(
+            """guided_meditation: {
+  audio: {
+    type: "tts",
+    voiceField: "voiceover_text",
+  },
+},
+""",
+            encoding="utf-8",
+        )
+
+        assert find_stale_citations(spec, tmp_path) == []
+
     def test_goal_does_not_assert_presence(self, tmp_path):
         _write_tree(tmp_path, "const field = '<input type=\"text\">';")
         goal = "Add `<input type=\"url\">` to the booking field in `src/booking.js`."
