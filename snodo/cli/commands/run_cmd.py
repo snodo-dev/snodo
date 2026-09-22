@@ -795,9 +795,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     project_root = require_project_root()
     old_project_root = os.environ.get("SNODO_PROJECT_ROOT")
     os.environ["SNODO_PROJECT_ROOT"] = str(project_root)
-    benchmark_run = os.environ.get("SNODO_BENCHMARK") == "1"
-    if not benchmark_run:
-        _record_task_start(project_root, task.id, task.spec)
+    _record_task_start(project_root, task.id, task.spec)
     audit_log = getattr(args, "audit_log", None)
     session_manager = getattr(args, "session_manager", None)
 
@@ -999,11 +997,10 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
         result = _report_closure(closure_tree, final_state, session_id=session_id)
 
         halt_payload = _find_terminal_halt_payload(closure_tree, final_state)
-        if not benchmark_run:
-            _record_task_completion(
-                project_root, task.id, "completed" if resolved else "failed", halt_payload,
-                protocol=protocol, model=model,
-            )
+        _record_task_completion(
+            project_root, task.id, "completed" if resolved else "failed", halt_payload,
+            protocol=protocol, model=model,
+        )
 
         # Auto-merge on genuine completion (closure outcome "resolved").
         if _should_auto_merge(
@@ -1017,11 +1014,10 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             )
             if merge_result != 0:
                 result = 2
-                if not benchmark_run:
-                    _record_task_completion(
-                        project_root, task.id, "unmerged", halt_payload,
-                        protocol=protocol, model=model,
-                    )
+                _record_task_completion(
+                    project_root, task.id, "unmerged", halt_payload,
+                    protocol=protocol, model=model,
+                )
             else:
                 result = merge_result
 
