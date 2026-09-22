@@ -62,8 +62,9 @@ def test_json_output_contains_all_signals(tmp_path, monkeypatch, capsys):
     (baseline_dir / "solution.diff").write_text(diff)
     job_dir = tmp_path / ".snodo" / "jobs" / "j1"
     job_dir.mkdir(parents=True)
+    (job_dir / "task.json").write_text(json.dumps({"task_id": "t", "task_plan": "p"}))
     (job_dir / "state.json").write_text(json.dumps({
-        "task_id": "t", "status": "completed", "completed_at": 2,
+        "status": "completed", "completed_at": 2,
         "cost": {"change_size": {"base_sha": "base", "head_sha": "head", "paths": ["a.py"], "lines_added": 1, "lines_deleted": 0},
                   "provenance": {"model": "candidate/model"}},
     }))
@@ -74,3 +75,29 @@ def test_json_output_contains_all_signals(tmp_path, monkeypatch, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema"] == "snodo.models-compare.v1"
     assert payload["signals"]["content"]["f1"] == 1
+
+
+def test_compare_resolves_real_job_identity_and_rejects_wrong_explicit_job(tmp_path, monkeypatch, capsys):
+    baseline_dir = tmp_path / ".snodo" / "baselines" / "p" / "t"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "baseline.json").write_text(json.dumps({
+        "schema": "snodo.task-baseline.v1", "plan": "p", "task": "t",
+        "change_size": {"paths": ["a.py"]},
+    }))
+    (baseline_dir / "solution.diff").write_text("")
+    jobs_dir = tmp_path / ".snodo" / "jobs"
+    for job_id, task_data in (("right", {"task_id": "t", "task_plan": "p"}),
+                              ("wrong", {"task_id": "t", "task_plan": "other"})):
+        job_dir = jobs_dir / job_id
+        job_dir.mkdir(parents=True)
+        (job_dir / "task.json").write_text(json.dumps(task_data))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "completed", "cost": {"change_size": {
+                "base_sha": "base", "head_sha": "head", "paths": ["a.py"],
+            }},
+        }))
+    monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(tmp_path))
+    monkeypatch.setattr("snodo.cli.commands.plan_compare._candidate_patch", lambda root, size: "")
+
+    assert compare_models_command(SimpleNamespace(plan="p", task="t", job="wrong", json=False)) == 1
+    assert "does not belong to plan 'p' and task 't'" in capsys.readouterr().err

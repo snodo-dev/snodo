@@ -30,13 +30,14 @@ def _read_json(path: Path) -> Optional[dict]:
     return data if isinstance(data, dict) else None
 
 
-def _task_job(project_root: Path, plan: str, task: str) -> Optional[dict]:
-    """Find the completed child job that recorded *plan*/*task*."""
+def _task_job(project_root: Path, plan: str, task: str, job_id: Optional[str] = None) -> Optional[dict]:
+    """Find the latest completed job that recorded *plan*/*task*."""
     jobs_dir = project_root / ".snodo" / "jobs"
     candidates = []
     if not jobs_dir.is_dir():
         return None
-    for job_dir in jobs_dir.iterdir():
+    job_dirs = [jobs_dir / job_id] if job_id else list(jobs_dir.iterdir())
+    for job_dir in job_dirs:
         if not job_dir.is_dir():
             continue
         task_data = _read_json(job_dir / "task.json") or {}
@@ -48,8 +49,8 @@ def _task_job(project_root: Path, plan: str, task: str) -> Optional[dict]:
         if not task_plan and task_data.get("parent_job"):
             parent_task = _read_json(jobs_dir / str(task_data["parent_job"]) / "task.json") or {}
             task_plan = parent_task.get("plan_name") or parent_task.get("task_plan")
-        if task_plan == plan:
-            candidates.append({"state": state})
+        if task_plan == plan and str(state.get("status", "")).lower() == "completed":
+            candidates.append({"state": state, "job_dir": job_dir})
 
     if not candidates:
         return None
