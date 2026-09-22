@@ -33,6 +33,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from snodo.mcp.server import ProtocolMCPServer
 from snodo.mcp.tools import TOOL_REGISTRY
+from snodo.mcp.guide import guide_text
 
 logger = logging.getLogger(__name__)
 
@@ -190,165 +191,77 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
     p = protocol_server.protocol
     exposed = {t["name"] for t in protocol_server.get_tools()}
     mode_list = ", ".join(m.mode_id for m in p.modes)
-    validator_list = ", ".join(
-        f"{v.validator_id} ({v.validator_type}, {v.evaluation_phase})"
-        for v in p.validators
-    )
+    validator_list = ", ".join(v.validator_id for v in p.validators)
     policy_value = getattr(p.disagreement_policy, "value", str(p.disagreement_policy))
 
     sections: list = [
-        f"# Snodo Protocol Engine — {p.protocol_id} v{p.version}\n"
-        f"\n"
-        f"## What this is\n"
-        f"A protocol-driven AI software development lifecycle (AI-SDLC) engine.\n"
-        f"You are the orchestrator — you coordinate via MCP tools only. You have NO\n"
-        f"direct filesystem access. All knowledge about the project, sessions, and\n"
-        f"audit trail comes through tools and resources (see resources below).\n"
-        f"\n"
-        f"## Role model\n"
-        f"- **Orchestrator (you)**: coordinates workflow via tools. Never writes files.\n"
-        f"- **Coder**: generates code artifacts. Runs in background jobs.\n"
-        f"- **Validators**: read-only checks on task specs (pre-execute) and code\n"
-        f"  changes (post-execute). They cannot mutate the repo.\n"
-        f"- **Tool access is the protocol's to decide**: a server exposes only the\n"
-        f"  tools the active mode(s) grant, and no tool call is refused for want\n"
-        f"  of a token the caller holds (see ADR 047).\n"
-        f"- **The quorum is enforced inside the engine loop**: every dispatched\n"
-        f"  task passes the validators again before anything is written — a\n"
-        f"  `blocker` sends the work back and is never overridable by you.\n"
+        "Call the read-only `guide` tool before anything else. It teaches the shortest path and accepts topics: `spec`, `waves`, `halts`, `run`, `mistakes`.\n",
+        f"# Snodo Protocol Engine — {p.protocol_id} v{p.version}\n",
+        "You are the orchestrator. Use MCP tools and resources only; you cannot read the filesystem directly.\n",
+        "Tool access follows the active mode grant; no tool call is refused for want of a caller-held token. The validator quorum is enforced inside the engine loop (ADR 047); a `blocker` is never overridable, and `escalate` requires human `snodo authorize`.\n",
     ]
 
     if "dispatch_task" in exposed:
         sections.append(
             "\n"
-            "## The workflow loop (per task)\n"
-            "Execute tasks in this exact order:\n"
-            "\n"
-            "1. `validate_task(task_id, task_spec)` — runs the real pre-execute validators\n"
-            "   and the test suite, then returns ONE of four validation outcomes:\n"
-            "   - `pass`            → quorum satisfied (a single-use token is recorded);\n"
-            "                        proceed to dispatch\n"
-            "   - `escalate`        → NO token; run `snodo authorize <decision_id>`, then\n"
-            "                        re-call validate_task to clear it\n"
-             "   - `blocker`         → NO token; fix the code or, when verification is\n"
-             "                        unavailable, run recon and make the task spec smaller\n"
-             "                        or more detailed, then re-validate (never overridable)\n"
-            "                        NEVER overridable by a human decision)\n"
-            "   - `validator_error` → NO token; retry / inspect logs (not an authorisation\n"
-            "                        problem)\n"
-            "   The engine's canonical halt vocabulary is five. A dispatched job can\n"
-            "   additionally halt `environment_error` (the coder could not be invoked);\n"
-            "   handle it as a non-verdict operational halt, never as a verdict about the\n"
-            "   task. See ADR 015 for the taxonomy and the reasoning.\n"
-            "2. `dispatch_task(task_spec)` — submits the task for background execution,\n"
-            "   returns job_id; the run re-validates this task inside the engine loop\n"
-            "   before anything is written, so your pre-check is guidance, not a\n"
-            "   permission the call must carry\n"
-            "3. `get_job_status(job_id)` — poll until status is `completed` or `failed`\n"
-            "4. `get_job_logs(job_id, tail=N)` — read output, especially on failure\n"
+            "## Task loop\n"
+            "1. `validate_task(task_id, task_spec)` runs pre-execute validators and returns `pass`, `escalate`, `blocker`, or `validator_error`. `escalate` needs human `snodo authorize`; `blocker` needs a fix or better evidence/spec; `validator_error` needs retry or inspection.\n"
+            "2. `dispatch_task(task_spec)` submits background work.\n"
+            "3. Poll `get_job_status(job_id)`; read `get_job_logs(job_id, tail=N)` on failure.\n"
         )
 
     if "run_plan" in exposed:
         sections.append(
             "\n"
-            "## Planning (above the task loop)\n"
-            "Multi-task work goes through the plan gate before any dispatch:\n"
-            "- `propose_plan(intent, plan_name)` turns an intent into a plan (waves,\n"
-            "  dependencies, tasks) under .snodo/plans/ — nothing executes.\n"
-            "- `generate_spec(plan_name, task_id, spec)` writes a task spec into a wave. "
-            "Task IDs must carry a name as `<wave>.<sequence>_<name>` (for example "
-            "`1.1_models`, never bare `1.1`); the name becomes the readable spec "
-            "filename and progress label.\n"
-            "- `validate_plan(plan_name)` checks the plan without running anything; this\n"
-            "  is the human gate — review the proposal BEFORE execution.\n"
-            "- `run_plan(plan_name)` STARTS an approved plan run as a background job\n"
-            "  and returns its job_id at once; it refuses a plan that fails\n"
-            "  validation before anything spawns. Follow the job_id with\n"
-            "  `get_job_status` / `list_jobs` / `get_job_logs` — do NOT expect the call to\n"
-            "  carry the run (a wave takes minutes).\n"
-            "- `get_plan(plan_name)` retrieves the plan and its task statuses at any\n"
-            "  time — the plan files on disk are the source of truth.\n"
-            "- `record_task_status(plan_name, task_id, status, who, notes)` records\n"
-            "  a status an operator decided on outside the loop — the machine-side\n"
-            "  `snodo task complete`. It writes the plan's own status vocabulary\n"
-            "  and appends an unjudged audit event so the plan advances from the\n"
-            "  record. It records a human's account and decides nothing: it never\n"
-            "  passes a task in place of the validators.\n"
+            "## Planning\n"
+            "`propose_plan` creates the inert plan, `generate_spec` adds named task specs, and `validate_plan` checks the human gate. `run_plan` starts a background run; follow its job id with `get_job_status` and `get_job_logs`. Use `get_plan` for plan state. A wave is a barrier: tasks that need another task's output belong in a later wave.\n"
         )
 
     if "dispatch_task" in exposed or "run_plan" in exposed:
         async_lines = [
             "\n"
-            "## THE ASYNC CONTRACT — READ THIS\n"
+            "## Async contract\n"
         ]
         if "dispatch_task" in exposed:
             async_lines.append(
-                "**dispatch_task is ASYNCHRONOUS.** It returns a job_id and returns IMMEDIATELY.\n"
-                "The coder runs in a background subprocess. A pre-execute validation pass does\n"
-                "NOT mean the task succeeded. Only a job whose status is `completed` with\n"
-                "`exit_code=0` and files written confirms success.\n"
+                "`dispatch_task` is ASYNCHRONOUS. A validation pass is not task success; only `completed` with `exit_code=0` confirms it.\n"
                 "\n"
             )
         if "run_plan" in exposed:
             async_lines.append(
-                "**run_plan is ASYNCHRONOUS.** It starts the plan run as a background job and\n"
-                "returns its job_id IMMEDIATELY — a wave takes minutes; the call does not\n"
-                "carry the run.\n"
+                "`run_plan` is ASYNCHRONOUS and returns its job id immediately; a wave takes minutes.\n"
                 "\n"
             )
         async_lines.append(
-            "**ALWAYS poll `get_job_status` after a job starts. NEVER infer completion from the\n"
-            "response of the tool that started it.** That response only confirms the job was\n"
-            "queued.\n"
+            "Always poll `get_job_status` after a job starts; the starter response only confirms queuing.\n"
         )
         sections.append("".join(async_lines))
 
     progress_lines = [
         "\n"
-        "## Progress on slow calls\n"
-        "`validate_task` can take minutes. It honours MCP progress notifications:\n"
-        "include `\"_meta\": {\"progressToken\": \"<your-token>\"}` in the tools/call\n"
-        "params and the server narrates validators starting/finishing and their\n"
-        "per-turn tool lines as `notifications/progress` while the call is in\n"
-        "flight, so a slow call is distinguishable from a dead server. Callers that\n"
-        "do not request progress receive nothing extra and the same final response.\n"
+        "## Progress\n"
+        "`validate_task` may take minutes and can emit MCP progress notifications when the caller supplies a progress token.\n"
     ]
     if "run_plan" in exposed:
         progress_lines.append(
-            "(`run_plan` returns a job_id at once by default. With `wait=true`, it\n"
-            "also narrates task status changes when a progressToken is supplied; without\n"
-            "one it emits nothing extra. The run's full narration remains in stdout.log\n"
-            "(get_job_logs, `snodo job logs --watch`).)\n"
+            "`run_plan` returns a job_id at once. With `wait=true` and a progress token it narrates task status changes; job logs hold the full narration.\n"
         )
     sections.append("".join(progress_lines))
 
     guarantee_lines = [
         "\n"
-        "## Where the guarantee lives (tokens and access)\n"
+        "## Governance\n"
     ]
     if "dispatch_task" in exposed:
         guarantee_lines.append(
-            "- `validate_task` runs the pre-execute quorum. On `pass` (or on\n"
-            "  `escalate` after a human adjudicates via `snodo authorize`) it records a\n"
-            "  single-use JWT token with a short TTL; the next `dispatch_task` consumes\n"
-            "  it — the audit link between a satisfied quorum and the work dispatched.\n"
+            "- `validate_task` records a single-use token on `pass`; `dispatch_task` consumes it as the audit link.\n"
         )
     else:
         guarantee_lines.append(
-            "- `validate_task` runs the pre-execute quorum. On `pass` (or on\n"
-            "  `escalate` after a human adjudicates via `snodo authorize`) it records a\n"
-            "  single-use JWT token with a short TTL; the engine's dispatch boundary\n"
-            "  consumes it — the audit link between a satisfied quorum and the work\n"
-            "  dispatched.\n"
+            "- `validate_task` records a single-use token on `pass`; the engine dispatch boundary consumes it as the audit link.\n"
         )
     guarantee_lines.append(
-        "- No tool at this surface is gated on a token you hold. Your authority is\n"
-        "  the protocol's mode grant: a server exposes only the tools its active\n"
-        "  mode(s) grant, and refuses everything else (see ADR 047).\n"
-        "- The enforceable discipline is per task inside the engine loop: the run\n"
-        "  validates before it executes; a `blocker` sends the work back and is\n"
-        "  never overridable; an `escalate` halts until a human decides through\n"
-        "  `snodo authorize`. None of that can be bypassed from this surface.\n"
+        "- No tool call is gated on a caller-held token. Mode grants determine this surface; the loop validates before execution.\n"
     )
     sections.append("".join(guarantee_lines))
 
@@ -361,12 +274,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         f"- `snodo://sessions/{{session_id}}` — session detail: task history, events, results\n"
         f"- `snodo://audit` — recent audit events (last 100)\n"
         f"\n"
-        f"## Active protocol\n"
-        f"- Protocol ID: {p.protocol_id}\n"
-        f"- Version: {p.version}\n"
-        f"- Modes: {mode_list}\n"
-        f"- Validators: {validator_list}\n"
-        f"- Disagreement policy: {policy_value}\n"
+        f"## Active protocol\n- Protocol ID: {p.protocol_id}\n- Version: {p.version}\n- Modes: {mode_list}\n- Validators: {validator_list}\n- Disagreement policy: {policy_value}\n"
     )
 
     instructions = "".join(sections)
@@ -436,8 +344,21 @@ def build_fastmcp_server(
         mcp.add_tool(fn, name=tool_info["name"], description=tool_info["description"])
 
     _register_resources(mcp, protocol_server)
+    _register_guide(mcp, protocol_server)
 
     return mcp
+
+
+def _register_guide(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> None:
+    """Register the always-available, read-only source-backed guide."""
+    exposed = {t["name"] for t in protocol_server.get_tools()}
+
+    @mcp.tool(
+        name="guide",
+        description="Read-only Snodo getting-started guide. Omit topic for the shortest first run; ask for spec, waves, halts, run, or mistakes.",
+    )
+    def guide(topic: str | None = None) -> str:
+        return guide_text(protocol_server.project_root, exposed, topic)
 
 
 def _register_resources(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> None:

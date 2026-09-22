@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- The MCP server now exposes an always-available, source-backed `guide` tool for
+  learning how to author, size, run and recover plans without relying on the
+  truncated handshake instructions. (Fixes #399)
+
 ## [0.14.0] — 2026-09-22
 
 ### Removed
