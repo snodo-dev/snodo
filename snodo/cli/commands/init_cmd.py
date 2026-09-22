@@ -254,6 +254,14 @@ _CONSENT_TITLE = "Trusted repository"
 _CONSENT_FOOTER = "ADR 014 · SECURITY.md"
 
 GITIGNORE_ENTRY = ".snodo/"
+SNODO_GITIGNORE_ENTRIES = (
+    ".snodo/",
+    "!.snodo/",
+    ".snodo/*",
+    "!.snodo/protocol.yml",
+    "!.snodo/plans/",
+    "!.snodo/plans/**",
+)
 
 
 def _consent_console() -> Console:
@@ -332,6 +340,24 @@ def _ensure_gitignore_entry(gitignore_path: Path, entry: str = GITIGNORE_ENTRY) 
 
     with gitignore_path.open("a") as f:
         f.write(prefix + norm_entry + "\n")
+    return True
+
+
+def _ensure_snodo_gitignore_entries(gitignore_path: Path) -> bool:
+    """Keep authored Snodo files visible while ignoring local machine state.
+
+    A repository with the old broad ``.snodo/`` rule is left unchanged.  That
+    preserves the operator's existing decision not to track any Snodo files;
+    opting into tracked protocol and plan files is deliberately explicit.
+    """
+    existing = gitignore_path.read_text() if gitignore_path.exists() else ""
+    lines = {line.strip() for line in existing.splitlines()}
+    if GITIGNORE_ENTRY in lines or GITIGNORE_ENTRY.rstrip("/") in lines:
+        return False
+
+    prefix = "" if not existing or existing.endswith("\n") else "\n"
+    with gitignore_path.open("a") as f:
+        f.write(prefix + "\n".join(SNODO_GITIGNORE_ENTRIES) + "\n")
     return True
 
 
@@ -447,10 +473,11 @@ def init_command(args) -> int:
         print(f"Error: Failed to create .snodo/ directory: {e}", file=sys.stderr)
         return 1
 
-    # .snodo/ hygiene: keep the protocol state out of git by default.
+    # .snodo/ hygiene: keep machine state out of git, but expose authored
+    # protocol and plan specifications for review and history.
     try:
-        if _ensure_gitignore_entry(Path(".gitignore"), ".snodo/"):
-            print("Added .snodo/ to .gitignore")
+        if _ensure_snodo_gitignore_entries(Path(".gitignore")):
+            print("Added .snodo/ machine-state rules to .gitignore")
     except Exception as e:
         print(f"Warning: Could not update .gitignore: {e}", file=sys.stderr)
 
