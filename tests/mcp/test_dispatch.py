@@ -101,3 +101,50 @@ def test_collision_detection_raises_at_init(protocol, project_dir):
         }
         with pytest.raises(ValueError, match="Duplicate tool handler registered for tool: list_jobs"):
             ProtocolMCPServer(protocol, project_dir)
+
+
+def test_stale_server_warns_once_and_marks_tool_response(server, monkeypatch, caplog):
+    """An installed upgrade is visible without changing the tool outcome."""
+    import logging
+
+    monkeypatch.setattr("snodo.mcp.server._installed_version", lambda: "newer")
+    with caplog.at_level(logging.WARNING, logger="snodo.mcp.server"):
+        first = server._decorate_result({"status": "ok"})
+        second = server._decorate_result({"status": "still-ok"})
+
+    assert first["status"] == "ok"
+    assert first["snodo_staleness"] == {
+        "serving": server.serving_version,
+        "installed": "newer",
+        "stale": True,
+    }
+    assert second["snodo_staleness"]["stale"] is True
+    assert caplog.messages.count(
+        f"snodo server is stale: serving {server.serving_version}, installed newer; "
+        "restart the server when convenient"
+    ) == 1
+
+
+def test_job_status_marks_provenance_from_a_different_server_version(tmp_path, monkeypatch):
+    """Completed job provenance identifies work run by a different install."""
+    from snodo.mcp.job_handlers import JobToolHandler
+
+    class FakeJobs:
+        def get_status(self, job_id):
+            return {
+                "id": job_id,
+                "status": "completed",
+                "cost": {"provenance": {"snodo_version": "old"}},
+                "task": {"task_id": "task-1", "description": "spec"},
+            }
+
+    monkeypatch.setattr("snodo.jobs.JobManager", lambda _root: FakeJobs())
+    result = JobToolHandler(str(tmp_path), serving_version="new").handle_get_job_status(
+        {"job_id": "j_old"}
+    )
+
+    assert result["snodo_version"] == {
+        "serving": "new",
+        "job": "old",
+        "mismatch": True,
+    }

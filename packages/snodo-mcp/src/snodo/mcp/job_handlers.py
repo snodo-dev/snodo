@@ -9,8 +9,9 @@ from typing import Any, Dict
 class JobToolHandler:
     """Handles get_job_status, list_jobs, and get_job_logs tool calls."""
 
-    def __init__(self, project_root: str):
+    def __init__(self, project_root: str, serving_version: str = "unknown"):
         self.project_root = project_root
+        self.serving_version = serving_version
 
     def handle_get_job_status(self, arguments: Dict[str, Any]) -> dict:
         """Get the current status of one dispatched job.
@@ -34,7 +35,7 @@ class JobToolHandler:
 
         task = full.get("task") if isinstance(full.get("task"), dict) else {}
         plan = task.get("plan_name") or ""
-        return {
+        result = {
             "id": full.get("id", job_id),
             "status": full.get("status", "unknown"),
             "pid": full.get("pid"),
@@ -52,6 +53,15 @@ class JobToolHandler:
             ),
             "task_spec": task.get("description", ""),
         }
+        provenance = full.get("cost", {}).get("provenance", {})
+        job_version = provenance.get("snodo_version") if isinstance(provenance, dict) else None
+        if job_version:
+            result["snodo_version"] = {
+                "serving": self.serving_version,
+                "job": job_version,
+                "mismatch": job_version != self.serving_version,
+            }
+        return result
 
     def handle_list_jobs(self, arguments: Dict[str, Any]) -> list:
         """List all jobs as bounded one-line summaries.
