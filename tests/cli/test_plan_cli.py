@@ -133,6 +133,19 @@ def test_plan_list_formats_unassigned_epoch_timestamp(plan_env, capsys):
     assert "ago" in output
 
 
+def test_plan_list_excerpts_summary_and_precedes_status_hint(plan_env, capsys):
+    """The table keeps long intent text compact and explains how to inspect it."""
+    planner = _planner(plan_env)
+    planner.decompose("A" * 120, "p1")
+
+    assert _plan_list(planner) == 0
+    output = capsys.readouterr().out
+    assert "A" * 120 not in output
+    assert "A" * 10 in output
+    assert "…" in output
+    assert output.index("Inspect a plan with: snodo plan status <name>") < output.index("Plans")
+
+
 def test_plan_list_pages_tty_output_but_not_piped_output(plan_env, monkeypatch):
     """Interactive output uses the pager; redirected output remains a stream."""
     from contextlib import nullcontext
