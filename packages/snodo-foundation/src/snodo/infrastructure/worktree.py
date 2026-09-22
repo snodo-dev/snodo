@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 _logger = logging.getLogger(__name__)
 
