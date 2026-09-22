@@ -422,6 +422,7 @@ def create_worktree(
     branch: Optional[str] = None,
     base: Optional[str] = None,
     plan_name: Optional[str] = None,
+    protocol: Optional[object] = None,
 ) -> Path:
     """Create a git worktree for *task_id*.
 
@@ -441,6 +442,7 @@ def create_worktree(
     # legacy plan identity; the selected path is the task's durable workspace.
     if wt_path.exists():
         _logger.info("Reusing existing worktree %s for task %s", wt_path, task_id)
+        _prepare_task_environment(wt_path, protocol)
         return wt_path
 
     with merge_lock(project_root):
@@ -496,7 +498,54 @@ def create_worktree(
             file=sys.stderr,
         )
 
+    _prepare_task_environment(wt_path, protocol)
     return wt_path
+
+
+def _prepare_task_environment(worktree_path: Path, protocol: Optional[object] = None) -> None:
+    """Install the worktree's dependencies before a coder can use it."""
+    from snodo.infrastructure.environment import prepare_environment
+
+    result = prepare_environment(worktree_path, protocol=protocol)
+    if result.status == "executed":
+        _logger.info("Prepared task environment with %s", result.command)
+
+
+def report_setup_failure(task_id: str, failure: Exception, audit_log=None, existing_worktree: bool = False) -> None:
+    """Print and audit a setup failure without dispatching the task coder."""
+    from snodo.infrastructure.environment import EnvironmentPrepError
+
+    if isinstance(failure, EnvironmentPrepError):
+        print(f"Error: {failure}", file=sys.stderr)
+    elif isinstance(failure, WorktreeIsolationError):
+        print(f"Error: {failure}", file=sys.stderr)
+    else:
+        print(f"Error: Worktree creation failed: {failure}", file=sys.stderr)
+    if existing_worktree:
+        print("  A pre-created worktree (SNODO_WORKTREE_PATH) could not be used.", file=sys.stderr)
+    if not isinstance(failure, EnvironmentPrepError):
+        print(
+            "  Task isolation is required by default. Re-run with --no-isolation "
+            "only if you explicitly accept that the agent writes to your current "
+            "working tree.",
+            file=sys.stderr,
+        )
+    if not audit_log:
+        return
+    try:
+        if isinstance(failure, EnvironmentPrepError):
+            audit_log.append_event("environment_prep_failed", {
+                "op": "environment_prep_failed", "task_ref": task_id,
+                "command": failure.command, "exit_code": failure.exit_code,
+                "output": failure.output,
+            })
+        else:
+            audit_log.append_event("worktree_isolation_failed", {
+                "op": "worktree_isolation_failed", "task_ref": task_id,
+                "reason": str(failure),
+            })
+    except Exception as exc:
+        _logger.warning("Could not record worktree setup failure: %s", exc)
 
 
 def setup_for_task(
@@ -505,6 +554,7 @@ def setup_for_task(
     spec: str,
     existing_worktree_path: Optional[str] = None,
     plan_name: Optional[str] = None,
+    protocol: Optional[object] = None,
 ) -> Optional[str]:
     """Set up a worktree for *task_id* — create if needed, return path.
 
@@ -517,8 +567,11 @@ def setup_for_task(
     - ``_execute_task`` (CLI inline path — creates fresh)
     """
     if existing_worktree_path:
+        _prepare_task_environment(Path(existing_worktree_path), protocol)
         return existing_worktree_path
-    return str(create_worktree(project_root, task_id, spec, plan_name=plan_name))
+    return str(create_worktree(
+        project_root, task_id, spec, plan_name=plan_name, protocol=protocol,
+    ))
 
 
 def _remove_worktree_metadata(repo, wt_path: Path) -> None:

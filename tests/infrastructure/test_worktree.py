@@ -128,6 +128,33 @@ def test_create_worktree_branches_off_non_main_base(repo):
     assert (wt / "base_only.txt").exists()  # inherited from master, not main
 
 
+def test_create_worktree_prepares_dependencies_before_return(repo, monkeypatch):
+    calls = []
+
+    def prepare(path, protocol=None):
+        calls.append((Path(path), protocol))
+        return type("Result", (), {"status": "executed", "command": "npm ci"})()
+
+    monkeypatch.setattr("snodo.infrastructure.environment.prepare_environment", prepare)
+    protocol = object()
+    wt = create_worktree(str(repo), "task_prepare", "install dependencies", protocol=protocol)
+
+    assert calls == [(wt, protocol)]
+    assert wt.exists()
+
+
+def test_create_worktree_propagates_failed_dependency_setup(repo, monkeypatch):
+    from snodo.infrastructure.environment import EnvironmentPrepError
+
+    def fail(path, protocol=None):
+        raise EnvironmentPrepError("npm ci", 127, "npm: command not found")
+
+    monkeypatch.setattr("snodo.infrastructure.environment.prepare_environment", fail)
+
+    with pytest.raises(EnvironmentPrepError, match="npm: command not found"):
+        create_worktree(str(repo), "task_prepare_fail", "install dependencies")
+
+
 def test_plan_scopes_branch_and_worktree_names(repo):
     first = create_worktree(str(repo), "task_1_1", "Add the shared feature", plan_name="alpha")
     second = create_worktree(str(repo), "task_1_1", "Add the shared feature", plan_name="beta")
