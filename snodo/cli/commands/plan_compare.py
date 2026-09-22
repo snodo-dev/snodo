@@ -192,6 +192,13 @@ def compare_models_command(args) -> int:
         result.update({"plan": plan, "task": task, "job": candidate_path.parent.name,
                        "baseline": str(baseline_path.parent),
                        "candidate_patch_sha256": hashlib.sha256(candidate_diff.encode()).hexdigest()})
+        benchmark_branch = getattr(args, "benchmark_branch", None)
+        if benchmark_branch:
+            result["benchmark"] = {
+                "branch": benchmark_branch,
+                "base": getattr(args, "benchmark_base", None),
+                "status": getattr(args, "benchmark_status", None),
+            }
     except (OSError, ValueError) as exc:
         if json_out:
             from snodo.cli.json_output import emit_error
@@ -202,6 +209,12 @@ def compare_models_command(args) -> int:
         from snodo.cli.json_output import emit_json, schema_name
         return emit_json({"schema": schema_name("models-compare"), "ok": True, **result})
     print(f"Candidate comparison: {result['delta_score']:+.0f} vs baseline ({result['direction']})")
+    if "benchmark" in result:
+        benchmark = result["benchmark"]
+        print(f"  benchmark job:     {result['job']}")
+        print(f"  benchmark branch:  {benchmark['branch']}")
+        print(f"  benchmark base:    {benchmark['base']}")
+        print(f"  benchmark status:  {benchmark['status']}")
     print(f"  models:            {result['models']['baseline']} -> {result['models']['candidate']}")
     content = result["signals"]["content"]
     print(f"  content:           F1 {content['f1']:.2f}, precision {content['precision']:.2f}, recall {content['recall']:.2f} ({content['direction']})")

@@ -71,6 +71,9 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
     if task_args.get("verbose"):
         cmd.append("--verbose")
 
+    if task_args.get("retain_worktree"):
+        cmd.append("--retain-worktree")
+
     if task_args.get("no_isolation"):
         cmd.append("--no-isolation")
 

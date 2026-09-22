@@ -24,6 +24,8 @@ _logger = logging.getLogger(__name__)
 
 def _record_task_start(project_root: str, task_id: str, spec: str) -> None:
     """Record initial task metadata under .snodo/tasks/<task_id>/state.json."""
+    if os.environ.get("SNODO_BENCHMARK") == "1":
+        return
     try:
         from snodo.infrastructure.state import atomic_update_json
 
@@ -56,6 +58,8 @@ def _record_task_completion(
     model: Optional[str] = None,
 ) -> None:
     """Record final task completion, halt payload, and measured task cost."""
+    if os.environ.get("SNODO_BENCHMARK") == "1":
+        return
     try:
         from snodo.infrastructure.state import atomic_update_json
         from snodo.version import __version__

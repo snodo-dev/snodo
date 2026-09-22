@@ -43,6 +43,8 @@ def register(app: typer.Typer) -> None:
             help="Capture a completed task solution as its local plan/task baseline.",
         ),
         compare: bool = typer.Option(False, "--compare", help="Compare a candidate job with a stored task baseline"),
+        benchmark_run: bool = typer.Option(False, "--benchmark-run", help="Run a baselined task with a selected model, without merging"),
+        model: Optional[str] = typer.Option(None, "--model", help="Model for --benchmark-run"),
         plan: Optional[str] = typer.Option(None, "--plan", help="Plan owning the baseline task (--set-baseline / --compare)"),
         task: Optional[str] = typer.Option(None, "--task", "--task-id", help="Plan task id (--set-baseline / --compare)"),
         job: Optional[str] = typer.Option(None, "--job", help="Candidate job id for --compare (latest matching job by default)"),
@@ -66,6 +68,8 @@ def register(app: typer.Typer) -> None:
             benchmark_runs=benchmark_runs,
             set_baseline=set_baseline,
             compare=compare,
+            benchmark_run=benchmark_run,
+            model=model,
             plan=plan,
             task=task,
             job=job,
@@ -118,6 +122,10 @@ def models_command(args) -> int:
     """List configured providers, their models, or project usage stats."""
     if getattr(args, "set_baseline", False):
         return models_set_baseline_command(args)
+
+    if getattr(args, "benchmark_run", False):
+        from snodo.cli.commands.models_benchmark import models_benchmark_run_command
+        return models_benchmark_run_command(args)
 
     if getattr(args, "stats", False):
         return models_stats_command(args)
