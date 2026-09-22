@@ -260,6 +260,8 @@ class JobManager:
                     self.project_root,
                     task_id,
                     task_desc,
+                    branch=task_args.get("branch"),
+                    base=task_args.get("base"),
                     plan_name=task_args.get("task_plan"),
                 ))
                 task_args["worktree_path"] = wt_path

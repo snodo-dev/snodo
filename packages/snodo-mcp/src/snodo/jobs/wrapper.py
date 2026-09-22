@@ -74,6 +74,10 @@ def main():
                 os.environ["SNODO_TASK_PLAN"] = str(task_data["task_plan"])
             else:
                 os.environ.pop("SNODO_TASK_PLAN", None)
+            if task_data.get("benchmark"):
+                os.environ["SNODO_BENCHMARK"] = "1"
+            else:
+                os.environ.pop("SNODO_BENCHMARK", None)
             task_id = resolve_task_identity(task_data, job_id)
     except Exception as e:
         _logger.debug("Failed to set SNODO_WORKTREE_PATH from task.json: %s", e)

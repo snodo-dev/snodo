@@ -26,6 +26,7 @@ from snodo.cli.commands.models_cmd import (
     models_set_baseline_command,
     register,
 )
+from snodo.cli.commands.models_benchmark import models_benchmark_run_command
 from snodo.cli.commands.models_check import run_canary_call
 
 
@@ -135,6 +136,61 @@ def test_set_baseline_requires_completed_task(tmp_path, monkeypatch):
     monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(tmp_path))
     args = SimpleNamespace(set_baseline=True, plan="demo", task="task-1", json=False)
     assert models_set_baseline_command(args) == 1
+
+
+def test_benchmark_run_uses_wave_spec_base_and_explicit_job(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "project"
+    plan_dir = root / ".snodo" / "plans" / "demo"
+    (plan_dir / "wave_1").mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text("name: demo\nwaves:\n  - id: 1\n    tasks: ['1.1_task']\n")
+    (plan_dir / "wave_1" / "1.1_task_task.md").write_text("Do the task\n")
+    baseline_dir = root / ".snodo" / "baselines" / "demo" / "1.1_task"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "baseline.json").write_text(json.dumps({
+        "schema": "snodo.task-baseline.v1",
+        "change_size": {"base_sha": "base-sha"},
+    }))
+    monkeypatch.setattr("snodo.cli.commands.models_benchmark.resolve_project_root", lambda: str(root))
+
+    submitted = {}
+
+    class FakeManager:
+        def __init__(self, project_root):
+            assert project_root == str(root)
+
+        def submit(self, task_args):
+            submitted.update(task_args)
+            return "j_benchmark"
+
+        def wait_for(self, job_id):
+            assert job_id == "j_benchmark"
+            return {"status": "completed"}
+
+    monkeypatch.setattr("snodo.jobs.JobManager", FakeManager)
+    monkeypatch.setattr(
+        "snodo.cli.commands.plan_compare.compare_models_command",
+        lambda args: (print(f"compared {args.job}") or 0),
+    )
+    result = models_benchmark_run_command(
+        SimpleNamespace(plan="demo", task="1.1_task", model="candidate/model", json=False)
+    )
+    assert result == 0
+    assert submitted["base"] == "base-sha"
+    assert submitted["description"] == "Do the task\n"
+    assert submitted["benchmark"] is True
+    assert submitted["retain_worktree"] is True
+    assert submitted["branch"].startswith("benchmark/demo/1.1_task/")
+    assert "compared j_benchmark" in capsys.readouterr().out
+
+
+def test_benchmark_run_requires_baseline(tmp_path, monkeypatch, capsys):
+    (tmp_path / ".snodo" / "plans" / "demo").mkdir(parents=True)
+    monkeypatch.setattr("snodo.cli.commands.models_benchmark.resolve_project_root", lambda: str(tmp_path))
+    result = models_benchmark_run_command(
+        SimpleNamespace(plan="demo", task="1.1_task", model="candidate/model", json=False)
+    )
+    assert result == 1
+    assert "baseline.json" in capsys.readouterr().err
 
 
 def test_models_command_no_providers_configured(monkeypatch, capsys):
