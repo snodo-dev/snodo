@@ -117,6 +117,22 @@ def test_plan_list_includes_task_without_plan(plan_env, capsys):
     assert "(unassigned) manual_task: errored" in capsys.readouterr().out
 
 
+def test_plan_list_formats_unassigned_epoch_timestamp(plan_env, capsys):
+    """Standalone task epoch timestamps render in the table without crashing."""
+    import json
+
+    planner = _planner(plan_env)
+    task_dir = plan_env / ".snodo" / "tasks" / "manual_task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text(json.dumps({"status": "running", "started_at": 1.5}))
+
+    assert _plan_list(planner) == 0
+    output = capsys.readouterr().out
+    assert "manual_task" in output
+    assert "1970-01-01" in output
+    assert "ago" in output
+
+
 def test_plan_list_pages_tty_output_but_not_piped_output(plan_env, monkeypatch):
     """Interactive output uses the pager; redirected output remains a stream."""
     from contextlib import nullcontext

@@ -291,10 +291,13 @@ def _unassigned_tasks(project_root: Path, planned: set[str]) -> list[dict]:
             except (OSError, ValueError):
                 continue
             if isinstance(state, dict):
+                last_active = state.get("updated_at") or state.get("started_at")
+                if isinstance(last_active, (int, float)):
+                    last_active = datetime.fromtimestamp(last_active, timezone.utc).isoformat()
                 tasks[task_dir.name] = {
                     "task": task_dir.name,
                     "status": _status_value(state),
-                    "last_active": state.get("updated_at") or state.get("started_at"),
+                    "last_active": last_active,
                 }
     try:
         from snodo.jobs import JobManager
