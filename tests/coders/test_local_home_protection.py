@@ -82,6 +82,7 @@ def test_commit_message_carries_task_and_findings(git_project_with_local_home):
     repo_dir, local_home = git_project_with_local_home
     for path in local_home.iterdir():
         path.unlink()
+    local_home.rmdir()
     coder = _DummyInPlaceCoder(repo_dir)
     coder.last_report = SimpleNamespace(findings="Found a third call site")
     (repo_dir / "src" / "app.py").write_text("print('updated')\n")
@@ -98,6 +99,7 @@ def test_commit_message_identifies_task_without_findings(git_project_with_local_
     repo_dir, local_home = git_project_with_local_home
     for path in local_home.iterdir():
         path.unlink()
+    local_home.rmdir()
     coder = _DummyInPlaceCoder(repo_dir)
     (repo_dir / "src" / "app.py").write_text("print('updated')\n")
 
