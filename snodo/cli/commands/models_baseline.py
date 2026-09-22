@@ -30,8 +30,97 @@ def _read_json(path: Path) -> Optional[dict]:
     return data if isinstance(data, dict) else None
 
 
+class _TaskRunLookupError(ValueError):
+    """The recorded run exists but its evidence cannot be attributed safely."""
+
+
+def _merge_event(project_root: Path, plan: str, task: str) -> Optional[dict]:
+    """Return the latest task-specific merge event for a plan task."""
+    try:
+        from snodo.infrastructure.audit import AuditLog
+        events = AuditLog(str(project_root / ".snodo" / "audit.log")).get_history("task_merged")
+    except Exception as exc:
+        _logger.debug("Could not read task merge history: %s", exc)
+        return None
+    prefix = f"task/{plan}/{task}/"
+    for event in reversed(events):
+        data = event.data or {}
+        if data.get("task_ref") == task and str(data.get("branch", "")).startswith(prefix):
+            if isinstance(data.get("merge_sha"), str) and data["merge_sha"]:
+                return data
+    return None
+
+
+def _inline_change_size(project_root: Path, merge_event: dict) -> dict:
+    """Build a task-only range from the merge commit recorded in the audit log."""
+    from snodo.tools.git import open_repo
+
+    merge_sha = merge_event["merge_sha"]
+    try:
+        with open_repo(str(project_root)) as repo:
+            merge_commit = repo.commit(merge_sha)
+            if not merge_commit.parents:
+                raise _TaskRunLookupError("the task merge commit has no parent")
+            base_sha = merge_commit.parents[0].hexsha
+            paths = repo.git.diff("--name-only", base_sha, merge_sha).splitlines()
+    except _TaskRunLookupError:
+        raise
+    except Exception as exc:
+        raise _TaskRunLookupError(
+            f"could not resolve task merge commit '{merge_sha}': {exc}"
+        ) from exc
+    if not paths:
+        raise _TaskRunLookupError("the task merge commit has no attributable diff")
+    return {
+        "base_sha": base_sha,
+        "head_sha": merge_sha,
+        "paths": sorted(set(paths)),
+        "files_changed": len(set(paths)),
+    }
+
+
+def _inline_task_job(project_root: Path, plan: str, task: str, job_id: Optional[str], jobs_dir: Path) -> Optional[dict]:
+    """Resolve a task executed inline inside a completed plan-level job."""
+    merge_event = _merge_event(project_root, plan, task)
+    if not merge_event:
+        return None
+
+    candidates = []
+    job_dirs = [jobs_dir / job_id] if job_id else list(jobs_dir.iterdir())
+    for job_dir in job_dirs:
+        if not job_dir.is_dir():
+            continue
+        task_data = _read_json(job_dir / "task.json") or {}
+        state = _read_json(job_dir / "state.json") or {}
+        if task_data.get("plan_name") != plan:
+            continue
+        if task_data.get("task_id") or task_data.get("retry_task_id"):
+            continue
+        if str(state.get("status", "")).lower() != "completed":
+            continue
+        candidates.append({"state": state, "job_dir": job_dir})
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item["state"].get("completed_at") or item["state"].get("created_at") or 0)
+    selected = candidates[-1]
+    state = dict(selected["state"])
+    cost = dict(state.get("cost") or {})
+    task_state = _read_json(project_root / ".snodo" / "tasks" / task / "state.json") or {}
+    task_cost = task_state.get("cost") if isinstance(task_state.get("cost"), dict) else {}
+    provenance = task_cost.get("provenance") if isinstance(task_cost.get("provenance"), dict) else {}
+    if not provenance:
+        provenance = cost.get("provenance") if isinstance(cost.get("provenance"), dict) else {}
+    if not provenance.get("model"):
+        raise _TaskRunLookupError("the inline task has no attributable model provenance")
+    cost["change_size"] = _inline_change_size(project_root, merge_event)
+    cost["provenance"] = provenance
+    state["cost"] = cost
+    selected["state"] = state
+    return selected
+
+
 def _task_job(project_root: Path, plan: str, task: str, job_id: Optional[str] = None) -> Optional[dict]:
-    """Find the latest completed job that recorded *plan*/*task*."""
+    """Find the latest completed per-task job or safely resolve an inline task."""
     jobs_dir = project_root / ".snodo" / "jobs"
     candidates = []
     if not jobs_dir.is_dir():
@@ -53,27 +142,15 @@ def _task_job(project_root: Path, plan: str, task: str, job_id: Optional[str] = 
             candidates.append({"state": state, "job_dir": job_dir})
 
     if not candidates:
-        return None
+        return _inline_task_job(project_root, plan, task, job_id, jobs_dir)
     candidates.sort(key=lambda item: item["state"].get("completed_at") or item["state"].get("created_at") or 0)
     return candidates[-1]
 
 
 def _merge_sha(project_root: Path, plan: str, task: str) -> Optional[str]:
     """Return the recorded merge commit for this plan task, when available."""
-    try:
-        from snodo.infrastructure.audit import AuditLog
-        events = AuditLog(str(project_root / ".snodo" / "audit.log")).get_history("task_merged")
-    except Exception as exc:
-        _logger.debug("Could not read task merge history: %s", exc)
-        return None
-    prefix = f"task/{plan}/{task}/"
-    for event in reversed(events):
-        data = event.data or {}
-        if data.get("task_ref") == task and str(data.get("branch", "")).startswith(prefix):
-            merge_sha = data.get("merge_sha")
-            if isinstance(merge_sha, str) and merge_sha:
-                return merge_sha
-    return None
+    event = _merge_event(project_root, plan, task)
+    return event.get("merge_sha") if event else None
 
 
 def _git_diff(project_root: Path, change_size: dict, merge_sha: Optional[str] = None) -> str:
@@ -125,7 +202,10 @@ def models_set_baseline_command(args) -> int:
     if not (root / ".snodo" / "plans" / plan).is_dir():
         return fail(f"Plan '{plan}' not found.")
 
-    job = _task_job(root, plan, task)
+    try:
+        job = _task_job(root, plan, task)
+    except _TaskRunLookupError as exc:
+        return fail(f"Could not attribute the recorded run for task '{plan}/{task}': {exc}.")
     if not job:
         return fail(f"Could not locate the recorded run for task '{plan}/{task}'.")
     state = job["state"]
