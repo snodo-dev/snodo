@@ -384,16 +384,18 @@ def task_list_command(args) -> int:
         print("No task branches in current session.")
         return 0
 
-    print(f"{'TASK ID':<14} {'BRANCH':<50} {'ATTEMPT':<8} {'STATUS'}")
-    print("-" * 86)
-
     from snodo.cli.commands import followup
 
-    for tid, info in sorted(tasks.items()):
-        branch = info["branch"]
-        attempt = info["attempt"]
-        status = info["status"]
-        print(f" {tid:<14} {branch:<50} {attempt:<8} {status}")
+    entries = sorted(
+        tasks.values(),
+        key=lambda info: info["timestamp"].timestamp() if info["timestamp"] else float("-inf"),
+        reverse=True,
+    )
+    from snodo.cli.task_list_display import render_task_table
+    render_task_table(entries)
+
+    for info in entries:
+        tid = info["task_id"]
         # Offer the live surface only for a task proven to be running (a live
         # record on disk), never for the inferred "in_progress" label alone —
         # that can denote abandoned work whose `snodo task show` still answers.
