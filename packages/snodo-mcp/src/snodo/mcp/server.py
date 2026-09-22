@@ -14,6 +14,7 @@ Transport is handled by FastMCP (see transport.py).
 import asyncio
 import functools
 import hashlib
+import importlib.metadata
 import logging
 import threading
 from typing import Any, Dict, List, Optional
@@ -35,6 +36,15 @@ from snodo.mcp.recon_handlers import ReconToolHandler
 from snodo.mcp.plan_handlers import PlanToolHandler
 
 logger = logging.getLogger(__name__)
+
+
+def _installed_version() -> str:
+    """Read the distribution metadata without relying on the cached package."""
+    try:
+        return importlib.metadata.version("snodo")
+    except importlib.metadata.PackageNotFoundError:
+        from snodo.version import __version__
+        return __version__
 
 
 class MCPError(Exception):
@@ -71,6 +81,10 @@ class ProtocolMCPServer:
         self.project_root = project_root
         self.mode_id = mode_id
         self._audit_log = audit_log
+        from snodo.version import __version__
+        self.serving_version = __version__
+        self._stale_warning_emitted = False
+        self._version_lock = threading.Lock()
         self.token_issuer = token_issuer or TokenIssuer(audit_log=audit_log)
         self._validation_token: Optional[ValidationToken] = None
         self._token_lock = threading.Lock()
@@ -118,7 +132,7 @@ class ProtocolMCPServer:
             "pr": self.pr,
             "planner": self.planner,
         }
-        self._job_handler = JobToolHandler(project_root)
+        self._job_handler = JobToolHandler(project_root, serving_version=self.serving_version)
         self._model_handler = ModelToolHandler()
         self._decision_handler = DecisionToolHandler(project_root)
         self._recon_handler = ReconToolHandler(project_root)
@@ -147,6 +161,33 @@ class ProtocolMCPServer:
         """Log to injected audit log if available."""
         if self._audit_log is not None:
             self._audit_log.append_event(event_type, data)
+
+    def _version_status(self) -> Optional[dict]:
+        """Return a stale-install diagnostic, if the installed code moved on."""
+        installed = _installed_version()
+        if installed == self.serving_version:
+            return None
+        with self._version_lock:
+            if not self._stale_warning_emitted:
+                logger.warning(
+                    "snodo server is stale: serving %s, installed %s; restart "
+                    "the server when convenient",
+                    self.serving_version,
+                    installed,
+                )
+                self._stale_warning_emitted = True
+        return {
+            "serving": self.serving_version,
+            "installed": installed,
+            "stale": True,
+        }
+
+    def _decorate_result(self, result: Any) -> Any:
+        """Make an installed-version change visible without changing outcomes."""
+        status = self._version_status()
+        if status is not None and isinstance(result, dict):
+            return {**result, "snodo_staleness": status}
+        return result
 
     @staticmethod
     def _args_hash(arguments: Dict[str, Any]) -> str:
@@ -308,11 +349,11 @@ class ProtocolMCPServer:
                 if current_attr is not handler:
                     handler = current_attr
             if progress_sink is not None and name in self._PROGRESS_TOOLS:
-                return handler(arguments, progress_sink=progress_sink)
-            return handler(arguments)
+                return self._decorate_result(handler(arguments, progress_sink=progress_sink))
+            return self._decorate_result(handler(arguments))
 
         # Dispatch to backing MCP
-        return self._dispatch_tool(name, schema, arguments)
+        return self._decorate_result(self._dispatch_tool(name, schema, arguments))
 
     def is_slow_tool(self, name: str) -> bool:
         """Return True if *name* is a tool whose handler may block the event loop."""
