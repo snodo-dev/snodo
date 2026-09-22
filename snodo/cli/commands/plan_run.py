@@ -304,14 +304,15 @@ def _correct_stale_unmerged(planner, args, task_id: str, spec: str) -> bool:
     the caller moves on. When the branch is genuinely unmerged, or absent,
     return False and let the caller keep today's behaviour.
     """
-    from snodo.infrastructure.worktree import task_branch_is_merged, task_branch_name
+    from snodo.infrastructure.worktree import task_branch_is_merged
     from snodo.tools.git import resolve_base_branch
 
     project_root = str(planner.project_root)
-    if task_branch_is_merged(project_root, task_id, spec) is not True:
+    if task_branch_is_merged(project_root, task_id, spec, args.plan) is not True:
         return False
 
-    branch = task_branch_name(task_id, spec)
+    from snodo.infrastructure.worktree import _task_identity
+    _, branch = _task_identity(project_root, task_id, spec, args.plan)
     base = resolve_base_branch(project_root)
     reason = f"branch {branch} is already on {base}"
 
@@ -564,6 +565,7 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
             protocol=protocol,
             session_id=session_id,
             audit_log=audit_log,
+            plan_name=args.plan,
         )
         end_mono = time.monotonic()
         end_wall = time.time()
@@ -823,6 +825,7 @@ def _execute_wave_tasks_concurrent(
                 protocol=protocol,
                 session_id=session_id,
                 audit_log=audit_log,
+                plan_name=args.plan,
             )
             end_mono = time.monotonic()
             end_wall = time.time()
@@ -870,6 +873,7 @@ def _execute_wave_tasks_concurrent(
             "verbose": getattr(args, "verbose", False),
             "no_isolation": getattr(args, "no_isolation", False),
             "cwd": project_root,
+            "task_plan": args.plan,
         }
         # Name the plan-run job that spawned this task, when there is one, so
         # list_jobs can tell a plan run from the tasks it spawned (Fixes #254).
