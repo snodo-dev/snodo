@@ -511,6 +511,43 @@ def _prepare_task_environment(worktree_path: Path, protocol: Optional[object] = 
         _logger.info("Prepared task environment with %s", result.command)
 
 
+def report_setup_failure(task_id: str, failure: Exception, audit_log=None, existing_worktree: bool = False) -> None:
+    """Print and audit a setup failure without dispatching the task coder."""
+    from snodo.infrastructure.environment import EnvironmentPrepError
+
+    if isinstance(failure, EnvironmentPrepError):
+        print(f"Error: {failure}", file=sys.stderr)
+    elif isinstance(failure, WorktreeIsolationError):
+        print(f"Error: {failure}", file=sys.stderr)
+    else:
+        print(f"Error: Worktree creation failed: {failure}", file=sys.stderr)
+    if existing_worktree:
+        print("  A pre-created worktree (SNODO_WORKTREE_PATH) could not be used.", file=sys.stderr)
+    if not isinstance(failure, EnvironmentPrepError):
+        print(
+            "  Task isolation is required by default. Re-run with --no-isolation "
+            "only if you explicitly accept that the agent writes to your current "
+            "working tree.",
+            file=sys.stderr,
+        )
+    if not audit_log:
+        return
+    try:
+        if isinstance(failure, EnvironmentPrepError):
+            audit_log.append_event("environment_prep_failed", {
+                "op": "environment_prep_failed", "task_ref": task_id,
+                "command": failure.command, "exit_code": failure.exit_code,
+                "output": failure.output,
+            })
+        else:
+            audit_log.append_event("worktree_isolation_failed", {
+                "op": "worktree_isolation_failed", "task_ref": task_id,
+                "reason": str(failure),
+            })
+    except Exception as exc:
+        _logger.warning("Could not record worktree setup failure: %s", exc)
+
+
 def setup_for_task(
     project_root: str,
     task_id: str,
