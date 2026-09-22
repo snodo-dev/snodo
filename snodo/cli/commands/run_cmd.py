@@ -1095,9 +1095,7 @@ def _auto_merge_block_reason(protocol, mode, closure_tree, worktree_path_val, wo
     report of a resolved-but-unmerged branch, so the reason a run shows is the
     same reason the decision used.
     """
-    if os.environ.get("SNODO_BENCHMARK") == "1":
-        return "benchmark run (merge disabled)"
-    if not getattr(protocol, "auto_merge_enabled", lambda _m: False)(mode):
+    if os.environ.get("SNODO_BENCHMARK") == "1" or not getattr(protocol, "auto_merge_enabled", lambda _m: False)(mode):
         return f"auto-merge not enabled for mode '{mode}'"
     if closure_tree is None or closure_tree.outcome != "resolved":
         return "closure not resolved"
