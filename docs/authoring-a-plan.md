@@ -136,9 +136,13 @@ functions involved, and say what is already correct so the reader does not
 re-do it. Point at the authoritative records (ADRs, design files) by path, and
 state that where the spec and the record disagree, the record wins.
 
-**THE CHAIN** — the numbered links that must all exist for the task to be
-done. This is what stops half-implementation. Each link names a file and what
-changes in it. The last link is usually a test.
+**THE CHAIN** — the numbered links of states that must all be true for the task
+to be done. Each link names a file and the state that must be true in it when
+the task is done; describe the outcome, not the code to write. For example,
+`src/cart/total.ts` — an empty cart reports a total of zero is a good link.
+“Return 0 when `items.length` is 0” prescribes the solution. Name every file
+the task will change so possible same-wave file overlap can be detected at plan
+time. The last link is usually a test.
 
 **CONSTRAINTS** — what must not change, and the invariants that survive. Say
 the reason, not just the rule; a reviewer that knows why can catch a violation
@@ -316,7 +320,8 @@ structural errors that refuse execution, along with plan-time checks from
   two same-wave specs cite the same path; citations are only a proxy for files
   either task will actually change. Review whether the tasks could conflict. If
   so, split or reorder them into separate waves; otherwise, keep the wave
-  intentionally parallel.
+  intentionally parallel. Name every file a task will change in its spec so
+  those citations can reveal possible overlap before dispatch.
 
 Read the validation result and the complete proposed plan, including every
 spec. Validation is the human gate, not a substitute for reviewing whether the
