@@ -19,6 +19,7 @@ from snodo.infrastructure.worktree import (
     teardown_task_worktree,
     worktree_path,
 )
+from snodo.infrastructure.worktree import _spec_overlap_paths, _spec_referenced_paths
 from snodo.tools.git import GitError, resolve_base_branch
 
 
@@ -309,6 +310,37 @@ def test_check_spec_paths_exist_against_worktree(repo, tmp_path):
         worktree=str(fake_worktree),
     )
     assert "docs/design/card-footer-qr.html" in missing
+
+
+def test_quoted_evidence_is_not_a_repository_citation(repo):
+    spec = '''Investigate the failure.
+
+```json
+{"callback": "https://example.test/hooks/task/result"}
+```
+
+The server log said "s3/bucket/task/result.json".
+'''
+
+    assert _spec_referenced_paths(spec) == []
+    assert check_spec_paths_exist(str(repo), spec) == []
+
+
+def test_real_citation_outside_quoted_evidence_is_still_guarded(repo):
+    missing = check_spec_paths_exist(
+        str(repo),
+        'Use the repository contract in `src/contracts/result.json`.\n'
+        'The log contained "s3/bucket/task/result.json".',
+    )
+
+    assert missing == ["src/contracts/result.json"]
+
+
+def test_non_touch_path_does_not_create_overlap_citation():
+    spec = "Do not touch `src/shared.py`; a sibling task owns it."
+
+    assert _spec_referenced_paths(spec) == ["src/shared.py"]
+    assert _spec_overlap_paths(spec) == []
 
 
 def test_surface_untracked_files_lists_untracked(repo):
