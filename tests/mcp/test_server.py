@@ -29,6 +29,7 @@ from snodo.mcp.transport import (
     _make_tool_handler,
     build_fastmcp_server,
 )
+from snodo.mcp.guide import guide_text
 
 from tests.mcp._validate_helpers import validation_passing
 
@@ -2029,6 +2030,30 @@ class TestInstructions:
         assert mcp.instructions is not None
         assert "ASYNCHRONOUS" in mcp.instructions
         assert "test" in mcp.instructions
+
+    def test_guide_is_registered_in_every_mode(self, producer_server):
+        """The guide is available independently of the mode capability grant."""
+        import asyncio
+
+        mcp = build_fastmcp_server(producer_server)
+        tool_names = {tool.name for tool in asyncio.run(mcp.list_tools())}
+        assert "guide" in tool_names
+        content, _ = asyncio.run(mcp.call_tool("guide", {}))
+        assert "Snodo getting started" in content[0].text
+
+    def test_guide_default_is_source_backed_and_mode_honest(self, server):
+        """The default path contains documented advice without naming withheld tools."""
+        exposed = {tool["name"] for tool in server.get_tools()}
+        text = guide_text(server.project_root, exposed)
+        assert "INTENT" in text
+        assert "validator" in text.lower()
+        assert "dispatch_task" not in text
+
+    def test_guide_topics_return_document_sections(self, server):
+        text = guide_text(server.project_root, {tool["name"] for tool in server.get_tools()}, "halts")
+        assert "pass" in text
+        assert "blocker" in text
+        assert "environment_error" in text
 
 
 class TestResources:
