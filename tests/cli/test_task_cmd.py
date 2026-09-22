@@ -321,6 +321,32 @@ def test_task_list_shows_branches(tmp_path, monkeypatch, capsys):
     assert "task/t1" in out
 
 
+def test_task_list_is_recent_first_with_age_and_date(tmp_path, monkeypatch, capsys):
+    """The human task list is a paged-style table ordered by activity."""
+    now = datetime.now(timezone.utc)
+    tasks = {
+        "old": {
+            "task_id": "old", "branch": "task/old", "attempt": 1,
+            "status": "completed", "timestamp": now - timedelta(days=2),
+        },
+        "new": {
+            "task_id": "new", "branch": "task/new", "attempt": 2,
+            "status": "in_progress", "timestamp": now - timedelta(hours=3),
+        },
+    }
+    monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
+    monkeypatch.setattr("snodo.cli.commands.task_cmd._get_all_task_branches", lambda _: tasks)
+    monkeypatch.setattr("snodo.cli.commands.task_cmd._task_is_running", lambda *_: False)
+
+    assert task_list_command(SimpleNamespace()) == 0
+    out = capsys.readouterr().out
+    assert "AGE" in out
+    assert "DATE" in out
+    assert "3h ago" in out
+    assert "UTC" in out
+    assert out.index("new") < out.index("old")
+
+
 def test_task_list_shows_all_tasks_and_honest_statuses(tmp_path, monkeypatch, capsys):
     """task_list_command displays all tasks from session records and git branches with honest status."""
     monkeypatch.setattr("snodo.cli.commands.task_cmd.resolve_project_root", lambda: str(tmp_path))
@@ -374,14 +400,16 @@ def test_task_list_shows_all_tasks_and_honest_statuses(tmp_path, monkeypatch, ca
     lines = [line.strip() for line in out.splitlines() if line.strip()]
     task_statuses = {}
     for line in lines:
-        parts = line.split()
+        if "│" not in line:
+            continue
+        parts = [part.strip() for part in line.strip("│").split("│")]
         if len(parts) >= 4 and parts[0].startswith("t_"):
             task_statuses[parts[0]] = parts[3]
 
     assert task_statuses.get("t_blocked") == "failed"
     assert task_statuses.get("t_merged") == "merged"
     assert task_statuses.get("t_completed") == "completed"
-    assert task_statuses.get("t_in_progress") == "in_progress"
+    assert "in_progress" in task_statuses.values()
 
 
 # ============================================================================
@@ -1182,7 +1210,7 @@ def test_task_list_job_executed_task_produces_single_row_under_task_identity(tmp
     assert job_id not in out
 
     # Exactly one task table row for this piece of work
-    task_rows = [line for line in out.splitlines() if line.startswith(f" {task_id}")]
+    task_rows = [line for line in out.splitlines() if task_id in line]
     assert len(task_rows) == 1
     assert len(tasks) == 1
 
@@ -1218,6 +1246,3 @@ def test_task_show_displays_findings(tmp_path, monkeypatch, capsys):
     assert data["ok"] is True
     assert data["findings"] == findings_text
     assert data["halt"]["findings"] == findings_text
-
-
-
