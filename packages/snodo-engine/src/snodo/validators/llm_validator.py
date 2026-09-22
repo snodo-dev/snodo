@@ -774,11 +774,23 @@ class LLMValidator(ValidatorBase):
             "## Instructions\n",
             "Evaluate against EACH criterion.\n",
             "Use tools to read files if needed.\n",
+            self._tool_access_instruction(),
             "Then call submit_verdict with severity in [\"pass\", \"warn\", \"blocker\"]\n",
             "and a concise justification.\n",
         ])
 
         return "".join(prompt_parts)
+
+    def _tool_access_instruction(self) -> str:
+        if not getattr(self.validator_spec, "check_tool_access", False):
+            return ""
+        return (
+            "This validator has check_tool_access enabled. If any criterion asks "
+            "for verification requiring a capability not in this validator's "
+            f"declared tools ({', '.join(getattr(self.validator_spec, 'tools', []) or []) or '(none)'}), "
+            "do not pass it. Submit a blocker and include a tool_access_missing "
+            "object with the exact criterion and missing capability.\n"
+        )
 
     @staticmethod
     def _build_tool_definitions(tool_names: Set[str]) -> List[Dict[str, Any]]:
@@ -920,6 +932,15 @@ class LLMValidator(ValidatorBase):
                         "type": "string",
                         "description": "Brief explanation of your evaluation",
                     },
+                    "tool_access_missing": {
+                        "type": "object",
+                        "description": "Required when a criterion needs an unavailable capability",
+                        "properties": {
+                            "criterion": {"type": "string"},
+                            "capability": {"type": "string"},
+                        },
+                        "required": ["criterion", "capability"],
+                    },
                 },
                 "required": ["severity", "justification"],
             },
@@ -952,6 +973,11 @@ class LLMValidator(ValidatorBase):
                     validator_id=self.validator_spec.validator_id,
                     severity=severity,
                     justification=justification,
+                    tool_access_missing=(
+                        args.get("tool_access_missing")
+                        if isinstance(args.get("tool_access_missing"), dict)
+                        else None
+                    ),
                 )
         return None
 

@@ -165,7 +165,12 @@ class Validator(BaseModel):
                     "wording (intent, constraints, scope) rather than about the "
                     "work. Only judges_spec validators' critique feeds the "
                     "spec-authoring rewriter; a non-spec objection must not "
-                    "silently reshape the spec (Fixes #35)."
+                     "silently reshape the spec (Fixes #35)."
+    )
+    check_tool_access: bool = Field(
+        default=False,
+        description="When True, refuse rather than pass a criterion that "
+                    "requires a capability outside this validator's tools.",
     )
     check_tool_access: bool = Field(
         default=False,

@@ -633,9 +633,38 @@ def run_validators(
                 progress_sink(f"    {vid}: finished")
             if result is not None:
                 v_obj = next((v for v in validators if v.validator_id == vid), None)
+                missing_access = getattr(result, "tool_access_missing", None)
+                if (
+                    v_obj is not None
+                    and getattr(v_obj, "check_tool_access", False)
+                    and isinstance(missing_access, dict)
+                    and missing_access.get("criterion")
+                    and missing_access.get("capability")
+                ):
+                    criterion = missing_access["criterion"]
+                    capability = missing_access["capability"]
+                    result = ValidatorResult(
+                        validator_id=result.validator_id,
+                        severity="blocker",
+                        justification=(
+                            f"Criterion '{criterion}' cannot be verified: "
+                            f"missing capability '{capability}', which is outside "
+                            f"this validator's declared tools ({', '.join(v_obj.tools) or '(none)'}). "
+                            "Run a recon and fold its findings into a smaller or "
+                            "more detailed spec before re-validating."
+                        ),
+                        cited_criteria=result.cited_criteria,
+                        tool_access_missing=missing_access,
+                    )
+                tool_access_refusal = (
+                    isinstance(missing_access, dict)
+                    and getattr(v_obj, "check_tool_access", False)
+                    and result.severity == "blocker"
+                )
                 is_recovery = (getattr(task, "depth", 0) > 0 or bool(getattr(task, "prior_failures", None)))
                 if (
-                    phase == "pre_execute"
+                    not tool_access_refusal
+                    and phase == "pre_execute"
                     and is_recovery
                     and result.severity in ("warn", "blocker")
                     and not getattr(result, "error", False)
@@ -661,7 +690,8 @@ def run_validators(
                             _cap_data["session_id"] = session_id
                         audit_log.append_event("severity_cap_applied", _cap_data)
                 elif (
-                    v_obj is not None
+                    not tool_access_refusal
+                    and v_obj is not None
                     and v_obj.severity_cap is not None
                     and not getattr(result, "error", False)
                     and result.severity is not None

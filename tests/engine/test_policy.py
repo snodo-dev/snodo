@@ -7,6 +7,7 @@ Ensures 100% coverage of policy logic.
 """
 
 import pytest
+from unittest.mock import MagicMock
 from snodo.compiler.models import DisagreementPolicy
 from snodo.core.interfaces import ValidatorResult
 from snodo.engine.policy import PolicyAction, PolicyEvaluator, evaluate_policy
@@ -304,6 +305,84 @@ def test_run_validators_pre_execute_recovery_caps_severity():
     assert cap_originals["arch"] == "warn"
 
 
+def test_run_validators_tool_access_refusal_is_uncapped_blocker():
+    """An opted-in validator refuses missing verification capability."""
+    from snodo.compiler.models import Mode, Protocol, Validator
+    from snodo.core.interfaces import Task
+    from snodo.validators.runner import run_validators
+
+    validator = Validator(
+        validator_id="acceptance",
+        validator_type="acceptance",
+        check_tool_access=True,
+        tools=[],
+        severity_cap="warn",
+    )
+    protocol = Protocol(
+        protocol_id="test", name="test",
+        modes=[Mode(mode_id="test", name="test", tools=[], validators=["acceptance"])],
+        validators=[validator],
+        initial_mode="test",
+    )
+
+    def dispatch(val, ctx, reg):
+        return ValidatorResult(
+            validator_id=val.validator_id,
+            severity="pass",
+            justification="criterion requires a runtime check",
+            tool_access_missing={
+                "criterion": "confirm the migration ran",
+                "capability": "database runtime inspection",
+            },
+        )
+
+    results, cap_originals = run_validators(
+        protocol=protocol,
+        validators=[validator],
+        task=Task(id="t1", spec="Migrate the database", depth=1),
+        validator_config=MagicMock(max_tokens=100, max_tool_turns=1),
+        dispatch_fn=dispatch,
+    )
+
+    assert results[0].severity == "blocker"
+    assert "confirm the migration ran" in results[0].justification
+    assert "database runtime inspection" in results[0].justification
+    assert "recon" in results[0].justification
+    assert cap_originals == {}
+
+
+def test_run_validators_tool_access_signal_is_ignored_when_opted_out():
+    """Validators retain their existing behavior until they opt in."""
+    from snodo.compiler.models import Mode, Protocol, Validator
+    from snodo.core.interfaces import Task
+    from snodo.validators.runner import run_validators
+
+    validator = Validator(
+        validator_id="acceptance", validator_type="acceptance", tools=[], severity_cap="warn"
+    )
+    protocol = Protocol(
+        protocol_id="test", name="test",
+        modes=[Mode(mode_id="test", name="test", tools=[], validators=["acceptance"])],
+        validators=[validator],
+        initial_mode="test",
+    )
+
+    results, _ = run_validators(
+        protocol=protocol,
+        validators=[validator],
+        task=Task(id="t1", spec="Migrate the database"),
+        validator_config=MagicMock(max_tokens=100, max_tool_turns=1),
+        dispatch_fn=lambda val, ctx, reg: ValidatorResult(
+            validator_id=val.validator_id,
+            severity="pass",
+            justification="uncheckable",
+            tool_access_missing={"criterion": "migration", "capability": "runtime"},
+        ),
+    )
+
+    assert results[0].severity == "pass"
+
+
 # ========== A NON-VERDICT IS AN ERROR (Fixes #278) ==========
 #
 # A validator always carries a verdict. A judge that could not reach one is an
@@ -353,4 +432,3 @@ def test_error_is_never_counted_as_a_pass():
     assert decision.pass_count == 1
     assert decision.action == PolicyAction.HALT
     assert "fail-closed" in decision.justification
-
