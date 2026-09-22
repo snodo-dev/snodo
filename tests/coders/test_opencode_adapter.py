@@ -79,10 +79,10 @@ class TestModelPayload:
         payload = adapter._resolve_model_payload()
         assert payload == {"providerID": "deepseek", "modelID": "deepseek-chat"}
 
-    def test_resolve_model_payload_opencode_no_provider(self):
+    def test_resolve_model_payload_opencode_provider_is_inferred(self):
         adapter = OpenCodeAdapter(model="opencode/gpt-4")
-        payload = adapter._resolve_model_payload()
-        assert payload == {"modelID": "gpt-4"}
+        payload = adapter._resolve_model_payload({("opencode", "gpt-4")})
+        assert payload == {"providerID": "opencode", "modelID": "gpt-4"}
 
     def test_resolve_model_payload_fallback(self):
         adapter = OpenCodeAdapter(model="claude-sonnet-4-20250514")
@@ -105,6 +105,49 @@ class TestModelPayload:
         mock_get.assert_called_once_with(
             "http://localhost:55440/config/providers", timeout=10.0
         )
+
+    def test_model_validation_rejects_model_without_server_provider(self):
+        adapter = OpenCodeAdapter(model="opencode/not-served")
+        adapter._container = Mock(base_url="http://localhost:55440")
+        response = Mock(status_code=200)
+        response.json.return_value = {
+            "providers": {"opencode": {"models": {"big-pickle": {}}}},
+        }
+
+        with patch("httpx.get", return_value=response):
+            with pytest.raises(CoderUnavailableError, match="no server provider"):
+                adapter._validate_model_available()
+
+    def test_model_validation_rejects_ambiguous_unqualified_model(self):
+        adapter = OpenCodeAdapter(model="opencode/shared")
+        adapter._container = Mock(base_url="http://localhost:55440")
+        response = Mock(status_code=200)
+        response.json.return_value = {
+            "providers": {
+                "one": {"models": {"shared": {}}},
+                "two": {"models": {"shared": {}}},
+            },
+        }
+
+        with patch("httpx.get", return_value=response):
+            with pytest.raises(CoderUnavailableError, match="more than one"):
+                adapter._validate_model_available()
+
+    def test_model_validation_infers_provider_used_by_message(self):
+        adapter = OpenCodeAdapter(model="opencode/big-pickle")
+        adapter._container = Mock(base_url="http://localhost:55440")
+        response = Mock(status_code=200)
+        response.json.return_value = {
+            "providers": {"opencode": {"models": {"big-pickle": {}}}},
+        }
+
+        with patch("httpx.get", return_value=response):
+            adapter._validate_model_available()
+
+        assert adapter._resolved_model_payload == {
+            "providerID": "opencode",
+            "modelID": "big-pickle",
+        }
 
     def test_model_validation_names_requested_and_available_models(self):
         adapter = OpenCodeAdapter(model="opencode-cli/openai/gpt-5.6-luna")
