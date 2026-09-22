@@ -14,6 +14,7 @@ from snodo.infrastructure.worktree import (
     create_worktree,
     delete_task_branch,
     merge_task_branch,
+    remove_worktree,
     surface_untracked_files,
     task_branch_name,
     teardown_task_worktree,
@@ -259,6 +260,41 @@ def test_teardown_keeps_unmerged_branch(repo):
 
     assert not worktree_path(str(repo), "task_1").exists()
     assert branch in _branches(repo)
+
+
+def test_remove_worktree_reconciles_metadata_after_git_failure(repo, monkeypatch):
+    """A failed Git removal must not leave a ghost worktree registration."""
+    from contextlib import nullcontext
+    from git import GitCommandError
+    from types import SimpleNamespace
+    from snodo.tools.git import open_repo
+
+    wt = create_worktree(str(repo), "task_ghost", "remove me")
+    git_repo = open_repo(str(repo))
+
+    class GitProxy:
+        def worktree(self, command, *args):
+            if command == "list":
+                return git_repo.git.worktree(command, *args)
+            raise GitCommandError(
+                "git worktree remove", 1, stderr="simulated failure"
+            )
+
+    failing_repo = SimpleNamespace(common_dir=git_repo.common_dir, git=GitProxy())
+    monkeypatch.setattr(
+        "snodo.tools.git.open_repo", lambda project_root: nullcontext(failing_repo)
+    )
+
+    remove_worktree(str(repo), "task_ghost")
+
+    assert not wt.exists()
+    assert str(wt.resolve()) not in subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
 
 
 def _commit_in_worktree(repo, filename):
