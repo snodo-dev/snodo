@@ -198,7 +198,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         "Call the read-only `guide` tool before anything else. It teaches the shortest path and accepts topics: `spec`, `waves`, `halts`, `run`, `mistakes`.\n",
         f"# Snodo Protocol Engine — {p.protocol_id} v{p.version}\n",
         "You are the orchestrator. Use MCP tools and resources only; you cannot read the filesystem directly.\n",
-        "Tool access follows the active mode grant. No tool call is refused for want of a caller-held token. The validator quorum is enforced inside the engine loop (ADR 047); a `blocker` is never overridable, and `escalate` requires human `snodo authorize`.\n",
+        "Tool access follows the active mode grant; no tool call is refused for want of a caller-held token. The validator quorum is enforced inside the engine loop (ADR 047); a `blocker` is never overridable, and `escalate` requires human `snodo authorize`.\n",
     ]
 
     if "dispatch_task" in exposed:
