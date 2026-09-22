@@ -28,6 +28,7 @@ from snodo.compiler.verifier import (
     verify_plan,
     PlanWellFormednessError as _BasePlanWellFormednessError,
 )
+from snodo.core.interfaces import AuditError
 from snodo.mcp.status import TASK_STATUSES
 
 _logger = logging.getLogger(__name__)
@@ -61,6 +62,9 @@ def resolve_audit_log(project_root: Any, audit_log: Any) -> Any:
         from snodo.infrastructure.audit import get_audit_log
         path = Path(project_root) / ".snodo" / "audit.log"
         return get_audit_log(str(path) if path.exists() else None)
+    except AuditError as exc:
+        _logger.debug("Could not resolve audit log for %s: %s", project_root, exc)
+        raise PlannerError(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 — an unavailable log is reported, not hidden
         _logger.debug("Could not resolve audit log for %s: %s", project_root, exc)
         return None
