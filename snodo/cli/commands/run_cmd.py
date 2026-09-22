@@ -429,7 +429,7 @@ def _failure_from_halt_record(session, task_id: str) -> Optional[dict]:
     Returns None unless the halt record's task_id matches and it is a blocked
     halt; ``task_failure`` remains the preferred source when present.
     """
-    from snodo.engine.state import _task_branch_name
+    from snodo.infrastructure.worktree import task_branch_name
 
     halt = session.checkpoint.decisions.get("halt", {})
     if not isinstance(halt, dict):
@@ -467,7 +467,7 @@ def _failure_from_halt_record(session, task_id: str) -> Optional[dict]:
     return {
         "spec": spec,
         "original_spec": spec,
-        "branch": _task_branch_name(
+        "branch": task_branch_name(
             task_id, spec, os.environ.get("SNODO_TASK_PLAN")
         ),
         "attempt": 1,
