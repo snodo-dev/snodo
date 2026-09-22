@@ -3,6 +3,9 @@
 FILE: tests/cli/test_models_cmd.py
 """
 
+import json
+import subprocess
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -20,6 +23,7 @@ from snodo.cli.commands.models_cmd import (
     _write_cache,
     models_check_command,
     models_command,
+    models_set_baseline_command,
     register,
 )
 from snodo.cli.commands.models_check import run_canary_call
@@ -60,6 +64,77 @@ def test_models_command_list_providers_happy_path(mock_providers_config, monkeyp
     assert "Configured providers:" in out
     assert "openai" in out
     assert "anthropic" in out
+
+
+def _git(root, *args):
+    subprocess.run(["git", *args], cwd=str(root), check=True, capture_output=True)
+
+
+def test_set_baseline_stores_recorded_task_solution_and_replaces_it(tmp_path, monkeypatch):
+    """The baseline uses the job's task commits, not the operator's HEAD."""
+    root = tmp_path / "project"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "README.md").write_text("base\n")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-qm", "base")
+    base_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    _git(root, "checkout", "-qb", "task/demo/task-1-3")
+    (root / "solution.txt").write_text("task solution\n")
+    _git(root, "add", "solution.txt")
+    _git(root, "commit", "-qm", "task solution")
+    head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    _git(root, "checkout", "-q", "main")
+    (root / ".snodo" / "plans" / "demo").mkdir(parents=True)
+    job_dir = root / ".snodo" / "jobs" / "j_task"
+    job_dir.mkdir(parents=True)
+    (job_dir / "task.json").write_text(json.dumps({"task_id": "1.3", "task_plan": "demo"}))
+    (job_dir / "state.json").write_text(json.dumps({
+        "status": "completed",
+        "cost": {
+            "change_size": {
+                "base_sha": base_sha, "head_sha": head_sha, "paths": ["solution.txt"],
+                "files_changed": 1, "lines_added": 1, "lines_deleted": 0,
+            },
+            "provenance": {"model": "openai/task-model", "coder": "opencode-cli"},
+        },
+        "halt": {"validator_results": [{"validator_id": "tests", "passed": True}]},
+    }))
+
+    plan_dir = root / ".snodo" / "plans" / "demo"
+    assert plan_dir.is_dir()
+    monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(root))
+
+    args = SimpleNamespace(set_baseline=True, plan="demo", task="1.3", json=False)
+    assert models_set_baseline_command(args) == 0
+    record_path = root / ".snodo" / "baselines" / "demo" / "1.3" / "baseline.json"
+    diff_path = record_path.parent / "solution.diff"
+    first = json.loads(record_path.read_text())
+    assert first["model"] == "openai/task-model"
+    assert first["coder"] == "opencode-cli"
+    assert first["change_size"]["files_changed"] == 1
+    assert first["change_size"]["base_sha"] == base_sha
+    assert first["change_size"]["head_sha"] == head_sha
+    assert "solution.txt" in diff_path.read_text()
+    assert "task solution" in diff_path.read_text()
+    assert "README.md" not in diff_path.read_text()
+
+    assert models_set_baseline_command(args) == 0
+    second = json.loads(record_path.read_text())
+    assert second["diff_sha256"] == first["diff_sha256"]
+
+
+def test_set_baseline_requires_completed_task(tmp_path, monkeypatch):
+    plan_dir = tmp_path / ".snodo" / "plans" / "demo"
+    plan_dir.mkdir(parents=True)
+    task_dir = tmp_path / ".snodo" / "tasks" / "task-1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text('{"status": "blocked"}')
+    monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(tmp_path))
+    args = SimpleNamespace(set_baseline=True, plan="demo", task="task-1", json=False)
+    assert models_set_baseline_command(args) == 1
 
 
 def test_models_command_no_providers_configured(monkeypatch, capsys):

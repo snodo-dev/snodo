@@ -38,6 +38,12 @@ def register(app: typer.Typer) -> None:
             1, "--benchmark-runs", min=1, max=_MAX_BENCHMARK_RUNS,
             help=f"Number of sequential benchmark calls (1-{_MAX_BENCHMARK_RUNS}).",
         ),
+        set_baseline: bool = typer.Option(
+            False, "--set-baseline",
+            help="Capture a completed task solution as its local plan/task baseline.",
+        ),
+        plan: Optional[str] = typer.Option(None, "--plan", help="Plan name for --set-baseline"),
+        task: Optional[str] = typer.Option(None, "--task", "--task-id", help="Task id for --set-baseline"),
         json: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
         id: Optional[str] = typer.Option(None, "--id", help="Exact model id"),
         id_contains: Optional[str] = typer.Option(None, "--id-contains", help="Substring on id/display_name (case-insensitive)"),
@@ -56,6 +62,9 @@ def register(app: typer.Typer) -> None:
             check=check,
             benchmark=benchmark,
             benchmark_runs=benchmark_runs,
+            set_baseline=set_baseline,
+            plan=plan,
+            task=task,
             json=json,
             id=id,
             id_contains=id_contains,
@@ -103,6 +112,9 @@ def _write_cache(provider: str, models: list) -> None:
 
 def models_command(args) -> int:
     """List configured providers, their models, or project usage stats."""
+    if getattr(args, "set_baseline", False):
+        return models_set_baseline_command(args)
+
     if getattr(args, "stats", False):
         return models_stats_command(args)
 
@@ -863,6 +875,11 @@ def _subprocess_coder_for_model(model: str) -> Optional[tuple[str, Any]]:
 def models_check_command(args) -> int:
     from snodo.cli.commands.models_check import check_configured_models
     return check_configured_models(_configured_models, _run_canary_call)
+
+
+def models_set_baseline_command(args) -> int:
+    from snodo.cli.commands.models_baseline import models_set_baseline_command as command
+    return command(args)
 
 
 # ============================================================================
