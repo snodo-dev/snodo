@@ -19,6 +19,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   credentials. Background job submission is unaffected.
 
 ### Fixed
+- OpenCode model names without an explicit provider are now resolved against the
+  server's advertised providers, so a provider named `opencode` is not stripped
+  from the payload; unresolvable or ambiguous models halt before dispatch.
+  (Fixes #398)
 - Coverage uploads now fail CI when Codecov rejects or cannot process the
   report, instead of leaving a successful run with stale published coverage.
   (Fixes #397)

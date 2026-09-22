@@ -78,6 +78,7 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
         self.model = model
         self.temperature = temperature
         self.sandboxed = sandboxed
+        self._resolved_model_payload: Optional[dict] = None
 
         if workspace is not None:
             self._workspace = workspace
@@ -271,12 +272,10 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
                 ),
             ) from e
 
-        payload = self._resolve_model_payload()
+        payload = self._resolve_model_payload(available)
+        self._resolved_model_payload = payload
         requested = (payload.get("providerID"), payload["modelID"])
-        if requested in available or (
-            requested[0] is None
-            and any(model_id == requested[1] for _, model_id in available)
-        ):
+        if requested in available:
             return
 
         available_names = ", ".join(
@@ -331,6 +330,13 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
                     available.add(
                         (provider_id if isinstance(provider_id, str) else None, model_id)
                     )
+            default_model = provider.get("default")
+            if isinstance(default_model, dict):
+                default_model = default_model.get("modelID") or default_model.get("id")
+            if isinstance(default_model, str) and default_model:
+                available.add(
+                    (provider_id if isinstance(provider_id, str) else None, default_model)
+                )
         return available
 
     def _send_message(self, session_id: str, spec: TaskSpec) -> None:
@@ -340,7 +346,7 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
             resp = httpx.post(
                 f"{self.base_url}/session/{session_id}/message",
                 json={
-                    "model": self._resolve_model_payload(),
+                    "model": self._resolved_model_payload or self._resolve_model_payload(),
                     "parts": [{"type": "text", "text": prompt}],
                 },
                 timeout=60.0,
@@ -399,7 +405,9 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
 
         return CodeArtifact(files=files)
 
-    def _resolve_model_payload(self) -> dict:
+    def _resolve_model_payload(
+        self, available: Optional[set[tuple[Optional[str], str]]] = None
+    ) -> dict:
         """Map the snodo model string to an opencode model payload.
 
         opencode's API expects ``{"providerID": <p>, "modelID": <m>}``
@@ -411,7 +419,30 @@ class OpenCodeAdapter(InPlaceCoderAdapter):
             if "/" in provider_and_id:
                 provider, model_id = provider_and_id.split("/", 1)
                 return {"providerID": provider, "modelID": model_id}
-            return {"modelID": provider_and_id}
+            model = provider_and_id
+
+        if available is not None:
+            providers = {
+                provider
+                for provider, model_id in available
+                if model_id == model and provider is not None
+            }
+            if len(providers) == 1:
+                return {"providerID": providers.pop(), "modelID": model}
+
+            reason = (
+                "no server provider serves it"
+                if not providers
+                else "more than one server provider serves it"
+            )
+            raise CoderUnavailableError(
+                "opencode model",
+                message=(
+                    f"Requested opencode model '{self.model}' cannot be resolved: "
+                    f"{reason}"
+                ),
+            )
+
         return {"modelID": model}
 
     def _build_prompt(self, spec: TaskSpec) -> str:
