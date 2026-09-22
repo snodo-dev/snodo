@@ -2065,7 +2065,7 @@ class TestInstructions:
         assert "# Running Snodo unattended" in text
         assert "get_job_status" in text
         assert "record_task_status" in text
-        assert "auto-merge is opt-in" in text
+        assert "Auto-merge is opt-in" in text
 
     def test_guide_automation_topic_filters_tools_withheld_by_mode(self, server):
         text = guide_text(server.project_root, {"read_file"}, "automation")
