@@ -141,6 +141,8 @@ class ValidatorResult(BaseModel):
     justification: str
     error: bool = False
     cited_criteria: Optional[List[str]] = None
+    #: Set by a judge when a criterion needs a capability it was not granted.
+    tool_access_missing: Optional[Dict[str, str]] = None
     #: Pre-cap severity when a severity_cap downgraded this result; None otherwise.
     severity_original: Optional[str] = None
     #: True when the validator's gate was skipped rather than genuinely

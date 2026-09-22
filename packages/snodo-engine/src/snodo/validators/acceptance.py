@@ -261,6 +261,19 @@ class AcceptanceValidator(LLMValidator):
             "justification naming each unmet criterion and the evidence.\n",
         ])
 
+        if getattr(self.validator_spec, "check_tool_access", False):
+            prompt_parts.extend([
+                "\n",
+                "## Tool Access Safety\n",
+                "This validator has check_tool_access enabled. If an acceptance "
+                "criterion requires runtime or other verification that none of "
+                f"your declared tools ({', '.join(getattr(self.validator_spec, 'tools', []) or []) or '(none)'}) "
+                "can perform, do not call it UNCHECKABLE and pass it. Submit a "
+                "blocker and include tool_access_missing with the exact criterion "
+                "and missing capability. The orchestrator must run recon and fold "
+                "its findings into a smaller or more detailed spec.\n",
+            ])
+
         return "".join(prompt_parts)
 
 
