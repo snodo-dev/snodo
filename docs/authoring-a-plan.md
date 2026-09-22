@@ -26,9 +26,12 @@ belong in different waves even if neither logically depends on the other,
 because they will otherwise both start from the same base and the second will
 be reviewed against a tree that does not contain the first.
 
-Err toward more waves with fewer tasks. A four-wave plan of one task each
-costs nothing; a one-wave plan of four tasks that quietly needed ordering will
-fail in ways that look like model error.
+Ordering is expressed only by waves: when one task needs another's output, put
+it in a later wave. Tasks that touch the same code also belong in separate
+waves, even if neither depends on the other, to avoid overlapping work.
+
+By default, put several small, independently useful tasks in each wave. Add
+waves only when ordering or overlapping code demands it.
 
 ---
 
