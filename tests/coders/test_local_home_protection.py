@@ -4,6 +4,7 @@ FILE: tests/coders/test_local_home_protection.py (Fixes #227)
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from git import Repo
@@ -75,3 +76,28 @@ def test_coder_staging_and_readback_excludes_repository_local_home(git_project_w
     assert "src/app.py" in files
     assert not any(f.startswith(".custom-home") for f in files)
 
+
+def test_commit_message_carries_task_and_findings(git_project_with_local_home):
+    """The commit history preserves the task context and coder discovery."""
+    repo_dir, _ = git_project_with_local_home
+    coder = _DummyInPlaceCoder(repo_dir)
+    coder.last_report = SimpleNamespace(findings="Found a third call site")
+    (repo_dir / "src" / "app.py").write_text("print('updated')\n")
+
+    coder._commit_changes(TaskSpec(description="# Sweep call sites", constraints=[]))
+
+    with Repo(str(repo_dir)) as repo:
+        message = repo.head.commit.message
+    assert message.startswith("coder: Sweep call sites")
+    assert "Findings:\nFound a third call site" in message
+
+
+def test_commit_message_identifies_task_without_findings(git_project_with_local_home):
+    repo_dir, _ = git_project_with_local_home
+    coder = _DummyInPlaceCoder(repo_dir)
+    (repo_dir / "src" / "app.py").write_text("print('updated')\n")
+
+    coder._commit_changes(TaskSpec(description="Investigate empty result", constraints=[]))
+
+    with Repo(str(repo_dir)) as repo:
+        assert repo.head.commit.message == "coder: Investigate empty result\n"

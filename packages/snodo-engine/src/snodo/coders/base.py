@@ -7,6 +7,7 @@ InPlaceCoderAdapter base for adapters that write to the working tree
 directly (opencode and similar) instead of through WorkspaceMCP.
 """
 
+import json
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -190,7 +191,7 @@ class InPlaceCoderAdapter(Coder, ABC):
         # Change") see THIS change, not the previous commit. Owned here, in
         # the base class, so no in-place adapter can drift (the same property
         # that made the .snodo/ guard hold automatically).
-        self._commit_changes()
+        self._commit_changes(spec)
 
         # Record attribution for in-place coder runs (Fixes #69).
         # In-place coders make no litellm calls, so without this attribution
@@ -356,7 +357,7 @@ class InPlaceCoderAdapter(Coder, ABC):
         _logger.debug("git readback: %d changed files", len(entries))
         return entries
 
-    def _commit_changes(self) -> None:
+    def _commit_changes(self, spec: Optional[TaskSpec] = None) -> None:
         """Stage + commit the working-tree changes with an explicit identity.
 
         In-place coders write files directly and never commit, so without
@@ -370,7 +371,8 @@ class InPlaceCoderAdapter(Coder, ABC):
 
         Non-fatal on failure — the working tree still holds the change — but
         the post-execute diff would then be empty. Failure reasons are stored in
-        ``self.last_commit_reason`` for diagnostic reporting.
+        ``self.last_commit_reason`` for diagnostic reporting. The commit message
+        identifies the task and includes coder findings when they are available.
         """
         from git import GitCommandError
         from snodo.tools.git import open_repo
@@ -426,7 +428,7 @@ class InPlaceCoderAdapter(Coder, ABC):
             # detached checkout with no configured git user, and per-commit
             # identity must not persist in a shared repo.
             repo.git.commit(
-                "-q", "-m", "coder: apply changes",
+                "-q", "-m", self._commit_message(spec),
                 env={
                     "GIT_AUTHOR_NAME": "snodo-coder",
                     "GIT_AUTHOR_EMAIL": "coder@snodo.exp",
@@ -440,6 +442,30 @@ class InPlaceCoderAdapter(Coder, ABC):
             _logger.warning(
                 "coder commit failed (post-validation diff may be empty): %s", exc
             )
+
+    def _commit_message(self, spec: Optional[TaskSpec]) -> str:
+        """Compose a task-identifying subject and optional findings body."""
+        description = getattr(spec, "description", "") or ""
+        title = ""
+        for line in description.splitlines():
+            candidate = line.strip().lstrip("#").strip()
+            if candidate:
+                title = candidate[:120]
+                if len(candidate.split()) >= 3:
+                    break
+        subject = f"coder: {title}" if title else "coder: task"
+
+        findings = getattr(getattr(self, "last_report", None), "findings", None)
+        if not findings:
+            return subject
+        if isinstance(findings, str):
+            body = findings.strip()
+        else:
+            try:
+                body = json.dumps(findings, ensure_ascii=True, indent=2, default=str)
+            except (TypeError, ValueError):
+                body = str(findings).strip()
+        return f"{subject}\n\nFindings:\n{body}" if body else subject
 
     def _snapshot_snodo(self) -> Dict[str, object]:
         """Snapshot the .snodo/ directory contents under the workspace.
