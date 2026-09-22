@@ -23,6 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+from snodo.core.interfaces import AuditError
 from snodo.mcp.planner import PlannerError, PlannerMCP
 
 # === Fixtures ===
@@ -67,6 +68,28 @@ class TestPlannerMCPInit:
         with tempfile.NamedTemporaryFile() as tmpfile:
             with pytest.raises(ValueError, match="not a directory"):
                 PlannerMCP(tmpfile.name)
+
+
+class TestAuditLogResolution:
+    def test_reports_typed_audit_failure(self, temp_dir):
+        reason = (
+            "Failed to load audit log: sequence discontinuity on line 3 "
+            "(expected 2, got 4). Inspect the log deliberately."
+        )
+        planner = PlannerMCP(temp_dir)
+
+        with patch(
+            "snodo.infrastructure.audit.get_audit_log",
+            side_effect=AuditError(reason),
+        ), pytest.raises(PlannerError, match="sequence discontinuity on line 3"):
+            planner.record_status(None, "1.1_task", "completed", "alice")
+
+    def test_keeps_unavailable_result_for_missing_log(self, temp_dir):
+        planner = PlannerMCP(temp_dir)
+
+        with patch("snodo.mcp.planner.resolve_audit_log", return_value=None):
+            with pytest.raises(PlannerError, match="Audit log unavailable"):
+                planner.record_status(None, "1.1_task", "completed", "alice")
 
 
 # === Decompose ===
