@@ -197,7 +197,10 @@ class TestCloudSyncDispatcher:
             token="tok_test_lease",
             expires_at=time.time() + 3600,
         )
-        with patch.object(cloud_lease, "_current_lease", test_lease):
+        with (
+            patch.object(cloud_lease, "get_current_lease", return_value=test_lease),
+            patch.object(cloud_lease, "get_admission_lease", return_value=test_lease),
+        ):
             yield test_lease
         cloud_lease.reset_admission_state()
 
@@ -623,6 +626,7 @@ class TestCloudSyncDispatcher:
             "sync_enabled": True,
             "api_key": "sndo_live_xxx",
             "api_url": "https://api.example.com",
+            "lease_url": "https://app.example.com",
             "tunnel_api_url": "https://tunnel.example.com",
         }}
 
@@ -639,10 +643,11 @@ class TestCloudSyncDispatcher:
         api_url_arg = mock_sync.call_args.args[4]
         assert api_url_arg == "https://api.example.com"
         assert "tunnel.example.com" not in api_url_arg
+        assert mock_sync.call_args.kwargs["lease_url"] == "https://app.example.com"
         cs._pending_syncs.clear()
 
     def test_post_batch_targets_ingest_path(self):
-        """_post_batch builds {api_url}/ingest/{lease_id} with admission lease."""
+        """_post_batch uses the session-scoped ingest route with admission lease."""
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
 
         dispatcher = CloudSyncDispatcher()
@@ -664,7 +669,7 @@ class TestCloudSyncDispatcher:
             )
 
         assert outcome == "delivered"
-        assert captured["url"] == "https://api.example.com/ingest/ls_test_lease"
+        assert captured["url"] == "https://api.example.com/i/sess_ingest"
 
     def test_refused_response_records_reason_range_and_skips_automatic_retry(self, tmp_path, monkeypatch):
         """A 400 refused response leaves cursor, records reason & range, and is skipped on automatic sync."""

@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Cloud admission now mints leases at the session-scoped app route and sends
+  audit batches to the session-scoped ingest route, matching the deployed
+  endpoints. The app and API hosts remain independently configurable.
+
 ### Changed
 - Cloud ingest now declares and sends every audit event type emitted by snodo,
   preserving the hash chain across event types that were previously rejected

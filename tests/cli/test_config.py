@@ -1030,6 +1030,7 @@ class TestCloudServiceUrls:
     def test_liveness_url_derives_origin_and_version(self):
         from snodo.config import (
             DEFAULT_CLOUD_API_URL,
+            get_cloud_lease_url,
             get_cloud_ingest_url,
             get_cloud_liveness_url,
         )
@@ -1040,14 +1041,26 @@ class TestCloudServiceUrls:
         composed_liveness = f"{get_cloud_liveness_url(default_config)}/live/sess_1"
         assert composed_liveness == "https://app.snodo.dev/v1/live/sess_1"
 
-        # Ingest URL remains byte-identical to today for the same config
-        ingest_url = f"{get_cloud_ingest_url(default_config).rstrip('/')}/ingest"
-        assert ingest_url == f"{DEFAULT_CLOUD_API_URL}/ingest"
-        assert ingest_url == "https://api.snodo.dev/ingest"
+        # Ingest and mint routes use separate hosts and session-scoped paths.
+        ingest_url = f"{get_cloud_ingest_url(default_config).rstrip('/')}/i/sess_1"
+        mint_url = f"{get_cloud_lease_url(default_config).rstrip('/')}/m/sess_1"
+        assert ingest_url == f"{DEFAULT_CLOUD_API_URL}/i/sess_1"
+        assert ingest_url == "https://api.snodo.dev/i/sess_1"
+        assert mint_url == "https://app.snodo.dev/m/sess_1"
 
         # Staging host with 'api' label
         staging = {"cloud": {"api_url": "https://api.staging.snodo.dev"}}
         assert get_cloud_liveness_url(staging) == "https://app.staging.snodo.dev/v1"
+        assert get_cloud_lease_url(staging) == "https://app.staging.snodo.dev"
+
+    def test_lease_url_can_be_configured_independently(self):
+        from snodo.config import get_cloud_lease_url
+
+        config = {"cloud": {
+            "api_url": "https://api.example.test",
+            "lease_url": "https://app.example.test/base/",
+        }}
+        assert get_cloud_lease_url(config) == "https://app.example.test/base"
 
     def test_liveness_url_non_production_shapes(self):
         from snodo.config import get_cloud_liveness_url

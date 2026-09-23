@@ -2,17 +2,17 @@
 
 FILE: snodo/infrastructure/cloud_lease.py
 
-Agreed admission model:
+Admission model:
 Before sending anything (audit ingest or liveness snapshots), a client exchanges
-its API key once for a short-lived lease consisting of:
+its API key at the session-scoped mint route for a short-lived lease consisting of:
 - A URL-safe, fixed-length lease identifier.
 - An opaque bearer token.
 
-The client then sends to a path containing that identifier, presenting the token.
-Near expiry it renews.
+Audit ingest is addressed by session id; liveness includes the lease id in its
+path. Both present the lease token. Near expiry the client renews.
 
 Three non-negotiable properties:
-1. The identifier belongs in the path, never a header (edge filters on path shape).
+1. Liveness identifiers belong in the path, never a header (edge filters on path shape).
 2. The token is opaque: never parsed, never validated locally, never logged.
 3. Refusal at exchange is terminal (HTTP 4xx except 429), recorded in CloudSyncState
    across processes, permanently halting further sends.
@@ -31,6 +31,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -58,33 +59,40 @@ class CloudLease:
 
 _lock = threading.Lock()
 _current_lease: Optional[CloudLease] = None
+_current_lease_session_id: Optional[str] = None
 _quiet_until: float = 0.0
 _consecutive_failures: int = 0
 
 
 def reset_admission_state() -> None:
     """Reset in-memory lease and quiet state. Test seam."""
-    global _current_lease, _quiet_until, _consecutive_failures
+    global _current_lease, _current_lease_session_id, _quiet_until, _consecutive_failures
     with _lock:
         _current_lease = None
+        _current_lease_session_id = None
         _quiet_until = 0.0
         _consecutive_failures = 0
 
 
-def get_current_lease() -> Optional[CloudLease]:
-    """Return the cached lease if valid and not near expiry."""
+def get_current_lease(session_id: Optional[str] = None) -> Optional[CloudLease]:
+    """Return a valid cached lease, optionally restricted to its mint session."""
     with _lock:
-        if _current_lease is not None and not _current_lease.is_near_expiry():
+        if (
+            _current_lease is not None
+            and (session_id is None or _current_lease_session_id == session_id)
+            and not _current_lease.is_near_expiry()
+        ):
             return _current_lease
     return None
 
 
 def invalidate_lease(lease: CloudLease) -> None:
     """Discard *lease* when the send endpoint rejects its credential."""
-    global _current_lease
+    global _current_lease, _current_lease_session_id
     with _lock:
         if _current_lease is lease:
             _current_lease = None
+            _current_lease_session_id = None
 
 
 def get_admission_lease(
@@ -111,7 +119,11 @@ def get_admission_lease(
 
     # 2. Check cached lease
     with _lock:
-        if _current_lease is not None and not _current_lease.is_near_expiry():
+        if (
+            _current_lease is not None
+            and _current_lease_session_id == sid
+            and not _current_lease.is_near_expiry()
+        ):
             return _current_lease
 
         # 3. Check quiet window for unreachable exchange
@@ -133,7 +145,7 @@ def _perform_exchange(
     session_id: str,
     state: CloudSyncState,
 ) -> Optional[CloudLease]:
-    global _current_lease, _quiet_until, _consecutive_failures
+    global _current_lease, _current_lease_session_id, _quiet_until, _consecutive_failures
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -141,9 +153,10 @@ def _perform_exchange(
     }
     payload = {"api_key": api_key}
     body = json.dumps(payload).encode("utf-8")
+    mint_url = f"{lease_url.rstrip('/')}/m/{quote(session_id, safe='')}"
 
     try:
-        response = httpx.post(lease_url, content=body, headers=headers, timeout=10.0)
+        response = httpx.post(mint_url, content=body, headers=headers, timeout=10.0)
 
         # HTTP 2xx: Success
         if 200 <= response.status_code < 300:
@@ -163,6 +176,7 @@ def _perform_exchange(
 
             with _lock:
                 _current_lease = lease
+                _current_lease_session_id = session_id
                 _consecutive_failures = 0
                 _quiet_until = 0.0
 
@@ -179,6 +193,7 @@ def _perform_exchange(
             state.record_refusal("", reason=reason, status_code=response.status_code)
             with _lock:
                 _current_lease = None
+                _current_lease_session_id = None
                 _quiet_until = 0.0
             return None
 
