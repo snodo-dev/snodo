@@ -169,11 +169,13 @@ def _read_topic(project_root: str, topic: dict, exposed: set[str]) -> str:
     return "\n\n".join(chunk for chunk in chunks if chunk)
 
 
-def guide_menu(project_root: str) -> str:
-    """One concise menu line per registered topic, suitable for descriptions."""
+def guide_menu(project_root: str, exposed: set[str] | None = None) -> str:
+    """One concise menu line per topic with instructions available in this mode."""
+    topics = _topic_registry(project_root)
     return "\n".join(
         f"- `{name}` — {topic['summary']}"
-        for name, topic in _topic_registry(project_root).items()
+        for name, topic in topics.items()
+        if exposed is None or _read_topic(project_root, topic, exposed)
     )
 
 
@@ -189,7 +191,7 @@ def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -
         result = _read_topic(project_root, topics[key], exposed)
         return result or "That topic has no instructions for the tools exposed in this mode."
 
-    menu = guide_menu(project_root)
+    menu = guide_menu(project_root, exposed)
     if "run_plan" in exposed:
         path = "First use `propose_plan`, add task specs with `generate_spec`, then `validate_plan` and `run_plan`; poll with `get_job_status` and inspect failures with `get_job_logs`."
     elif "dispatch_task" in exposed:

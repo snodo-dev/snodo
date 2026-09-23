@@ -293,7 +293,9 @@ the waves and tasks.
 First ask what must already be true before each piece of work can start. Put
 tasks with the same prerequisite state in one wave; when one task needs
 another's output, put it in a later wave. Tasks in one wave are unordered and
-may run concurrently.
+may run concurrently, up to the effective concurrency limit. The limit is the
+lower of the mode's concurrency ceiling and the operator's configured coder
+capacity; either may make it 1, in which case tasks in a wave run one at a time.
 
 A wave should usually hold several small, independently useful tasks. One task
 per wave is a common sizing mistake: it adds barriers without enabling useful
@@ -320,8 +322,11 @@ structural errors that refuse execution, along with plan-time checks from
 
 - **`Missing referenced path in spec`** is an error. The spec cites a path that
   does not exist in the repository or is not created by this or an earlier
-  task. Correct the path, describe a genuinely new path as something the task
-  will create, or arrange for an earlier wave to create it.
+  task. Correct the path, or put a genuinely new path on the same line as the
+  exact create-intent phrasing `Create \`path/to/file.ext\`.` (replace the
+  example path with the real one). The verifier recognizes create intent only
+  on that same line as a cited path. Otherwise, arrange for an earlier wave to
+  create it.
 - **`Possible same-wave file overlap`** is a warning, not a refusal. It means
   two same-wave specs cite the same path; citations are only a proxy for files
   either task will actually change. Review whether the tasks could conflict. If

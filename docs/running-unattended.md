@@ -99,10 +99,12 @@ merged. Never use it to manufacture completion on an unattended run.
 ## Fix forward; do not spin
 
 If a defect becomes clear while a task is running, let that run reach its
-terminal result. Then create a corrective task with a focused spec and a
-dependency on the affected work where appropriate. This preserves the original
-judgement and its evidence while the follow-up is independently judged. Do not
-stop or revert an in-flight task merely because a later correction is needed.
+terminal result. Then put the correction in a later wave of the same plan, or
+create a new plan with a focused spec if the original plan has already ended.
+Plan dependencies connect waves within one plan; a task in a new plan cannot
+depend on a task from another plan. This preserves the original judgement and
+its evidence while the follow-up is independently judged. Do not stop or revert
+an in-flight task merely because a later correction is needed.
 
 Do not blindly call `retry_job` in a loop on a halted task. First inspect the
 job status, logs, plan status, and halt outcome. A task halt is not one generic
