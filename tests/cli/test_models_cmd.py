@@ -185,6 +185,39 @@ def test_set_baseline_finds_single_inline_plan_task_in_real_git_history(tmp_path
     assert "other.txt" not in diff
 
 
+def test_set_baseline_finds_terminal_plan_task_without_jobs_directory(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "README.md").write_text("base\n")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-qm", "base")
+    (root / ".snodo" / "plans" / "terminal").mkdir(parents=True)
+    _merge_inline_task(root, "terminal", "1.1_slugify", "slug.py", "def slugify(): pass\n")
+    task_state_dir = root / ".snodo" / "tasks" / "1.1_slugify"
+    task_state_dir.mkdir(parents=True)
+    (task_state_dir / "state.json").write_text(json.dumps({
+        "task_id": "1.1_slugify",
+        "status": "completed",
+        "cost": {"provenance": {"model": "deepseek/deepseek-v4-pro", "coder": "opencode-cli"}},
+    }))
+    assert not (root / ".snodo" / "jobs").exists()
+    monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(root))
+
+    assert models_set_baseline_command(
+        SimpleNamespace(plan="terminal", task="1.1_slugify", json=False)
+    ) == 0
+    baseline_dir = root / ".snodo" / "baselines" / "terminal" / "1.1_slugify"
+    record = json.loads((baseline_dir / "baseline.json").read_text())
+    diff = (baseline_dir / "solution.diff").read_text()
+    assert record["model"] == "deepseek/deepseek-v4-pro"
+    assert record["change_size"]["files_changed"] == 1
+    assert "slug.py" in diff
+    assert "slugify" in diff
+
+
 def test_set_baseline_keeps_two_inline_tasks_on_their_own_merge_ranges(tmp_path, monkeypatch):
     root = tmp_path / "project"
     root.mkdir()

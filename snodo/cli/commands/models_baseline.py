@@ -86,7 +86,7 @@ def _inline_task_job(project_root: Path, plan: str, task: str, job_id: Optional[
         return None
 
     candidates = []
-    job_dirs = [jobs_dir / job_id] if job_id else list(jobs_dir.iterdir())
+    job_dirs = [jobs_dir / job_id] if job_id else (list(jobs_dir.iterdir()) if jobs_dir.is_dir() else [])
     for job_dir in job_dirs:
         if not job_dir.is_dir():
             continue
@@ -99,13 +99,19 @@ def _inline_task_job(project_root: Path, plan: str, task: str, job_id: Optional[
         if str(state.get("status", "")).lower() != "completed":
             continue
         candidates.append({"state": state, "job_dir": job_dir})
-    if not candidates:
-        return None
-    candidates.sort(key=lambda item: item["state"].get("completed_at") or item["state"].get("created_at") or 0)
-    selected = candidates[-1]
-    state = dict(selected["state"])
-    cost = dict(state.get("cost") or {})
     task_state = _read_json(project_root / ".snodo" / "tasks" / task / "state.json") or {}
+    if candidates:
+        candidates.sort(key=lambda item: item["state"].get("completed_at") or item["state"].get("created_at") or 0)
+        selected = candidates[-1]
+        state = dict(selected["state"])
+    else:
+        # A foreground plan run has no plan-level job. Its task state is the
+        # run record; pair it with the merge event to attribute the exact diff.
+        if str(task_state.get("status", "")).lower() != "completed":
+            return None
+        selected = {"state": task_state, "job_dir": None}
+        state = dict(task_state)
+    cost = dict(state.get("cost") or {})
     task_cost = task_state.get("cost") if isinstance(task_state.get("cost"), dict) else {}
     provenance = task_cost.get("provenance") if isinstance(task_cost.get("provenance"), dict) else {}
     if not provenance:
@@ -123,9 +129,7 @@ def _task_job(project_root: Path, plan: str, task: str, job_id: Optional[str] = 
     """Find the latest completed per-task job or safely resolve an inline task."""
     jobs_dir = project_root / ".snodo" / "jobs"
     candidates = []
-    if not jobs_dir.is_dir():
-        return None
-    job_dirs = [jobs_dir / job_id] if job_id else list(jobs_dir.iterdir())
+    job_dirs = [jobs_dir / job_id] if job_id else (list(jobs_dir.iterdir()) if jobs_dir.is_dir() else [])
     for job_dir in job_dirs:
         if not job_dir.is_dir():
             continue
