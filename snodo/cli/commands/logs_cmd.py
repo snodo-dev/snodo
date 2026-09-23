@@ -399,7 +399,15 @@ def _show_plan_job(project_root: str, job_id: str, args) -> int:
                 line = own_log.readline()
                 if not line:
                     break
+                # A drained log line is committed output, not part of the
+                # renderer's live window. Otherwise each heartbeat repaints
+                # it along with the current waiting row, making a quiet plan
+                # appear to emit the same line on every poll.
+                if watch_renderer is not None:
+                    watch_renderer.reset()
                 _emit_watch_line(watch_renderer, line)
+                if watch_renderer is not None:
+                    watch_renderer.reset()
         except (OSError, ValueError):
             pass
 
