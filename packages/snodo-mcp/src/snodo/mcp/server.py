@@ -28,12 +28,16 @@ from snodo.tools.git import GitMCP
 from snodo.tools.shell import ShellMCP
 from snodo.mcp.pr import PrMCP
 from snodo.mcp.planner import PlannerMCP
-from snodo.mcp.tools import TOOL_REGISTRY, MODE_TOOL_MAP, PLANNING_TOOLS, WORK_STARTING_TOOLS
+from snodo.mcp.tools import (
+    TOOL_REGISTRY, MODE_TOOL_MAP, PLANNING_TOOLS, PROJECT_DIAGNOSTIC_TOOLS,
+    WORK_STARTING_TOOLS,
+)
 from snodo.mcp.job_handlers import JobToolHandler
 from snodo.mcp.model_handlers import ModelToolHandler
 from snodo.mcp.decision_handlers import DecisionToolHandler
 from snodo.mcp.recon_handlers import ReconToolHandler
 from snodo.mcp.plan_handlers import PlanToolHandler
+from snodo.mcp.diagnostic_handlers import DiagnosticToolHandler
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +140,7 @@ class ProtocolMCPServer:
         self._model_handler = ModelToolHandler()
         self._decision_handler = DecisionToolHandler(project_root)
         self._recon_handler = ReconToolHandler(project_root)
+        self._diagnostic_handler = DiagnosticToolHandler(project_root)
         self._tools = self._resolve_tools()
 
         self._core_handler = CoreToolHandler(self)
@@ -149,6 +154,7 @@ class ProtocolMCPServer:
             self._decision_handler,
             self._recon_handler,
             self._plan_handler,
+            self._diagnostic_handler,
             self._core_handler,
         ]
         for h in handlers:
@@ -269,6 +275,11 @@ class ProtocolMCPServer:
             for name in PLANNING_TOOLS:
                 if name not in tools:
                     tools[name] = TOOL_REGISTRY[name]
+
+        # Project diagnostics are read-only, like guide, and are available in
+        # every mode so an orchestrator can understand the project before acting.
+        for name in PROJECT_DIAGNOSTIC_TOOLS:
+            tools[name] = TOOL_REGISTRY[name]
 
         # The planning surface and the job surface are one surface: a
         # server that can start work must be able to report on it. Enforced
