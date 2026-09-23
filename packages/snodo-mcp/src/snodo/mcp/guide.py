@@ -6,46 +6,61 @@ import re
 from snodo.mcp.tools import TOOL_REGISTRY
 
 
-_SOURCES = {
-    "authoring": "authoring-a-plan.md",
-    "automation": "running-unattended.md",
-    "machine": "machine-interface.md",
-    "runbook": "runbook.md",
-}
+_GUIDE_MARKER = re.compile(r"<!--\s*snodo-guide\s+(.+?)\s*-->")
+_ATTRIBUTE = re.compile(r'([a-z]+)="([^"]*)"')
+_BUNDLED_DOCS = Path(__file__).with_name("guide_docs")
 
-_TOPICS = {
-    "spec": (("authoring", "## 3. What goes in a task spec"),),
-    "waves": (("authoring", "## 1. The one modelling rule"),),
-    "halts": (
-        ("machine", "### `snodo validate <task_spec> [--phase pre_execute|post_execute] [--mode <m>]`"),
-        ("machine", "## Exit codes"),
-    ),
-    "run": (("authoring", "## 5. Running it"),),
-    "mistakes": (
-        ("authoring", "## 4. What gets the plan refused"),
-        ("authoring", "## 7. Checklist for an orchestrator"),
-    ),
-    "planning": (("authoring", "## 8. The planning loop, end to end"),),
-    "automation": (("automation", "# Running Snodo unattended"),),
-}
 
-_TOPIC_ALIASES = {
-    "authoring": "spec",
-    "plan": "waves",
-    "sizing": "waves",
-    "follow-run": "run",
-    "common-mistakes": "mistakes",
-    "end-to-end": "planning",
-}
+def _doc_roots(project_root: str) -> tuple[Path, ...]:
+    here = Path(__file__).resolve()
+    checkout_docs = tuple(parent / "docs" for parent in here.parents)
+    return (Path(project_root) / "docs", _BUNDLED_DOCS, *checkout_docs)
+
+
+def _topic_registry(project_root: str) -> dict[str, dict]:
+    """Read topic declarations from the guide markers in the source documents."""
+    candidates = _doc_roots(project_root)
+    root = next((
+        candidate for candidate in candidates
+        if candidate.is_dir() and any(_GUIDE_MARKER.search(path.read_text(encoding="utf-8"))
+                                      for path in candidate.glob("*.md"))
+    ), None)
+    if root is None:
+        raise RuntimeError("Snodo guide sources are not available")
+
+    topics: dict[str, dict] = {}
+    for path in sorted(root.glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        for match in _GUIDE_MARKER.finditer(text):
+            attributes = dict(_ATTRIBUTE.findall(match.group(1)))
+            required = {"topic", "summary", "section"}
+            if not required <= attributes.keys():
+                raise RuntimeError(f"Invalid Snodo guide marker in {path}")
+            topic = topics.setdefault(attributes["topic"], {
+                "summary": attributes["summary"], "sections": [], "aliases": [],
+            })
+            if topic["summary"] != attributes["summary"]:
+                raise RuntimeError(f"Inconsistent summary for guide topic {attributes['topic']}")
+            topic["sections"].append((path.name, attributes["section"]))
+            topic["aliases"].extend(
+                alias for alias in attributes.get("aliases", "").split(",") if alias
+            )
+    if not topics:
+        raise RuntimeError("No Snodo guide topics are registered")
+    return topics
+
+
+def guide_topics(project_root: str) -> dict[str, dict]:
+    """Expose registered names, summaries, and aliases to other MCP surfaces."""
+    return _topic_registry(project_root)
 
 
 def _docs_root(project_root: str) -> Path:
-    """Find the checked-in docs without copying their contents into the tool."""
-    candidates = [Path(project_root) / "docs"]
-    here = Path(__file__).resolve()
-    candidates.extend(parent / "docs" for parent in here.parents)
-    for candidate in candidates:
-        if all((candidate / filename).is_file() for filename in _SOURCES.values()):
+    for candidate in _doc_roots(project_root):
+        if candidate.is_dir() and any(
+            _GUIDE_MARKER.search(path.read_text(encoding="utf-8"))
+            for path in candidate.glob("*.md")
+        ):
             return candidate
     raise RuntimeError("Snodo guide sources are not available")
 
@@ -64,58 +79,73 @@ def _section(path: Path, heading: str) -> str:
     return "\n".join(lines[start:end]).strip()
 
 
+def _contains_unavailable_tool(text: str, unavailable: set[str]) -> bool:
+    return any(re.search(rf"(?<!\w){re.escape(name)}(?!\w)", text) for name in unavailable)
+
+
 def _exposed_only(text: str, exposed: set[str]) -> str:
-    """Drop source lines that would instruct this mode to call an absent tool."""
+    """Drop whole prose paragraphs or individual list items mentioning hidden tools."""
     unavailable = set(TOOL_REGISTRY) - exposed
-    return "\n".join(
-        line for line in text.splitlines()
-        if not any(re.search(rf"(?<!\w){re.escape(name)}(?!\w)", line) for name in unavailable)
-    ).strip()
+    output: list[str] = []
+    for block in re.split(r"\n\s*\n", text):
+        lines = block.splitlines()
+        if not lines:
+            continue
+        if re.match(r"\s*(?:[-*+] |\d+[.)] )", lines[0]):
+            kept: list[str] = []
+            item: list[str] = []
+            for line in lines:
+                if re.match(r"\s*(?:[-*+] |\d+[.)] )", line):
+                    if item and not _contains_unavailable_tool("\n".join(item), unavailable):
+                        kept.extend(item)
+                    item = [line]
+                elif item:
+                    item.append(line)
+                elif not _contains_unavailable_tool(line, unavailable):
+                    kept.append(line)
+            if item and not _contains_unavailable_tool("\n".join(item), unavailable):
+                kept.extend(item)
+            if kept:
+                output.append("\n".join(kept))
+        elif not _contains_unavailable_tool(block, unavailable):
+            output.append(block)
+    return "\n\n".join(output).strip()
 
 
-def _read_topics(project_root: str, topics: tuple[tuple[str, str], ...], exposed: set[str]) -> str:
+def _read_topic(project_root: str, topic: dict, exposed: set[str]) -> str:
     root = _docs_root(project_root)
-    chunks = []
-    for source, heading in topics:
-        text = _exposed_only(_section(root / _SOURCES[source], heading), exposed)
-        if text:
-            chunks.append(text)
-    return "\n\n".join(chunks)
+    chunks = [
+        _exposed_only(_section(root / filename, heading), exposed)
+        for filename, heading in topic["sections"]
+    ]
+    return "\n\n".join(chunk for chunk in chunks if chunk)
+
+
+def guide_menu(project_root: str) -> str:
+    """One concise menu line per registered topic, suitable for descriptions."""
+    return "\n".join(
+        f"- `{name}` — {topic['summary']}"
+        for name, topic in _topic_registry(project_root).items()
+    )
 
 
 def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -> str:
     """Return the requested guide, derived from the authoritative docs."""
+    topics = _topic_registry(project_root)
+    aliases = {alias: name for name, data in topics.items() for alias in data["aliases"]}
     if topic:
-        key = _TOPIC_ALIASES.get(topic.strip().lower(), topic.strip().lower())
-        if key not in _TOPICS:
-            return "Unknown guide topic. Ask for one of: spec, waves, halts, run, mistakes, planning, automation."
-        result = _read_topics(project_root, _TOPICS[key], exposed)
+        key = topic.strip().lower()
+        key = aliases.get(key, key)
+        if key not in topics:
+            return "Unknown guide topic. Ask for one of: " + ", ".join(topics) + "."
+        result = _read_topic(project_root, topics[key], exposed)
         return result or "That topic has no instructions for the tools exposed in this mode."
 
-    chunks = [
-        "# Snodo getting started",
-        "Call the guide with `spec`, `waves`, `halts`, `run`, `mistakes`, `planning`, or `automation` for the next topic.",
-        "`planning` walks through writing intent, sizing waves and tasks, writing specs, validating, dispatching, following jobs, and reading the outcome.",
-        "`automation` covers intent-to-merged-work orchestration for long unattended runs.",
-    ]
+    menu = guide_menu(project_root)
     if "run_plan" in exposed:
-        chunks.append(
-            "First use `propose_plan`, add each spec with `generate_spec`, check it with "
-            "`validate_plan`, then call `run_plan`. Poll the returned job id with "
-            "`get_job_status`; inspect failures with `get_job_logs`."
-        )
-        chunks.append(_read_topics(project_root, _TOPICS["spec"], exposed))
-        chunks.append(_read_topics(project_root, _TOPICS["waves"], exposed))
-        chunks.append(_read_topics(project_root, _TOPICS["mistakes"], exposed))
-        chunks.append(_read_topics(project_root, _TOPICS["run"], exposed))
+        path = "First use `propose_plan`, add task specs with `generate_spec`, then `validate_plan` and `run_plan`; poll with `get_job_status` and inspect failures with `get_job_logs`."
     elif "dispatch_task" in exposed:
-        chunks.append(
-            "Write a standalone spec, call `validate_task`, then `dispatch_task`. "
-            "Poll the returned job id with `get_job_status`; inspect failures with "
-            "`get_job_logs`."
-        )
-        chunks.append(_read_topics(project_root, _TOPICS["spec"], exposed))
-        chunks.append(_read_topics(project_root, _TOPICS["halts"], exposed))
+        path = "Write a standalone spec, call `validate_task`, then `dispatch_task`; poll with `get_job_status` and inspect failures with `get_job_logs`."
     else:
-        chunks.append(_read_topics(project_root, _TOPICS["halts"], exposed))
-    return "\n\n".join(chunk for chunk in chunks if chunk)
+        path = "Use the tools available in this mode for its declared purpose."
+    return f"# Snodo getting started\n{path}\n\nGuide topics:\n{menu}"

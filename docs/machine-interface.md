@@ -98,6 +98,7 @@ Schema: `snodo.worktree.v1`
 | `project_root` | string | project root |
 | `worktrees` | array | `[{task_id, path, age_days}]` |
 
+<!-- snodo-guide topic="halts" summary="Validation outcomes and machine exit codes" section="### `snodo validate <task_spec> [--phase pre_execute|post_execute] [--mode <m>]`" -->
 ### `snodo validate <task_spec> [--phase pre_execute|post_execute] [--mode <m>]`
 
 Schema: `snodo.validate.v1`
@@ -277,6 +278,7 @@ and `overall_tok_per_sec`. `--json` without `--benchmark` therefore has the
 separate listing or stats schema above; it never mixes those payloads with a
 benchmark result.
 
+<!-- snodo-guide topic="halts" summary="Validation outcomes and machine exit codes" section="## Exit codes" -->
 ## Exit codes
 
 `snodo validate` (and any command that returns a validation outcome) uses exit

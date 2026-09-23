@@ -37,4 +37,4 @@ where = ["src"]
 namespaces = true
 
 [tool.setuptools.package-data]
-snodo = ["py.typed"]
+snodo = ["py.typed", "mcp/guide_docs/*.md"]

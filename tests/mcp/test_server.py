@@ -2045,8 +2045,9 @@ class TestInstructions:
         """The default path contains documented advice without naming withheld tools."""
         exposed = {tool["name"] for tool in server.get_tools()}
         text = guide_text(server.project_root, exposed)
-        assert "INTENT" in text
-        assert "validator" in text.lower()
+        assert "First use `propose_plan`" in text
+        assert "Guide topics:" in text
+        assert len(text) < 1000
         assert "dispatch_task" not in text
 
     def test_guide_topics_return_document_sections(self, server):
@@ -2068,7 +2069,7 @@ class TestInstructions:
         text = guide_text(server.project_root, exposed, "automation")
 
         assert "`automation`" in menu
-        assert "intent-to-merged-work" in menu
+        assert "Intent-to-merged-work" in menu
         assert "# Running Snodo unattended" in text
         assert "get_job_status" in text
         assert "record_task_status" in text
@@ -2082,6 +2083,7 @@ class TestInstructions:
         assert "run_plan" not in text
         assert "get_job_status" not in text
         assert "generate_spec" not in text
+        assert "Clean resolved work" in text
 
 
 class TestResources:

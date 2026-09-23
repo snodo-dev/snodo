@@ -1,3 +1,4 @@
+<!-- snodo-guide topic="automation" summary="Intent-to-merged-work orchestration for long unattended runs" section="# Running Snodo unattended" -->
 # Running Snodo unattended
 
 This guide is for an orchestrator that takes a stream of intents and keeps
