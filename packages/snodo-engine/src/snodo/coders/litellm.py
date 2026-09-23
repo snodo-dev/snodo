@@ -31,6 +31,7 @@ from snodo.engine.progress import format_elapsed, format_tool_call_summary
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.infrastructure.model_provenance import served_model_of
 from snodo.infrastructure.usage_tracker import UsageTracker, usage_tokens_of as _usage_tokens
+from snodo.infrastructure.llm_parameter_errors import remove_rejected_parameter
 
 import litellm as _litellm
 _litellm.drop_params = True
@@ -322,7 +323,7 @@ Return ONLY the JSON array, no other text.
                 kwargs["extra_headers"] = extra_headers
             if not _is_gemini3_plus(self.model):
                 kwargs["temperature"] = self.temperature
-            response = self._completion_fn(**kwargs)
+            response = self._completion_with_parameter_fallback(kwargs, set())
             self._check_truncation(response)
             return response.choices[0].message.content
         except (LLMCallError, ParseError):
@@ -391,6 +392,7 @@ Return ONLY the JSON array, no other text.
         #: Tokens consumed across the run; None until a response reports
         #: usage, so a provider that omits it does not read as zero.
         tokens_total: Optional[int] = None
+        removed_parameters: set[str] = set()
 
         def _record(stop_reason: Optional[str], turns_used: int) -> None:
             try:
@@ -426,7 +428,13 @@ Return ONLY the JSON array, no other text.
                     kwargs["extra_headers"] = extra_headers
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = self.temperature
-                response = self._completion_fn(**kwargs)
+                kwargs = {
+                    key: value for key, value in kwargs.items()
+                    if key not in removed_parameters
+                }
+                response = self._completion_with_parameter_fallback(
+                    kwargs, removed_parameters,
+                )
             except Exception as e:
                 self._emit_turn_telemetry(
                     turn_index=turn + 1,
@@ -631,6 +639,22 @@ Return ONLY the JSON array, no other text.
         self._raise_tool_loop_failure(
             "", self.max_tool_turns, finish_reason,
         )
+
+    def _completion_with_parameter_fallback(
+        self, kwargs: Dict[str, Any], removed_parameters: set[str],
+    ) -> Any:
+        """Retry a provider-rejected named parameter once without that kwarg."""
+        while True:
+            try:
+                return self._completion_fn(**kwargs)
+            except Exception as error:
+                parameter = remove_rejected_parameter(error, kwargs, removed_parameters)
+                if parameter is None:
+                    raise
+                _logger.warning(
+                    "Coder provider rejected parameter %s (model=%s): %s; retrying without it",
+                    parameter, self.model, error,
+                )
 
     def _try_parse_or_fail(
         self, content: str, turns_used: int, finish_reason: Optional[str],

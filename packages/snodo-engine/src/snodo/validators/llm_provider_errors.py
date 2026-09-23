@@ -15,6 +15,11 @@ from typing import Any, Optional
 # snodo.infrastructure.usage_tracker; the name stays importable from here for
 # the judge loop (Fixes #381 moved it, nothing else).
 from snodo.infrastructure.usage_tracker import usage_tokens_of as _usage_tokens  # noqa: F401 - re-export for the judge loop
+from snodo.infrastructure.llm_parameter_errors import (
+    is_provider_request_rejection as _is_shared_provider_rejection,
+    rejected_parameter_name,
+    remove_rejected_parameter,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -83,40 +88,14 @@ def _is_provider_rejection(e: Exception) -> bool:
     tool_choice from "the model returned garbage" — only the former makes an
     unparseable fallback an operational fault rather than a warn verdict (Fixes #84, #296).
     """
-    try:
-        from litellm.exceptions import (
-            BadRequestError,
-            InvalidRequestError,
-            UnsupportedParamsError,
-        )
-        if isinstance(e, (BadRequestError, InvalidRequestError, UnsupportedParamsError)):
-            return True
-    except ImportError:
-        pass
-    status = getattr(e, "status_code", None)
-    if isinstance(status, int):
-        return 400 <= status < 500 and status != 429
-    return False
+    return _is_shared_provider_rejection(e)
 
 
 def _provider_rejected_parameter(e: Exception) -> Optional[str]:
     """Extract a parameter name from a provider's named-parameter rejection."""
     if not _is_provider_rejection(e):
         return None
-    message = str(e)
-    patterns = (
-        r"(?:unsupported|unrecognized|unknown|invalid)\s+(?:request\s+)?"
-        r"(?:parameter|param|argument)\s*[:=]?\s*[`'\"]?"
-        r"([A-Za-z_][A-Za-z0-9_.-]*)",
-        r"[`'\"]([A-Za-z_][A-Za-z0-9_.-]*)[`'\"]?\s+"
-        r"(?:is\s+)?(?:not\s+supported|unsupported|invalid)",
-        r"\b([A-Za-z_][A-Za-z0-9_.-]*)\b\s+is\s+not\s+supported",
-    )
-    for pattern in patterns:
-        match = re.search(pattern, message, re.IGNORECASE)
-        if match:
-            return match.group(1)
-    return None
+    return rejected_parameter_name(e)
 
 
 def _remove_rejected_parameter(
@@ -130,12 +109,7 @@ def _remove_rejected_parameter(
     the parameter decision here makes the canary and validator use the same
     provider-error interpretation.
     """
-    parameter = _provider_rejected_parameter(e)
-    if parameter and parameter in kwargs and parameter not in removed:
-        removed.add(parameter)
-        del kwargs[parameter]
-        return parameter
-    return None
+    return remove_rejected_parameter(e, kwargs, removed)
 
 
 def _provider_retry_delay(e: Exception) -> Optional[float]:

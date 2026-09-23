@@ -24,6 +24,7 @@ from typing import Optional
 from filelock import FileLock
 
 from snodo.infrastructure.config import ClassifierConfig, WaveConfig
+from snodo.infrastructure.llm_parameter_errors import rejected_parameter_name
 
 _logger = logging.getLogger(__name__)
 _classifier_failure_streak = 0
@@ -324,7 +325,7 @@ class WaveRegistry:
                         _classifier_failure_streak = 0
                         return parsed
             except Exception as e:
-                parameter = _provider_rejected_parameter(e)
+                parameter = rejected_parameter_name(e)
                 if (
                     parameter
                     and parameter in kwargs
@@ -361,25 +362,6 @@ class WaveRegistry:
             message
         )
         return _fallback()
-
-
-def _provider_rejected_parameter(e: Exception) -> Optional[str]:
-    """Extract a named request parameter rejected by an LLM provider."""
-    message = str(e)
-    patterns = (
-        r"(?:unsupported|unrecognized|unknown|invalid)\s+(?:request\s+)?"
-        r"(?:parameter|param|argument)\s*[:=]?\s*[`'\"]?"
-        r"([A-Za-z_][A-Za-z0-9_.-]*)",
-        r"[`'\"]([A-Za-z_][A-Za-z0-9_.-]*)[`'\"]?\s+"
-        r"(?:does\s+not\s+support|is\s+not\s+supported|not\s+supported|"
-        r"unsupported|invalid)",
-        r"\b([A-Za-z_][A-Za-z0-9_.-]*)\b\s+is\s+not\s+supported",
-    )
-    for pattern in patterns:
-        match = re.search(pattern, message, re.IGNORECASE)
-        if match:
-            return match.group(1)
-    return None
 
 
 def _parse_json(content: str) -> Optional[dict]:

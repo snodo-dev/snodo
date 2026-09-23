@@ -107,6 +107,58 @@ def test_a_run_ending_on_a_provider_fault_reports_provider_fault():
     assert report.turns_available == 20
 
 
+def test_tool_loop_retries_rejected_parameter_and_keeps_it_dropped(caplog):
+    from litellm.exceptions import BadRequestError
+
+    adapter = LiteLLMAdapter(workspace_mcp=MagicMock())
+    calls = []
+
+    def complete(**kwargs):
+        calls.append(kwargs.copy())
+        if len(calls) == 1:
+            raise BadRequestError(
+                message="Unsupported parameter: 'temperature' is not supported with this model",
+                model="custom/model",
+                llm_provider="custom",
+                response=None,
+            )
+        if len(calls) == 2:
+            return _response(tool_calls=[_read()], finish_reason="tool_calls")
+        if len(calls) == 3:
+            return _response(
+                tool_calls=[_submit([{"path": "src/main.py", "content": "x"}])],
+                finish_reason="tool_calls",
+            )
+        return _response(content="Done")
+
+    adapter._completion_fn = MagicMock(side_effect=complete)
+
+    result = adapter._call_llm_with_tools("prompt")
+
+    assert json.loads(result)[0]["path"] == "src/main.py"
+    assert len(calls) == 4
+    assert "temperature" in calls[0]
+    assert all("temperature" not in call for call in calls[1:])
+    assert "provider rejected parameter temperature" in caplog.text
+
+
+def test_tool_loop_does_not_retry_provider_error_without_named_parameter():
+    from litellm.exceptions import BadRequestError
+
+    adapter = LiteLLMAdapter(workspace_mcp=MagicMock())
+    adapter._completion_fn = MagicMock(side_effect=BadRequestError(
+        message="The request is invalid",
+        model="custom/model",
+        llm_provider="custom",
+        response=None,
+    ))
+
+    with pytest.raises(LLMCallError, match="tool-loop error"):
+        adapter._call_llm_with_tools("prompt")
+
+    adapter._completion_fn.assert_called_once()
+
+
 def test_a_run_ending_on_truncation_reports_context_budget():
     adapter = LiteLLMAdapter(workspace_mcp=MagicMock(), max_tokens=8000)
     adapter._completion_fn = MagicMock(return_value=_response(

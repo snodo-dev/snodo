@@ -645,6 +645,29 @@ class TestCoderToolLoop:
         call_kwargs = completion_fn.call_args[1]
         assert "tools" not in call_kwargs
 
+    def test_single_completion_retries_without_rejected_parameter(self):
+        from litellm.exceptions import BadRequestError
+        from snodo.coders import LiteLLMAdapter
+
+        completion_fn = Mock(side_effect=[
+            BadRequestError(
+                message="Unsupported parameter: 'temperature' is not supported with this model",
+                model="custom/model",
+                llm_provider="custom",
+                response=None,
+            ),
+            self._make_legacy_response(),
+        ])
+        coder = LiteLLMAdapter(model="gpt-4")
+        coder._completion_fn = completion_fn
+
+        result = coder._call_llm("prompt")
+
+        assert json.loads(result)[0]["path"] == "src/main.py"
+        assert completion_fn.call_count == 2
+        assert "temperature" in completion_fn.call_args_list[0].kwargs
+        assert "temperature" not in completion_fn.call_args_list[1].kwargs
+
     def test_tool_loop_handles_tool_error_gracefully(self):
         """If a tool call fails, error is fed back and loop continues."""
         from snodo.coders import LiteLLMAdapter
