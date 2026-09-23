@@ -423,7 +423,7 @@ class QualityValidator(ValidatorBase):
             with tempfile.TemporaryDirectory(prefix="snodo-quality-base-") as tmp:
                 worktree_path = tmp
                 added = subprocess.run(  # noqa: S603, S607 - fixed git argv; base_ref is a validated git ref
-                    ["git", "worktree", "add", "--detach", tmp, base_ref],
+                    ["git", "worktree", "add", "--detach", tmp, base_ref],  # noqa: S607 - fixed git executable
                     cwd=str(self.working_directory),
                     capture_output=True,
                     text=True,
@@ -458,7 +458,7 @@ class QualityValidator(ValidatorBase):
                 # TemporaryDirectory removes files, but a git worktree also
                 # needs its administrative entry removed from the repository.
                 subprocess.run(  # noqa: S603, S607 - fixed git argv and temporary worktree path
-                    ["git", "worktree", "remove", "--force", worktree_path],
+                    ["git", "worktree", "remove", "--force", worktree_path],  # noqa: S607 - fixed git executable
                     cwd=str(self.working_directory),
                     capture_output=True,
                     text=True,
