@@ -27,6 +27,9 @@ def test_run_honours_switched_mode(snodo_cli):
     r = snodo_cli(["init", "--template", "greenfield", "--yes"])
     assert r.returncode == 0, r.stderr
 
+    # Follow the protocol's declared plan -> decide -> scaffold handoffs.
+    r = snodo_cli(["mode", "change", "decide"])
+    assert r.returncode == 0, r.stderr
     r = snodo_cli(["mode", "change", "scaffold"])
     assert r.returncode == 0, r.stderr
 

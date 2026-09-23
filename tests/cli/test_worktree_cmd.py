@@ -5,6 +5,7 @@ FILE: tests/cli/test_worktree_cmd.py
 
 import json
 import os
+import shutil
 import subprocess
 import time
 from types import SimpleNamespace
@@ -157,6 +158,72 @@ class TestWorktreeCommands:
         git = GitMCP(str(git_project))
         assert not any(h.name.startswith("task/task_x") for h in git.repo.heads)
 
+    def test_remove_unregisters_worktree_before_deleting_branch(
+        self, git_project, monkeypatch
+    ):
+        from snodo.cli.commands import worktree_cmd
+        from snodo.infrastructure.worktree import worktree_is_owned
+        from snodo.tools.git import GitMCP
+
+        create_worktree(str(git_project), "task_order", "remove in order")
+        branch = "task/task_order/remove-in-order"
+        original_remove = worktree_cmd.remove_worktree
+        observed = []
+
+        def remove_then_observe(project_root, task_id):
+            assert worktree_is_owned(project_root, task_id)
+            assert branch in [head.name for head in GitMCP(project_root).repo.heads]
+            original_remove(project_root, task_id)
+            observed.append(not worktree_is_owned(project_root, task_id))
+
+        monkeypatch.setattr(worktree_cmd, "remove_worktree", remove_then_observe)
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root",
+                   return_value=str(git_project)):
+            assert worktree_cmd.worktree_remove_command(
+                SimpleNamespace(task_id="task_order")
+            ) == 0
+
+        assert observed == [True]
+        assert branch not in [head.name for head in GitMCP(str(git_project)).repo.heads]
+
+    def test_remove_repairs_git_registry_when_directory_is_missing(
+        self, git_project, capsys
+    ):
+        from snodo.cli.commands.worktree_cmd import worktree_remove_command
+        from snodo.infrastructure.worktree import worktree_is_owned
+
+        create_worktree(str(git_project), "task_missing", "missing directory")
+        shutil.rmtree(worktree_path(git_project, "task_missing"))
+        assert worktree_is_owned(str(git_project), "task_missing")
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root",
+                   return_value=str(git_project)):
+            assert worktree_remove_command(
+                SimpleNamespace(task_id="task_missing")
+            ) == 0
+
+        assert not worktree_is_owned(str(git_project), "task_missing")
+        assert "Removed worktree for task_missing." in capsys.readouterr().out
+
+    def test_remove_succeeds_when_task_branch_is_already_gone(self, git_project):
+        from snodo.cli.commands.worktree_cmd import worktree_remove_command
+
+        wt = create_worktree(str(git_project), "task_detached", "branch gone")
+        subprocess.run(["git", "checkout", "--detach", "-q"], cwd=wt, check=True)
+        subprocess.run(
+            ["git", "branch", "-D", "task/task_detached/branch-gone"],
+            cwd=git_project,
+            check=True,
+        )
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root",
+                   return_value=str(git_project)):
+            assert worktree_remove_command(
+                SimpleNamespace(task_id="task_detached")
+            ) == 0
+
+        assert not worktree_path(git_project, "task_detached").exists()
+
     def test_list_filters_hidden_directories(self, git_project, capsys):
         from snodo.cli.commands.worktree_cmd import worktree_list_command
         from snodo.infrastructure.worktree import worktree_dir
@@ -272,6 +339,41 @@ class TestWorktreeCommands:
         assert result == 0
         assert not worktree_path(git_project, "task_old").exists()
         assert worktree_path(git_project, "task_fresh").exists()
+
+    def test_prune_uses_protocol_branch_ttl_by_default(self, git_project):
+        from snodo.cli.commands.worktree_cmd import worktree_prune_command
+
+        create_worktree(str(git_project), "task_ttl_old", "older than configured ttl")
+        create_worktree(str(git_project), "task_ttl_fresh", "within configured ttl")
+        _set_age(git_project, "task_ttl_old", days_old=5)
+        _set_age(git_project, "task_ttl_fresh", days_old=1)
+        snodo_dir = git_project / ".snodo"
+        snodo_dir.mkdir(exist_ok=True)
+        (snodo_dir / "protocol.yml").write_text(
+            "protocol_id: ttl-test\n"
+            "name: TTL test\n"
+            "modes:\n"
+            "  - mode_id: build\n"
+            "    name: Build\n"
+            "    transitions: {}\n"
+            "validators:\n"
+            "  - validator_id: basic\n"
+            "    validator_type: quality\n"
+            "    evaluation_phase: post_execute\n"
+            "    criteria: [passes]\n"
+            "initial_mode: build\n"
+            "execution:\n"
+            "  branch_ttl_days: 3\n"
+        )
+
+        with patch("snodo.cli.commands.worktree_cmd.require_project_root",
+                   return_value=str(git_project)):
+            assert worktree_prune_command(
+                SimpleNamespace(days=None, force=True)
+            ) == 0
+
+        assert not worktree_path(git_project, "task_ttl_old").exists()
+        assert worktree_path(git_project, "task_ttl_fresh").exists()
 
     def test_list_empty(self, git_project, capsys):
         from snodo.cli.commands.worktree_cmd import worktree_list_command

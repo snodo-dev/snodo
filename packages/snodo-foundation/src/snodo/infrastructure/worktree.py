@@ -609,8 +609,6 @@ def remove_worktree(
     if not worktree_is_owned(project_root, task_id, plan_name):
         _logger.warning("Worktree %s is not owned by project %s", wt_path, project_root)
         return
-    if not wt_path.exists():
-        return
     with merge_lock(project_root):
         try:
             from git import GitCommandError
