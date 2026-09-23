@@ -500,6 +500,10 @@ class SessionDetailScreen(Screen):
     def action_refresh(self):
         self._refresh_events()
 
+    def action_pop_screen(self):
+        """Return to the session list on Escape."""
+        self.app.pop_screen()
+
     def _populate(self):
         d = self.detail
 
