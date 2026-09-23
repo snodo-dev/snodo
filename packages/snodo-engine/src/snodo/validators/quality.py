@@ -11,7 +11,10 @@ NOT artifact_paths or generated code snippets.
 """
 
 import logging
+import re
+import shlex
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
@@ -35,6 +38,11 @@ _DETECT_RULES = [
 
 # Bound on the stdout/stderr tail surfaced in a failure message.
 _OUTPUT_TAIL_CHARS = 400
+
+# Pytest prints one node id per line in its failure summary.  Restricting the
+# baseline rerun to these ids is important: the normal test command may be a
+# large suite and a second full run would make a failing gate much more costly.
+_PYTEST_FAILED_RE = re.compile(r"^FAILED\s+(\S+)", re.MULTILINE)
 
 # The no-op default test command shipped by every protocol template that has a
 # quality validator. It is a POSIX shell command that prints a notice and exits
@@ -312,6 +320,27 @@ class QualityValidator(ValidatorBase):
 
             res = self._classify_failure(command, result.returncode,
                                           result.stdout, result.stderr)
+            baseline = self._rerun_failed_tests_on_base(
+                command, result.stdout, result.stderr, context
+            )
+            if baseline is True:
+                # Keep the existing blocker/error vocabulary.  error=True is
+                # the existing fail-closed route that cannot be severity-capped
+                # into recovery; the justification makes clear this is not a
+                # defect introduced by the task.
+                res.error = True
+                res.justification = (
+                    f"{res.justification} The same failing test(s) also fail "
+                    "on the task's base commit; this failure predates the "
+                    "task and is not routed to task recovery."
+                )
+            elif baseline is False:
+                res.justification = (
+                    f"{res.justification} The failing test(s) pass on the "
+                    "task's base commit, so the failure is treated as the "
+                    "task's defect. A pass on the baseline does not clear "
+                    "the failure; an intermittent rerun remains blocking."
+                )
             outcome = "error" if getattr(res, "error", False) else "fail"
             tail = self._output_tail(result.stdout, result.stderr)
             self._audit_verification(
@@ -333,6 +362,7 @@ class QualityValidator(ValidatorBase):
                     "quality validator config."
                 ),
             )
+
         except PermissionError:
             self._audit_verification(
                 context, command, commit_hash, 126, "error", "Test command not executable"
@@ -362,6 +392,78 @@ class QualityValidator(ValidatorBase):
                     "is stalling."
                 ),
             )
+
+    def _rerun_failed_tests_on_base(
+        self,
+        command: str,
+        stdout: str,
+        stderr: str,
+        context: Optional[Any],
+    ) -> Optional[bool]:
+        """Check only failed pytest node ids against the task's base commit.
+
+        Returns ``True`` when the baseline fails, ``False`` when it passes, and
+        ``None`` when the command or repository cannot support this cheap
+        comparison. A baseline pass is deliberately not a green result: it
+        may be a flaky task run, so the original failure remains blocking.
+        """
+        base_ref = getattr(context, "base_ref", None) if context else None
+        if not base_ref or not ("pytest" in command or "py.test" in command):
+            return None
+
+        output = f"{stdout or ''}\n{stderr or ''}"
+        failed_tests = _PYTEST_FAILED_RE.findall(output)
+        if not failed_tests:
+            return None
+
+        selectors = " ".join(shlex.quote(test) for test in dict.fromkeys(failed_tests))
+        baseline_command = f"{command} {selectors}"
+        worktree_path = None
+        try:
+            with tempfile.TemporaryDirectory(prefix="snodo-quality-base-") as tmp:
+                worktree_path = tmp
+                added = subprocess.run(  # noqa: S603, S607 - fixed git argv; base_ref is a validated git ref
+                    ["git", "worktree", "add", "--detach", tmp, base_ref],  # noqa: S607 - fixed git executable
+                    cwd=str(self.working_directory),
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if added.returncode != 0:
+                    logger.warning("Could not create quality baseline worktree: %s", added.stderr)
+                    return None
+                baseline = subprocess.run(  # noqa: S602 - same trusted command as the primary run
+                    baseline_command,
+                    shell=True,
+                    cwd=tmp,
+                    capture_output=True,
+                    text=True,
+                    timeout=self._get_timeout(),
+                )
+                outcome = "fail" if baseline.returncode else "pass"
+                self._audit_verification(
+                    context,
+                    baseline_command,
+                    base_ref,
+                    baseline.returncode,
+                    outcome,
+                    self._output_tail(baseline.stdout, baseline.stderr),
+                )
+                return bool(baseline.returncode)
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("Could not rerun failed tests on quality baseline: %s", exc)
+            return None
+        finally:
+            if worktree_path:
+                # TemporaryDirectory removes files, but a git worktree also
+                # needs its administrative entry removed from the repository.
+                subprocess.run(  # noqa: S603, S607 - fixed git argv and temporary worktree path
+                    ["git", "worktree", "remove", "--force", worktree_path],  # noqa: S607 - fixed git executable
+                    cwd=str(self.working_directory),
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
 
     def _classify_failure(self, command: str, returncode: int,
                           stdout: str, stderr: str) -> ValidatorResult:

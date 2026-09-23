@@ -427,6 +427,15 @@ no-op default test command ran and no tests were executed (no
 counting ungated projects or distinguishing a real pass from a placeholder
 must key on that outcome — an ungated run never carries `"pass"` (ADR 031).
 
+When a quality run fails, it may rerun only the reported pytest failure node
+ids in a detached worktree at the task's base commit. If those same tests fail
+there, the failure is reported as pre-existing and remains a blocking,
+fail-closed validator error; it is not sent through task recovery and is not
+silently converted to a pass. If the baseline rerun passes, the original
+failure remains blocking and is treated as a task failure for routing. This is
+also the flaky-test rule: a passing rerun never clears a failure unless the
+failure is reproduced at the base commit.
+
 `project_announced` is emitted on session creation (`SessionManager.create_session`)
 and on session resume (`_resolve_session` in `run_cmd` when adopting an existing
 session or explicitly resuming; Fixes #214, #219), where the project identity is

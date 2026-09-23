@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -408,6 +409,43 @@ class TestQualityValidatorEvaluate:
             result = qv.evaluate()
             assert result.severity == "blocker"
             assert "failed" in result.justification.lower()
+
+    def test_base_failure_is_named_and_cannot_route_to_recovery(self, quality_spec, project_dir):
+        qv = QualityValidator(quality_spec, project_dir)
+        mock_result = MagicMock(returncode=1, stdout="FAILED tests/test_shared.py::test_race\n", stderr="")
+        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result), \
+             patch.object(qv, "_rerun_failed_tests_on_base", return_value=True):
+            result = qv.evaluate(SimpleNamespace(base_ref="base-sha", working_directory=""))
+
+        assert result.severity == "blocker"
+        assert result.error is True
+        assert "predates the task" in result.justification
+        assert "not routed to task recovery" in result.justification
+
+    def test_baseline_pass_does_not_clear_possible_flake(self, quality_spec, project_dir):
+        qv = QualityValidator(quality_spec, project_dir)
+        mock_result = MagicMock(returncode=1, stdout="FAILED tests/test_shared.py::test_race\n", stderr="")
+        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result), \
+             patch.object(qv, "_rerun_failed_tests_on_base", return_value=False):
+            result = qv.evaluate(SimpleNamespace(base_ref="base-sha", working_directory=""))
+
+        assert result.severity == "blocker"
+        assert result.error is False
+        assert "does not clear" in result.justification
+
+    def test_baseline_rerun_uses_only_failed_pytest_nodes(self, quality_spec, project_dir):
+        qv = QualityValidator(quality_spec, project_dir)
+        added = MagicMock(returncode=0, stderr="")
+        baseline = MagicMock(returncode=1, stdout="1 failed\n", stderr="")
+        removed = MagicMock(returncode=0)
+        context = SimpleNamespace(base_ref="base-sha", audit_log=None)
+        with patch("snodo.validators.quality.subprocess.run", side_effect=[added, baseline, removed]) as run:
+            result = qv._rerun_failed_tests_on_base(
+                "pytest -q", "FAILED tests/test_shared.py::test_race\n", "", context
+            )
+
+        assert result is True
+        assert run.call_args_list[1].args[0] == "pytest -q tests/test_shared.py::test_race"
 
     def test_command_not_found_is_operational_error(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)
