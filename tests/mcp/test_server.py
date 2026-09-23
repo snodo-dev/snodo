@@ -9,6 +9,7 @@ tool handler delegation).
 
 import inspect
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -2055,6 +2056,36 @@ class TestInstructions:
         assert "pass" in text
         assert "blocker" in text
         assert "environment_error" in text
+
+    def test_every_guide_topic_serves_clean_markdown(self, server):
+        from snodo.mcp.guide import guide_topics
+
+        exposed = {tool["name"] for tool in server.get_tools()}
+        for topic in guide_topics(server.project_root):
+            text = guide_text(server.project_root, exposed, topic)
+            lines = text.splitlines()
+
+            assert "<!--" not in text, topic
+            assert not re.search(r"!\[[^\]]*\]\([^)]*\)", text), topic
+            for index, line in enumerate(lines):
+                if re.match(r"^#{1,6}\s+", line):
+                    following = next((candidate for candidate in lines[index + 1:] if candidate.strip()), None)
+                    assert following is not None and not re.match(r"^#{1,6}\s+", following), topic
+
+    def test_guide_drops_whole_model_subsections_without_proposal_tool(self, server):
+        text = guide_text(server.project_root, {"list_models", "resolve_model"}, "models")
+
+        assert "Propose a model change" not in text
+        assert "When resolution fails" not in text
+        assert "propose_set_model" not in text
+
+    def test_guide_waves_replaces_image_with_alt_text_and_strips_numbers(self, server):
+        exposed = {tool["name"] for tool in server.get_tools()}
+        text = guide_text(server.project_root, exposed, "waves")
+
+        assert "A plan runs wave by wave" in text
+        assert "assets/plan-waves.svg" not in text
+        assert "## 1. The one modelling rule" not in text
 
     def test_spec_guide_explains_chain_as_required_state(self, server):
         text = guide_text(server.project_root, {tool["name"] for tool in server.get_tools()}, "spec")
