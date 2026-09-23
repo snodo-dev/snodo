@@ -263,7 +263,14 @@ commands, absolute working directories and captured test output. "Opaque" is
 not an adequate description of a field that leaves the machine; the table below
 is.
 
-All 24 event types are transmitted.
+Every audit event type emitted by snodo is declared and transmitted; the
+event tag is part of the hash chain and no event is skipped client-side. The
+ingest service must accept the newly declared tags in this change. Data for
+some tags is intentionally an opaque JSON object (`additionalProperties` is
+allowed): the event type is pinned on the wire even when its data shape is not.
+This expands what the cloud receives, but creates no engine state, severity,
+halt type or status value. The existing never-transmitted rules below still
+apply.
 
 | event_type | data keys |
 |---|---|
@@ -292,6 +299,58 @@ All 24 event types are transmitted.
 | `coder_test_run` | command_type, exit_code, test_path, turn_index, job_id |
 | `test_modified` | mutations, task_id, job_id |
 | `unverified_merge_blocked` | task_ref, branch, target_commit, reason, session_id |
+| `adjudication_carry_forward` | opaque object |
+| `coder_respawned` | opaque object |
+| `coder_timed_out` | opaque object |
+| `coder_turn_budget_exhausted` | opaque object |
+| `coder_unavailable` | opaque object |
+| `decision_record_task_mismatch` | opaque object |
+| `disagreement_escalated` | opaque object |
+| `disagreement_resolved` | opaque object |
+| `dispatch_refused_coder_unavailable` | opaque object |
+| `dispatch_request` | opaque object |
+| `environment_prep_failed` | opaque object |
+| `head_not_moved` | opaque object |
+| `human_review_recorded` | opaque object |
+| `job_state_corrupt` | opaque object |
+| `merge_conflict_escalated` | opaque object |
+| `merge_failed_escalated` | opaque object |
+| `mode_change` | opaque object |
+| `no_file_operations` | opaque object |
+| `plan_proposed` | opaque object |
+| `plan_run` | opaque object |
+| `protected_path_blocked` | opaque object |
+| `protected_paths_unchecked` | opaque object |
+| `recovery_exhausted` | opaque object |
+| `recovery_stalled` | opaque object |
+| `session_audited_but_missing` | opaque object |
+| `session_corrupt` | opaque object |
+| `session_deleted` | opaque object |
+| `session_memory_updated` | opaque object |
+| `session_pointer_audited_but_missing` | opaque object |
+| `session_resumed` | opaque object |
+| `severity_cap_applied` | opaque object |
+| `snodo_mutation_blocked` | opaque object |
+| `spec_authored` | opaque object |
+| `spec_authored_failed` | opaque object |
+| `spec_premise_stale` | opaque object |
+| `subtask_spawned` | opaque object |
+| `task_add_rejected` | opaque object |
+| `task_added` | opaque object |
+| `task_replaced` | opaque object |
+| `task_status_corrected` | opaque object |
+| `task_unmerged` | opaque object |
+| `token_store_unavailable` | opaque object |
+| `tool_call` | opaque object |
+| `validator_contradiction_detected` | opaque object |
+| `validator_results` | opaque object |
+| `wf3_runtime_violation` | opaque object |
+| `worktree_isolation_failed` | opaque object |
+
+The schema gate scans literal calls to `append_event()` and `_audit()` under
+`packages/` and `snodo/`; a newly emitted literal event type must be added to
+the contract before the gate passes. All `data` values remain JSON objects, and
+the ingest service must be updated to accept these additional event tags.
 
 `session_id` is injected into every engine event by `_audit()`, so it is
 present on events whose call site does not name it.

@@ -48,6 +48,9 @@ def test_cloud_schema_validates_real_snapshot_and_event_batch():
     }
 
     validate(batch, payloads["cloud_ingest"])
+    resumed_batch = {**batch, "events": [{**batch["events"][0],
+        "event_type": "session_resumed", "data": {"previous_mode": "running"}}]}
+    validate(resumed_batch, payloads["cloud_ingest"])
     validate(snapshot, payloads["cloud_liveness"])
     validate({
         "schema": "snodo.run-record",
@@ -97,7 +100,7 @@ def test_cloud_schema_declares_every_event_data_key_from_contract():
         if "const" in ingest["$defs"][branch["$ref"].split("/")[-1]]["properties"]["event_type"]
     }
 
-    assert set(by_type) == set(expected)
+    assert set(expected) <= set(by_type)
     for event_type, keys in expected.items():
         data = by_type[event_type]["properties"]["data"]
         data_schema = ingest["$defs"][data["$ref"].split("/")[-1]]
@@ -105,6 +108,6 @@ def test_cloud_schema_declares_every_event_data_key_from_contract():
 
     envelope = ingest["$defs"]
     event_branches = [value for name, value in envelope.items() if name.endswith("Event")]
-    assert len(event_branches) == len(expected)
+    assert len(event_branches) == len(by_type)
     assert all(branch["properties"]["timestamp"]["type"] == "string" for branch in event_branches)
     assert all(branch["properties"]["scope"]["enum"] == ["", "local", "remote"] for branch in event_branches)
