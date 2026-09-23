@@ -1027,7 +1027,7 @@ class TestCloudServiceUrls:
         assert cloud["api_url"] == DEFAULT_CLOUD_API_URL
         assert cloud["tunnel_api_url"] == DEFAULT_TUNNEL_API_URL
 
-    def test_liveness_url_derives_origin_and_version(self):
+    def test_liveness_url_derives_app_origin(self):
         from snodo.config import (
             DEFAULT_CLOUD_API_URL,
             get_cloud_lease_url,
@@ -1035,11 +1035,11 @@ class TestCloudServiceUrls:
             get_cloud_liveness_url,
         )
 
-        # Default configuration: app origin + /v1 version segment
+        # Default configuration: app origin and shared lease route
         default_config = {}
-        assert get_cloud_liveness_url(default_config) == "https://app.snodo.dev/v1"
-        composed_liveness = f"{get_cloud_liveness_url(default_config)}/live/sess_1"
-        assert composed_liveness == "https://app.snodo.dev/v1/live/sess_1"
+        assert get_cloud_liveness_url(default_config) == "https://app.snodo.dev"
+        composed_liveness = f"{get_cloud_liveness_url(default_config)}/i/lease_1"
+        assert composed_liveness == "https://app.snodo.dev/i/lease_1"
 
         # Ingest uses the minted jti; mint is the app-host route without an id.
         ingest_url = f"{get_cloud_ingest_url(default_config).rstrip('/')}/i/sess_1"
@@ -1050,7 +1050,7 @@ class TestCloudServiceUrls:
 
         # Staging host with 'api' label
         staging = {"cloud": {"api_url": "https://api.staging.snodo.dev"}}
-        assert get_cloud_liveness_url(staging) == "https://app.staging.snodo.dev/v1"
+        assert get_cloud_liveness_url(staging) == "https://app.staging.snodo.dev"
         assert get_cloud_lease_url(staging) == "https://app.staging.snodo.dev"
 
     def test_lease_url_can_be_configured_independently(self):
@@ -1067,21 +1067,21 @@ class TestCloudServiceUrls:
 
         # Localhost port, IP, and self-hosted deployment without 'api' label
         for host, expected in [
-            ("http://localhost:8000", "http://localhost:8000/v1"),
-            ("http://127.0.0.1:8080", "http://127.0.0.1:8080/v1"),
-            ("https://snodo.internal", "https://snodo.internal/v1"),
-            ("https://staging.snodo.dev", "https://staging.snodo.dev/v1"),
+            ("http://localhost:8000", "http://localhost:8000"),
+            ("http://127.0.0.1:8080", "http://127.0.0.1:8080"),
+            ("https://snodo.internal", "https://snodo.internal"),
+            ("https://staging.snodo.dev", "https://staging.snodo.dev"),
         ]:
             cfg = {"cloud": {"api_url": host}}
             derived = get_cloud_liveness_url(cfg)
             assert derived == expected
-            assert f"{derived}/live/sess_1" == f"{expected}/live/sess_1"
+            assert f"{derived}/i/lease_1" == f"{expected}/i/lease_1"
 
     def test_liveness_url_explicit_override_escape_hatch(self):
         from snodo.config import get_cloud_liveness_url
 
         override_with_v1 = {"cloud": {"liveness_url": "https://custom.app.snodo.dev/v1"}}
-        assert get_cloud_liveness_url(override_with_v1) == "https://custom.app.snodo.dev/v1"
+        assert get_cloud_liveness_url(override_with_v1) == "https://custom.app.snodo.dev"
 
         override_without_path = {"cloud": {"liveness_api_url": "https://custom.app.snodo.dev"}}
-        assert get_cloud_liveness_url(override_without_path) == "https://custom.app.snodo.dev/v1"
+        assert get_cloud_liveness_url(override_without_path) == "https://custom.app.snodo.dev"

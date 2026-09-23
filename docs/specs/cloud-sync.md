@@ -110,20 +110,23 @@ The decision governing all of this is documented in ADR 012 (`docs/decisions/012
 HISTORY (the ingest path above) is append-only and outlives the machine.
 LIVENESS is mutable and worthless once stale: "task 2.1 is in_progress" is
 true for forty minutes and then false. So it travels a separate wire with
-opposite mechanics (Fixes #291) — and deliberately *not* the ingest path:
+opposite mechanics (Fixes #291) — on the app host rather than the ingest host:
 giving liveness the cursor's delivery guarantee would replay a stale status
 after a failed push, which is worse than the gap it covered.
 
 ```
-PUT {liveness_url}/live/{session_id}/{jti}
+POST {liveness_url}/i/{jti}
 Authorization: Bearer <lease token>
+Content-Type: application/json
+Body: full liveness snapshot including session_id
 ```
 
-The liveness route shape is retained pending server-side confirmation. With
-defaults the client sends `PUT https://app.snodo.dev/v1/live/{session_id}/{jti}`
-with `Authorization: Bearer <token>` (the same lease token minted at
-`POST https://app.snodo.dev/m`). Its push cadence follows the lease's
-`cadence_s` when available.
+With defaults the client sends `POST https://app.snodo.dev/i/{jti}` with the
+same lease minted at `POST https://app.snodo.dev/m`; audit ingest sends to
+`https://api.snodo.dev/i/{jti}`. `cloud.api_url` configures ingest and derives
+the app host; `cloud.liveness_url` overrides the liveness base independently.
+The client renews near expiry and re-mints once on a 401. Its push cadence
+follows the lease's `cadence_s` when available.
 
 The machine pushes; nothing reaches inward. The tunnel remains a convenience,
 not a requirement.
@@ -174,8 +177,10 @@ until some later event displaced it.
 
 **A full snapshot, never a delta, and it carries the plan's shape.** A lost
 push is harmless; the next supersedes it entirely. A failed push is dropped —
-no queue, no retry, no cursor, and `cloud_sync.json` is never touched by this
-path. Shape, not flat lists (Fixes #303): plans arrive as plan → waves →
+no queue or cursor. `cloud_sync.json` records the last push attempt, last
+liveness error and failure count independently of the audit cursor; the first
+failure per run warns with URL, status and server message. Shape, not flat
+lists (Fixes #303): plans arrive as plan → waves →
 tasks → the jobs beneath them, the structure `snodo plan status` renders. A
 branch that has completed — a wave whose every task has settled, a plan whose
 every wave has — is carried as a count plus the summary needed to render

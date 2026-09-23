@@ -6,7 +6,7 @@ Admission model:
 Before sending anything (audit ingest or liveness snapshots), a client POSTs to
 the app host's `/m` route with its full API key as Bearer auth. The response's
 `jti`, opaque token, expiry, and cadence form the lease. Ingest is addressed by
-`jti`; liveness includes `jti` in its path. Near expiry the client renews.
+`jti`; liveness uses the same route on the app host. Near expiry the client renews.
 
 Three non-negotiable properties:
 1. Liveness jti belongs in the path, never a header (edge filters on path shape).

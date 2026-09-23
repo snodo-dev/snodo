@@ -212,7 +212,7 @@ _STALE_AFTER_SECONDS = 600.0
 # check, the in-flight flag and the floor timer, not the network write.
 _lock = threading.Lock()
 _sessions: dict = {}
-_consecutive_rejections = 0
+_warned_sessions: set[str] = set()
 
 #: Cache for the sync gate: it answers the same config question on every audit
 #: transition, and a config load per event would put file IO on the run's
@@ -286,7 +286,6 @@ def _interval_seconds(config: Optional[dict] = None, session_id: Optional[str] =
 
 def reset_liveness_state() -> None:
     """Forget all per-session throttle state. Test seam; production never calls it."""
-    global _consecutive_rejections
     with _lock:
         for st in _sessions.values():
             timer = st.get("timer")
@@ -294,7 +293,7 @@ def reset_liveness_state() -> None:
                 timer.cancel()
         _sessions.clear()
         _threads.clear()
-        _consecutive_rejections = 0
+        _warned_sessions.clear()
         _gate_cache["value"] = None
         _gate_cache["config"] = None
         _gate_cache["checked_at"] = 0.0
@@ -418,7 +417,7 @@ def _deliver(session_id: str, project_root: str) -> None:
                 st["blocked_until"] = time.monotonic() + delay
                 live_delay = delay
     except Exception as exc:  # noqa: BLE001 — a liveness push never disturbs the run
-        _logger.debug("Liveness push failed for %s (dropped, not queued): %s", session_id, exc)
+        _report_push(session_id, f"liveness snapshot -> no response: {exc}")
     finally:
         with _lock:
             st = _sessions.get(session_id)
@@ -527,7 +526,7 @@ def _snapshot_is_live(snapshot: LivenessSnapshot) -> bool:
 def _post_snapshot(
     snapshot: LivenessSnapshot, config: Optional[dict] = None,
 ) -> tuple[bool, float | None, bool]:
-    """PUT the snapshot to ``{liveness_url}/live/{session_id}``. Drop on any failure.
+    """POST the snapshot to ``{liveness_url}/i/{jti}``. Drop on failure.
 
     Deliberately unlike the ingest path: no retry loop and no cursor. A
     retryable failed liveness push is superseded by the next transition's
@@ -535,8 +534,6 @@ def _post_snapshot(
     refusal is recorded in the same persisted state as audit sync, so both
     senders stop until an explicit operator retry succeeds.
     """
-    global _consecutive_rejections
-
     import httpx
 
     from snodo.config import ConfigManager, get_cloud_liveness_url
@@ -554,24 +551,23 @@ def _post_snapshot(
 
     from snodo.config import get_cloud_lease_url
     from snodo.infrastructure.cloud_lease import (
-        get_admission_lease, get_current_lease, invalidate_lease,
+        get_admission_lease, get_last_admission_error, invalidate_lease,
     )
 
     lease_url = get_cloud_lease_url(config)
     liveness_url = get_cloud_liveness_url(config)
     body = json.dumps(snapshot).encode()
-    cached_lease = get_current_lease(session_id)
     for lease_attempt in range(2):
         lease = get_admission_lease(
             api_key, lease_url, session_id=session_id, sync_state=state,
         )
         if lease is None:
-            # Exchange refusal is already persisted; an unreachable exchange
-            # is quieted by the admission layer until a later beat.
+            _report_push(session_id, get_last_admission_error() or
+                         f"{lease_url.rstrip('/')}/m -> no response: lease unavailable", state)
             return False, None, not state.is_refused(session_id)
-        url = f"{liveness_url.rstrip('/')}/live/{quote(session_id, safe='')}/{quote(lease.jti, safe='')}"
+        url = f"{liveness_url.rstrip('/')}/i/{quote(lease.jti, safe='')}"
         try:
-            response = httpx.put(
+            response = httpx.post(
                 url,
                 content=body,
                 headers={
@@ -581,55 +577,40 @@ def _post_snapshot(
                 timeout=10.0,
             )
         except Exception as exc:  # noqa: BLE001 — dropped; the next transition re-pushes
-            print(f"Liveness push failed: {url} -> no response: {exc}", file=__import__("sys").stderr)
-            with _lock:
-                _consecutive_rejections += 1
-                streak = _consecutive_rejections
-            if streak > 1:
-                _logger.warning("Liveness push %s failed (dropped): %s", url, exc)
-            else:
-                _logger.debug("Liveness push %s failed (dropped): %s", url, exc)
+            _report_push(session_id, f"{url} -> no response: {exc}", state)
             return False, None, True
 
         if 200 <= response.status_code < 300:
-            with _lock:
-                _consecutive_rejections = 0
+            state.record_liveness_push(session_id)
             return True, None, False
 
         reason = f"{url} -> HTTP {response.status_code}: {response.text[:500].strip() or 'No server message'}"
-        print(f"Liveness push failed: {reason}", file=__import__("sys").stderr)
-        if response.status_code == 401 and lease_attempt == 0 and cached_lease is None:
+        if response.status_code == 401 and lease_attempt == 0:
             invalidate_lease(lease)
             continue
+        _report_push(session_id, reason, state)
         terminal = 400 <= response.status_code < 500 and response.status_code not in (404, 429)
 
         if terminal:
             state.record_refusal(
                 session_id, reason=reason, status_code=response.status_code,
             )
-            _logger.warning(
-                "Liveness push %s -> HTTP %d (refused, stopped): %s",
-                url, response.status_code, response.text[:200],
-            )
             return False, None, False
 
         transient = is_transient_status(response.status_code)
         server_delay = retry_after_seconds(getattr(response, "headers", None)) if transient else None
-        with _lock:
-            _consecutive_rejections += 1
-            streak = _consecutive_rejections
-        if streak > 1:
-            _logger.warning(
-                "Liveness push %s -> HTTP %d (repeated rejection, dropped): %s",
-                url, response.status_code, response.text[:200],
-            )
-        else:
-            _logger.debug(
-                "Liveness push %s -> HTTP %d (dropped): %s",
-                url, response.status_code, response.text[:200],
-            )
         return False, server_delay, transient
     return False, None, False
+
+
+def _report_push(session_id: str, reason: str, state: Optional[CloudSyncState] = None) -> None:
+    """Keep every failure visible in status, but warn only once per run/session."""
+    (state or CloudSyncState()).record_liveness_push(session_id, error=reason)
+    with _lock:
+        first = session_id not in _warned_sessions
+        _warned_sessions.add(session_id)
+    if first:
+        _logger.warning("Liveness push failed (dropped): %s", reason)
 
 
 # ---------------------------------------------------------------------------
