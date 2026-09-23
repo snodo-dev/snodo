@@ -243,7 +243,18 @@ def _spec_citation_text(spec: str) -> str:
 
 
 _NON_TOUCH_CONTEXT_RE = re.compile(
-    r"(?:\b(?:do|does|did|must|should)\s+not\s+touch\b|\b(?:out\s+of\s+scope|owned\s+by|handled\s+by|belongs\s+to)\b|\bsibling\s+task\b)",
+    r"(?:"
+    r"\b(?:do|does|did|must|should|shall|will)\s+not\s+"
+    r"(?:touch|change|modify|edit|alter|update|write|implement|include)\b"
+    r"|\b(?:don't|doesn't|didn't|mustn't|shouldn't|shan't|won't)\s+"
+    r"(?:touch|change|modify|edit|alter|update|write|implement|include)\b"
+    r"|\bread[ -]only\b"
+    r"|\bleave\b[^\n]*\bunchanged\b"
+    r"|\bunchanged\b"
+    r"|\balready\s+equals?\b[^\n]*\breference\b"
+    r"|\b(?:out\s+of\s+scope|owned\s+by|handled\s+by|belongs\s+to)\b"
+    r"|\bsibling\s+task\b"
+    r")",
     re.IGNORECASE,
 )
 
@@ -251,17 +262,22 @@ _NON_TOUCH_CONTEXT_RE = re.compile(
 def _spec_overlap_paths(spec: str) -> List[str]:
     """Return cited paths that represent this task's potential file access.
 
-    A path explicitly marked as another task's responsibility or as forbidden
-    to touch remains subject to the missing-path guard, but is not evidence of
-    a same-wave write/read overlap.
+    A path explicitly marked as another task's responsibility, forbidden to
+    change, or present only as reference context remains subject to the
+    missing-path guard, but is not evidence of a same-wave write/read overlap.
     """
     paths = _spec_referenced_paths(spec)
     excluded: Set[str] = set()
     for line in spec.splitlines():
-        if not _NON_TOUCH_CONTEXT_RE.search(line):
-            continue
         for path in paths:
-            if path in line:
+            if path in line and (
+                _NON_TOUCH_CONTEXT_RE.search(line)
+                or re.search(
+                    r"\boutside\s+" + re.escape(path) + r"\b",
+                    line,
+                    re.IGNORECASE,
+                )
+            ):
                 excluded.add(path)
     return [path for path in paths if path not in excluded]
 

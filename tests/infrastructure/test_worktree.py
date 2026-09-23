@@ -499,6 +499,22 @@ def test_non_touch_path_does_not_create_overlap_citation():
     assert _spec_overlap_paths(spec) == []
 
 
+def test_prohibited_and_reference_only_paths_do_not_create_overlap(repo):
+    spec = (
+        "Do not change docs/design, site/tests/visual, "
+        "site/src/styles/tokens.css or any approved test: they are the owner's\n"
+        "No colour, shadow or gradient literal outside "
+        "site/src/styles/tokens.css\n"
+        "The site's token file site/src/styles/tokens.css already equals the "
+        "reference's tokens block"
+    )
+    expected = ["site/tests/visual", "site/src/styles/tokens.css"]
+
+    assert _spec_referenced_paths(spec) == expected
+    assert _spec_overlap_paths(spec) == []
+    assert check_spec_paths_exist(str(repo), spec) == expected
+
+
 def test_surface_untracked_files_lists_untracked(repo):
     (repo / "untracked.txt").write_text("new")
     (repo / "tracked.txt").write_text("tracked")
