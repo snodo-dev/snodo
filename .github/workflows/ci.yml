@@ -58,9 +58,10 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
         with:
           files: ./coverage.xml
-          # main is a protected branch, and Codecov refuses tokenless uploads
-          # to protected branches ("Token required because branch is protected").
-          token: ${{ secrets.CODECOV_TOKEN }}
+          # Use OIDC: it successfully authenticated the original upload, while
+          # CODECOV_TOKEN belongs to a different repository and Codecov rejected
+          # uploads with "Repository not found". Tokenless uploads are rate-limited.
+          use_oidc: true
           # Without this the CLI globs for coverage files as well as using
           # `files:`, and picks up the tee'd pytest output (coverage-output.txt)
           # as if it were a coverage report.
