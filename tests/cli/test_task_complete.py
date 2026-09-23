@@ -98,6 +98,53 @@ def test_hand_completion_record_written_and_distinguishable_from_engine(tmp_path
     assert is_hand_finished(hand_ev) is True
 
 
+def test_operator_can_record_each_existing_task_status(tmp_path, monkeypatch):
+    """Every existing status is recorded as an unjudged operator account."""
+    _, _, audit_log = _setup_project(tmp_path, monkeypatch)
+    plan_dir = tmp_path / ".snodo" / "plans" / "status_plan"
+    plan_dir.mkdir(parents=True)
+    (plan_dir / "status.json").write_text(json.dumps({
+        "tasks": {
+            f"1.{index}_{status}": {"status": "pending"}
+            for index, status in enumerate(
+                ("pending", "in_progress", "completed", "blocked", "errored", "unmerged"),
+                start=1,
+            )
+        },
+    }))
+    statuses = ("pending", "in_progress", "completed", "blocked", "errored", "unmerged")
+
+    from snodo.mcp.planner import PlannerMCP
+    planner = PlannerMCP(str(tmp_path))
+    for index, status in enumerate(statuses, start=1):
+        task_id = f"1.{index}_{status}"
+        result = planner.record_status("status_plan", task_id, status, "operator")
+        assert result["status"] == status
+        assert result["judged"] is False
+
+    events = [event for event in audit_log.get_history() if event.data.get("task_ref", "").startswith("1.")]
+    assert [event.data.get("status", "completed") for event in events] == list(statuses)
+    assert all(event.data["outside_loop"] is True for event in events)
+
+
+def test_task_complete_refuses_unknown_plan_task(tmp_path, monkeypatch):
+    """A named plan must contain the task before it can be completed."""
+    _setup_project(tmp_path, monkeypatch)
+    plan_dir = tmp_path / ".snodo" / "plans" / "known_plan"
+    plan_dir.mkdir(parents=True)
+    (plan_dir / "status.json").write_text(json.dumps({"tasks": {"1.1_known": {"status": "pending"}}}))
+
+    result = task_complete_command(SimpleNamespace(
+        task_id="1.1_missing", plan="known_plan", who="operator", notes=None, json=False,
+    ))
+    assert result == 1
+
+    missing_plan = task_complete_command(SimpleNamespace(
+        task_id="1.1_missing", plan="missing_plan", who="operator", notes=None, json=False,
+    ))
+    assert missing_plan == 1
+
+
 def test_no_new_status_value_introduced(tmp_path, monkeypatch):
     """No new task status, halt type, or severity is introduced (respecting ADR 045)."""
     mgr, session, audit_log = _setup_project(tmp_path, monkeypatch)

@@ -8,17 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from snodo.infrastructure.decisions import (
-    SigningDecisionRecordIssuer,
-    VerifyOnlyDecisionRecordIssuer,
-)
-
-
-def _make_signing_issuer():
-    from cryptography.hazmat.backends import default_backend
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    priv = rsa.generate_private_key(65537, 2048, backend=default_backend())
-    return SigningDecisionRecordIssuer(priv), priv.public_key()
+from snodo.infrastructure.decisions import VerifyOnlyDecisionRecordIssuer
 
 
 def _make_verify_issuer(pub):
@@ -123,8 +113,11 @@ class TestProposeSetModel:
 class TestAuthorizeCommand:
 
     @pytest.fixture(autouse=True)
-    def _patch_project_root(self, monkeypatch):
+    def _patch_project_root(self, monkeypatch, tmp_path):
         """Ensure authorize_command finds a project root (isolation)."""
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        from snodo.infrastructure.signing_keys import generate_keypair
+        generate_keypair()
         monkeypatch.setattr(
             "snodo.cli.commands.authorize_cmd.require_project_root",
             lambda: "/fake/project",
@@ -162,13 +155,13 @@ class TestAuthorizeCommand:
         session_mgr = MagicMock()
         session_mgr.get_active_session.return_value = session
 
-        issuer, pub = _make_signing_issuer()
+        from snodo.infrastructure.signing_keys import load_public_key
+        pub = load_public_key()
 
         with patch("snodo.cli.commands.authorize_cmd.SessionManager", return_value=session_mgr):
             with patch("snodo.cli.commands.authorize_cmd.read_state") as mock_rs:
                 mock_rs.return_value = MagicMock(current_mode="producer")
-                with patch("snodo.infrastructure.decisions.signing_issuer", return_value=issuer):
-                    result = authorize_command(SimpleNamespace(task_id="t_auth", yes=True))
+                result = authorize_command(SimpleNamespace(task_id="t_auth", yes=True))
 
         assert result == 0
         captured = capsys.readouterr()
@@ -209,13 +202,13 @@ class TestAuthorizeCommand:
         session_mgr = MagicMock()
         session_mgr.get_active_session.return_value = session
 
-        issuer, pub = _make_signing_issuer()
+        from snodo.infrastructure.signing_keys import load_public_key
+        pub = load_public_key()
 
         with patch("snodo.cli.commands.authorize_cmd.SessionManager", return_value=session_mgr):
             with patch("snodo.cli.commands.authorize_cmd.read_state") as mock_rs:
                 mock_rs.return_value = MagicMock(current_mode="producer")
-                with patch("snodo.infrastructure.decisions.signing_issuer", return_value=issuer):
-                    result = authorize_command(SimpleNamespace(task_id="t_model", yes=True))
+                result = authorize_command(SimpleNamespace(task_id="t_model", yes=True))
 
         assert result == 0
 
@@ -239,7 +232,8 @@ class TestAuthorizeCommand:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         session = _make_session_with_pending("t_stored", proposal)
-        issuer, pub = _make_signing_issuer()
+        from snodo.infrastructure.signing_keys import load_public_key
+        pub = load_public_key()
         session_mgr = MagicMock()
         session_mgr.get_active_session.return_value = session
 
@@ -251,8 +245,7 @@ class TestAuthorizeCommand:
         with patch("snodo.cli.commands.authorize_cmd.SessionManager", return_value=session_mgr):
             with patch("snodo.cli.commands.authorize_cmd.read_state") as mock_rs:
                 mock_rs.return_value = MagicMock(current_mode="producer")
-                with patch("snodo.infrastructure.decisions.signing_issuer", return_value=issuer):
-                    result = authorize_command(args)
+                result = authorize_command(args)
 
         assert result == 0
 
@@ -265,6 +258,71 @@ class TestAuthorizeCommand:
         verifier = _make_verify_issuer(pub)
         payload = verifier.verify_record(records[-1], expected_task_ref="t_stored")
         assert payload["decision"] == "halt"  # from stored proposal, not args
+
+    def test_prompt_approve_reject_and_cancel_answers(self, monkeypatch, capsys):
+        """The three human answers have distinct, persisted outcomes."""
+        from snodo.cli.commands.authorize_cmd import authorize_command
+        from snodo.infrastructure.signing_keys import load_public_key
+
+        def proposal(decision="proceed"):
+            return {
+                "type": "adjudicate",
+                "validator_id": "security",
+                "severity": "warn",
+                "decision": decision,
+                "justification": "reviewed by operator",
+            }
+
+        for task_id, answer, expected in (
+            ("t_approve", "y", "proceed"),
+            ("t_reject", "r", "reject"),
+        ):
+            session = _make_session_with_pending(task_id, proposal())
+            mgr = MagicMock()
+            mgr.get_active_session.return_value = session
+            monkeypatch.setattr("builtins.input", lambda _prompt, answer=answer: answer)
+            with patch("snodo.cli.commands.authorize_cmd.SessionManager", return_value=mgr):
+                with patch("snodo.cli.commands.authorize_cmd.read_state", return_value=MagicMock(current_mode="producer")):
+                    result = authorize_command(SimpleNamespace(task_id=task_id, yes=False))
+            assert result == 0
+            calls = [c for c in mgr.update_decision.call_args_list if c.args[1] == "decision_records"]
+            records = calls[-1].args[2]
+            payload = _make_verify_issuer(load_public_key()).verify_record(
+                records[-1], expected_task_ref=task_id,
+            )
+            assert payload["decision"] == expected
+
+        session = _make_session_with_pending("t_cancel", proposal())
+        mgr = MagicMock()
+        mgr.get_active_session.return_value = session
+        monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+        with patch("snodo.cli.commands.authorize_cmd.SessionManager", return_value=mgr):
+            with patch("snodo.cli.commands.authorize_cmd.read_state", return_value=MagicMock(current_mode="producer")):
+                result = authorize_command(SimpleNamespace(task_id="t_cancel", yes=False))
+        assert result == 1
+        assert not [c for c in mgr.update_decision.call_args_list if c.args[1] != "pending_decisions"]
+        assert "Cancelled" in capsys.readouterr().err
+
+    def test_blocker_is_never_authorisable(self, capsys):
+        """A blocker proposal cannot mint a signed override."""
+        from snodo.cli.commands.authorize_cmd import authorize_command
+
+        task_id = "t_blocker"
+        session = _make_session_with_pending(task_id, {
+            "type": "adjudicate",
+            "validator_id": "security",
+            "severity": "blocker",
+            "decision": "proceed",
+            "justification": "must not bypass",
+        })
+        mgr = MagicMock()
+        mgr.get_active_session.return_value = session
+        with patch("snodo.cli.commands.authorize_cmd.SessionManager", return_value=mgr):
+            with patch("snodo.cli.commands.authorize_cmd.read_state", return_value=MagicMock(current_mode="producer")):
+                result = authorize_command(SimpleNamespace(task_id=task_id, yes=True))
+        assert result == 1
+        assert not [c for c in mgr.update_decision.call_args_list if c.args[1] == "decision_records"]
+        assert "blocker" in capsys.readouterr().err.lower()
 
 
 # ------------------------------------------------------------------#
