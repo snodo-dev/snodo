@@ -59,8 +59,10 @@ def _inline_change_size(project_root: Path, merge_event: dict) -> dict:
     try:
         with open_repo(str(project_root)) as repo:
             merge_commit = repo.commit(merge_sha)
-            if not merge_commit.parents:
-                raise _TaskRunLookupError("the task merge commit has no parent")
+            if len(merge_commit.parents) < 2:
+                raise _TaskRunLookupError(
+                    "the task merge was a fast-forward, so its base cannot be established"
+                )
             base_sha = merge_commit.parents[0].hexsha
             paths = repo.git.diff("--name-only", base_sha, merge_sha).splitlines()
     except _TaskRunLookupError:
@@ -81,10 +83,7 @@ def _inline_change_size(project_root: Path, merge_event: dict) -> dict:
 
 def _inline_task_job(project_root: Path, plan: str, task: str, job_id: Optional[str], jobs_dir: Path) -> Optional[dict]:
     """Resolve a task executed inline inside a completed plan-level job."""
-    merge_event = _merge_event(project_root, plan, task)
-    if not merge_event:
-        return None
-
+    task_state = _read_json(project_root / ".snodo" / "tasks" / task / "state.json") or {}
     candidates = []
     job_dirs = [jobs_dir / job_id] if job_id else (list(jobs_dir.iterdir()) if jobs_dir.is_dir() else [])
     for job_dir in job_dirs:
@@ -99,7 +98,6 @@ def _inline_task_job(project_root: Path, plan: str, task: str, job_id: Optional[
         if str(state.get("status", "")).lower() != "completed":
             continue
         candidates.append({"state": state, "job_dir": job_dir})
-    task_state = _read_json(project_root / ".snodo" / "tasks" / task / "state.json") or {}
     if candidates:
         candidates.sort(key=lambda item: item["state"].get("completed_at") or item["state"].get("created_at") or 0)
         selected = candidates[-1]
@@ -113,12 +111,19 @@ def _inline_task_job(project_root: Path, plan: str, task: str, job_id: Optional[
         state = dict(task_state)
     cost = dict(state.get("cost") or {})
     task_cost = task_state.get("cost") if isinstance(task_state.get("cost"), dict) else {}
+    task_change_size = task_cost.get("change_size")
     provenance = task_cost.get("provenance") if isinstance(task_cost.get("provenance"), dict) else {}
     if not provenance:
         provenance = cost.get("provenance") if isinstance(cost.get("provenance"), dict) else {}
     if not provenance.get("model"):
         raise _TaskRunLookupError("the inline task has no attributable model provenance")
-    cost["change_size"] = _inline_change_size(project_root, merge_event)
+    if str(task_state.get("status", "")).lower() == "completed" and isinstance(task_change_size, dict):
+        cost["change_size"] = task_change_size
+    else:
+        merge_event = _merge_event(project_root, plan, task)
+        if not merge_event:
+            return None
+        cost["change_size"] = _inline_change_size(project_root, merge_event)
     cost["provenance"] = provenance
     state["cost"] = cost
     selected["state"] = state

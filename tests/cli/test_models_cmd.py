@@ -218,6 +218,92 @@ def test_set_baseline_finds_terminal_plan_task_without_jobs_directory(tmp_path, 
     assert "slugify" in diff
 
 
+def test_set_baseline_uses_task_recorded_range_without_merge_audit_event(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "README.md").write_text("base\n")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-qm", "base")
+    base_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    (root / "solution.txt").write_text("recorded task solution\n")
+    _git(root, "add", "solution.txt")
+    _git(root, "commit", "-qm", "task solution")
+    head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    (root / ".snodo" / "plans" / "recorded").mkdir(parents=True)
+    task_dir = root / ".snodo" / "tasks" / "1.1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text(json.dumps({
+        "task_id": "1.1",
+        "status": "completed",
+        "cost": {
+            "change_size": {"base_sha": base_sha, "head_sha": head_sha, "paths": ["solution.txt"]},
+            "provenance": {"model": "recorded/model", "coder": "test"},
+        },
+    }))
+    monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(root))
+
+    result = models_set_baseline_command(SimpleNamespace(plan="recorded", task="1.1", json=False))
+
+    assert result == 0
+    baseline = root / ".snodo" / "baselines" / "recorded" / "1.1"
+    record = json.loads((baseline / "baseline.json").read_text())
+    diff = (baseline / "solution.diff").read_text()
+    assert record["change_size"]["base_sha"] == base_sha
+    assert record["change_size"]["head_sha"] == head_sha
+    assert "recorded task solution" in diff
+
+
+def test_set_baseline_uses_full_recorded_range_for_fast_forwarded_multicommit_task(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "test@example.com")
+    _git(root, "config", "user.name", "Test")
+    (root / "README.md").write_text("base\n")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-qm", "base")
+    base_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    _git(root, "checkout", "-qb", "task/fast-forward")
+    (root / "first.txt").write_text("first task commit\n")
+    _git(root, "add", "first.txt")
+    _git(root, "commit", "-qm", "first task commit")
+    (root / "second.txt").write_text("second task commit\n")
+    _git(root, "add", "second.txt")
+    _git(root, "commit", "-qm", "second task commit")
+    head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    _git(root, "checkout", "-q", "main")
+    _git(root, "merge", "--ff-only", "task/fast-forward")
+    (root / ".snodo" / "plans" / "recorded").mkdir(parents=True)
+    task_dir = root / ".snodo" / "tasks" / "1.2"
+    task_dir.mkdir(parents=True)
+    (task_dir / "state.json").write_text(json.dumps({
+        "task_id": "1.2",
+        "status": "completed",
+        "cost": {
+            "change_size": {
+                "base_sha": base_sha, "head_sha": head_sha,
+                "paths": ["first.txt", "second.txt"], "files_changed": 2,
+            },
+            "provenance": {"model": "recorded/model", "coder": "test"},
+        },
+    }))
+    monkeypatch.setattr("snodo.cli.commands.models_baseline.resolve_project_root", lambda: str(root))
+
+    result = models_set_baseline_command(SimpleNamespace(plan="recorded", task="1.2", json=False))
+
+    assert result == 0
+    baseline = root / ".snodo" / "baselines" / "recorded" / "1.2"
+    record = json.loads((baseline / "baseline.json").read_text())
+    diff = (baseline / "solution.diff").read_text()
+    assert record["change_size"]["base_sha"] == base_sha
+    assert record["change_size"]["head_sha"] == head_sha
+    assert "first task commit" in diff
+    assert "second task commit" in diff
+
+
 def test_set_baseline_keeps_two_inline_tasks_on_their_own_merge_ranges(tmp_path, monkeypatch):
     root = tmp_path / "project"
     root.mkdir()
