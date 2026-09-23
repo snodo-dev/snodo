@@ -244,6 +244,25 @@ class TestCloudSyncDispatcher:
         assert result["synced"] == 0
         assert result["failed"] is False
 
+    def test_validation_failure_names_event_and_sequence_without_network_call(self):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
+
+        event = self._make_events(1)[0]
+        event.sequence = 2734
+        event.event_type = "unknown_emitter_event"
+        dispatcher = CloudSyncDispatcher()
+
+        outcome, reason, status = dispatcher._post_batch(
+            "sess_invalid", "/proj", [event], "sndo_live_xxx",
+            "https://api.example.com",
+        )
+
+        assert outcome == "retryable"
+        assert status is None
+        assert "unknown_emitter_event" in reason
+        assert "2734" in reason
+        assert "Client-side cloud sync validation failed" in reason
+
     def test_sync_batches_up_to_50(self):
         """Batch of 75 events → two POST calls (50 + 25)."""
         from unittest.mock import patch

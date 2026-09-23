@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Annotated, Any, Literal, Optional, TypedDict, Union
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, create_model
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError, create_model
 
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
@@ -89,6 +89,57 @@ _EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
     "coder_test_run": ("command_type", "exit_code", "test_path", "turn_index", "job_id"),
     "test_modified": ("mutations", "task_id", "job_id"),
     "unverified_merge_blocked": ("task_ref", "branch", "target_commit", "reason", "session_id"),
+    # The event tags below are part of the hash-chained audit stream. Their
+    # data remains an opaque object until an ingest consumer needs a pinned
+    # shape; accepting it here must not break delivery of later chain entries.
+    "coder_respawned": (),
+    "coder_timed_out": (),
+    "coder_turn_budget_exhausted": (),
+    "coder_unavailable": (),
+    "adjudication_carry_forward": (),
+    "decision_record_task_mismatch": (),
+    "disagreement_escalated": (),
+    "disagreement_resolved": (),
+    "dispatch_refused_coder_unavailable": (),
+    "dispatch_request": (),
+    "environment_prep_failed": (),
+    "head_not_moved": (),
+    "human_review_recorded": (),
+    "job_state_corrupt": (),
+    "merge_conflict_escalated": (),
+    "merge_failed_escalated": (),
+    "mode_change": (),
+    "no_file_operations": (),
+    "plan_proposed": (),
+    "plan_run": (),
+    "protected_path_blocked": (),
+    "protected_paths_unchecked": (),
+    "recovery_exhausted": (),
+    "recovery_stalled": (),
+    "session_audited_but_missing": (),
+    "session_corrupt": (),
+    "session_deleted": (),
+    "session_memory_updated": (),
+    "session_pointer_audited_but_missing": (),
+    "session_resumed": (),
+    "severity_cap_applied": (),
+    "snodo_mutation_blocked": (),
+    "spec_authored": (),
+    "spec_authored_failed": (),
+    "spec_premise_stale": (),
+    "spec_replaced": (),
+    "subtask_spawned": (),
+    "task_add_rejected": (),
+    "task_added": (),
+    "task_replaced": (),
+    "task_status_corrected": (),
+    "task_unmerged": (),
+    "token_store_unavailable": (),
+    "tool_call": (),
+    "validator_contradiction_detected": (),
+    "validator_results": (),
+    "wf3_runtime_violation": (),
+    "worktree_isolation_failed": (),
 }
 
 
@@ -368,6 +419,8 @@ class CloudSyncDispatcher:
         state.record_attempt(session_id, pending=pending, error=last_error if failed else None)
 
         res_dict: dict = {"synced": synced, "failed": failed, "pending": pending}
+        if failed and last_error:
+            res_dict["reason"] = last_error
         if refused:
             res_dict["refused"] = True
             res_dict["reason"] = refused_reason
@@ -416,7 +469,26 @@ class CloudSyncDispatcher:
         }
         # Validate the contract without serializing the model: the original
         # values and field set must remain byte-for-byte unchanged on the wire.
-        AuditIngestBatch.model_validate(payload)
+        try:
+            AuditIngestBatch.model_validate(payload)
+        except ValidationError as err:
+            event_index = next(
+                (part for error in err.errors() for part in error.get("loc", ())
+                 if isinstance(part, int)),
+                None,
+            )
+            if event_index is not None and event_index < len(payload_events):
+                rejected = payload_events[event_index]
+                event_label = (
+                    f"event {rejected['event_type']!r} at sequence {rejected['sequence']}"
+                )
+            else:
+                event_label = "ingest batch"
+            first_error = err.errors()[0] if err.errors() else {}
+            detail = first_error.get("msg", "invalid payload")
+            reason = f"Client-side cloud sync validation failed for {event_label}: {detail}"
+            _logger.error(reason)
+            return ("retryable", reason, None)
         body = json.dumps(payload).encode()
 
         from urllib.parse import quote

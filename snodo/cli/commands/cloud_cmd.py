@@ -304,7 +304,9 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
             print(f"  {sid}  BLOCKED (refused: {reason})")
             total_failed += 1
         elif result.get("failed"):
-            print(f"  {sid}  ✗ sync failed")
+            reason = result.get("reason")
+            suffix = f": {reason}" if reason else ""
+            print(f"  {sid}  ✗ sync failed{suffix}")
             total_failed += 1
         else:
             print(f"  {sid}  — no new events")

@@ -9,6 +9,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Cloud ingest now declares and sends every audit event type emitted by snodo,
+  preserving the hash chain across event types that were previously rejected
+  client-side. Some newly declared tags carry opaque data objects until their
+  payload shapes are pinned. The ingest service must accept these new tags.
+
 ### Added
 - The MCP server now exposes an always-available, source-backed `guide` tool for
   learning how to author, size, run and recover plans without relying on the
