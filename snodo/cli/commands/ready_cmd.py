@@ -75,7 +75,6 @@ def ready_command(args) -> int:
 
     json_out = getattr(args, "json", False)
     mode_filter = getattr(args, "mode", None)
-    record_audit = getattr(args, "record_audit", True)
 
     project_root_str = resolve_project_root()
     if project_root_str is None:
@@ -132,14 +131,13 @@ def ready_command(args) -> int:
     }
 
     # Record audit event
-    if record_audit:
-        try:
-            audit_log = get_audit_log(project_id=project_id)
-            if audit_log:
-                audit_log.append_event("readiness_checked", audit_payload)
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).debug("Failed to append readiness_checked audit event: %s", e)
+    try:
+        audit_log = get_audit_log(project_id=project_id)
+        if audit_log:
+            audit_log.append_event("readiness_checked", audit_payload)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug("Failed to append readiness_checked audit event: %s", e)
 
     if json_out:
         return emit_json(
