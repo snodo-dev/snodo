@@ -29,7 +29,7 @@ def emitted_event_types(roots: tuple[Path, ...]) -> set[str]:
                     continue
                 if not isinstance(node.func, ast.Attribute):
                     continue
-                if node.func.attr not in {"append_event", "_audit"} or not node.args:
+                if node.func.attr not in {"append_event", "_audit", "_log_event"} or not node.args:
                     continue
                 event_type = node.args[0]
                 if isinstance(event_type, ast.Constant) and isinstance(event_type.value, str):

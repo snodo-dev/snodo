@@ -418,6 +418,128 @@
         "title": "CoderUnavailableEvent",
         "type": "object"
       },
+      "DecisionRecordInvalidData": {
+        "additionalProperties": true,
+        "properties": {},
+        "title": "DecisionRecordInvalidData",
+        "type": "object"
+      },
+      "DecisionRecordInvalidEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/DecisionRecordInvalidData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "decision_record_invalid",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "DecisionRecordInvalidEvent",
+        "type": "object"
+      },
+      "DecisionRecordIssuedData": {
+        "additionalProperties": true,
+        "properties": {},
+        "title": "DecisionRecordIssuedData",
+        "type": "object"
+      },
+      "DecisionRecordIssuedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/DecisionRecordIssuedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "decision_record_issued",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "DecisionRecordIssuedEvent",
+        "type": "object"
+      },
       "DecisionRecordTaskMismatchData": {
         "additionalProperties": true,
         "properties": {},
@@ -1597,6 +1719,146 @@
           "event_hash"
         ],
         "title": "NoFileOperationsEvent",
+        "type": "object"
+      },
+      "OpaqueAuditEvent": {
+        "additionalProperties": false,
+        "description": "Envelope for historical or otherwise undeclared audit event types.",
+        "properties": {
+          "data": {
+            "title": "Data"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "not": {
+              "enum": [
+                "project_announced",
+                "readiness_checked",
+                "dispatch",
+                "work_already_present",
+                "governance_check",
+                "validate",
+                "task_classified",
+                "wave_created",
+                "task_complete",
+                "task_merged",
+                "halt",
+                "transition",
+                "token_consumed",
+                "post_validation_route",
+                "post_validate_bypassed",
+                "session_started",
+                "session_task_changed",
+                "session_decision_updated",
+                "recovery_resolved",
+                "recovery_internal_error",
+                "execution_failed",
+                "verification_executed",
+                "coder_test_run",
+                "test_modified",
+                "unverified_merge_blocked",
+                "coder_respawned",
+                "coder_timed_out",
+                "coder_turn_budget_exhausted",
+                "coder_unavailable",
+                "adjudication_carry_forward",
+                "decision_record_issued",
+                "set_model_verify_failed",
+                "token_blocked",
+                "token_expired",
+                "token_invalid",
+                "token_issued",
+                "token_task_mismatch",
+                "decision_record_task_mismatch",
+                "decision_record_invalid",
+                "disagreement_escalated",
+                "disagreement_resolved",
+                "dispatch_refused_coder_unavailable",
+                "dispatch_request",
+                "environment_prep_failed",
+                "head_not_moved",
+                "human_review_recorded",
+                "job_state_corrupt",
+                "merge_conflict_escalated",
+                "merge_failed_escalated",
+                "mode_change",
+                "no_file_operations",
+                "plan_proposed",
+                "plan_run",
+                "protected_path_blocked",
+                "protected_paths_unchecked",
+                "recovery_exhausted",
+                "recovery_stalled",
+                "session_audited_but_missing",
+                "session_corrupt",
+                "session_deleted",
+                "session_memory_updated",
+                "session_pointer_audited_but_missing",
+                "session_resumed",
+                "severity_cap_applied",
+                "snodo_mutation_blocked",
+                "spec_authored",
+                "spec_authored_failed",
+                "spec_premise_stale",
+                "spec_replaced",
+                "subtask_spawned",
+                "task_add_rejected",
+                "task_added",
+                "task_replaced",
+                "task_status_corrected",
+                "task_unmerged",
+                "token_store_unavailable",
+                "tool_call",
+                "validator_contradiction_detected",
+                "validator_results",
+                "wf3_runtime_violation",
+                "worktree_isolation_failed"
+              ]
+            },
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "OpaqueAuditEvent",
         "type": "object"
       },
       "PlanProposedData": {
@@ -3179,6 +3441,67 @@
         "title": "SessionTaskChangedEvent",
         "type": "object"
       },
+      "SetModelVerifyFailedData": {
+        "additionalProperties": true,
+        "properties": {},
+        "title": "SetModelVerifyFailedData",
+        "type": "object"
+      },
+      "SetModelVerifyFailedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/SetModelVerifyFailedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "set_model_verify_failed",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "SetModelVerifyFailedEvent",
+        "type": "object"
+      },
       "SeverityCapAppliedData": {
         "additionalProperties": true,
         "properties": {},
@@ -4329,6 +4652,67 @@
         "title": "TestModifiedEvent",
         "type": "object"
       },
+      "TokenBlockedData": {
+        "additionalProperties": true,
+        "properties": {},
+        "title": "TokenBlockedData",
+        "type": "object"
+      },
+      "TokenBlockedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TokenBlockedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "token_blocked",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TokenBlockedEvent",
+        "type": "object"
+      },
       "TokenConsumedData": {
         "additionalProperties": true,
         "properties": {
@@ -4411,6 +4795,189 @@
         "title": "TokenConsumedEvent",
         "type": "object"
       },
+      "TokenExpiredData": {
+        "additionalProperties": true,
+        "properties": {},
+        "title": "TokenExpiredData",
+        "type": "object"
+      },
+      "TokenExpiredEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TokenExpiredData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "token_expired",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TokenExpiredEvent",
+        "type": "object"
+      },
+      "TokenInvalidData": {
+        "additionalProperties": true,
+        "properties": {},
+        "title": "TokenInvalidData",
+        "type": "object"
+      },
+      "TokenInvalidEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TokenInvalidData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "token_invalid",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TokenInvalidEvent",
+        "type": "object"
+      },
+      "TokenIssuedData": {
+        "additionalProperties": true,
+        "properties": {},
+        "title": "TokenIssuedData",
+        "type": "object"
+      },
+      "TokenIssuedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TokenIssuedData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "token_issued",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TokenIssuedEvent",
+        "type": "object"
+      },
       "TokenStoreUnavailableData": {
         "additionalProperties": true,
         "properties": {},
@@ -4470,6 +5037,67 @@
           "event_hash"
         ],
         "title": "TokenStoreUnavailableEvent",
+        "type": "object"
+      },
+      "TokenTaskMismatchData": {
+        "additionalProperties": true,
+        "properties": {},
+        "title": "TokenTaskMismatchData",
+        "type": "object"
+      },
+      "TokenTaskMismatchEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TokenTaskMismatchData"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "token_task_mismatch",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "previous_hash": {
+            "title": "Previous Hash",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "",
+              "local",
+              "remote"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "timestamp",
+          "event_type",
+          "project_id",
+          "scope",
+          "data",
+          "previous_hash",
+          "event_hash"
+        ],
+        "title": "TokenTaskMismatchEvent",
         "type": "object"
       },
       "ToolCallData": {
@@ -5429,85 +6057,7 @@
       },
       "events": {
         "items": {
-          "discriminator": {
-            "mapping": {
-              "adjudication_carry_forward": "#/$defs/AdjudicationCarryForwardEvent",
-              "coder_respawned": "#/$defs/CoderRespawnedEvent",
-              "coder_test_run": "#/$defs/CoderTestRunEvent",
-              "coder_timed_out": "#/$defs/CoderTimedOutEvent",
-              "coder_turn_budget_exhausted": "#/$defs/CoderTurnBudgetExhaustedEvent",
-              "coder_unavailable": "#/$defs/CoderUnavailableEvent",
-              "decision_record_task_mismatch": "#/$defs/DecisionRecordTaskMismatchEvent",
-              "disagreement_escalated": "#/$defs/DisagreementEscalatedEvent",
-              "disagreement_resolved": "#/$defs/DisagreementResolvedEvent",
-              "dispatch": "#/$defs/DispatchEvent",
-              "dispatch_refused_coder_unavailable": "#/$defs/DispatchRefusedCoderUnavailableEvent",
-              "dispatch_request": "#/$defs/DispatchRequestEvent",
-              "environment_prep_failed": "#/$defs/EnvironmentPrepFailedEvent",
-              "execution_failed": "#/$defs/ExecutionFailedEvent",
-              "governance_check": "#/$defs/GovernanceCheckEvent",
-              "halt": "#/$defs/HaltEvent",
-              "head_not_moved": "#/$defs/HeadNotMovedEvent",
-              "human_review_recorded": "#/$defs/HumanReviewRecordedEvent",
-              "job_state_corrupt": "#/$defs/JobStateCorruptEvent",
-              "merge_conflict_escalated": "#/$defs/MergeConflictEscalatedEvent",
-              "merge_failed_escalated": "#/$defs/MergeFailedEscalatedEvent",
-              "mode_change": "#/$defs/ModeChangeEvent",
-              "no_file_operations": "#/$defs/NoFileOperationsEvent",
-              "plan_proposed": "#/$defs/PlanProposedEvent",
-              "plan_run": "#/$defs/PlanRunEvent",
-              "post_validate_bypassed": "#/$defs/PostValidateBypassedEvent",
-              "post_validation_route": "#/$defs/PostValidationRouteEvent",
-              "project_announced": "#/$defs/ProjectAnnouncedEvent",
-              "protected_path_blocked": "#/$defs/ProtectedPathBlockedEvent",
-              "protected_paths_unchecked": "#/$defs/ProtectedPathsUncheckedEvent",
-              "readiness_checked": "#/$defs/ReadinessCheckedEvent",
-              "recovery_exhausted": "#/$defs/RecoveryExhaustedEvent",
-              "recovery_internal_error": "#/$defs/RecoveryInternalErrorEvent",
-              "recovery_resolved": "#/$defs/RecoveryResolvedEvent",
-              "recovery_stalled": "#/$defs/RecoveryStalledEvent",
-              "session_audited_but_missing": "#/$defs/SessionAuditedButMissingEvent",
-              "session_corrupt": "#/$defs/SessionCorruptEvent",
-              "session_decision_updated": "#/$defs/SessionDecisionUpdatedEvent",
-              "session_deleted": "#/$defs/SessionDeletedEvent",
-              "session_memory_updated": "#/$defs/SessionMemoryUpdatedEvent",
-              "session_pointer_audited_but_missing": "#/$defs/SessionPointerAuditedButMissingEvent",
-              "session_resumed": "#/$defs/SessionResumedEvent",
-              "session_started": "#/$defs/SessionStartedEvent",
-              "session_task_changed": "#/$defs/SessionTaskChangedEvent",
-              "severity_cap_applied": "#/$defs/SeverityCapAppliedEvent",
-              "snodo_mutation_blocked": "#/$defs/SnodoMutationBlockedEvent",
-              "spec_authored": "#/$defs/SpecAuthoredEvent",
-              "spec_authored_failed": "#/$defs/SpecAuthoredFailedEvent",
-              "spec_premise_stale": "#/$defs/SpecPremiseStaleEvent",
-              "spec_replaced": "#/$defs/SpecReplacedEvent",
-              "subtask_spawned": "#/$defs/SubtaskSpawnedEvent",
-              "task_add_rejected": "#/$defs/TaskAddRejectedEvent",
-              "task_added": "#/$defs/TaskAddedEvent",
-              "task_classified": "#/$defs/TaskClassifiedEvent",
-              "task_complete": "#/$defs/TaskCompleteEvent",
-              "task_merged": "#/$defs/TaskMergedEvent",
-              "task_replaced": "#/$defs/TaskReplacedEvent",
-              "task_status_corrected": "#/$defs/TaskStatusCorrectedEvent",
-              "task_unmerged": "#/$defs/TaskUnmergedEvent",
-              "test_modified": "#/$defs/TestModifiedEvent",
-              "token_consumed": "#/$defs/TokenConsumedEvent",
-              "token_store_unavailable": "#/$defs/TokenStoreUnavailableEvent",
-              "tool_call": "#/$defs/ToolCallEvent",
-              "transition": "#/$defs/TransitionEvent",
-              "unverified_merge_blocked": "#/$defs/UnverifiedMergeBlockedEvent",
-              "validate": "#/$defs/ValidateEvent",
-              "validator_contradiction_detected": "#/$defs/ValidatorContradictionDetectedEvent",
-              "validator_results": "#/$defs/ValidatorResultsEvent",
-              "verification_executed": "#/$defs/VerificationExecutedEvent",
-              "wave_created": "#/$defs/WaveCreatedEvent",
-              "wf3_runtime_violation": "#/$defs/Wf3RuntimeViolationEvent",
-              "work_already_present": "#/$defs/WorkAlreadyPresentEvent",
-              "worktree_isolation_failed": "#/$defs/WorktreeIsolationFailedEvent"
-            },
-            "propertyName": "event_type"
-          },
-          "oneOf": [
+          "anyOf": [
             {
               "$ref": "#/$defs/ProjectAnnouncedEvent"
             },
@@ -5599,7 +6149,31 @@
               "$ref": "#/$defs/AdjudicationCarryForwardEvent"
             },
             {
+              "$ref": "#/$defs/DecisionRecordIssuedEvent"
+            },
+            {
+              "$ref": "#/$defs/SetModelVerifyFailedEvent"
+            },
+            {
+              "$ref": "#/$defs/TokenBlockedEvent"
+            },
+            {
+              "$ref": "#/$defs/TokenExpiredEvent"
+            },
+            {
+              "$ref": "#/$defs/TokenInvalidEvent"
+            },
+            {
+              "$ref": "#/$defs/TokenIssuedEvent"
+            },
+            {
+              "$ref": "#/$defs/TokenTaskMismatchEvent"
+            },
+            {
               "$ref": "#/$defs/DecisionRecordTaskMismatchEvent"
+            },
+            {
+              "$ref": "#/$defs/DecisionRecordInvalidEvent"
             },
             {
               "$ref": "#/$defs/DisagreementEscalatedEvent"
@@ -5726,6 +6300,9 @@
             },
             {
               "$ref": "#/$defs/WorktreeIsolationFailedEvent"
+            },
+            {
+              "$ref": "#/$defs/OpaqueAuditEvent"
             }
           ]
         },

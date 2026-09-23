@@ -316,12 +316,12 @@ class TestCloudSyncDispatcher:
         assert result["synced"] == 0
         assert result["failed"] is False
 
-    def test_validation_failure_names_event_and_sequence_without_network_call(self):
+    def test_validation_failure_names_event_and_sequence_without_tag_union(self):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
 
         event = self._make_events(1)[0]
         event.sequence = 2734
-        event.event_type = "unknown_emitter_event"
+        event.timestamp = 123
         dispatcher = CloudSyncDispatcher()
 
         outcome, reason, status = dispatcher._post_batch(
@@ -331,9 +331,42 @@ class TestCloudSyncDispatcher:
 
         assert outcome == "retryable"
         assert status is None
-        assert "unknown_emitter_event" in reason
+        assert "transition" in reason
         assert "2734" in reason
         assert "Client-side cloud sync validation failed" in reason
+        assert "retry with `snodo cloud sync --all --force`" in reason
+        assert "project_announced" not in reason
+
+    def test_undeclared_event_mid_chain_and_later_events_are_sent(self):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        events = self._make_events(3)
+        events[1].event_type = "legacy_event_from_old_release"
+        events[1].data = {"old_field": "preserved"}
+        audit_log = MagicMock(events=events)
+        dispatcher = CloudSyncDispatcher()
+        sent = []
+
+        def accepted(_url, content, **_kwargs):
+            sent.extend(event["sequence"] for event in json.loads(content)["events"])
+            response = MagicMock(status_code=200, text="ok")
+            return response
+
+        with (
+            patch.object(CloudSyncState, "get_cursor", return_value=0),
+            patch.object(CloudSyncState, "advance_cursor"),
+            patch.object(CloudSyncState, "clear_refusal"),
+            patch.object(CloudSyncState, "record_attempt"),
+            patch("httpx.post", side_effect=accepted),
+        ):
+            result = dispatcher.sync(
+                "sess_legacy", "/proj", audit_log,
+                "sndo_live_xxx", "https://api.example.com",
+            )
+
+        assert result["synced"] == 3
+        assert result["failed"] is False
+        assert sent == [1, 2, 3]
 
     def test_sync_batches_up_to_50(self):
         """Batch of 75 events → two POST calls (50 + 25)."""
@@ -495,6 +528,33 @@ class TestCloudSyncDispatcher:
         assert outcome == "delivered"
         mock_sleep.assert_called_with(1)
         assert mock_post.call_count == 2
+
+    def test_429_body_retry_after_is_honoured_without_using_retry_budget(self):
+        from unittest.mock import patch
+
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
+
+        dispatcher = CloudSyncDispatcher()
+        events = self._make_events(1)
+        rate_limited = MagicMock()
+        rate_limited.status_code = 429
+        rate_limited.headers = {}
+        rate_limited.text = '{"error":"rate_limited","retry_after":60}'
+        rate_limited.json.return_value = {"error": "rate_limited", "retry_after": 60}
+        ok_resp = MagicMock(status_code=200, text="ok")
+        with (
+            patch("httpx.post", side_effect=[rate_limited] * 7 + [ok_resp]) as mock_post,
+            patch("snodo.infrastructure.cloud_sync.time.sleep") as mock_sleep,
+        ):
+            outcome, _reason, _status = dispatcher._post_batch(
+                "sess_rl_body", "/proj", events,
+                "sndo_live_xxx", "https://api.example.com",
+            )
+
+        assert outcome == "delivered"
+        assert mock_post.call_count == 8
+        assert mock_sleep.call_count == 7
+        mock_sleep.assert_called_with(60)
 
     def test_5xx_exponential_backoff(self):
         from unittest.mock import patch

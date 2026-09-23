@@ -18,10 +18,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   endpoints. The app and API hosts remain independently configurable.
 
 ### Changed
-- Cloud ingest now declares and sends every audit event type emitted by snodo,
-  preserving the hash chain across event types that were previously rejected
-  client-side. Some newly declared tags carry opaque data objects until their
-  payload shapes are pinned. The ingest service must accept these new tags.
+- Cloud ingest validates known audit event types against their declared shapes
+  and accepts historical undeclared types through a validated opaque envelope,
+  preserving the hash chain without dropping or rewriting events. The
+  published cloud interface version is now 5. Rate-limit retries honor
+  `retry_after` in the response body or `Retry-After` header and do not consume
+  the failed-attempt budget.
 
 ### Added
 - The MCP server now exposes an always-available, source-backed `guide` tool for

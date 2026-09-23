@@ -13,7 +13,7 @@ def test_cloud_schema_validates_real_snapshot_and_event_batch():
 
     assert result.exit_code == 0
     publication = json.loads(result.stdout)
-    assert publication["interface_version"] == 4
+    assert publication["interface_version"] == 5
 
     payloads = publication["payloads"]
     batch = {
@@ -51,6 +51,9 @@ def test_cloud_schema_validates_real_snapshot_and_event_batch():
     resumed_batch = {**batch, "events": [{**batch["events"][0],
         "event_type": "session_resumed", "data": {"previous_mode": "running"}}]}
     validate(resumed_batch, payloads["cloud_ingest"])
+    historical_batch = {**batch, "events": [{**batch["events"][0],
+        "event_type": "legacy_event_from_old_release", "data": {"old_field": "kept"}}]}
+    validate(historical_batch, payloads["cloud_ingest"])
     validate(snapshot, payloads["cloud_liveness"])
     validate({
         "schema": "snodo.run-record",
@@ -107,7 +110,12 @@ def test_cloud_schema_declares_every_event_data_key_from_contract():
         assert keys <= set(data_schema["properties"])
 
     envelope = ingest["$defs"]
-    event_branches = [value for name, value in envelope.items() if name.endswith("Event")]
+    event_branches = [
+        value for name, value in envelope.items()
+        if name.endswith("Event") and name != "OpaqueAuditEvent"
+    ]
     assert len(event_branches) == len(by_type)
     assert all(branch["properties"]["timestamp"]["type"] == "string" for branch in event_branches)
     assert all(branch["properties"]["scope"]["enum"] == ["", "local", "remote"] for branch in event_branches)
+    assert "OpaqueAuditEvent" in envelope
+    assert "not" in envelope["OpaqueAuditEvent"]["properties"]["event_type"]
