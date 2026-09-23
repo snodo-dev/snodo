@@ -20,7 +20,10 @@ import time
 from pathlib import Path
 from typing import Annotated, Any, Literal, Optional, TypedDict, Union
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError, create_model
+from pydantic import (
+    BaseModel, ConfigDict, Field, StrictStr, ValidationError, create_model,
+    field_validator,
+)
 
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
@@ -100,7 +103,15 @@ _EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
     "coder_turn_budget_exhausted": (),
     "coder_unavailable": (),
     "adjudication_carry_forward": (),
+    "decision_record_issued": (),
+    "set_model_verify_failed": (),
+    "token_blocked": (),
+    "token_expired": (),
+    "token_invalid": (),
+    "token_issued": (),
+    "token_task_mismatch": (),
     "decision_record_task_mismatch": (),
+    "decision_record_invalid": (),
     "disagreement_escalated": (),
     "disagreement_resolved": (),
     "dispatch_refused_coder_unavailable": (),
@@ -170,9 +181,34 @@ def _event_models() -> tuple[type[BaseModel], ...]:
     return tuple(models)
 
 
-AuditEventEnvelope = Annotated[
-    Union[*_event_models()], Field(discriminator="event_type")
-]
+class OpaqueAuditEvent(BaseModel):
+    """Envelope for historical or otherwise undeclared audit event types."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sequence: int
+    timestamp: Annotated[StrictStr, Field(json_schema_extra={"format": "date-time"})]
+    event_type: Annotated[
+        StrictStr,
+        Field(json_schema_extra={"not": {"enum": list(_EVENT_DATA_KEYS)}}),
+    ]
+    project_id: str
+    scope: Literal["", "local", "remote"]
+    data: Any
+    previous_hash: str
+    event_hash: str
+
+    @field_validator("event_type")
+    @classmethod
+    def event_type_must_be_undeclared(cls, value: str) -> str:
+        if value in _EVENT_DATA_KEYS:
+            raise ValueError("declared event types must match their declared schema")
+        return value
+
+
+# Known tags retain their pinned data shapes. Historical tags not declared by
+# this client use the same validated envelope with opaque event data.
+AuditEventEnvelope = Union[*_event_models(), OpaqueAuditEvent]
 
 
 class AuditIngestBatch(BaseModel):
@@ -225,6 +261,23 @@ def _response_limit_bytes(response: Any) -> Optional[int]:
         pass
     match = re.search(r'["\']?limit_bytes["\']?\s*[:=]\s*(\d+)', response.text)
     return int(match.group(1)) if match else None
+
+
+def _response_retry_after_seconds(response: Any) -> Optional[float]:
+    """Read the server's retry delay from Retry-After or its JSON body."""
+    headers = getattr(response, "headers", None)
+    header_delay = retry_after_seconds(headers)
+    if header_delay is not None:
+        return header_delay
+    try:
+        value = response.json().get("retry_after")
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return max(0.0, float(value))
+    if isinstance(value, str):
+        return retry_after_seconds({"Retry-After": value})
+    return None
 
 
 def _partition_events(
@@ -601,7 +654,10 @@ class CloudSyncDispatcher:
                 event_label = "ingest batch"
             first_error = err.errors()[0] if err.errors() else {}
             detail = first_error.get("msg", "invalid payload")
-            reason = f"Client-side cloud sync validation failed for {event_label}: {detail}"
+            reason = (
+                f"Client-side cloud sync validation failed for {event_label}: {detail}. "
+                "Check the event envelope, then retry with `snodo cloud sync --all --force`."
+            )
             _logger.error(reason)
             return ("retryable", reason, None)
         from urllib.parse import quote
@@ -636,7 +692,8 @@ class CloudSyncDispatcher:
         }
         lease_replaced = False
 
-        for attempt in range(_MAX_RETRIES + 1):
+        attempt = 0
+        while attempt <= _MAX_RETRIES:
             try:
                 response = httpx.post(
                     url, content=body, headers=headers, timeout=30.0,
@@ -660,12 +717,13 @@ class CloudSyncDispatcher:
                     url = f"{api_url.rstrip('/')}/i/{quote(lease.jti, safe='')}"
                     headers["Authorization"] = f"Bearer {lease.token}"
                     lease_replaced = True
+                    attempt += 1
                     continue
 
                 if response.status_code == 429:
-                    retry_after = response.headers.get("Retry-After")
+                    retry_after = _response_retry_after_seconds(response)
                     wait = cloud_backoff_seconds(
-                        attempt + 1, retry_after_seconds(response.headers),
+                        attempt + 1, retry_after,
                     )
                     _logger.warning(
                         "Cloud sync HTTP 429 retry_after=%s (session=%s): %s",
@@ -688,6 +746,7 @@ class CloudSyncDispatcher:
                         response.status_code, attempt, session_id, body_text,
                     )
                     time.sleep(cloud_backoff_seconds(attempt + 1, retry_after_seconds(response.headers)))
+                    attempt += 1
                     continue
 
                 if response.status_code == 413:
@@ -713,6 +772,7 @@ class CloudSyncDispatcher:
                     print(f"Cloud ingest failed: {reason}", file=__import__("sys").stderr)
                     return ("retryable", reason, None)
                 time.sleep(cloud_backoff_seconds(attempt + 1))
+                attempt += 1
 
         return ("retryable", "Retries exhausted", None)
 
