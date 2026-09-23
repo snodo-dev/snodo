@@ -113,7 +113,8 @@ def _sync_enabled():
         token="tok_test_lease",
         expires_at=time.time() + 3600,
     )
-    with patch.object(cloud_lease, "_current_lease", test_lease), \
+    with patch.object(cloud_lease, "get_current_lease", return_value=test_lease), \
+            patch.object(cloud_lease, "get_admission_lease", return_value=test_lease), \
             patch("snodo.config.ConfigManager") as mock_cm:
         mock_cm.return_value.load.return_value = _TEST_CONFIG
         cloud_liveness.reset_liveness_state()
