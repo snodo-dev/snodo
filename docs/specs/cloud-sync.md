@@ -17,9 +17,19 @@ Sync is opt-in: nothing is transmitted unless `cloud.sync_enabled` is true and
 ## The wire
 
 ```
-POST {api_url}/ingest
+POST {lease_url}/m/{session_id}     # mint a lease on the app host
 Authorization: Bearer <account key>
+
+POST {api_url}/i/{session_id}       # send audit batch on the API host
+Authorization: Bearer <lease token>
 ```
+
+With the defaults these are `https://app.snodo.dev/m/{session_id}` and
+`https://api.snodo.dev/i/{session_id}`. `cloud.lease_url` (or its legacy alias
+`cloud.lease_api_url`) overrides the app host/base path; `cloud.api_url` sets
+the API host. When only `cloud.api_url` is set, the app host is derived by
+replacing its `api` hostname label with `app` (or retaining a single-host
+custom/local hostname).
 
 Batched 1-50 events. Dispatched from a background thread during `snodo run`
 teardown and from `snodo cloud sync`; nowhere else. The cursor advances only on
@@ -45,6 +55,11 @@ the *ingest* path: liveness is a second, separate wire, described below.)
   ]
 }
 ```
+
+The lease mint route is session-scoped and is sent the account key. The ingest
+route is also session-scoped and is authenticated with the minted lease token.
+The client accepts the lease response fields `lease_id`/`id`/`identifier`,
+`token`/`bearer_token`/`access_token`, and `expires_at`/`expires_in`/`ttl`.
 
 Response handling: 200 advances the cursor; 429 backs off by `retry_after`; 5xx
 retries with exponential backoff up to five times; any other 4xx marks the
@@ -100,7 +115,7 @@ after a failed push, which is worse than the gap it covered.
 
 ```
 PUT {liveness_url}/live/{session_id}
-Authorization: Bearer <account key>
+Authorization: Bearer <lease token>
 ```
 
 The machine pushes; nothing reaches inward. The tunnel remains a convenience,
@@ -499,7 +514,7 @@ to argue against this list.
 | Liveness triggering from engine events | `infrastructure/audit.py` — `register_event_listener` |
 | Run-teardown hook | `cli/commands/run_cmd.py` |
 | Connect / disconnect / status / sync | `cli/commands/cloud_cmd.py` |
-| Config schema | `snodo/config.py` — `cloud.api_key`, `cloud.api_url`, `cloud.sync_enabled`, `cloud.liveness_interval_seconds` |
+| Config schema | `snodo/config.py` — `cloud.api_key`, `cloud.api_url`, `cloud.lease_url`, `cloud.sync_enabled`, `cloud.liveness_interval_seconds` |
 
 ## History
 

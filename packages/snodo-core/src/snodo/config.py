@@ -157,7 +157,7 @@ def derive_liveness_url(api_url: str) -> str:
 def get_cloud_ingest_url(config: dict) -> str:
     """Return the audit ingest base URL (``cloud.api_url``).
 
-    ``cloud_sync`` builds ``{base}/ingest`` from this value.
+    ``cloud_sync`` appends ``/i/{session_id}`` to this value.
     """
     return _cloud_url(config, "api_url", DEFAULT_CLOUD_API_URL)
 
@@ -197,10 +197,11 @@ def get_cloud_liveness_url(config: dict) -> str:
 
 
 def get_cloud_lease_url(config: dict) -> str:
-    """Return the cloud admission lease exchange endpoint URL.
+    """Return the cloud app host used to mint session admission leases.
 
-    Defaults to ``{cloud.api_url}/lease``. Can be overridden with
-    ``cloud.lease_url`` or ``cloud.lease_api_url``.
+    The caller appends ``/m/{session_id}``. An explicit
+    ``cloud.lease_url`` or ``cloud.lease_api_url`` can point at a separate app
+    host; otherwise the app origin is derived from ``cloud.api_url``.
     """
     cloud = config.get("cloud") if isinstance(config, dict) else None
     if isinstance(cloud, dict):
@@ -208,13 +209,10 @@ def get_cloud_lease_url(config: dict) -> str:
             override = cloud.get(key)
             if isinstance(override, str) and override.strip():
                 ov = override.strip()
-                parsed = urlsplit(ov)
-                if not parsed.path:
-                    return f"{ov.rstrip('/')}/lease"
-                return ov
+                return ov.rstrip("/")
 
     api_url = get_cloud_ingest_url(config)
-    return f"{api_url.rstrip('/')}/lease"
+    return derive_liveness_url(api_url).removesuffix("/v1")
 
 
 def _cloud_url(config: dict, key: str, default: str) -> str:

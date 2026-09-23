@@ -555,7 +555,7 @@ def _post_snapshot(
     lease_url = get_cloud_lease_url(config)
     liveness_url = get_cloud_liveness_url(config)
     body = json.dumps(snapshot).encode()
-    cached_lease = get_current_lease()
+    cached_lease = get_current_lease(session_id)
     for lease_attempt in range(2):
         lease = get_admission_lease(
             api_key, lease_url, session_id=session_id, sync_state=state,

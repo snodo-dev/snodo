@@ -34,6 +34,31 @@ def clean_lease_state(tmp_path):
 
 
 class TestCloudAdmission:
+    def test_session_mint_routes_do_not_reuse_another_sessions_lease(self):
+        from snodo.infrastructure.cloud_lease import get_admission_lease
+
+        calls = []
+
+        def exchange(url, **kwargs):
+            calls.append(str(url))
+            response = MagicMock(spec=httpx.Response)
+            response.status_code = 200
+            response.json.return_value = {
+                "lease_id": f"lease-{len(calls)}", "token": "token", "expires_in": 300,
+            }
+            return response
+
+        with patch("httpx.post", side_effect=exchange):
+            first = get_admission_lease("key", "https://app.test", session_id="sess_a")
+            second = get_admission_lease("key", "https://app.test", session_id="sess_b")
+
+        assert first is not None and first.lease_id == "lease-1"
+        assert second is not None and second.lease_id == "lease-2"
+        assert calls == [
+            "https://app.test/m/sess_a",
+            "https://app.test/m/sess_b",
+        ]
+
     def test_rejected_granted_lease_is_replaced_once(self, tmp_path):
         responses = iter([
             {"lease_id": "old", "token": "old-token"},
@@ -107,7 +132,7 @@ class TestCloudAdmission:
 
         def mock_post(url, content=None, headers=None, **kwargs):
             calls.append(("POST", str(url), headers or {}, json.loads(content) if content else {}))
-            if str(url).endswith("/lease"):
+            if str(url).endswith("/m/sess_alpha"):
                 resp = MagicMock(spec=httpx.Response)
                 resp.status_code = 200
                 resp.json.return_value = {
@@ -116,7 +141,7 @@ class TestCloudAdmission:
                     "expires_in": 300,
                 }
                 return resp
-            if "/ingest/ls_test_fixed_length_12345" in str(url):
+            if "/i/sess_alpha" in str(url):
                 resp = MagicMock(spec=httpx.Response)
                 resp.status_code = 200
                 resp.text = "ok"
@@ -145,13 +170,13 @@ class TestCloudAdmission:
         # First call: exchange
         method1, url1, headers1, body1 = calls[0]
         assert method1 == "POST"
-        assert url1 == "https://api.snodo.test/lease"
+        assert url1 == "https://app.snodo.test/m/sess_alpha"
         assert headers1.get("Authorization") == "Bearer sndo_live_mykey123"
 
         # Second call: ingest with lease identifier in path and bearer token
         method2, url2, headers2, body2 = calls[1]
         assert method2 == "POST"
-        assert url2 == "https://api.snodo.test/ingest/ls_test_fixed_length_12345"
+        assert url2 == "https://api.snodo.test/i/sess_alpha"
         assert headers2.get("Authorization") == "Bearer opaque_bearer_secret_xyz"
 
     def test_refusal_at_exchange_stops_sending_permanently(self, tmp_path):
@@ -180,7 +205,7 @@ class TestCloudAdmission:
 
         assert outcome == "refused"
         assert len(calls) == 1
-        assert calls[0] == "https://api.snodo.test/lease"
+        assert calls[0] == "https://app.snodo.test/m/sess_refused"
 
         # Refusal is persisted in CloudSyncState
         state = CloudSyncState()
@@ -226,7 +251,7 @@ class TestCloudAdmission:
 
         assert outcome1 == "retryable"
         assert len(calls) == 1
-        assert calls[0] == "https://api.snodo.test/lease"
+        assert calls[0] == "https://app.snodo.test/m/sess_unreachable"
 
         # A second send attempt while in the quiet window must be completely silent (0 network calls)
         calls.clear()
@@ -293,7 +318,7 @@ class TestCloudAdmission:
 
         assert len(calls) == 2
         assert calls[0][0] == "POST"
-        assert calls[0][1] == "https://api.snodo.test/lease"
+        assert calls[0][1] == "https://app.snodo.test/m/sess_live_1"
         assert calls[0][2].get("Authorization") == "Bearer sndo_live_key123"
 
         assert calls[1][0] == "PUT"

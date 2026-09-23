@@ -202,7 +202,7 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
     --force / --retry: force re-attempt sync for refused sessions
     (no flags): sync the current active session
     """
-    from snodo.config import ConfigManager, get_cloud_ingest_url
+    from snodo.config import ConfigManager, get_cloud_ingest_url, get_cloud_lease_url
     from snodo.infrastructure.paths import require_project_root
     from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
     from snodo.infrastructure.audit import AuditLog, AuditError
@@ -213,6 +213,7 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
 
     api_key = cloud.get("api_key", "")
     api_url = get_cloud_ingest_url(config)
+    lease_url = get_cloud_lease_url(config)
 
     if not api_key:
         print("Error: Not connected to snodo cloud.", file=sys.stderr)
@@ -294,7 +295,10 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
             total_failed += 1
             continue
 
-        result = dispatcher.sync(sid, proot, audit_log, api_key, api_url, force=force)
+        result = dispatcher.sync(
+            sid, proot, audit_log, api_key, api_url,
+            force=force, lease_url=lease_url,
+        )
 
         if result["synced"] > 0:
             print(f"  {sid}  ✓ {result['synced']} events synced")
