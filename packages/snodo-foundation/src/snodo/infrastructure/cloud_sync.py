@@ -15,6 +15,7 @@ import atexit
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Annotated, Any, Literal, Optional, TypedDict, Union
@@ -54,6 +55,8 @@ class CloudSyncPayload(TypedDict):
 
 _MAX_BATCH_SIZE = 50
 _MAX_RETRIES = 5
+_DEFAULT_PAYLOAD_LIMIT = 5 * 1024 * 1024
+_PAYLOAD_MARGIN = 256 * 1024
 
 
 _EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
@@ -183,6 +186,69 @@ class AuditIngestBatch(BaseModel):
     events: list[AuditEventEnvelope] = Field(min_length=1, max_length=_MAX_BATCH_SIZE)
 
 
+def _payload_for_events(session_id: str, project_root: str, events: list) -> dict:
+    """Build the exact wire payload used for size measurement and delivery."""
+    payload_events = []
+    for ev in events:
+        pid = getattr(ev, "project_id", "")
+        project_id_str = pid if isinstance(pid, str) else ""
+        payload_events.append({
+            "sequence": ev.sequence,
+            "timestamp": ev.timestamp,
+            "event_type": ev.event_type,
+            "project_id": project_id_str,
+            "scope": scope_for_project_id(project_id_str),
+            "data": ev.data,
+            "previous_hash": ev.previous_hash,
+            "event_hash": ev.event_hash,
+        })
+    return {
+        "session_id": session_id,
+        "project_path": project_root,
+        "display_name": Path(project_root).name if project_root else "",
+        "events": payload_events,
+    }
+
+
+def _encode_payload(payload: dict) -> bytes:
+    """Serialize exactly as the ingest POST does."""
+    return json.dumps(payload).encode()
+
+
+def _response_limit_bytes(response: Any) -> Optional[int]:
+    """Read an optional server payload limit from JSON or diagnostic text."""
+    try:
+        value = response.json().get("limit_bytes")
+        if isinstance(value, int) and value > 0:
+            return value
+    except (AttributeError, TypeError, ValueError):
+        pass
+    match = re.search(r'["\']?limit_bytes["\']?\s*[:=]\s*(\d+)', response.text)
+    return int(match.group(1)) if match else None
+
+
+def _partition_events(
+    session_id: str, project_root: str, events: list, byte_limit: int,
+) -> list[list]:
+    """Greedily group events under both wire limits."""
+    batches: list[list] = []
+    batch: list = []
+    for event in events:
+        candidate = batch + [event]
+        too_many = len(candidate) > _MAX_BATCH_SIZE
+        too_large = len(_encode_payload(
+            _payload_for_events(session_id, project_root, candidate),
+        )) > byte_limit
+        if batch and (too_many or too_large):
+            batches.append(batch)
+            batch = [event]
+        else:
+            batch = candidate
+    if batch:
+        batches.append(batch)
+    return batches
+
+
 class CloudSyncState:
     """Tracks per-session sync progress in ~/.snodo/cloud_sync.json.
 
@@ -280,27 +346,34 @@ class CloudSyncState:
     def clear_refusal(self, session_id: str) -> None:
         """Clear refused status for *session_id*."""
         data = self._load()
-        for key in (session_id, ""):
-            if key in data and isinstance(data[key], dict):
-                sess = data[key]
-                sess["refused"] = False
-                sess.pop("refused_reason", None)
-                sess.pop("refused_range", None)
-                sess.pop("refused_at", None)
-                sess.pop("refused_status_code", None)
+        if session_id in data and isinstance(data[session_id], dict):
+            sess = data[session_id]
+            sess["refused"] = False
+            sess.pop("refused_reason", None)
+            sess.pop("refused_range", None)
+            sess.pop("refused_at", None)
+            sess.pop("refused_status_code", None)
         self._save(data)
 
     def is_refused(self, session_id: str) -> bool:
-        """Return True if *session_id* sync is currently refused."""
+        """Return True only for a refusal under the current terminal rules.
+
+        Older state files may contain refusals for route misses (404) or
+        oversized batches (413). Neither is a terminal admission refusal.
+        The legacy empty-key entry is intentionally ignored: refusals belong
+        to one session and must never silence every session.
+        """
         data = self._load()
         sess = data.get(session_id)
-        if isinstance(sess, dict) and sess.get("refused"):
-            return True
-        if session_id:
-            glob = data.get("")
-            if isinstance(glob, dict) and glob.get("refused"):
-                return True
-        return False
+        if not isinstance(sess, dict) or not sess.get("refused"):
+            return False
+        status = sess.get("refused_status_code")
+        if status == 413:
+            return "single event sequence" in str(sess.get("refused_reason", ""))
+        return status is None or (
+            isinstance(status, int) and 400 <= status < 500
+            and status not in (404, 413, 429)
+        )
 
     def get_summary(self) -> dict:
         """Return full per-session sync summary."""
@@ -371,6 +444,15 @@ class CloudSyncDispatcher:
                 unsynced.append(ev)
 
         if not unsynced:
+            if state.is_refused(session_id):
+                info = state.get_summary().get(session_id, {})
+                reason = info.get("refused_reason", "refused by server")
+                pending = info.get("pending_count", 0)
+                state.record_attempt(session_id, pending=pending, error=reason)
+                return {
+                    "synced": 0, "failed": True, "refused": True,
+                    "reason": reason, "pending": pending,
+                }
             return {"synced": 0, "failed": False, "pending": 0}
 
         if not force and state.is_refused(session_id):
@@ -387,13 +469,18 @@ class CloudSyncDispatcher:
         refused_reason = None
         last_error: Optional[str] = None
 
-        # Batch into groups of ≤50
-        for i in range(0, len(unsynced), _MAX_BATCH_SIZE):
-            batch = unsynced[i:i + _MAX_BATCH_SIZE]
+        # Partition by both event count and the actual serialized wire size.
+        # The margin keeps normal batches below the server's object limit.
+        payload_limit = _DEFAULT_PAYLOAD_LIMIT - _PAYLOAD_MARGIN
+        queue = _partition_events(session_id, project_root, unsynced, payload_limit)
+        oversized_sequences: list[int] = []
+        while queue:
+            batch = queue.pop(0)
             first_seq = batch[0].sequence
             max_seq = batch[-1].sequence
             outcome, reason, status_code = self._post_batch(
-                session_id, project_root, batch, api_key, api_url, force=force,
+                session_id, project_root, batch, api_key, api_url,
+                force=force or bool(oversized_sequences),
                 lease_url=lease_url,
             )
 
@@ -402,6 +489,36 @@ class CloudSyncDispatcher:
                 state.advance_cursor(session_id, max_seq)
                 _logger.debug("Cursor advanced to sequence %d", max_seq)
                 synced += len(batch)
+            elif outcome == "too_large" and len(batch) > 1:
+                server_limit = status_code or _DEFAULT_PAYLOAD_LIMIT
+                payload_limit = min(payload_limit, max(1, server_limit - _PAYLOAD_MARGIN))
+                smaller = _partition_events(
+                    session_id, project_root, batch, payload_limit,
+                )
+                # The server may enforce an undisclosed smaller limit. A 413
+                # must always reduce the next request, even if its advertised
+                # limit would fit the request that just failed.
+                if len(smaller) == 1 and len(smaller[0]) == len(batch):
+                    midpoint = len(batch) // 2
+                    smaller = [batch[:midpoint], batch[midpoint:]]
+                queue[0:0] = smaller
+            elif outcome == "too_large":
+                event_size = len(_encode_payload(_payload_for_events(
+                    session_id, project_root, batch)))
+                detailed_reason = f"{reason}; single event sequence {first_seq} is {event_size} bytes"
+                state.record_refusal(
+                    session_id, reason=detailed_reason, first_seq=first_seq,
+                    last_seq=max_seq, status_code=413,
+                )
+                refused = True
+                failed = True
+                refused_reason = detailed_reason
+                last_error = detailed_reason
+                oversized_sequences.append(first_seq)
+                # A single unstoreable event must not prevent later events
+                # from being attempted. Successful later batches advance the
+                # high-water cursor, while refused_range preserves the gap.
+                continue
             elif outcome == "refused":
                 state.record_refusal(
                     session_id,
@@ -420,7 +537,18 @@ class CloudSyncDispatcher:
                 last_error = reason
                 break
 
-        pending = len(unsynced) - synced
+            if outcome == "delivered" and oversized_sequences:
+                # Keep the single-event refusal visible while allowing the
+                # cursor to progress past later events.
+                state.record_refusal(
+                    session_id,
+                    reason=refused_reason or "single event exceeds cloud payload limit",
+                    first_seq=oversized_sequences[0],
+                    last_seq=oversized_sequences[0],
+                    status_code=413,
+                )
+
+        pending = max(0, len(unsynced) - synced)
         state.record_attempt(session_id, pending=pending, error=last_error if failed else None)
 
         res_dict: dict = {"synced": synced, "failed": failed, "pending": pending}
@@ -451,28 +579,8 @@ class CloudSyncDispatcher:
         """
         import httpx
 
-        payload_events = []
-        for ev in batch:
-            pid = getattr(ev, "project_id", "")
-            project_id_str = pid if isinstance(pid, str) else ""
-            payload_events.append({
-                "sequence": ev.sequence,
-                "timestamp": ev.timestamp,
-                "event_type": ev.event_type,
-                "project_id": project_id_str,
-                "scope": scope_for_project_id(project_id_str),
-                "data": ev.data,
-                "previous_hash": ev.previous_hash,
-                "event_hash": ev.event_hash,
-            })
-
-        display_name = Path(project_root).name if project_root else ""
-        payload = {
-            "session_id": session_id,
-            "project_path": project_root,
-            "display_name": display_name,
-            "events": payload_events,
-        }
+        payload = _payload_for_events(session_id, project_root, batch)
+        body = _encode_payload(payload)
         # Validate the contract without serializing the model: the original
         # values and field set must remain byte-for-byte unchanged on the wire.
         try:
@@ -483,6 +591,7 @@ class CloudSyncDispatcher:
                  if isinstance(part, int)),
                 None,
             )
+            payload_events = payload["events"]
             if event_index is not None and event_index < len(payload_events):
                 rejected = payload_events[event_index]
                 event_label = (
@@ -495,8 +604,6 @@ class CloudSyncDispatcher:
             reason = f"Client-side cloud sync validation failed for {event_label}: {detail}"
             _logger.error(reason)
             return ("retryable", reason, None)
-        body = json.dumps(payload).encode()
-
         from urllib.parse import quote
 
         from snodo.config import get_cloud_lease_url
@@ -583,15 +690,16 @@ class CloudSyncDispatcher:
                     time.sleep(cloud_backoff_seconds(attempt + 1, retry_after_seconds(response.headers)))
                     continue
 
+                if response.status_code == 413:
+                    limit_bytes = _response_limit_bytes(response)
+                    return ("too_large", reason, limit_bytes or _DEFAULT_PAYLOAD_LIMIT)
+
                 print(f"Cloud ingest failed: {reason}", file=__import__("sys").stderr)
                 if response.status_code == 404:
                     return ("retryable", reason, response.status_code)
                 _logger.warning(
                     "Cloud sync HTTP %d REFUSED on session=%s: %s",
                     response.status_code, session_id, body_text,
-                )
-                state.record_refusal(
-                    session_id, reason=reason, status_code=response.status_code,
                 )
                 return ("refused", reason, response.status_code)
 
