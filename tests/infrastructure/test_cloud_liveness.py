@@ -109,7 +109,7 @@ def _sync_enabled():
     cloud_liveness.uninstall()
     cloud_lease.reset_admission_state()
     test_lease = cloud_lease.CloudLease(
-        lease_id="ls_test_lease",
+        jti="ls_test_lease",
         token="tok_test_lease",
         expires_at=time.time() + 3600,
     )

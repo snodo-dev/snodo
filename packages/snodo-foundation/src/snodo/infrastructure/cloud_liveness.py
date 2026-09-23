@@ -258,13 +258,18 @@ def _sync_gate_open(config: Optional[dict] = None) -> bool:
     return _should_sync(_gate_config())
 
 
-def _interval_seconds(config: Optional[dict] = None) -> float:
+def _interval_seconds(config: Optional[dict] = None, session_id: Optional[str] = None) -> float:
     """The push interval: ``cloud.liveness_interval_seconds`` or the default.
 
     One knob drives both the ceiling and the floor. A non-positive or
     unreadable value falls back to :data:`LIVENESS_THROTTLE_SECONDS` rather
     than disabling the throttle (Fixes #323).
     """
+    if session_id:
+        from snodo.infrastructure.cloud_lease import get_current_lease
+        lease = get_current_lease(session_id)
+        if lease is not None and lease.cadence_s is not None and lease.cadence_s > 0:
+            return lease.cadence_s
     if config is None:
         config = _gate_config()
     raw = None
@@ -321,7 +326,7 @@ def request_liveness_push(
     if CloudSyncState().is_refused(session_id):
         return False
     now = time.monotonic()
-    interval = _interval_seconds(config)
+    interval = _interval_seconds(config, session_id)
     with _lock:
         st = _sessions.setdefault(
             session_id, {"last_push": None, "in_flight": False, "timer": None,
@@ -443,7 +448,7 @@ def _schedule_floor(
     generations, and the throttle still caps the wire at one push per
     interval even if two ever overlap.
     """
-    interval = _interval_seconds()
+    interval = _interval_seconds(session_id=session_id)
     delay = interval if delay is None else max(interval, delay)
     token = object()
     timer = threading.Timer(
@@ -564,7 +569,7 @@ def _post_snapshot(
             # Exchange refusal is already persisted; an unreachable exchange
             # is quieted by the admission layer until a later beat.
             return False, None, not state.is_refused(session_id)
-        url = f"{liveness_url.rstrip('/')}/live/{quote(session_id, safe='')}/{quote(lease.lease_id, safe='')}"
+        url = f"{liveness_url.rstrip('/')}/live/{quote(session_id, safe='')}/{quote(lease.jti, safe='')}"
         try:
             response = httpx.put(
                 url,
@@ -576,6 +581,7 @@ def _post_snapshot(
                 timeout=10.0,
             )
         except Exception as exc:  # noqa: BLE001 — dropped; the next transition re-pushes
+            print(f"Liveness push failed: {url} -> no response: {exc}", file=__import__("sys").stderr)
             with _lock:
                 _consecutive_rejections += 1
                 streak = _consecutive_rejections
@@ -590,15 +596,14 @@ def _post_snapshot(
                 _consecutive_rejections = 0
             return True, None, False
 
-        terminal = 400 <= response.status_code < 500 and response.status_code != 429
-        if terminal and lease_attempt == 0 and cached_lease is None:
-            # A rejected cached lease may be stale or revoked. Replace it once;
-            # the second rejection is terminal rather than an exchange loop.
+        reason = f"{url} -> HTTP {response.status_code}: {response.text[:500].strip() or 'No server message'}"
+        print(f"Liveness push failed: {reason}", file=__import__("sys").stderr)
+        if response.status_code == 401 and lease_attempt == 0 and cached_lease is None:
             invalidate_lease(lease)
             continue
+        terminal = 400 <= response.status_code < 500 and response.status_code not in (404, 429)
 
         if terminal:
-            reason = f"HTTP {response.status_code}: {response.text[:500].strip() or 'Client error'}"
             state.record_refusal(
                 session_id, reason=reason, status_code=response.status_code,
             )

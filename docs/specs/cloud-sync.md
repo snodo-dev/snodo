@@ -17,19 +17,21 @@ Sync is opt-in: nothing is transmitted unless `cloud.sync_enabled` is true and
 ## The wire
 
 ```
-POST {lease_url}/m/{session_id}     # mint a lease on the app host
-Authorization: Bearer <account key>
+POST {lease_url}/m                  # mint a lease on the app host; no body
+Authorization: Bearer <full cloud.api_key>
 
-POST {api_url}/i/{session_id}       # send audit batch on the API host
+POST {api_url}/i/{jti}              # send audit batch on the API host
 Authorization: Bearer <lease token>
 ```
 
-With the defaults these are `https://app.snodo.dev/m/{session_id}` and
-`https://api.snodo.dev/i/{session_id}`. `cloud.lease_url` (or its legacy alias
-`cloud.lease_api_url`) overrides the app host/base path; `cloud.api_url` sets
-the API host. When only `cloud.api_url` is set, the app host is derived by
-replacing its `api` hostname label with `app` (or retaining a single-host
-custom/local hostname).
+With the defaults these are `https://app.snodo.dev/m` and
+`https://api.snodo.dev/i/{jti}`. Mint returns `jti`, `token`, `expires_at`
+(ISO 8601), and `cadence_s`; the client renews before `expires_at`. `jti` is
+the lease identifier and is used in the ingest URL. A 401 from ingest causes
+one re-mint and one retry. `cloud.lease_url` (or `cloud.lease_api_url`)
+overrides the mint app host/base path; `cloud.api_url` sets the ingest host.
+When only `cloud.api_url` is set, the mint host is derived by replacing its
+`api` hostname label with `app` (or retaining a single-host custom/local host).
 
 Batched 1-50 events. Dispatched from a background thread during `snodo run`
 teardown and from `snodo cloud sync`; nowhere else. The cursor advances only on
@@ -56,14 +58,13 @@ the *ingest* path: liveness is a second, separate wire, described below.)
 }
 ```
 
-The lease mint route is session-scoped and is sent the account key. The ingest
-route is also session-scoped and is authenticated with the minted lease token.
-The client accepts the lease response fields `lease_id`/`id`/`identifier`,
-`token`/`bearer_token`/`access_token`, and `expires_at`/`expires_in`/`ttl`.
-
-Response handling: 200 advances the cursor; 429 backs off by `retry_after`; 5xx
-retries with exponential backoff up to five times; any other 4xx marks the
-session refused and stops until `--force`.
+Response handling: 2xx advances the cursor; 401 re-mints once; 429 respects
+`Retry-After`; 5xx and network errors retry with exponential backoff up to five
+times. A 404 is a route mismatch and remains retryable (it never marks a
+session refused). Other 4xx, including batch-level 413/422, mark the session
+refused and stop until `--force`; the URL, status, and server message are shown.
+Admission errors also show the mint URL and response details. “Cloud admission
+unreachable” is reserved for cases where no server response was received.
 
 `project_id` is an input to `event_hash` and always has been. Transmitting it
 therefore changes no hash and invalidates no chain — it was simply being
@@ -114,9 +115,15 @@ giving liveness the cursor's delivery guarantee would replay a stale status
 after a failed push, which is worse than the gap it covered.
 
 ```
-PUT {liveness_url}/live/{session_id}
+PUT {liveness_url}/live/{session_id}/{jti}
 Authorization: Bearer <lease token>
 ```
+
+The liveness route shape is retained pending server-side confirmation. With
+defaults the client sends `PUT https://app.snodo.dev/v1/live/{session_id}/{jti}`
+with `Authorization: Bearer <token>` (the same lease token minted at
+`POST https://app.snodo.dev/m`). Its push cadence follows the lease's
+`cadence_s` when available.
 
 The machine pushes; nothing reaches inward. The tunnel remains a convenience,
 not a requirement.

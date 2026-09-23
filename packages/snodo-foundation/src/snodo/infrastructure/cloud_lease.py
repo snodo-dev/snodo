@@ -3,35 +3,32 @@
 FILE: snodo/infrastructure/cloud_lease.py
 
 Admission model:
-Before sending anything (audit ingest or liveness snapshots), a client exchanges
-its API key at the session-scoped mint route for a short-lived lease consisting of:
-- A URL-safe, fixed-length lease identifier.
-- An opaque bearer token.
-
-Audit ingest is addressed by session id; liveness includes the lease id in its
-path. Both present the lease token. Near expiry the client renews.
+Before sending anything (audit ingest or liveness snapshots), a client POSTs to
+the app host's `/m` route with its full API key as Bearer auth. The response's
+`jti`, opaque token, expiry, and cadence form the lease. Ingest is addressed by
+`jti`; liveness includes `jti` in its path. Near expiry the client renews.
 
 Three non-negotiable properties:
-1. Liveness identifiers belong in the path, never a header (edge filters on path shape).
+1. Liveness jti belongs in the path, never a header (edge filters on path shape).
 2. The token is opaque: never parsed, never validated locally, never logged.
-3. Refusal at exchange is terminal (HTTP 4xx except 429), recorded in CloudSyncState
+3. Refusal at exchange is terminal (HTTP 4xx except 404 and 429), recorded in CloudSyncState
    across processes, permanently halting further sends.
 
-Unreachable exchange (HTTP 5xx, network error, 429) goes quiet with spread-out
-delay (jittered backoff) to avoid stampeding recovering services.
+Unavailable exchange (network error, 429, 5xx, or 404 route mismatch) backs off
+with spread-out delay (jittered backoff) to avoid stampeding recovering services;
+every answered HTTP failure is still reported with its URL, status, and message.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import random
+import sys
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
-from urllib.parse import quote
 
 import httpx
 
@@ -44,9 +41,15 @@ _logger = logging.getLogger(__name__)
 class CloudLease:
     """A short-lived cloud admission lease."""
 
-    lease_id: str
+    jti: str
     token: str
     expires_at: float
+    cadence_s: Optional[float] = None
+
+    @property
+    def lease_id(self) -> str:
+        """Compatibility name for callers predating the jti wire field."""
+        return self.jti
 
     def is_near_expiry(self, window_seconds: float = 30.0) -> bool:
         """True when the lease has expired or is within *window_seconds* of expiry."""
@@ -54,7 +57,7 @@ class CloudLease:
 
     def __repr__(self) -> str:
         # Token is opaque and NEVER logged or shown in repr
-        return f"<CloudLease id={self.lease_id!r} expires_at={self.expires_at}>"
+        return f"<CloudLease jti={self.jti!r} expires_at={self.expires_at}>"
 
 
 _lock = threading.Lock()
@@ -62,16 +65,23 @@ _current_lease: Optional[CloudLease] = None
 _current_lease_session_id: Optional[str] = None
 _quiet_until: float = 0.0
 _consecutive_failures: int = 0
+_last_admission_error: Optional[str] = None
+
+
+def get_last_admission_error() -> Optional[str]:
+    """Return the latest mint error, safe to show (never includes credentials)."""
+    return _last_admission_error
 
 
 def reset_admission_state() -> None:
     """Reset in-memory lease and quiet state. Test seam."""
-    global _current_lease, _current_lease_session_id, _quiet_until, _consecutive_failures
+    global _current_lease, _current_lease_session_id, _quiet_until, _consecutive_failures, _last_admission_error
     with _lock:
         _current_lease = None
         _current_lease_session_id = None
         _quiet_until = 0.0
         _consecutive_failures = 0
+        _last_admission_error = None
 
 
 def get_current_lease(session_id: Optional[str] = None) -> Optional[CloudLease]:
@@ -147,16 +157,12 @@ def _perform_exchange(
 ) -> Optional[CloudLease]:
     global _current_lease, _current_lease_session_id, _quiet_until, _consecutive_failures
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {"api_key": api_key}
-    body = json.dumps(payload).encode("utf-8")
-    mint_url = f"{lease_url.rstrip('/')}/m/{quote(session_id, safe='')}"
+    global _last_admission_error
+    headers = {"Authorization": f"Bearer {api_key}"}
+    mint_url = f"{lease_url.rstrip('/')}/m"
 
     try:
-        response = httpx.post(mint_url, content=body, headers=headers, timeout=10.0)
+        response = httpx.post(mint_url, headers=headers, timeout=10.0)
 
         # HTTP 2xx: Success
         if 200 <= response.status_code < 300:
@@ -164,33 +170,48 @@ def _perform_exchange(
                 data = response.json()
             except Exception:
                 data = {}
-            lease_id = data.get("lease_id") or data.get("id") or data.get("identifier")
-            token = data.get("token") or data.get("bearer_token") or data.get("access_token")
+            lease_id = data.get("jti")
+            token = data.get("token")
 
             if not lease_id or not token:
+                _last_admission_error = f"{mint_url} -> HTTP {response.status_code}: invalid mint response"
+                print(f"Cloud lease mint failed: {_last_admission_error}", file=sys.stderr)
                 _handle_unreachable(None, status_code=response.status_code)
                 return None
 
             expires_at = _parse_expiry(data)
-            lease = CloudLease(lease_id=str(lease_id), token=str(token), expires_at=expires_at)
+            try:
+                cadence_s = float(data["cadence_s"]) if data.get("cadence_s") is not None else None
+            except (TypeError, ValueError):
+                cadence_s = None
+            lease = CloudLease(jti=str(lease_id), token=str(token), expires_at=expires_at, cadence_s=cadence_s)
 
             with _lock:
                 _current_lease = lease
                 _current_lease_session_id = session_id
                 _consecutive_failures = 0
                 _quiet_until = 0.0
+                _last_admission_error = None
 
             if session_id:
                 state.clear_refusal(session_id)
             return lease
 
-        # HTTP 4xx (except 429): Terminal refusal
+        message = response.text[:500].strip() or "No server message"
+        _last_admission_error = f"{mint_url} -> HTTP {response.status_code}: {message}"
+        print(f"Cloud lease mint failed: {_last_admission_error}", file=sys.stderr)
+
+        # A route miss means client/server disagreement, not a rejected key.
+        if response.status_code == 404:
+            _handle_unreachable(response)
+            return None
+
+        # HTTP 4xx (except 404 and 429): Terminal refusal
         if 400 <= response.status_code < 500 and response.status_code != 429:
-            reason = f"HTTP {response.status_code}: {response.text[:500].strip() or 'Exchange refused'}"
+            reason = f"{mint_url} -> HTTP {response.status_code}: {message}"
             _logger.warning("Cloud admission refusal HTTP %d on session=%s: %s", response.status_code, session_id, reason)
             if session_id:
                 state.record_refusal(session_id, reason=reason, status_code=response.status_code)
-            state.record_refusal("", reason=reason, status_code=response.status_code)
             with _lock:
                 _current_lease = None
                 _current_lease_session_id = None
@@ -203,6 +224,8 @@ def _perform_exchange(
 
     except Exception as exc:
         # Network errors / timeouts
+        _last_admission_error = f"{mint_url} -> no response: {exc}"
+        print(f"Cloud lease mint failed: {_last_admission_error}", file=sys.stderr)
         _handle_unreachable(None, exc=exc)
         return None
 
@@ -264,6 +287,6 @@ def _handle_unreachable(
         _quiet_until = time.monotonic() + wait
 
     _logger.debug(
-        "Cloud admission unreachable (%s); silent backoff for %.1fs (attempt %d)",
+        "Cloud admission backoff (%s); waiting %.1fs (attempt %d)",
         exc or f"HTTP {code}", wait, failures,
     )
