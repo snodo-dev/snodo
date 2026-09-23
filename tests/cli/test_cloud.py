@@ -179,6 +179,75 @@ class TestCloudSyncState:
         raw = json.loads(path.read_text())
         assert raw["sess_x"]["last_synced_sequence"] == 77
 
+    def test_stale_route_and_global_refusals_do_not_block_session(self, tmp_path):
+        from snodo.infrastructure.cloud_sync import CloudSyncState
+
+        path = tmp_path / "cloud_sync.json"
+        path.write_text(json.dumps({
+            "sess_20260916_prod_0e250d": {
+                "refused": True,
+                "refused_status_code": 404,
+                "pending_count": 2319,
+            },
+            "": {"refused": True, "refused_status_code": 404, "pending_count": 2319},
+        }))
+        state = CloudSyncState(path)
+
+        assert state.is_refused("sess_20260916_prod_0e250d") is False
+        assert state.is_refused("sess_other") is False
+
+    def test_sync_retries_exact_legacy_404_and_global_state_shape(self, tmp_path, monkeypatch):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        path = tmp_path / "cloud_sync.json"
+        path.write_text(json.dumps({
+            "sess_20260916_prod_0e250d": {
+                "refused": True,
+                "refused_reason": "HTTP 404 route mismatch",
+                "refused_status_code": 404,
+                "pending_count": 2319,
+            },
+            "": {
+                "refused": True,
+                "refused_reason": "HTTP 404 route mismatch",
+                "refused_status_code": 404,
+                "pending_count": 2319,
+            },
+        }))
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+        event = MagicMock(
+            sequence=1,
+            timestamp="2026-01-01T00:00:00Z",
+            event_type="transition",
+            project_id="",
+            data={"from_mode": "idle", "to_mode": "running", "task_ref": "task-1"},
+            previous_hash="0" * 64,
+            event_hash="e" * 64,
+        )
+        audit_log = MagicMock(events=[event])
+        dispatcher = CloudSyncDispatcher()
+        with patch.object(dispatcher, "_post_batch", return_value=("delivered", "HTTP 200", 200)) as post:
+            result = dispatcher.sync(
+                "sess_20260916_prod_0e250d", "/proj", audit_log,
+                "sndo_live_xxx", "https://api.example.com",
+            )
+
+        post.assert_called_once()
+        assert result["synced"] == 1
+        assert result["failed"] is False
+        assert CloudSyncState(path).is_refused("sess_20260916_prod_0e250d") is False
+
+    def test_legacy_413_batch_is_recheckable_but_single_oversize_is_terminal(self, tmp_path):
+        from snodo.infrastructure.cloud_sync import CloudSyncState
+
+        state = CloudSyncState(tmp_path / "cloud_sync.json")
+        state.record_refusal("sess_batch", "HTTP 413", 1, 50, 413)
+        assert state.is_refused("sess_batch") is False
+        state.record_refusal(
+            "sess_single", "single event sequence 1 is 6000000 bytes", 1, 1, 413,
+        )
+        assert state.is_refused("sess_single") is True
+
 
 # ------------------------------------------------------------------#
 # CloudSyncDispatcher tests
@@ -290,6 +359,68 @@ class TestCloudSyncDispatcher:
         assert result["synced"] == 75
         assert result["failed"] is False
         assert mock_post.call_count == 2
+
+    def test_large_events_are_partitioned_below_payload_limit(self):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        events = self._make_events(12)
+        for event in events:
+            event.data["task_ref"] = "x" * 500_000
+        audit_log = MagicMock()
+        audit_log.events = events
+        dispatcher = CloudSyncDispatcher()
+        payload_sizes = []
+
+        def accepted(_url, **kwargs):
+            payload_sizes.append(len(kwargs["content"]))
+            response = MagicMock(status_code=200, text="ok")
+            return response
+
+        with patch.object(CloudSyncState, "get_cursor", return_value=0):
+            with patch.object(CloudSyncState, "advance_cursor"):
+                with patch("httpx.post", side_effect=accepted):
+                    result = dispatcher.sync(
+                        "sess_large", "/proj", audit_log,
+                        "sndo_live_xxx", "https://api.example.com",
+                    )
+
+        assert result["synced"] == 12
+        assert result["failed"] is False
+        assert len(payload_sizes) > 1
+        assert max(payload_sizes) < 5 * 1024 * 1024
+
+    def test_413_splits_batch_and_single_oversize_does_not_block_later_events(self):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        events = self._make_events(3)
+        audit_log = MagicMock()
+        audit_log.events = events
+        dispatcher = CloudSyncDispatcher()
+        sent = []
+
+        def response_for(_sid, _root, batch, *_args, **_kwargs):
+            sequences = [event.sequence for event in batch]
+            sent.extend(sequences)
+            if len(batch) > 1 or sequences == [1]:
+                return "too_large", "payload_too_large", 5 * 1024 * 1024
+            return "delivered", "HTTP 200", 200
+
+        with patch.object(CloudSyncState, "get_cursor", return_value=0):
+            with patch.object(CloudSyncState, "advance_cursor") as advance:
+                with patch.object(dispatcher, "_post_batch", side_effect=response_for) as post:
+                    result = dispatcher.sync(
+                        "sess_413", "/proj", audit_log,
+                        "sndo_live_xxx", "https://api.example.com",
+                    )
+
+        assert result["refused"] is True
+        assert result["synced"] == 2
+        assert result["pending"] == 1
+        assert "sequence 1" in result["reason"]
+        assert "bytes" in result["reason"]
+        assert 2 in sent and 3 in sent
+        advance.assert_called()
+        assert post.call_args_list[-1].kwargs["force"] is True
 
     def test_cursor_advances_only_on_200(self):
         """Cursor should not advance when post fails."""
@@ -1058,6 +1189,33 @@ class TestCloudStatusPending:
 # ------------------------------------------------------------------#
 
 class TestCloudSyncCommand:
+    def test_refusal_after_partial_delivery_is_not_reported_as_success(self, capsys):
+        from snodo.cli.commands.cloud_cmd import cloud_sync_command
+
+        with patch("snodo.infrastructure.audit.AuditLog"):
+            with patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher") as MockDisp:
+                with patch("snodo.infrastructure.session.SessionManager") as MockSM:
+                    with patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"):
+                        with patch("snodo.infrastructure.state.read_state") as mock_rs:
+                            with patch("snodo.config.ConfigManager") as MockCM:
+                                MockCM.return_value.load.return_value = {
+                                    "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
+                                }
+                                mock_rs.return_value.current_mode = "producer"
+                                session = MagicMock(session_id="sess_partial", project_root="/fake/proj")
+                                MockSM.return_value.get_active_session.return_value = session
+                                MockDisp.return_value.sync.return_value = {
+                                    "synced": 2, "failed": True, "refused": True,
+                                    "reason": "HTTP 413: oversized single event", "pending": 1,
+                                }
+                                result = cloud_sync_command()
+
+        output = capsys.readouterr().out
+        assert result == 1
+        assert "PARTIAL: 2 events synced" in output
+        assert "1 event(s) pending" in output
+        assert "✓" not in output
+
     def test_no_api_key_errors(self):
         from snodo.cli.commands.cloud_cmd import cloud_sync_command
 

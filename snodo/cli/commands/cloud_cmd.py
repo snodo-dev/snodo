@@ -156,6 +156,12 @@ def cloud_status_command() -> int:
         print()
         print("Sync status per session:")
         for sid, info in sorted(summary.items()):
+            if not sid:
+                print(
+                    "  legacy global refusal entry: ignored (refusals are per-session); "
+                    "remove the empty-key entry from ~/.snodo/cloud_sync.json if desired."
+                )
+                continue
             seq = info.get("last_synced_sequence", 0)
             at = info.get("last_synced_at", 0)
             ts = _format_ts(at) if at else "never"
@@ -163,14 +169,23 @@ def cloud_status_command() -> int:
             last_attempt = info.get("last_attempt_at", 0)
             last_attempt_ts = _format_ts(last_attempt) if last_attempt else "never"
             last_error = info.get("last_error")
-            if info.get("refused"):
+            if state.is_refused(sid):
                 reason = info.get("refused_reason", "refused by server")
                 rng = info.get("refused_range")
                 range_str = f"seq {rng[0]}-{rng[1]}" if rng else "unknown range"
                 print(f"  {sid}:  BLOCKED (refused: {reason}, {range_str})  last_seq={seq}  synced_at={ts}")
+                print(f"    pending={pending}  clear with `snodo cloud sync --session {sid} --force`;")
+                print("    fix the refused request or retry explicitly to resume.")
+            elif info.get("refused"):
+                reason = info.get("refused_reason", "previous response")
+                status = info.get("refused_status_code", "unknown status")
+                print(
+                    f"  {sid}:  RECHECK (old non-terminal refusal HTTP {status}: {reason}); "
+                    f"sync will retry; pending={pending}"
+                )
             else:
                 print(f"  {sid}:  last_seq={seq}  synced_at={ts}")
-            print(f"    pending={pending}  last_attempt={last_attempt_ts}")
+                print(f"    pending={pending}  last_attempt={last_attempt_ts}")
             if last_error:
                 print(f"    last_error: {last_error}")
     else:
@@ -282,6 +297,7 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
     dispatcher = CloudSyncDispatcher()
     total_synced = 0
     total_failed = 0
+    total_partial = 0
 
     for session in sessions_to_sync:
         sid = session.session_id
@@ -300,17 +316,29 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
             force=force, lease_url=lease_url,
         )
 
-        if result["synced"] > 0:
+        if result.get("refused"):
+            reason = result.get("reason", "refused by server")
+            pending = result.get("pending", 0)
+            if result.get("synced", 0):
+                print(
+                    f"  {sid}  PARTIAL: {result['synced']} events synced; refusal: {reason}; "
+                    f"{pending} event(s) pending. Retry with `snodo cloud sync --session {sid} --force`."
+                )
+                total_synced += result["synced"]
+                total_partial += 1
+            else:
+                print(
+                    f"  {sid}  BLOCKED (refused: {reason}); {pending} event(s) pending. "
+                    f"Clear with `snodo cloud sync --session {sid} --force`."
+                )
+            total_failed += 1
+        elif result["synced"] > 0:
             print(f"  {sid}  ✓ {result['synced']} events synced")
             total_synced += result["synced"]
-        elif result.get("refused"):
-            reason = result.get("reason", "refused by server")
-            print(f"  {sid}  BLOCKED (refused: {reason})")
-            total_failed += 1
         elif result.get("failed"):
             reason = result.get("reason")
             suffix = f": {reason}" if reason else ""
-            print(f"  {sid}  ✗ sync failed{suffix}")
+            print(f"  {sid}  ✗ sync failed{suffix}; {result.get('pending', 0)} event(s) pending. Retry with `snodo cloud sync --session {sid}`.")
             total_failed += 1
         else:
             print(f"  {sid}  — no new events")
@@ -319,6 +347,6 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
         print()
         print(f"Synced {total_synced} events across {len(sessions_to_sync)} session(s).")
         if total_failed:
-            print(f"  {total_failed} session(s) had failures.")
+            print(f"  {total_failed} session(s) had failures; partial progress: {total_partial}.")
 
     return 0 if total_failed == 0 else 1

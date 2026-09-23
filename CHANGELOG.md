@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Cloud sync now retries stale route-miss refusals, sizes batches against the
+  serialized payload limit, continues past a single oversized event, and
+  reports partial delivery and terminal refusals accurately.
 - Cloud admission now mints leases at the session-scoped app route and sends
   audit batches to the session-scoped ingest route, matching the deployed
   endpoints. The app and API hosts remain independently configurable.
