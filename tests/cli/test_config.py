@@ -1041,12 +1041,12 @@ class TestCloudServiceUrls:
         composed_liveness = f"{get_cloud_liveness_url(default_config)}/live/sess_1"
         assert composed_liveness == "https://app.snodo.dev/v1/live/sess_1"
 
-        # Ingest and mint routes use separate hosts and session-scoped paths.
+        # Ingest uses the minted jti; mint is the app-host route without an id.
         ingest_url = f"{get_cloud_ingest_url(default_config).rstrip('/')}/i/sess_1"
-        mint_url = f"{get_cloud_lease_url(default_config).rstrip('/')}/m/sess_1"
+        mint_url = f"{get_cloud_lease_url(default_config).rstrip('/')}/m"
         assert ingest_url == f"{DEFAULT_CLOUD_API_URL}/i/sess_1"
         assert ingest_url == "https://api.snodo.dev/i/sess_1"
-        assert mint_url == "https://app.snodo.dev/m/sess_1"
+        assert mint_url == "https://app.snodo.dev/m"
 
         # Staging host with 'api' label
         staging = {"cloud": {"api_url": "https://api.staging.snodo.dev"}}

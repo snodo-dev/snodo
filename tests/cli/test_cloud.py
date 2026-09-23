@@ -193,7 +193,7 @@ class TestCloudSyncDispatcher:
 
         cloud_lease.reset_admission_state()
         test_lease = cloud_lease.CloudLease(
-            lease_id="ls_test_lease",
+            jti="ls_test_lease",
             token="tok_test_lease",
             expires_at=time.time() + 3600,
         )
@@ -647,7 +647,7 @@ class TestCloudSyncDispatcher:
         cs._pending_syncs.clear()
 
     def test_post_batch_targets_ingest_path(self):
-        """_post_batch uses the session-scoped ingest route with admission lease."""
+        """_post_batch uses the minted jti in its ingest route."""
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
 
         dispatcher = CloudSyncDispatcher()
@@ -669,7 +669,7 @@ class TestCloudSyncDispatcher:
             )
 
         assert outcome == "delivered"
-        assert captured["url"] == "https://api.example.com/i/sess_ingest"
+        assert captured["url"] == "https://api.example.com/i/ls_test_lease"
 
     def test_refused_response_records_reason_range_and_skips_automatic_retry(self, tmp_path, monkeypatch):
         """A 400 refused response leaves cursor, records reason & range, and is skipped on automatic sync."""

@@ -3,10 +3,10 @@
 FILE: snodo/infrastructure/cloud_sync.py
 
 Manages per-session sync cursors (~/.snodo/cloud_sync.json) and
-dispatches audit events to api.snodo.dev/i/{session_id} in background threads.
+dispatches audit events to api.snodo.dev/i/{jti} in background threads.
 
 Contract (from snodo-cloud ADR):
-  POST api.snodo.dev/i/{session_id}, lease Bearer auth, 1-50 events per batch,
+  POST api.snodo.dev/i/{jti}, lease Bearer auth, 1-50 events per batch,
   cursor advances on 200 only, 429 respects retry_after,
   5xx exponential backoff up to 5 retries, never raises.
 """
@@ -362,15 +362,6 @@ class CloudSyncDispatcher:
 
         state = CloudSyncState()
 
-        if not force and state.is_refused(session_id):
-            info = state._load().get(session_id, {})
-            reason = info.get("refused_reason", "refused by server")
-            _logger.info(
-                "Skipping automatic cloud sync for refused session %s: %s",
-                session_id, reason,
-            )
-            return {"synced": 0, "failed": False, "refused": True, "reason": reason, "pending": 0}
-
         cursor = state.get_cursor(session_id)
 
         # Collect unsynced events
@@ -381,6 +372,14 @@ class CloudSyncDispatcher:
 
         if not unsynced:
             return {"synced": 0, "failed": False, "pending": 0}
+
+        if not force and state.is_refused(session_id):
+            info = state._load().get(session_id, {})
+            reason = info.get("refused_reason", "refused by server")
+            pending = len(unsynced)
+            state.record_attempt(session_id, pending=pending, error=reason)
+            _logger.info("Skipping automatic cloud sync for refused session %s: %s", session_id, reason)
+            return {"synced": 0, "failed": True, "refused": True, "reason": reason, "pending": pending}
 
         synced = 0
         failed = False
@@ -447,8 +446,8 @@ class CloudSyncDispatcher:
         Returns:
             (outcome, reason, status_code) where outcome is one of:
             - "delivered": HTTP 2xx
-            - "retryable": HTTP 429, 5xx, or network error
-            - "refused": HTTP 4xx (except 429)
+            - "retryable": HTTP 404 (route mismatch), 429, 5xx, or network error
+            - "refused": HTTP 4xx other than 404/429, including invalid batches
         """
         import httpx
 
@@ -502,21 +501,21 @@ class CloudSyncDispatcher:
 
         from snodo.config import get_cloud_lease_url
         from snodo.infrastructure.cloud_lease import (
-            get_admission_lease, get_current_lease, invalidate_lease,
+            get_admission_lease, invalidate_lease,
         )
 
         state = CloudSyncState()
         lease_url = lease_url or get_cloud_lease_url({"cloud": {"api_url": api_url}})
-        cached_lease = get_current_lease(session_id)
         lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state, force=force)
         if lease is None:
-            if not force and state.is_refused(session_id):
+            if state.is_refused(session_id):
                 info = state._load().get(session_id, {})
                 reason = info.get("refused_reason", "Cloud admission refused")
                 return ("refused", reason, info.get("refused_status_code", 401))
-            return ("retryable", "Cloud admission unreachable", None)
+            from snodo.infrastructure.cloud_lease import get_last_admission_error
+            return ("retryable", get_last_admission_error() or "Cloud admission unreachable: no response received", None)
 
-        url = f"{api_url.rstrip('/')}/i/{quote(session_id, safe='')}"
+        url = f"{api_url.rstrip('/')}/i/{quote(lease.jti, safe='')}"
         first_seq = batch[0].sequence
         last_seq = batch[-1].sequence
         _logger.debug(
@@ -542,6 +541,19 @@ class CloudSyncDispatcher:
                     return ("delivered", f"HTTP {response.status_code}", response.status_code)
 
                 body_text = response.text[:500]
+                reason = f"{url} -> HTTP {response.status_code}: {body_text.strip() or 'No server message'}"
+
+                if response.status_code == 401 and not lease_replaced:
+                    print(f"Cloud ingest rejected lease: {reason}; minting once and retrying", file=__import__("sys").stderr)
+                    invalidate_lease(lease)
+                    lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state, force=True)
+                    if lease is None:
+                        from snodo.infrastructure.cloud_lease import get_last_admission_error
+                        return ("retryable", get_last_admission_error() or reason, None)
+                    url = f"{api_url.rstrip('/')}/i/{quote(lease.jti, safe='')}"
+                    headers["Authorization"] = f"Bearer {lease.token}"
+                    lease_replaced = True
+                    continue
 
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
@@ -552,6 +564,7 @@ class CloudSyncDispatcher:
                         "Cloud sync HTTP 429 retry_after=%s (session=%s): %s",
                         retry_after, session_id, body_text,
                     )
+                    print(f"Cloud ingest failed: {reason}", file=__import__("sys").stderr)
                     time.sleep(wait)
                     continue
 
@@ -561,6 +574,7 @@ class CloudSyncDispatcher:
                             "Cloud sync HTTP %d retries exhausted (session=%s): %s",
                             response.status_code, session_id, body_text,
                         )
+                        print(f"Cloud ingest failed: {reason}", file=__import__("sys").stderr)
                         return ("retryable", f"HTTP {response.status_code}: {body_text}", response.status_code)
                     _logger.warning(
                         "Cloud sync HTTP %d attempt %d (session=%s): %s",
@@ -569,23 +583,9 @@ class CloudSyncDispatcher:
                     time.sleep(cloud_backoff_seconds(attempt + 1, retry_after_seconds(response.headers)))
                     continue
 
-                reason = f"HTTP {response.status_code}: {body_text.strip() or 'Client error'}"
-                if not lease_replaced and cached_lease is None:
-                    invalidate_lease(lease)
-                    lease = get_admission_lease(
-                        api_key, lease_url, session_id=session_id,
-                        sync_state=state,
-                    )
-                    if lease is None:
-                        if state.is_refused(session_id):
-                            info = state._load().get(session_id, {})
-                            return ("refused", info.get("refused_reason", reason),
-                                    info.get("refused_status_code", response.status_code))
-                        return ("retryable", "Cloud admission unreachable", None)
-                    url = f"{api_url.rstrip('/')}/i/{quote(session_id, safe='')}"
-                    headers["Authorization"] = f"Bearer {lease.token}"
-                    lease_replaced = True
-                    continue
+                print(f"Cloud ingest failed: {reason}", file=__import__("sys").stderr)
+                if response.status_code == 404:
+                    return ("retryable", reason, response.status_code)
                 _logger.warning(
                     "Cloud sync HTTP %d REFUSED on session=%s: %s",
                     response.status_code, session_id, body_text,
@@ -601,7 +601,9 @@ class CloudSyncDispatcher:
                         "Cloud sync network error retries exhausted (session=%s): %s",
                         session_id, exc, exc_info=True,
                     )
-                    return ("retryable", f"Network error: {exc}", None)
+                    reason = f"{url} -> no response: {exc}"
+                    print(f"Cloud ingest failed: {reason}", file=__import__("sys").stderr)
+                    return ("retryable", reason, None)
                 time.sleep(cloud_backoff_seconds(attempt + 1))
 
         return ("retryable", "Retries exhausted", None)
@@ -677,6 +679,14 @@ def flush_pending_syncs() -> None:
             continue
         if result.get("failed"):
             pending = result.get("pending", _pending_count(audit_log, session_id))
+            if result.get("refused"):
+                print(
+                    f"⚠ cloud sync refused for {session_id} — {pending} event(s) unsent: "
+                    f"{result.get('reason', 'server refused the request')}; "
+                    "run `snodo cloud sync --force` to retry.",
+                    file=sys.stderr,
+                )
+                continue
             print(
                 f"⚠ cloud sync failed for {session_id} — "
                 f"{pending} event(s) pending; run `snodo cloud sync --all` to retry.",

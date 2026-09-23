@@ -199,7 +199,7 @@ def get_cloud_liveness_url(config: dict) -> str:
 def get_cloud_lease_url(config: dict) -> str:
     """Return the cloud app host used to mint session admission leases.
 
-    The caller appends ``/m/{session_id}``. An explicit
+    The caller appends ``/m``. An explicit
     ``cloud.lease_url`` or ``cloud.lease_api_url`` can point at a separate app
     host; otherwise the app origin is derived from ``cloud.api_url``.
     """

@@ -44,7 +44,7 @@ class TestCloudAdmission:
             response = MagicMock(spec=httpx.Response)
             response.status_code = 200
             response.json.return_value = {
-                "lease_id": f"lease-{len(calls)}", "token": "token", "expires_in": 300,
+                "jti": f"lease-{len(calls)}", "token": "token", "expires_in": 300,
             }
             return response
 
@@ -54,15 +54,30 @@ class TestCloudAdmission:
 
         assert first is not None and first.lease_id == "lease-1"
         assert second is not None and second.lease_id == "lease-2"
-        assert calls == [
-            "https://app.test/m/sess_a",
-            "https://app.test/m/sess_b",
-        ]
+        assert calls == ["https://app.test/m", "https://app.test/m"]
+
+    def test_mint_route_miss_is_visible_and_does_not_refuse_session(self, capsys):
+        from snodo.infrastructure.cloud_lease import get_admission_lease
+
+        response = MagicMock(spec=httpx.Response)
+        response.status_code = 404
+        response.text = "route not found"
+        with patch("httpx.post", return_value=response) as post:
+            assert get_admission_lease(
+                "sndo_live_key", "https://app.test", session_id="sess_route",
+            ) is None
+
+        post.assert_called_once_with(
+            "https://app.test/m", headers={"Authorization": "Bearer sndo_live_key"},
+            timeout=10.0,
+        )
+        assert not CloudSyncState().is_refused("sess_route")
+        assert "https://app.test/m -> HTTP 404: route not found" in capsys.readouterr().err
 
     def test_rejected_granted_lease_is_replaced_once(self, tmp_path):
         responses = iter([
-            {"lease_id": "old", "token": "old-token"},
-            {"lease_id": "new", "token": "new-token"},
+            {"jti": "old", "token": "old-token"},
+            {"jti": "new", "token": "new-token"},
         ])
         puts = []
 
@@ -101,7 +116,7 @@ class TestCloudAdmission:
             exchanges.append(url)
             response = MagicMock(spec=httpx.Response)
             response.status_code = 200
-            response.json.return_value = {"lease_id": f"lease-{len(exchanges)}",
+            response.json.return_value = {"jti": f"lease-{len(exchanges)}",
                                           "token": "token", "expires_in": 300}
             return response
 
@@ -132,16 +147,17 @@ class TestCloudAdmission:
 
         def mock_post(url, content=None, headers=None, **kwargs):
             calls.append(("POST", str(url), headers or {}, json.loads(content) if content else {}))
-            if str(url).endswith("/m/sess_alpha"):
+            if str(url).endswith("/m"):
                 resp = MagicMock(spec=httpx.Response)
                 resp.status_code = 200
                 resp.json.return_value = {
-                    "lease_id": "ls_test_fixed_length_12345",
+                    "jti": "ls_test_fixed_length_12345",
                     "token": "opaque_bearer_secret_xyz",
-                    "expires_in": 300,
+                    "expires_at": "2030-01-01T00:00:00+00:00",
+                    "cadence_s": 37,
                 }
                 return resp
-            if "/i/sess_alpha" in str(url):
+            if "/i/ls_test_fixed_length_12345" in str(url):
                 resp = MagicMock(spec=httpx.Response)
                 resp.status_code = 200
                 resp.text = "ok"
@@ -170,14 +186,76 @@ class TestCloudAdmission:
         # First call: exchange
         method1, url1, headers1, body1 = calls[0]
         assert method1 == "POST"
-        assert url1 == "https://app.snodo.test/m/sess_alpha"
+        assert url1 == "https://app.snodo.test/m"
         assert headers1.get("Authorization") == "Bearer sndo_live_mykey123"
+        assert body1 == {}
+        from snodo.infrastructure.cloud_lease import get_current_lease
+        assert get_current_lease("sess_alpha").cadence_s == 37
 
         # Second call: ingest with lease identifier in path and bearer token
         method2, url2, headers2, body2 = calls[1]
         assert method2 == "POST"
-        assert url2 == "https://api.snodo.test/i/sess_alpha"
+        assert url2 == "https://api.snodo.test/i/ls_test_fixed_length_12345"
         assert headers2.get("Authorization") == "Bearer opaque_bearer_secret_xyz"
+
+    def test_ingest_401_mints_once_again_and_retries_with_new_jti(self, tmp_path):
+        calls = []
+
+        def post(url, **kwargs):
+            url = str(url)
+            calls.append((url, kwargs.get("headers", {}).get("Authorization")))
+            response = MagicMock(spec=httpx.Response)
+            if url.endswith("/m"):
+                mint_number = sum(path.endswith("/m") for path, _ in calls)
+                jti = "lease-one" if mint_number == 1 else "lease-two"
+                response.status_code = 200
+                response.json.return_value = {
+                    "jti": jti, "token": f"token-{jti}",
+                    "expires_at": "2030-01-01T00:00:00+00:00", "cadence_s": 60,
+                }
+            else:
+                response.status_code = 401 if "/i/lease-one" in url else 200
+                response.text = "expired"
+            return response
+
+        event = MagicMock(sequence=1, timestamp="2026-09-19T00:00:00Z", event_type="transition",
+                          project_id="local:p1", data={}, previous_hash="", event_hash="abc")
+        with patch("httpx.post", side_effect=post):
+            outcome, _, _ = CloudSyncDispatcher()._post_batch(
+                "sess_401", str(tmp_path), [event], "sndo_live_key", "https://api.test",
+                lease_url="https://app.test",
+            )
+
+        assert outcome == "delivered"
+        assert calls == [
+            ("https://app.test/m", "Bearer sndo_live_key"),
+            ("https://api.test/i/lease-one", "Bearer token-lease-one"),
+            ("https://app.test/m", "Bearer sndo_live_key"),
+            ("https://api.test/i/lease-two", "Bearer token-lease-two"),
+        ]
+
+    def test_ingest_route_miss_is_retryable_and_not_a_refusal(self, tmp_path, capsys):
+        dispatcher = CloudSyncDispatcher()
+        event = MagicMock(sequence=1, timestamp="2026-09-19T00:00:00Z", event_type="transition",
+                          project_id="local:p1", data={}, previous_hash="", event_hash="abc")
+        lease = type("Lease", (), {"jti": "minted-jti", "token": "lease-token"})()
+        response = MagicMock(spec=httpx.Response)
+        response.status_code = 404
+        response.text = "unknown ingest route"
+        with patch("snodo.infrastructure.cloud_lease.get_current_lease", return_value=lease), \
+                patch("snodo.infrastructure.cloud_lease.get_admission_lease", return_value=lease), \
+                patch("httpx.post", return_value=response) as post:
+            outcome, reason, status = dispatcher._post_batch(
+                "sess_route", str(tmp_path), [event], "key", "https://api.test",
+                lease_url="https://app.test",
+            )
+
+        assert outcome == "retryable"
+        assert status == 404
+        assert reason == "https://api.test/i/minted-jti -> HTTP 404: unknown ingest route"
+        assert post.call_args.args[0] == "https://api.test/i/minted-jti"
+        assert not CloudSyncState().is_refused("sess_route")
+        assert reason in capsys.readouterr().err
 
     def test_refusal_at_exchange_stops_sending_permanently(self, tmp_path):
         """A refusal at the exchange records a terminal refusal and permanently halts sending."""
@@ -205,7 +283,7 @@ class TestCloudAdmission:
 
         assert outcome == "refused"
         assert len(calls) == 1
-        assert calls[0] == "https://app.snodo.test/m/sess_refused"
+        assert calls[0] == "https://app.snodo.test/m"
 
         # Refusal is persisted in CloudSyncState
         state = CloudSyncState()
@@ -251,7 +329,7 @@ class TestCloudAdmission:
 
         assert outcome1 == "retryable"
         assert len(calls) == 1
-        assert calls[0] == "https://app.snodo.test/m/sess_unreachable"
+        assert calls[0] == "https://app.snodo.test/m"
 
         # A second send attempt while in the quiet window must be completely silent (0 network calls)
         calls.clear()
@@ -276,7 +354,7 @@ class TestCloudAdmission:
             resp = MagicMock(spec=httpx.Response)
             resp.status_code = 200
             resp.json.return_value = {
-                "lease_id": "ls_live_fixed_98765",
+                "jti": "ls_live_fixed_98765",
                 "token": "tok_live_bearer",
                 "expires_in": 300,
             }
@@ -318,7 +396,7 @@ class TestCloudAdmission:
 
         assert len(calls) == 2
         assert calls[0][0] == "POST"
-        assert calls[0][1] == "https://app.snodo.test/m/sess_live_1"
+        assert calls[0][1] == "https://app.snodo.test/m"
         assert calls[0][2].get("Authorization") == "Bearer sndo_live_key123"
 
         assert calls[1][0] == "PUT"
