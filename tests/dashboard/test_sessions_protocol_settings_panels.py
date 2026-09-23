@@ -75,10 +75,10 @@ def _grid(table):
     return [[str(cell) for cell in table.get_row_at(i)] for i in range(table.row_count)]
 
 
-async def _push(app, panel_id, project):
+async def _push(app, pilot, panel_id, project):
     screen = get_panel(panel_id, DashboardDataProvider(str(project)))
     app.push_screen(screen)
-    await asyncio.sleep(0.15)
+    await pilot.pause(0.15)
     return screen
 
 
@@ -89,7 +89,7 @@ def test_sessions_panel_shows_empty_list_and_project_header(tmp_path, monkeypatc
         app = SnodoDashboard(project_root=str(project))
         async with app.run_test() as pilot:
             await pilot.pause()
-            screen = await _push(app, "sessions", project)
+            screen = await _push(app, pilot, "sessions", project)
             table = screen.query_one("#session-table")
             assert table.row_count == 0
             header = str(screen.query_one("#session-header").render())
@@ -123,7 +123,7 @@ def test_sessions_panel_lists_real_sessions_and_skips_corrupt_record(tmp_path, m
         app = SnodoDashboard(project_root=str(project))
         async with app.run_test() as pilot:
             await pilot.pause()
-            screen = await _push(app, "sessions", project)
+            screen = await _push(app, pilot, "sessions", project)
             rows = _grid(screen.query_one("#session-table"))
             assert len(rows) == 2
             assert {row[0] for row in rows} == {older.session_id[-12:], newer.session_id[-12:]}
@@ -141,7 +141,7 @@ def test_protocol_panel_renders_modes_validator_phases_and_policy(tmp_path, monk
         app = SnodoDashboard(project_root=str(project))
         async with app.run_test() as pilot:
             await pilot.pause()
-            screen = await _push(app, "protocol", project)
+            screen = await _push(app, pilot, "protocol", project)
             modes = _grid(screen.query_one("#protocol-modes"))
             assert len(modes) == 2
             assert "producer" in modes[0][0] and "complete→reviewer" in modes[0][0]
@@ -169,7 +169,7 @@ def test_protocol_panel_distinguishes_missing_and_invalid_files(tmp_path, monkey
         app = SnodoDashboard(project_root=str(project))
         async with app.run_test() as pilot:
             await pilot.pause()
-            screen = await _push(app, "protocol", project)
+            screen = await _push(app, pilot, "protocol", project)
             overview = str(screen.query_one("#protocol-overview").render())
             assert expected in overview
             if expected.startswith("No protocol"):
@@ -198,7 +198,7 @@ providers:
         app = SnodoDashboard(project_root=str(project))
         async with app.run_test() as pilot:
             await pilot.pause()
-            screen = await _push(app, "settings", project)
+            screen = await _push(app, pilot, "settings", project)
             overview = str(screen.query_one("#settings-overview").render())
             assert "openai/gpt-4.1" in overview and "config.yml" in overview
             protocol_rows = _grid(screen.query_one("#settings-protocol-models"))
@@ -220,7 +220,7 @@ def test_settings_panel_uses_defaults_when_config_is_absent(tmp_path, monkeypatc
         app = SnodoDashboard(project_root=str(project))
         async with app.run_test() as pilot:
             await pilot.pause()
-            screen = await _push(app, "settings", project)
+            screen = await _push(app, pilot, "settings", project)
             overview = str(screen.query_one("#settings-overview").render())
             assert "claude-sonnet-4-20250514" in overview
             assert "could not be loaded" not in overview
@@ -237,7 +237,7 @@ def test_settings_panel_explains_malformed_config_without_crashing(tmp_path, mon
         app = SnodoDashboard(project_root=str(project))
         async with app.run_test() as pilot:
             await pilot.pause()
-            screen = await _push(app, "settings", project)
+            screen = await _push(app, pilot, "settings", project)
             overview = str(screen.query_one("#settings-overview").render())
             assert "Config could not be loaded" in overview
             assert "config.yml" in overview
