@@ -492,6 +492,22 @@ def test_real_citation_outside_quoted_evidence_is_still_guarded(repo):
     assert missing == ["src/contracts/result.json"]
 
 
+def test_framework_paths_keep_special_characters_and_drop_sentence_period():
+    spec = (
+        "Update app/src/routes/(dashboard)/now/+page.svelte and "
+        "app/src/lib/groupSelection.ts. Also update "
+        "app/[locale]/blog/[slug]/page.tsx and "
+        "app/pages/@admin/users.vue. Do not confuse and/or with a path."
+    )
+
+    assert _spec_referenced_paths(spec) == [
+        "app/src/routes/(dashboard)/now/+page.svelte",
+        "app/src/lib/groupSelection.ts",
+        "app/[locale]/blog/[slug]/page.tsx",
+        "app/pages/@admin/users.vue",
+    ]
+
+
 def test_non_touch_path_does_not_create_overlap_citation():
     spec = "Do not touch `src/shared.py`; a sibling task owns it."
 

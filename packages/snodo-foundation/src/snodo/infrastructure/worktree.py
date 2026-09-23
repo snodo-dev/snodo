@@ -199,7 +199,16 @@ def _spec_referenced_paths(spec: str) -> List[str]:
     ignore set are never returned.
     """
     found: List[str] = []
-    for token in re.findall(r"[A-Za-z0-9_./-]+", _spec_citation_text(spec)):
+    for token in re.findall(r"[A-Za-z0-9_@+()[\]./-]+", _spec_citation_text(spec)):
+        # Citations commonly sit in prose punctuation. Keep framework syntax
+        # such as ``(dashboard)``, ``[slug]`` and ``+page``, but discard an
+        # unmatched opening wrapper and punctuation ending the sentence.
+        token = token.rstrip(".,;:!?")
+        while token.startswith("(") and token.endswith(")"):
+            inner = token[1:-1]
+            if inner.count("(") != inner.count(")"):
+                break
+            token = inner
         token = token.strip("/")
         if not token or token.startswith(".") or "/" not in token:
             continue
