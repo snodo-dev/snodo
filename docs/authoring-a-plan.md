@@ -9,6 +9,7 @@ everything below is authored.
 
 ---
 
+<!-- snodo-guide topic="waves" aliases="plan,sizing" summary="Wave dependencies and sizing" section="## 1. The one modelling rule" -->
 ## 1. The one modelling rule
 
 **Dependencies are between waves, not between tasks.**
@@ -117,6 +118,7 @@ validate.
 
 ---
 
+<!-- snodo-guide topic="spec" aliases="authoring" summary="Writing standalone task specs" section="## 3. What goes in a task spec" -->
 ## 3. What goes in a task spec
 
 Each `*_task.md` is the complete instruction for one run of the protocol loop.
@@ -158,6 +160,7 @@ are two plans.
 
 ---
 
+<!-- snodo-guide topic="mistakes" aliases="common-mistakes" summary="Plan refusals and authoring checklist" section="## 4. What gets the plan refused" -->
 ## 4. What gets the plan refused
 
 `snodo plan validate <name>` runs before wave 1 dispatches anything, so a
@@ -190,6 +193,7 @@ the id exactly.
 
 ---
 
+<!-- snodo-guide topic="run" aliases="follow-run" summary="Run a plan and follow its outcome" section="## 5. Running it" -->
 ## 5. Running it
 
 ```bash
@@ -255,6 +259,7 @@ hosting split and then discovering the second half was never written.
 
 ---
 
+<!-- snodo-guide topic="mistakes" summary="Plan refusals and authoring checklist" section="## 7. Checklist for an orchestrator" -->
 ## 7. Checklist for an orchestrator
 
 - [ ] Every task's wave number matches the wave listing it.
@@ -271,6 +276,7 @@ hosting split and then discovering the second half was never written.
 
 ---
 
+<!-- snodo-guide topic="planning" aliases="end-to-end" summary="The end-to-end plan loop" section="## 8. The planning loop, end to end" -->
 ## 8. The planning loop, end to end
 
 ### Write the intent

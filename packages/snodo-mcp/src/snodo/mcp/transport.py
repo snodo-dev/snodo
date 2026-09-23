@@ -33,7 +33,7 @@ from mcp.server.fastmcp import Context, FastMCP
 
 from snodo.mcp.server import ProtocolMCPServer
 from snodo.mcp.tools import TOOL_REGISTRY
-from snodo.mcp.guide import guide_text
+from snodo.mcp.guide import guide_menu, guide_text
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +195,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
     policy_value = getattr(p.disagreement_policy, "value", str(p.disagreement_policy))
 
     sections: list = [
-        "Call the read-only `guide` tool before anything else. It teaches the shortest path and accepts topics: `spec`, `waves`, `halts`, `run`, `mistakes`, `planning` (the end-to-end plan loop), `automation` (intent-to-merged-work orchestration for long unattended runs).\n",
+        f"Call the read-only `guide` tool before anything else. It teaches the shortest path and accepts topics: {guide_menu(protocol_server.project_root)}.\n",
         f"# Snodo Protocol Engine — {p.protocol_id} v{p.version}\n",
         "You are the orchestrator. Use MCP tools and resources only; you cannot read the filesystem directly.\n",
         "Tool access follows the active mode grant; no tool call is refused for want of a caller-held token. The validator quorum is enforced inside the engine loop (ADR 047); a `blocker` is never overridable, and `escalate` requires human `snodo authorize`.\n",
@@ -355,7 +355,7 @@ def _register_guide(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> None:
 
     @mcp.tool(
         name="guide",
-        description="Read-only Snodo getting-started guide. Omit topic for the shortest first run; ask for spec, waves, halts, run, mistakes, planning (the end-to-end plan loop), or automation (long unattended runs).",
+        description=f"Read-only Snodo getting-started guide. Omit topic for the shortest first run; ask for {guide_menu(protocol_server.project_root)}.",
     )
     def guide(topic: str | None = None) -> str:
         return guide_text(protocol_server.project_root, exposed, topic)
