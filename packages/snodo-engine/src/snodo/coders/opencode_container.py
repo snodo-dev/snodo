@@ -453,8 +453,8 @@ def _build_provider_env() -> dict:
     env: dict[str, str] = {}
     try:
         from snodo.config import ConfigManager
-        import os as _os
-        config = ConfigManager().load()
+        manager = ConfigManager()
+        config = manager.load()
         providers = config.get("providers", {})
         if not isinstance(providers, dict):
             return env
@@ -462,16 +462,13 @@ def _build_provider_env() -> dict:
             provider_config = providers.get(provider_name, {})
             if not isinstance(provider_config, dict):
                 continue
-            key = provider_config.get("api_key", "")
-            if not key:
-                api_key_env_name = provider_config.get("api_key_env", "")
-                if api_key_env_name:
-                    key = _os.environ.get(api_key_env_name, "")
+            key = manager.get_key(provider_name)
             if key:
                 for env_name in env_var_names:
                     env[env_name] = key
     except Exception as e:
         _logger.warning("Failed to build provider env for opencode: %s", e)
+        raise
     return env
 
 

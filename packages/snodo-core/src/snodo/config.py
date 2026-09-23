@@ -10,6 +10,7 @@ Manages user configuration stored at ~/.snodo/config.yml:
 
 import os
 import shlex
+import shutil
 import stat
 import subprocess
 from contextlib import contextmanager
@@ -475,6 +476,46 @@ class ConfigManager:
         provider_data["api_key"] = key
         self.save(config)
 
+    def encrypt_provider_keys(self) -> list[str]:
+        """Back up config, then migrate plaintext provider keys to local encrypted files."""
+        from snodo.provider_key_files import encrypt, provider_file
+
+        if not self.config_path.is_file():
+            return []
+        config = self.load()
+        providers = config.get("providers", {})
+        if not isinstance(providers, dict):
+            return []
+        names = [name for name, data in providers.items()
+                 if isinstance(data, dict) and isinstance(data.get("api_key"), str)
+                 and data["api_key"] and not data["api_key"].startswith("@keys/")]
+        if not names:
+            return []
+        for name in names:
+            try:
+                path = provider_file(name)
+            except ValueError as exc:
+                raise ConfigError(f"Cannot encrypt provider '{name}': invalid provider name") from exc
+            if path.exists():
+                raise ConfigError(f"Cannot encrypt provider '{name}': encrypted key file already exists")
+
+        backup = self.config_path.with_name("config.yml.bak")
+        # Keep a copy of the original before modifying any credential files.
+        suffix = 1
+        while backup.exists():
+            backup = self.config_path.with_name(f"config.yml.bak.{suffix}")
+            suffix += 1
+        shutil.copyfile(self.config_path, backup)
+        backup.chmod(0o600)
+        for name in names:
+            try:
+                encrypt(name, providers[name]["api_key"])
+            except (OSError, ValueError) as exc:
+                raise ConfigError(f"Cannot encrypt provider '{name}' (original config preserved)") from exc
+            providers[name]["api_key"] = f"@keys/{name}.key"
+        self.save(config)
+        return names
+
     def get_key(self, provider: str) -> Optional[str]:
         """Get an API key for a provider.
 
@@ -486,6 +527,17 @@ class ConfigManager:
         """
         pc = self.get_providers().get(provider)
         if pc and pc.api_key:
+            if pc.api_key.startswith("@keys/"):
+                from snodo.provider_key_files import decrypt, provider_file
+
+                reference = pc.api_key
+                name = reference.removeprefix("@keys/").removesuffix(".key")
+                try:
+                    if reference != f"@keys/{name}.key" or name != provider:
+                        raise ValueError("Invalid provider key reference")
+                    return decrypt(provider_file(name))
+                except Exception:
+                    raise ConfigError(f"Unable to decrypt API key for provider '{provider}' ({reference})") from None
             return pc.api_key
         if pc and pc.api_key_env:
             return os.environ.get(pc.api_key_env) or None

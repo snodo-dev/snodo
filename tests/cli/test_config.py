@@ -193,6 +193,63 @@ class TestKeyForModel:
             mgr.get_key("openai")
 
 
+class TestEncryptedProviderKeys:
+    def test_cli_migrates_and_resolves_only_used_provider(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / ".snodo"))
+        manager = ConfigManager()
+        manager.save({"providers": {
+            "openai": {"api_key": "sk-openai-secret"},
+            "anthropic": {"api_key": "sk-anthropic-secret"},
+            "google": {"api_key": "@keys/google.key"},
+        }})
+        original = manager.config_path.read_bytes()
+        assert main(["config", "--encrypt-provider-keys"]) == 0
+        output = capsys.readouterr()
+        assert "openai" in output.out and "anthropic" in output.out
+        assert "secret" not in output.out + output.err
+        assert (manager.config_dir / "config.yml.bak").read_bytes() == original
+        assert (manager.config_dir / "config.yml.bak").stat().st_mode & 0o777 == 0o600
+        text = manager.config_path.read_text()
+        assert '"@keys/openai.key"' in text or "'@keys/openai.key'" in text
+        assert "sk-openai-secret" not in text
+        key_dir = tmp_path / ".ssh" / "NO-AGENT"
+        assert (key_dir / "keys").stat().st_mode & 0o777 == 0o700
+        assert (key_dir / "provider-keys.pem").stat().st_mode & 0o777 == 0o600
+        assert (key_dir / "keys" / "openai.key").stat().st_mode & 0o777 == 0o600
+        assert b"sk-openai-secret" not in (key_dir / "keys" / "openai.key").read_bytes()
+        assert manager.get_key_for_model("gpt-4o") == "sk-openai-secret"
+        assert manager.get_key("anthropic") == "sk-anthropic-secret"
+        assert main(["config", "--encrypt-provider-keys"]) == 0
+        assert "No plaintext" in capsys.readouterr().out
+        assert manager.config_path.read_text() == text
+
+    def test_missing_or_broken_key_names_provider_without_fallback(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        manager = ConfigManager(config_dir=tmp_path / ".snodo")
+        manager.save({"providers": {"openai": {"api_key": "@keys/openai.key", "api_key_env": "OPENAI_API_KEY"}}})
+        monkeypatch.setenv("OPENAI_API_KEY", "fallback")
+        with pytest.raises(ConfigError, match="provider 'openai'"):
+            manager.get_key("openai")
+        path = tmp_path / ".ssh" / "NO-AGENT" / "keys" / "openai.key"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"broken")
+        with pytest.raises(ConfigError, match="provider 'openai'"):
+            manager.get_key("openai")
+
+    def test_existing_cipher_file_is_not_overwritten(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        manager = ConfigManager(config_dir=tmp_path / ".snodo")
+        manager.save({"providers": {"openai": {"api_key": "sk-new"}}})
+        path = tmp_path / ".ssh" / "NO-AGENT" / "keys" / "openai.key"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"existing")
+        with pytest.raises(ConfigError, match="openai"):
+            manager.encrypt_provider_keys()
+        assert path.read_bytes() == b"existing"
+        assert manager.get_key("openai") == "sk-new"
+
+
 # === ConfigManager.set_model / get_model ===
 
 class TestModelConfig:
