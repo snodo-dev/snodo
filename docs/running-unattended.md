@@ -32,7 +32,7 @@ For each intent:
    reconstructing this from a conversation.
 
 Plan and job vocabularies are different. Job status is `queued`, `running`,
-`completed`, `failed`, or `unmerged`. Per-task plan status is `pending`,
+`completed`, `failed`, `cancelled`, or `unmerged`. Per-task plan status is `pending`,
 `in_progress`, `completed`, `blocked`, `errored`, or `unmerged`. A finished job
 is not necessarily a successful plan: inspect its `exit_code`, logs, and task
 statuses. `get_plan` can be read while a run is in progress as well as after.
@@ -64,8 +64,9 @@ automatically landed merely because it ran. A resolved task with auto-merge
 disabled (or no eligible task worktree) is recorded `completed`, although its
 branch did not land on the base branch; the run reports why it stayed
 unmerged. The plan status `unmerged` is used when an enabled merge attempt
-fails. A merge conflict is an escalation and preserves the task
-branch/worktree for resolution.
+fails. A merge conflict is a merge outcome, not an engine halt escalation: it
+is recorded as `merge_conflict_escalated`, leaves the task `unmerged`, and
+preserves the task branch/worktree for resolution.
 
 - **`blocker`**: a validator judged the work and rejected it. Never ask a human
   to authorize past it. Address the defect with a corrective follow-up task
