@@ -828,6 +828,39 @@ def test_watch_updates_elapsed_with_no_status_change(capsys, monkeypatch):
     assert "Intent: A long wave" in _strip_ansi(out)
 
 
+def test_plan_watch_prints_quiet_own_log_line_once(capsys, monkeypatch):
+    """Heartbeats must not repaint a committed plan log line on each poll."""
+    clock = _install_fake_clock(monkeypatch, stop_after=12)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _plan_watch_tree(tmp_dir)
+        log_path = Path(tmp_dir) / ".snodo" / "jobs" / "j_plan_hb" / "stdout.log"
+        log_path.write_text("Plan: provider-comes-from-the-declaration\n")
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            from snodo.jobs import JobManager
+
+            def get_status(_jid):
+                return {
+                    "status": "running", "job_type": "plan", "started_at": 900.0,
+                    "task": {"plan_name": "wave"},
+                }
+
+            def list_jobs():
+                return _running_child_rows(round(clock["now"] - 950.0, 1))
+
+            with patch.object(JobManager, "get_status", side_effect=get_status), \
+                 patch.object(JobManager, "list_jobs", side_effect=list_jobs), \
+                 patch("snodo.engine.progress.color_enabled", return_value=True):
+                assert logs_command(SimpleNamespace(
+                    composite_id="j_plan_hb", watch=True,
+                )) == 0
+
+    out = capsys.readouterr().out
+    assert out.count("Plan: provider-comes-from-the-declaration") == 1, out
+    assert out.count("no status change") >= 2, out
+
+
 def test_watch_appends_current_tree_when_task_completes(capsys, monkeypatch):
     """A completion gets a new interactive tree instead of leaving the opening snapshot live."""
     _install_fake_clock(monkeypatch, stop_after=7)
@@ -902,17 +935,11 @@ def test_watch_event_between_heartbeats_keeps_its_row(capsys, monkeypatch):
                 assert logs_command(args) == 0
 
     out = capsys.readouterr().out
-    # Two heartbeat draws (each repaint moves the cursor up over the window),
-    # and the second draw of the waiting covered two rows: turn + heartbeat.
+    # Two heartbeat draws; the committed turn stays visible above the live
+    # heartbeat row without being included in each heartbeat repaint.
     assert out.count("no status change") == 2, out
-    assert "\x1b[2A" in out, out
-    # The settled frame — what is on screen after the last repaint — holds
-    # the turn once and one current heartbeat: the waiting was repainted,
-    # not stacked, and the real event was never painted over.
-    last_frame = _strip_ansi(out.rsplit("\x1b[2A", 1)[-1])
-    assert last_frame.count("Turn 5: read_file(src/app.tsx)") == 1, last_frame
-    assert last_frame.count("no status change") == 1, last_frame
-    assert "plan 1:50" in last_frame and "plan 1:45" not in last_frame, last_frame
+    assert "\x1b[1A" in out, out
+    assert out.count("Turn 5: read_file(src/app.tsx)") == 1, out
 
 
 def test_watch_non_tty_never_repaints(capsys, monkeypatch):
