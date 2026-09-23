@@ -145,8 +145,18 @@ def _mode_change(args, state, project_root) -> int:
               file=sys.stderr)
         return 1
 
-    # Update state
     old_mode = state.current_mode
+    current = protocol.get_mode(old_mode) if old_mode else None
+    if current and old_mode != new_mode and new_mode not in current.transitions.values():
+        allowed = ", ".join(dict.fromkeys(current.transitions.values())) or "none"
+        print(
+            f"Error: Cannot switch from '{old_mode}' to '{new_mode}'. "
+            f"Allowed transitions: {allowed}",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Update state
     state.current_mode = new_mode
     write_state(project_root, state)
 
