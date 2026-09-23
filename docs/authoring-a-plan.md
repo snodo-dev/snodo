@@ -163,8 +163,9 @@ are two plans.
 <!-- snodo-guide topic="mistakes" aliases="common-mistakes" summary="Plan refusals and authoring checklist" section="## 4. What gets the plan refused" -->
 ## 4. What gets the plan refused
 
-`snodo plan validate <name>` runs before wave 1 dispatches anything, so a
-malformed plan fails before any work happens rather than in the middle.
+The CLI command `snodo plan validate <name>` and the MCP tool
+`validate_plan` run before wave 1 dispatches anything, so a malformed plan
+fails before any work happens rather than in the middle.
 
 Errors — the plan will not run:
 
@@ -271,7 +272,7 @@ hosting split and then discovering the second half was never written.
 - [ ] Every spec has an ACCEPTANCE section naming specific tests.
 - [ ] No spec mentions a mode.
 - [ ] `status.json` is `{"tasks": {}}`.
-- [ ] `snodo plan validate <name>` passes.
+- [ ] `validate_plan` passes (or, from the CLI, `snodo plan validate <name>`).
 
 ---
 

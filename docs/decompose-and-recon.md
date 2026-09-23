@@ -1,10 +1,13 @@
 <!-- snodo-guide topic="discovery" aliases="breakdown,exploration" summary="Break work down and ask the codebase" section="# Break work down and ask the codebase" -->
 # Break work down and ask the codebase
 
-Use `decompose` when you have a clear intent and want snodo to create the
-plan's starting structure. It creates the plan directory, `plan.yml` with
-sequential empty wave slots, and an empty `status.json`; it returns the plan
-data (`name`, `intent`, and `waves`) plus the surrounding plan-tool response.
+For an MCP orchestrator starting from a clear intent, use `propose_plan`. It
+calls the same `planner.decompose(...)` implementation as the `decompose` tool,
+so both create the plan directory, `plan.yml` with sequential empty wave slots,
+and an empty `status.json`. `propose_plan` is the preferred entry point because
+it also returns the proposal validation and the next-step instruction; use
+`decompose` when you specifically need the lower-level planner tool. Both return
+the plan's starting data (`name`, `intent`, and `waves`).
 The default is one empty wave. It does **not** infer tasks, write task specs,
 choose the correct wave boundaries, or execute anything. Fill the scaffold with
 task specs, then validate and review the complete plan before running it.
