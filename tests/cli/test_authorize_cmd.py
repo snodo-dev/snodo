@@ -154,6 +154,8 @@ class TestAuthorizeCommand:
         session = _make_session_with_pending("t_auth", proposal)
         session_mgr = MagicMock()
         session_mgr.get_active_session.return_value = session
+        from snodo.infrastructure.signing_keys import load_public_key
+        pub = load_public_key()
 
         with patch("snodo.cli.commands.authorize_cmd.SessionManager", return_value=session_mgr):
             with patch("snodo.cli.commands.authorize_cmd.read_state") as mock_rs:
