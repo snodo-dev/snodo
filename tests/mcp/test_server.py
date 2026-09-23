@@ -2079,6 +2079,11 @@ class TestInstructions:
         assert "When resolution fails" not in text
         assert "propose_set_model" not in text
 
+    def test_guide_menu_hides_topics_with_no_instructions_in_mode(self, server):
+        text = guide_text(server.project_root, {"read_file"})
+
+        assert "`models`" not in text
+
     def test_guide_waves_replaces_image_with_alt_text_and_strips_numbers(self, server):
         exposed = {tool["name"] for tool in server.get_tools()}
         text = guide_text(server.project_root, exposed, "waves")
