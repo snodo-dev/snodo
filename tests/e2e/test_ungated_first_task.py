@@ -40,7 +40,9 @@ def _verification_records(snodo_cli):
     [
         ("solo", []),
         ("team", []),
-        ("greenfield", [["mode", "change", "build"]]),
+        # greenfield starts in decide; mode change follows the declared
+        # transitions (decide -> scaffold -> build), so walk the path.
+        ("greenfield", [["mode", "change", "scaffold"], ["mode", "change", "build"]]),
     ],
 )
 def test_ungated_first_task_runs_to_completion(snodo_cli, template, setup_args):
