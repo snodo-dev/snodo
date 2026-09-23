@@ -91,6 +91,84 @@ def test_job_with_no_output_missing_file_reports_rather_than_blocking(capsys):
                 assert "(no stdout output)" in out
 
 
+def test_task_job_finished_prints_its_stdout(capsys):
+    """A finished task job is the operator's captured command output."""
+    import json
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        job_dir = Path(tmp_dir) / ".snodo" / "jobs" / "j_task_finished"
+        job_dir.mkdir(parents=True)
+        (job_dir / "task.json").write_text(json.dumps({
+            "task_id": "1.1_build", "description": "Build the service",
+        }))
+        (job_dir / "state.json").write_text(json.dumps({
+            "status": "completed", "exit_code": 0,
+        }))
+        (job_dir / "stdout.log").write_text("build started\nbuild complete\n")
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            assert logs_command(SimpleNamespace(
+                composite_id="j_task_finished", watch=False,
+            )) == 0
+
+    assert capsys.readouterr().out == "build started\nbuild complete\n"
+
+
+def test_task_job_watch_appends_output_until_status_changes(capsys, monkeypatch):
+    """A task watch emits new lines and stops when the on-disk state finishes."""
+    import json
+    from snodo.cli.commands import logs_cmd
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        job_dir = Path(tmp_dir) / ".snodo" / "jobs" / "j_task_watch"
+        job_dir.mkdir(parents=True)
+        (job_dir / "task.json").write_text(json.dumps({"task_id": "1.1_watch"}))
+        state_path = job_dir / "state.json"
+        state_path.write_text(json.dumps({"status": "running"}))
+        log_path = job_dir / "stdout.log"
+        log_path.write_text("first line\n")
+        polls = {"count": 0}
+
+        def fake_sleep(_seconds):
+            polls["count"] += 1
+            log_path.write_text("first line\nsecond line\n")
+            state_path.write_text(json.dumps({"status": "completed", "exit_code": 0}))
+
+        monkeypatch.setattr(logs_cmd.time, "sleep", fake_sleep)
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            assert logs_command(SimpleNamespace(
+                composite_id="j_task_watch", watch=True,
+            )) == 0
+
+    assert capsys.readouterr().out == "first line\nsecond line\n"
+    assert polls["count"] == 1
+
+
+def test_missing_job_record_is_a_cli_error(capsys):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        (Path(tmp_dir) / ".snodo" / "jobs").mkdir(parents=True)
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            result = logs_command(SimpleNamespace(composite_id="j_missing", watch=False))
+
+    assert result == 1
+    assert "Could not read job j_missing" in capsys.readouterr().err
+
+
+def test_corrupt_job_record_is_a_cli_error(capsys):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        job_dir = Path(tmp_dir) / ".snodo" / "jobs" / "j_corrupt"
+        job_dir.mkdir(parents=True)
+        (job_dir / "task.json").write_text("{not json")
+        (job_dir / "state.json").write_text('{"status": "completed"}')
+        (job_dir / "stdout.log").write_text("output that must not hide corruption\n")
+
+        with patch("snodo.infrastructure.paths.require_project_root", return_value=tmp_dir):
+            result = logs_command(SimpleNamespace(composite_id="j_corrupt", watch=False))
+
+    assert result == 1
+    assert "Could not read job j_corrupt" in capsys.readouterr().err
+
+
 def test_following_plan_job_surfaces_children_progress(capsys):
     """Test that following a plan job surfaces its children's progress rather than an empty stream."""
     import json

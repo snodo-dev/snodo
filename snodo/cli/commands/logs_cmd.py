@@ -558,6 +558,12 @@ def _show_job(project_root: str, job_id: str, args) -> int:
     mgr = JobManager(project_root)
 
     try:
+        job_status = mgr.get_status(job_id)
+    except Exception as e:
+        print(f"Error: Could not read job {job_id}: {e}", file=sys.stderr)
+        return 1
+
+    try:
         job_dir = mgr._job_dir(job_id)
     except Exception:
         job_dir = Path(project_root) / ".snodo" / "jobs" / job_id
@@ -583,13 +589,10 @@ def _show_job(project_root: str, job_id: str, args) -> int:
             _logger.debug("Could not read state.json: %s", e)
 
     if not is_plan_job and not (job_dir / "stdout.log").exists():
-        try:
-            st = mgr.get_status(job_id)
-            t = st.get("task", {}) if isinstance(st.get("task"), dict) else {}
-            if st.get("job_type") == "plan" or t.get("plan_name") or st.get("plan"):
-                is_plan_job = True
-        except Exception as e:
-            _logger.debug("Could not get status for job %s: %s", job_id, e)
+        t = job_status.get("task", {}) if isinstance(job_status.get("task"), dict) else {}
+        if (job_status.get("job_type") == "plan" or t.get("plan_name")
+                or job_status.get("plan")):
+            is_plan_job = True
 
     if is_plan_job:
         return _show_plan_job(project_root, job_id, args)
