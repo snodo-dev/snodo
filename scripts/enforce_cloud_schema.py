@@ -5,9 +5,9 @@ The schemas are DERIVED from the payload declarations by
 ``cloud_payload_schema.py`` and compared with the recorded publication in
 ``scripts/cloud_schema_baseline.json``. A field addition or removal is named
 separately because consumers experience those as different changes. Either is
-a version-bump decision, not an edit. The baseline update refuses while the
-check is red; a deliberate interface change updates the baseline in the same
-change as its decision record. There is no inline suppression or exemption.
+a version-bump decision, not an edit. An intentional interface change
+increments the published interface version and updates the baseline in the
+same change. There is no inline suppression or exemption.
 """
 
 from __future__ import annotations
@@ -76,19 +76,16 @@ def main(argv: list[str] | None = None) -> int:
     baseline_path = Path(args.baseline) if args.baseline else repo_root / BASELINE_RELATIVE_PATH
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     report = check(published_schemas(), baseline)
-    for payload, field in report.added:
-        print(f"FAIL: {_message('added', payload, field)}")
-    for payload, field in report.removed:
-        print(f"FAIL: {_message('removed', payload, field)}")
     if args.update_baseline:
-        if report.added or report.removed:
-            print("Refusing to update the published schema while the check is red.")
-            return 1
         baseline_path.write_text(
             json.dumps(published_schemas(), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         return 0
+    for payload, field in report.added:
+        print(f"FAIL: {_message('added', payload, field)}")
+    for payload, field in report.removed:
+        print(f"FAIL: {_message('removed', payload, field)}")
     if report.added or report.removed:
         return 1
     print("Published cloud schema check OK: all fields are baselined.")
