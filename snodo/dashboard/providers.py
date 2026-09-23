@@ -132,6 +132,12 @@ class DashboardDataProvider:
         try:
             from snodo.protocols import load_protocol
             self._protocol = load_protocol(protocol_path)
+            if self._protocol is None:
+                # load_protocol reports parse/verification failures by
+                # returning None, while a missing file is handled above.
+                # Preserve that distinction for panels that explain the
+                # difference to the operator.
+                self._protocol_error = "Could not load protocol.yml; check its YAML and well-formedness."
         except Exception as e:
             self._protocol_error = str(e)
         return self._protocol

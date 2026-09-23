@@ -169,6 +169,7 @@ class SessionsScreen(Screen):
         Never calls table.clear() — preserves cursor position.
         """
         sessions = self.provider.get_sessions()
+        self._data_read_time = time.time()
         table = self.query_one("#session-table", DataTable)
 
         self._all_sessions = sessions
@@ -255,25 +256,23 @@ class SessionsScreen(Screen):
         header.update(
             f"  [bold]{project}[/] > sessions  "
             f"|  active: [bold green]{active_short}[/] ({active_mode or '—'})  "
-            f"|  sessions: {len(sessions)}"
+            f"|  sessions: {len(sessions)}  "
+            f"|  Data: [dim]{self._data_age()} ago[/]"
         )
+
+    def _data_age(self) -> str:
+        if not self._data_read_time:
+            return "—"
+        age_secs = time.time() - self._data_read_time
+        if age_secs < 60:
+            return f"{int(age_secs)}s"
+        if age_secs < 3600:
+            return f"{int(age_secs / 60)}m"
+        return f"{int(age_secs / 3600)}h"
 
     def _update_status_footer(self, table: DataTable):
         rows = table.row_count
         sel = (table.cursor_row or 0) + 1 if table.row_count else 0
-
-        # Show data age
-        age_str = "—"
-        if self._data_read_time:
-            age_secs = time.time() - self._data_read_time
-            if age_secs < 60:
-                age_str = f"{int(age_secs)}s"
-            elif age_secs < 3600:
-                age_str = f"{int(age_secs / 60)}m"
-            else:
-                age_str = f"{int(age_secs / 3600)}h"
-        header = self.query_one("#session-header", Static)
-        header.update(f"  Sessions  |  Data: [dim]{age_str} ago[/]")
 
         self.app.sub_title = f"Row {sel}/{rows}  |  Enter:detail  /:filter  ::commands  q:quit"
 

@@ -98,7 +98,7 @@ class ProtocolScreen(Screen):
         error = self.provider.get_protocol_error()
 
         header = self.query_one("#protocol-header", Static)
-        if error:
+        if protocol is None and error and error != "No protocol.yml found":
             header.update(
                 f"  [bold]{self.provider.project_name}[/] > protocol  "
                 f"|  [red]Error: {_escape(error)}[/]"

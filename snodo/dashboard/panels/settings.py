@@ -94,7 +94,7 @@ class SettingsScreen(Screen):
         self._populate()
 
     def _populate(self):
-        from snodo.config import ConfigManager
+        from snodo.config import ConfigError, ConfigManager
 
         config = ConfigManager()
         protocol = self.provider.get_protocol()
@@ -105,12 +105,22 @@ class SettingsScreen(Screen):
             f"|  Read-only view"
         )
 
-        # Default model
-        default_model = config.get_model()
-        self.query_one("#settings-overview", Static).update(
+        # Default model. A broken user config should be visible without
+        # preventing the read-only panel from showing protocol settings.
+        config_error = None
+        try:
+            config_data = config.load()
+        except ConfigError as exc:
+            config_error = str(exc)
+            config_data = config._default_config()
+        default_model = config_data.get("model", config._default_config()["model"])
+        overview = (
             f"  Default model: [bold]{default_model}[/]\n"
             f"  Config file: {config.config_path}"
         )
+        if config_error:
+            overview += f"\n  [red]Config could not be loaded: {_escape(config_error)}[/]"
+        self.query_one("#settings-overview", Static).update(overview)
 
         # Protocol models — coder / validator model per mode
         pmt = self.query_one("#settings-protocol-models", DataTable)
@@ -134,8 +144,9 @@ class SettingsScreen(Screen):
 
         # Recovery budget
         max_retries = protocol.execution.max_retries if protocol else 3
-        max_depth = config.get_engine_value("max_subtask_depth", 3)
-        max_age = config.get_engine_value("max_session_age_days", 30)
+        engine = config_data.get("engine") or {}
+        max_depth = engine.get("max_subtask_depth", 3)
+        max_age = engine.get("max_session_age_days", 30)
         self.query_one("#settings-recovery", Static).update(
             f"  Max retries per task: [bold]{max_retries}[/]\n"
             f"  Max subtask depth: [bold]{max_depth}[/]\n"
@@ -145,8 +156,16 @@ class SettingsScreen(Screen):
         # Providers
         pt = self.query_one("#settings-providers", DataTable)
         pt.add_columns("Provider", "Default Model", "Key Set")
+        if config_error:
+            pt.add_row("—", "Config unavailable", "—")
+            return
         for pname, pcfg in config.get_providers().items():
             has_key = bool(config.get_key(pname))
             key_status = "[green]✓[/]" if has_key else "[yellow]—[/]"
             model = getattr(pcfg, "default_model", "") or "—"
             pt.add_row(pname, str(model)[:40], key_status)
+
+
+def _escape(text: str) -> str:
+    """Minimal escape for Rich markup."""
+    return text.replace("[", "\\[").replace("]", "\\]")
