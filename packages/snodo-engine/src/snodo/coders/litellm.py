@@ -26,8 +26,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from snodo.core.interfaces import TaskSpec, CodeArtifact, FileArtifact, MCPServer
 from snodo.paths import is_protected_workspace_path
 from snodo.coders.base import CoderAdapter, LLMCallError, ParseError, TurnBudgetExhausted
+from snodo.coders.test_governing import _is_test_governing_file
 from snodo.coders.report import build_coder_report as assemble_coder_report
 from snodo.engine.progress import format_elapsed, format_tool_call_summary
+from snodo.coders.parameter_fallback import completion_without_rejected_parameters
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.infrastructure.model_provenance import served_model_of
 from snodo.infrastructure.usage_tracker import UsageTracker, usage_tokens_of as _usage_tokens
@@ -95,41 +97,6 @@ _DEFAULT_MAX_TOOL_TURNS = 20
 def _is_gemini3_plus(model: str) -> bool:
     """Check if model is Gemini 3.0 or higher."""
     return "gemini-3" in model.lower() or "gemini-4" in model.lower()
-
-
-def _is_test_governing_file(path: str) -> bool:
-    """Check if a file path governs test behavior (ADR 040 Point 5)."""
-    p = str(path).replace("\\", "/").strip().lower()
-    parts = p.split("/")
-    filename = parts[-1]
-
-    if any(part in {"tests", "test", "spec", "specs"} for part in parts[:-1]):
-        return True
-
-    if (
-        filename.startswith("test_")
-        or filename.endswith("_test.py")
-        or filename.endswith(".test.js")
-        or filename.endswith(".test.ts")
-        or filename.endswith(".spec.js")
-        or filename.endswith(".spec.ts")
-    ):
-        return True
-
-    governing_filenames = {
-        "conftest.py",
-        "pytest.ini",
-        "tox.ini",
-        "pyproject.toml",
-        ".coveragerc",
-        "setup.cfg",
-        "cargo.toml",
-        "package.json",
-        "jest.config.js",
-        "jest.config.ts",
-        "vitest.config.ts",
-    }
-    return filename in governing_filenames
 
 
 class LiteLLMAdapter(CoderAdapter):
@@ -322,7 +289,9 @@ Return ONLY the JSON array, no other text.
                 kwargs["extra_headers"] = extra_headers
             if not _is_gemini3_plus(self.model):
                 kwargs["temperature"] = self.temperature
-            response = self._completion_fn(**kwargs)
+            response = completion_without_rejected_parameters(
+                self._completion_fn, kwargs, set(), _logger, self.model,
+            )
             self._check_truncation(response)
             return response.choices[0].message.content
         except (LLMCallError, ParseError):
@@ -391,6 +360,7 @@ Return ONLY the JSON array, no other text.
         #: Tokens consumed across the run; None until a response reports
         #: usage, so a provider that omits it does not read as zero.
         tokens_total: Optional[int] = None
+        removed_parameters: set[str] = set()
 
         def _record(stop_reason: Optional[str], turns_used: int) -> None:
             try:
@@ -426,7 +396,9 @@ Return ONLY the JSON array, no other text.
                     kwargs["extra_headers"] = extra_headers
                 if not _is_gemini3_plus(self.model):
                     kwargs["temperature"] = self.temperature
-                response = self._completion_fn(**kwargs)
+                response = completion_without_rejected_parameters(
+                    self._completion_fn, kwargs, removed_parameters, _logger, self.model,
+                )
             except Exception as e:
                 self._emit_turn_telemetry(
                     turn_index=turn + 1,
