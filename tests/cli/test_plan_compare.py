@@ -62,19 +62,38 @@ def test_json_output_contains_all_signals(tmp_path, monkeypatch, capsys):
     (baseline_dir / "solution.diff").write_text(diff)
     job_dir = tmp_path / ".snodo" / "jobs" / "j1"
     job_dir.mkdir(parents=True)
-    (job_dir / "task.json").write_text(json.dumps({"task_id": "t", "task_plan": "p"}))
+    (job_dir / "task.json").write_text(json.dumps({
+        "task_id": "t", "task_plan": "benchmark-a1b2c3", "model": "candidate/model",
+        "base": "base", "branch": "benchmark/p/t/a1b2c3",
+    }))
     (job_dir / "state.json").write_text(json.dumps({
         "status": "completed", "completed_at": 2,
-        "cost": {"change_size": {"base_sha": "base", "head_sha": "head", "paths": ["a.py"], "lines_added": 1, "lines_deleted": 0},
-                  "provenance": {"model": "candidate/model"}},
+        "cost": {"change_size": None},
+    }))
+    # The baseline's terminal task record coexists with the candidate job. It
+    # must never be mistaken for the explicitly benchmarked candidate.
+    task_state = tmp_path / ".snodo" / "tasks" / "t" / "state.json"
+    task_state.parent.mkdir(parents=True)
+    task_state.write_text(json.dumps({
+        "status": "completed", "cost": {"change_size": {
+            "base_sha": "baseline-base", "head_sha": "baseline-head", "paths": ["baseline.py"],
+        }, "provenance": {"model": "baseline/model"}},
     }))
     monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(tmp_path))
     monkeypatch.setattr("snodo.cli.commands.plan_compare._candidate_patch", lambda root, size: diff)
+    git_results = iter(["head\n", "a.py\n", "1\t0\ta.py\n"])
+    monkeypatch.setattr(
+        "snodo.cli.commands.plan_compare.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(stdout=next(git_results)),
+    )
 
     assert compare_models_command(SimpleNamespace(plan="p", task="t", job=None, json=True)) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema"] == "snodo.models-compare.v1"
     assert payload["signals"]["content"]["f1"] == 1
+    assert payload["models"] == {"baseline": "baseline/model", "candidate": "candidate/model"}
+    assert payload["benchmark"]["branch"] == "benchmark/p/t/a1b2c3"
+    assert payload["signals"]["change_size"]["candidate_lines"] == 1
 
 
 def test_compare_resolves_real_job_identity_and_rejects_wrong_explicit_job(tmp_path, monkeypatch, capsys):
@@ -86,18 +105,15 @@ def test_compare_resolves_real_job_identity_and_rejects_wrong_explicit_job(tmp_p
     }))
     (baseline_dir / "solution.diff").write_text("")
     jobs_dir = tmp_path / ".snodo" / "jobs"
-    for job_id, task_data in (("right", {"task_id": "t", "task_plan": "p"}),
+    for job_id, task_data in (("right", {"task_id": "t", "task_plan": "benchmark-x", "model": "m",
+                                          "base": "base", "branch": "benchmark/p/t/x"}),
                               ("wrong", {"task_id": "t", "task_plan": "other"})):
         job_dir = jobs_dir / job_id
         job_dir.mkdir(parents=True)
         (job_dir / "task.json").write_text(json.dumps(task_data))
-        (job_dir / "state.json").write_text(json.dumps({
-            "status": "completed", "cost": {"change_size": {
-                "base_sha": "base", "head_sha": "head", "paths": ["a.py"],
-            }},
-        }))
+        (job_dir / "state.json").write_text(json.dumps({"status": "completed"}))
     monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(tmp_path))
     monkeypatch.setattr("snodo.cli.commands.plan_compare._candidate_patch", lambda root, size: "")
 
     assert compare_models_command(SimpleNamespace(plan="p", task="t", job="wrong", json=False)) == 1
-    assert "does not belong to plan 'p' and task 't'" in capsys.readouterr().err
+    assert "not a completed benchmark candidate" in capsys.readouterr().err

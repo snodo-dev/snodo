@@ -6,6 +6,7 @@ FILE: snodo/cli/commands/run_cmd.py
 import json
 import logging
 import os
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -1076,7 +1077,14 @@ def _print_worktree_retained(project_root, task, worktree_path_val, plan_name: O
     """Tell the user where the retained worktree is and how to inspect/remove it."""
     from snodo.infrastructure.worktree import _task_identity
     spec_for_branch = getattr(task, "root_spec", None) or task.spec
-    _, branch = _task_identity(project_root, task.id, spec_for_branch, plan_name)
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed git subcommand; worktree path is internal
+            ["git", "-C", str(worktree_path_val), "symbolic-ref", "--quiet", "--short", "HEAD"],  # noqa: S607 - git is the required repository tool
+            capture_output=True, text=True, check=True,
+        )
+        branch = result.stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        _, branch = _task_identity(project_root, task.id, spec_for_branch, plan_name)
     print()
     print(f"Worktree preserved for inspection: {worktree_path_val}")
     print(f"  Branch: {branch}")
