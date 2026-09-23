@@ -865,6 +865,10 @@ class PlannerMCP:
                     "recorded_at": timestamp,
                     "judged": False,
                 }
+            if self._get_task_status(plan_name, task_id) is None:
+                raise PlannerError(
+                    f"Task '{task_id}' not found in plan '{plan_name}'."
+                )
             self.update_status(plan_name, task_id, status, **metadata)
 
         event_type, event_data = hand_record_event(
