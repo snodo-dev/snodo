@@ -7,8 +7,6 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from snodo.cli.commands.models_baseline import _task_job
-
 _OUTCOME_RANK = {
     "pass": 1, "completed": 1, "warn": 0, "escalate": 0,
     "blocker": -1, "failed": -1, "validator_error": -1,
@@ -40,14 +38,74 @@ def _baseline(project_root: Path, plan: str, task: str) -> tuple[dict, Path]:
     return record, solution
 
 
+def _benchmark_candidate(project_root: Path, plan: str, task: str, job_dir: Path) -> Optional[dict]:
+    """Resolve a completed benchmark job using its own task metadata and branch."""
+    task_data = _read_json(job_dir / "task.json", "Job task record")
+    state = _read_json(job_dir / "state.json", "Job state")
+    branch = task_data.get("branch")
+    base = task_data.get("base")
+    task_id = task_data.get("task_id") or task_data.get("retry_task_id")
+    task_plan = task_data.get("task_plan")
+    if (task_id != task or not isinstance(task_plan, str) or not task_plan.startswith("benchmark-")
+            or not isinstance(branch, str) or branch != f"benchmark/{plan}/{task}/{branch.rsplit('/', 1)[-1]}"
+            or not base or str(state.get("status", "")).lower() != "completed"):
+        return None
+    model = task_data.get("model")
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError(f"Benchmark job '{job_dir.name}' has no model in task.json")
+    try:
+        head = subprocess.run(  # noqa: S603 - fixed git subcommand; branch is validated evidence
+            ["git", "-C", str(project_root), "rev-parse", "--verify", f"{branch}^{{commit}}"],  # noqa: S607 - git is the required repository tool
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        paths = subprocess.run(  # noqa: S603 - fixed git subcommand; SHAs come from job evidence
+            ["git", "-C", str(project_root), "diff", "--name-only", str(base), head],  # noqa: S607 - git is the required repository tool
+            capture_output=True, text=True, check=True,
+        ).stdout.splitlines()
+        numstat = subprocess.run(  # noqa: S603 - fixed git subcommand; SHAs come from job evidence
+            ["git", "-C", str(project_root), "diff", "--numstat", str(base), head],  # noqa: S607 - git is the required repository tool
+            capture_output=True, text=True, check=True,
+        ).stdout.splitlines()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(f"Could not resolve benchmark job '{job_dir.name}' range: {exc}") from exc
+    added = deleted = 0
+    for line in numstat:
+        fields = line.split("\t", 2)
+        if len(fields) == 3:
+            try:
+                added += int(fields[0])
+                deleted += int(fields[1])
+            except ValueError:  # binary file counts are reported as '-'
+                continue
+    result = dict(state)
+    cost = dict(result.get("cost") or {})
+    cost["change_size"] = {
+        "base_sha": str(base), "head_sha": head, "paths": sorted(set(paths)),
+        "files_changed": len(set(paths)), "lines_added": added, "lines_deleted": deleted,
+    }
+    result["cost"] = cost
+    result["model"] = model
+    result["branch"] = branch
+    return {"state": result, "job_dir": job_dir}
+
+
 def _job_record(project_root: Path, plan: str, task: str, job_id: Optional[str]) -> tuple[dict, Path]:
-    job = _task_job(project_root, plan, task, job_id)
-    if not job:
+    jobs_dir = project_root / ".snodo" / "jobs"
+    job_dirs = [jobs_dir / job_id] if job_id else (list(jobs_dir.iterdir()) if jobs_dir.is_dir() else [])
+    candidates = []
+    for job_dir in job_dirs:
+        if not job_dir.is_dir():
+            continue
+        candidate = _benchmark_candidate(project_root, plan, task, job_dir)
+        if candidate:
+            candidates.append(candidate)
+    if not candidates:
         if job_id:
-            raise ValueError(f"Job '{job_id}' does not belong to plan '{plan}' and task '{task}', or is not completed")
-        raise ValueError(f"Candidate job evidence not found for plan '{plan}' and task '{task}'")
-    job_dir = job["job_dir"]
-    return job["state"], job_dir / "state.json"
+            raise ValueError(f"Job '{job_id}' is not a completed benchmark candidate for plan '{plan}' and task '{task}'")
+        raise ValueError(f"Benchmark candidate job evidence not found for plan '{plan}' and task '{task}'")
+    candidates.sort(key=lambda item: item["state"].get("completed_at") or item["state"].get("created_at") or 0)
+    job = candidates[-1]
+    return job["state"], job["job_dir"] / "state.json"
 
 
 def _change_size(record: dict) -> dict:
@@ -192,12 +250,12 @@ def compare_models_command(args) -> int:
         result.update({"plan": plan, "task": task, "job": candidate_path.parent.name,
                        "baseline": str(baseline_path.parent),
                        "candidate_patch_sha256": hashlib.sha256(candidate_diff.encode()).hexdigest()})
-        benchmark_branch = getattr(args, "benchmark_branch", None)
+        benchmark_branch = candidate.get("branch") or getattr(args, "benchmark_branch", None)
         if benchmark_branch:
             result["benchmark"] = {
                 "branch": benchmark_branch,
-                "base": getattr(args, "benchmark_base", None),
-                "status": getattr(args, "benchmark_status", None),
+                "base": _change_size(candidate).get("base_sha"),
+                "status": getattr(args, "benchmark_status", None) or candidate.get("status"),
             }
     except (OSError, ValueError) as exc:
         if json_out:
