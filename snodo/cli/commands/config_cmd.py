@@ -20,8 +20,15 @@ app = typer.Typer(invoke_without_command=True, help="Manage API keys and configu
 
 
 @app.callback()
-def _config_callback(ctx: typer.Context):
+def _config_callback(
+    ctx: typer.Context,
+    encrypt_provider_keys: bool = typer.Option(False, "--encrypt-provider-keys", help="Move plaintext provider keys into encrypted files"),
+):
     """Manage API keys and configuration."""
+    if encrypt_provider_keys:
+        if ctx.invoked_subcommand is not None:
+            raise typer.BadParameter("--encrypt-provider-keys cannot be combined with a subcommand")
+        raise typer.Exit(_config_encrypt_provider_keys(ConfigManager()))
     if ctx.invoked_subcommand is None:
         print(ctx.get_help())
 
@@ -98,6 +105,19 @@ def config_command(args) -> int:
     else:
         print("Unknown config action. Use: show, add, remove, test, set, get", file=sys.stderr)
         return 1
+
+
+def _config_encrypt_provider_keys(mgr: ConfigManager) -> int:
+    try:
+        names = mgr.encrypt_provider_keys()
+    except (ConfigError, OSError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    if names:
+        print(f"Encrypted provider keys: {', '.join(names)}")
+    else:
+        print("No plaintext provider keys to encrypt.")
+    return 0
 
 
 def _config_show(mgr: ConfigManager) -> int:

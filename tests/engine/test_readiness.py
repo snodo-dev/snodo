@@ -505,7 +505,22 @@ def test_plaintext_api_key_reported_in_workstation_findings(git_repo: Path, tmp_
     # Workstation findings include the plaintext key notification
     pt_findings = [f for f in assessment.workstation_findings if f.id.startswith("plaintext_key_configured")]
     assert len(pt_findings) == 1
-    assert pt_findings[0].id == "plaintext_key_configured:anthropic"
+    assert pt_findings[0].id == "plaintext_key_configured"
     assert pt_findings[0].kind == ReadinessKind.WORKSTATION
     assert "Plaintext API key configured for provider 'anthropic'" in pt_findings[0].description
     assert "ANTHROPIC_API_KEY" in pt_findings[0].description
+    assert "snodo config --encrypt-provider-keys" in pt_findings[0].remediation
+
+    config_file.write_text(
+        "providers:\n"
+        "  anthropic:\n    api_key: 'sk-test'\n"
+        "  openai:\n    api_key: 'sk-test2'\n"
+        "  google:\n    api_key: '@keys/google.key'\n"
+    )
+    assessment = assess_readiness(git_repo, protocol)
+    pt_findings = [f for f in assessment.workstation_findings if f.id.startswith("plaintext_key_configured")]
+    assert len(pt_findings) == 1
+    assert "anthropic" in pt_findings[0].description
+    assert "openai" in pt_findings[0].description
+    assert "google" not in pt_findings[0].description
+    assert pt_findings[0].remediation.count("snodo config --encrypt-provider-keys") == 1

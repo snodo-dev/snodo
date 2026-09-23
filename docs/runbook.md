@@ -34,6 +34,20 @@ snodo config add anthropic sk-ant-...
 snodo config add google  AIza...
 ```
 
+To keep config-based keys without leaving them in plaintext, run
+`snodo config --encrypt-provider-keys`. It backs up `config.yml` as
+`config.yml.bak` (or a numbered backup if one exists), creates a dedicated
+provider-encryption RSA keypair in `~/.ssh/NO-AGENT/` on first use, and moves
+each plaintext provider key to `~/.ssh/NO-AGENT/keys/<provider>.key` (directory
+0700, files 0600). The config then contains a quoted reference such as
+`api_key: "@keys/openai.key"`. Existing references are skipped, so rerunning
+the command is safe. Snodo decrypts a key only when that provider is used.
+Keep the dedicated `provider-keys.pem` private key to read these files; it is
+separate from the audit-signing `snodo.pem` and survives `snodo init --force-keygen`.
+This is **obfuscation, not a vault**: anyone with the private key and encrypted
+files can decrypt the provider credentials. The config backup still contains
+the original plaintext keys; remove it securely once you no longer need it.
+
 Or set environment variables — the engine auto-detects based on the model prefix:
 
 | Model prefix | Environment variable |
@@ -398,6 +412,7 @@ edit `plan.yml` directly. A plan is re-verified on every load. See
 | `snodo config add <provider> <key>` | Store an API key |
 | `snodo config remove <provider>` | Remove an API key |
 | `snodo config test` | Validate all configured keys |
+| `snodo config --encrypt-provider-keys` | Back up config and encrypt plaintext provider keys |
 | `snodo config set <section> <key> <value>` | Set a config value |
 | `snodo config get <section> <key>` | Get a config value |
 

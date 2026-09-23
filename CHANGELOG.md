@@ -29,6 +29,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   the failed-attempt budget.
 
 ### Added
+- `snodo config --encrypt-provider-keys` backs up config and replaces plaintext
+  provider API keys with encrypted file references, using a dedicated RSA keypair.
+  Provider keys are decrypted only when used; `snodo ready` offers this migration
+  as an alternative to environment variables. (Fixes #459)
 - The MCP server now exposes an always-available, source-backed `guide` tool for
   learning how to author, size, run and recover plans without relying on the
   truncated handshake instructions. (Fixes #399)
