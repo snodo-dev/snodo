@@ -661,6 +661,43 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "survey": {
+        "description": (
+            "Read-only repository survey returning the same JSON as `snodo survey --json`. "
+            "The default deterministic pass does not call a model; set agent=true "
+            "to allow configured agent boundary judgements, which may incur model calls."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Allow configured agent boundary judgements and model calls",
+                },
+            },
+        },
+        "mcp": None,
+        "method": None,
+    },
+    "intake": {
+        "description": "Read-only validator-criteria proposals, returning the same JSON as `snodo intake --json`; it never writes or prompts",
+        "inputSchema": {"type": "object", "properties": {}},
+        "mcp": None,
+        "method": None,
+    },
+    "ready": {
+        "description": "Read-only project readiness assessment, returning the same JSON as `snodo ready --json`; it does not append an audit event",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {"type": "string", "description": "Optional mode used to filter displayed findings"},
+                "protocol": {"type": "string", "default": ".snodo/protocol.yml", "description": "Protocol file path"},
+            },
+        },
+        "mcp": None,
+        "method": None,
+    },
 }
 
 # Map protocol tool names (from mode.tools) to concrete MCP tool names
@@ -684,6 +721,10 @@ MODE_TOOL_MAP = {
     ],
     "read": ["read_file", "list_files"],
 }
+
+# These diagnostics are the read-only project-understanding surface. Like the
+# guide, they are available regardless of the active mode's write capability.
+PROJECT_DIAGNOSTIC_TOOLS = ["survey", "intake", "ready"]
 
 # The planning surface — the human gate above the task loop. A server pinned
 # to a single mode exposes these only when its mode grants the "plan"
