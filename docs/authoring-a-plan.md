@@ -193,7 +193,6 @@ the id exactly.
 
 ---
 
-<!-- snodo-guide topic="run" aliases="follow-run" summary="Run a plan and follow its outcome" section="## 5. Running it" -->
 ## 5. Running it
 
 ```bash
