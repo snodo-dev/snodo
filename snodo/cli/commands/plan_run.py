@@ -1014,6 +1014,27 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
             from snodo.infrastructure.paths import require_project_root
             project_root = require_project_root()
             audit_log = getattr(args, "audit_log", None)
+            session_manager = getattr(args, "session_manager", None)
+            if audit_log is None or session_manager is None:
+                from snodo.infrastructure.audit import get_audit_log
+                from snodo.infrastructure.session import SessionManager
+                from snodo.project import get_project_id
+
+                project_id, _ = get_project_id(project_root)
+                audit_log = audit_log or get_audit_log(project_id=project_id)
+                session_manager = session_manager or SessionManager(audit_log=audit_log)
+
+                # `snodo run --plan` already wires these before reaching here;
+                # direct `snodo plan run` must initialize the same context.
+                import dataclasses
+                if dataclasses.is_dataclass(args):
+                    args = dataclasses.replace(
+                        args, audit_log=audit_log, session_manager=session_manager,
+                    )
+                else:
+                    args.audit_log = audit_log
+                    args.session_manager = session_manager
+
             planner = PlannerMCP(project_root, audit_log=audit_log)
             plan_data = planner.get_plan(args.plan)
             status_data = planner.get_status(args.plan)
