@@ -1,4 +1,4 @@
-<!-- snodo-guide topic="decompose-recon" aliases="breakdown,exploration" summary="Break work down and ask the codebase" section="# Break work down and ask the codebase" -->
+<!-- snodo-guide topic="discovery" aliases="breakdown,exploration" summary="Break work down and ask the codebase" section="# Break work down and ask the codebase" -->
 # Break work down and ask the codebase
 
 Use `decompose` when you have a clear intent and want snodo to create the
