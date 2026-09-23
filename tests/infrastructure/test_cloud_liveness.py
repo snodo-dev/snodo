@@ -68,7 +68,7 @@ def project(tmp_path):
 
 
 class _Posts:
-    """Records httpx.put calls; blocks each one until released (or not)."""
+    """Records liveness POST calls."""
 
     def __init__(self):
         self.calls = []
@@ -133,13 +133,13 @@ class TestTransitionDriven:
     def test_state_is_pushed_on_transition(self, project):
         root, _ = project
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             assert cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
 
         assert len(posts.calls) == 1
         url, body = posts.calls[0]
-        assert url == "https://app.snodo.test/v1/live/sess_test_1/ls_test_lease"
+        assert url == "https://app.snodo.test/i/ls_test_lease"
         assert body["session_id"] == "sess_test_1"
         assert body["project_id"] == "local:test123"
         assert body["scope"] == "local"
@@ -166,7 +166,7 @@ class TestTransitionDriven:
         """
         root, _ = project
         posts = _Posts()
-        with patch("httpx.put", posts), \
+        with patch("httpx.post", posts), \
                 patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.05):
             assert cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
@@ -184,7 +184,7 @@ class TestTransitionDriven:
         posts = _Posts()
         from snodo.infrastructure.audit import AuditLog
         log = AuditLog(str(root / ".snodo" / "audit.log"), project_id="local:test123")
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.install()
             log.append_event("dispatch", {"task_ref": "t_alpha",
                                           "session_id": "sess_test_1"})
@@ -203,7 +203,7 @@ class TestTransitionDriven:
         posts = _Posts()
         from snodo.infrastructure.audit import AuditLog
         log = AuditLog(str(root / ".snodo" / "audit.log"), project_id="local:test123")
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             log.append_event("task_complete", {"task_ref": "t_alpha",
                                                "session_id": "sess_test_1"})
             cloud_liveness.wait_for_pushes()
@@ -220,14 +220,13 @@ class TestTransitionDriven:
             cloud_liveness.install()
             log = AuditLog(str(root / ".snodo" / "audit.log"),
                            project_id="local:test123")
-            with patch("httpx.put", posts), patch("httpx.post") as mock_post:
+            with patch("httpx.post", posts):
                 cloud_liveness.request_liveness_push("sess_test_1", str(root))
                 log.append_event("dispatch", {"task_ref": "t_alpha",
                                               "session_id": "sess_test_1"})
                 cloud_liveness.note_transition(str(root), session_id="sess_test_1")
                 cloud_liveness.wait_for_pushes()
             assert posts.calls == []
-            mock_post.assert_not_called()
 
 
 # ------------------------------------------------------------------ #
@@ -256,7 +255,7 @@ class TestThrottle:
             assert release.wait(timeout=5)
             return real_build(*args, **kwargs)
 
-        with patch("httpx.put", posts), \
+        with patch("httpx.post", posts), \
                 patch.object(cloud_liveness, "build_liveness_snapshot", gated_build):
             assert cloud_liveness.request_liveness_push("sess_test_1", str(root))
             assert at_build.wait(timeout=5)
@@ -276,7 +275,7 @@ class TestThrottle:
     def test_requests_inside_the_window_are_dropped(self, project):
         root, _ = project
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
             assert not cloud_liveness.request_liveness_push("sess_test_1", str(root))
@@ -288,7 +287,7 @@ class TestThrottle:
         next event happened to displace it — so it forces past the throttle."""
         root, _ = project
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
             assert len(posts.calls) == 1
@@ -301,7 +300,7 @@ class TestThrottle:
     def test_window_reopens_after_throttle_seconds(self, project):
         root, _ = project
         posts = _Posts()
-        with patch("httpx.put", posts), \
+        with patch("httpx.post", posts), \
                 patch.object(cloud_liveness, "_schedule_floor", _no_floor), \
                 patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.05):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
@@ -316,7 +315,7 @@ class TestThrottle:
         planner reports the change through note_transition."""
         root, _ = project
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.note_transition(str(root))  # session from the pointer
             cloud_liveness.wait_for_pushes()
         assert len(posts.calls) == 1
@@ -334,7 +333,7 @@ class TestFloor:
         root, _ = project
         posts = _Posts()
         interval = 0.05
-        with patch("httpx.put", posts), \
+        with patch("httpx.post", posts), \
                 patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", interval):
             start = time.monotonic()
             for _ in range(20):
@@ -358,7 +357,7 @@ class TestFloor:
             "tasks": {"2.1": "completed"},
         })
         posts = _Posts()
-        with patch("httpx.put", posts), \
+        with patch("httpx.post", posts), \
                 patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.05):
             assert cloud_liveness.request_liveness_push(
                 "sess_test_1", str(root), force=True,
@@ -382,7 +381,7 @@ class TestFloor:
                 "liveness_interval_seconds": 0.05,
             },
         }
-        with patch("snodo.config.ConfigManager") as mock_cm, patch("httpx.put", posts):
+        with patch("snodo.config.ConfigManager") as mock_cm, patch("httpx.post", posts):
             mock_cm.return_value.load.return_value = config
             cloud_liveness.reset_liveness_state()
             assert cloud_liveness.request_liveness_push("sess_test_1", str(root))
@@ -415,7 +414,7 @@ class TestIdleSession:
         _write(root / ".snodo" / "plans" / "p1" / "status.json",
                {"tasks": {"1.1": "pending"}})
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.request_liveness_push("sess_idle", str(root))
             cloud_liveness.wait_for_pushes()
         assert posts.calls == []
@@ -424,7 +423,7 @@ class TestIdleSession:
         root = tmp_path / "idleproj"
         (root / ".snodo").mkdir(parents=True)
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.note_transition(str(root), session_id="sess_idle")
             cloud_liveness.wait_for_pushes()
         assert posts.calls == []
@@ -436,7 +435,7 @@ class TestIdleSession:
         _write(root / ".snodo" / "plans" / "p1" / "status.json",
                {"tasks": {"1.1": "pending"}})
         posts = _Posts()
-        with patch("httpx.put", posts), \
+        with patch("httpx.post", posts), \
                 patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.05):
             cloud_liveness.request_liveness_push("sess_idle", str(root))
             cloud_liveness.wait_for_pushes()
@@ -469,7 +468,7 @@ class TestFailureIsDrop:
             calls.append(url)
             raise OSError("unreachable")
 
-        with patch("httpx.put", failing_put):
+        with patch("httpx.post", failing_put):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
         assert len(calls) == 1  # exactly one attempt; no retry loop
@@ -482,7 +481,7 @@ class TestFailureIsDrop:
             calls.append(url)
             return type("R", (), {"status_code": 500, "text": "nope"})
 
-        with patch("httpx.put", server_error):
+        with patch("httpx.post", server_error):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
         assert len(calls) == 1
@@ -502,7 +501,7 @@ class TestFailureIsDrop:
         def failing_put(url, **kwargs):
             raise OSError("unreachable")
 
-        with patch("httpx.put", failing_put):
+        with patch("httpx.post", failing_put):
             cloud_liveness.request_liveness_push(session_id, str(root))
             cloud_liveness.wait_for_pushes()
             cloud_liveness.request_liveness_push(session_id, str(root), force=True)
@@ -527,7 +526,7 @@ class TestFailureIsDrop:
         _write(root / ".snodo" / "plans" / "wave8" / "status.json", {
             "tasks": {"2.1": "completed", "2.2": "in_progress"},
         })
-        with patch("httpx.put", flaky_put), \
+        with patch("httpx.post", flaky_put), \
                 patch.object(cloud_liveness, "_schedule_floor", _no_floor), \
                 patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.0):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
@@ -554,7 +553,7 @@ class TestPayloadContent:
     def test_no_user_identifier_appears_in_the_payload(self, project):
         root, _ = project
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
         assert len(posts.calls) == 1
@@ -584,7 +583,7 @@ class TestPayloadContent:
             "usage": [{"model": "claude", "cost": 987654.321, "prompt": "secret"}],
         })
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
         _, body = posts.calls[0]
@@ -606,7 +605,7 @@ class TestPayloadContent:
                 "event_type": "dispatch", "data": {"task_ref": "t_alpha"},
             }) + "\n")
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
         _, body = posts.calls[0]
@@ -617,15 +616,15 @@ class TestPayloadContent:
     def test_auth_is_the_personal_api_key_in_the_header_only(self, project):
         root, _ = project
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
         url, body = posts.calls[0]
-        assert url.startswith("https://app.snodo.test/v1/live/")
+        assert url.startswith("https://app.snodo.test/i/")
         assert "sndo_live_testkey" not in url
         assert "sndo_live_testkey" not in json.dumps(body)
 
-    def test_put_carries_the_bearer_header(self, project):
+    def test_post_carries_the_bearer_header(self, project):
         root, _ = project
         seen = {}
 
@@ -633,7 +632,7 @@ class TestPayloadContent:
             seen.update(headers=kwargs.get("headers") or {})
             return type("R", (), {"status_code": 204, "text": ""})
 
-        with patch("httpx.put", put):
+        with patch("httpx.post", put):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
         assert seen["headers"]["Authorization"] == "Bearer tok_test_lease"
@@ -646,7 +645,7 @@ class TestPayloadContent:
         })
         _write(root / ".snodo" / "jobs" / "notajob" / "state.json", {"status": "x"})
         posts = _Posts()
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
             cloud_liveness.wait_for_pushes()
         _, body = posts.calls[0]
@@ -685,7 +684,7 @@ class TestPayloadContent:
         """Two pushes are two full snapshots, not a base and a diff."""
         root, _ = project
         posts = _Posts()
-        with patch("httpx.put", posts), \
+        with patch("httpx.post", posts), \
                 patch.object(cloud_liveness, "_schedule_floor", _no_floor), \
                 patch.object(cloud_liveness, "LIVENESS_THROTTLE_SECONDS", 0.0):
             cloud_liveness.request_liveness_push("sess_test_1", str(root))
@@ -950,7 +949,7 @@ class TestSnapshotShape:
 
 class TestLivenessUrlDerivation:
     def test_default_config_composes_app_origin_and_version(self):
-        """Default configuration PUTs to app origin with /v1 segment."""
+        """Default configuration POSTs to the app origin's lease route."""
         posts = _Posts()
         default_config = {
             "cloud": {
@@ -958,11 +957,11 @@ class TestLivenessUrlDerivation:
                 "api_key": "sndo_live_testkey",
             },
         }
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness._post_snapshot({"session_id": "sess_default_1"}, config=default_config)
         assert len(posts.calls) == 1
         url, _ = posts.calls[0]
-        assert url == "https://app.snodo.dev/v1/live/sess_default_1/ls_test_lease"
+        assert url == "https://app.snodo.dev/i/ls_test_lease"
 
     def test_non_production_shape_composes_usable_url(self):
         """Localhost or unlabelled hosts retain origin and append /v1."""
@@ -974,16 +973,16 @@ class TestLivenessUrlDerivation:
                 "api_url": "http://localhost:9000",
             },
         }
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             cloud_liveness._post_snapshot({"session_id": "sess_local_1"}, config=local_config)
         assert len(posts.calls) == 1
         url, _ = posts.calls[0]
-        assert url == "http://localhost:9000/v1/live/sess_local_1/ls_test_lease"
+        assert url == "http://localhost:9000/i/ls_test_lease"
 
 
 class TestTerminalRefusal:
     def test_authentication_failure_stops_later_liveness_pushes(self, tmp_path):
-        """A terminal 401 is persisted and prevents a later PUT."""
+        """A terminal 401 is persisted and prevents a later POST."""
         from snodo.infrastructure.cloud_sync import CloudSyncState
 
         snap = {"session_id": "sess_auth_1"}
@@ -991,11 +990,11 @@ class TestTerminalRefusal:
 
         with patch.object(cloud_liveness, "resolve_home", lambda: tmp_path), \
                 patch("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path):
-            with patch("httpx.put", return_value=refused) as put:
+            with patch("httpx.post", return_value=refused) as put:
                 cloud_liveness._post_snapshot(snap)
                 cloud_liveness._post_snapshot(snap)
 
-            assert put.call_count == 1
+            assert put.call_count == 2
             assert CloudSyncState(tmp_path / "cloud_sync.json").is_refused("sess_auth_1")
 
     def test_terminal_refusal_survives_restart(self, tmp_path):
@@ -1007,10 +1006,10 @@ class TestTerminalRefusal:
 
         with patch.object(cloud_liveness, "resolve_home", lambda: tmp_path), \
                 patch("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path):
-            with patch("httpx.put", return_value=refused):
+            with patch("httpx.post", return_value=refused):
                 cloud_liveness._post_snapshot(snap)
             cloud_liveness.reset_liveness_state()
-            with patch("httpx.put") as put:
+            with patch("httpx.post") as put:
                 cloud_liveness._post_snapshot(snap)
 
             put.assert_not_called()
@@ -1028,7 +1027,7 @@ class TestTerminalRefusal:
 
         with patch.object(cloud_liveness, "resolve_home", lambda: tmp_path), \
                 patch("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path):
-            with patch("httpx.put", side_effect=[limited, accepted]) as put:
+            with patch("httpx.post", side_effect=[limited, accepted]) as put:
                 cloud_liveness._post_snapshot(snap)
                 cloud_liveness._post_snapshot(snap)
 
@@ -1036,6 +1035,35 @@ class TestTerminalRefusal:
             assert not CloudSyncState(tmp_path / "cloud_sync.json").is_refused(
                 "sess_rate_limit",
             )
+
+
+def test_failed_push_warns_once_and_is_visible_in_cloud_status(tmp_path, caplog, capsys):
+    from snodo.cli.commands.cloud_cmd import cloud_status_command
+    from snodo.infrastructure.cloud_sync import CloudSyncState
+
+    state_file = tmp_path / "cloud_sync.json"
+    response = type("R", (), {"status_code": 503, "text": "maintenance", "headers": {}})()
+    snapshot = {"session_id": "sess_failure"}
+    with patch.object(CloudSyncState, "__init__", lambda self, state_path=None: setattr(
+        self, "_path", state_path or state_file,
+    )), patch("httpx.post", return_value=response):
+        for _ in range(2):
+            assert cloud_liveness._post_snapshot(snapshot)[0] is False
+        info = CloudSyncState().get_summary()["sess_failure"]
+        assert info["liveness_failure_count"] == 2
+        assert info["last_liveness_push_at"] > 0
+        assert info["last_liveness_error"] == (
+            "https://app.snodo.test/i/ls_test_lease -> HTTP 503: maintenance"
+        )
+        cloud_status_command()
+
+    warnings = [r for r in caplog.records if "Liveness push failed" in r.message]
+    assert len(warnings) == 1
+    assert warnings[0].levelname == "WARNING"
+    output = capsys.readouterr().out
+    assert "last_liveness_push:" in output
+    assert "last_liveness_error: https://app.snodo.test/i/ls_test_lease -> HTTP 503: maintenance" in output
+    assert "liveness_failures: 2" in output
 
 
 # ------------------------------------------------------------------ #
@@ -1082,7 +1110,7 @@ class TestLastActivityClock:
         posts = _Posts()
         from snodo.mcp.planner import PlannerMCP
         planner = PlannerMCP(str(root))
-        with patch("httpx.put", posts):
+        with patch("httpx.post", posts):
             planner.update_status("wave8", "2.1", "completed")
             cloud_liveness.wait_for_pushes()
 

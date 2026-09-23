@@ -101,11 +101,14 @@ class TestCloudAdmission:
                     "last_activity_at": None, "snapshot_at": "now"}
         config = {"cloud": {"api_key": "key", "api_url": "https://api.test",
                              "liveness_url": "https://app.test/v1"}}
-        with patch("httpx.post", side_effect=exchange), patch("httpx.put", side_effect=send):
+        def post(url, **kwargs):
+            return exchange(url, **kwargs) if url.endswith("/m") else send(url, **kwargs)
+
+        with patch("httpx.post", side_effect=post):
             assert _post_snapshot(snapshot, config=config)[0] is True
         assert puts == [
-            "https://app.test/v1/live/sess_replace/old",
-            "https://app.test/v1/live/sess_replace/new",
+            "https://app.test/i/old",
+            "https://app.test/i/new",
         ]
 
     def test_replacement_rejection_latches_and_stops(self, tmp_path):
@@ -134,7 +137,10 @@ class TestCloudAdmission:
                     "last_activity_at": None, "snapshot_at": "now"}
         config = {"cloud": {"api_key": "key", "api_url": "https://api.test",
                              "liveness_url": "https://app.test/v1"}}
-        with patch("httpx.post", side_effect=exchange), patch("httpx.put", side_effect=send):
+        def post(url, **kwargs):
+            return exchange(url, **kwargs) if url.endswith("/m") else send(url, **kwargs)
+
+        with patch("httpx.post", side_effect=post):
             assert _post_snapshot(snapshot, config=config)[0] is False
             assert _post_snapshot(snapshot, config=config)[0] is False
         assert len(exchanges) == 2
@@ -360,8 +366,10 @@ class TestCloudAdmission:
             }
             return resp
 
-        def mock_put(url, content=None, headers=None, **kwargs):
-            calls.append(("PUT", str(url), headers or {}))
+        def post(url, **kwargs):
+            if url.endswith("/m"):
+                return mock_post(url, **kwargs)
+            calls.append(("POST", str(url), kwargs["headers"], json.loads(kwargs["content"])))
             resp = MagicMock(spec=httpx.Response)
             resp.status_code = 204
             resp.text = ""
@@ -391,7 +399,7 @@ class TestCloudAdmission:
             },
         }
 
-        with patch("httpx.post", side_effect=mock_post), patch("httpx.put", side_effect=mock_put):
+        with patch("httpx.post", side_effect=post):
             _post_snapshot(snapshot, config=config)
 
         assert len(calls) == 2
@@ -399,6 +407,7 @@ class TestCloudAdmission:
         assert calls[0][1] == "https://app.snodo.test/m"
         assert calls[0][2].get("Authorization") == "Bearer sndo_live_key123"
 
-        assert calls[1][0] == "PUT"
-        assert calls[1][1] == "https://app.snodo.test/v1/live/sess_live_1/ls_live_fixed_98765"
+        assert calls[1][0] == "POST"
+        assert calls[1][1] == "https://app.snodo.test/i/ls_live_fixed_98765"
         assert calls[1][2].get("Authorization") == "Bearer tok_live_bearer"
+        assert calls[1][3]["session_id"] == "sess_live_1"

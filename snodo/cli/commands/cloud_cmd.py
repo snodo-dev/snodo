@@ -188,6 +188,12 @@ def cloud_status_command() -> int:
                 print(f"    pending={pending}  last_attempt={last_attempt_ts}")
             if last_error:
                 print(f"    last_error: {last_error}")
+            liveness_at = info.get("last_liveness_push_at")
+            print(f"    last_liveness_push: {_format_ts(liveness_at) if liveness_at else 'never'}")
+            if info.get("last_liveness_error"):
+                print(f"    last_liveness_error: {info['last_liveness_error']}")
+            if info.get("liveness_failure_count"):
+                print(f"    liveness_failures: {info['liveness_failure_count']}")
     else:
         print()
         print("No sessions synced yet.")

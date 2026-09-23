@@ -372,6 +372,20 @@ class CloudSyncState:
             data[session_id]["last_error"] = error
         self._save(data)
 
+    def record_liveness_push(self, session_id: str, error: Optional[str] = None) -> None:
+        """Record the most recent liveness attempt, independently of audit sync."""
+        data = self._load()
+        if session_id not in data or not isinstance(data.get(session_id), dict):
+            data[session_id] = {}
+        sess = data[session_id]
+        sess["last_liveness_push_at"] = time.time()
+        if error is None:
+            sess.pop("last_liveness_error", None)
+        else:
+            sess["last_liveness_error"] = error
+            sess["liveness_failure_count"] = sess.get("liveness_failure_count", 0) + 1
+        self._save(data)
+
     def record_refusal(
         self,
         session_id: str,

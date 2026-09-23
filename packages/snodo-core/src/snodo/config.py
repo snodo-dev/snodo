@@ -82,14 +82,13 @@ DEFAULT_MODEL = "claude-sonnet-4-20250514"
 # errors), and vice versa.
 DEFAULT_CLOUD_API_URL = "https://api.snodo.dev"
 DEFAULT_TUNNEL_API_URL = "https://app.snodo.dev"
-DEFAULT_CLOUD_LIVENESS_URL = "https://app.snodo.dev/v1"
+DEFAULT_CLOUD_LIVENESS_URL = "https://app.snodo.dev"
 
 
 def derive_liveness_url(api_url: str) -> str:
     """Derive the liveness endpoint base URL from a cloud API URL.
 
-    The receiving side serves liveness at ``https://app.snodo.dev/v1/live/{id}``:
-    the data plane is versioned in place on the app origin, while audit ingest
+    Liveness is served at ``https://app.snodo.dev/i/{jti}``, while audit ingest
     stays on the API origin (``https://api.snodo.dev``).
 
     Derivation rule:
@@ -100,8 +99,7 @@ def derive_liveness_url(api_url: str) -> str:
        an IP address, or a staging / self-hosted domain with no 'api' label),
        leave the host and port unchanged so local and single-host setups work
        without separate configuration.
-    3. Include the version segment ('/v1') in the path so the wire reaches the
-       versioned data plane.
+    3. Preserve a custom base path, but remove a legacy trailing /v1.
     """
     cleaned = (api_url or "").strip()
     if not cleaned:
@@ -142,22 +140,14 @@ def derive_liveness_url(api_url: str) -> str:
     else:
         netloc = f"{userinfo}{host_part}"
 
-    # Rule 3: Ensure /v1 version segment is in path.
     raw_path = parsed.path.rstrip("/")
-    if raw_path.endswith("/v1"):
-        path = raw_path
-    elif raw_path:
-        path = f"{raw_path}/v1"
-    else:
-        path = "/v1"
-
-    return f"{scheme}://{netloc}{path}"
+    return f"{scheme}://{netloc}{raw_path.removesuffix('/v1')}"
 
 
 def get_cloud_ingest_url(config: dict) -> str:
     """Return the audit ingest base URL (``cloud.api_url``).
 
-    ``cloud_sync`` appends ``/i/{session_id}`` to this value.
+    ``cloud_sync`` appends ``/i/{jti}`` to this value.
     """
     return _cloud_url(config, "api_url", DEFAULT_CLOUD_API_URL)
 
@@ -176,7 +166,7 @@ def get_cloud_tunnel_url(config: dict) -> str:
 def get_cloud_liveness_url(config: dict) -> str:
     """Return the liveness endpoint base URL.
 
-    Derives the app origin and /v1 version segment from ``cloud.api_url``
+    Derives the app origin from ``cloud.api_url``
     (one knob stays one knob). If an explicit ``cloud.liveness_url`` or
     ``cloud.liveness_api_url`` override is configured, it is used as the
     escape hatch.
@@ -187,10 +177,7 @@ def get_cloud_liveness_url(config: dict) -> str:
             override = cloud.get(key)
             if isinstance(override, str) and override.strip():
                 ov = override.strip().rstrip("/")
-                parsed = urlsplit(ov)
-                if not parsed.path:
-                    return f"{ov}/v1"
-                return ov
+                return ov.removesuffix("/v1")
 
     api_url = get_cloud_ingest_url(config)
     return derive_liveness_url(api_url)
@@ -212,7 +199,7 @@ def get_cloud_lease_url(config: dict) -> str:
                 return ov.rstrip("/")
 
     api_url = get_cloud_ingest_url(config)
-    return derive_liveness_url(api_url).removesuffix("/v1")
+    return derive_liveness_url(api_url)
 
 
 def _cloud_url(config: dict, key: str, default: str) -> str:

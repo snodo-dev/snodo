@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Liveness now POSTs snapshots to the app host's leased `/i/{jti}` route,
+  re-mints on a 401, warns on the first failed push per run, and shows the last
+  attempt, error and failure count in `snodo cloud status`. (Fixes #416)
 - Cloud sync now retries stale route-miss refusals, sizes batches against the
   serialized payload limit, continues past a single oversized event, and
   reports partial delivery and terminal refusals accurately.
