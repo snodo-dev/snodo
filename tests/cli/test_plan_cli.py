@@ -267,8 +267,29 @@ disagreement_policy: "unanimous"
         no_isolation=True,
     )
 
+    # Keep this focused on run-context wiring: exercise the real inline task
+    # graph, while replacing the merge operation with a successful audited
+    # merge so task_merged is observable without an unrelated Git verification.
+    def audited_merge(_project_root, task, _result, session_id, audit_log, **_kwargs):
+        audit_log.append_event("task_merged", {
+            "op": "task_merged", "task_ref": task.id, "session_id": session_id,
+        })
+        return 0, False, "test-branch"
+
+    monkeypatch.setattr("snodo.cli.commands.run_cmd._should_auto_merge", lambda *a, **k: True)
+    monkeypatch.setattr("snodo.cli.commands.run_cmd._merge_on_success", audited_merge)
+
     res = _run_plan(args)
     assert res == 0
+
+    from snodo.infrastructure.audit import get_audit_log
+    events = get_audit_log().get_history()
+    task_events = {
+        event.event_type
+        for event in events
+        if event.data.get("task_ref") == "1.1_test"
+    }
+    assert {"validate", "dispatch", "task_merged"} <= task_events
 
 
 # ============================================================================
