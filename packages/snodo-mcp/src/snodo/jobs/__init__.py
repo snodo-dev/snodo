@@ -171,16 +171,22 @@ class JobManager:
         state_path = job_dir / "state.json"
         if not state_path.exists():
             raise JobError(f"No state.json in {job_dir.name}")
-        with open(state_path) as f:
-            return json.load(f)
+        try:
+            with open(state_path) as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            raise JobError(f"Invalid state.json in {job_dir.name}: {e.msg}") from e
 
     def _load_task(self, job_dir: Path) -> dict:
         """Load task.json from a job directory."""
         task_path = job_dir / "task.json"
         if not task_path.exists():
             return {}
-        with open(task_path) as f:
-            return json.load(f)
+        try:
+            with open(task_path) as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            raise JobError(f"Invalid task.json in {job_dir.name}: {e.msg}") from e
 
     def _reconcile_state(self, job_dir: Path, state: dict) -> dict:
         """Reconcile state with actual process status.
