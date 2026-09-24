@@ -1,6 +1,9 @@
 """Configured model canary checks."""
 
+import logging
 from typing import Any, Callable, Optional
+
+_logger = logging.getLogger(__name__)
 
 
 def run_canary_call(model: str, completion_fn: Optional[Any] = None, role: str = "validator") -> None:
@@ -37,8 +40,8 @@ def run_canary_call(model: str, completion_fn: Optional[Any] = None, role: str =
         try:
             if litellm.supports_response_format(model, {"type": "json_object"}):
                 kwargs["response_format"] = {"type": "json_object"}
-        except Exception:
-            pass  # The real classifier treats support detection as advisory.
+        except Exception as error:
+            _logger.debug("Classifier response_format support probe unavailable: %s", error)
         kwargs["messages"] = [{"role": "user", "content": 'Return {"flow_type":"feature","wave_id":"new","task_summary":"OK","feature_description":"OK"} as JSON.'}]
     else:
         # The LiteLLM coder offers tools, but never requires a specific call.
