@@ -163,6 +163,7 @@ These commands operate the MCP server rather than a single task.
 | Command | Purpose |
 |---|---|
 | `snodo serve` | Start the MCP server from the protocol definition. |
+| `snodo host check` | Check SSH reachability, matching Snodo version, and the remote project clone before remote execution. |
 
 `snodo serve` defaults to stdio. It can also serve SSE or streamable HTTP with
 `--transport`, and its help describes tunnel provisioning and Claude Desktop
