@@ -756,6 +756,9 @@ MODE_TOOL_MAP = {
     "plan": [
         "decompose", "generate_spec", "validate_plan",
         "propose_plan", "get_plan", "run_plan", "record_task_status",
+        # Queues are the planning surface run in order (ADR 053): a mode that
+        # may run plans may also order and run them from a queue.
+        "queue_list", "queue_create", "queue_move", "queue_validate", "queue_run",
     ],
     "queue": ["queue_list", "queue_create", "queue_move", "queue_validate", "queue_run"],
     "read": ["read_file", "list_files"],
@@ -777,6 +780,11 @@ PLANNING_TOOLS = [
     "get_plan",
     "run_plan",
     "record_task_status",
+    "queue_list",
+    "queue_create",
+    "queue_move",
+    "queue_validate",
+    "queue_run",
 ]
 
 # The read-only job-observation surface: the tools that answer "how is the
