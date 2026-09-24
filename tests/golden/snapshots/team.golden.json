@@ -99,6 +99,10 @@
   "name": "Default Snodo Protocol",
   "protected_paths": [],
   "protocol_id": "default",
+  "queue": {
+    "non_blocking": false,
+    "parallel_runs": 1
+  },
   "roles": [],
   "validators": [
     {

@@ -50,6 +50,10 @@
   "name": "Solo Developer Protocol",
   "protected_paths": [],
   "protocol_id": "solo",
+  "queue": {
+    "non_blocking": false,
+    "parallel_runs": 1
+  },
   "roles": [],
   "validators": [
     {

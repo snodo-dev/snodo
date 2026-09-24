@@ -64,6 +64,10 @@
   "name": "Intent-Driven Protocol",
   "protected_paths": [],
   "protocol_id": "intent",
+  "queue": {
+    "non_blocking": false,
+    "parallel_runs": 1
+  },
   "roles": [],
   "validators": [
     {

@@ -113,6 +113,10 @@
   "name": "2+N Reference Protocol",
   "protected_paths": [],
   "protocol_id": "2+n",
+  "queue": {
+    "non_blocking": false,
+    "parallel_runs": 1
+  },
   "roles": [],
   "validators": [
     {

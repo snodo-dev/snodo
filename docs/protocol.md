@@ -50,6 +50,7 @@ This declares one mode (producer) with one tool (edit) and one validator (securi
 | `initial_mode` | string | yes | Mode ID to start in |
 | `global_constraints` | list[Constraint] | no | Protocol-wide constraints (see Constraints) |
 | `execution` | ExecutionConfig | no | Execution and recovery configuration (see Execution configuration) |
+| `queue` | QueueConfig | no | Default behaviour for queue runs (see Queue configuration) |
 | `metadata` | dict | no | Arbitrary key/value metadata |
 
 ---
@@ -73,6 +74,24 @@ execution:
 Security note: `execution.prepare_command` is protocol-authored shell input.
 snodo does not sandbox it. Treat it like a `Makefile` target, `package.json`
 script, or CI config.
+
+---
+
+## Queue configuration
+
+Queue defaults are optional; protocols without a `queue` section use strict,
+one-plan-at-a-time runs.
+
+```yaml
+queue:
+  non_blocking: false
+  parallel_runs: 1
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `non_blocking` | bool | no | Pass over a failed plan and continue with later plans (default `false`) |
+| `parallel_runs` | int | no | Maximum plans run at once for a non-blocking queue run; positive integer, default `1`. Read only when `non_blocking` is `true`. |
 
 ### `max_recovery_depth` tradeoff
 

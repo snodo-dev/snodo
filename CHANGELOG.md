@@ -13,6 +13,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Persistent ordered plan queues under `.snodo/`, including atomic queue
   records, first-read migration of verified incomplete plans, completed-plan
   pruning and per-queue runner locks. (Fixes #464)
+- Protocols can set queue run defaults with `queue.non_blocking` and
+  `queue.parallel_runs`; defaults preserve strict, sequential queue behaviour.
+  (Fixes #465)
 
 ## [0.15.0] — 2026-09-24
 
