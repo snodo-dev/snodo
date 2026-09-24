@@ -12,7 +12,7 @@ class RemoteGitError(RuntimeError):
 
 
 def _git(project_root: str | Path, *args: str) -> str:
-    result = subprocess.run(  # noqa: S603 - fixed git executable and argv
+    result = subprocess.run(  # noqa: S603, S607 - git resolved from PATH by design
         ["git", "-C", str(project_root), *args],
         capture_output=True,
         text=True,
@@ -44,7 +44,7 @@ def push_base_commit(
     ref_suffix = hashlib.sha256(task_ref.encode("utf-8")).hexdigest()[:24]
     remote_ref = f"refs/snodo/bases/{ref_suffix}"
     remote = _ssh_remote(host, host_path)
-    result = subprocess.run(  # noqa: S603 - git invokes the selected SSH transport
+    result = subprocess.run(  # noqa: S603, S607 - git invokes the selected SSH transport
         ["git", "-C", str(project_root), "push", remote, f"{base_sha}:{remote_ref}"],
         capture_output=True,
         text=True,
@@ -73,7 +73,7 @@ def fetch_task_branch(
     ref_suffix = hashlib.sha256(branch.encode("utf-8")).hexdigest()[:24]
     local_ref = f"refs/snodo/remote/{ref_suffix}"
     remote = _ssh_remote(host, host_path)
-    result = subprocess.run(  # noqa: S603 - git invokes the selected SSH transport
+    result = subprocess.run(  # noqa: S603, S607 - git invokes the selected SSH transport
         ["git", "-C", str(project_root), "fetch", "--no-tags", remote, f"+{source_ref}:{local_ref}"],
         capture_output=True,
         text=True,
