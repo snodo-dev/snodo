@@ -65,6 +65,25 @@ class QueueToolHandler:
             "anchor": before or after,
         }
 
+    def handle_queue_remove(self, arguments: dict) -> dict:
+        from snodo.infrastructure.queue_store import QueueError, QueueStore
+
+        plan = str(arguments.get("plan") or "")
+        try:
+            store = QueueStore(self.project_root)
+            source_queue = next(
+                (name for name, plans in store.list_queues().items() if plan in plans),
+                None,
+            )
+            if source_queue is None:
+                raise QueueError(f"Plan is not queued: {plan}")
+            if self._is_plan_running(plan):
+                raise QueueError(f"Cannot remove plan while it is running: {plan}")
+            store.remove(plan)
+        except (QueueError, OSError, ValueError) as exc:
+            self._error(str(exc))
+        return {"ok": True, "plan": plan, "queue": source_queue}
+
     def handle_queue_validate(self, arguments: dict) -> dict:
         from snodo.infrastructure.queue_validation import build_validation_report
 
@@ -174,6 +193,7 @@ class QueueToolHandler:
             "queue_list": self.handle_queue_list,
             "queue_create": self.handle_queue_create,
             "queue_move": self.handle_queue_move,
+            "queue_remove": self.handle_queue_remove,
             "queue_validate": self.handle_queue_validate,
             "queue_run": self.handle_queue_run,
         }

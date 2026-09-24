@@ -98,6 +98,17 @@ Schema: `snodo.worktree.v1`
 | `project_root` | string | project root |
 | `worktrees` | array | `[{task_id, path, age_days}]` |
 
+### `snodo queue remove <plan> --json`
+
+Schema: `snodo.queue.remove.v1`
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `snodo.queue.remove.v1` |
+| `ok` | bool | `true` when the plan was removed |
+| `plan` | string | Removed plan name |
+| `queue` | string | Queue the plan was removed from |
+
 ### `snodo validate <task_spec> [--phase pre_execute|post_execute] [--mode <m>]`
 
 Schema: `snodo.validate.v1`
