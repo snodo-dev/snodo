@@ -65,6 +65,8 @@ There is no need to keep a runner alive after it exits. Revalidation and a new
 `queue_run` are the nudge after adding a plan, fixing a stopped front, or seeing
 that the runner has drained its current work. Plans that pass `validate_plan`
 join the back of `default` unless already queued.
+Use `queue_remove` to take a plan out of a queue without deleting its plan
+records; use it only when the plan should no longer run in that lane.
 
 ## Unblock the front plan
 
