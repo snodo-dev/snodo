@@ -873,13 +873,13 @@ def _configured_models() -> list[tuple[str, str]]:
     return [
         (role, model)
         for role, model in configured
-        if model and not (model in seen or seen.add(model))
+        if model and not ((role, model) in seen or seen.add((role, model)))
     ]
 
 
-def _run_canary_call(model: str, completion_fn: Optional[Any] = None) -> None:
+def _run_canary_call(model: str, completion_fn: Optional[Any] = None, role: str = "validator") -> None:
     from snodo.cli.commands.models_check import run_canary_call
-    return run_canary_call(model, completion_fn)
+    return run_canary_call(model, completion_fn, role=role)
 
 
 def _subprocess_coder_for_model(model: str) -> Optional[tuple[str, Any]]:

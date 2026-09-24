@@ -401,7 +401,7 @@ def test_models_check_recovers_from_temperature_refusal(monkeypatch, capsys):
 
     calls = []
 
-    def canary(model):
+    def canary(model, role="coder"):
         def completion(**kwargs):
             calls.append(kwargs.copy())
             if "temperature" in kwargs:
@@ -409,7 +409,7 @@ def test_models_check_recovers_from_temperature_refusal(monkeypatch, capsys):
                 error.status_code = 400
                 raise error
 
-        run_canary_call(model, completion)
+        run_canary_call(model, completion, role=role)
 
     monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
 
@@ -429,7 +429,7 @@ def test_models_check_recovers_from_forced_tool_choice_refusal(monkeypatch, caps
 
     calls = []
 
-    def canary(model):
+    def canary(model, role="validator"):
         def completion(**kwargs):
             calls.append(kwargs.copy())
             if "tool_choice" in kwargs:
@@ -437,7 +437,7 @@ def test_models_check_recovers_from_forced_tool_choice_refusal(monkeypatch, caps
                 error.status_code = 400
                 raise error
 
-        run_canary_call(model, completion)
+        run_canary_call(model, completion, role=role)
 
     monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
 
@@ -455,13 +455,13 @@ def test_models_check_keeps_credential_rejection_failed(monkeypatch, capsys):
         lambda: [("coder", "openai/bad-credential")],
     )
 
-    def canary(model):
+    def canary(model, role="coder"):
         def completion(**kwargs):
             error = RuntimeError("invalid_api_key: authentication failed")
             error.status_code = 401
             raise error
 
-        run_canary_call(model, completion)
+        run_canary_call(model, completion, role=role)
 
     monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
 
@@ -480,6 +480,9 @@ def test_models_check_does_not_send_subprocess_coder_to_litellm(monkeypatch, cap
         "snodo.coders.availability.check_coder_available",
         lambda coder_name: None,
     )
+    from snodo.config import ProviderConfig
+    monkeypatch.setattr("snodo.config.ConfigManager.get_providers", lambda self: {"openai": ProviderConfig(api_key="test")})
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._get_models", lambda provider, pc, force_refresh: [{"id": "gpt-4o"}])
 
     def canary(_model):
         raise AssertionError("subprocess coder must not reach litellm")
@@ -489,7 +492,68 @@ def test_models_check_does_not_send_subprocess_coder_to_litellm(monkeypatch, cap
     assert models_check_command(SimpleNamespace()) == 0
     out = capsys.readouterr().out
     assert "NOT CHECKABLE opencode-cli/openai/gpt-4o (coder)" in out
+    assert "FOUND" in out and "best-effort" in out and "opencode models" in out
     assert "LLM Provider" not in out
+
+
+def test_canary_shapes_recon_and_classifier_like_real_calls():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+
+    run_canary_call("deepseek/deepseek-chat", completion, role="recon")
+    recon = calls.pop()
+    assert "tools" in recon and "tool_choice" not in recon
+    assert "max_tokens" not in recon and "temperature" not in recon
+
+    run_canary_call("deepseek/deepseek-chat", completion, role="classifier")
+    classifier = calls.pop()
+    assert "tools" not in classifier and "tool_choice" not in classifier
+    assert classifier["max_tokens"] > 1
+    assert "response_format" not in classifier  # current LiteLLM has no support probe
+
+
+def test_validator_canary_generic_tool_choice_rejection_falls_back():
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if "tool_choice" in kwargs:
+            error = RuntimeError("Thinking mode does not support this tool_choice")
+            error.status_code = 400
+            raise error
+
+    run_canary_call("deepseek/deepseek-chat", completion, role="validator")
+    assert len(calls) == 2
+    assert calls[0]["tool_choice"]["function"]["name"] == "submit_verdict"
+    assert "tool_choice" not in calls[1]
+    assert any("provider could not enforce" in msg["content"] for msg in calls[1]["messages"])
+
+
+def test_opencode_cli_unconfigured_provider_is_not_failed(monkeypatch, capsys):
+    from snodo.cli.commands.models_check import check_configured_models
+    monkeypatch.setattr("snodo.coders.availability.check_coder_available", lambda name: None)
+    monkeypatch.setattr("snodo.config.ConfigManager.get_providers", lambda self: {})
+    assert check_configured_models(
+        lambda: [("coder", "opencode-cli/other/model")],
+        lambda *a, **kw: pytest.fail("No LiteLLM call for subprocess coder"),
+    ) == 0
+    assert "not configured in snodo" in capsys.readouterr().out
+
+
+def test_opencode_cli_model_absent_from_snodo_list_is_best_effort(monkeypatch, capsys):
+    from snodo.cli.commands.models_check import check_configured_models
+    from snodo.config import ProviderConfig
+    monkeypatch.setattr("snodo.coders.availability.check_coder_available", lambda name: None)
+    monkeypatch.setattr("snodo.config.ConfigManager.get_providers", lambda self: {"ocgo": ProviderConfig(api_key="test")})
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._get_models", lambda *args, **kwargs: [{"id": "another-model"}])
+    assert check_configured_models(
+        lambda: [("coder", "opencode-cli/ocgo/qwen3.8-flash")],
+        lambda *a, **kw: pytest.fail("No LiteLLM call for subprocess coder"),
+    ) == 0
+    out = capsys.readouterr().out
+    assert "NOT FOUND" in out and "opencode models" in out
 
 
 def test_models_command_unconfigured_provider_failure(mock_providers_config, monkeypatch, capsys):

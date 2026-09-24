@@ -345,6 +345,14 @@ lists that provider's models with context window and price. `--stats` reports
 what your own jobs actually spent and how they ran, aggregated from project
 records.
 
+`snodo models --check` makes a small call per configured role using that role's
+request shape: prose and optional read tools for recon, a forced verdict with
+the validator's provider-parameter fallbacks for judging, and a JSON request
+for the classifier. It costs provider tokens. For `opencode-cli` coders it
+looks up the inner model in snodo's provider model list without a billed call;
+this is best-effort because OpenCode may use different provider names. Check
+the actual OpenCode catalog with `opencode models`.
+
 `snodo models --benchmark` answers a different question: how fast is a model on
 one fixed task? It sends **one prompt, the same prompt every run**, read from
 `snodo/cli/commands/model_benchmark_prompt.txt` in the repository, and reports

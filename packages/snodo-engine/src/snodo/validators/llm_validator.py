@@ -52,6 +52,7 @@ from snodo.validators.registry import _default_registry
 from snodo.infrastructure.config import DEFAULT_MODEL
 from snodo.coders.litellm import ReadMemoryTracker, _normalize_path_arg, format_repeat_read_response
 from snodo.validators.llm_provider_errors import (
+    call_with_unforced_tool_fallback,
     _is_gemini3_plus,
     _is_provider_rejection,
     _is_transient_error,
@@ -469,37 +470,19 @@ class LLMValidator(ValidatorBase):
                         "type": "function",
                         "function": {"name": "submit_verdict"},
                     }
-                try:
-                    response = self._call_completion_with_retry(
-                        parameter_fallback_instruction=(
-                            _UNFORCED_VERDICT_INSTRUCTION
-                            if is_final_turn or retried_free_text
-                            else None
-                        ),
-                        **kwargs,
-                    )
-                except Exception as e:
-                    # Not all providers honour a forced function choice; if
-                    # rejected for that reason (4xx client error), fall back to
-                    # the unforced request rather than failing as an operational
-                    # error (Fixes #296).
-                    if "tool_choice" in kwargs and _is_provider_rejection(e):
-                        _logger.warning(
-                            "Validator %s provider rejected tool_choice on turn %d "
-                            "(model=%s): %s; falling back to unforced request",
-                            self.validator_spec.validator_id, turn + 1, self.model, e,
-                        )
-                        del kwargs["tool_choice"]
-                        # Keep the provider-independent requirement when the
-                        # provider cannot enforce tool_choice itself.
-                        if is_final_turn or retried_free_text:
-                            messages.append({
-                                "role": "user",
-                                "content": _UNFORCED_VERDICT_INSTRUCTION,
-                            })
-                        response = self._call_completion_with_retry(**kwargs)
-                    else:
-                        raise
+                instruction = _UNFORCED_VERDICT_INSTRUCTION if is_final_turn or retried_free_text else None
+                response = call_with_unforced_tool_fallback(
+                    lambda **request: self._call_completion_with_retry(
+                        parameter_fallback_instruction=instruction, **request,
+                    ),
+                    kwargs,
+                    instruction=instruction,
+                    on_rejection=lambda error: _logger.warning(
+                        "Validator %s provider rejected tool_choice on turn %d "
+                        "(model=%s): %s; falling back to unforced request",
+                        self.validator_spec.validator_id, turn + 1, self.model, error,
+                    ),
+                )
             except Exception as e:
                 # Provider fault on the tool-loop path: it halts as
                 # validator_error, so log the cause and carry its type into
