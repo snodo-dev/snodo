@@ -9,7 +9,7 @@ repo's file-length limit. Nothing here changed in the move.
 
 import logging
 import re
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 # ``usage_tokens_of`` lives with the response-field readers in
 # snodo.infrastructure.usage_tracker; the name stays importable from here for
@@ -110,6 +110,31 @@ def _remove_rejected_parameter(
     provider-error interpretation.
     """
     return remove_rejected_parameter(e, kwargs, removed)
+
+
+def call_with_unforced_tool_fallback(
+    call: Callable[..., Any],
+    kwargs: dict[str, Any],
+    instruction: Optional[str] = None,
+    on_rejection: Optional[Callable[[Exception], None]] = None,
+) -> Any:
+    """Retry a rejected forced verdict without tool_choice, as the judge does.
+
+    A named-parameter rejection is handled by the caller's normal parameter
+    fallback first. This handles providers that reject the forced choice with
+    a generic 4xx instead of naming the parameter.
+    """
+    try:
+        return call(**kwargs)
+    except Exception as error:
+        if "tool_choice" not in kwargs or not _is_provider_rejection(error):
+            raise
+        if on_rejection:
+            on_rejection(error)
+        del kwargs["tool_choice"]
+        if instruction:
+            kwargs["messages"].append({"role": "user", "content": instruction})
+        return call(**kwargs)
 
 
 def _provider_retry_delay(e: Exception) -> Optional[float]:

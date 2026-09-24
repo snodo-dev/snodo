@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- `snodo models --check` now uses role-specific requests, including the
+  validator's real forced-tool fallback, and checks `opencode-cli` model names
+  against snodo's provider list as a best-effort lookup. (Fixes #460)
 - Liveness now POSTs snapshots to the app host's leased `/i/{jti}` route,
   re-mints on a 401, warns on the first failed push per run, and shows the last
   attempt, error and failure count in `snodo cloud status`. (Fixes #416)
