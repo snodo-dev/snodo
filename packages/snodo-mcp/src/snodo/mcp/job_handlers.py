@@ -38,6 +38,7 @@ class JobToolHandler:
         result = {
             "id": full.get("id", job_id),
             "status": full.get("status", "unknown"),
+            "job_type": full.get("job_type", "task"),
             "pid": full.get("pid"),
             "exit_code": full.get("exit_code"),
             "created_at": full.get("created_at"),
@@ -47,8 +48,9 @@ class JobToolHandler:
             # empty. A task spawned by a plan names that plan-run job so the
             # two never read as the same kind of row (Fixes #254).
             "plan": plan,
+            "queues": task.get("queues", []) if task.get("queue_run") else [],
             "parent_job": task.get("parent_job", "") or "",
-            "task_ref": "" if plan else (
+            "task_ref": "" if plan or full.get("job_type") == "queue" else (
                 task.get("task_id") or task.get("retry_task_id") or ""
             ),
             "task_spec": task.get("description", ""),

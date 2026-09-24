@@ -373,6 +373,44 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "queue_list": {
+        "description": "List named queues and their plans in order, with status derived from each plan's records (same as `snodo queue`)",
+        "inputSchema": {"type": "object", "properties": {}},
+        "mcp": None, "method": None,
+    },
+    "queue_create": {
+        "description": "Create an empty named plan queue; refuses invalid or already-existing queue names (same as `snodo queue create`)",
+        "inputSchema": {"type": "object", "properties": {"name": {"type": "string", "description": "Name for the new queue"}}, "required": ["name"]},
+        "mcp": None, "method": None,
+    },
+    "queue_move": {
+        "description": "Move a queued plan within or between queues; refuses running plans and invalid positions (same as `snodo queue move`)",
+        "inputSchema": {"type": "object", "properties": {
+            "plan": {"type": "string", "description": "Queued plan to move"},
+            "front": {"type": "boolean", "description": "Move to the front"},
+            "before": {"type": "string", "description": "Place before another plan"},
+            "after": {"type": "string", "description": "Place after another plan"},
+            "queue": {"type": "string", "description": "Destination queue"},
+        }, "required": ["plan"]},
+        "mcp": None, "method": None,
+    },
+    "queue_validate": {
+        "description": "Report queue readiness, plan verification, dependencies, and active runners without changing queue state (same as `snodo queue validate`)",
+        "inputSchema": {"type": "object", "properties": {"queue": {"type": "string", "description": "Queue name; omit to report all queues"}}},
+        "mcp": None, "method": None,
+    },
+    "queue_run": {
+        "description": "Run one or more plan queues as an asynchronous background job; follows CLI queue ordering, blocking, and refusal rules. Poll the returned job_id with get_job_status and get_job_logs.",
+        "inputSchema": {"type": "object", "properties": {
+            "queues": {"type": "string", "description": "Queue name or comma-separated queue names (defaults to default)"},
+            "all": {"type": "boolean", "description": "Run every queue sequentially in creation order"},
+            "non_blocking": {"type": "boolean", "description": "Continue past unfinished plans"},
+            "parallel_run": {"type": "integer", "minimum": 1, "description": "Maximum concurrent plans per queue"},
+            "protocol": {"type": "string", "default": ".snodo/protocol.yml", "description": "Protocol file path"},
+            "mock": {"type": "boolean", "description": "Use mock coder"},
+        }},
+        "mcp": None, "method": None,
+    },
     "dispatch_task": {
         "description": "Dispatch a task for execution via the protocol engine",
         "inputSchema": {
@@ -389,14 +427,14 @@ TOOL_REGISTRY = {
     "get_job_status": {
         "description": (
             "Poll execution status of one dispatched job and its full task "
-            "spec. Call after dispatch_task or run_plan returns a job id. "
+            "spec. Call after dispatch_task, run_plan, or queue_run returns a job id. "
             "Status progresses: queued → running → completed | failed. Check "
             "for completed + exit_code=0 to confirm success."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "job_id": {"type": "string", "description": "Job ID returned by dispatch_task or run_plan"},
+                "job_id": {"type": "string", "description": "Job ID returned by dispatch_task, run_plan, or queue_run"},
             },
             "required": ["job_id"],
         },
@@ -719,6 +757,7 @@ MODE_TOOL_MAP = {
         "decompose", "generate_spec", "validate_plan",
         "propose_plan", "get_plan", "run_plan", "record_task_status",
     ],
+    "queue": ["queue_list", "queue_create", "queue_move", "queue_validate", "queue_run"],
     "read": ["read_file", "list_files"],
 }
 
@@ -764,5 +803,6 @@ RECON_OBSERVATION_TOOLS = [
 WORK_STARTING_TOOLS = {
     "dispatch_task": JOB_OBSERVATION_TOOLS,
     "run_plan": JOB_OBSERVATION_TOOLS,
+    "queue_run": JOB_OBSERVATION_TOOLS,
     "recon": RECON_OBSERVATION_TOOLS,
 }

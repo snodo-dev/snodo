@@ -192,7 +192,9 @@ def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -
         return result or "That topic has no instructions for the tools exposed in this mode."
 
     menu = guide_menu(project_root, exposed)
-    if "run_plan" in exposed:
+    if "queue_run" in exposed:
+        path = "Use `queue_list` and `queue_validate`, reorder or create queues with `queue_move` / `queue_create`, then start progression with `queue_run`; poll its job with `get_job_status` and `get_job_logs`."
+    elif "run_plan" in exposed:
         path = "First use `propose_plan`, add task specs with `generate_spec`, then `validate_plan` and `run_plan`; poll with `get_job_status` and inspect failures with `get_job_logs`."
     elif "dispatch_task" in exposed:
         path = "Write a standalone spec, call `validate_task`, then `dispatch_task`; poll with `get_job_status` and inspect failures with `get_job_logs`."
