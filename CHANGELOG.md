@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Persistent ordered plan queues under `.snodo/`, including atomic queue
+  records, first-read migration of verified incomplete plans, completed-plan
+  pruning and per-queue runner locks. (Fixes #464)
+
 ## [0.15.0] — 2026-09-24
 
 ### Fixed
