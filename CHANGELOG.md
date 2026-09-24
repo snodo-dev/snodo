@@ -16,6 +16,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Local reader for ADR 055 remote-worker JSON-lines streams. Worker logs,
   audit events, task status and liveness use the existing local write paths;
   malformed, incomplete, silent or nonzero-exit streams end errored. (Fixes #477)
+- Internal `_worker` command runs a task loop in a remote clone, receives
+  provider keys on stdin, and reports heartbeats, audit events, status and its
+  final branch/head as redacted JSONL without local bookkeeping writes. (Fixes #478)
 
 ## [0.16.0] — 2026-09-24
 
