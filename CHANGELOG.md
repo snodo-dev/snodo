@@ -13,6 +13,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Remote execution host selection via `execution.host` or `SNODO_HOST`, with
   `execution.host_path` and `snodo host check` for SSH, version and project
   clone preflight. (Fixes #476)
+- Local reader for ADR 055 remote-worker JSON-lines streams. Worker logs,
+  audit events, task status and liveness use the existing local write paths;
+  malformed, incomplete, silent or nonzero-exit streams end errored. (Fixes #477)
 
 ## [0.16.0] — 2026-09-24
 
