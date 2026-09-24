@@ -47,6 +47,15 @@ def queue_move(
     ))
 
 
+@app.command("remove")
+def queue_remove(
+    plan: str = typer.Argument(..., help="Queued plan to remove"),
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+):
+    """Remove a plan from its queue without changing its plan records."""
+    raise typer.Exit(_queue_remove(plan, json_output=json_output))
+
+
 def queue_list(json_output: bool = False) -> int:
     """List all queues and each queued plan's status from its own records."""
     from snodo.infrastructure.paths import require_project_root
@@ -139,6 +148,35 @@ def _queue_move(
     else:
         position = " at the back"
     print(f"Moved {plan}{destination}{position}.")
+    return 0
+
+
+def _queue_remove(plan: str, *, json_output: bool) -> int:
+    from snodo.infrastructure.paths import require_project_root
+
+    try:
+        root = Path(require_project_root())
+        store = QueueStore(root)
+        source_queue = next(
+            (name for name, plans in store.list_queues().items() if plan in plans),
+            None,
+        )
+        if source_queue is None:
+            raise QueueError(f"Plan is not queued: {plan}")
+        if _is_plan_running(root, plan):
+            raise QueueError(f"Cannot remove plan while it is running: {plan}")
+        store.remove(plan)
+    except (QueueError, OSError, ValueError) as exc:
+        return _error("queue.remove", str(exc), json_output)
+
+    if json_output:
+        from snodo.cli.json_output import emit_json, schema_name
+
+        return emit_json({
+            "schema": schema_name("queue.remove"), "ok": True,
+            "plan": plan, "queue": source_queue,
+        })
+    print(f"Removed {plan} from {source_queue}.")
     return 0
 
 

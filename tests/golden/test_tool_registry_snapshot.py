@@ -34,6 +34,7 @@ EXPECTED_TOOL_KEYS = frozenset({
     "queue_list",
     "queue_create",
     "queue_move",
+    "queue_remove",
     "queue_validate",
     "queue_run",
     "record_task_status",

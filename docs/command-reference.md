@@ -67,6 +67,7 @@ Use these commands to inspect the repository, create a plan, and execute work.
 | `snodo plan add-wave` | Add a wave to a plan. |
 | `snodo plan run` | Execute a plan's tasks through the protocol loop. |
 | `snodo queue run` | Run queued plans until each selected queue is empty or blocked. |
+| `snodo queue remove` | Remove a plan from its queue without changing its records. |
 | `snodo plan delete` | Delete a plan directory. |
 | `snodo run` | Execute a task through the protocol. |
 | `snodo validate` | Run a phase's validators and return the structured result. |

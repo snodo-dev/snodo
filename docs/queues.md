@@ -25,6 +25,7 @@ Plans join the back of `default` when they pass `validate_plan`, unless they
 are already queued. Keep plans that depend on each other in the same queue so
 the default FIFO, stop-at-the-front behavior preserves their order. Use
 separate queues for independent work.
+Use `snodo queue remove <plan>` (`queue_remove` in MCP) to take a plan out of its queue without changing its records.
 
 ## Relaxing queue order
 

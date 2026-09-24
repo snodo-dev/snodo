@@ -220,7 +220,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
     if "queue_run" in exposed:
         sections.append(
             "\n## Queues\n"
-            "Use `queue_list` and `queue_validate` to inspect ordered queues, `queue_create` / `queue_move` to manage them, and `queue_run` to progress them (validate, reorder, unblock, run); follow its asynchronous job with `get_job_status` and `get_job_logs`.\n"
+            "Use `queue_list` and `queue_validate` to inspect ordered queues, `queue_create` / `queue_move` / `queue_remove` to manage them, and `queue_run` to progress them (validate, reorder, unblock, run); follow its asynchronous job with `get_job_status` and `get_job_logs`.\n"
         )
 
     if "dispatch_task" in exposed or "run_plan" in exposed or "queue_run" in exposed:

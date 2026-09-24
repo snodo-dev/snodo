@@ -101,3 +101,39 @@ def test_queue_move_refuses_running_plan(tmp_path, monkeypatch):
     assert payload["schema"] == "snodo.queue.move.v1"
     assert payload["error"] == "Cannot move plan while it is running: busy"
     assert QueueStore(root).list_queues() == {"default": ["busy"]}
+
+
+def test_queue_remove_takes_plan_from_any_queue_without_touching_records(tmp_path, monkeypatch):
+    root = _project(tmp_path, monkeypatch)
+    _plan(root, "stale", ["1.1_work"], {"1.1_work": "blocked"})
+    store = QueueStore(root)
+    store.create_queue("later")
+    store.add("stale", "later")
+    plan_dir = root / ".snodo" / "plans" / "stale"
+    original_plan = (plan_dir / "plan.yml").read_bytes()
+    original_status = (plan_dir / "status.json").read_bytes()
+
+    result = CliRunner().invoke(app, ["queue", "remove", "stale", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        "schema": "snodo.queue.remove.v1", "ok": True,
+        "plan": "stale", "queue": "later",
+    }
+    assert store.list_queues() == {"default": [], "later": []}
+    assert (plan_dir / "plan.yml").read_bytes() == original_plan
+    assert (plan_dir / "status.json").read_bytes() == original_status
+
+
+def test_queue_remove_reports_unqueued_and_running_plans(tmp_path, monkeypatch):
+    root = _project(tmp_path, monkeypatch)
+    runner = CliRunner()
+    missing = runner.invoke(app, ["queue", "remove", "missing", "--json"])
+    assert missing.exit_code == 1
+    assert json.loads(missing.stdout)["error"] == "Plan is not queued: missing"
+
+    _plan(root, "busy", ["1.1_work"], {"1.1_work": "in_progress"})
+    QueueStore(root).add("busy")
+    running = runner.invoke(app, ["queue", "remove", "busy", "--json"])
+    assert running.exit_code == 1
+    assert json.loads(running.stdout)["error"] == "Cannot remove plan while it is running: busy"
+    assert QueueStore(root).list_queues() == {"default": ["busy"]}

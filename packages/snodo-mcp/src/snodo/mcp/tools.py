@@ -394,6 +394,13 @@ TOOL_REGISTRY = {
         }, "required": ["plan"]},
         "mcp": None, "method": None,
     },
+    "queue_remove": {
+        "description": "Remove a plan from whichever queue holds it without changing its plan records; refuses running plans (same as `snodo queue remove`)",
+        "inputSchema": {"type": "object", "properties": {
+            "plan": {"type": "string", "description": "Queued plan to remove"},
+        }, "required": ["plan"]},
+        "mcp": None, "method": None,
+    },
     "queue_validate": {
         "description": "Report queue readiness, plan verification, dependencies, and active runners without changing queue state (same as `snodo queue validate`)",
         "inputSchema": {"type": "object", "properties": {"queue": {"type": "string", "description": "Queue name; omit to report all queues"}}},
@@ -758,9 +765,9 @@ MODE_TOOL_MAP = {
         "propose_plan", "get_plan", "run_plan", "record_task_status",
         # Queues are the planning surface run in order (ADR 053): a mode that
         # may run plans may also order and run them from a queue.
-        "queue_list", "queue_create", "queue_move", "queue_validate", "queue_run",
+        "queue_list", "queue_create", "queue_move", "queue_remove", "queue_validate", "queue_run",
     ],
-    "queue": ["queue_list", "queue_create", "queue_move", "queue_validate", "queue_run"],
+    "queue": ["queue_list", "queue_create", "queue_move", "queue_remove", "queue_validate", "queue_run"],
     "read": ["read_file", "list_files"],
 }
 
@@ -783,6 +790,7 @@ PLANNING_TOOLS = [
     "queue_list",
     "queue_create",
     "queue_move",
+    "queue_remove",
     "queue_validate",
     "queue_run",
 ]
