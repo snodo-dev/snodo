@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
+from snodo.config import ConfigManager
 from snodo.infrastructure.config import ProviderConfig
 from snodo.infrastructure.paths import resolve_home
 
@@ -36,7 +37,7 @@ class ModelInfo(BaseModel):
 
 
 def _resolve_api_key(provider_name: str, pc: ProviderConfig) -> Optional[str]:
-    """Resolve the API key: config value first, then env fallback.
+    """Resolve the API key with the same precedence as completions.
 
     Args:
         provider_name: Provider name for logging (e.g. "anthropic").
@@ -45,21 +46,16 @@ def _resolve_api_key(provider_name: str, pc: ProviderConfig) -> Optional[str]:
     Returns:
         API key string, or None if neither source has one.
     """
-    # 1. Config-stored key (from ~/.snodo/config.yml providers.<name>.api_key)
-    if pc.api_key:
-        return pc.api_key
+    key = ConfigManager.resolve_provider_key(provider_name, pc)
+    if key:
+        return key
 
-    # 2. Environment variable fallback
-    if pc.api_key_env:
-        env_val = os.environ.get(pc.api_key_env)
-        if env_val:
-            return env_val
-
-    # 3. Neither source has a key — log clearly
     sources = []
     if pc.api_key_env:
         sources.append(f"env:{pc.api_key_env}")
     sources.append("config api_key")
+    if pc.api_key_ref:
+        sources.append(f"reference:{pc.api_key_ref}")
     _logger.warning(
         "No API key for %s (tried: %s)",
         provider_name,
