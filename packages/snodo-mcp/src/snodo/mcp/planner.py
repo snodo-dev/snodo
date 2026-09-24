@@ -590,12 +590,55 @@ class PlannerMCP:
         plan = Plan.from_dict(plan_data, status_data)
         result = verify_plan(plan, plan_dir=plan_dir)
 
-        return {
+        result = {
             "valid": result.passed,
             "errors": result.errors,
             "warnings": result.warnings,
             "wave_count": len(plan.waves),
             "task_count": sum(len(w.tasks) for w in plan.waves),
+        }
+        if result["valid"]:
+            result.update(self.queue_validated_plan(plan_name))
+        return result
+
+    def queue_validated_plan(self, plan_name: str) -> dict:
+        """Append a passing plan to the default queue without moving queued plans.
+
+        Returns the queue, one-based position, and whether it was already
+        queued. Validation is performed by the caller before this operation.
+        """
+        from snodo.infrastructure.queue_store import QueueError, QueueStore
+
+        store = QueueStore(self.project_root)
+        queues = store.list_queues()
+        for queue_name, plans in queues.items():
+            if plan_name in plans:
+                return {
+                    "queue": queue_name,
+                    "position": plans.index(plan_name) + 1,
+                    "already_queued": True,
+                }
+
+        try:
+            store.add(plan_name, "default")
+        except QueueError:
+            # Another validator may have enqueued it between the list and add.
+            queues = store.list_queues()
+            for queue_name, plans in queues.items():
+                if plan_name in plans:
+                    return {
+                        "queue": queue_name,
+                        "position": plans.index(plan_name) + 1,
+                        "already_queued": True,
+                    }
+            raise
+
+        queues = store.list_queues()
+        plans = queues["default"]
+        return {
+            "queue": "default",
+            "position": plans.index(plan_name) + 1,
+            "already_queued": False,
         }
 
     def get_plan(self, plan_name: str) -> Plan:

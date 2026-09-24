@@ -720,6 +720,10 @@ def _plan_validate(
         )
         result.warnings.extend(spec_warnings)
 
+    queue_result = None
+    if result.passed:
+        queue_result = planner.queue_validated_plan(name)
+
     if json_output:
         from snodo.cli.json_output import emit_json, schema_name
         payload = {
@@ -729,6 +733,8 @@ def _plan_validate(
             "errors": result.errors,
             "warnings": result.warnings,
         }
+        if queue_result is not None:
+            payload.update(queue_result)
         return emit_json(payload, exit_code=0 if result.passed else 1)
 
     if result.warnings:
@@ -743,6 +749,10 @@ def _plan_validate(
         return 1
 
     print(f"Plan '{name}' validated successfully.")
+    if queue_result["already_queued"]:
+        print(f"already queued in {queue_result['queue']} at position {queue_result['position']}")
+    else:
+        print(f"queued in {queue_result['queue']} at position {queue_result['position']}")
     return 0
 
 
