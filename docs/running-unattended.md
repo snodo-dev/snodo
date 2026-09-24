@@ -15,6 +15,9 @@ queue's lock. It is a report only: it does not change queue or plan state. Use
 `--json` when the orchestrator needs a machine-readable result. Reorder or
 unblock stopped work before starting the queue run.
 
+For the queue progression loop, including how to unblock a stopped front and
+when to opt into non-blocking or parallel runs, see [Keep queues moving](queues.md).
+
 ## The loop: intent to landed work
 
 Plans ready for unattended progression are kept in named queues. Use

@@ -2113,6 +2113,23 @@ class TestInstructions:
         assert "is recorded `completed`" in text
         assert "attempted and failed" in text
 
+    def test_guide_queues_topic_teaches_queue_progression(self, server):
+        exposed = {tool["name"] for tool in server.get_tools()}
+        menu = guide_text(server.project_root, exposed)
+        text = guide_text(server.project_root, exposed, "queues")
+
+        assert "`queues`" in menu
+        assert "queue_validate" in text
+        assert "queue_move" in text
+        assert "corrective plan" in text and "front" in text
+        assert "queue_run" in text
+        assert "nothing runnable" in text
+        assert "join the back of `default`" in text
+        assert "--non-blocking" in text
+        assert "--parallel-run N" in text
+        assert "independent plans" in text
+        assert "related work belongs in one queue" in text
+
     def test_guide_automation_topic_filters_tools_withheld_by_mode(self, server):
         text = guide_text(server.project_root, {"read_file"}, "automation")
 
