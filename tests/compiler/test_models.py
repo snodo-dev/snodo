@@ -42,6 +42,47 @@ def test_minimal_valid_protocol():
     assert len(protocol.modes) == 1
     assert len(protocol.validators) == 1
     assert protocol.disagreement_policy == DisagreementPolicy.UNANIMOUS
+    assert protocol.queue.non_blocking is False
+    assert protocol.queue.parallel_runs == 1
+
+
+def test_queue_settings_are_parsed():
+    protocol = Protocol(
+        protocol_id="queued_proto",
+        name="Queued Protocol",
+        modes=[Mode(mode_id="start", name="Start Mode")],
+        validators=[Validator(validator_id="val1", validator_type="security")],
+        initial_mode="start",
+        queue={"non_blocking": True, "parallel_runs": 3},
+    )
+
+    assert protocol.queue.non_blocking is True
+    assert protocol.queue.parallel_runs == 3
+
+
+@pytest.mark.parametrize("parallel_runs", [0, -1])
+def test_queue_parallel_runs_must_be_positive(parallel_runs):
+    with pytest.raises(ValidationError, match="parallel_runs"):
+        Protocol(
+            protocol_id="queued_proto",
+            name="Queued Protocol",
+            modes=[Mode(mode_id="start", name="Start Mode")],
+            validators=[Validator(validator_id="val1", validator_type="security")],
+            initial_mode="start",
+            queue={"parallel_runs": parallel_runs},
+        )
+
+
+def test_queue_settings_reject_unknown_keys():
+    with pytest.raises(ValidationError, match="unknown_setting"):
+        Protocol(
+            protocol_id="queued_proto",
+            name="Queued Protocol",
+            modes=[Mode(mode_id="start", name="Start Mode")],
+            validators=[Validator(validator_id="val1", validator_type="security")],
+            initial_mode="start",
+            queue={"unknown_setting": True},
+        )
 
 
 def test_full_featured_protocol():

@@ -44,6 +44,29 @@ class ExecutionConfig(BaseModel):
     )
 
 
+class QueueConfig(BaseModel):
+    """Default behaviour for runs started from a queue (ADR 053)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    non_blocking: bool = Field(
+        default=False,
+        strict=True,
+        description=(
+            "Whether a failed plan is passed over instead of stopping the queue."
+        ),
+    )
+    parallel_runs: int = Field(
+        default=1,
+        strict=True,
+        ge=1,
+        description=(
+            "Maximum plans to run concurrently in a non-blocking queue run. "
+            "Read only when non_blocking is true."
+        ),
+    )
+
+
 class DisagreementPolicy(str, Enum):
     """Policy for resolving validator disagreements."""
     UNANIMOUS = "unanimous"  # All validators must pass
@@ -417,6 +440,10 @@ class Protocol(BaseModel):
     execution: ExecutionConfig = Field(
         default_factory=ExecutionConfig,
         description="Branch isolation and retry configuration"
+    )
+    queue: QueueConfig = Field(
+        default_factory=QueueConfig,
+        description="Default queue run behaviour (ADR 053)"
     )
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     exclusive_tools: Set[str] = Field(
