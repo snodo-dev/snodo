@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Remote execution host selection via `execution.host` or `SNODO_HOST`, with
+  `execution.host_path` and `snodo host check` for SSH, version and project
+  clone preflight. (Fixes #476)
+
 ## [0.16.0] — 2026-09-24
 
 ### Added
