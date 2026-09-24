@@ -74,6 +74,7 @@ def consume_remote_stream(
     process: Any = None,
     timeout: float = HEARTBEAT_TIMEOUT,
     clock: Any = time,
+    on_final: Optional[Callable[[dict], None]] = None,
 ) -> dict:
     """Consume worker records and return its sole final record.
 
@@ -177,6 +178,11 @@ def consume_remote_stream(
         exit_code = process.wait()
         if exit_code != 0:
             fail(f"remote SSH process exited non-zero ({exit_code})")
+    if on_final is not None:
+        try:
+            on_final(final)
+        except Exception as exc:
+            fail(f"remote task branch sync failed: {exc}", exc)
     if task_ref is not None:
         on_status(task_ref, final["outcome"])
     return final

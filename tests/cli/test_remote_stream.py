@@ -105,3 +105,35 @@ def test_nonzero_ssh_exit_invalidates_final_record():
 
     with pytest.raises(RemoteStreamError, match=r"exited non-zero \(255\)"):
         consume([wire("final", outcome="completed", branch="b", head_sha="s")], process=FailedProcess())
+
+
+def test_final_branch_sync_runs_before_completed_status():
+    events = []
+    final = wire("final", outcome="completed", branch="task/one", head_sha="abc")
+
+    consume_remote_stream(
+        [final],
+        on_log=lambda *_: None,
+        on_audit=lambda *_: None,
+        on_status=lambda _ref, status: events.append(status),
+        on_heartbeat=lambda: None,
+        task_ref="p:task",
+        on_final=lambda record: events.append(record["head_sha"]),
+    )
+
+    assert events == ["abc", "completed"]
+
+
+def test_final_branch_sync_failure_marks_task_errored():
+    statuses = []
+    with pytest.raises(RemoteStreamError, match="branch sync failed"):
+        consume_remote_stream(
+            [wire("final", outcome="completed", branch="task/one", head_sha="abc")],
+            on_log=lambda *_: None,
+            on_audit=lambda *_: None,
+            on_status=lambda _ref, status: statuses.append(status),
+            on_heartbeat=lambda: None,
+            task_ref="p:task",
+            on_final=lambda _record: (_ for _ in ()).throw(RuntimeError("head mismatch")),
+        )
+    assert statuses == ["errored"]

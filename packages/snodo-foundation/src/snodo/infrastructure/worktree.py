@@ -580,6 +580,7 @@ def setup_for_task(
     existing_worktree_path: Optional[str] = None,
     plan_name: Optional[str] = None,
     protocol: Optional[object] = None,
+    base: Optional[str] = None,
 ) -> Optional[str]:
     """Set up a worktree for *task_id* — create if needed, return path.
 
@@ -595,7 +596,7 @@ def setup_for_task(
         _prepare_task_environment(Path(existing_worktree_path), protocol)
         return existing_worktree_path
     return str(create_worktree(
-        project_root, task_id, spec, plan_name=plan_name, protocol=protocol,
+        project_root, task_id, spec, base=base, plan_name=plan_name, protocol=protocol,
     ))
 
 
