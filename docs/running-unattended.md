@@ -7,6 +7,14 @@ call. Snodo's plan tools author work; the execution loop and validators decide
 whether it passes. Treat each run as a job with an outcome to inspect, not as a
 single call that completes the intent.
 
+For plans organized into queues, start an orchestration pass with
+`snodo queue validate [x]`. It reports whether each queue's front plan can
+run, re-verifies every queued plan, flags visible path dependencies and
+cross-queue file collisions, and shows whether a runner currently holds each
+queue's lock. It is a report only: it does not change queue or plan state. Use
+`--json` when the orchestrator needs a machine-readable result. Reorder or
+unblock stopped work before starting the queue run.
+
 ## The loop: intent to landed work
 
 Plans ready for unattended progression are kept in named queues. Use
