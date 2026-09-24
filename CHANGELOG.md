@@ -9,40 +9,50 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-- The MCP `queues` guide teaches unattended queue polling, self-checks,
-  validation triage, recovery, and safe independent lanes. (Fixes #475)
-- MCP `queue-triage` guide teaches orchestrators to review inherited plans,
-  organize runnable queues, and leave a morning review for the human. (Fixes #474)
-- `snodo queue remove <plan>` and MCP `queue_remove` remove a queued plan
-  without changing its plan records; validation can enqueue it again. (Fixes #473)
-- MCP `queue_list`, `queue_create`, `queue_move`, `queue_validate` and
-  asynchronous `queue_run` tools are governed by the queue mode grant; queue
-  runs are followed through the existing job status and log tools. (Fixes #471)
-- `snodo queue` lists queues and plan statuses; `snodo queue create` and
-  `snodo queue move` let operators create queues and reorder queued plans from
-  the CLI, with versioned JSON output. (Fixes #469)
-- Persistent ordered plan queues under `.snodo/`, including atomic queue
-  records, first-read migration of verified incomplete plans, completed-plan
-  pruning and per-queue runner locks. (Fixes #464)
-- Protocols can set queue run defaults with `queue.non_blocking` and
-  `queue.parallel_runs`; defaults preserve strict, sequential queue behaviour.
-  (Fixes #465)
-- `snodo queue validate [x]` reports queue readiness, current plan verification,
-  visible path dependencies, cross-queue file collisions and active runners
-  without changing queue state; supports `--json`. (Fixes #467)
-- The MCP `queues` guide teaches orchestrators to validate, reorder, unblock and
-  resume queue progression. (Fixes #472)
+## [0.16.0] — 2026-09-24
 
-### Fixed
-- Queue-run e2e coverage now exercises blocked-plan recovery and parallel queues;
-  queue execution normalizes the project root before plan status checks.
-  (Fixes #470)
-- Passing plans now join the back of the default queue after CLI or MCP
-  validation, while existing queue membership and order are preserved. (Fixes #468)
-- `snodo queue run` now runs queued plans in FIFO order, stops at the first
-  unfinished plan by default, and supports non-blocking parallel runs and
-  parallel runners across explicitly named queues. (Fixes #466)
+### Added
+- Plan queues (ADR 053). Plans run from named, ordered queues under
+  `.snodo/`; a `default` queue always exists. A queue is FIFO and stops at
+  its first plan that ends blocked, errored or unmerged, so later plans never
+  run on top of missing work. No plan, task or job status was added: a
+  stopped queue is read from the front plan's existing status. (Fixes #464)
+- A plan joins the back of `default` when it passes `snodo plan validate` or
+  MCP `validate_plan`; existing membership and order are never changed by
+  revalidating. On first use, incomplete plans that pass verification are
+  added to `default` in creation order. (Fixes #468)
+- `snodo queue` lists queues with each plan's status; `snodo queue create`
+  adds a queue; `snodo queue move <plan>` reorders with `--front`,
+  `--before`, `--after` and `--to`, and refuses to move a running plan.
+  (Fixes #469)
+- `snodo queue remove <plan>` retires a plan from its queue without touching
+  its records; validating it again puts it back in `default`. (Fixes #473)
+- `snodo queue validate [queue]` reports, without changing anything, whether
+  each queue can run or where it stopped and why, which queued plans no
+  longer verify, order problems between plans, cross-queue file overlap, and
+  active runners. (Fixes #467)
+- `snodo queue run` runs `default`; `run x` runs one queue, `run x,y` runs
+  queues in parallel and `run --all` runs every queue in turn. A per-queue
+  lock refuses a second runner, and the runner exits when nothing is
+  runnable. `--non-blocking` passes over a failed plan and keeps going;
+  `--parallel-run N` runs up to N plans of a queue at once and only applies
+  with `--non-blocking`. (Fixes #466)
+- Protocols can set queue run defaults with `queue.non_blocking` (default
+  false) and `queue.parallel_runs` (default 1). (Fixes #465)
+- MCP tools `queue_list`, `queue_create`, `queue_move`, `queue_remove`,
+  `queue_validate` and `queue_run` (asynchronous, followed with the job
+  tools). They come with the planning surface: any mode that can run plans
+  can queue and run them. (Fixes #471, #473)
+- MCP guide topics `queues` (reading validation, the unattended loop and
+  self-checks, unblocking the front plan, safe lanes, when to stop, an
+  overnight example) and `queue-triage` (adopting a project's inherited
+  plans, keep/fix/retire, the morning review). The getting-started guide now
+  leads from plan authoring into queues. (Fixes #472, #474, #475)
+- End-to-end coverage of queue recovery: a blocked plan stops only its own
+  queue, a corrective plan moved to the front unblocks it, and non-blocking
+  runs pass over failures. (Fixes #470)
+- ADR 054 (proposed) describes cloud interface v6: recon events, merge size
+  on `task_merged`, and the plan hierarchy in history.
 
 ## [0.15.0] — 2026-09-24
 
