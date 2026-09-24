@@ -1,4 +1,4 @@
-# ADR 054 — The cloud sees recons, queue-started runs and the commits a merge delivered
+# ADR 054 — The cloud sees recons, the plan hierarchy and the commits a merge delivered
 
 ## Status
 
@@ -20,6 +20,14 @@ from both.
   what the merge delivered. Projects merge tens of commits a day through
   snodo; the cloud can count merges but cannot show commits, files or
   lines.
+- **The plan hierarchy.** No task event carries its plan: `dispatch`,
+  `task_complete`, `task_merged` and `halt` carry `task_ref` and
+  `session_id` only. The `wave_id` on `task_classified` is the wave
+  classifier's own id (`w_002a`), not the plan's wave. `plan_run` and
+  `plan_proposed` are opaque in the ingest union, and only the MCP path
+  emits `plan_run`; `snodo plan run` emits neither. Without a live snapshot
+  the cloud cannot rebuild plan → wave → task, and inferring it from branch
+  names or `task_ref` prefixes is a convention, not a contract.
 - **Processes that never arm liveness.** `cloud_liveness.install()` is
   called only from `snodo run`. Recon and MCP-started runs happen inside
   the MCP server process, which pushes only through the planner's
@@ -45,12 +53,16 @@ from both.
    `merge_sha` at merge time; a failure to measure omits the fields and
    never fails the merge. Commits made outside snodo stay out of scope:
    snodo reports what it merged.
-4. **Queue-started runs say so.** Queue state itself is not shipped. The
-   `plan_run` event gets a pinned shape (plan_name, job_id, mode, and a
-   `trigger` of `mcp`, `cli` or `queue`, plus `queue` naming the queue when
-   the trigger is `queue`), and a liveness plan carries `queue` while a
-   queue runner is running it. This records who started a run, not which
-   queue a plan belongs to.
+4. **History carries the plan hierarchy.** `task_classified`, `dispatch`,
+   `task_complete`, `task_merged` and `halt` gain `plan_name` and
+   `plan_wave` (the plan's wave id, distinct from the classifier's
+   `wave_id`) when the task belongs to a plan. `plan_proposed` and
+   `plan_run` get pinned shapes, `{plan_name, waves: [{wave_id, task_refs}]}`,
+   and both the CLI and the MCP path emit them. `plan_run` also carries
+   `trigger` (`mcp`, `cli` or `queue`) and, when the trigger is `queue`, the
+   `queue` that started it. Queue state itself is not shipped: the record is
+   who started a run, not which queue a plan belongs to. A liveness plan
+   carries `queue` while a queue runner is running it.
 5. **Every long-lived snodo process arms liveness**: `snodo run`, the MCP
    server and `snodo queue run`. Every push still passes the sync gate,
    so with `cloud.sync_enabled` off nothing goes on the network.
@@ -65,8 +77,9 @@ from both.
 ## Consequences
 
 The cloud can wire its Recons counter to `recon_started` and its Commits
-counter to `task_merged.commit_count`, and show delivered lines and files
-per project, plan and day. History before this change has merges without
+counter to `task_merged.commit_count`, show delivered lines and files per
+project, plan and day, and rebuild plan → wave → task for any window from
+history alone. History before this change has merges without
 stats; they count as merges with unknown size. snodo-cloud must accept
 interface version 6 before a client sends it; until then a client sending
 version 6 events would be refused, so the cloud side ships first or
