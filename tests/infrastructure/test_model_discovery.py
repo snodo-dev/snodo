@@ -10,12 +10,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from snodo.config import ConfigError, ConfigManager
 from snodo.infrastructure.config import ProviderConfig
 from snodo.infrastructure.model_discovery import (
     _CACHE_TTL_SECONDS,
     _discover_anthropic,
     _discover_google,
     _discover_openrouter,
+    _discover_openai_compatible,
     _read_cache,
     _write_cache,
     discover_models,
@@ -200,6 +202,35 @@ class TestCache:
 
 
 class TestDiscoverModels:
+    def test_encrypted_provider_key_is_decrypted_for_discovery(self, tmp_path, monkeypatch, temp_cache_dir):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("OPENAI_API_KEY", "wrong-env-key")
+        manager = ConfigManager(config_dir=tmp_path / ".snodo")
+        manager.save({"providers": {"openai": {
+            "api_key": "sk-decrypted", "api_key_env": "OPENAI_API_KEY",
+            "models_endpoint": "https://api.openai.com/v1/models",
+        }}})
+        assert manager.encrypt_provider_keys() == ["openai"]
+        providers = {"openai": manager.get_providers()["openai"]}
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"data": [{"id": "gpt-test"}]}
+        with patch("httpx.get", return_value=mock_resp) as mock_get:
+            results = discover_models(providers, force_refresh=True)
+
+        assert [model.id for model in results] == ["gpt-test"]
+        assert mock_get.call_args.kwargs["headers"]["Authorization"] == "Bearer sk-decrypted"
+
+    def test_unreadable_encrypted_key_names_provider_without_using_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("OPENAI_API_KEY", "wrong-env-key")
+        pc = ProviderConfig(api_key="@keys/openai.key", api_key_env="OPENAI_API_KEY")
+        with patch("httpx.get") as mock_get:
+            with pytest.raises(ConfigError, match="Unable to decrypt API key for provider 'openai'") as exc:
+                _discover_openai_compatible(pc)
+        assert "@keys/openai.key" in str(exc.value)
+        mock_get.assert_not_called()
+
     def test_cache_hit_no_http(self, temp_cache_dir):
         models = [
             {"provider": "anthropic", "id": "cached-1", "full_string": "cached-1", "display_name": "", "context_window": 0},

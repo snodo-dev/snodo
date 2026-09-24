@@ -525,7 +525,11 @@ class ConfigManager:
         Returns:
             API key string, or None if not configured
         """
-        pc = self.get_providers().get(provider)
+        return self.resolve_provider_key(provider, self.get_providers().get(provider))
+
+    @staticmethod
+    def resolve_provider_key(provider: str, pc: Optional[ProviderConfig]) -> Optional[str]:
+        """Resolve a provider's configured key, then its env or named reference."""
         if pc and pc.api_key:
             if pc.api_key.startswith("@keys/"):
                 from snodo.provider_key_files import decrypt, provider_file
@@ -542,7 +546,7 @@ class ConfigManager:
         if pc and pc.api_key_env:
             return os.environ.get(pc.api_key_env) or None
         if pc and pc.api_key_ref:
-            return self._resolve_key_reference(pc.api_key_ref)
+            return ConfigManager._resolve_key_reference(pc.api_key_ref)
         return None
 
     @staticmethod
