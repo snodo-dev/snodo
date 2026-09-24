@@ -2051,6 +2051,13 @@ class TestInstructions:
         assert len(text) < 1000
         assert "dispatch_task" not in text
 
+    def test_guide_default_offers_queue_path_with_or_without_plan_tools(self, server):
+        with_plans = guide_text(server.project_root, {"run_plan", "queue_run"})
+        assert "`validate_plan` (queues it in `default`)" in with_plans
+        queue_only = guide_text(server.project_root, {"queue_run", "queue_validate"})
+        assert "Use `queue_list` and `queue_validate`" in queue_only
+        assert "propose_plan" not in queue_only
+
     def test_guide_topics_return_document_sections(self, server):
         text = guide_text(server.project_root, {tool["name"] for tool in server.get_tools()}, "halts")
         assert "pass" in text
@@ -2112,6 +2119,23 @@ class TestInstructions:
         assert "Auto-merge is opt-in" in text
         assert "is recorded `completed`" in text
         assert "attempted and failed" in text
+
+    def test_guide_queues_topic_teaches_queue_progression(self, server):
+        exposed = {tool["name"] for tool in server.get_tools()}
+        menu = guide_text(server.project_root, exposed)
+        text = guide_text(server.project_root, exposed, "queues")
+
+        assert "`queues`" in menu
+        assert "queue_validate" in text
+        assert "queue_move" in text
+        assert "corrective plan" in text and "front" in text
+        assert "queue_run" in text
+        assert "nothing runnable" in text
+        assert "join the back of `default`" in text
+        assert "--non-blocking" in text
+        assert "--parallel-run N" in text
+        assert "independent plans" in text
+        assert "related work belongs in one queue" in text
 
     def test_guide_automation_topic_filters_tools_withheld_by_mode(self, server):
         text = guide_text(server.project_root, {"read_file"}, "automation")

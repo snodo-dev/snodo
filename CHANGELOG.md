@@ -25,6 +25,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - `snodo queue validate [x]` reports queue readiness, current plan verification,
   visible path dependencies, cross-queue file collisions and active runners
   without changing queue state; supports `--json`. (Fixes #467)
+- The MCP `queues` guide teaches orchestrators to validate, reorder, unblock and
+  resume queue progression. (Fixes #472)
 
 ### Fixed
 - Passing plans now join the back of the default queue after CLI or MCP
