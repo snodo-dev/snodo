@@ -8,9 +8,8 @@ import json
 class QueueToolHandler:
     """Expose CLI-equivalent queue operations to MCP callers."""
 
-    def __init__(self, project_root: str, server):
+    def __init__(self, project_root: str):
         self.project_root = Path(project_root)
-        self.server = server
 
     @staticmethod
     def _error(message: str):
@@ -122,10 +121,6 @@ class QueueToolHandler:
             job_id = JobManager(str(self.project_root)).submit(task_args)
         except (JobError, ValueError, OSError) as exc:
             self._error(f"Failed to start queue run: {exc}")
-        self.server._audit("queue_run", {
-            "op": "queue_run", "job_id": job_id, "queues": selected,
-            "mode": self.server._active_mode(),
-        })
         return {
             "status": "accepted",
             "job_id": job_id,

@@ -146,7 +146,7 @@ class ProtocolMCPServer:
 
         self._core_handler = CoreToolHandler(self)
         self._plan_handler = PlanToolHandler(self)
-        self._queue_handler = QueueToolHandler(project_root, self)
+        self._queue_handler = QueueToolHandler(project_root)
 
         # Build registry of tool handlers, detecting collisions
         self._dispatch = {}
