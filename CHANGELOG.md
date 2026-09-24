@@ -19,6 +19,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Protocols can set queue run defaults with `queue.non_blocking` and
   `queue.parallel_runs`; defaults preserve strict, sequential queue behaviour.
   (Fixes #465)
+- `snodo queue validate [x]` reports queue readiness, current plan verification,
+  visible path dependencies, cross-queue file collisions and active runners
+  without changing queue state; supports `--json`. (Fixes #467)
 
 ### Fixed
 - Passing plans now join the back of the default queue after CLI or MCP
