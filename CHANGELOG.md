@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-09-24
+
 ### Fixed
 - Cloud liveness snapshots now include every wave and task of plans that are
   not fully completed, including blocked, unmerged and pending work; only
@@ -31,6 +33,16 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Cloud admission now mints leases at the session-scoped app route and sends
   audit batches to the session-scoped ingest route, matching the deployed
   endpoints. The app and API hosts remain independently configurable.
+- Quality gate separates pre-existing test failures from ones the task
+  introduced, and plan overlap checks ignore off-limits paths.
+- Task worktrees are prepared before coder dispatch and keep their work across
+  retries; spec path checks resolve JS workspace roots and keep framework
+  paths cited in specs.
+- Coders retry without provider-rejected parameters.
+- Stale-premise detection tolerates separator punctuation. (Refs #286)
+- Inline plan task runs are audited; `snodo plan watch` prints each log line
+  once; the MCP server reports stale serving versions.
+- Codecov uploads authenticate with OIDC.
 
 ### Changed
 - Cloud ingest validates known audit event types against their declared shapes
@@ -39,6 +51,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   published cloud interface version is now 5. Rate-limit retries honor
   `retry_after` in the response body or `Retry-After` header and do not consume
   the failed-attempt budget.
+- Coverage for dashboard panels and CLI commands (mode, worktree, jobs, logs,
+  human decisions); the greenfield e2e test walks the declared mode path.
 
 ### Added
 - `snodo config --encrypt-provider-keys` backs up config and replaces plaintext
@@ -48,6 +62,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - The MCP server now exposes an always-available, source-backed `guide` tool for
   learning how to author, size, run and recover plans without relying on the
   truncated handshake instructions. (Fixes #399)
+- Model benchmarking under `snodo models`: `--set-baseline` captures a task's
+  recorded solution as a baseline, `--benchmark-run --model` reruns the task in
+  isolation without merging, and `--compare` scores a candidate job against the
+  baseline with signed deltas.
+- MCP guide topics: planning, waves, spec, mistakes, models, discovery
+  (decompose and recon), following-a-run, outcomes, automation and
+  evolving-the-protocol. `run_plan` with `wait=true` reports task progress.
+- MCP `survey`, `intake` and `ready` tools expose project diagnostics.
 
 ## [0.14.0] — 2026-09-22
 
