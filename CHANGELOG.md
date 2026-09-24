@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `snodo queue` lists queues and plan statuses; `snodo queue create` and
+  `snodo queue move` let operators create queues and reorder queued plans from
+  the CLI, with versioned JSON output. (Fixes #469)
 - Persistent ordered plan queues under `.snodo/`, including atomic queue
   records, first-read migration of verified incomplete plans, completed-plan
   pruning and per-queue runner locks. (Fixes #464)
