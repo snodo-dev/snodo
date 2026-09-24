@@ -94,7 +94,7 @@ def run_remote_task(
     *, project_root: str, task_id: str, spec: str,
     protocol_path: str = ".snodo/protocol.yml", model: Optional[str] = None,
     coder: Optional[str] = None, mode: Optional[str] = None,
-    plan: Optional[str] = None, mock: bool = False,
+    plan: Optional[str] = None, mock: bool = False, base_sha: Optional[str] = None,
 ) -> int:
     """Run one complete task and report only its JSONL stream on stdout."""
     try:
@@ -144,7 +144,9 @@ def run_remote_task(
             if protocol is None:
                 raise RuntimeError(f"Could not load protocol: {proto_path}")
             branch = task_branch_name(task_id, spec, plan)
-            task_wt = setup_for_task(root, task_id, spec, plan_name=plan, protocol=protocol)
+            task_wt = setup_for_task(
+                root, task_id, spec, plan_name=plan, protocol=protocol, base=base_sha,
+            )
             if not task_wt:
                 raise RuntimeError("Could not create task worktree")
             branch = _git(Path(task_wt), "branch", "--show-current")
@@ -236,10 +238,11 @@ def register(app: typer.Typer) -> None:
         mode: Optional[str] = typer.Option(None, "--mode"),
         plan: Optional[str] = typer.Option(None, "--plan"),
         mock: bool = typer.Option(False, "--mock"),
+        base_sha: Optional[str] = typer.Option(None, "--base-sha"),
     ):
         """Internal stateless task worker; invoked by the local SSH dispatcher."""
         return run_remote_task(
             project_root=project_root, task_id=task_id, spec=spec,
             protocol_path=protocol, model=model, coder=coder,
-            mode=mode, plan=plan, mock=mock,
+            mode=mode, plan=plan, mock=mock, base_sha=base_sha,
         )
