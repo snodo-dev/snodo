@@ -406,6 +406,7 @@ class JobManager:
             "title": title,
             "plan": plan,
             "parent_job": task.get("parent_job", "") or "",
+            "host": task.get("host", "") or "",
             "exit_code": state.get("exit_code"),
             "created_at": state.get("created_at", 0),
             "started_at": started,
