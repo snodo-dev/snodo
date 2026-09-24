@@ -1,4 +1,4 @@
-<!-- snodo-guide topic="queue-triage" summary="Adopt inherited plans into runnable queues" section="# Adopt an inherited queue" -->
+<!-- snodo-guide topic="queue-triage" summary="Triage inherited plans" section="# Adopt an inherited queue" -->
 # Adopt an inherited queue
 
 When queues are first used in an existing project, every incomplete plan that

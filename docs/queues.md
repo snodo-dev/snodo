@@ -1,4 +1,4 @@
-<!-- snodo-guide topic="queues" summary="Validate, unblock, and nudge queues through their ordered plans" section="# Keep queues moving" -->
+<!-- snodo-guide topic="queues" summary="Validate and run queues" section="# Keep queues moving" -->
 # Keep queues moving
 
 Snodo moves plans forward; the orchestrator supplies judgement. Snodo's queue
