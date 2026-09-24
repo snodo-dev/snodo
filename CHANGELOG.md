@@ -29,6 +29,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   resume queue progression. (Fixes #472)
 
 ### Fixed
+- Queue-run e2e coverage now exercises blocked-plan recovery and parallel queues;
+  queue execution normalizes the project root before plan status checks.
+  (Fixes #470)
 - Passing plans now join the back of the default queue after CLI or MCP
   validation, while existing queue membership and order are preserved. (Fixes #468)
 - `snodo queue run` now runs queued plans in FIFO order, stops at the first

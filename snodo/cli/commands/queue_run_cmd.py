@@ -50,7 +50,7 @@ def _queue_run(
     from snodo.cli.commands.run_cmd import RunArgs
     from snodo.infrastructure.queue_store import QueueError, QueueStore
 
-    project_root = require_project_root()
+    project_root = Path(require_project_root())
     protocol_obj = load_protocol(Path(protocol))
     if not protocol_obj:
         return 1
