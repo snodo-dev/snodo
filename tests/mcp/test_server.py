@@ -2051,6 +2051,13 @@ class TestInstructions:
         assert len(text) < 1000
         assert "dispatch_task" not in text
 
+    def test_guide_default_offers_queue_path_with_or_without_plan_tools(self, server):
+        with_plans = guide_text(server.project_root, {"run_plan", "queue_run"})
+        assert "`validate_plan` (queues it in `default`)" in with_plans
+        queue_only = guide_text(server.project_root, {"queue_run", "queue_validate"})
+        assert "Use `queue_list` and `queue_validate`" in queue_only
+        assert "propose_plan" not in queue_only
+
     def test_guide_topics_return_document_sections(self, server):
         text = guide_text(server.project_root, {tool["name"] for tool in server.get_tools()}, "halts")
         assert "pass" in text
