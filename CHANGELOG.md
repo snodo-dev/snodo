@@ -12,6 +12,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Provider model discovery now decrypts `@keys/` API key references using the
   same credential resolution and precedence as completions. (Fixes #461)
+- `snodo models --check` now retries provider-rejected parameters using the
+  shared rejection parser, so classifier canaries honor the production
+  temperature fallback. (Fixes #462)
 - `snodo models --check` now uses role-specific requests, including the
   validator's real forced-tool fallback, and checks `opencode-cli` model names
   against snodo's provider list as a best-effort lookup. (Fixes #460)

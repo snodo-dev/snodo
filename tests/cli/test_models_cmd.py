@@ -420,6 +420,38 @@ def test_models_check_recovers_from_temperature_refusal(monkeypatch, capsys):
     assert "temperature" not in calls[1]
 
 
+def test_models_check_classifier_recovers_from_unsupported_temperature_value(monkeypatch, capsys):
+    """Classifier canaries share the production fallback for rejected parameters."""
+    monkeypatch.setattr(
+        "snodo.cli.commands.models_cmd._configured_models",
+        lambda: [("classifier", "openai/temperature-limited")],
+    )
+
+    calls = []
+
+    def canary(model, role="classifier"):
+        def completion(**kwargs):
+            calls.append(kwargs.copy())
+            if "temperature" in kwargs:
+                error = RuntimeError(
+                    "Unsupported value: 'temperature' does not support 0.0 with this model. "
+                    "Only the default (1) value is supported."
+                )
+                error.status_code = 400
+                raise error
+
+        run_canary_call(model, completion, role=role)
+
+    monkeypatch.setattr("snodo.cli.commands.models_cmd._run_canary_call", canary)
+
+    assert models_check_command(SimpleNamespace()) == 0
+    out = capsys.readouterr().out
+    assert "OK       openai/temperature-limited (classifier)" in out
+    assert len(calls) == 2
+    assert calls[0]["temperature"] == 0.0
+    assert "temperature" not in calls[1]
+
+
 def test_models_check_recovers_from_forced_tool_choice_refusal(monkeypatch, capsys):
     """A model refusing forced tool choice is still healthy when unforced."""
     monkeypatch.setattr(
