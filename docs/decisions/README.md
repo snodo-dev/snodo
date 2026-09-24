@@ -56,3 +56,5 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [050](050-repeat-reads-are-free-but-bounded.md) | A validator's repeat-read turns are free but separately bounded | 2026-09-18 | `validators/llm_validator.py` (`_evaluate_with_tools`) |
 | [051](051-coder-containment-is-declared-not-deployed.md) | Coder containment is a declared property, not a deployment detail | 2026-09-21 | `coders/opencode_container.py` + coder definition |
 | [052](052-validator-tool-access-is-a-declared-opt-in.md) | A validator's fail-safe on unreachable verification is a declared, per-validator opt-in | 2026-09-22 | `ValidatorConfig` (`compiler/models.py`) + validator protocol entries |
+| [053](053-plans-run-from-queues.md) | Plans run from queues; a queue stops at its first unfinished plan | 2026-09-24 | `snodo queue` |
+| [054](054-cloud-sees-recons-queues-and-delivered-commits.md) | The cloud sees recons, queue-started runs and the commits a merge delivered | 2026-09-24 | `cloud_liveness.py` + `recon/` + `run_merge.py` (proposed) |
