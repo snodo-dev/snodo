@@ -50,7 +50,7 @@ This declares one mode (producer) with one tool (edit) and one validator (securi
 | `initial_mode` | string | yes | Mode ID to start in |
 | `global_constraints` | list[Constraint] | no | Protocol-wide constraints (see Constraints) |
 | `execution` | ExecutionConfig | no | Execution and recovery configuration (see Execution configuration) |
-| `queue` | QueueConfig | no | Default behaviour for `snodo queue run` (see Queue configuration) |
+| `queue` | QueueConfig | no | Default behaviour for queue runs (see Queue configuration) |
 | `metadata` | dict | no | Arbitrary key/value metadata |
 
 ---
