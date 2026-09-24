@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Any
+import json
 
 
 class QueueToolHandler:
@@ -19,13 +20,12 @@ class QueueToolHandler:
 
     def handle_queue_list(self, _arguments: dict) -> dict:
         from snodo.infrastructure.queue_store import QueueError, QueueStore
-        from snodo.cli.commands.queue_cmd import _plan_status
 
         try:
             queues = QueueStore(self.project_root).list_queues()
             return {
                 "queues": {
-                    name: [{"name": plan, "status": _plan_status(self.project_root, plan)} for plan in plans]
+                    name: [{"name": plan, "status": self._plan_status(plan)} for plan in plans]
                     for name, plans in queues.items()
                 }
             }
@@ -44,7 +44,6 @@ class QueueToolHandler:
 
     def handle_queue_move(self, arguments: dict) -> dict:
         from snodo.infrastructure.queue_store import QueueError, QueueStore
-        from snodo.cli.commands.queue_cmd import _is_plan_running
 
         plan = str(arguments.get("plan") or "")
         front = bool(arguments.get("front", False))
@@ -53,7 +52,7 @@ class QueueToolHandler:
         queue = arguments.get("queue")
         try:
             store = QueueStore(self.project_root)
-            if _is_plan_running(self.project_root, plan):
+            if self._is_plan_running(plan):
                 raise QueueError(f"Cannot move plan while it is running: {plan}")
             source = next((name for name, plans in store.list_queues().items() if plan in plans), None)
             store.move(plan, queue=queue, front=front, before=before, after=after)
@@ -68,7 +67,7 @@ class QueueToolHandler:
         }
 
     def handle_queue_validate(self, arguments: dict) -> dict:
-        from snodo.cli.commands.queue_validate_cmd import build_validation_report
+        from snodo.infrastructure.queue_validation import build_validation_report
 
         try:
             return build_validation_report(self.project_root, arguments.get("queue"))
@@ -77,9 +76,9 @@ class QueueToolHandler:
 
     def handle_queue_run(self, arguments: dict) -> dict:
         """Submit the same queue CLI operation as a background job."""
-        from snodo.cli.commands import load_protocol
         from snodo.infrastructure.queue_store import QueueError, QueueStore
         from snodo.jobs import JobError, JobManager
+        from snodo.protocols import load_protocol
 
         queue_names = arguments.get("queues")
         all_queues = bool(arguments.get("all", False))
@@ -133,6 +132,47 @@ class QueueToolHandler:
             "queues": selected,
             "instruction": "Queue run started. Poll get_job_status(job_id) until it completes; inspect output with get_job_logs(job_id).",
         }
+
+    def _plan_status(self, plan_name: str) -> str:
+        """Derive aggregate status from the plan and its recorded task statuses."""
+        plan_dir = self.project_root / ".snodo" / "plans" / plan_name
+        try:
+            import yaml
+
+            plan = yaml.safe_load((plan_dir / "plan.yml").read_text(encoding="utf-8")) or {}
+            status_path = plan_dir / "status.json"
+            status_data = json.loads(status_path.read_text(encoding="utf-8")) if status_path.exists() else {}
+            task_statuses = status_data.get("tasks", {})
+            statuses = []
+            for wave in plan.get("waves", []):
+                for task in wave.get("tasks", []):
+                    value = task_statuses.get(str(task), "pending")
+                    if isinstance(value, dict):
+                        value = value.get("status", "pending")
+                    value = str(value)
+                    statuses.append({"running": "in_progress", "failed": "errored", "merged": "completed"}.get(value, value))
+        except (OSError, ValueError, TypeError, AttributeError):
+            return "unknown"
+        if not statuses:
+            return "pending"
+        for status in ("errored", "blocked", "unmerged", "in_progress"):
+            if status in statuses:
+                return status
+        return "completed" if all(status == "completed" for status in statuses) else "pending"
+
+    def _is_plan_running(self, plan_name: str) -> bool:
+        """Detect live task states or a queued/running plan job."""
+        if self._plan_status(plan_name) == "in_progress":
+            return True
+        try:
+            from snodo.jobs import JobManager
+
+            return any(
+                job.get("plan") == plan_name and job.get("status") in {"queued", "running"}
+                for job in JobManager(str(self.project_root)).list_jobs()
+            )
+        except Exception:
+            return False
 
     def tool_handlers(self) -> dict:
         return {

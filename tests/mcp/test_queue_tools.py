@@ -69,7 +69,7 @@ def test_queue_run_returns_submitted_job_id_without_waiting(project, monkeypatch
     server = ProtocolMCPServer(_protocol(["queue"]), str(project), mode_id="orchestrator")
     submitted = {}
 
-    monkeypatch.setattr("snodo.cli.commands.load_protocol", lambda path: SimpleNamespace(queue=object()))
+    monkeypatch.setattr("snodo.protocols.load_protocol", lambda path: SimpleNamespace(queue=object()))
 
     class Manager:
         def __init__(self, root):
