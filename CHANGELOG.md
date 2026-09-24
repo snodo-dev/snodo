@@ -12,6 +12,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Added
 - The MCP `queues` guide teaches unattended queue polling, self-checks,
   validation triage, recovery, and safe independent lanes. (Fixes #475)
+- MCP `queue-triage` guide teaches orchestrators to review inherited plans,
+  organize runnable queues, and leave a morning review for the human. (Fixes #474)
 - `snodo queue remove <plan>` and MCP `queue_remove` remove a queued plan
   without changing its plan records; validation can enqueue it again. (Fixes #473)
 - MCP `queue_list`, `queue_create`, `queue_move`, `queue_validate` and

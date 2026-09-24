@@ -7,6 +7,8 @@ runner processes a queue FIFO and stops at its first plan that ends `blocked`,
 reorders plans, and nudges queues by starting another run. A runner exits when
 there is nothing runnable; it does not wait for a future fix or for more plans.
 
+For first-use cleanup of inherited plans, see the [queue triage guide](queue-triage.md).
+
 ## Read validation and decide
 
 Call `queue_validate` before starting and whenever a runner exits or a queue

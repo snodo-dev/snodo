@@ -193,7 +193,7 @@ def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -
 
     menu = guide_menu(project_root, exposed)
     if "queue_run" in exposed and "run_plan" in exposed:
-        path = "First use `propose_plan`, add task specs with `generate_spec`, then `validate_plan` (queues it in `default`). Check order with `queue_validate`, adjust with `queue_move` or retire a plan with `queue_remove`, then `queue_run` (or `run_plan` for one plan); poll with `get_job_status` and `get_job_logs`."
+        path = "First use `propose_plan` and `generate_spec`, then `validate_plan` (queues it in `default`). Order with `queue_validate` / `queue_move` (retire with `queue_remove`), then `queue_run` (`run_plan` for one plan); poll `get_job_status` and `get_job_logs`."
     elif "queue_run" in exposed:
         path = "Use `queue_list` and `queue_validate`, reorder, remove plans, or create queues with `queue_move` / `queue_remove` / `queue_create`, then start progression with `queue_run`; poll its job with `get_job_status` and `get_job_logs`."
     elif "run_plan" in exposed:
