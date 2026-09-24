@@ -2135,7 +2135,17 @@ class TestInstructions:
         assert "--non-blocking" in text
         assert "--parallel-run N" in text
         assert "independent plans" in text
-        assert "related work belongs in one queue" in text
+        assert "Keep dependent plans in one queue" in text
+        assert "queue_validate" in text and "verification_errors" in text
+        assert "later_plan_creates_cited_path" in text
+        assert "other_queue_creates_cited_path" in text
+        assert "cross_queue_warnings" in text
+        assert "runner_active" in text
+        assert "get_job_status" in text and "get_job_logs" in text
+        assert "about every 10 minutes" in text
+        assert "Blocked:" in text and "Errored:" in text and "Unmerged:" in text
+        assert "Example: one overnight session" in text
+        assert "human decision or repair" in text
 
     def test_guide_automation_topic_filters_tools_withheld_by_mode(self, server):
         text = guide_text(server.project_root, {"read_file"}, "automation")
