@@ -91,8 +91,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   isolation without merging, and `--compare` scores a candidate job against the
   baseline with signed deltas.
 - MCP guide topics: planning, waves, spec, mistakes, models, discovery
-  (decompose and recon), following-a-run, outcomes, automation and
-  evolving-the-protocol. `run_plan` with `wait=true` reports task progress.
+  (decompose and recon), following-a-run, outcomes, automation, queues and
+  evolving-the-protocol. The queues guide teaches orchestrators to validate,
+  reorder, unblock and resume queue progression. (Fixes #472)
+  `run_plan` with `wait=true` reports task progress.
 - MCP `survey`, `intake` and `ready` tools expose project diagnostics.
 
 ## [0.14.0] — 2026-09-22
