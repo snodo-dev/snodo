@@ -2147,6 +2147,21 @@ class TestInstructions:
         assert "Example: one overnight session" in text
         assert "human decision or repair" in text
 
+    def test_queue_triage_guide_teaches_inherited_plan_review(self, server):
+        exposed = {tool["name"] for tool in server.get_tools()}
+        menu = guide_text(server.project_root, exposed)
+        text = guide_text(server.project_root, exposed, "queue-triage")
+
+        assert "`queue-triage`" in menu
+        assert "`queue_list`" in text and "`get_plan`" in text
+        assert "keep" in text and "fix" in text and "retire" in text
+        assert "`queue_remove`" in text and "stay on disk" in text
+        assert "`queue_validate`" in text and "resolve its findings" in text
+        assert "eleven inherited Droptrack plans" in text
+        assert "Morning review" in text
+        assert "plan name and each task" in text
+        assert "known divergence" in text
+
     def test_guide_automation_topic_filters_tools_withheld_by_mode(self, server):
         text = guide_text(server.project_root, {"read_file"}, "automation")
 
