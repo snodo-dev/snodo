@@ -26,6 +26,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Passing plans now join the back of the default queue after CLI or MCP
   validation, while existing queue membership and order are preserved. (Fixes #468)
+- `snodo queue run` now runs queued plans in FIFO order, stops at the first
+  unfinished plan by default, and supports non-blocking parallel runs and
+  parallel runners across explicitly named queues. (Fixes #466)
 
 ## [0.15.0] — 2026-09-24
 

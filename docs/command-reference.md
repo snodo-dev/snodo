@@ -66,6 +66,7 @@ Use these commands to inspect the repository, create a plan, and execute work.
 | `snodo plan add-task` | Add a task to a plan from a spec file. |
 | `snodo plan add-wave` | Add a wave to a plan. |
 | `snodo plan run` | Execute a plan's tasks through the protocol loop. |
+| `snodo queue run` | Run queued plans until each selected queue is empty or blocked. |
 | `snodo plan delete` | Delete a plan directory. |
 | `snodo run` | Execute a task through the protocol. |
 | `snodo validate` | Run a phase's validators and return the structured result. |
@@ -86,6 +87,14 @@ snodo plan run health-endpoint --mock
 `snodo run` accepts a description unless `--plan` is used. Its `--retry`
 option takes a task ID; use `--append-spec` to add guidance or
 `--replace-spec` to deliberately replace the existing spec.
+
+`snodo queue run` runs the `default` queue, or a named queue such as
+`snodo queue run build`. Pass comma-separated names to run queues in parallel;
+`--all` runs queues sequentially in creation order. Queue runs stop at the
+first blocked, errored, or unmerged plan unless `--non-blocking` is set. With
+non-blocking enabled, `--parallel-run N` runs up to N plans from one queue at
+once. The protocol's `queue.non_blocking` and `queue.parallel_runs` settings
+provide the defaults.
 
 ## Follow A Run
 
