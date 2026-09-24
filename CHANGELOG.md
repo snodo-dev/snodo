@@ -17,6 +17,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   `queue.parallel_runs`; defaults preserve strict, sequential queue behaviour.
   (Fixes #465)
 
+### Fixed
+- Passing plans now join the back of the default queue after CLI or MCP
+  validation, while existing queue membership and order are preserved. (Fixes #468)
+
 ## [0.15.0] — 2026-09-24
 
 ### Fixed

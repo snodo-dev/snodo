@@ -196,6 +196,8 @@ class TestValidateWithoutExecution:
         assert result["valid"] is True
         assert result["wave_count"] == 2
         assert result["task_count"] == 2
+        assert result["queue"] == "default"
+        assert result["position"] == 1
         # Nothing executed: no jobs were created, no task moved off pending.
         jobs_dir = Path(project_dir) / ".snodo" / "jobs"
         assert not jobs_dir.exists() or not list(jobs_dir.iterdir())
@@ -206,6 +208,23 @@ class TestValidateWithoutExecution:
             (t.get("status") if isinstance(t, dict) else t) == "pending"
             for t in status["tasks"].values()
         )
+
+    def test_validation_of_queued_plan_does_not_move_it(self, server, project_dir):
+        from snodo.infrastructure.queue_store import QueueStore
+
+        store = QueueStore(project_dir)
+        store.list_queues()
+        store.create_queue("later")
+        _propose(server, name="queued")
+        _add_task(server, "queued", "1.1_a", "INTENT: A.\nCONSTRAINTS: None.")
+        store.add("queued", "later")
+
+        result = server.call_tool("validate_plan", {"plan_name": "queued"})
+
+        assert result["queue"] == "later"
+        assert result["position"] == 1
+        assert result["already_queued"] is True
+        assert store.list_queues()["later"] == ["queued"]
 
 
 # === The gate: an invalid plan cannot run ===
@@ -232,6 +251,8 @@ class TestRunPlanGate:
 
         validation = server.call_tool("validate_plan", {"plan_name": "broken"})
         assert validation["valid"] is False
+        from snodo.infrastructure.queue_store import QueueStore
+        assert all("broken" not in plans for plans in QueueStore(project_dir).list_queues().values())
 
         with patch("snodo.jobs.JobManager") as MockJM:
             with pytest.raises(MCPError, match="failed validation and was not run"):

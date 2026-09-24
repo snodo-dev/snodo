@@ -123,6 +123,24 @@ def test_plan_validate_passes_on_well_formed_plan(plan_env, capsys):
 
     out = capsys.readouterr().out
     assert f"Plan '{plan_name}' validated successfully." in out
+    assert "queued in default at position 1" in out
+
+
+def test_plan_validate_already_queued_does_not_move_it(plan_env, capsys):
+    from snodo.infrastructure.queue_store import QueueStore
+
+    store = QueueStore(plan_env)
+    store.create_queue("later")
+    _create_hand_authored_plan(plan_env, "first")
+    plan_name = _create_hand_authored_plan(plan_env, "already_queued")
+    store.add(plan_name, "later")
+
+    args = SimpleNamespace(plan_action="validate", name=plan_name, json_output=False)
+    assert plan_command(args) == 0
+
+    assert store.list_queues()["default"] == []
+    assert store.list_queues()["later"] == [plan_name]
+    assert "already queued in later at position 1" in capsys.readouterr().out
 
 
 def test_plan_validate_fails_on_missing_spec_file(plan_env, capsys):
@@ -166,6 +184,8 @@ def test_plan_validate_fails_on_dependency_cycle(plan_env, capsys):
 
 def test_plan_validate_json_output_pass(plan_env, capsys):
     """snodo plan validate --json outputs machine-readable JSON for passing plan."""
+    from snodo.infrastructure.queue_store import QueueStore
+    QueueStore(plan_env).list_queues()
     plan_name = _create_hand_authored_plan(plan_env, "json_pass")
 
     args = SimpleNamespace(plan_action="validate", name=plan_name, json_output=True)
@@ -178,6 +198,9 @@ def test_plan_validate_json_output_pass(plan_env, capsys):
     assert data["plan"] == plan_name
     assert data["passed"] is True
     assert data["errors"] == []
+    assert data["queue"] == "default"
+    assert data["position"] == 1
+    assert data["already_queued"] is False
 
 
 def test_plan_validate_json_output_fail(plan_env, capsys):
@@ -195,6 +218,8 @@ def test_plan_validate_json_output_fail(plan_env, capsys):
     assert data["passed"] is False
     assert len(data["errors"]) > 0
     assert any("Missing spec" in e for e in data["errors"])
+    from snodo.infrastructure.queue_store import QueueStore
+    assert all("json_fail" not in plans for plans in QueueStore(plan_env).list_queues().values())
 
 
 def test_plan_run_aborts_before_wave_1_on_verification_error(plan_env, capsys):
@@ -636,5 +661,3 @@ disagreement_policy: "unanimous"
     assert len(data["warnings"]) == 1
     assert "meta-spec" in data["warnings"][0]
     assert "[blocker]" in data["warnings"][0]
-
-
