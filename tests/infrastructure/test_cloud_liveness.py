@@ -144,13 +144,16 @@ class TestTransitionDriven:
         assert body["project_id"] == "local:test123"
         assert body["scope"] == "local"
         # The plan arrives as shape, not as a task dump: a begun plan node
-        # carries its status counts and the detail of what has started.
+        # carries its status counts and every task, including pending.
         # (No plan.yml here: the task detail rides on the plan node.)
         assert body["plans"] == [{
             "name": "wave8",
             "total": 2,
             "status_counts": {"in_progress": 1, "pending": 1},
-            "tasks": [{"id": "2.1", "status": "in_progress"}],
+            "tasks": [
+                {"id": "2.1", "status": "in_progress"},
+                {"id": "2.2", "status": "pending"},
+            ],
         }]
         assert body["tasks"][0]["id"] == "t_alpha"
         assert body["tasks"][0]["status"] == "running"
@@ -781,7 +784,7 @@ def _shaped_project(tmp_path: Path, attempts_per_completed_task: int) -> Path:
 
 
 class TestSnapshotShape:
-    def test_completed_wave_is_counts_running_wave_is_detail(self, tmp_path):
+    def test_incomplete_plan_carries_completed_and_pending_tasks(self, tmp_path):
         root = _shaped_project(tmp_path, attempts_per_completed_task=2)
         body = _snapshot(root)
         plan = body["plans"][0]
@@ -792,14 +795,13 @@ class TestSnapshotShape:
         }
 
         wave1, wave2 = plan["waves"]
-        # The completed branch: a count and the summary that renders
-        # "wave 1: 3/3 done" — not a full list of its members.
-        assert wave1 == {
-            "id": 1, "total": 3, "status_counts": {"completed": 3},
-        }
-        assert "tasks" not in wave1
+        assert wave1["id"] == 1
+        assert wave1["status_counts"] == {"completed": 3}
+        assert [(t["id"], t["status"]) for t in wave1["tasks"]] == [
+            ("1.1", "completed"), ("1.2", "completed"), ("1.3", "completed"),
+        ]
 
-        # The running frontier keeps its detail: started tasks, live job.
+        # The running wave includes completed, running and pending members.
         assert wave2["id"] == 2
         assert wave2["status_counts"] == {
             "completed": 1, "in_progress": 1, "pending": 1,
@@ -812,8 +814,8 @@ class TestSnapshotShape:
                 1787000200.0, timezone.utc,
             ).isoformat(),
         }]
-        # The pending member is not enumerated: its count is in the wave.
-        assert "2.3" not in started
+        assert started["2.1"]["status"] == "completed"
+        assert started["2.3"] == {"id": "2.3", "status": "pending"}
 
         # Terminal jobs inside the incomplete plan are still reported — as
         # the plan's tally, not as an enumeration that grows with history.
@@ -882,7 +884,7 @@ class TestSnapshotShape:
         assert task["status"] == "in_progress"
         assert task["wave_id"] == "w_0009"
 
-    def test_settled_wave_carries_ids_without_enumerating_tasks(self, tmp_path):
+    def test_settled_wave_carries_ids_and_tasks(self, tmp_path):
         root = tmp_path / "settled"
         _make_plan(root, "plan", "waves:\n  - id: 1\n    tasks: ['1.1', '1.2']\n  - id: 2\n    tasks: ['2.1']\n", {
             "1.1": "completed", "1.2": "completed", "2.1": "in_progress",
@@ -894,7 +896,8 @@ class TestSnapshotShape:
         wave = _snapshot(root)["plans"][0]["waves"][0]
 
         assert wave["wave_ids"] == ["w_0009"]
-        assert "tasks" not in wave
+        assert [t["id"] for t in wave["tasks"]] == ["1.1", "1.2"]
+        assert all(t["wave_id"] == "w_0009" for t in wave["tasks"])
 
     def test_settled_wave_reports_distinct_registry_ids(self, tmp_path):
         root = tmp_path / "mixed"
@@ -909,7 +912,7 @@ class TestSnapshotShape:
         wave = _snapshot(root)["plans"][0]["waves"][0]
 
         assert wave["wave_ids"] == ["w_0009", "w_000a"]
-        assert "tasks" not in wave
+        assert [t["id"] for t in wave["tasks"]] == ["1.1", "1.2", "1.3"]
 
     def test_unclassified_tasks_do_not_invent_registry_ids(self, tmp_path):
         root = tmp_path / "unclassified"

@@ -6393,7 +6393,7 @@
         "type": "object"
       },
       "LivenessPlan": {
-        "description": "A plan and its collapsed or detailed frontier.",
+        "description": "A plan and its completed summary or full task structure.",
         "properties": {
           "job_status_counts": {
             "additionalProperties": {
@@ -6469,8 +6469,19 @@
         "type": "object"
       },
       "LivenessTask": {
-        "description": "A task at a plan frontier, optionally carrying its live jobs.",
+        "description": "A plan task, optionally carrying its live jobs.",
         "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
           "id": {
             "title": "Id",
             "type": "string"
