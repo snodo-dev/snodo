@@ -10,6 +10,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Cloud liveness snapshots now include every wave and task of plans that are
+  not fully completed, including blocked, unmerged and pending work; only
+  fully completed plans collapse to counts. Task completion times travel when
+  known. (Fixes #463)
 - Provider model discovery now decrypts `@keys/` API key references using the
   same credential resolution and precedence as completions. (Fixes #461)
 - `snodo models --check` now retries provider-rejected parameters using the

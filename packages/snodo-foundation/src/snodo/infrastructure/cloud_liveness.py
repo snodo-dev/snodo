@@ -28,11 +28,10 @@ with opposite mechanics (Fixes #291):
   the next event.
 - **A full snapshot, never a delta.** A lost push is harmless; the next one
   supersedes it entirely.
-- **The plan's shape, not its history.** Plans carry structure — plan, then
-  waves, then tasks, then the jobs beneath them — and a branch that has
-  completed is a count and a summary, not a re-shipment of its members. What
-  is sent grows with the plan's shape and what is in flight, never with
-  elapsed time (Fixes #303).
+- **The plan's shape, not its history.** Plans still in play carry every wave
+  and task, including pending and settled tasks; only fully completed plans
+  collapse to counts. Settled job history remains a tally, so the payload
+  grows with plan shape, not elapsed time (Fixes #303, #463).
 - **Keyed by session**, which is already project-scoped, already persisted,
   and already survives a restart. The project rides along so the far side can
   join on it.
@@ -88,12 +87,13 @@ class LivenessJob(TypedDict):
 
 
 class LivenessTask(TypedDict):
-    """A task at a plan frontier, optionally carrying its live jobs."""
+    """A plan task, optionally carrying its live jobs."""
 
     id: str
     status: LivenessStatus
     wave_id: NotRequired[str]
     started_at: NotRequired[str | None]
+    completed_at: NotRequired[str | None]
     jobs: NotRequired[list[LivenessJob]]
 
 
@@ -108,7 +108,7 @@ class LivenessWave(TypedDict):
 
 
 class LivenessPlan(TypedDict):
-    """A plan and its collapsed or detailed frontier."""
+    """A plan and its completed summary or full task structure."""
 
     name: str
     total: int
@@ -626,11 +626,10 @@ def build_liveness_snapshot(
 
     The payload carries the plan's *shape* — plan, then waves, then tasks,
     then the jobs beneath them — the way `snodo plan status` renders it
-    (Fixes #303). A branch that has completed is a count and a summary
-    ("wave 1: 3/3 done"), not a list of its members; the running frontier
-    keeps its detail, because that is the part a viewer is watching. What
-    is sent grows with the plan's shape and what is in flight, never with
-    elapsed time: a session's settled history is tallied, not re-shipped.
+    (Fixes #303, #463). Every task of a plan still in play is visible;
+    a fully completed plan is a count and a summary. What is sent grows
+    with the plan's shape, never with elapsed time: settled job history
+    is tallied, not re-shipped.
 
     Read-only over the same records the plan-status view reads — plan files,
     task and job ``state.json`` — plus the session file and the audit tail
@@ -771,9 +770,8 @@ def _collect_plans(
     A plan whose status file has no entries yet, or only ``pending`` tasks,
     has not started and is left out: this payload answers "what is running",
     and the planner's ``pending`` default is not an answer. Inside a begun
-    plan, a wave that has settled is a count and a summary; an unsettled wave
-    keeps the detail of its started tasks and the live jobs beneath them
-    (Fixes #303).
+    plan, every wave and task is sent, including settled and pending members.
+    Only a fully completed plan collapses to counts (Fixes #303, #463).
     """
     plans_dir = root / ".snodo" / "plans"
     if not plans_dir.is_dir():
@@ -787,9 +785,10 @@ def _collect_plans(
         status = _read_json(plan_path / "status.json")
         if not status:
             continue
+        entries = status.get("tasks") or {}
         statuses = {
             task_id: _task_entry_status(entry)
-            for task_id, entry in (status.get("tasks") or {}).items()
+            for task_id, entry in entries.items()
         }
         waves = _plan_waves(plan_path)
         if waves:
@@ -801,7 +800,10 @@ def _collect_plans(
                         statuses.setdefault(str(task_id), _PENDING_TASK_STATUS)
         if not any(s != _PENDING_TASK_STATUS for s in statuses.values()):
             continue
-        infos.append({"name": plan_path.name, "statuses": statuses, "waves": waves})
+        infos.append({
+            "name": plan_path.name, "statuses": statuses,
+            "entries": entries, "waves": waves,
+        })
 
     # Attribute each job to the first plan (sorted by name) declaring its
     # task. A settled job joins that plan's tally; a live job waits to be
@@ -836,7 +838,7 @@ def _collect_plans(
         }
         if settled_job_counts[idx]:
             node["job_status_counts"] = dict(sorted(settled_job_counts[idx].items()))
-        if all(s in TERMINAL_PLAN_STATUSES for s in statuses.values()):
+        if all(s == "completed" for s in statuses.values()):
             # The whole plan is a completed branch: counts and summary, no
             # member list. Its live stragglers stay at the top level.
             nodes.append(node)
@@ -861,6 +863,12 @@ def _collect_plans(
                 started = min(starts) if starts else None
             if started:
                 tnode["started_at"] = started
+            entry = info["entries"].get(task_id)
+            completed = entry.get("completed_at") if isinstance(entry, dict) else None
+            if not completed:
+                completed = tasks_by_id.get(task_id, {}).get("completed_at")
+            if completed:
+                tnode["completed_at"] = _as_iso(completed)
             if live:
                 tnode["jobs"] = [
                     {k: j[k] for k in ("id", "status", "started_at") if k in j}
@@ -893,18 +901,11 @@ def _collect_plans(
                 })
                 if registry_wave_ids:
                     wave_node["wave_ids"] = registry_wave_ids
-                settled_wave = members and all(
-                    statuses[t] in TERMINAL_PLAN_STATUSES for t in members
-                )
-                if not settled_wave:
-                    detail = [t for t in members if statuses[t] != _PENDING_TASK_STATUS]
-                    if detail:
-                        wave_node["tasks"] = [task_node(t) for t in detail]
+                wave_node["tasks"] = [task_node(t) for t in members]
                 wave_nodes.append(wave_node)
             node["waves"] = wave_nodes
         leftover = [
-            t for t, s in statuses.items()
-            if s != _PENDING_TASK_STATUS and t not in enumerated
+            t for t in statuses if t not in enumerated
         ]
         if leftover:
             node["tasks"] = [task_node(t) for t in leftover]
@@ -946,7 +947,7 @@ def _unreported(
             continue
         if row["id"] in live_claimed:
             continue
-        wire = {k: row[k] for k in ("id", "status", "started_at") if k in row}
+        wire = {k: row[k] for k in ("id", "status", "started_at", "completed_at") if k in row}
         if row.get("wave_id"):
             wire["wave_id"] = row["wave_id"]
         if row.get("task_ref"):
@@ -984,6 +985,8 @@ def _collect_runs(
             "_pid": state.get("pid") if isinstance(state.get("pid"), int) else None,
             "_last_activity": _mtime_or_none(entry / "state.json"),
         }
+        if not job_dirs and state.get("completed_at"):
+            row["completed_at"] = _as_iso(state["completed_at"])
         if state.get("wave_id"):
             row["wave_id"] = str(state["wave_id"])
         if job_dirs:
