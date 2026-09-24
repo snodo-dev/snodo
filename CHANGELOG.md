@@ -19,6 +19,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Internal `_worker` command runs a task loop in a remote clone, receives
   provider keys on stdin, and reports heartbeats, audit events, status and its
   final branch/head as redacted JSONL without local bookkeeping writes. (Fixes #478)
+- Remote task bases are pushed into the host clone over SSH; returned task
+  branches are fetched by Git and must match the worker-reported head SHA
+  before the local merge path can use them. (Fixes #479)
 
 ## [0.16.0] — 2026-09-24
 
