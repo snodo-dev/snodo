@@ -13,11 +13,12 @@ import yaml
 
 from snodo.infrastructure.paths import require_project_root
 
-COMMAND_NAME = "queue"
-app = typer.Typer(help="Inspect and run plan queues")
+# Attached to the single `snodo queue` group owned by queue_cmd; defining a
+# second Typer named "queue" here would replace that group at discovery.
+from snodo.cli.commands import queue_cmd as _queue_group
 
 
-@app.command("validate")
+@_queue_group.app.command("validate")
 def queue_validate(
     queue: str | None = typer.Argument(None, help="Queue name (all queues when omitted)"),
     json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
