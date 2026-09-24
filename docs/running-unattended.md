@@ -9,6 +9,15 @@ single call that completes the intent.
 
 ## The loop: intent to landed work
 
+Plans ready for unattended progression are kept in named queues. Use
+`snodo queue` to list queues in creation order, including each queued plan in
+run order and its status from that plan's records. Create an independent queue
+with `snodo queue create <name>`. Reorder or move a queued plan with
+`snodo queue move <plan>`; `--front`, `--before <plan>`, and `--after <plan>`
+select its position, while `--to <queue>` selects a destination (the back by
+default). Moving a plan that is running is refused. These commands accept
+`--json` for the versioned machine interface.
+
 For each intent:
 
 1. Call `propose_plan` to put the intent into a plan. Read the returned wave and
