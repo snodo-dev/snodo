@@ -10,6 +10,7 @@ _PARAMETER_REJECTION_PATTERNS = (
     r"([A-Za-z_][A-Za-z0-9_.-]*)",
     r"[`'\"]([A-Za-z_][A-Za-z0-9_.-]*)[`'\"]?\s+"
     r"(?:is\s+)?(?:not\s+supported|unsupported|invalid)",
+    r"[`'\"]([A-Za-z_][A-Za-z0-9_.-]*)[`'\"]\s+does\s+not\s+support\b",
     r"\b([A-Za-z_][A-Za-z0-9_.-]*)\b\s+is\s+not\s+supported",
 )
 
