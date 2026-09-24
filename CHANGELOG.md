@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- MCP `queue_list`, `queue_create`, `queue_move`, `queue_validate` and
+  asynchronous `queue_run` tools are governed by the queue mode grant; queue
+  runs are followed through the existing job status and log tools. (Fixes #471)
 - `snodo queue` lists queues and plan statuses; `snodo queue create` and
   `snodo queue move` let operators create queues and reorder queued plans from
   the CLI, with versioned JSON output. (Fixes #469)

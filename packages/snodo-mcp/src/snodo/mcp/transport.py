@@ -217,7 +217,13 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
             "`propose_plan` creates the inert plan, `generate_spec` adds named task specs, and `validate_plan` checks the human gate. `run_plan` starts a background run; follow its job id with `get_job_status` and `get_job_logs`. Use `get_plan` for plan state. A wave is a barrier: tasks that need another task's output belong in a later wave.\n"
         )
 
-    if "dispatch_task" in exposed or "run_plan" in exposed:
+    if "queue_run" in exposed:
+        sections.append(
+            "\n## Queues\n"
+            "Use `queue_list` and `queue_validate` to inspect ordered queues, `queue_create` / `queue_move` to manage them, and `queue_run` to progress them (validate, reorder, unblock, run); follow its asynchronous job with `get_job_status` and `get_job_logs`.\n"
+        )
+
+    if "dispatch_task" in exposed or "run_plan" in exposed or "queue_run" in exposed:
         async_lines = [
             "\n"
             "## Async contract\n"
@@ -232,6 +238,8 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
                 "`run_plan` is ASYNCHRONOUS and returns its job id immediately; a wave takes minutes.\n"
                 "\n"
             )
+        if "queue_run" in exposed:
+            async_lines.append("`queue_run` is ASYNCHRONOUS and returns its job id immediately.\n\n")
         async_lines.append(
             "Always poll `get_job_status` after a job starts; the starter response only confirms queuing.\n"
         )
@@ -246,6 +254,8 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         progress_lines.append(
             "`run_plan` returns a job_id at once. With `wait=true` and a progress token it narrates task status changes; job logs hold the full narration.\n"
         )
+    if "queue_run" in exposed:
+        progress_lines.append("`queue_run` returns a job_id at once; inspect the runner's output through job logs.\n")
     sections.append("".join(progress_lines))
 
     guarantee_lines = [

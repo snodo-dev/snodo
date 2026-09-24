@@ -31,6 +31,11 @@ EXPECTED_TOOL_KEYS = frozenset({
     "propose_plan",
     "get_plan",
     "run_plan",
+    "queue_list",
+    "queue_create",
+    "queue_move",
+    "queue_validate",
+    "queue_run",
     "record_task_status",
     "dispatch_task",
     "get_job_status",
@@ -62,6 +67,7 @@ EXPECTED_MODE_TOOL_MAP_KEYS = frozenset({
     "merge",
     "pr",
     "plan",
+    "queue",
     "read",
 })
 

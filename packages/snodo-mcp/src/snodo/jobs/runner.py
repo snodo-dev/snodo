@@ -28,9 +28,23 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
         Command list suitable for subprocess.Popen
     """
     plan_name = task_args.get("plan_name")
+    queue_run = task_args.get("queue_run")
     retry = task_args.get("retry")
 
-    if plan_name:
+    if queue_run:
+        cmd = [sys.executable, "-u", "-m", "snodo.jobs.wrapper", job_dir, "queue", "run"]
+        queues = task_args.get("queues")
+        if queues:
+            cmd.append(str(queues))
+        if task_args.get("all"):
+            cmd.append("--all")
+        if task_args.get("non_blocking") is not None:
+            cmd.append("--non-blocking" if task_args["non_blocking"] else "--blocking")
+        if task_args.get("parallel_run") is not None:
+            cmd.extend(["--parallel-run", str(task_args["parallel_run"])])
+        if task_args.get("mock"):
+            cmd.append("--mock")
+    elif plan_name:
         cmd = [
             sys.executable, "-u", "-m", "snodo.jobs.wrapper", job_dir,
             "plan", "run", str(plan_name),

@@ -37,6 +37,7 @@ from snodo.mcp.model_handlers import ModelToolHandler
 from snodo.mcp.decision_handlers import DecisionToolHandler
 from snodo.mcp.recon_handlers import ReconToolHandler
 from snodo.mcp.plan_handlers import PlanToolHandler
+from snodo.mcp.queue_handlers import QueueToolHandler
 from snodo.mcp.diagnostic_handlers import DiagnosticToolHandler
 
 logger = logging.getLogger(__name__)
@@ -112,7 +113,7 @@ class ProtocolMCPServer:
         )
 
         # Tools whose handlers may block the event loop — dispatched async
-        self._SLOW_TOOLS = {"validate_task", "run_tests", "run_plan"}
+        self._SLOW_TOOLS = {"validate_task", "run_tests", "run_plan", "queue_run"}
 
         # Tools whose handlers already narrate their work and can accept a
         # per-call progress sink. run_plan uses it only for opt-in wait=true
@@ -145,6 +146,7 @@ class ProtocolMCPServer:
 
         self._core_handler = CoreToolHandler(self)
         self._plan_handler = PlanToolHandler(self)
+        self._queue_handler = QueueToolHandler(project_root)
 
         # Build registry of tool handlers, detecting collisions
         self._dispatch = {}
@@ -154,6 +156,7 @@ class ProtocolMCPServer:
             self._decision_handler,
             self._recon_handler,
             self._plan_handler,
+            self._queue_handler,
             self._diagnostic_handler,
             self._core_handler,
         ]

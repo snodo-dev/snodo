@@ -247,6 +247,7 @@ class JobManager:
         )
 
         is_plan_run = bool(task_args.get("plan_name"))
+        is_queue_run = bool(task_args.get("queue_run"))
         job_id = self._generate_id()
         task_id = resolve_task_identity(task_args, job_id)
         if task_id is not None:
@@ -271,6 +272,8 @@ class JobManager:
         }
         if is_plan_run:
             state["job_type"] = "plan"
+        elif is_queue_run:
+            state["job_type"] = "queue"
         self._save_state(job_dir, state)
 
         # Create git worktree for isolation BEFORE spawn. A background job has
@@ -281,7 +284,7 @@ class JobManager:
         # loop creates each task's worktree as it dispatches, so there is no
         # single tree to prepare here.
         wt_path = None
-        if not is_plan_run:
+        if not is_plan_run and not is_queue_run:
             try:
                 task_desc = task_args.get("description", "")
                 wt_path = str(create_worktree(
