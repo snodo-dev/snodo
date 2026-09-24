@@ -62,6 +62,8 @@ execution:
   max_recovery_depth: 3
   max_total_fix_attempts: 10
   auto_merge: false
+  host: GPU2
+  host_path: /home/me/Dev/project
 ```
 
 | Field | Type | Required | Description |
@@ -70,6 +72,12 @@ execution:
 | `max_total_fix_attempts` | int | no | Maximum total fix subtasks spawned across the task tree (default `10`, range 1–100) |
 | `auto_merge` | bool | no | Whether a completed task's branch merges into the base branch automatically (default `false`) |
 | `prepare_command` | string | no | Command executed after worktree setup to prepare environment (e.g. `npm ci`, `uv sync`) |
+| `host` | string | no | SSH host for task execution; `SNODO_HOST` overrides it. Unset means local execution. |
+| `host_path` | string | no | Project clone path on the host; defaults to the same project path relative to remote home. |
+
+Before using a configured host, run `snodo host check` (add `--json` for
+machine-readable results). It checks non-interactive SSH access, matching
+snodo versions, and that the host path is a clone with the same git remote.
 
 Security note: `execution.prepare_command` is protocol-authored shell input.
 snodo does not sandbox it. Treat it like a `Makefile` target, `package.json`
