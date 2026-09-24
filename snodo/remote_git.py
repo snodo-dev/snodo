@@ -13,7 +13,7 @@ class RemoteGitError(RuntimeError):
 
 def _git(project_root: str | Path, *args: str) -> str:
     result = subprocess.run(  # noqa: S603, S607 - git resolved from PATH by design
-        ["git", "-C", str(project_root), *args],
+        ["git", "-C", str(project_root), *args],  # noqa: S607 - executable intentionally resolved via PATH
         capture_output=True,
         text=True,
         check=False,
@@ -45,7 +45,7 @@ def push_base_commit(
     remote_ref = f"refs/snodo/bases/{ref_suffix}"
     remote = _ssh_remote(host, host_path)
     result = subprocess.run(  # noqa: S603, S607 - git invokes the selected SSH transport
-        ["git", "-C", str(project_root), "push", remote, f"{base_sha}:{remote_ref}"],
+        ["git", "-C", str(project_root), "push", remote, f"{base_sha}:{remote_ref}"],  # noqa: S607 - git resolved via PATH
         capture_output=True,
         text=True,
         check=False,
@@ -74,7 +74,7 @@ def fetch_task_branch(
     local_ref = f"refs/snodo/remote/{ref_suffix}"
     remote = _ssh_remote(host, host_path)
     result = subprocess.run(  # noqa: S603, S607 - git invokes the selected SSH transport
-        ["git", "-C", str(project_root), "fetch", "--no-tags", remote, f"+{source_ref}:{local_ref}"],
+        ["git", "-C", str(project_root), "fetch", "--no-tags", remote, f"+{source_ref}:{local_ref}"],  # noqa: S607 - git resolved via PATH
         capture_output=True,
         text=True,
         check=False,
