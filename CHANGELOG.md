@@ -25,6 +25,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Configured SSH hosts now dispatch run, plan, queue and MCP tasks remotely;
   local task bookkeeping, audit, status, job logs and merges remain authoritative.
   (Fixes #480)
+- MCP guide topic `remote-host` documents SSH host setup, preflight checks,
+  execution boundaries, credential handling and retrying errored remote tasks;
+  the command reference and unattended runbook link to it. (Fixes #481)
 
 ## [0.16.0] — 2026-09-24
 
