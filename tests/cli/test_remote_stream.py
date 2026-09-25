@@ -1,7 +1,11 @@
 """Local JSON-lines reader for remote task workers (ADR 055)."""
 
 import json
+import os
+import subprocess
+import sys
 import threading
+from collections import deque
 
 import pytest
 
@@ -105,6 +109,46 @@ def test_nonzero_ssh_exit_invalidates_final_record():
 
     with pytest.raises(RemoteStreamError, match=r"exited non-zero \(255\)"):
         consume([wire("final", outcome="completed", branch="b", head_sha="s")], process=FailedProcess())
+
+
+@pytest.mark.parametrize("emit_record", [False, True])
+def test_fake_ssh_stderr_and_exit_are_reported_before_or_after_records(tmp_path, emit_record):
+    fake_ssh = tmp_path / "ssh"
+    output = wire("final", outcome="completed", branch="b", head_sha="s") if emit_record else ""
+    fake_ssh.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "print('remote worker diagnostic', file=sys.stderr, flush=True)\n"
+        f"sys.stdout.write({output!r} + ('\\n' if {bool(output)!r} else ''))\n"
+        "sys.stdout.flush()\n"
+        "sys.exit(23)\n"
+    )
+    fake_ssh.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}{os.pathsep}{env['PATH']}"
+    process = subprocess.Popen(
+        ["ssh"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
+    )
+    assert process.stdout is not None and process.stderr is not None
+    lines = deque(maxlen=20)
+    logged = []
+    done = threading.Event()
+
+    def capture():
+        try:
+            for line in process.stderr:
+                text = line.rstrip("\r\n")
+                lines.append(text)
+                logged.append(f"[remote stderr] {text}")
+        finally:
+            done.set()
+
+    threading.Thread(target=capture, daemon=True).start()
+    with pytest.raises(RemoteStreamError) as exc:
+        consume(process.stdout, process=process, stderr_tail=lambda: list(lines), stderr_done=done)
+    assert "SSH exit code: 23" in str(exc.value)
+    assert "remote worker diagnostic" in str(exc.value)
+    assert logged == ["[remote stderr] remote worker diagnostic"]
 
 
 def test_final_branch_sync_runs_before_completed_status():

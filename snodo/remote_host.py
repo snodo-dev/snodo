@@ -76,7 +76,8 @@ def check_remote_host(
     try:
         result = _remote_command(host, command)
         checks.append(HostCheck("reachable", command, result.returncode == 0,
-                                result.stderr.strip() or result.stdout.strip()))
+                                f"SSH exit code: {result.returncode}; "
+                                + (result.stderr.strip() or result.stdout.strip())))
     except (OSError, subprocess.SubprocessError) as exc:
         checks.append(HostCheck("reachable", command, False, str(exc)))
 
@@ -85,9 +86,17 @@ def check_remote_host(
         result = _remote_command(host, command)
         actual = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
         expected = f"snodo {__version__}"
+        detail = f"expected {expected!r}; got {actual!r}; SSH exit code: {result.returncode}"
+        remote_output = "\n".join(part.strip() for part in (result.stderr, result.stdout) if part.strip())
+        if remote_output:
+            detail += f"; remote output: {remote_output}"
+        if "snodo" in remote_output and (
+            "command not found" in remote_output or "snodo: not found" in remote_output
+        ):
+            detail += "; snodo was not found; non-interactive SSH may not load the PATH that includes snodo"
         checks.append(HostCheck("version", command,
                                 result.returncode == 0 and actual == expected,
-                                f"expected {expected!r}; got {actual!r}"))
+                                detail))
     except (OSError, subprocess.SubprocessError) as exc:
         checks.append(HostCheck("version", command, False, str(exc)))
 
@@ -112,7 +121,9 @@ def check_remote_host(
         same_remote = bool(actual_remote) and normalize_remote_url(actual_remote) == normalize_remote_url(expected_remote)
         checks.append(HostCheck("project_clone", command,
                                 result.returncode == 0 and is_clone and same_remote,
-                                f"expected remote {expected_remote!r}; got {actual_remote!r}"))
+                                f"expected remote {expected_remote!r}; got {actual_remote!r}; "
+                                f"SSH exit code: {result.returncode}"
+                                + (f"; remote stderr: {result.stderr.strip()}" if result.stderr.strip() else "")))
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         checks.append(HostCheck("project_clone", command, False, str(exc)))
     return checks

@@ -30,6 +30,8 @@ def _fake_ssh(tmp_path: Path, monkeypatch, mode: str = ""):
         "if command == 'true':\n"
         "    sys.exit(1 if mode == 'reachable' else 0)\n"
         "elif command == 'snodo --version':\n"
+        "    if mode == 'missing-snodo':\n"
+        "        print('bash: snodo: command not found', file=sys.stderr); sys.exit(127)\n"
         "    print('snodo wrong' if mode == 'version' else 'snodo " + __version__ + "')\n"
         "    sys.exit(1 if mode == 'version-command' else 0)\n"
         "else:\n"
@@ -65,6 +67,17 @@ def test_each_preflight_failure_is_named_and_has_command(tmp_path, monkeypatch):
         failed = [check for check in checks if not check.ok]
         assert [check.name for check in failed] == [name]
         assert failed[0].command
+
+
+def test_missing_remote_snodo_reports_stderr_exit_and_noninteractive_path_hint(tmp_path, monkeypatch):
+    root = _local_repo(tmp_path)
+    _fake_ssh(tmp_path, monkeypatch, "missing-snodo")
+    checks = check_remote_host("worker", root, "/remote/project")
+    version = next(check for check in checks if check.name == "version")
+    assert not version.ok
+    assert "command not found" in version.detail
+    assert "SSH exit code: 127" in version.detail
+    assert "non-interactive SSH may not load the PATH" in version.detail
 
 
 def test_host_check_json_reports_no_remote_configured(tmp_path, monkeypatch, capsys):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import subprocess
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -75,6 +76,8 @@ def consume_remote_stream(
     timeout: float = HEARTBEAT_TIMEOUT,
     clock: Any = time,
     on_final: Optional[Callable[[dict], None]] = None,
+    stderr_tail: Optional[Callable[[], list[str]]] = None,
+    stderr_done: Optional[threading.Event] = None,
 ) -> dict:
     """Consume worker records and return its sole final record.
 
@@ -91,6 +94,24 @@ def consume_remote_stream(
     sentinel = object()
 
     def fail(message: str, cause: Optional[BaseException] = None) -> None:
+        exit_code = None
+        if process is not None:
+            try:
+                poll = getattr(process, "poll", None)
+                exit_code = poll() if poll is not None else None
+                if exit_code is None:
+                    kill = getattr(process, "kill", None)
+                    if kill is not None:
+                        kill()
+                    exit_code = process.wait()
+            except (OSError, subprocess.SubprocessError):
+                pass
+        if stderr_done is not None:
+            stderr_done.wait(1)
+        message += f" (SSH exit code: {exit_code if exit_code is not None else 'unknown'})"
+        lines = stderr_tail() if stderr_tail is not None else []
+        if lines:
+            message += "; remote stderr (last lines): " + " | ".join(lines)
         if task_ref is not None:
             try:
                 on_status(task_ref, "errored")
