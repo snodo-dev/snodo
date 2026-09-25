@@ -687,6 +687,30 @@ class TestPayloadContent:
             "last_event", "last_activity_at", "snapshot_at",
         }
 
+    def test_v6_lease_enables_recons_liveness_section(self, project):
+        from snodo.infrastructure.cloud_lease import CloudLease
+
+        root, _ = project
+        _write(root / ".snodo" / "recons" / "rec_v6" / "state.json", {
+            "recon_id": "rec_v6", "query": "v6 question",
+            "agents": [["model-a"]], "status": "running",
+            "created_at": 1787000000.0, "pid": os.getpid(),
+        })
+        snapshot = cloud_liveness.build_liveness_snapshot("sess_test_1", str(root))
+        posts = _Posts()
+        lease = CloudLease(
+            "ls_v6", "tok", time.time() + 3600, interface_version=6,
+        )
+
+        with patch(
+            "snodo.infrastructure.cloud_lease.get_admission_lease",
+            return_value=lease,
+        ), patch("httpx.post", posts):
+            cloud_liveness._post_snapshot(snapshot, config=_TEST_CONFIG)
+
+        assert len(posts.calls) == 1
+        assert posts.calls[0][1]["recons"][0]["id"] == "rec_v6"
+
     def test_recon_only_does_not_create_a_v5_network_push(self, tmp_path):
         root = tmp_path / "recon-only"
         _write(root / ".snodo" / "recons" / "rec_local" / "state.json", {

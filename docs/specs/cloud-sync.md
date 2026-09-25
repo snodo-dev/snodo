@@ -33,6 +33,14 @@ overrides the mint app host/base path; `cloud.api_url` sets the ingest host.
 When only `cloud.api_url` is set, the mint host is derived by replacing its
 `api` hostname label with `app` (or retaining a single-host custom/local host).
 
+The successful lease-mint response also advertises the highest accepted
+`interface_version`. Missing or invalid values mean v5. Snodo sends v6 event
+types, v6-added event data, and v6 liveness sections only under a lease that
+advertises version 6 or later. Until then, unchanged v5-compatible events are
+sent; the cursor stops before the first v6-only event/data and its chain suffix
+is retried after a later mint. Data is never stripped from a hash-chained event.
+snodo-cloud must advertise v6 only after both ingest and liveness accept it.
+
 Batched 1-50 events. Dispatched from a background thread during `snodo run`
 teardown and from `snodo cloud sync`; nowhere else. The cursor advances only on
 a 2xx, so a failed batch re-sends rather than being lost. ("Nowhere else" scopes

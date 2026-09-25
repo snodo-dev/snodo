@@ -161,6 +161,7 @@ class TestCloudAdmission:
                     "token": "opaque_bearer_secret_xyz",
                     "expires_at": "2030-01-01T00:00:00+00:00",
                     "cadence_s": 37,
+                    "interface_version": 6,
                 }
                 return resp
             if "/i/ls_test_fixed_length_12345" in str(url):
@@ -197,6 +198,7 @@ class TestCloudAdmission:
         assert body1 == {}
         from snodo.infrastructure.cloud_lease import get_current_lease
         assert get_current_lease("sess_alpha").cadence_s == 37
+        assert get_current_lease("sess_alpha").interface_version == 6
 
         # Second call: ingest with lease identifier in path and bearer token
         method2, url2, headers2, body2 = calls[1]
