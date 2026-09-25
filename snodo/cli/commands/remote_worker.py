@@ -97,17 +97,22 @@ def run_remote_task(
     plan: Optional[str] = None, mock: bool = False, base_sha: Optional[str] = None,
 ) -> int:
     """Run one complete task and report only its JSONL stream on stdout."""
+    stream = _Stream([])
     try:
         credentials = json.loads(sys.stdin.readline())
     except (json.JSONDecodeError, TypeError) as exc:
-        print(f"Worker expected provider keys as the first stdin JSON object: {exc}", file=sys.stderr)
-        return 2
+        message = f"Worker expected provider keys as the first stdin JSON object: {exc}"
+        print(message, file=sys.stderr)
+        stream.emit("final", outcome="errored", branch="", head_sha="", error=message)
+        return 0
     if not isinstance(credentials, dict) or any(
         not isinstance(key, str) or not isinstance(value, str)
         for key, value in credentials.items()
     ):
-        print("Worker provider keys must be a JSON object of string values", file=sys.stderr)
-        return 2
+        message = "Worker provider keys must be a JSON object of string values"
+        print(message, file=sys.stderr)
+        stream.emit("final", outcome="errored", branch="", head_sha="", error=message)
+        return 0
 
     stream = _Stream(list(credentials.values()))
     stdout = _OutputCapture(stream, "stdout")
@@ -130,6 +135,7 @@ def run_remote_task(
     task_wt = None
     head_sha = ""
     outcome = "errored"
+    error_text = None
     stop_heartbeat = threading.Event()
     stream.emit("status", task_ref=task_id, status="in_progress")
 
@@ -199,7 +205,8 @@ def run_remote_task(
             stream.emit("status", task_ref=task_id, status=outcome)
             head_sha = _git(Path(task_wt), "rev-parse", "HEAD")
     except Exception as exc:  # failures still produce a complete worker record
-        stream.emit("log", stream="snodo", line=f"Worker task failed: {exc}")
+        error_text = f"Worker task failed: {exc}"
+        stream.emit("log", stream="snodo", line=error_text)
         outcome = "errored"
         try:
             repo_for_head = Path(task_wt) if task_wt else project
@@ -221,7 +228,7 @@ def run_remote_task(
 
     if outcome not in TASK_STATUSES:
         outcome = "errored"
-    stream.emit("final", outcome=outcome, branch=branch, head_sha=head_sha)
+    stream.emit("final", outcome=outcome, branch=branch, head_sha=head_sha, **({"error": error_text} if error_text else {}))
     return 0
 
 

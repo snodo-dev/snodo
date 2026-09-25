@@ -7,6 +7,8 @@ import os
 import shlex
 import subprocess
 import sys
+import threading
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -138,10 +140,27 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
         process = subprocess.Popen(  # noqa: S603 - SSH host is explicitly configured by operator
             ["ssh",  # noqa: S607 - ssh is resolved through PATH by design
              "-T", "-o", "BatchMode=yes", host, command],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, bufsize=1,
         )
-        assert process.stdin is not None and process.stdout is not None
+        assert process.stdin is not None and process.stdout is not None and process.stderr is not None
+        stderr_lines = deque(maxlen=20)
+        stderr_done = threading.Event()
+
+        def capture_stderr():
+            try:
+                for raw_line in process.stderr:
+                    line = raw_line.rstrip("\r\n")
+                    for secret in keys.values():
+                        if secret:
+                            line = line.replace(secret, "[REDACTED]")
+                    stderr_lines.append(line)
+                    sink.on_log("stderr", f"[remote stderr] {line}")
+            finally:
+                stderr_done.set()
+
+        stderr_thread = threading.Thread(target=capture_stderr, daemon=True)
+        stderr_thread.start()
         process.stdin.write(json.dumps(keys, separators=(",", ":")) + "\n")
         process.stdin.flush()
         process.stdin.close()
@@ -149,8 +168,17 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
             process.stdout, on_log=sink.on_log, on_audit=sink.on_audit,
             on_status=sink.on_status, on_heartbeat=sink.on_heartbeat,
             task_ref=task.id, process=process,
+            stderr_tail=lambda: list(stderr_lines), stderr_done=stderr_done,
         )
         if final["outcome"] != "completed":
+            exit_code = process.wait()
+            stderr_done.wait(1)
+            detail = f"SSH exit code: {exit_code}"
+            if stderr_lines:
+                detail += "; remote stderr (last lines): " + " | ".join(stderr_lines)
+            if final.get("error"):
+                detail += f"; worker error: {final['error']}"
+            print(f"Remote task failed on {host}: {detail}", file=sys.stderr)
             _record_task_completion(project_root, task.id, final["outcome"], protocol=protocol, model=model)
             return 1
         # Fetch only the worker branch, then run the ordinary local verifier

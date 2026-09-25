@@ -31,6 +31,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Remote tasks now resolve and send only the coder, active task-validator and
   classifier provider keys; worker-provided keys override host config, and
   `snodo host check` verifies each required key locally. (Fixes #482)
+- Remote worker stderr is streamed into local job logs with provider keys
+  redacted; failures include SSH exit status and stderr context, and host checks
+  diagnose missing snodo commands and non-interactive PATH issues. (Fixes #483)
 
 ## [0.16.0] — 2026-09-24
 

@@ -93,6 +93,25 @@ def test_remote_provider_key_precedes_host_encrypted_reference(monkeypatch):
     assert ConfigManager.resolve_provider_key("openai", configured) == secret
 
 
+def test_worker_invalid_credentials_still_emits_errored_final(monkeypatch):
+    monkeypatch.setattr("sys.stdin", io.StringIO("not-json\n"))
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    monkeypatch.setattr("sys.__stdout__", stdout)
+    monkeypatch.setattr("sys.stderr", stderr)
+
+    result = remote_worker.run_remote_task(
+        project_root=".", task_id="bad-input", spec="unused",
+    )
+
+    records = [json.loads(line) for line in stdout.getvalue().splitlines()]
+    assert result == 0
+    assert records[-1]["kind"] == "final"
+    assert records[-1]["outcome"] == "errored"
+    assert "Worker expected provider keys" in records[-1]["error"]
+    assert "Worker expected provider keys" in stderr.getvalue()
+
+
 def _tree_snapshot(path):
     """Snapshot one protected audit/status path without creating it."""
     if not path.exists():
