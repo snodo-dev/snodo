@@ -92,5 +92,8 @@
       "validator_type": "conventions"
     }
   ],
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "write_allowed_prefixes": [
+    ".snodo/"
+  ]
 }
