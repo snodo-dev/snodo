@@ -607,12 +607,14 @@ class TestDispatchTask:
         with pytest.raises(MCPError, match="requires task_spec"):
             dispatch_server.call_tool("dispatch_task", {})
 
-    def test_write_file_not_in_any_mode_tool_map(self):
-        """write_file must NOT appear in any MODE_TOOL_MAP entry."""
+    def test_write_file_only_in_write_mode_tool_map(self):
+        """write_file is available only from the explicit write capability."""
+        assert MODE_TOOL_MAP["write"] == ["write_file"]
         for mode_tool, concrete_tools in MODE_TOOL_MAP.items():
-            assert "write_file" not in concrete_tools, (
-                f"write_file found in MODE_TOOL_MAP['{mode_tool}']"
-            )
+            if mode_tool != "write":
+                assert "write_file" not in concrete_tools, (
+                    f"write_file found in MODE_TOOL_MAP['{mode_tool}']"
+                )
 
     def test_delete_file_not_in_any_mode_tool_map(self):
         """delete_file must NOT appear in any MODE_TOOL_MAP entry."""

@@ -437,6 +437,13 @@ class Protocol(BaseModel):
             "checks the task branch diff after execution."
         ),
     )
+    write_allowed_prefixes: List[str] = Field(
+        default_factory=lambda: [".snodo/"],
+        description=(
+            "Project-relative path prefixes writable through the MCP write "
+            "capability. Defaults to .snodo/."
+        ),
+    )
     execution: ExecutionConfig = Field(
         default_factory=ExecutionConfig,
         description="Branch isolation and retry configuration"
