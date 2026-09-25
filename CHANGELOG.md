@@ -41,6 +41,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Host preflight and remote dispatch now share remote path quoting; a fake-SSH
   end-to-end run verifies home-relative paths resolve in the host clone without
   forwarding the local project path. (Fixes #486)
+- `snodo host check` leads with concise pass/fail summaries, shows command details
+  only for failures by default, and supports `--verbose`. (Fixes #485)
 
 ## [0.16.0] — 2026-09-24
 
