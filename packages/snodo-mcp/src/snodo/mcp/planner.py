@@ -47,6 +47,20 @@ HAND_COMPLETED_EVENT = "task_completed_by_hand"
 HAND_STATUS_EVENT = "task_status_recorded_by_hand"
 
 
+def plan_history_shape(plan_data: Dict[str, Any], plan_name: str) -> dict:
+    """Return the pinned local-history representation of a plan hierarchy."""
+    return {
+        "plan_name": plan_name,
+        "waves": [
+            {
+                "wave_id": wave.get("id"),
+                "task_refs": list(wave.get("tasks", [])),
+            }
+            for wave in plan_data.get("waves", [])
+        ],
+    }
+
+
 def resolve_audit_log(project_root: Any, audit_log: Any) -> Any:
     """The audit log a record should be written to.
 

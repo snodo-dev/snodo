@@ -271,6 +271,8 @@ class TestRunPlanGate:
         """run_plan submits the run as a job and returns immediately (Fixes #254)."""
         _propose(server, name="runner")
         _add_task(server, "runner", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
+        from snodo.infrastructure.audit import AuditLog
+        server._audit_log = AuditLog(str(Path(project_dir) / ".snodo" / "audit.log"))
 
         with patch("snodo.jobs.JobManager") as MockJM:
             MockJM.return_value.submit.return_value = "j_runner1"
@@ -284,6 +286,17 @@ class TestRunPlanGate:
         submitted = MockJM.return_value.submit.call_args.args[0]
         assert submitted["plan_name"] == "runner"
         assert submitted["mock"] is True
+        events = AuditLog(str(Path(project_dir) / ".snodo" / "audit.log")).get_history()
+        plan_run = next(event for event in events if event.event_type == "plan_run")
+        assert plan_run.data == {
+            "op": "plan_run",
+            "plan_name": "runner",
+            "waves": [
+                {"wave_id": 1, "task_refs": ["1.1_x"]},
+                {"wave_id": 2, "task_refs": []},
+            ],
+            "trigger": "mcp",
+        }
 
     def test_wait_true_blocks_and_reports_the_final_status(self, server, project_dir):
         """The opt-in wait returns the run's end state, not merely its start."""

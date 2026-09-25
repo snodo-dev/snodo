@@ -74,6 +74,18 @@ def main():
                 os.environ["SNODO_TASK_PLAN"] = str(task_data["task_plan"])
             else:
                 os.environ.pop("SNODO_TASK_PLAN", None)
+            if task_data.get("task_wave") is not None:
+                os.environ["SNODO_TASK_PLAN_WAVE"] = str(task_data["task_wave"])
+            else:
+                os.environ.pop("SNODO_TASK_PLAN_WAVE", None)
+            if task_data.get("trigger"):
+                os.environ["SNODO_PLAN_TRIGGER"] = str(task_data["trigger"])
+            else:
+                os.environ.pop("SNODO_PLAN_TRIGGER", None)
+            if task_data.get("queue"):
+                os.environ["SNODO_PLAN_QUEUE"] = str(task_data["queue"])
+            else:
+                os.environ.pop("SNODO_PLAN_QUEUE", None)
             if task_data.get("benchmark"):
                 os.environ["SNODO_BENCHMARK"] = "1"
             else:

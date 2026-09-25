@@ -590,6 +590,9 @@ class ValidationNodeMixin:
             "judging_model": judging_model,
             "artifacts_count": len(loop_state.artifacts),
         }
+        if loop_state.task.plan_name:
+            dispatch_audit["plan_name"] = loop_state.task.plan_name
+            dispatch_audit["plan_wave"] = loop_state.task.plan_wave
         if loop_state.metadata.get("timed_out"):
             dispatch_audit["timed_out"] = True
             dispatch_audit["timeout_seconds"] = loop_state.metadata.get("timeout_seconds")

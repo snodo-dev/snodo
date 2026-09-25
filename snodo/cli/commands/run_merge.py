@@ -65,6 +65,28 @@ def _merge_delivery(project_root: str, base_sha: str, merge_sha: str) -> dict:
         return {}
 
 
+def _plan_task_fields(project_root: str, plan_name: Optional[str], task_id: str, task: Any = None) -> dict:
+    """Return local history ownership fields for a task in a plan."""
+    if not plan_name:
+        return {}
+    wave_id = getattr(task, "plan_wave", None)
+    if wave_id is None:
+        try:
+            import yaml
+            plan_file = Path(project_root) / ".snodo" / "plans" / plan_name / "plan.yml"
+            plan_data = yaml.safe_load(plan_file.read_text()) or {}
+            wave_id = next(
+                (wave.get("id") for wave in plan_data.get("waves", [])
+                 if task_id in wave.get("tasks", [])),
+                None,
+            )
+        except (OSError, ValueError, TypeError):
+            wave_id = None
+    if wave_id is None:
+        return {}
+    return {"plan_name": plan_name, "plan_wave": str(wave_id)}
+
+
 def _verified_commit_matches_merge_target(stored_commit: str, target_commit: str) -> bool:
     """Whether a verification event's stored commit evidences the merge target.
 
@@ -181,6 +203,7 @@ def _merge_on_success(
                     "session_id": session_id,
                     "spec": authoritative_spec,
                     **_merge_delivery(project_root, base_sha, merge_sha),
+                    **_plan_task_fields(project_root, plan_name, task.id, task),
                 })
             print(f"✓ Merged {branch} into the base branch")
             return result, False, branch

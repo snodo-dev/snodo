@@ -224,13 +224,17 @@ class GovernanceNodeMixin:
                 # task is legitimate (WaveRegistry returns None) and is emitted as
                 # an empty wave_id — distinguishable from a failed classification,
                 # which raises before this event is appended (Fixes #154).
-                self._audit("task_classified", {
+                classified_audit = {
                     "op": "task_classified",
                     "task_ref": loop_state.task.id,
                     "flow_type": loop_state.task.flow_type,
                     "wave_id": loop_state.task.wave_id,
                     "task_summary": result.get("task_summary"),
-                })
+                }
+                if loop_state.task.plan_name:
+                    classified_audit["plan_name"] = loop_state.task.plan_name
+                    classified_audit["plan_wave"] = loop_state.task.plan_wave
+                self._audit("task_classified", classified_audit)
             except Exception as exc:
                 import sys as _sys
                 print(

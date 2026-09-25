@@ -885,6 +885,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             attempt_provenance=provenance,
             attempt_reads=read_history,
             depth=current_depth + 1,
+            plan_name=loop_state.task.plan_name,
+            plan_wave=loop_state.task.plan_wave,
         )
         loop_state.spawned_subtasks.append(fix_task)
         loop_state.needs_recovery = True
@@ -954,6 +956,9 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             "halt_type": canonical_halt,
             "raw_halt_type": raw_halt,
         }
+        if loop_state.task.plan_name:
+            halt_audit["plan_name"] = loop_state.task.plan_name
+            halt_audit["plan_wave"] = loop_state.task.plan_wave
         if loop_state.metadata.get("timed_out"):
             halt_audit["timed_out"] = True
             halt_audit["timeout_seconds"] = loop_state.metadata.get("timeout_seconds")
@@ -1018,6 +1023,9 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             "commit": loop_state.metadata.get("commit"),
             "change_size": change_size,
         }
+        if loop_state.task.plan_name:
+            task_complete_audit["plan_name"] = loop_state.task.plan_name
+            task_complete_audit["plan_wave"] = loop_state.task.plan_wave
         if loop_state.metadata.get("timed_out"):
             task_complete_audit["timed_out"] = True
             task_complete_audit["timeout_seconds"] = loop_state.metadata.get("timeout_seconds")

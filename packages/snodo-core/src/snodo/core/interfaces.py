@@ -121,6 +121,9 @@ class Task(BaseModel):
     depth: int = 0
     flow_type: Optional[str] = None
     wave_id: Optional[str] = None
+    # Plan ownership is distinct from the classifier's own wave_id.
+    plan_name: Optional[str] = None
+    plan_wave: Optional[str] = None
     #: The module this task is scoped to (ADR 041), if any. A declared module
     #: bounds what the task may write; an absent one leaves the protocol's own
     #: scope in force. Reads are never bounded by it.
