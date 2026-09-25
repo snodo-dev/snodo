@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from snodo.infrastructure.audit import _LOCAL_EVENT_DATA_KEYS  # noqa: E402
 from snodo.infrastructure.cloud_sync import _EVENT_DATA_KEYS  # noqa: E402
 
 
@@ -40,7 +41,7 @@ def emitted_event_types(roots: tuple[Path, ...]) -> set[str]:
 def main() -> int:
     roots = (REPO_ROOT / "packages", REPO_ROOT / "snodo")
     emitted = emitted_event_types(roots)
-    undeclared = sorted(emitted - set(_EVENT_DATA_KEYS))
+    undeclared = sorted(emitted - set(_EVENT_DATA_KEYS) - set(_LOCAL_EVENT_DATA_KEYS))
     if undeclared:
         for event_type in undeclared:
             print(f"FAIL: audit event {event_type!r} is emitted but absent from the cloud ingest contract")

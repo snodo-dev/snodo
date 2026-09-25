@@ -65,6 +65,44 @@ class ReconError(Exception):
 # holds what it recorded — the answers, or the reason it failed.
 _TERMINAL_STATUSES = frozenset({"complete", "failed"})
 
+_RECON_SUMMARY_LIMIT = 2_000
+_RECON_SUMMARY_MARKER = "… [truncated]"
+
+
+def _audit_log_for_project(project_root: str):
+    """Return the project's normal hash-chained audit log."""
+    from snodo.infrastructure.audit import get_audit_log
+
+    return get_audit_log(str(Path(project_root) / ".snodo" / "audit.log"))
+
+
+def _active_session_id(project_root: str) -> str:
+    """Resolve the active session for this project's current mode, if any."""
+    try:
+        from snodo.infrastructure.state import read_state
+
+        state = read_state(project_root)
+        mode = state.current_mode
+        return (state.active_session or {}).get(mode, "") if mode else ""
+    except Exception:  # noqa: BLE001 — recon logging can proceed without a session
+        return ""
+
+
+def _recon_answer_summary(results: list) -> str:
+    """Build a bounded summary directly from the answers recon already has."""
+    answer_parts = []
+    for result in results:
+        if isinstance(result, dict):
+            answer = result.get("result", "")
+        else:
+            answer = getattr(result, "result", "")
+        if answer:
+            answer_parts.append(str(answer))
+    summary = "\n\n".join(answer_parts)
+    if len(summary) <= _RECON_SUMMARY_LIMIT:
+        return summary
+    return summary[:_RECON_SUMMARY_LIMIT - len(_RECON_SUMMARY_MARKER)] + _RECON_SUMMARY_MARKER
+
 
 # Module-level thread registry so shutdown() can join threads from any
 # ReconManager instance (needed for test teardown where handler creates
@@ -594,6 +632,38 @@ class ReconManager:
             self._run_recon_impl(recon_id, query, paths, agents)
         except Exception as e:
             _logger.debug("Recon background task error for %s: %s", recon_id, e)
+            try:
+                recon_dir = self._recon_dir(recon_id)
+                state = self._load_state(recon_dir)
+                if state.get("status") not in _TERMINAL_STATUSES:
+                    state["status"] = "failed"
+                    state["completed_at"] = time.time()
+                    self._save_state(recon_dir, state)
+                    self._append_completion_event(state, self._load_results(recon_dir))
+            except Exception:
+                _logger.exception("Could not record failed recon %s", recon_id)
+
+    def _append_completion_event(self, state: dict, results: list) -> None:
+        """Record a terminal recon using the result/state files as written."""
+        succeeded = sum(
+            1 for result in results
+            if not (result.get("error") if isinstance(result, dict) else getattr(result, "error", None))
+        )
+        failed = max(
+            len(results) - succeeded,
+            len(state.get("agents", [])) - succeeded,
+        )
+        completed_at = state["completed_at"]
+        created_at = state["created_at"]
+        _audit_log_for_project(self.project_root).append_event("recon_completed", {
+            "recon_id": state["recon_id"],
+            "status": state["status"],
+            "succeeded_agents": succeeded,
+            "failed_agents": failed,
+            "duration": max(0.0, completed_at - created_at),
+            "completed_at": completed_at,
+            "summary": _recon_answer_summary(results),
+        })
 
     def _run_recon_impl(self, recon_id: str, query: str, paths: list[str],
                         agents: list) -> None:
@@ -635,6 +705,7 @@ class ReconManager:
         state["status"] = "complete" if succeeded > 0 else "failed"
         state["completed_at"] = time.time()
         self._save_state(recon_dir, state)
+        self._append_completion_event(state, results)
 
     def submit(self, query: str, paths: list[str],
                agents: Optional[list] = None) -> str:
@@ -671,6 +742,16 @@ class ReconManager:
             "completed_at": None,
         }
         self._save_state(recon_dir, state)
+
+        _audit_log_for_project(self.project_root).append_event("recon_started", {
+            "recon_id": recon_id,
+            "query": query,
+            "paths": paths,
+            "agent_count": len(lanes),
+            "agent_models": lanes,
+            "session_id": _active_session_id(self.project_root),
+            "created_at": state["created_at"],
+        })
 
         thread = Thread(
             target=self._run_recon,
