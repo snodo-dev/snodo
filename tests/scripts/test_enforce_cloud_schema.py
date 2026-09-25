@@ -22,15 +22,15 @@ def test_published_schemas_match_baseline():
 
 
 def test_declared_payload_field_change_fails_and_names_field(monkeypatch):
-    from snodo.infrastructure.cloud_liveness import LivenessSnapshot
+    from snodo.infrastructure.cloud_liveness import LivenessSnapshotV6
 
     baseline = json.loads(
         (REPO_ROOT / "scripts" / "cloud_schema_baseline.json").read_text(),
     )
-    annotations = dict(LivenessSnapshot.__annotations__)
+    annotations = dict(LivenessSnapshotV6.__annotations__)
     annotations["new_published_field"] = str
-    monkeypatch.setattr(LivenessSnapshot, "__annotations__", annotations)
+    monkeypatch.setattr(LivenessSnapshotV6, "__annotations__", annotations)
 
     report = schema_check.check(schema_check.published_schemas(), baseline)
 
-    assert ("cloud_liveness", "new_published_field") in report.added
+    assert ("cloud_liveness_v6", "new_published_field") in report.added

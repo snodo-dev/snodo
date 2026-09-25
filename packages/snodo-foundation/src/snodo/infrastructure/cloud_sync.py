@@ -157,14 +157,70 @@ _EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _event_models() -> tuple[type[BaseModel], ...]:
+_EVENT_DATA_KEYS_V5 = _EVENT_DATA_KEYS
+_EVENT_DATA_KEYS_V6: dict[str, tuple[str, ...]] = {
+    **_EVENT_DATA_KEYS_V5,
+    "task_classified": (*_EVENT_DATA_KEYS_V5["task_classified"], "plan_name", "plan_wave"),
+    "dispatch": (*_EVENT_DATA_KEYS_V5["dispatch"], "plan_name", "plan_wave"),
+    "task_complete": (*_EVENT_DATA_KEYS_V5["task_complete"], "plan_name", "plan_wave"),
+    "task_merged": (
+        *_EVENT_DATA_KEYS_V5["task_merged"], "base_sha", "commit_count", "commits",
+        "files_changed", "insertions", "deletions", "plan_name", "plan_wave",
+    ),
+    "halt": (*_EVENT_DATA_KEYS_V5["halt"], "plan_name", "plan_wave"),
+    "plan_proposed": ("plan_name", "waves"),
+    "plan_run": ("plan_name", "waves", "trigger", "queue"),
+    "recon_started": (
+        "recon_id", "query", "paths", "agent_count", "agent_models", "session_id", "created_at",
+    ),
+    "recon_completed": (
+        "recon_id", "status", "succeeded_agents", "failed_agents", "duration", "completed_at", "summary",
+    ),
+}
+
+
+class PlanWaveShape(BaseModel):
+    """Optional pinned wave shape used by plan history events."""
+
+    model_config = ConfigDict(extra="allow")
+
+    wave_id: str | int | None = None
+    task_refs: list[str] | None = None
+
+
+class PlanProposedData(BaseModel):
+    """Optional pinned shape for a proposed plan."""
+
+    model_config = ConfigDict(extra="allow")
+
+    plan_name: str | None = None
+    waves: list[PlanWaveShape] | None = None
+
+
+class PlanRunData(PlanProposedData):
+    """Optional pinned plan shape plus the run trigger and queue."""
+
+    trigger: Literal["mcp", "cli", "queue"] | None = None
+    queue: str | None = None
+
+
+def _event_models(
+    event_data_keys: dict[str, tuple[str, ...]],
+    data_models: dict[str, type[BaseModel]] | None = None,
+) -> tuple[type[BaseModel], ...]:
     """Build one schema branch for each event type in the cloud contract."""
     models = []
-    for event_type, keys in _EVENT_DATA_KEYS.items():
+    data_models = data_models or {}
+    for event_type, keys in event_data_keys.items():
         data_model = create_model(
             f"{event_type.title().replace('_', '')}Data",
             __config__=ConfigDict(extra="allow"),
-            **{key: (Any | None, None) for key in keys},
+            **{
+                key: (data_models[event_type].model_fields[key].annotation, None)
+                if event_type in data_models and key in data_models[event_type].model_fields
+                else (Any | None, None)
+                for key in keys
+            },
         )
         models.append(create_model(
             f"{event_type.title().replace('_', '')}Event",
@@ -206,9 +262,41 @@ class OpaqueAuditEvent(BaseModel):
         return value
 
 
+class OpaqueAuditEventV6(BaseModel):
+    """V6 envelope for historical tags outside the declared ingest union."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sequence: int
+    timestamp: Annotated[StrictStr, Field(json_schema_extra={"format": "date-time"})]
+    event_type: Annotated[
+        StrictStr,
+        Field(json_schema_extra={"not": {"enum": list(_EVENT_DATA_KEYS_V6)}}),
+    ]
+    project_id: str
+    scope: Literal["", "local", "remote"]
+    data: Any
+    previous_hash: str
+    event_hash: str
+
+    @field_validator("event_type")
+    @classmethod
+    def event_type_must_be_undeclared(cls, value: str) -> str:
+        if value in _EVENT_DATA_KEYS_V6:
+            raise ValueError("declared event types must match their declared schema")
+        return value
+
+
+_V5_EVENT_MODELS = _event_models(_EVENT_DATA_KEYS_V5)
+_V6_EVENT_MODELS = _event_models(
+    _EVENT_DATA_KEYS_V6,
+    {"plan_proposed": PlanProposedData, "plan_run": PlanRunData},
+)
+
 # Known tags retain their pinned data shapes. Historical tags not declared by
 # this client use the same validated envelope with opaque event data.
-AuditEventEnvelope = Union[*_event_models(), OpaqueAuditEvent]
+AuditEventEnvelope = Union[*_V5_EVENT_MODELS, OpaqueAuditEvent]
+AuditEventEnvelopeV6 = Union[*_V6_EVENT_MODELS, OpaqueAuditEventV6]
 
 
 class AuditIngestBatch(BaseModel):
@@ -220,6 +308,17 @@ class AuditIngestBatch(BaseModel):
     project_path: str
     display_name: str
     events: list[AuditEventEnvelope] = Field(min_length=1, max_length=_MAX_BATCH_SIZE)
+
+
+class AuditIngestBatchV6(BaseModel):
+    """The v6 ingest shape; v5 remains the active sender contract for fallback."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    project_path: str
+    display_name: str
+    events: list[AuditEventEnvelopeV6] = Field(min_length=1, max_length=_MAX_BATCH_SIZE)
 
 
 def _payload_for_events(session_id: str, project_root: str, events: list) -> dict:

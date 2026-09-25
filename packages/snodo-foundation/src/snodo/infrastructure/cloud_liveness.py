@@ -127,6 +127,12 @@ class LivenessPlan(TypedDict):
     tasks: NotRequired[list[LivenessTask]]
 
 
+class LivenessPlanV6(LivenessPlan, total=False):
+    """V6 plan shape, optionally identifying the queue running the plan."""
+
+    queue: str
+
+
 class LivenessAuditEvent(TypedDict):
     """The last audit event included in a snapshot."""
 
@@ -150,6 +156,13 @@ class LivenessSnapshot(TypedDict):
     last_event: LivenessAuditEvent | None
     last_activity_at: str | None
     snapshot_at: str
+
+
+class LivenessSnapshotV6(LivenessSnapshot, total=False):
+    """V6 snapshot adds optional running recon and plan queue details."""
+
+    plans: list[LivenessPlanV6]
+    recons: list[LivenessRecon]
 
 
 class LocalLivenessSnapshot(LivenessSnapshot, total=False):

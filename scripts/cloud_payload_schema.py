@@ -18,15 +18,17 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from snodo.infrastructure.cloud_liveness import LivenessSnapshot  # noqa: E402
-from snodo.infrastructure.cloud_sync import AuditIngestBatch  # noqa: E402
+from snodo.infrastructure.cloud_liveness import LivenessSnapshot, LivenessSnapshotV6  # noqa: E402
+from snodo.infrastructure.cloud_sync import AuditIngestBatch, AuditIngestBatchV6  # noqa: E402
 
 
 def published_schemas() -> dict[str, dict]:
     """Return the current schemas for both cloud payloads."""
     return {
-        "cloud_ingest": TypeAdapter(AuditIngestBatch).json_schema(),
-        "cloud_liveness": TypeAdapter(LivenessSnapshot).json_schema(),
+        "cloud_ingest_v5": TypeAdapter(AuditIngestBatch).json_schema(),
+        "cloud_liveness_v5": TypeAdapter(LivenessSnapshot).json_schema(),
+        "cloud_ingest_v6": TypeAdapter(AuditIngestBatchV6).json_schema(),
+        "cloud_liveness_v6": TypeAdapter(LivenessSnapshotV6).json_schema(),
     }
 
 
