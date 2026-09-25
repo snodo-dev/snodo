@@ -20,6 +20,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   and are audited with path, byte count, content hash, mode and session.
   No shipped protocol grants `write`, and `delete_file` remains unexposed.
   (Fixes #487)
+- Local `task_merged` audit events record the pre-merge base, full commit count,
+  up to 50 commit subjects, and changed-file/line totals. Measurement is
+  best-effort and does not alter the cloud sync contract. (Fixes #488)
 
 ## [0.16.0] — 2026-09-24
 

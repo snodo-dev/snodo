@@ -14,6 +14,56 @@ from snodo.tools.git import open_repo
 
 _logger = logging.getLogger(__name__)
 
+_MERGE_COMMIT_LIMIT = 50
+
+
+def _merge_base_sha(project_root: str) -> str:
+    """Return the current base HEAD before a task branch is merged."""
+    try:
+        with open_repo(str(Path(project_root))) as repo:
+            return repo.head.commit.hexsha
+    except Exception as e:
+        _logger.debug("Could not resolve base HEAD before merge: %s", e)
+        return ""
+
+
+def _merge_delivery(project_root: str, base_sha: str, merge_sha: str) -> dict:
+    """Measure the work Snodo merged, or return no metrics on any read failure."""
+    if not base_sha or not merge_sha:
+        return {}
+    try:
+        with open_repo(str(Path(project_root))) as repo:
+            commits = list(repo.iter_commits(f"{base_sha}..{merge_sha}"))
+            numstat = repo.git.diff("--numstat", base_sha, merge_sha)
+            files_changed = insertions = deletions = 0
+            for line in numstat.splitlines():
+                fields = line.split("\t", 2)
+                if len(fields) != 3:
+                    raise ValueError(f"Unexpected git numstat line: {line!r}")
+                files_changed += 1
+                if fields[0] != "-":
+                    insertions += int(fields[0])
+                if fields[1] != "-":
+                    deletions += int(fields[1])
+
+            result = {
+                "base_sha": base_sha,
+                "commit_count": len(commits),
+                "commits": [
+                    {"sha": commit.hexsha, "subject": commit.message.splitlines()[0] if commit.message else ""}
+                    for commit in commits[:_MERGE_COMMIT_LIMIT]
+                ],
+                "files_changed": files_changed,
+                "insertions": insertions,
+                "deletions": deletions,
+            }
+            if len(commits) > _MERGE_COMMIT_LIMIT:
+                result["commits_truncated"] = True
+            return result
+    except Exception as e:
+        _logger.debug("Could not measure delivered merge %s..%s: %s", base_sha, merge_sha, e)
+        return {}
+
 
 def _verified_commit_matches_merge_target(stored_commit: str, target_commit: str) -> bool:
     """Whether a verification event's stored commit evidences the merge target.
@@ -59,6 +109,7 @@ def _merge_on_success(
     with merge_lock(project_root):
         # Resolve target commit on the branch to be merged
         target_commit = ""
+        base_sha = _merge_base_sha(project_root)
         try:
             with open_repo(str(Path(project_root))) as repo:
                 target_commit = repo.commit(branch).hexsha
@@ -121,13 +172,15 @@ def _merge_on_success(
         if outcome == "merged":
             if audit_log:
                 authoritative_spec = getattr(task, "root_spec", None) or getattr(task, "spec", "")
+                merge_sha = merge_head_sha(project_root)
                 audit_log.append_event("task_merged", {
                     "op": "task_merged",
                     "task_ref": task.id,
                     "branch": branch,
-                    "merge_sha": merge_head_sha(project_root),
+                    "merge_sha": merge_sha,
                     "session_id": session_id,
                     "spec": authoritative_spec,
+                    **_merge_delivery(project_root, base_sha, merge_sha),
                 })
             print(f"✓ Merged {branch} into the base branch")
             return result, False, branch

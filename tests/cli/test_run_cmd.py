@@ -1757,6 +1757,85 @@ class TestUnverifiedMergeBlocked:
         assert len(events) == 1
         assert events[0].data["op"] == "task_merged"
         assert events[0].data["task_ref"] == "1"
+        assert events[0].data["base_sha"] == subprocess_run(
+            ["git", "rev-parse", "HEAD^"], cwd=repo, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert events[0].data["commit_count"] == 1
+        assert events[0].data["commits"] == [{"sha": target_commit, "subject": "recovered fix"}]
+        assert events[0].data["files_changed"] == 1
+        assert events[0].data["insertions"] == 1
+        assert events[0].data["deletions"] == 0
+
+    def test_task_merged_caps_commit_list_but_keeps_full_count(self, tmp_path):
+        import subprocess
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+        from snodo.cli.commands.run_cmd import _merge_on_success
+
+        repo = tmp_path
+        run = subprocess.run
+        run(["git", "init", "-q"], cwd=repo, check=True)
+        run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        run(["git", "add", "README.md"], cwd=repo, check=True)
+        run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+        task = Task(id="many_commits", spec="many commits")
+        branch = task_branch_name(task.id, task.spec)
+        run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        for index in range(51):
+            (repo / "delivery.txt").write_text(f"{index}\n")
+            run(["git", "add", "delivery.txt"], cwd=repo, check=True)
+            run(["git", "commit", "-qm", f"delivery {index}"], cwd=repo, check=True)
+        target = run(["git", "rev-parse", branch], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+        run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+        audit_log = AuditLog(str(repo / "audit.log"))
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed", "commit": target, "outcome": "pass", "command": "pytest",
+        })
+
+        assert _merge_on_success(str(repo), task, 0, "sess", audit_log)[0] == 0
+        event = audit_log.get_history("task_merged")[0].data
+        assert event["commit_count"] == 51
+        assert len(event["commits"]) == 50
+        assert event["commits_truncated"] is True
+
+    def test_measurement_failure_does_not_fail_merge_or_add_partial_metrics(self, tmp_path, monkeypatch):
+        import subprocess
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.infrastructure.worktree import task_branch_name
+        from snodo.cli.commands.run_cmd import _merge_on_success
+
+        repo = tmp_path
+        run = subprocess.run
+        run(["git", "init", "-q"], cwd=repo, check=True)
+        run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        run(["git", "add", "README.md"], cwd=repo, check=True)
+        run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+        task = Task(id="measurement_failure", spec="measurement failure")
+        branch = task_branch_name(task.id, task.spec)
+        run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "feature.txt").write_text("feature\n")
+        run(["git", "add", "feature.txt"], cwd=repo, check=True)
+        run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
+        target = run(["git", "rev-parse", branch], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
+        run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+        audit_log = AuditLog(str(repo / "audit.log"))
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed", "commit": target, "outcome": "pass", "command": "pytest",
+        })
+        monkeypatch.setattr("snodo.cli.commands.run_merge._merge_delivery", lambda *_: {})
+
+        result, preserve, _ = _merge_on_success(str(repo), task, 0, "sess", audit_log)
+        assert (result, preserve) == (0, False)
+        assert (repo / "feature.txt").exists()
+        event = audit_log.get_history("task_merged")[0].data
+        assert not {"base_sha", "commit_count", "commits", "files_changed", "insertions", "deletions"} & event.keys()
 
     def test_merge_refused_when_pass_is_for_a_different_commit(self, tmp_path):
         """A passing verification at a different commit does not satisfy the
