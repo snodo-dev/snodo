@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Cloud interface v6 now publishes recon events, pinned plan history,
+  delivered-work fields and recon/queue liveness shapes alongside v5. The v5
+  sender contract remains available for fallback. (Fixes #493)
 - Recon runs append hash-chained `recon_started` and `recon_completed` events
   to local audit history, including their question, agent outcomes and a
   bounded answer summary. These events remain local pending cloud interface v6.
