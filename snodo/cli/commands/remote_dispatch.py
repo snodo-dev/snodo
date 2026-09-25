@@ -18,7 +18,7 @@ from snodo.cli.commands.remote_stream import (
     consume_remote_stream,
 )
 from snodo.remote_host import (
-    check_remote_host, resolve_host_path, resolve_task_provider_keys,
+    check_remote_host, remote_shell_path, resolve_host_path, resolve_task_provider_keys,
     select_execution_host,
 )
 
@@ -59,15 +59,6 @@ def _git_remote_url(host: str, host_path: str) -> str:
     # The scp-style URL preserves SSH's remote-shell expansion of a leading
     # ``~/``; the ``ssh://`` form treats it as a literal ``/~/`` directory.
     return f"{host}:{host_path}"
-
-
-def _remote_cd_path(host_path: str) -> str:
-    """Quote a host path while allowing the remote shell to expand its home."""
-    if host_path == "~":
-        return '"$HOME"'
-    if host_path.startswith("~/"):
-        return '"$HOME"/' + shlex.quote(host_path[2:])
-    return shlex.quote(host_path)
 
 
 def _remote_protocol_path(protocol_path: str, project_root: str) -> str:
@@ -151,7 +142,7 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
         worker_args.extend(["--plan", plan_name])
     if getattr(args, "mock", False):
         worker_args.append("--mock")
-    command = f"cd {_remote_cd_path(host_path)} && " + " ".join(map(shlex.quote, worker_args))
+    command = f"cd {remote_shell_path(host_path)} && " + " ".join(map(shlex.quote, worker_args))
     stderr_tail: deque[str] = deque(maxlen=20)
     stderr_thread = None
     remote_exit_code = None

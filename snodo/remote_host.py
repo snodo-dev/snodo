@@ -42,6 +42,15 @@ def resolve_host_path(project_path: str | Path, host_path: str | None = None) ->
     return "~" if str(relative) == "." else f"~/{relative.as_posix()}"
 
 
+def remote_shell_path(host_path: str) -> str:
+    """Quote a remote path, expanding only a leading home-relative ``~``."""
+    if host_path == "~":
+        return '"$HOME"'
+    if host_path.startswith("~/"):
+        return '"$HOME"/' + shlex.quote(host_path[2:])
+    return shlex.quote(host_path)
+
+
 def _remote_command(host: str, command: str, *, timeout: int = 10) -> subprocess.CompletedProcess:
     argv = ["ssh", "-T", "-o", "BatchMode=yes", "-o", f"ConnectTimeout={timeout}", host, command]
     return subprocess.run(  # noqa: S603 - ssh is an explicit operator-selected transport
@@ -104,11 +113,7 @@ def check_remote_host(
     try:
         expected_remote = _project_remote(project_path)
         # Expanding a leading ~ in the remote shell supports the ADR's remote-home default.
-        remote_path = '"$HOME"' + ("/" + shlex.quote(path[2:].lstrip("/")) if path.startswith("~/") else "")
-        if path == "~":
-            remote_path = '"$HOME"'
-        elif not path.startswith("~/"):
-            remote_path = shlex.quote(path)
+        remote_path = remote_shell_path(path)
         remote_root = f"{remote_path}"
         command = (
             f"test -d {remote_root}/.git && git -C {remote_root} rev-parse --is-inside-work-tree "

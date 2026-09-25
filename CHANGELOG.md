@@ -38,6 +38,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Remote workers now use clone-relative paths on the host, expand home-relative
   host paths correctly, and report redacted SSH stderr with exit details. (Fixes #484)
+- Host preflight and remote dispatch now share remote path quoting; a fake-SSH
+  end-to-end run verifies home-relative paths resolve in the host clone without
+  forwarding the local project path. (Fixes #486)
 
 ## [0.16.0] — 2026-09-24
 
