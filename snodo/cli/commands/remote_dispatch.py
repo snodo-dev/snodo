@@ -61,6 +61,26 @@ def _git_remote_url(host: str, host_path: str) -> str:
     return f"{host}:{host_path}"
 
 
+def _remote_cd_path(host_path: str) -> str:
+    """Quote a host path while allowing the remote shell to expand its home."""
+    if host_path == "~":
+        return '"$HOME"'
+    if host_path.startswith("~/"):
+        return '"$HOME"/' + shlex.quote(host_path[2:])
+    return shlex.quote(host_path)
+
+
+def _remote_protocol_path(protocol_path: str, project_root: str) -> str:
+    """Express a local protocol path relative to the clone sent to the host."""
+    path = Path(protocol_path)
+    if not path.is_absolute():
+        return path.as_posix()
+    try:
+        return path.resolve().relative_to(Path(project_root).resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError("Remote protocol must be inside the project clone") from exc
+
+
 def dispatch_remote_task(args, protocol, task, model: str, project_root: str) -> int | None:
     """Run *task* remotely; return None when no host is configured."""
     try:
@@ -117,7 +137,8 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
 
     worker_args = [
         "snodo", "_worker", "--project-root", ".", "--task-id", task.id,
-        "--spec", task.spec, "--protocol", getattr(args, "protocol", ".snodo/protocol.yml"),
+        "--spec", task.spec, "--protocol",
+        _remote_protocol_path(getattr(args, "protocol", ".snodo/protocol.yml"), project_root),
         "--model", model, "--base-sha", base_ref,
     ]
     coder = getattr(args, "coder", None)
@@ -130,7 +151,10 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
         worker_args.extend(["--plan", plan_name])
     if getattr(args, "mock", False):
         worker_args.append("--mock")
-    command = f"cd {shlex.quote(host_path)} && " + " ".join(map(shlex.quote, worker_args))
+    command = f"cd {_remote_cd_path(host_path)} && " + " ".join(map(shlex.quote, worker_args))
+    stderr_tail: deque[str] = deque(maxlen=20)
+    stderr_thread = None
+    remote_exit_code = None
     try:
         subprocess.run(  # noqa: S603 - internal git ref and operator-selected SSH remote
             ["git",  # noqa: S607 - git is resolved through PATH by design
@@ -142,6 +166,9 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
              "-T", "-o", "BatchMode=yes", host, command],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, bufsize=1,
+            env={key: value for key, value in os.environ.items() if key not in {
+                "SNODO_HOME", "SNODO_PROJECT_ROOT", "SNODO_WORKTREE_PATH", "SNODO_AUDIT_LOG",
+            }},
         )
         assert process.stdin is not None and process.stdout is not None and process.stderr is not None
         stderr_lines = deque(maxlen=20)
@@ -155,6 +182,7 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
                         if secret:
                             line = line.replace(secret, "[REDACTED]")
                     stderr_lines.append(line)
+                    stderr_tail.append(line)
                     sink.on_log("stderr", f"[remote stderr] {line}")
             finally:
                 stderr_done.set()
@@ -170,6 +198,8 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
             task_ref=task.id, process=process,
             stderr_tail=lambda: list(stderr_lines), stderr_done=stderr_done,
         )
+        remote_exit_code = process.returncode
+        stderr_thread.join(timeout=2)
         if final["outcome"] != "completed":
             exit_code = process.wait()
             stderr_done.wait(1)
@@ -207,7 +237,19 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
             _record_task_completion(project_root, task.id, "unmerged", protocol=protocol, model=model)
         return result
     except (OSError, subprocess.SubprocessError, RemoteStreamError, RuntimeError) as exc:
-        print(f"Remote task failed on {host}: {exc}", file=sys.stderr)
+        if 'process' in locals():
+            remote_exit_code = process.poll()
+            if remote_exit_code is None:
+                process.kill()
+                remote_exit_code = process.wait()
+            if stderr_thread is not None:
+                stderr_thread.join(timeout=2)
+        detail = str(exc)
+        if remote_exit_code is not None:
+            detail += f" (SSH exit code {remote_exit_code})"
+        if stderr_tail:
+            detail += "\nRemote stderr (last lines):\n" + "\n".join(stderr_tail)
+        print(f"Remote task failed on {host}: {detail}", file=sys.stderr)
         status_writer(task.id, "errored")
         _record_task_completion(project_root, task.id, "errored", protocol=protocol, model=model)
         return 1

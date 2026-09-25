@@ -114,10 +114,17 @@ def run_remote_task(
         stream.emit("final", outcome="errored", branch="", head_sha="", error=message)
         return 0
 
+    old_env = {
+        "SNODO_REMOTE_PROVIDER_KEYS": os.environ.get("SNODO_REMOTE_PROVIDER_KEYS"),
+        "SNODO_PROJECT_ROOT": os.environ.get("SNODO_PROJECT_ROOT"),
+    }
+    project = Path(project_root).resolve()
+    # SSH may import explicitly allowed environment variables from the client.
+    # Never let a local SNODO_PROJECT_ROOT redirect worker caches or bookkeeping.
+    os.environ["SNODO_PROJECT_ROOT"] = str(project)
     stream = _Stream(list(credentials.values()))
     stdout = _OutputCapture(stream, "stdout")
     stderr = _OutputCapture(stream, "stderr")
-    old_env = {"SNODO_REMOTE_PROVIDER_KEYS": os.environ.get("SNODO_REMOTE_PROVIDER_KEYS")}
     try:
         from snodo.config import ConfigManager
         providers = ConfigManager().get_providers()
@@ -130,7 +137,6 @@ def run_remote_task(
             old_env.setdefault(env_name, os.environ.get(env_name))
             os.environ[env_name] = key
     os.environ["SNODO_REMOTE_PROVIDER_KEYS"] = json.dumps(credentials, separators=(",", ":"))
-    project = Path(project_root).resolve()
     branch = ""
     task_wt = None
     head_sha = ""

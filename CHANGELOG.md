@@ -35,6 +35,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   redacted; failures include SSH exit status and stderr context, and host checks
   diagnose missing snodo commands and non-interactive PATH issues. (Fixes #483)
 
+### Fixed
+- Remote workers now use clone-relative paths on the host, expand home-relative
+  host paths correctly, and report redacted SSH stderr with exit details. (Fixes #484)
+
 ## [0.16.0] — 2026-09-24
 
 ### Added

@@ -114,3 +114,14 @@ def test_config_protocol_accepts_remote_fields():
     configured = ExecutionConfig(host="worker", host_path="/srv/project")
     assert configured.host == "worker"
     assert configured.host_path == "/srv/project"
+
+
+def test_remote_dispatch_quotes_home_relative_paths_for_remote_expansion():
+    from snodo.cli.commands.remote_dispatch import _remote_cd_path, _remote_protocol_path
+
+    assert _remote_cd_path("~/Dev/my project") == '"$HOME"/\'Dev/my project\''
+    assert _remote_cd_path("~") == '"$HOME"'
+    assert _remote_cd_path("/srv/project") == "/srv/project"
+    assert _remote_protocol_path(
+        "/local/project/.snodo/protocol.yml", "/local/project",
+    ) == ".snodo/protocol.yml"
