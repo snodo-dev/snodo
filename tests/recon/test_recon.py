@@ -65,6 +65,11 @@ def recon_mgr(project_with_snodo, monkeypatch):
     """
     monkeypatch.setattr(recon_module, "_threads", [])
     monkeypatch.setattr(ReconManager, "_run_recon", lambda *args, **kwargs: None)
+    from snodo.infrastructure.audit import AuditLog
+    monkeypatch.setattr(
+        recon_module, "_audit_log_for_project",
+        lambda root: AuditLog(str(Path(root) / ".snodo" / "audit.log")),
+    )
 
     mgr = ReconManager(project_with_snodo)
     yield mgr
@@ -123,6 +128,28 @@ class TestReconManagerSubmit:
         assert state["status"] == "running"
         assert "created_at" in state
 
+    def test_submit_appends_full_recon_started_event(self, recon_mgr):
+        query = "Explain the entire system, including its edge cases."
+        agents = [["model-a", "model-b"], ["model-c"]]
+
+        recon_id = recon_mgr.submit(query, ["src/", "docs/"], agents=agents)
+        from snodo.infrastructure.audit import _LOCAL_EVENT_DATA_KEYS
+        events = recon_module._audit_log_for_project(recon_mgr.project_root).get_history()
+
+        assert events[-1].event_type == "recon_started"
+        assert set(events[-1].data) == set(_LOCAL_EVENT_DATA_KEYS["recon_started"])
+        assert events[-1].data == {
+            "recon_id": recon_id,
+            "query": query,
+            "paths": ["src/", "docs/"],
+            "agent_count": 2,
+            "agent_models": agents,
+            "session_id": "",
+            "created_at": json.loads(
+                (Path(recon_mgr.recons_dir) / recon_id / "state.json").read_text()
+            )["created_at"],
+        }
+
     def test_submit_custom_agents(self, recon_mgr):
         agents = ["gpt-4", "gemini/gemini-2.0-flash-exp"]
         recon_id = recon_mgr.submit("analyze", ["src/"], agents=agents)
@@ -178,6 +205,58 @@ class TestReconManagerGetResults:
         recon_id = recon_mgr.submit("query", ["./"])
         with pytest.raises(ReconError, match="not complete"):
             recon_mgr.get_results(recon_id)
+
+
+@pytest.mark.parametrize(
+    ("result", "error", "status", "succeeded", "failed"),
+    [
+        ("The answer from recon.", None, "complete", 1, 0),
+        ("", "provider failed", "failed", 0, 1),
+    ],
+)
+def test_recon_started_and_completed_events_cover_terminal_outcomes(
+    recon_mgr, monkeypatch, result, error, status, succeeded, failed,
+):
+    def fake_chain(project_root, models, query, paths, agent_label, max_turns=10):
+        return ReconResult(agent=agent_label, model=models[0], result=result, error=error)
+
+    monkeypatch.setattr(recon_module, "call_agent_chain", fake_chain)
+    recon_id = recon_mgr.submit("What happened?", ["./"], agents=["model-a"])
+    recon_mgr._run_recon_impl(recon_id, "What happened?", ["./"], [["model-a"]])
+
+    audit = recon_module._audit_log_for_project(recon_mgr.project_root)
+    events = audit.get_history()
+    assert [event.event_type for event in events] == ["recon_started", "recon_completed"]
+    completed = events[-1].data
+    from snodo.infrastructure.audit import _LOCAL_EVENT_DATA_KEYS
+    assert set(completed) == set(_LOCAL_EVENT_DATA_KEYS["recon_completed"])
+    assert completed["recon_id"] == recon_id
+    assert completed["status"] == status
+    assert completed["succeeded_agents"] == succeeded
+    assert completed["failed_agents"] == failed
+    assert completed["duration"] >= 0
+    assert completed["completed_at"] is not None
+    assert completed["summary"] == result
+    assert audit.verify_chain()
+
+
+def test_recon_completion_summary_is_capped_with_truncation_marker(recon_mgr):
+    long_answer = "answer " * 400
+    recon_id = recon_mgr.submit("Summarize", ["./"])
+    recon_dir = Path(recon_mgr.recons_dir) / recon_id
+    state = json.loads((recon_dir / "state.json").read_text())
+    state["status"] = "complete"
+    state["completed_at"] = state["created_at"] + 1
+    results = [{"agent": "default", "result": long_answer, "error": None}]
+    recon_mgr._save_results(recon_dir, results)
+    recon_module.ReconManager._save_state(recon_mgr, recon_dir, state)
+
+    recon_mgr._append_completion_event(state, results)
+    event = recon_module._audit_log_for_project(recon_mgr.project_root).get_history()[-1]
+
+    assert event.event_type == "recon_completed"
+    assert len(event.data["summary"]) == recon_module._RECON_SUMMARY_LIMIT
+    assert event.data["summary"].endswith(recon_module._RECON_SUMMARY_MARKER)
 
 
 # ------------------------------------------------------------------#

@@ -29,6 +29,19 @@ from snodo.core.interfaces import AuditError
 
 _logger = logging.getLogger(__name__)
 
+# Local audit event shapes that are intentionally not part of the cloud ingest
+# contract yet. A later cloud-interface revision can publish them separately.
+_LOCAL_EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
+    "recon_started": (
+        "recon_id", "query", "paths", "agent_count", "agent_models",
+        "session_id", "created_at",
+    ),
+    "recon_completed": (
+        "recon_id", "status", "succeeded_agents", "failed_agents",
+        "duration", "completed_at", "summary",
+    ),
+}
+
 
 _RECOVERY_GUIDANCE = (
     "Inspect the log, truncate it deliberately, or archive it and start a "

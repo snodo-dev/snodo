@@ -10,6 +10,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Recon runs append hash-chained `recon_started` and `recon_completed` events
+  to local audit history, including their question, agent outcomes and a
+  bounded answer summary. These events remain local pending cloud interface v6.
+  (Fixes #489)
 - The MCP `write` capability exposes `write_file` only to granting modes,
   defaults its allowlist to `.snodo/`, and supports protocol-declared path
   prefixes. Writes are confined after path resolution, never stage or commit,
