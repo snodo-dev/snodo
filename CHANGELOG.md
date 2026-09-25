@@ -28,6 +28,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   up to 50 commit subjects, and changed-file/line totals. Measurement is
   best-effort and does not alter the cloud sync contract. (Fixes #488)
 
+### Fixed
+- `snodo run`, every MCP server transport and `snodo queue run` now arm cloud
+  liveness for their lifetime and release their arm on exit, including errors.
+  Concurrent work in one process keeps the listener armed until all runs exit;
+  pushes remain behind the cloud sync gate. (Fixes #492)
+
 ## [0.16.0] — 2026-09-24
 
 ### Added

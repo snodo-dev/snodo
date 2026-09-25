@@ -90,12 +90,17 @@ def _queue_run(
             print(f"Error: {exc}", file=sys.stderr)
             return 1
 
-    if not all_queues and len(selected) > 1:
-        with ThreadPoolExecutor(max_workers=len(selected)) as pool:
-            results = list(pool.map(run_named_queue, selected))
+    from snodo.infrastructure import cloud_liveness
+    cloud_liveness.install()
+    try:
+        if not all_queues and len(selected) > 1:
+            with ThreadPoolExecutor(max_workers=len(selected)) as pool:
+                results = list(pool.map(run_named_queue, selected))
+            return 1 if any(results) else 0
+        results = [run_named_queue(name) for name in selected]
         return 1 if any(results) else 0
-    results = [run_named_queue(name) for name in selected]
-    return 1 if any(results) else 0
+    finally:
+        cloud_liveness.uninstall()
 
 
 def _run_queue(store, queue_name, project_root, run_plan, run_args, protocol, mock,

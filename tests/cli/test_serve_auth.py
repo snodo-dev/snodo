@@ -55,3 +55,33 @@ def test_help_names_values_and_any_semantics():
     assert "service-token" in result.stdout
     assert "repeat" in result.stdout
     assert "any accepted" in result.stdout
+
+
+def test_mcp_server_arms_and_disarms_liveness_when_transport_exits(monkeypatch):
+    from types import SimpleNamespace
+
+    server = MagicMock()
+    server.get_tools.return_value = ["tool"]
+    mcp = MagicMock()
+    mcp.settings = SimpleNamespace()
+    mcp.run.side_effect = RuntimeError("transport stopped")
+    protocol = SimpleNamespace(protocol_id="test", get_mode=lambda _: True)
+    calls = []
+
+    monkeypatch.setattr("snodo.mcp.server.ProtocolMCPServer", lambda **_: server)
+    monkeypatch.setattr("snodo.mcp.transport.build_fastmcp_server", lambda *_args, **_kwargs: mcp)
+    monkeypatch.setattr(serve_cmd, "_derive_project_root", lambda _: "/project")
+    monkeypatch.setattr(serve_cmd, "_load_tunnel_config", lambda _: {})
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.install", lambda: calls.append("install"))
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.uninstall", lambda: calls.append("uninstall"))
+
+    try:
+        serve_cmd._run_server(
+            SimpleNamespace(protocol="protocol.yml", mode=None, transport="stdio", port=None),
+            protocol,
+        )
+    except RuntimeError as error:
+        assert str(error) == "transport stopped"
+    else:  # pragma: no cover
+        raise AssertionError("transport exception was swallowed")
+    assert calls == ["install", "uninstall"]

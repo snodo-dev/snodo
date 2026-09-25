@@ -286,6 +286,10 @@ def _interval_seconds(config: Optional[dict] = None, session_id: Optional[str] =
 
 def reset_liveness_state() -> None:
     """Forget all per-session throttle state. Test seam; production never calls it."""
+    global _ARMED, _ARM_COUNT
+    with _INSTALL_LOCK:
+        _ARM_COUNT = 0
+        _ARMED = False
     with _lock:
         for st in _sessions.values():
             timer = st.get("timer")
@@ -1211,6 +1215,7 @@ def _active_session_id(project_root: str) -> str:
 
 _INSTALLED = False
 _ARMED = False
+_ARM_COUNT = 0
 _INSTALL_LOCK = threading.Lock()
 
 
@@ -1243,18 +1248,22 @@ def install() -> None:
     Registers the audit listener (once — it is a process-global registry) and
     arms it, so engine transitions appended here start pushes. Every push
     still passes the sync gate, so with ``cloud.sync_enabled`` off the
-    listener returns without any network call, anywhere. Idempotent.
+    listener returns without any network call, anywhere. Each call owns one
+    arm so overlapping run lifecycles can release independently.
     """
-    global _INSTALLED, _ARMED
+    global _INSTALLED, _ARMED, _ARM_COUNT
     with _INSTALL_LOCK:
         if not _INSTALLED:
             from snodo.infrastructure.audit import register_event_listener
             register_event_listener(_on_audit_event)
             _INSTALLED = True
+        _ARM_COUNT += 1
         _ARMED = True
 
 
 def uninstall() -> None:
-    """Disarm the audit listener. Test seam; a run never disarms mid-flight."""
-    global _ARMED
-    _ARMED = False
+    """Release one process liveness arm, keeping overlapping runs armed."""
+    global _ARMED, _ARM_COUNT
+    with _INSTALL_LOCK:
+        _ARM_COUNT = max(0, _ARM_COUNT - 1)
+        _ARMED = _ARM_COUNT > 0
