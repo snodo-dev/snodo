@@ -6,7 +6,9 @@ Admission model:
 Before sending anything (audit ingest or liveness snapshots), a client POSTs to
 the app host's `/m` route with its full API key as Bearer auth. The response's
 `jti`, opaque token, expiry, and cadence form the lease. Ingest is addressed by
-`jti`; liveness uses the same route on the app host. Near expiry the client renews.
+`jti`; liveness uses the same route on the app host. The optional
+`interface_version` advertises the cloud's accepted wire version; absent or
+invalid metadata leaves the client on v5. Near expiry the client renews.
 
 Three non-negotiable properties:
 1. Liveness jti belongs in the path, never a header (edge filters on path shape).
@@ -45,6 +47,7 @@ class CloudLease:
     token: str
     expires_at: float
     cadence_s: Optional[float] = None
+    interface_version: Optional[int] = None
 
     @property
     def lease_id(self) -> str:
@@ -184,7 +187,13 @@ def _perform_exchange(
                 cadence_s = float(data["cadence_s"]) if data.get("cadence_s") is not None else None
             except (TypeError, ValueError):
                 cadence_s = None
-            lease = CloudLease(jti=str(lease_id), token=str(token), expires_at=expires_at, cadence_s=cadence_s)
+            interface_version = data.get("interface_version")
+            if isinstance(interface_version, bool) or not isinstance(interface_version, int):
+                interface_version = None
+            lease = CloudLease(
+                jti=str(lease_id), token=str(token), expires_at=expires_at,
+                cadence_s=cadence_s, interface_version=interface_version,
+            )
 
             with _lock:
                 _current_lease = lease

@@ -593,11 +593,6 @@ def _post_snapshot(
 
     lease_url = get_cloud_lease_url(config)
     liveness_url = get_cloud_liveness_url(config)
-    # Recons are collected locally while interface v5 remains the only wire
-    # contract. Preserve the existing v5 body exactly until interface v6 is
-    # accepted and explicitly enables this section.
-    wire_snapshot = {key: value for key, value in snapshot.items() if key != "recons"}
-    body = json.dumps(wire_snapshot).encode()
     for lease_attempt in range(2):
         lease = get_admission_lease(
             api_key, lease_url, session_id=session_id, sync_state=state,
@@ -606,6 +601,14 @@ def _post_snapshot(
             _report_push(session_id, get_last_admission_error() or
                          f"{lease_url.rstrip('/')}/m -> no response: lease unavailable", state)
             return False, None, not state.is_refused(session_id)
+        # Recons are local until the lease explicitly advertises v6. Missing
+        # capability metadata preserves the exact v5 snapshot body.
+        wire_snapshot = (
+            snapshot if getattr(lease, "interface_version", None) is not None
+            and lease.interface_version >= 6
+            else {key: value for key, value in snapshot.items() if key != "recons"}
+        )
+        body = json.dumps(wire_snapshot).encode()
         url = f"{liveness_url.rstrip('/')}/i/{quote(lease.jti, safe='')}"
         try:
             response = httpx.post(

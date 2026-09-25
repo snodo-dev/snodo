@@ -71,11 +71,18 @@ from both.
 6. **One interface bump.** New event types, new `task_merged` fields and
    the new snapshot sections ship together as cloud interface version 6.
    Older events keep validating as they are; the new fields are optional
-   in the shape. The client is built before the cloud accepts version 6
-   and keeps sending version 5 until the cloud says it accepts 6: sync
-   never breaks against an older cloud, no event is lost, and the hash
-   chain the cloud receives has no gap. The new events are always written
-   to the local audit log; only what goes on the wire waits.
+   in the shape. The lease-mint response advertises `interface_version`; a
+   missing or invalid value means version 5. The client sends v6 only when
+   the current lease advertises 6 or later. Under v5, it sends unchanged
+   v5-compatible events and holds at the first v6-only event or v6-added data
+   field, including the remaining chain suffix. It does not strip fields,
+   since that would make `event_hash` attest to different data. A held event
+   is retried with a newly minted lease on a later sync. Sync is not refused,
+   no event is lost, and the hash chain the cloud receives has no gap. The
+   new events are always written to the local audit log; only what goes on
+   the wire waits. snodo-cloud must include the currently accepted
+   `interface_version` in its successful lease-mint response and change it
+   to 6 only after ingest and liveness accept v6.
 7. **No new state.** Recon statuses are the ones recon already writes;
    queue "stopped" is derived as in ADR 053. No plan or task status,
    severity or halt type is added.

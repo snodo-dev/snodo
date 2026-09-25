@@ -61,6 +61,28 @@ _MAX_RETRIES = 5
 _DEFAULT_PAYLOAD_LIMIT = 5 * 1024 * 1024
 _PAYLOAD_MARGIN = 256 * 1024
 
+# These event tags and data fields were introduced with interface v6. A v5
+# receiver must never see the new tags; hold at that point in the hash chain.
+_V6_EVENT_TYPES = {"recon_started", "recon_completed", "plan_proposed", "plan_run"}
+_V6_DATA_KEYS: dict[str, set[str]] = {
+    "task_classified": {"plan_name", "plan_wave"},
+    "dispatch": {"plan_name", "plan_wave"},
+    "task_complete": {"plan_name", "plan_wave"},
+    "task_merged": {
+        "plan_name", "plan_wave", "base_sha", "commit_count", "commits",
+        "files_changed", "insertions", "deletions",
+    },
+    "halt": {"plan_name", "plan_wave"},
+}
+
+
+def _requires_v6(event: Any) -> bool:
+    """Whether transmitting this event verbatim requires interface v6."""
+    return event.event_type in _V6_EVENT_TYPES or bool(
+        _V6_DATA_KEYS.get(event.event_type, set()) & set((event.data or {}).keys())
+        if isinstance(event.data, dict) else False
+    )
+
 
 _EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
     "project_announced": ("project_id", "scope", "display_name"),
@@ -343,6 +365,28 @@ def _payload_for_events(session_id: str, project_root: str, events: list) -> dic
         "display_name": Path(project_root).name if project_root else "",
         "events": payload_events,
     }
+
+
+def _v5_payload(payload: dict, interface_version: int) -> Optional[dict]:
+    """Select v5-compatible events, or hold at a v6-only event.
+
+    Hashes describe the local audit data and are intentionally unchanged by
+    projection. Sequence, previous_hash and event_hash always travel together.
+    """
+    if interface_version >= 6:
+        return payload
+    projected = {**payload, "events": []}
+    for event in payload["events"]:
+        if event["event_type"] in _V6_EVENT_TYPES:
+            return None
+        data = event["data"]
+        removed = _V6_DATA_KEYS.get(event["event_type"], set())
+        if removed and isinstance(data, dict) and removed.intersection(data):
+            # Stripping these fields would make event_hash no longer attest to
+            # the transmitted data. Hold the event and chain suffix intact.
+            return None
+        projected["events"].append(event)
+    return projected
 
 
 def _encode_payload(payload: dict) -> bytes:
@@ -639,6 +683,22 @@ class CloudSyncDispatcher:
         # The margin keeps normal batches below the server's object limit.
         payload_limit = _DEFAULT_PAYLOAD_LIMIT - _PAYLOAD_MARGIN
         queue = _partition_events(session_id, project_root, unsynced, payload_limit)
+        # Keep v6-only tags at batch boundaries. A v5 cloud can then accept the
+        # compatible prefix before the first event it must hold.
+        separated: list[list] = []
+        for candidate in queue:
+            segment: list = []
+            for event in candidate:
+                if _requires_v6(event):
+                    if segment:
+                        separated.append(segment)
+                        segment = []
+                    separated.append([event])
+                else:
+                    segment.append(event)
+            if segment:
+                separated.append(segment)
+        queue = separated
         oversized_sequences: list[int] = []
         while queue:
             batch = queue.pop(0)
@@ -698,6 +758,13 @@ class CloudSyncDispatcher:
                 refused_reason = reason
                 last_error = reason
                 break
+            elif outcome == "unsupported":
+                # Capability is unknown or still v5. Keep this sequence and
+                # everything after it pending; advancing past it would create
+                # a gap in the cloud's hash chain.
+                failed = True
+                last_error = reason
+                break
             else:  # retryable
                 failed = True
                 last_error = reason
@@ -746,33 +813,6 @@ class CloudSyncDispatcher:
         import httpx
 
         payload = _payload_for_events(session_id, project_root, batch)
-        body = _encode_payload(payload)
-        # Validate the contract without serializing the model: the original
-        # values and field set must remain byte-for-byte unchanged on the wire.
-        try:
-            AuditIngestBatch.model_validate(payload)
-        except ValidationError as err:
-            event_index = next(
-                (part for error in err.errors() for part in error.get("loc", ())
-                 if isinstance(part, int)),
-                None,
-            )
-            payload_events = payload["events"]
-            if event_index is not None and event_index < len(payload_events):
-                rejected = payload_events[event_index]
-                event_label = (
-                    f"event {rejected['event_type']!r} at sequence {rejected['sequence']}"
-                )
-            else:
-                event_label = "ingest batch"
-            first_error = err.errors()[0] if err.errors() else {}
-            detail = first_error.get("msg", "invalid payload")
-            reason = (
-                f"Client-side cloud sync validation failed for {event_label}: {detail}. "
-                "Check the event envelope, then retry with `snodo cloud sync --all --force`."
-            )
-            _logger.error(reason)
-            return ("retryable", reason, None)
         from urllib.parse import quote
 
         from snodo.config import get_cloud_lease_url
@@ -790,6 +830,40 @@ class CloudSyncDispatcher:
                 return ("refused", reason, info.get("refused_status_code", 401))
             from snodo.infrastructure.cloud_lease import get_last_admission_error
             return ("retryable", get_last_admission_error() or "Cloud admission unreachable: no response received", None)
+
+        advertised_version = getattr(lease, "interface_version", None)
+        interface_version = advertised_version or 5
+        payload = _v5_payload(payload, interface_version)
+        if payload is None:
+            reason = "Cloud interface v6 is not yet advertised; event batch held for retry"
+            # A later attempt must ask the cloud again rather than trusting an
+            # unknown or stale v5 capability cached in this admission lease.
+            invalidate_lease(lease)
+            return ("unsupported", reason, interface_version)
+        # Validate the exact projected payload without re-serializing it: its
+        # hash-chain envelope remains byte-for-byte unchanged.
+        try:
+            AuditIngestBatch.model_validate(payload)
+        except ValidationError as err:
+            event_index = next(
+                (part for error in err.errors() for part in error.get("loc", ())
+                 if isinstance(part, int)), None,
+            )
+            payload_events = payload["events"]
+            rejected = payload_events[event_index] if event_index is not None and event_index < len(payload_events) else None
+            event_label = (
+                f"event {rejected['event_type']!r} at sequence {rejected['sequence']}"
+                if rejected else "ingest batch"
+            )
+            first_error = err.errors()[0] if err.errors() else {}
+            detail = first_error.get("msg", "invalid payload")
+            reason = (
+                f"Client-side cloud sync validation failed for {event_label}: {detail}. "
+                "Check the event envelope, then retry with `snodo cloud sync --all --force`."
+            )
+            _logger.error(reason)
+            return ("retryable", reason, None)
+        body = _encode_payload(payload)
 
         url = f"{api_url.rstrip('/')}/i/{quote(lease.jti, safe='')}"
         first_seq = batch[0].sequence

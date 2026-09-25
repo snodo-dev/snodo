@@ -735,6 +735,85 @@ class TestCloudSyncDispatcher:
         assert "anchor_summaries" not in payload_ev["data"]
         assert "last_activity" not in payload_ev["data"]
 
+    def test_v5_cloud_sends_compatible_prefix_and_holds_v6_chain_suffix(self):
+        import time
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+        from snodo.infrastructure.cloud_lease import CloudLease
+
+        events = self._make_events(3)
+        events[1].event_type = "task_merged"
+        events[1].data.update({"plan_name": "p", "plan_wave": "w1", "commit_count": 3})
+        events[2].event_type = "recon_started"
+        captured = []
+        lease = CloudLease("jti", "token", time.time() + 3600, interface_version=5)
+
+        def accepted(_url, content, **_kwargs):
+            captured.extend(json.loads(content)["events"])
+            return MagicMock(status_code=200, text="ok")
+
+        dispatcher = CloudSyncDispatcher()
+        with (
+            patch.object(CloudSyncState, "get_cursor", return_value=0),
+            patch.object(CloudSyncState, "advance_cursor") as advance,
+            patch.object(CloudSyncState, "record_attempt"),
+            patch("snodo.infrastructure.cloud_lease.get_admission_lease", return_value=lease),
+            patch("httpx.post", side_effect=accepted) as post,
+        ):
+            result = dispatcher.sync(
+                "sess_v5", "/proj", MagicMock(events=events), "key", "https://api.test",
+            )
+
+        assert result["failed"] is True
+        assert not result.get("refused")
+        assert result["pending"] == 2
+        assert [event["sequence"] for event in captured] == [1]
+        assert captured[0]["event_hash"] == events[0].event_hash
+        assert post.call_count == 1
+        advance.assert_called_once_with("sess_v5", 1)
+
+    def test_v6_cloud_sends_new_events_and_switches_after_v5(self):
+        import time
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+        from snodo.infrastructure.cloud_lease import CloudLease
+
+        events = self._make_events(2)
+        events[0].event_type = "transition"
+        events[1].event_type = "recon_started"
+        delivered = []
+        lease_versions = iter((5, 5, 6))
+
+        def lease_for_request(*_args, **_kwargs):
+            version = next(lease_versions)
+            return CloudLease("jti", "token", time.time() + 3600, interface_version=version)
+
+        def accepted(_url, content, **_kwargs):
+            delivered.extend(json.loads(content)["events"])
+            return MagicMock(status_code=200, text="ok")
+
+        dispatcher = CloudSyncDispatcher()
+        cursor = {"value": 0}
+        with (
+            patch.object(CloudSyncState, "get_cursor", side_effect=lambda _sid: cursor["value"]),
+            patch.object(CloudSyncState, "advance_cursor", side_effect=lambda _sid, seq: cursor.update(value=seq)),
+            patch.object(CloudSyncState, "record_attempt"),
+            patch("snodo.infrastructure.cloud_lease.get_admission_lease", side_effect=lease_for_request),
+            patch("httpx.post", side_effect=accepted),
+        ):
+            first = dispatcher.sync(
+                "sess_upgrade", "/proj", MagicMock(events=events), "key", "https://api.test",
+            )
+            second = dispatcher.sync(
+                "sess_upgrade", "/proj", MagicMock(events=events), "key", "https://api.test",
+            )
+
+        assert first["failed"] is True
+        assert first["synced"] == 1
+        assert second["failed"] is False
+        assert second["synced"] == 1
+        assert cursor["value"] == 2
+        assert [event["sequence"] for event in delivered] == [1, 2]
+        assert delivered[1]["event_type"] == "recon_started"
+
     def test_network_error_never_raises(self):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
 
