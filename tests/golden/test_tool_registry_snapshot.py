@@ -63,6 +63,7 @@ EXPECTED_MODE_TOOL_MAP_KEYS = frozenset({
     "test",
     "validate",
     "review",
+    "write",
     "approve",
     "commit",
     "merge",

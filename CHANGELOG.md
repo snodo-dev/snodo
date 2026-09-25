@@ -9,6 +9,14 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- The MCP `write` capability exposes `write_file` only to granting modes,
+  defaults its allowlist to `.snodo/`, and supports protocol-declared path
+  prefixes. Writes are confined after path resolution, never stage or commit,
+  and are audited with path, byte count, content hash, mode and session.
+  No shipped protocol grants `write`, and `delete_file` remains unexposed.
+  (Fixes #487)
+
 ## [0.16.0] — 2026-09-24
 
 ### Added

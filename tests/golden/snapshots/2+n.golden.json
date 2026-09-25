@@ -265,5 +265,8 @@
       "validator_type": "acceptance"
     }
   ],
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "write_allowed_prefixes": [
+    ".snodo/"
+  ]
 }

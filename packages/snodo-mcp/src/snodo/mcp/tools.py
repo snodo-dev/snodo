@@ -23,7 +23,7 @@ TOOL_REGISTRY = {
         "method": "read_file",
     },
     "write_file": {
-        "description": "Write content to a file within the project",
+        "description": "Write content to a file under protocol-allowed project path prefixes",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -748,6 +748,7 @@ TOOL_REGISTRY = {
 # Map protocol tool names (from mode.tools) to concrete MCP tool names
 MODE_TOOL_MAP = {
     "edit": ["read_file", "list_files", "list_models", "resolve_model", "recon", "get_recon_status", "get_recon_results"],
+    "write": ["write_file"],
     "decide": ["propose_adjudicate", "propose_set_model"],
     "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs", "retry_job"],
     "test": ["run_tests"],

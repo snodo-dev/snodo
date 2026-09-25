@@ -431,6 +431,56 @@ class WorkspaceMCP:
         validated_path.write_text(content)
         
         return True
+
+    def write_file_with_prefixes(
+        self, path: str, content: str, allowed_prefixes: List[str]
+    ) -> Path:
+        """Write a file confined to the supplied project-relative prefixes.
+
+        Unlike the legacy workspace mutation method, this is the narrowly
+        scoped MCP write surface. Prefixes are relative to the project root;
+        path resolution happens before matching so traversal and symlinks
+        cannot escape the root or an allowed prefix.
+        """
+        prefixes: list[tuple[str, ...]] = []
+        for raw_prefix in allowed_prefixes:
+            normalized = raw_prefix.strip().replace("\\", "/")
+            prefix = normalized.strip("/")
+            if (not prefix or normalized.startswith("/") or
+                    ".." in Path(prefix).parts):
+                raise PathValidationError(
+                    f"Invalid write allowed prefix {raw_prefix!r}; prefixes must be project-relative"
+                )
+            parts = tuple(part for part in prefix.split("/") if part and part != ".")
+            if not parts:
+                raise PathValidationError(
+                    f"Invalid write allowed prefix {raw_prefix!r}; use a named project-relative prefix"
+                )
+            prefixes.append(parts)
+        displayed = ", ".join(allowed_prefixes) if allowed_prefixes else "(none)"
+
+        requested = Path(path)
+        candidate = requested if requested.is_absolute() else self.project_root / requested
+        resolved = candidate.resolve()
+        try:
+            relative = resolved.relative_to(self.project_root)
+        except ValueError as exc:
+            raise PathValidationError(
+                f"Write path {path!r} escapes project root; allowed prefixes: {displayed}"
+            ) from exc
+
+        if not any(relative.parts[:len(prefix)] == prefix for prefix in prefixes):
+            raise PathValidationError(
+                f"Write path {path!r} is outside allowed prefixes: {displayed}"
+            )
+        if resolved.exists() and resolved.is_dir():
+            raise PathValidationError(
+                f"Write path {path!r} names a directory; allowed prefixes: {displayed}"
+            )
+
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_bytes(content.encode("utf-8"))
+        return resolved
     
     @_declaration_scoped
     def list_files(self, directory: str = ".") -> List[str]:

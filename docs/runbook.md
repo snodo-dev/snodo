@@ -496,7 +496,33 @@ Or use `snodo install` / `snodo uninstall` to manage the Claude Desktop config a
 
 ### How modes become servers
 
-Each protocol mode declares a set of logical tools (e.g., `edit`, `approve`, `pr`). `snodo serve` maps those to concrete MCP operations and serves exactly the mode's grant: tools the active mode(s) do not grant are not exposed at all (write_file and delete_file belong to no shipped grant), and no exposed call demands a validation token from the caller (ADR 047). The validator quorum is enforced inside the engine loop, per task.
+Each protocol mode declares logical tools; `snodo serve` maps each grant to
+concrete MCP operations. A tool a mode does not grant is not exposed. No
+shipped protocol grants `write`, and `delete_file` has no grant.
+
+| Protocol mode tool | MCP tool(s) | Purpose |
+|---|---|---|
+| `edit` | `read_file`, `list_files`, model/recon tools | Read and understand project files |
+| `write` | `write_file` | Write files under the protocol's allowed prefixes |
+| `approve` / `commit` | `stage_files`, `commit` | Stage and commit changes |
+
+`write_file` writes directly; it does not stage or commit. Its default path
+allowance is `.snodo/`. A protocol can replace that default with a top-level
+prefix list, for example:
+
+```yaml
+write_allowed_prefixes:
+  - .snodo/
+  - docs/specs/
+```
+
+Paths are resolved against the project root (including `..` and symlinks),
+must remain inside an allowed prefix, and cannot name a directory. Refusals
+name the allowed prefixes. Successful writes are recorded in the audit log
+with their path, byte count, SHA-256 content hash, mode, and session. Grant
+`write` only to modes that need this capability. No exposed call demands a
+validation token from the caller (ADR 047); the validator quorum is enforced
+inside the engine loop, per task.
 
 ### Validation flow (engine loop + INV3)
 

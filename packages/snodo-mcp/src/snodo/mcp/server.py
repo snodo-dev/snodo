@@ -416,6 +416,45 @@ class ProtocolMCPServer:
         if not mcp_instance or not method_name:
             raise MCPError(f"No backing MCP for tool: {name}")
 
+        if name == "write_file":
+            path = arguments.get("path")
+            content = arguments.get("content")
+            if not isinstance(path, str) or not isinstance(content, str):
+                raise MCPError("write_file requires string path and content")
+            prefixes = self.protocol.write_allowed_prefixes
+            try:
+                written = self.workspace.write_file_with_prefixes(path, content, prefixes)
+            except Exception as e:
+                raise MCPError(f"Tool execution failed: {e}") from e
+            payload = content.encode("utf-8")
+            mode = self._active_mode()
+            if self._audit_log is None:
+                from snodo.infrastructure.audit import AuditLog
+                self._audit_log = AuditLog(
+                    str(self.workspace.project_root / ".snodo" / "audit.log")
+                )
+            session_id = ""
+            try:
+                from snodo.infrastructure.session import SessionManager
+                session = SessionManager().get_active_session(mode, self.project_root)
+                if session is not None:
+                    session_id = session.session_id
+            except Exception as e:  # noqa: BLE001 — audit attribution is best effort
+                logger.debug("Could not resolve active session for write audit: %s", e)
+            self._audit("tool_call", {
+                "op": "file_written",
+                "tool_name": "write_file",
+                "path": written.relative_to(self.workspace.project_root).as_posix(),
+                "bytes": len(payload),
+                "content_hash": hashlib.sha256(payload).hexdigest(),
+                "mode": mode,
+                "session_id": session_id,
+            })
+            return {
+                "path": written.relative_to(self.workspace.project_root).as_posix(),
+                "bytes": len(payload),
+            }
+
         method = getattr(mcp_instance, method_name, None)
         if not method:
             raise MCPError(f"Method {method_name} not found on {mcp_name} MCP")
