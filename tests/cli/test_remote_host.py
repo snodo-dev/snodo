@@ -1,5 +1,6 @@
 """Remote host selection and SSH preflight tests (ADR 055)."""
 
+import io
 import os
 import subprocess
 from pathlib import Path
@@ -106,6 +107,66 @@ def test_host_check_reports_local_task_loop_provider_keys(tmp_path, monkeypatch,
     assert result == 0
     assert '"provider_key:openai"' in output
     assert "local-openai-key" not in output
+
+
+def test_host_check_non_tty_is_concise_and_shows_failure_detail(tmp_path, monkeypatch, capsys):
+    from snodo.cli.commands import host_cmd
+    from snodo.remote_host import HostCheck
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(host_cmd, "select_execution_host", lambda execution: "worker")
+    monkeypatch.setattr(host_cmd, "check_remote_host", lambda *args, **kwargs: [
+        HostCheck("project_clone", "git remote get-url origin", False,
+                  "expected remote 'git@github.com:org/project.git'; got ''; SSH exit code: 128")
+    ])
+
+    assert host_cmd.host_check(False, False) == 1
+    output = capsys.readouterr().out
+    assert "✗ project_clone  project clone check failed" in output
+    assert "    command: git remote get-url origin" in output
+    assert "expected remote 'git@github.com:org/project.git'" in output
+    assert "1 checks failed" in output
+    assert "\033[" not in output
+
+
+def test_host_check_tty_colors_status_mark_only(tmp_path, monkeypatch):
+    from snodo.cli.commands import host_cmd
+    from snodo.remote_host import HostCheck
+
+    class TTY(io.StringIO):
+        def isatty(self):
+            return True
+
+    output = TTY()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(host_cmd.sys, "stdout", output)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setattr(host_cmd, "select_execution_host", lambda execution: "worker")
+    monkeypatch.setattr(host_cmd, "check_remote_host", lambda *args, **kwargs: [
+        HostCheck("reachable", "true", True, "SSH exit code: 0")
+    ])
+
+    assert host_cmd.host_check(False, False) == 0
+    assert "\033[32m✓\033[0m reachable  SSH connection established" in output.getvalue()
+    assert "command: true" not in output.getvalue()
+    assert "Host ready" in output.getvalue()
+
+
+def test_host_check_verbose_shows_success_details(tmp_path, monkeypatch, capsys):
+    from snodo.cli.commands import host_cmd
+    from snodo.remote_host import HostCheck
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(host_cmd, "select_execution_host", lambda execution: "worker")
+    monkeypatch.setattr(host_cmd, "check_remote_host", lambda *args, **kwargs: [
+        HostCheck("reachable", "true", True, "SSH exit code: 0")
+    ])
+
+    assert main(["host", "check", "--verbose"]) == 0
+    output = capsys.readouterr().out
+    assert "✓ reachable  SSH connection established" in output
+    assert "    command: true" in output
+    assert "    SSH exit code: 0" in output
 
 
 def test_config_protocol_accepts_remote_fields():
