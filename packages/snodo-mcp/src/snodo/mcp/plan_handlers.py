@@ -35,7 +35,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 from snodo.compiler.verifier import verify_plan_dir
-from snodo.mcp.planner import PlannerError
+from snodo.mcp.planner import PlannerError, plan_history_shape
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +136,7 @@ class PlanToolHandler:
 
         self.server._audit("plan_proposed", {
             "op": "plan_proposed",
-            "plan_name": plan_name,
-            "wave_count": len(plan_data.get("waves", [])),
-            "mode": self.server._active_mode(),
+            **plan_history_shape(plan_data, plan_name),
         })
         return {
             "status": "proposed",
@@ -276,6 +274,7 @@ class PlanToolHandler:
         task_args: Dict[str, Any] = {
             "plan_name": plan_name,
             "cwd": self.server.project_root,
+            "trigger": "mcp",
         }
         protocol = arguments.get("protocol")
         if protocol:
@@ -299,11 +298,16 @@ class PlanToolHandler:
                 f"Failed to start plan run for '{plan_name}': {e}"
             ) from e
 
+        with open(plan_dir / "plan.yml") as f:
+            plan_data = yaml.safe_load(f) or {}
+        self.server._audit("plan_proposed", {
+            "op": "plan_proposed",
+            **plan_history_shape(plan_data, plan_name),
+        })
         self.server._audit("plan_run", {
             "op": "plan_run",
-            "plan_name": plan_name,
-            "job_id": job_id,
-            "mode": self.server._active_mode(),
+            **plan_history_shape(plan_data, plan_name),
+            "trigger": "mcp",
         })
 
         if arguments.get("wait"):

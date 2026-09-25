@@ -593,12 +593,20 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
             return False
         if decision == "retry":
             from snodo.cli.commands.run_cmd import _retry_task
+            import dataclasses
+            retry_args = (
+                dataclasses.replace(args, plan_wave=str(wave_id))
+                if dataclasses.is_dataclass(args)
+                else args
+            )
+            if not dataclasses.is_dataclass(retry_args):
+                retry_args.plan_wave = str(wave_id)
             project_root = str(planner.project_root)
             session_manager = getattr(args, "session_manager", None)
             print(f"  [{task_id}] resuming as retry (failure context found)")
             start_mono = time.monotonic()
             start_wall = time.time()
-            result = _retry_task(args, task_id, project_root, session_manager)
+            result = _retry_task(retry_args, task_id, project_root, session_manager)
             end_mono = time.monotonic()
             end_wall = time.time()
             dur_str = _format_duration(end_mono - start_mono)
@@ -627,6 +635,8 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
         id=task_id,
         spec=spec,
         module_id=module_id,
+        plan_name=args.plan,
+        plan_wave=str(wave_id),
     )
     print(f"  [{task_id}] executing...")
     start_mono = time.monotonic()
@@ -874,6 +884,7 @@ def _execute_wave_tasks_concurrent(
             "no_isolation": getattr(args, "no_isolation", False),
             "cwd": project_root,
             "task_plan": args.plan,
+            "task_wave": str(wave_id),
         }
         # Name the plan-run job that spawned this task, when there is one, so
         # list_jobs can tell a plan run from the tasks it spawned (Fixes #254).
@@ -1012,6 +1023,7 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
     with provider_env(model) as mgr:
         try:
             from snodo.infrastructure.paths import require_project_root
+            from snodo.mcp.planner import plan_history_shape
             project_root = require_project_root()
             audit_log = getattr(args, "audit_log", None)
             session_manager = getattr(args, "session_manager", None)
@@ -1019,7 +1031,6 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                 from snodo.infrastructure.audit import get_audit_log
                 from snodo.infrastructure.session import SessionManager
                 from snodo.project import get_project_id
-
                 project_id, _ = get_project_id(project_root)
                 audit_log = audit_log or get_audit_log(project_id=project_id)
                 session_manager = session_manager or SessionManager(audit_log=audit_log)
@@ -1037,6 +1048,7 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
 
             planner = PlannerMCP(project_root, audit_log=audit_log)
             plan_data = planner.get_plan(args.plan)
+            trigger = getattr(args, "trigger", None) or os.environ.get("SNODO_PLAN_TRIGGER") or "cli"
             status_data = planner.get_status(args.plan)
             from snodo.compiler.models import Plan
             plan_model = Plan.from_dict(plan_data, status_data)
@@ -1062,6 +1074,21 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
             for err in verification.errors:
                 print(f"  - {err}", file=sys.stderr)
             return 1
+
+        if trigger != "mcp":
+            audit_log.append_event("plan_proposed", {
+                "op": "plan_proposed",
+                **plan_history_shape(plan_data, args.plan),
+            })
+            run_event = {
+                "op": "plan_run",
+                **plan_history_shape(plan_data, args.plan),
+                "trigger": trigger,
+            }
+            queue = getattr(args, "queue", None) or os.environ.get("SNODO_PLAN_QUEUE")
+            if trigger == "queue" and queue:
+                run_event["queue"] = queue
+            audit_log.append_event("plan_run", run_event)
 
         if fixture_identity:
             print(f"Benchmark fixture: {fixture_identity}")

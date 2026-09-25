@@ -432,6 +432,36 @@ def test_plan_cli_main_integration(plan_project_env):
     assert status["tasks"]["task_1_1"]["status"] == "completed"
 
 
+@pytest.mark.parametrize(
+    ("trigger", "queue"),
+    [("cli", None), ("queue", "nightly")],
+)
+def test_plan_run_history_shape_for_cli_triggers(plan_project_env, trigger, queue):
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, f"history_{trigger}")
+    args = _make_plan_args(plan_name, trigger=trigger, queue=queue)
+    from snodo.infrastructure.audit import AuditLog
+    audit_log = AuditLog(str(plan_project_env / ".snodo" / "audit.log"))
+    args.audit_log = audit_log
+    with patch("snodo.cli.commands.run_cmd._execute_task", return_value=0):
+        assert _run_plan(args) == 0
+
+    events = audit_log.get_history()
+    proposal = next(event for event in events if event.event_type == "plan_proposed")
+    run = next(event for event in events if event.event_type == "plan_run")
+    expected_waves = [
+        {"wave_id": 1, "task_refs": ["task_1_1"]},
+        {"wave_id": 2, "task_refs": ["task_2_1"]},
+    ]
+    assert {key: proposal.data[key] for key in ("plan_name", "waves")} == {
+        "plan_name": plan_name, "waves": expected_waves,
+    }
+    assert run.data["plan_name"] == plan_name
+    assert run.data["waves"] == expected_waves
+    assert run.data["trigger"] == trigger
+    assert run.data.get("queue") == queue
+
+
 # ---------------------------------------------------------------------------
 # Blocked-task resume through the retry path (Fixes #131)
 # ---------------------------------------------------------------------------

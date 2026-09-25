@@ -258,3 +258,23 @@ class TestTaskCompleteEventShape:
         emitted = set(data) - {"op"}
         assert emitted == _documented_event_keys("task_complete")
         assert data["change_size"] is None  # no git here: unmeasured, not zero
+
+    def test_plan_owned_task_complete_records_plan_wave(self):
+        protocol = _make_protocol()
+        audit = MagicMock(spec=AuditLog)
+        builder = GraphBuilder(protocol, audit_log=audit)
+        state = {
+            "task": {"id": "task_001", "spec": "Implement feature",
+                     "plan_name": "ship", "plan_wave": "w_plan_1"},
+            "current_mode": "producer", "iteration": 1, "stage": "move_next",
+            "validation_results": [], "validation_token": None,
+            "artifacts": [], "constraints_passed": True,
+            "constraint_violations": [], "policy_decision": None,
+            "is_complete": True, "is_blocked": False, "halt_type": None,
+            "metadata": {}, "messages": [],
+        }
+        builder._complete_node(state)
+
+        _, data = audit.append_event.call_args[0]
+        assert data["plan_name"] == "ship"
+        assert data["plan_wave"] == "w_plan_1"

@@ -114,7 +114,10 @@ def _run_queue(store, queue_name, project_root, run_plan, run_args, protocol, mo
             if _plan_is_running(project_root, plan):
                 print(f"Queue '{queue_name}' stopped: plan '{plan}' is already running.")
                 return 1
-            code = run_plan(run_args(plan=plan, protocol=protocol, mock=mock))
+            code = run_plan(run_args(
+                plan=plan, protocol=protocol, mock=mock,
+                trigger="queue", queue=queue_name,
+            ))
             if code == 0:
                 store.remove(plan)
                 continue
@@ -134,7 +137,10 @@ def _run_queue(store, queue_name, project_root, run_plan, run_args, protocol, mo
             return 1
         with ThreadPoolExecutor(max_workers=len(batch)) as pool:
             futures = {
-                pool.submit(run_plan, run_args(plan=plan, protocol=protocol, mock=mock)): plan
+                pool.submit(run_plan, run_args(
+                    plan=plan, protocol=protocol, mock=mock,
+                    trigger="queue", queue=queue_name,
+                )): plan
                 for plan in batch
             }
             outcomes = [(plan, future.result()) for future, plan in futures.items()]
