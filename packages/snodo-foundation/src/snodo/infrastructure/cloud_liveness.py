@@ -145,12 +145,18 @@ class LivenessSnapshot(TypedDict):
     plans: list[LivenessPlan]
     tasks: list[LivenessTask]
     jobs: list[LivenessJob]
-    recons: NotRequired[list[LivenessRecon]]
     task_status_counts: dict[LivenessStatus, int]
     job_status_counts: dict[LivenessStatus, int]
     last_event: LivenessAuditEvent | None
     last_activity_at: str | None
     snapshot_at: str
+
+
+class LocalLivenessSnapshot(LivenessSnapshot, total=False):
+    """Snapshot facts available locally but not part of the v5 wire schema."""
+
+    recons: list[LivenessRecon]
+
 
 #: Default per-session push interval. It is a ceiling and a floor: at most one
 #: push per interval (a burst of transitions coalesces into one write) and, at
@@ -542,7 +548,7 @@ def _snapshot_is_live(snapshot: LivenessSnapshot) -> bool:
 
 
 def _post_snapshot(
-    snapshot: LivenessSnapshot, config: Optional[dict] = None,
+    snapshot: LocalLivenessSnapshot, config: Optional[dict] = None,
 ) -> tuple[bool, float | None, bool]:
     """POST the snapshot to ``{liveness_url}/i/{jti}``. Drop on failure.
 
@@ -642,7 +648,7 @@ def _report_push(session_id: str, reason: str, state: Optional[CloudSyncState] =
 
 def build_liveness_snapshot(
     session_id: str, project_root: str,
-) -> Optional[LivenessSnapshot]:
+) -> Optional[LocalLivenessSnapshot]:
     """Assemble the full current state for *session_id*, or None when the
     session has nothing running (Fixes #291).
 
@@ -703,7 +709,7 @@ def build_liveness_snapshot(
     # (Fixes #303).
     live_tasks, task_counts = _unreported(task_rows, tallied_refs, detailed_refs)
     live_jobs, job_counts = _unreported(job_rows, tallied_job_ids, nested_job_ids)
-    snapshot: LivenessSnapshot = {
+    snapshot: LocalLivenessSnapshot = {
         "session_id": session_id,
         "project_id": project_id,
         "scope": scope_for_project_id(project_id) if project_id else "",
