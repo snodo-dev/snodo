@@ -36,6 +36,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   best-effort and does not alter the cloud sync contract. (Fixes #488)
 
 ### Fixed
+- Cloud sync now reads the accepted interface version from the admission
+  lease, keeps v5-compatible events flowing, and holds v6-only chain entries
+  until the cloud advertises v6. V6 liveness sections follow the same gate.
+  (Fixes #494)
 - `snodo run`, every MCP server transport and `snodo queue run` now arm cloud
   liveness for their lifetime and release their arm on exit, including errors.
   Concurrent work in one process keeps the listener armed until all runs exit;
