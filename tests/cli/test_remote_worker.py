@@ -24,7 +24,7 @@ def test_worker_emits_only_redacted_jsonl_and_keeps_bookkeeping_local(tmp_path, 
     task_id = "worker_fixture_task"
     secret = "worker-secret-do-not-leak"
     monkeypatch.setattr(remote_worker, "_HEARTBEAT_SECONDS", 0.005)
-    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"WORKER_TEST_KEY": secret}) + "\n"))
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"openai": secret}) + "\n"))
     stdout = io.StringIO()
     monkeypatch.setattr("sys.__stdout__", stdout)
 
@@ -34,6 +34,7 @@ def test_worker_emits_only_redacted_jsonl_and_keeps_bookkeeping_local(tmp_path, 
         snodo_dir / "status.json",
         snodo_dir / "tasks",
         snodo_dir / "plans",
+        snodo_dir / "jobs",
     ]
     before = {path: _tree_snapshot(path) for path in protected_paths}
 
@@ -61,6 +62,8 @@ def test_worker_emits_only_redacted_jsonl_and_keeps_bookkeeping_local(tmp_path, 
     assert secret not in stdout.getvalue()
     assert not any(secret in line for line in output_lines)
     assert all(_tree_snapshot(path) == snapshot for path, snapshot in before.items())
+    assert all(secret.encode() not in file.read_bytes()
+               for file in snodo_dir.rglob("*") if file.is_file())
 
     worktree = root.parent / ".snodo-worktrees" / task_id
     assert worktree.is_dir()
@@ -72,6 +75,22 @@ def test_worker_emits_only_redacted_jsonl_and_keeps_bookkeeping_local(tmp_path, 
         ["git", "-C", str(worktree), "log", "-1", "--format=%H"],
         capture_output=True, text=True, check=True,
     ).stdout.strip() == final["head_sha"]
+
+
+def test_remote_provider_key_precedes_host_encrypted_reference(monkeypatch):
+    from snodo.config import ConfigManager, ProviderConfig
+
+    secret = "local-machine-provider-secret"
+    monkeypatch.setenv("SNODO_REMOTE_PROVIDER_KEYS", json.dumps({"openai": secret}))
+
+    def unexpected_decrypt(*_args, **_kwargs):
+        raise AssertionError("host attempted to decrypt the local key reference")
+
+    monkeypatch.setattr("snodo.provider_key_files.decrypt", unexpected_decrypt)
+    configured = ProviderConfig(
+        api_key="@keys/openai.key", api_key_env="OPENAI_API_KEY",
+    )
+    assert ConfigManager.resolve_provider_key("openai", configured) == secret
 
 
 def _tree_snapshot(path):

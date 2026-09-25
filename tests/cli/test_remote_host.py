@@ -74,6 +74,27 @@ def test_host_check_json_reports_no_remote_configured(tmp_path, monkeypatch, cap
     assert '"host": null' in capsys.readouterr().out
 
 
+def test_host_check_reports_local_task_loop_provider_keys(tmp_path, monkeypatch, capsys):
+    from snodo.cli.commands import DEFAULT_PROTOCOL
+    from snodo.config import ConfigManager
+
+    monkeypatch.chdir(tmp_path)
+    protocol_dir = tmp_path / ".snodo"
+    protocol_dir.mkdir()
+    (protocol_dir / "protocol.yml").write_text(DEFAULT_PROTOCOL + "\n")
+    monkeypatch.setattr(ConfigManager, "load", lambda self: {"model": "openai/gpt-4o"})
+    monkeypatch.setattr(ConfigManager, "get_model", lambda self: "openai/gpt-4o")
+    monkeypatch.setattr(ConfigManager, "get_coder_model", lambda self: "openai/gpt-4o")
+    monkeypatch.setattr(ConfigManager, "get_key_for_model", lambda self, model: "local-openai-key")
+
+    result = main(["host", "check", "--json"])
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert '"provider_key:openai"' in output
+    assert "local-openai-key" not in output
+
+
 def test_config_protocol_accepts_remote_fields():
     from snodo.compiler.models import ExecutionConfig
 

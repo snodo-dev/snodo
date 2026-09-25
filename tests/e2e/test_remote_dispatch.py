@@ -79,8 +79,10 @@ def _invoke(snodo_cli, args, bin_dir, *, host_path, kill_worker=False):
     env.update({
         "SNODO_HOME": str(snodo_cli.snodo_home),
         "SNODO_TOKEN_SECRET": "e2e_test_fixed_secret_32bytes!",
+        "OPENAI_API_KEY": "e2e-openai-key-not-real",
+        "ANTHROPIC_API_KEY": "e2e-anthropic-key-not-real",
         "SNODO_HOST": "worker",
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{bin_dir}{os.pathsep}{os.path.dirname(sys.executable)}{os.pathsep}{os.environ['PATH']}",
         "PYTHONIOENCODING": "utf-8",
     })
     env.pop("SNODO_AUDIT_LOG", None)
@@ -117,6 +119,9 @@ def test_remote_plan_dispatch_merges_locally_and_records_worker_stream(snodo_cli
     assert manager.get_status("j_remote_e2e")["task"]["host"] == "worker"
     assert manager.list_jobs()[0]["host"] == "worker"
     assert manager.get_logs("j_remote_e2e")
+    for secret in ("e2e-openai-key-not-real", "e2e-anthropic-key-not-real"):
+        assert all(secret not in file.read_text(errors="replace")
+                   for file in (project / ".snodo" / "jobs").rglob("*") if file.is_file())
 
 
 def test_remote_ssh_dying_mid_task_marks_plan_task_errored(snodo_cli, tmp_path):

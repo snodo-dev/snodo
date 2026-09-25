@@ -15,7 +15,10 @@ from snodo.cli.commands.remote_stream import (
     RemoteStreamError,
     consume_remote_stream,
 )
-from snodo.remote_host import check_remote_host, resolve_host_path, select_execution_host
+from snodo.remote_host import (
+    check_remote_host, resolve_host_path, resolve_task_provider_keys,
+    select_execution_host,
+)
 
 _PREFLIGHTS: set[tuple[str, str, str]] = set()
 
@@ -56,21 +59,6 @@ def _git_remote_url(host: str, host_path: str) -> str:
     return f"{host}:{host_path}"
 
 
-def _provider_keys(model: str) -> dict[str, str]:
-    from snodo.config import ConfigManager
-
-    manager = ConfigManager()
-    providers = manager.get_providers()
-    provider = ConfigManager._provider_for_model(model)
-    if not provider:
-        return {}
-    config = providers.get(provider)
-    if not config:
-        return {}
-    key = manager.get_key_for_model(model)
-    return {config.api_key_env: key} if key and config.api_key_env else {}
-
-
 def dispatch_remote_task(args, protocol, task, model: str, project_root: str) -> int | None:
     """Run *task* remotely; return None when no host is configured."""
     try:
@@ -80,6 +68,15 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
         return 1
     if host is None:
         return None
+
+    mode = getattr(args, "mode", None) or protocol.initial_mode
+    keys, key_checks = resolve_task_provider_keys(protocol, model, mode)
+    failed_keys = [check for check in key_checks if not check.ok]
+    if failed_keys:
+        print("Remote task credentials unavailable: " + "; ".join(
+            check.detail for check in failed_keys
+        ), file=sys.stderr)
+        return 1
 
     from snodo.cli.commands import run_cmd
     from snodo.cli.commands.task_record import _record_task_start, _record_task_completion
@@ -132,7 +129,6 @@ def dispatch_remote_task(args, protocol, task, model: str, project_root: str) ->
     if getattr(args, "mock", False):
         worker_args.append("--mock")
     command = f"cd {shlex.quote(host_path)} && " + " ".join(map(shlex.quote, worker_args))
-    keys = _provider_keys(model)
     try:
         subprocess.run(  # noqa: S603 - internal git ref and operator-selected SSH remote
             ["git",  # noqa: S607 - git is resolved through PATH by design
