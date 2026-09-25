@@ -329,7 +329,8 @@ outside snodo's merge range are not sent. The plan-owned task events
 `plan_name` and the plan's `plan_wave` when applicable. `plan_proposed` and
 `plan_run` carry the pinned hierarchy `{plan_name, waves: [{wave_id,
 task_refs}]}`; plan runs also identify their trigger and, for queue-triggered
-runs, the queue.
+runs, the queue. Each `plan_run` also carries `job_id` (the background job
+running it, or null for a foreground run) and the protocol `mode` at run start.
 
 | event_type | data keys |
 |---|---|
@@ -379,7 +380,7 @@ runs, the queue.
 | `mode_change` | opaque object |
 | `no_file_operations` | opaque object |
 | `plan_proposed` | plan_name, waves (wave_id, task_refs) |
-| `plan_run` | plan_name, waves (wave_id, task_refs), trigger, queue (for queue trigger) |
+| `plan_run` | plan_name, waves (wave_id, task_refs), trigger, queue (for queue trigger), job_id (nullable), mode |
 | `protected_path_blocked` | opaque object |
 | `protected_paths_unchecked` | opaque object |
 | `recovery_exhausted` | opaque object |

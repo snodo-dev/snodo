@@ -62,7 +62,9 @@ from both.
    `plan_run` get pinned shapes, `{plan_name, waves: [{wave_id, task_refs}]}`,
    and both the CLI and the MCP path emit them. `plan_run` also carries
    `trigger` (`mcp`, `cli` or `queue`) and, when the trigger is `queue`, the
-   `queue` that started it. Queue state itself is not shipped: the record is
+   `queue` that started it, plus `job_id` (the background job running the
+   plan, or null for a foreground run) and `mode` (the protocol mode at run
+   start). Queue state itself is not shipped: the record is
    who started a run, not which queue a plan belongs to. A liveness plan
    carries `queue` while a queue runner is running it.
 5. **Every long-lived snodo process arms liveness**: `snodo run`, the MCP

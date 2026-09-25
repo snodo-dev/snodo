@@ -191,7 +191,7 @@ _EVENT_DATA_KEYS_V6: dict[str, tuple[str, ...]] = {
     ),
     "halt": (*_EVENT_DATA_KEYS_V5["halt"], "plan_name", "plan_wave"),
     "plan_proposed": ("plan_name", "waves"),
-    "plan_run": ("plan_name", "waves", "trigger", "queue"),
+    "plan_run": ("plan_name", "waves", "trigger", "queue", "job_id", "mode"),
     "recon_started": (
         "recon_id", "query", "paths", "agent_count", "agent_models", "session_id", "created_at",
     ),
@@ -220,10 +220,12 @@ class PlanProposedData(BaseModel):
 
 
 class PlanRunData(PlanProposedData):
-    """Optional pinned plan shape plus the run trigger and queue."""
+    """Optional pinned plan shape plus run trigger, queue, job, and mode."""
 
     trigger: Literal["mcp", "cli", "queue"] | None = None
     queue: str | None = None
+    job_id: str | None = None
+    mode: str | None = None
 
 
 def _event_models(

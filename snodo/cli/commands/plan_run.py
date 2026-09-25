@@ -1057,6 +1057,9 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
             return 1
 
         plan_dir = planner.plans_dir / args.plan
+        from snodo.infrastructure.state import read_state
+        state = read_state(project_root)
+        active_mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
         from snodo.compiler.verifier import verify_plan
         verification = verify_plan(
             plan_model,
@@ -1084,6 +1087,8 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                 "op": "plan_run",
                 **plan_history_shape(plan_data, args.plan),
                 "trigger": trigger,
+                "job_id": os.environ.get("SNODO_JOB_ID") if trigger == "queue" else None,
+                "mode": active_mode,
             }
             queue = getattr(args, "queue", None) or os.environ.get("SNODO_PLAN_QUEUE")
             if trigger == "queue" and queue:
@@ -1101,11 +1106,7 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
         if waves is None:
             return 1
 
-        from snodo.infrastructure.state import read_state
         from snodo.infrastructure.config import load_llm_config
-
-        state = read_state(project_root)
-        active_mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
 
         mode_ceiling = protocol.concurrency_for(active_mode) if hasattr(protocol, "concurrency_for") else 1
         llm_cfg = load_llm_config()

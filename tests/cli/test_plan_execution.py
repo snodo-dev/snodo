@@ -436,9 +436,13 @@ def test_plan_cli_main_integration(plan_project_env):
     ("trigger", "queue"),
     [("cli", None), ("queue", "nightly")],
 )
-def test_plan_run_history_shape_for_cli_triggers(plan_project_env, trigger, queue):
+def test_plan_run_history_shape_for_cli_triggers(plan_project_env, trigger, queue, monkeypatch):
     planner = PlannerMCP(plan_project_env)
     plan_name, _, _ = _create_mock_plan(planner, f"history_{trigger}")
+    if trigger == "queue":
+        monkeypatch.setenv("SNODO_JOB_ID", "j_queue1")
+    else:
+        monkeypatch.delenv("SNODO_JOB_ID", raising=False)
     args = _make_plan_args(plan_name, trigger=trigger, queue=queue)
     from snodo.infrastructure.audit import AuditLog
     audit_log = AuditLog(str(plan_project_env / ".snodo" / "audit.log"))
@@ -460,6 +464,8 @@ def test_plan_run_history_shape_for_cli_triggers(plan_project_env, trigger, queu
     assert run.data["waves"] == expected_waves
     assert run.data["trigger"] == trigger
     assert run.data.get("queue") == queue
+    assert run.data["job_id"] == ("j_queue1" if trigger == "queue" else None)
+    assert run.data["mode"] == "producer"
 
 
 # ---------------------------------------------------------------------------
