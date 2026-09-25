@@ -22,6 +22,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Remote task bases are pushed into the host clone over SSH; returned task
   branches are fetched by Git and must match the worker-reported head SHA
   before the local merge path can use them. (Fixes #479)
+- Configured SSH hosts now dispatch run, plan, queue and MCP tasks remotely;
+  local task bookkeeping, audit, status, job logs and merges remain authoritative.
+  (Fixes #480)
 
 ## [0.16.0] — 2026-09-24
 

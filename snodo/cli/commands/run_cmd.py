@@ -781,6 +781,13 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     - Pass session_manager into build_protocol_graph
     - Save checkpoint on exit
     """
+    from snodo.infrastructure.paths import require_project_root
+    project_root = require_project_root()
+    from snodo.cli.commands.remote_dispatch import dispatch_remote_task
+    remote_result = dispatch_remote_task(args, protocol, task, model, project_root)
+    if remote_result is not None:
+        return remote_result
+
     print(f"Task: {task.spec}")
     print(f"Task ID: {task.id}")
     # This runs at the top of the task, before it has produced a halt or
@@ -792,8 +799,6 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     print(f"  Inspect (after it stops): {followup.task_inspect(task.id)}")
     print()
 
-    from snodo.infrastructure.paths import require_project_root
-    project_root = require_project_root()
     old_project_root = os.environ.get("SNODO_PROJECT_ROOT")
     os.environ["SNODO_PROJECT_ROOT"] = str(project_root)
     _record_task_start(project_root, task.id, task.spec)

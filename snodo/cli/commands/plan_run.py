@@ -609,7 +609,9 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
                 print(f"  [{task_id}] completed in {dur_str} (started {start_str}, finished {end_str})")
                 return True
             session = _session_for_task(args, planner, protocol, task_id)
-            _task_record_status(planner, args.plan, task_id, result, session)
+            current = planner.get_status(args.plan).get("tasks", {}).get(task_id)
+            if (current.get("status") if isinstance(current, dict) else current) != "errored":
+                _task_record_status(planner, args.plan, task_id, result, session)
             print(
                 f"{_task_outcome_line(task_id, _halt_outcome(session, task_id))} "
                 f"{dur_str} (started {start_str}, finished {end_str})",
@@ -651,7 +653,9 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
         return False
     else:
         session = _session_for_task(args, planner, protocol, task_id)
-        _task_record_status(planner, args.plan, task_id, result, session)
+        current = planner.get_status(args.plan).get("tasks", {}).get(task_id)
+        if (current.get("status") if isinstance(current, dict) else current) != "errored":
+            _task_record_status(planner, args.plan, task_id, result, session)
         print(
             f"{_task_outcome_line(task_id, _halt_outcome(session, task_id))} "
             f"{dur_str} (started {start_str}, finished {end_str})",
@@ -763,7 +767,9 @@ def _execute_wave_tasks_concurrent(
                         )
                         wave_failed = True
                     else:
-                        _task_record_status(planner, args.plan, t_id, exit_code or 1, session)
+                        current = planner.get_status(args.plan).get("tasks", {}).get(t_id)
+                        if (current.get("status") if isinstance(current, dict) else current) != "errored":
+                            _task_record_status(planner, args.plan, t_id, exit_code or 1, session)
                         err_msg = st.get("error") or "execution failed"
                         print(
                             f"{_task_outcome_line(t_id, outcome)} {dur_str} "
@@ -1084,6 +1090,13 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
         llm_cfg = load_llm_config()
         operator_capacity = getattr(llm_cfg.coder, "concurrency", 1)
         effective_concurrency = max(1, min(int(mode_ceiling), int(operator_capacity)))
+
+        try:
+            from snodo.cli.commands.remote_dispatch import prepare_remote_run
+            prepare_remote_run(protocol, str(project_root))
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
         interactive = getattr(args, "interactive", False)
         if interactive and effective_concurrency > 1:
