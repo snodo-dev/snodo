@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed.
+Accepted (2026-09-25), with the amendments below.
 
 ## Context
 
@@ -38,7 +38,9 @@ from both.
 1. **Recon appends history.** `recon_started` (recon_id, query, paths,
    agent count, agent models, session_id, created_at) and
    `recon_completed` (recon_id, the recon's existing final status,
-   succeeded and failed agent counts, duration, completed_at). Both are
+   succeeded and failed agent counts, duration, completed_at, and a
+   summary of the answer capped at about 2,000 characters with a
+   truncation marker). `recon_started` carries the question in full. Both are
    declared audit event types with fixed shapes, like every event in the
    ingest union.
 2. **Liveness carries recons.** The snapshot gains a `recons` list of
@@ -48,7 +50,7 @@ from both.
    live forever.
 3. **`task_merged` carries what was delivered.** Added fields: `base_sha`
    (the base branch head before the merge), `commit_count`, `commits`
-   (sha and subject, capped with a truncation marker), `files_changed`,
+   (sha and subject, capped at 50 with a truncation marker; `commit_count` is always the full count), `files_changed`,
    `insertions`, `deletions`. All are read from git between `base_sha` and
    `merge_sha` at merge time; a failure to measure omits the fields and
    never fails the merge. Commits made outside snodo stay out of scope:
@@ -69,7 +71,11 @@ from both.
 6. **One interface bump.** New event types, new `task_merged` fields and
    the new snapshot sections ship together as cloud interface version 6.
    Older events keep validating as they are; the new fields are optional
-   in the shape.
+   in the shape. The client is built before the cloud accepts version 6
+   and keeps sending version 5 until the cloud says it accepts 6: sync
+   never breaks against an older cloud, no event is lost, and the hash
+   chain the cloud receives has no gap. The new events are always written
+   to the local audit log; only what goes on the wire waits.
 7. **No new state.** Recon statuses are the ones recon already writes;
    queue "stopped" is derived as in ADR 053. No plan or task status,
    severity or halt type is added.
