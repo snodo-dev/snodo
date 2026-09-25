@@ -2,8 +2,10 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -14,20 +16,22 @@ def _git(*args, cwd):
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
 
 
-def _fake_ssh(path, host_path, *, kill_worker=False):
+def _fake_ssh(path, host_path, *, local_root, kill_worker=False):
     script = path / "ssh"
     script.write_text(
         "#!/usr/bin/env python3\n"
         "import os, shlex, subprocess, sys\n"
         "command = sys.argv[-1]\n"
         "host_path = " + repr(str(host_path)) + "\n"
+        "os.environ['HOME'] = os.path.dirname(os.path.dirname(host_path))\n"
         "record = os.environ.get('FAKE_SSH_COMMAND_LOG')\n"
         "if record and 'snodo _worker ' in command:\n"
         "    with open(record, 'a') as log: log.write(command + '\\n')\n"
         "if 'snodo _worker ' in command:\n"
         "    payload = sys.stdin.read()\n"
-        "    local_root = os.environ.get('FAKE_SSH_LOCAL_ROOT', '')\n"
+        "    local_root = " + repr(str(local_root)) + "\n"
         "    assert local_root not in command and local_root not in payload\n"
+        "    assert all(local_root not in value for value in os.environ.values() if isinstance(value, str))\n"
         "    assert 'SNODO_PROJECT_ROOT' not in os.environ\n"
         "    assert 'SNODO_HOME' not in os.environ\n"
         "    if record:\n"
@@ -41,7 +45,8 @@ def _fake_ssh(path, host_path, *, kill_worker=False):
         "    sys.exit(subprocess.call(['snodo', '--version']))\n"
         "for verb in ('git-receive-pack', 'git-upload-pack'):\n"
         "    if command.startswith(verb + ' '):\n"
-        "        sys.exit(subprocess.call(['git', verb.removeprefix('git-'), shlex.split(command)[1]]))\n"
+        "        repo = os.path.expanduser(shlex.split(command)[1])\n"
+        "        sys.exit(subprocess.call(['git', verb.removeprefix('git-'), repo]))\n"
         "command = command.replace(shlex.quote(host_path), shlex.quote(host_path))\n"
         + (
             "if 'snodo _worker ' in command:\n"
@@ -61,7 +66,7 @@ def _fake_ssh(path, host_path, *, kill_worker=False):
     return script
 
 
-def _setup_remote_plan(snodo_cli, tmp_path, *, task_count=2):
+def _setup_remote_plan(snodo_cli, tmp_path, *, task_count=2, configured_host_path=None):
     assert snodo_cli(["init", "--template", "solo", "--yes"]).returncode == 0
     project = snodo_cli.home
     bare = tmp_path / "origin.git"
@@ -71,7 +76,7 @@ def _setup_remote_plan(snodo_cli, tmp_path, *, task_count=2):
     _git("remote", "add", "origin", str(bare), cwd=project)
     protocol_path = project / ".snodo" / "protocol.yml"
     protocol_text = protocol_path.read_text().replace(
-        "  auto_merge: true", f"  auto_merge: true\n  host: worker\n  host_path: {remote}",
+        "  auto_merge: true", f"  auto_merge: true\n  host: worker\n  host_path: {configured_host_path or remote}",
     )
     protocol_path.write_text(protocol_text)
     plan_dir = project / ".snodo" / "plans" / "remote-plan"
@@ -89,6 +94,9 @@ def _setup_remote_plan(snodo_cli, tmp_path, *, task_count=2):
     _git("commit", "-m", "remote plan fixture", cwd=project)
     _git("push", "-u", "origin", "HEAD", cwd=project)
     subprocess.run(["git", "clone", "-q", str(bare), str(remote)], check=True)
+    remote_key_dir = remote.parent.parent / ".ssh" / "NO-AGENT"
+    remote_key_dir.mkdir(parents=True)
+    shutil.copy2(Path.home() / ".ssh" / "NO-AGENT" / "snodo.pub.pem", remote_key_dir / "snodo.pub.pem")
     return project, remote, tasks
 
 
@@ -107,7 +115,6 @@ def _invoke(snodo_cli, args, bin_dir, *, host_path, kill_worker=False, fail_work
     env["FAKE_SSH_KILL_WORKER"] = "1" if kill_worker else "0"
     env["FAKE_SSH_FAIL_WORKER"] = "1" if fail_worker else "0"
     env["FAKE_SSH_COMMAND_LOG"] = str(snodo_cli.home.parent / "ssh-commands.log")
-    env["FAKE_SSH_LOCAL_ROOT"] = str(snodo_cli.home)
     env["SNODO_PROJECT_ROOT"] = str(snodo_cli.home)
     env["SNODO_HOME"] = str(snodo_cli.snodo_home)
     if args and args[0] == "plan":
@@ -120,7 +127,10 @@ def _invoke(snodo_cli, args, bin_dir, *, host_path, kill_worker=False, fail_work
 
 
 def test_remote_plan_dispatch_merges_locally_and_records_worker_stream(snodo_cli, tmp_path):
-    project, remote, tasks = _setup_remote_plan(snodo_cli, tmp_path, task_count=1)
+    project, remote, tasks = _setup_remote_plan(
+        snodo_cli, tmp_path, task_count=1,
+        configured_host_path=f"~/Dev/{snodo_cli.home.name}",
+    )
     job_dir = project / ".snodo" / "jobs" / "j_remote_e2e"
     job_dir.mkdir(parents=True)
     (job_dir / "state.json").write_text(json.dumps({"status": "running", "created_at": 1}))
@@ -128,9 +138,12 @@ def test_remote_plan_dispatch_merges_locally_and_records_worker_stream(snodo_cli
     before = subprocess.run(["git", "rev-parse", "HEAD"], cwd=project, capture_output=True, text=True, check=True).stdout.strip()
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    _fake_ssh(bin_dir, remote)
+    _fake_ssh(bin_dir, remote, local_root=project)
 
-    result = _invoke(snodo_cli, ["plan", "run", "remote-plan", "--mock"], bin_dir, host_path=remote)
+    result = _invoke(
+        snodo_cli, ["plan", "run", "remote-plan", "--mock"], bin_dir,
+        host_path=f"~/Dev/{snodo_cli.home.name}",
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     status = json.loads((project / ".snodo" / "plans" / "remote-plan" / "status.json").read_text())
     assert status["tasks"][tasks[0]] == "completed"
@@ -144,7 +157,7 @@ def test_remote_plan_dispatch_merges_locally_and_records_worker_stream(snodo_cli
     assert manager.get_logs("j_remote_e2e")
     commands = (project.parent / "ssh-commands.log").read_text()
     assert str(project) not in commands
-    assert f"cd {remote}" in commands
+    assert f'cd "$HOME"/Dev/{snodo_cli.home.name}' in commands
     assert (remote.parent / ".snodo-worktrees" / "remote-plan" / tasks[0]).is_dir()
     assert not (project.parent / ".snodo-worktrees" / "remote-plan" / tasks[0]).exists()
     for secret in ("e2e-openai-key-not-real", "e2e-anthropic-key-not-real"):
@@ -156,7 +169,7 @@ def test_remote_ssh_dying_mid_task_marks_plan_task_errored(snodo_cli, tmp_path):
     project, remote, tasks = _setup_remote_plan(snodo_cli, tmp_path, task_count=1)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    _fake_ssh(bin_dir, remote, kill_worker=True)
+    _fake_ssh(bin_dir, remote, local_root=project, kill_worker=True)
     result = _invoke(snodo_cli, ["plan", "run", "remote-plan", "--mock"], bin_dir, host_path=remote, kill_worker=True)
     assert result.returncode == 1, result.stdout + result.stderr
     status = json.loads((project / ".snodo" / "plans" / "remote-plan" / "status.json").read_text())
@@ -168,7 +181,7 @@ def test_remote_ssh_stderr_is_redacted_logged_and_reported(snodo_cli, tmp_path):
     project, remote, tasks = _setup_remote_plan(snodo_cli, tmp_path, task_count=1)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    _fake_ssh(bin_dir, remote)
+    _fake_ssh(bin_dir, remote, local_root=project)
     result = _invoke(
         snodo_cli, ["plan", "run", "remote-plan", "--mock"], bin_dir,
         host_path=remote, fail_worker=True,
