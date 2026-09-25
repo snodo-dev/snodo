@@ -825,10 +825,6 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
     if session_id and session_manager:
         session_manager.set_current_task(session_id, task.id)
-        # Liveness (Fixes #291): arm the audit listener once per task so engine
-        # transitions publish the running state while it is true. Inert when
-        # sync is disabled; never blocks the run.
-        cloud_liveness.install()
 
     # Set up agent memory
     memory_mgr, checkpointer, thread_config = _setup_memory(project_root, protocol, mode)
@@ -971,6 +967,9 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
     preserve_worktree = False
     merged_branch = None
     retain_worktree = bool(getattr(args, "retain_worktree", False))
+    # Liveness is reference-counted because queue plans and MCP-triggered runs
+    # can overlap in this process. Each run releases only its own arm.
+    cloud_liveness.install()
     try:
         from snodo.engine.closure import run_to_closure
 
@@ -1045,6 +1044,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
 
         return result
     finally:
+        cloud_liveness.uninstall()
         # Save session checkpoint on exit
         if session_id and session_manager:
             try:

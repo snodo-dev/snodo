@@ -349,6 +349,8 @@ def _run_server(args, protocol) -> int:
         print()
         print("  Or use: snodo serve --tunnel (requires free snodo account)")
 
+    from snodo.infrastructure import cloud_liveness
+    cloud_liveness.install()
     try:
         mcp.run(transport=transport)
     except SystemExit as e:
@@ -360,6 +362,8 @@ def _run_server(args, protocol) -> int:
             print(f"Error: {_port_in_use_explanation(port)}", file=sys.stderr)
             return 1
         raise
+    finally:
+        cloud_liveness.uninstall()
     return 0
 
 

@@ -133,6 +133,23 @@ def test_all_runs_queues_in_creation_order_and_reads_defaults(tmp_path, monkeypa
     assert calls == ["default-plan", "later-plan"]
 
 
+def test_queue_runner_arms_and_disarms_liveness_on_failure(tmp_path, monkeypatch):
+    store = QueueStore(tmp_path)
+    store.add("blocked")
+    monkeypatch.setattr("snodo.cli.commands.queue_run_cmd.require_project_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        "snodo.cli.commands.load_protocol",
+        lambda _: SimpleNamespace(queue=SimpleNamespace(non_blocking=False, parallel_runs=1)),
+    )
+    monkeypatch.setattr("snodo.cli.commands.plan_run._run_plan", lambda _: 1)
+    calls = []
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.install", lambda: calls.append("install"))
+    monkeypatch.setattr("snodo.infrastructure.cloud_liveness.uninstall", lambda: calls.append("uninstall"))
+
+    assert _queue_run() == 1
+    assert calls == ["install", "uninstall"]
+
+
 def test_named_queues_run_in_parallel(tmp_path, monkeypatch):
     store = QueueStore(tmp_path)
     store.create_queue("other")

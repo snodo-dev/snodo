@@ -2057,17 +2057,21 @@ class TestUnmergedTaskHandling:
         )
 
         mock_closure = ClosureNode(task_id="1.1_unmerged_test", depth=0, outcome="resolved")
+        liveness_calls = []
 
         with patch("snodo.engine.closure.run_to_closure", return_value=({}, mock_closure)), \
              patch("snodo.cli.commands.run_cmd._setup_memory", return_value=(None, None, None)), \
              patch("snodo.cli.commands.run_cmd._resolve_session", return_value=(None, "producer")), \
              patch("snodo.infrastructure.worktree.setup_for_task", return_value="/fake/wt"), \
              patch("snodo.cli.commands.run_cmd._build_graph", return_value=(MagicMock(), None)), \
+             patch("snodo.cli.commands.run_cmd.cloud_liveness.install", side_effect=lambda: liveness_calls.append("install")), \
+             patch("snodo.cli.commands.run_cmd.cloud_liveness.uninstall", side_effect=lambda: liveness_calls.append("uninstall")), \
              patch("snodo.cli.commands.run_cmd._should_auto_merge", return_value=True), \
              patch("snodo.cli.commands.run_cmd._merge_on_success", return_value=(1, True, None)):
             res = _execute_task(args, protocol, task, "mock")
 
         assert res == 2
+        assert liveness_calls == ["install", "uninstall"]
         state_file = temp_project / ".snodo" / "tasks" / "1.1_unmerged_test" / "state.json"
         assert state_file.exists()
         task_state = json.loads(state_file.read_text())
