@@ -9,41 +9,6 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-- Remote execution host selection via `execution.host` or `SNODO_HOST`, with
-  `execution.host_path` and `snodo host check` for SSH, version and project
-  clone preflight. (Fixes #476)
-- Local reader for ADR 055 remote-worker JSON-lines streams. Worker logs,
-  audit events, task status and liveness use the existing local write paths;
-  malformed, incomplete, silent or nonzero-exit streams end errored. (Fixes #477)
-- Internal `_worker` command runs a task loop in a remote clone, receives
-  provider keys on stdin, and reports heartbeats, audit events, status and its
-  final branch/head as redacted JSONL without local bookkeeping writes. (Fixes #478)
-- Remote task bases are pushed into the host clone over SSH; returned task
-  branches are fetched by Git and must match the worker-reported head SHA
-  before the local merge path can use them. (Fixes #479)
-- Configured SSH hosts now dispatch run, plan, queue and MCP tasks remotely;
-  local task bookkeeping, audit, status, job logs and merges remain authoritative.
-  (Fixes #480)
-- MCP guide topic `remote-host` documents SSH host setup, preflight checks,
-  execution boundaries, credential handling and retrying errored remote tasks;
-  the command reference and unattended runbook link to it. (Fixes #481)
-- Remote tasks now resolve and send only the coder, active task-validator and
-  classifier provider keys; worker-provided keys override host config, and
-  `snodo host check` verifies each required key locally. (Fixes #482)
-- Remote worker stderr is streamed into local job logs with provider keys
-  redacted; failures include SSH exit status and stderr context, and host checks
-  diagnose missing snodo commands and non-interactive PATH issues. (Fixes #483)
-
-### Fixed
-- Remote workers now use clone-relative paths on the host, expand home-relative
-  host paths correctly, and report redacted SSH stderr with exit details. (Fixes #484)
-- Host preflight and remote dispatch now share remote path quoting; a fake-SSH
-  end-to-end run verifies home-relative paths resolve in the host clone without
-  forwarding the local project path. (Fixes #486)
-- `snodo host check` leads with concise pass/fail summaries, shows command details
-  only for failures by default, and supports `--verbose`. (Fixes #485)
-
 ## [0.16.0] — 2026-09-24
 
 ### Added

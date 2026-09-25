@@ -17,9 +17,6 @@ unblock stopped work before starting the queue run.
 
 For the queue progression loop, including how to unblock a stopped front and
 when to opt into non-blocking or parallel runs, see [Keep queues moving](queues.md).
-For heavy parallel queues that need more compute than the orchestrator machine
-has available, see the [remote-host guide](remote-host.md) for one-time SSH host
-setup and remote task execution.
 
 ## The loop: intent to landed work
 

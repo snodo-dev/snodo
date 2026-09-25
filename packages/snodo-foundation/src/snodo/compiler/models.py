@@ -42,14 +42,6 @@ class ExecutionConfig(BaseModel):
             "from lockfiles."
         ),
     )
-    host: Optional[str] = Field(
-        default=None,
-        description="SSH host for task execution; SNODO_HOST overrides this value.",
-    )
-    host_path: Optional[str] = Field(
-        default=None,
-        description="Project clone path on the SSH host (defaults relative to remote home).",
-    )
 
 
 class QueueConfig(BaseModel):

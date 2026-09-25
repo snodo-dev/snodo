@@ -58,4 +58,3 @@ Snodo design decisions extracted from the development audit log and `.snodo/boot
 | [052](052-validator-tool-access-is-a-declared-opt-in.md) | A validator's fail-safe on unreachable verification is a declared, per-validator opt-in | 2026-09-22 | `ValidatorConfig` (`compiler/models.py`) + validator protocol entries |
 | [053](053-plans-run-from-queues.md) | Plans run from queues; a queue stops at its first unfinished plan | 2026-09-24 | `snodo queue` |
 | [054](054-cloud-sees-recons-queues-and-delivered-commits.md) | The cloud sees recons, the plan hierarchy and the commits a merge delivered | 2026-09-24 | `cloud_liveness.py` + `recon/` + `run_merge.py` (proposed) |
-| [055](055-tasks-run-on-a-remote-host.md) | Tasks can run on a remote host; the local machine stays the single writer | 2026-09-24 | `execution.host` / `SNODO_HOST` |

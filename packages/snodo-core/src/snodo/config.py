@@ -8,7 +8,6 @@ Manages user configuration stored at ~/.snodo/config.yml:
 - Key validation via liteLLM
 """
 
-import json
 import os
 import shlex
 import shutil
@@ -530,15 +529,7 @@ class ConfigManager:
 
     @staticmethod
     def resolve_provider_key(provider: str, pc: Optional[ProviderConfig]) -> Optional[str]:
-        """Resolve a worker-provided key before local config or references."""
-        remote_keys = os.environ.get("SNODO_REMOTE_PROVIDER_KEYS")
-        if remote_keys:
-            try:
-                remote_key = json.loads(remote_keys).get(provider)
-            except (json.JSONDecodeError, AttributeError):
-                remote_key = None
-            if isinstance(remote_key, str) and remote_key:
-                return remote_key
+        """Resolve a provider's configured key, then its env or named reference."""
         if pc and pc.api_key:
             if pc.api_key.startswith("@keys/"):
                 from snodo.provider_key_files import decrypt, provider_file

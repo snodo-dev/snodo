@@ -64,23 +64,6 @@ def test_resolve_base_branch_defaults_to_main(repo):
     assert resolve_base_branch(str(repo)) == "main"
 
 
-def test_remote_task_worktree_starts_from_explicit_base_commit(repo):
-    base_sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo,
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    (repo / "README.md").write_text("later host state\n")
-    subprocess.run(["git", "commit", "-am", "later host state"], cwd=repo, check=True)
-
-    path = create_worktree(str(repo), "remote-base-task", "use exact base", base=base_sha)
-
-    worktree_head = subprocess.run(
-        ["git", "-C", str(path), "rev-parse", "HEAD"],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    assert worktree_head == base_sha
-
-
 def test_resolve_base_branch_uses_remote_head(repo):
     # Simulate a repository whose remote default is not main.
     subprocess.run(["git", "init", "-qb", "master"], cwd=repo, check=True)

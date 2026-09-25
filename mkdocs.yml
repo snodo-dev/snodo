@@ -36,7 +36,6 @@ nav:
           - Minimal webapp: runbooks/01-minimal-webapp.md
           - Greenfield protocol: runbooks/02-greenfield-protocol.md
           - Hand-authored plan: runbooks/hand-authored-plan.md
-          - Remote host: remote-host.md
   - Extend & contribute:
       - Architecture: architecture.md
       - Coder adapter contract: architecture/coder-adapter-contract.md

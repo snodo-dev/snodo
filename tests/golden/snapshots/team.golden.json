@@ -8,8 +8,6 @@
     "auto_merge": false,
     "branch_prefix": "task",
     "branch_ttl_days": 7,
-    "host": null,
-    "host_path": null,
     "max_recovery_depth": 3,
     "max_retries": 3,
     "max_total_fix_attempts": 10,

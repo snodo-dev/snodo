@@ -2170,22 +2170,6 @@ class TestInstructions:
         assert "generate_spec" not in text
         assert "Clean resolved work" in text
 
-    def test_remote_host_guide_covers_setup_preflight_credentials_and_retry(self, server):
-        exposed = {tool["name"] for tool in server.get_tools()}
-        menu = guide_text(server.project_root, exposed)
-        text = guide_text(server.project_root, exposed, "remote-host")
-
-        assert '`remote-host`' in menu
-        assert "execution.host" in text and "SNODO_HOST" in text and "execution.host_path" in text
-        assert "opencode auth login" in text
-        assert "reachable" in text and "version" in text and "project_clone" in text
-        assert "pre-execute validation" in text and "merge locally" in text
-        assert "never writes them" in text and "host's disk" in text
-        assert "stream ended without a final result" in text
-        assert "snodo job retry <job-id>" in " ".join(text.split())
-        mcp_text = guide_text(server.project_root, exposed | {"retry_job"}, "remote-host")
-        assert "retry_job" in mcp_text
-
 
 class TestResources:
     """Tests for MCP resources (read-only, URI-addressable)."""
