@@ -14,6 +14,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   to local audit history, including their question, agent outcomes and a
   bounded answer summary. These events remain local pending cloud interface v6.
   (Fixes #489)
+- Local task history now links plan-owned task events to their plan and plan
+  wave, and CLI, queue and MCP plan runs record pinned hierarchy and trigger
+  data. These fields remain local; cloud and liveness contracts are unchanged.
+  (Fixes #490)
 - The MCP `write` capability exposes `write_file` only to granting modes,
   defaults its allowlist to `.snodo/`, and supports protocol-declared path
   prefixes. Writes are confined after path resolution, never stage or commit,
