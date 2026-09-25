@@ -43,8 +43,10 @@ snodo-cloud must advertise v6 only after both ingest and liveness accept it.
 
 Batched 1-50 events. Dispatched from a background thread during `snodo run`
 teardown and from `snodo cloud sync`; nowhere else. The cursor advances only on
-a 2xx, so a failed batch re-sends rather than being lost. ("Nowhere else" scopes
-the *ingest* path: liveness is a second, separate wire, described below.)
+a 2xx, so a failed batch re-sends rather than being lost. Interface v6 is sent
+only after the cloud accepts v6; until then the client continues sending v5.
+New events are recorded locally while waiting. ("Nowhere else" scopes the
+*ingest* path: liveness is a second, separate wire, described below.)
 
 ```json
 {
@@ -290,6 +292,12 @@ payloads — and, unlike the ingest envelope, no `project_path`. Opt-in is the
 same single gate: `cloud.sync_enabled` off or no `cloud.api_key` means a run
 makes no network call on this path either. Log streaming is out of scope.
 
+Every long-lived process reports liveness: `snodo run`, the MCP server and
+`snodo queue run`. Recon entries are included in the full snapshot while their
+process is running (id, question excerpt, agent count and start time); a recon
+whose process is gone is treated as stale and omitted. These entries describe
+currently running work, not recon history.
+
 ## What is in `data`
 
 Everything the event carries, verbatim. That is the whole audit payload, so it
@@ -300,25 +308,43 @@ is.
 
 Every audit event type emitted by snodo is declared and transmitted; the
 event tag is part of the hash chain and no event is skipped client-side. The
-ingest service must accept the newly declared tags in this change. Data for
+ingest service must accept interface v6 before the client sends the v6
+contract; until acceptance, the client sends v5. Data for
 some tags is intentionally an opaque JSON object (`additionalProperties` is
 allowed): the event type is pinned on the wire even when its data shape is not.
 This expands what the cloud receives, but creates no engine state, severity,
 halt type or status value. The existing never-transmitted rules below still
 apply.
 
+The v6 additions include `recon_started` (the full recon question and run
+metadata) and `recon_completed` (the existing final status, agent outcome
+counts, duration and answer summary capped at about 2,000 characters with a
+truncation marker). Thus, when `cloud.sync_enabled` is on, recon questions and
+answer summaries now leave the machine in audit events. `task_merged` also
+includes the pre-merge base SHA, full commit count, up to 50 commit SHAs and
+subjects (with a truncation marker when capped), changed-file count, insertions
+and deletions. Measurement is best-effort; diffs, file contents and commits
+outside snodo's merge range are not sent. The plan-owned task events
+`task_classified`, `dispatch`, `task_complete`, `task_merged` and `halt` carry
+`plan_name` and the plan's `plan_wave` when applicable. `plan_proposed` and
+`plan_run` carry the pinned hierarchy `{plan_name, waves: [{wave_id,
+task_refs}]}`; plan runs also identify their trigger and, for queue-triggered
+runs, the queue.
+
 | event_type | data keys |
 |---|---|
 | `project_announced` | project_id, scope, display_name |
 | `readiness_checked` | project_id, scope, display_name, protocol_id, score, total_checks, passed_checks, repository_findings_count, workstation_findings_count, findings |
-| `dispatch` | task_ref, mode, token_id, artifacts_count |
+| `recon_started` | recon_id, query, paths, agent_count, agent_models, session_id, created_at |
+| `recon_completed` | recon_id, existing final status, succeeded_agents, failed_agents, duration, completed_at, answer summary (about 2,000 characters maximum) |
+| `dispatch` | task_ref, mode, token_id, artifacts_count, plan_name, plan_wave (when applicable) |
 | `work_already_present` | task_ref, base_ref, artifacts_count, files |
 | `governance_check` | task_ref, mode, constraints_checked |
 | `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision |
-| `task_classified` | task_ref, flow_type, wave_id, task_summary |
+| `task_classified` | task_ref, flow_type, wave_id, task_summary, plan_name, plan_wave (when applicable) |
 | `wave_created` | wave_id, feature_description |
 | `task_complete` | task_ref, artifacts, session_id, commit, change_size |
-| `task_merged` | task_ref, branch, merge_sha, spec, session_id |
+| `task_merged` | task_ref, branch, merge_sha, spec, session_id, base_sha, commit_count, commits (up to 50), files_changed, insertions, deletions, plan_name, plan_wave (when applicable) |
 | `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type |
 | `transition` | from_mode, to_mode, task_ref |
 | `token_consumed` | task_ref, session_id |
@@ -352,8 +378,8 @@ apply.
 | `merge_failed_escalated` | opaque object |
 | `mode_change` | opaque object |
 | `no_file_operations` | opaque object |
-| `plan_proposed` | opaque object |
-| `plan_run` | opaque object |
+| `plan_proposed` | plan_name, waves (wave_id, task_refs) |
+| `plan_run` | plan_name, waves (wave_id, task_refs), trigger, queue (for queue trigger) |
 | `protected_path_blocked` | opaque object |
 | `protected_paths_unchecked` | opaque object |
 | `recovery_exhausted` | opaque object |
