@@ -18,6 +18,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   wave, and CLI, queue and MCP plan runs record pinned hierarchy and trigger
   data. These fields remain local; cloud and liveness contracts are unchanged.
   (Fixes #490)
+- The local liveness snapshot lists running recons with their question excerpt,
+  agent count and start time. Recon records capture the owning PID, so finished
+  or dead-process recons are omitted; the v5 cloud payload remains unchanged.
+  (Fixes #491)
 - The MCP `write` capability exposes `write_file` only to granting modes,
   defaults its allowlist to `.snodo/`, and supports protocol-declared path
   prefixes. Writes are confined after path resolution, never stage or commit,
