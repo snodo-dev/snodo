@@ -739,6 +739,7 @@ class ReconManager:
             "agents": lanes,
             "status": "running",
             "created_at": time.time(),
+            "pid": os.getpid(),
             "completed_at": None,
         }
         self._save_state(recon_dir, state)

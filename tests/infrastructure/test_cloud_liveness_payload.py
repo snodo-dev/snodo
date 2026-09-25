@@ -1,6 +1,7 @@
 """The liveness snapshot is validated against its declared wire shape."""
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -106,3 +107,49 @@ def test_fully_completed_plan_remains_counts_only(tmp_path):
         "name": "finished", "total": 1, "status_counts": {"completed": 1},
     }]
     TypeAdapter(cloud_liveness.LivenessSnapshot).validate_python(snapshot)
+
+
+def test_snapshot_lists_running_recons_and_drops_finished_or_dead_processes(tmp_path):
+    root = tmp_path / "project"
+    now = 1787000000.0
+    _write(root / ".snodo" / "tasks" / "t_live" / "state.json", {
+        "status": "running", "started_at": now, "pid": os.getpid(),
+    })
+    recons = root / ".snodo" / "recons"
+    _write(recons / "rec_running" / "state.json", {
+        "recon_id": "rec_running", "query": "What owns the request lifecycle?",
+        "agents": [["model-a", "model-b"], ["model-c"]],
+        "status": "running", "created_at": now, "pid": os.getpid(),
+    })
+    _write(recons / "rec_finished" / "state.json", {
+        "recon_id": "rec_finished", "query": "finished", "agents": [[]],
+        "status": "complete", "created_at": now, "pid": os.getpid(),
+    })
+    _write(recons / "rec_dead" / "state.json", {
+        "recon_id": "rec_dead", "query": "abandoned", "agents": [[]],
+        "status": "running", "created_at": now, "pid": 999_999_999,
+    })
+
+    snapshot = cloud_liveness.build_liveness_snapshot("sess", str(root))
+
+    assert snapshot is not None
+    assert snapshot["recons"] == [{
+        "id": "rec_running",
+        "query": "What owns the request lifecycle?",
+        "agent_count": 2,
+        "started_at": datetime.fromtimestamp(now, UTC).isoformat(),
+    }]
+
+
+def test_recon_only_snapshot_is_available_locally_without_v5_liveness(tmp_path):
+    root = tmp_path / "project"
+    _write(root / ".snodo" / "recons" / "rec_only" / "state.json", {
+        "recon_id": "rec_only", "query": "local only", "agents": [["model-a"]],
+        "status": "running", "created_at": 1787000000.0, "pid": os.getpid(),
+    })
+
+    snapshot = cloud_liveness.build_liveness_snapshot("sess", str(root))
+
+    assert snapshot is not None
+    assert snapshot["recons"][0]["id"] == "rec_only"
+    assert snapshot["plans"] == snapshot["tasks"] == snapshot["jobs"] == []

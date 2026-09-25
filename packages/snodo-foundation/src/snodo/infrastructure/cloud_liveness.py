@@ -86,6 +86,15 @@ class LivenessJob(TypedDict):
     started_at: NotRequired[str | None]
 
 
+class LivenessRecon(TypedDict):
+    """The local identity and progress facts for one running recon."""
+
+    id: str
+    query: str
+    agent_count: int
+    started_at: str | None
+
+
 class LivenessTask(TypedDict):
     """A plan task, optionally carrying its live jobs."""
 
@@ -136,6 +145,7 @@ class LivenessSnapshot(TypedDict):
     plans: list[LivenessPlan]
     tasks: list[LivenessTask]
     jobs: list[LivenessJob]
+    recons: NotRequired[list[LivenessRecon]]
     task_status_counts: dict[LivenessStatus, int]
     job_status_counts: dict[LivenessStatus, int]
     last_event: LivenessAuditEvent | None
@@ -400,6 +410,10 @@ def _deliver(session_id: str, project_root: str) -> None:
             # Nothing has run in this session: no status is true yet, and a
             # payload of "everything pending" would be noise (Fixes #291).
             return
+        if not (snapshot.get("plans") or snapshot.get("tasks") or snapshot.get("jobs")):
+            # A recon-only local snapshot has no v5 representation. Do not
+            # turn it into a new empty network push while the wire stays v5.
+            return
         with _lock:
             _sessions.setdefault(
                 session_id, {"last_push": None, "in_flight": False, "timer": None,
@@ -560,7 +574,11 @@ def _post_snapshot(
 
     lease_url = get_cloud_lease_url(config)
     liveness_url = get_cloud_liveness_url(config)
-    body = json.dumps(snapshot).encode()
+    # Recons are collected locally while interface v5 remains the only wire
+    # contract. Preserve the existing v5 body exactly until interface v6 is
+    # accepted and explicitly enables this section.
+    wire_snapshot = {key: value for key, value in snapshot.items() if key != "recons"}
+    body = json.dumps(wire_snapshot).encode()
     for lease_attempt in range(2):
         lease = get_admission_lease(
             api_key, lease_url, session_id=session_id, sync_state=state,
@@ -650,6 +668,7 @@ def build_liveness_snapshot(
     session = _read_json(resolve_home() / "sessions" / f"{session_id}.json")
     task_rows = _collect_runs(root / ".snodo" / "tasks")
     job_rows = _collect_runs(root / ".snodo" / "jobs", job_dirs=True)
+    recons = _collect_recons(root / ".snodo" / "recons", time.time())
     plans, tallied_refs, detailed_refs, tallied_job_ids, nested_job_ids = \
         _collect_plans(root, task_rows, job_rows)
     last_event = _last_audit_event(root / ".snodo" / "audit.log")
@@ -663,7 +682,8 @@ def build_liveness_snapshot(
         row for row in job_rows
         if not _run_is_stale(row, time.time())
     ]
-    if not _anything_running(plans, live_task_rows, live_job_rows):
+    has_existing_liveness = _anything_running(plans, live_task_rows, live_job_rows)
+    if not has_existing_liveness and not recons:
         return None
 
     project_id = ""
@@ -692,6 +712,7 @@ def build_liveness_snapshot(
         "plans": plans,
         "tasks": live_tasks,
         "jobs": live_jobs,
+        "recons": recons,
         "task_status_counts": task_counts,
         "job_status_counts": job_counts,
         "last_event": last_event,
@@ -699,6 +720,38 @@ def build_liveness_snapshot(
         "snapshot_at": _now_iso(),
     }
     return snapshot
+
+
+def _collect_recons(recons_dir: Path, now: float) -> list[LivenessRecon]:
+    """Read running recons locally; terminal and stale records are omitted.
+
+    A recon stores the owning process pid when it starts, so a dead process is
+    dropped immediately. Older records without a pid use the same inactivity
+    window as stale jobs, preventing abandoned state from staying live forever.
+    """
+    if not recons_dir.is_dir():
+        return []
+    recons = []
+    for entry in sorted(recons_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        state = _read_json(entry / "state.json")
+        if state is None or state.get("status") != "running":
+            continue
+        pid = state.get("pid") if isinstance(state.get("pid"), int) else None
+        if pid is not None and _pid_alive(pid) is False:
+            continue
+        activity = _mtime_or_none(entry / "state.json")
+        if pid is None and (activity is None or now - activity >= _STALE_AFTER_SECONDS):
+            continue
+        agents = state.get("agents")
+        recons.append({
+            "id": str(state.get("recon_id") or entry.name),
+            "query": str(state.get("query") or "")[:200],
+            "agent_count": len(agents) if isinstance(agents, list) else 0,
+            "started_at": _as_iso(state.get("created_at")),
+        })
+    return recons
 
 
 def _read_json(path: Path) -> Optional[dict]:
