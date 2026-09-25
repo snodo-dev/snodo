@@ -70,16 +70,27 @@ def cloud_schema_command(json_output: bool = True) -> int:
     from pydantic import TypeAdapter
 
     from snodo.infrastructure.cloud_interface import CLOUD_INTERFACE_VERSION
-    from snodo.infrastructure.cloud_liveness import LivenessSnapshot
+    from snodo.infrastructure.cloud_interface import CLOUD_INTERFACE_V5, CLOUD_INTERFACE_V6
+    from snodo.infrastructure.cloud_liveness import LivenessSnapshot, LivenessSnapshotV6
     from snodo.infrastructure.cloud_runs import run_record_payload_schema
-    from snodo.infrastructure.cloud_sync import AuditIngestBatch
+    from snodo.infrastructure.cloud_sync import AuditIngestBatch, AuditIngestBatchV6
 
     publication = {
         "interface_version": CLOUD_INTERFACE_VERSION,
         "payloads": {
-            "cloud_ingest": TypeAdapter(AuditIngestBatch).json_schema(),
-            "cloud_liveness": TypeAdapter(LivenessSnapshot).json_schema(),
+            "cloud_ingest": TypeAdapter(AuditIngestBatchV6).json_schema(),
+            "cloud_liveness": TypeAdapter(LivenessSnapshotV6).json_schema(),
             "run_record": run_record_payload_schema(),
+        },
+        "payloads_by_version": {
+            str(CLOUD_INTERFACE_V5): {
+                "cloud_ingest": TypeAdapter(AuditIngestBatch).json_schema(),
+                "cloud_liveness": TypeAdapter(LivenessSnapshot).json_schema(),
+            },
+            str(CLOUD_INTERFACE_V6): {
+                "cloud_ingest": TypeAdapter(AuditIngestBatchV6).json_schema(),
+                "cloud_liveness": TypeAdapter(LivenessSnapshotV6).json_schema(),
+            },
         },
     }
     print(json.dumps(publication, indent=2, sort_keys=True))
