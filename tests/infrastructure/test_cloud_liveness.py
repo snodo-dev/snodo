@@ -72,8 +72,10 @@ class _Posts:
 
     def __init__(self):
         self.calls = []
+        self.bodies = []
 
     def __call__(self, url, **kwargs):
+        self.bodies.append(kwargs["content"])
         self.calls.append((url, json.loads(kwargs["content"])))
         return type("R", (), {"status_code": 204, "text": ""})()
 
@@ -655,6 +657,50 @@ class TestPayloadContent:
         assert [j["id"] for j in body["jobs"]] == ["j_20260902_a1"]
         assert body["jobs"][0]["status"] == "running"
         assert "unbounded tool output" not in json.dumps(body)
+
+    def test_local_recons_are_omitted_from_v5_wire_payload(self, project):
+        root, _ = project
+        _write(root / ".snodo" / "recons" / "rec_local" / "state.json", {
+            "recon_id": "rec_local", "query": "local question",
+            "agents": [["model-a"]], "status": "running",
+            "created_at": 1787000000.0, "pid": os.getpid(),
+        })
+        local_snapshot = cloud_liveness.build_liveness_snapshot("sess_test_1", str(root))
+        assert local_snapshot is not None
+        assert local_snapshot["recons"][0]["id"] == "rec_local"
+        expected_v5_body = json.dumps({
+            key: value for key, value in local_snapshot.items() if key != "recons"
+        }).encode()
+        posts = _Posts()
+
+        with patch("httpx.post", posts):
+            cloud_liveness._post_snapshot(local_snapshot, config=_TEST_CONFIG)
+
+        assert len(posts.calls) == 1
+        assert posts.bodies == [expected_v5_body]
+        _, body = posts.calls[0]
+        assert "recons" not in body
+        # The v5 payload retains its existing section set and values.
+        assert set(body) == {
+            "session_id", "project_id", "scope", "display_name", "run_started_at",
+            "plans", "tasks", "jobs", "task_status_counts", "job_status_counts",
+            "last_event", "last_activity_at", "snapshot_at",
+        }
+
+    def test_recon_only_does_not_create_a_v5_network_push(self, tmp_path):
+        root = tmp_path / "recon-only"
+        _write(root / ".snodo" / "recons" / "rec_local" / "state.json", {
+            "recon_id": "rec_local", "query": "local question",
+            "agents": [["model-a"]], "status": "running",
+            "created_at": 1787000000.0, "pid": os.getpid(),
+        })
+        posts = _Posts()
+
+        with patch("httpx.post", posts):
+            cloud_liveness.request_liveness_push("sess_test_1", str(root))
+            cloud_liveness.wait_for_pushes()
+
+        assert posts.calls == []
 
     def test_task_ref_links_a_job_to_its_plan_task(self, project):
         """A job nested under its task keeps its identity off the top level.

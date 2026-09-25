@@ -127,6 +127,7 @@ class TestReconManagerSubmit:
         assert state["agents"] == [["default"]]
         assert state["status"] == "running"
         assert "created_at" in state
+        assert state["pid"] == os.getpid()
 
     def test_submit_appends_full_recon_started_event(self, recon_mgr):
         query = "Explain the entire system, including its edge cases."
