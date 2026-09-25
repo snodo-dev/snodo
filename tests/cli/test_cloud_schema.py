@@ -158,11 +158,16 @@ def test_v6_schema_publishes_wave_one_shapes_and_accepts_v5_events():
             "project_id": "local:project", "scope": "local",
             "data": {"task_ref": "1.1", "branch": "work", "merge_sha": "a" * 40, "spec": "spec", "session_id": "sess_schema"},
             "previous_hash": "0" * 64, "event_hash": "a" * 64,
+        }, {
+            "sequence": 2, "timestamp": "2026-09-17T12:01:00+00:00", "event_type": "plan_run",
+            "project_id": "local:project", "scope": "local",
+            "data": {"plan_name": "p1", "waves": [], "trigger": "cli"},
+            "previous_hash": "a" * 64, "event_hash": "b" * 64,
         }],
     }
     validate(legacy, ingest)
     plan_data = by_type["plan_run"]["properties"]["data"]["$ref"].split("/")[-1]
-    assert {"plan_name", "waves", "trigger", "queue"} <= set(ingest["$defs"][plan_data]["properties"])
+    assert {"plan_name", "waves", "trigger", "queue", "job_id", "mode"} <= set(ingest["$defs"][plan_data]["properties"])
 
     v5 = publication["payloads_by_version"]["5"]["cloud_ingest"]
     v5_items = v5["properties"]["events"]["items"]

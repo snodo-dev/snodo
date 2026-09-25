@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `plan_run` events now include the background `job_id` (or null for
+  foreground runs) and the protocol `mode`; the v6 schema and cloud sync
+  contract publish both fields. (Fixes #496)
 - Cloud interface v6 now publishes recon events, pinned plan history,
   delivered-work fields and recon/queue liveness shapes alongside v5. The v5
   sender contract remains available for fallback. (Fixes #493)

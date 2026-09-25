@@ -275,6 +275,7 @@ class PlanToolHandler:
             "plan_name": plan_name,
             "cwd": self.server.project_root,
             "trigger": "mcp",
+            "mode": self.server._active_mode(),
         }
         protocol = arguments.get("protocol")
         if protocol:
@@ -308,6 +309,8 @@ class PlanToolHandler:
             "op": "plan_run",
             **plan_history_shape(plan_data, plan_name),
             "trigger": "mcp",
+            "job_id": job_id,
+            "mode": task_args["mode"],
         })
 
         if arguments.get("wait"):

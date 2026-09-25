@@ -296,6 +296,8 @@ class TestRunPlanGate:
                 {"wave_id": 2, "task_refs": []},
             ],
             "trigger": "mcp",
+            "job_id": "j_runner1",
+            "mode": "producer",
         }
 
     def test_wait_true_blocks_and_reports_the_final_status(self, server, project_dir):
