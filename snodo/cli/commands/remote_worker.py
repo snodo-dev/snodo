@@ -112,8 +112,19 @@ def run_remote_task(
     stream = _Stream(list(credentials.values()))
     stdout = _OutputCapture(stream, "stdout")
     stderr = _OutputCapture(stream, "stderr")
-    old_env = {key: os.environ.get(key) for key in credentials}
-    os.environ.update(credentials)
+    old_env = {"SNODO_REMOTE_PROVIDER_KEYS": os.environ.get("SNODO_REMOTE_PROVIDER_KEYS")}
+    try:
+        from snodo.config import ConfigManager
+        providers = ConfigManager().get_providers()
+    except Exception:
+        providers = {}
+    for provider, key in credentials.items():
+        provider_config = providers.get(provider)
+        env_name = getattr(provider_config, "api_key_env", None)
+        if env_name:
+            old_env.setdefault(env_name, os.environ.get(env_name))
+            os.environ[env_name] = key
+    os.environ["SNODO_REMOTE_PROVIDER_KEYS"] = json.dumps(credentials, separators=(",", ":"))
     project = Path(project_root).resolve()
     branch = ""
     task_wt = None

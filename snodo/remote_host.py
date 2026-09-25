@@ -121,3 +121,56 @@ def check_remote_host(
 def host_check_json(checks: list[HostCheck]) -> dict:
     """Serialize check results for stable CLI JSON output."""
     return {"ok": all(check.ok for check in checks), "checks": [asdict(check) for check in checks]}
+
+
+def task_provider_models(protocol, coder_model: str, mode_id: str | None = None) -> dict[str, str]:
+    """Return providers and representative models used by the task loop."""
+    from snodo.config import ConfigManager
+
+    manager = ConfigManager()
+    config = manager.load()
+    llm = config.get("llm", {})
+    fallback = config.get("model") or coder_model
+    mode = next((item for item in protocol.modes
+                 if item.mode_id == (mode_id or protocol.initial_mode)), None)
+    models = [coder_model]
+    models.append(llm.get("validator", {}).get("model")
+                  or llm.get("validator_llm", {}).get("model")
+                  or fallback or coder_model)
+    models.append(llm.get("classifier", {}).get("model")
+                  or fallback or coder_model)
+    if mode:
+        active = set(mode.validators)
+        for validator in protocol.validators:
+            if validator.validator_id in active and validator.scope == "task":
+                validator_model = getattr(validator, "model", None)
+                if validator_model:
+                    models.append(validator_model)
+    providers: dict[str, str] = {}
+    for model in models:
+        provider = ConfigManager._provider_for_model(model)
+        if provider:
+            providers.setdefault(provider, model)
+    return providers
+
+
+def resolve_task_provider_keys(protocol, coder_model: str, mode_id: str | None = None):
+    """Resolve only credentials required by this task loop, naming failures."""
+    from snodo.config import ConfigManager
+
+    manager = ConfigManager()
+    keys: dict[str, str] = {}
+    failures: list[HostCheck] = []
+    for provider, model in task_provider_models(protocol, coder_model, mode_id).items():
+        try:
+            key = manager.get_key_for_model(model)
+        except Exception:
+            key = None
+        if key:
+            keys[provider] = key
+            failures.append(HostCheck(f"provider_key:{provider}", "resolve locally", True,
+                                      f"{provider} key resolves locally"))
+        else:
+            failures.append(HostCheck(f"provider_key:{provider}", "resolve locally", False,
+                                      f"No locally resolvable key for provider '{provider}'"))
+    return keys, failures

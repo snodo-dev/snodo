@@ -28,6 +28,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - MCP guide topic `remote-host` documents SSH host setup, preflight checks,
   execution boundaries, credential handling and retrying errored remote tasks;
   the command reference and unattended runbook link to it. (Fixes #481)
+- Remote tasks now resolve and send only the coder, active task-validator and
+  classifier provider keys; worker-provided keys override host config, and
+  `snodo host check` verifies each required key locally. (Fixes #482)
 
 ## [0.16.0] — 2026-09-24
 
