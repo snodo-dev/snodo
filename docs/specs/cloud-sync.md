@@ -324,10 +324,12 @@ answer summaries now leave the machine in audit events. `task_merged` also
 includes the pre-merge base SHA, full commit count, up to 50 commit SHAs and
 subjects (with a truncation marker when capped), changed-file count, insertions
 and deletions. Measurement is best-effort; diffs, file contents and commits
-outside snodo's merge range are not sent. Task events carry `plan_name` and the
-plan's `plan_wave` when applicable. `plan_proposed` and `plan_run` carry the
-pinned hierarchy `{plan_name, waves: [{wave_id, task_refs}]}`; plan runs also
-identify their trigger and, for queue-triggered runs, the queue.
+outside snodo's merge range are not sent. The plan-owned task events
+`task_classified`, `dispatch`, `task_complete`, `task_merged` and `halt` carry
+`plan_name` and the plan's `plan_wave` when applicable. `plan_proposed` and
+`plan_run` carry the pinned hierarchy `{plan_name, waves: [{wave_id,
+task_refs}]}`; plan runs also identify their trigger and, for queue-triggered
+runs, the queue.
 
 | event_type | data keys |
 |---|---|
@@ -341,9 +343,9 @@ identify their trigger and, for queue-triggered runs, the queue.
 | `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision |
 | `task_classified` | task_ref, flow_type, wave_id, task_summary, plan_name, plan_wave (when applicable) |
 | `wave_created` | wave_id, feature_description |
-| `task_complete` | task_ref, artifacts, session_id, commit, change_size, plan_name, plan_wave (when applicable) |
+| `task_complete` | task_ref, artifacts, session_id, commit, change_size |
 | `task_merged` | task_ref, branch, merge_sha, spec, session_id, base_sha, commit_count, commits (up to 50), files_changed, insertions, deletions, plan_name, plan_wave (when applicable) |
-| `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type, plan_name, plan_wave (when applicable) |
+| `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type |
 | `transition` | from_mode, to_mode, task_ref |
 | `token_consumed` | task_ref, session_id |
 | `post_validation_route` | decision, task_ref |
