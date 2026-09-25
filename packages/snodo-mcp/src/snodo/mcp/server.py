@@ -441,8 +441,9 @@ class ProtocolMCPServer:
                     session_id = session.session_id
             except Exception as e:  # noqa: BLE001 — audit attribution is best effort
                 logger.debug("Could not resolve active session for write audit: %s", e)
-            self._audit("file_written", {
-                "op": "file_write",
+            self._audit("tool_call", {
+                "op": "file_written",
+                "tool_name": "write_file",
                 "path": written.relative_to(self.workspace.project_root).as_posix(),
                 "bytes": len(payload),
                 "content_hash": hashlib.sha256(payload).hexdigest(),

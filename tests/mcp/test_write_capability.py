@@ -94,7 +94,10 @@ def test_successful_write_audit_has_path_bytes_hash_mode_and_session(project):
     with patch("snodo.infrastructure.session.SessionManager.get_active_session", return_value=SimpleNamespace(session_id="sess_test")):
         server.call_tool("write_file", {"path": ".snodo/spec.md", "content": content})
 
-    event = next(event for event in audit.get_history() if event.event_type == "file_written")
+    event = next(
+        event for event in audit.get_history()
+        if event.event_type == "tool_call" and event.data.get("op") == "file_written"
+    )
     assert event.data["path"] == ".snodo/spec.md"
     assert event.data["bytes"] == len(content.encode())
     assert event.data["content_hash"] == hashlib.sha256(content.encode()).hexdigest()
@@ -108,4 +111,7 @@ def test_write_creates_the_project_audit_stream_when_not_injected(project):
 
     audit = AuditLog(str(project / ".snodo" / "audit.log"), project_id="p_test")
     events = audit.get_history()
-    assert any(event.event_type == "file_written" for event in events)
+    assert any(
+        event.event_type == "tool_call" and event.data.get("op") == "file_written"
+        for event in events
+    )
