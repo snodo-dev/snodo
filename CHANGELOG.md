@@ -19,6 +19,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [0.17.0] — 2026-09-26
 
 ### Added
+- MCP-dispatched tasks and plan tasks can name a declared module to select its
+  test command and bound writable paths. Plan and job status expose the module;
+  tasks without one keep the existing project-wide behavior. (Fixes #504)
 - MCP getting-started and discovery guidance now directs codebase questions
   and lost-context recovery to recon, using configured models and API keys.
   (Fixes #497)
