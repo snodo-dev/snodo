@@ -147,6 +147,7 @@ class PlannerMCP:
         self.project_root = Path(project_root).resolve()
         self.plans_dir = self.project_root / ".snodo" / "plans"
         self._audit_log = audit_log
+        self.protocol = None
 
         if not self.project_root.exists():
             raise ValueError(f"Project root does not exist: {self.project_root}")
@@ -327,6 +328,7 @@ class PlannerMCP:
         spec: str,
         parent_task_ref: Optional[str] = None,
         replace: bool = False,
+        module: Optional[str] = None,
     ) -> str:
         """Write a task specification file into a plan.
 
@@ -339,6 +341,7 @@ class PlannerMCP:
             spec: Task specification content (markdown)
             parent_task_ref: ID of parent task (plan-scoped)
             replace: Allow overwriting existing task spec
+            module: Explicit declared module scope for this task
 
         Returns:
             Path to the created spec file (relative to project root)
@@ -355,6 +358,8 @@ class PlannerMCP:
             raise PlannerError("Task ID cannot be empty")
         if not spec or not spec.strip():
             raise PlannerError("Spec cannot be empty")
+        module_id = module
+        self.validate_module(module_id)
 
         wave_num = self._parse_wave_num(task_id)
 
@@ -375,7 +380,7 @@ class PlannerMCP:
         spec_file = self._write_spec_and_update(
             plan_dir, wave_num, task_id, spec,
             status_file, status_data, tasks,
-            parent_task_ref, new_depth, spec_hash,
+            parent_task_ref, new_depth, spec_hash, module_id,
         )
 
         if old_spec_hash is not None:
@@ -393,6 +398,24 @@ class PlannerMCP:
             "plan_name": plan_name,
         })
         return str(spec_file.relative_to(self.project_root))
+
+    def validate_module(self, module_id: Optional[str]) -> None:
+        """Refuse an explicit module that is not declared by this protocol."""
+        if module_id is None:
+            return
+        protocol = self.protocol
+        if protocol is None:
+            protocol_path = self.project_root / ".snodo" / "protocol.yml"
+            if protocol_path.is_file():
+                from snodo.protocols import load_protocol
+                protocol = load_protocol(protocol_path)
+        modules = getattr(protocol, "modules", []) if protocol is not None else []
+        declared = [module.module_id for module in modules]
+        if module_id not in declared:
+            choices = ", ".join(declared) if declared else "(none declared)"
+            raise PlannerError(
+                f"Unknown module '{module_id}'. Declared modules: {choices}"
+            )
 
     def _parse_wave_num(self, task_id: str) -> int:
         """Parse and return the wave number from a task_id.
@@ -508,6 +531,7 @@ class PlannerMCP:
         parent_task_ref: Optional[str],
         new_depth: int,
         spec_hash: str,
+        module_id: Optional[str],
     ) -> Path:
         """Write the spec file, update plan.yml, and persist status.json.
 
@@ -534,6 +558,7 @@ class PlannerMCP:
             "parent_task_ref": parent_task_ref,
             "depth": new_depth,
             "spec_hash": spec_hash,
+            **({"module_id": module_id} if module_id is not None else {}),
         }
         with open(status_file, "w") as f:
             json.dump(status_data, f, indent=2)

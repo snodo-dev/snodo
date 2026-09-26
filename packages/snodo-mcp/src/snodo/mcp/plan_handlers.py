@@ -101,6 +101,26 @@ class PlanToolHandler:
                 statuses[tid] = str(entry)
         return statuses
 
+    def _task_modules(self, plan_name: str) -> Dict[str, str]:
+        """Return explicitly declared module scopes from task status records."""
+        status_file = self._planner.plans_dir / plan_name / "status.json"
+        if not status_file.exists():
+            return {}
+        try:
+            with open(status_file) as f:
+                data = json.load(f) or {}
+        except Exception as e:  # noqa: BLE001 — report, never invent
+            logger.warning("Could not read plan status %s: %s", status_file, e)
+            return {}
+        tasks = data.get("tasks", {})
+        if not isinstance(tasks, dict):
+            return {}
+        return {
+            task_id: entry["module_id"]
+            for task_id, entry in tasks.items()
+            if isinstance(entry, dict) and entry.get("module_id")
+        }
+
     def _task_runs(self, plan_name: str) -> dict[str, dict]:
         """Join each plan task to its latest child job, when one exists."""
         from snodo.jobs import index_plan_jobs
@@ -167,6 +187,7 @@ class PlanToolHandler:
             "intent": plan_data.get("intent", ""),
             "waves": plan_data.get("waves", []),
             "tasks": self._task_statuses(plan_name),
+            "task_modules": self._task_modules(plan_name),
             "task_runs": self._task_runs(plan_name),
             "validation": self._validation(plan_dir),
         }

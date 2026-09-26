@@ -131,6 +131,12 @@ wave 2 depends on wave 1, wave 2's spec must describe the state of the
 repository *after* wave 1, in its own words. Never write "as established in
 task 1.1".
 
+When a task is confined to one declared module, name it with `module` on
+`generate_spec` or `--module` on `snodo plan add-task`. The module selects its
+own quality test command and bounds the task's writable paths. Leave the module
+unset when the task spans modules; scope is explicit and is never inferred from
+the paths mentioned in the spec.
+
 The structure that works, in this order:
 
 **INTENT** — what becomes true, in the product's terms. Name the files and
@@ -296,6 +302,9 @@ another's output, put it in a later wave. Tasks in one wave are unordered and
 may run concurrently, up to the effective concurrency limit. The limit is the
 lower of the mode's concurrency ceiling and the operator's configured coder
 capacity; either may make it 1, in which case tasks in a wave run one at a time.
+When an individual task is confined to one declared module, name that module
+when adding its spec. It runs the module's own test command and bounds writable
+paths; cross-module tasks should leave module unset.
 
 A wave should usually hold several small, independently useful tasks. One task
 per wave is a common sizing mistake: it adds barriers without enabling useful

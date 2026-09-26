@@ -54,6 +54,7 @@ class JobToolHandler:
                 task.get("task_id") or task.get("retry_task_id") or ""
             ),
             "task_spec": task.get("description", ""),
+            "module": task.get("module_id"),
         }
         provenance = full.get("cost", {}).get("provenance", {})
         job_version = provenance.get("snodo_version") if isinstance(provenance, dict) else None

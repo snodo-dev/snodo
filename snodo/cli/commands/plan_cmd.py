@@ -145,11 +145,14 @@ def plan_add_task(
     replace: bool = typer.Option(
         False, "--replace", help="Overwrite an existing task spec",
     ),
+    module: Optional[str] = typer.Option(
+        None, "--module", help="Declared module scope for a task confined to one module",
+    ),
 ):
     """Add a task to a plan from a spec file."""
     args = SimpleNamespace(
         plan_action="add-task", plan=plan, task_id=task_id,
-        spec_file=spec_file, parent=parent, replace=replace,
+        spec_file=spec_file, parent=parent, replace=replace, module=module,
     )
     return plan_command(args)
 
@@ -780,6 +783,7 @@ def _plan_add_task(planner, args) -> int:
     spec_file = getattr(args, "spec_file", "")
     parent = getattr(args, "parent", None)
     replace = bool(getattr(args, "replace", False))
+    module_id = getattr(args, "module", None)
 
     if not _TASK_ID_RE.match(task_id):
         print(
@@ -798,7 +802,7 @@ def _plan_add_task(planner, args) -> int:
     try:
         rel = planner.generate_spec(
             plan, task_id, spec,
-            parent_task_ref=parent, replace=replace,
+            parent_task_ref=parent, replace=replace, module=module_id,
         )
     except PlannerError as e:
         print(f"Error: {e}", file=sys.stderr)

@@ -58,6 +58,10 @@ _PROTOCOL_DATA = {
             "criteria": ["Tests pass"],
         },
     ],
+    "modules": [
+        {"module_id": "core", "paths": ["src/core"],
+         "tooling": {"test_command": "pytest tests/core"}},
+    ],
     "disagreement_policy": "unanimous",
 }
 
@@ -345,6 +349,7 @@ class TestRunPlanGate:
             result = server.call_tool("get_plan", {"plan_name": "runs"})
 
         assert result["tasks"] == {"1.1_x": "pending"}
+        assert result["task_modules"] == {}
         assert result["task_runs"] == {
             "1.1_x": {
                 "job_id": "j_child",
@@ -354,6 +359,27 @@ class TestRunPlanGate:
                 "duration_seconds": 4.5,
             },
         }
+
+    def test_plan_task_module_is_persisted_and_returned(self, server):
+        _propose(server, name="scoped", waves=1)
+        server.call_tool("generate_spec", {
+            "plan_name": "scoped", "task_id": "1.1_core",
+            "spec": "Change core", "module": "core",
+        })
+
+        status = server.call_tool("get_plan", {"plan_name": "scoped"})
+
+        assert status["task_modules"] == {"1.1_core": "core"}
+        raw = server.planner.get_status("scoped")
+        assert raw["tasks"]["1.1_core"]["module_id"] == "core"
+
+    def test_generate_spec_rejects_unknown_module_with_declared_list(self, server):
+        _propose(server, name="bad-module", waves=1)
+        with pytest.raises(MCPError, match=r"Unknown module 'missing'.*core"):
+            server.call_tool("generate_spec", {
+                "plan_name": "bad-module", "task_id": "1.1_core",
+                "spec": "Change core", "module": "missing",
+            })
 
     def test_wait_true_timeout_names_the_still_running_job(self, server, project_dir):
         """A wait that expires reports the job, never a phantom failure."""

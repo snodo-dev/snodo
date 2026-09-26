@@ -584,6 +584,29 @@ class TestDispatchTask:
         assert submitted_args["description"] == "implement feature"
         assert submitted_args["cwd"] == dispatch_server.project_root
         assert submitted_args["mode"] == "producer"
+        assert submitted_args.get("module_id") is None
+
+    def test_dispatch_task_accepts_declared_module(self, project_dir):
+        data = {
+            **self.DISPATCH_PROTOCOL_DATA,
+            "modules": [{"module_id": "core", "paths": ["src/core"]}],
+        }
+        server = ProtocolMCPServer(Protocol(**data), project_dir)
+        with patch("snodo.jobs.JobManager") as mock_jm_cls:
+            mock_jm = MagicMock()
+            mock_jm.submit.return_value = "j_core"
+            mock_jm_cls.return_value = mock_jm
+            server.call_tool("dispatch_task", {
+                "task_spec": "core change", "module": "core",
+            })
+
+        assert mock_jm.submit.call_args.args[0]["module_id"] == "core"
+
+    def test_dispatch_task_rejects_unknown_module(self, dispatch_server):
+        with pytest.raises(MCPError, match=r"Unknown module 'missing'.*none declared"):
+            dispatch_server.call_tool("dispatch_task", {
+                "task_spec": "change", "module": "missing",
+            })
 
     def test_dispatch_task_sets_mode_from_server(self, dispatch_server):
         """dispatch_task includes the server's mode_id in submitted args."""

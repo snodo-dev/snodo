@@ -79,6 +79,10 @@ def build_command(job_dir: str, task_args: dict) -> List[str]:
     if mode:
         cmd.extend(["--mode", mode])
 
+    module_id = task_args.get("module_id")
+    if module_id and not plan_name:
+        cmd.extend(["--module", str(module_id)])
+
     if task_args.get("mock"):
         cmd.append("--mock")
 

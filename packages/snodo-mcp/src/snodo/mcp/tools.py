@@ -237,7 +237,7 @@ TOOL_REGISTRY = {
         "method": "decompose",
     },
     "generate_spec": {
-        "description": "Generate a task specification file within a plan",
+        "description": "Generate a task specification file within a plan. Name module when the task is confined to one declared module; it selects that module's test gate and bounds writable paths.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -250,6 +250,7 @@ TOOL_REGISTRY = {
                     ),
                 },
                 "spec": {"type": "string", "description": "Task specification content"},
+                "module": {"type": "string", "description": "Optional declared module scope. Use for a task confined to one module; selects its test command and bounds writable paths."},
                 "parent_task_ref": {"type": "string", "description": "ID of parent task if this is a sub-task"},
                 "replace": {"type": "boolean", "description": "Allow overwriting existing task spec"},
             },
@@ -425,6 +426,7 @@ TOOL_REGISTRY = {
             "properties": {
                 "task_spec": {"type": "string", "description": "Task specification to dispatch"},
                 "coding_model": {"type": "string", "description": "Optional model for the coder (overrides config default)"},
+                "module": {"type": "string", "description": "Optional declared module scope for a task confined to one module; selects its test command and bounds writable paths."},
             },
             "required": ["task_spec"],
         },
