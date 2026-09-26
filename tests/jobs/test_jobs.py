@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import tempfile
 import time
@@ -558,8 +559,10 @@ class TestGetStatus:
         mock_spawn.return_value = 99999
         mock_kill.return_value = None  # Process is "alive"
 
-        job_id = manager.submit(sample_task_args)
-        status = manager.get_status(job_id)
+        with patch("psutil.Process") as process:
+            process.return_value.create_time.return_value = 123.0
+            job_id = manager.submit(sample_task_args)
+            status = manager.get_status(job_id)
 
         assert status["id"] == job_id
         assert status["status"] == "running"
@@ -783,6 +786,76 @@ class TestWaitFor:
 # === State Reconciliation Tests ===
 
 class TestReconciliation:
+    def test_reconcile_pid_reuse_fails_with_identity_error(self, manager):
+        job_dir = manager.jobs_dir / "j_rec_pid_reuse"
+        job_dir.mkdir()
+        state = {
+            "status": "running", "pid": 12345,
+            "process_host": socket.gethostname(),
+            "process_started_at": 100.0,
+        }
+        manager._save_state(job_dir, state)
+
+        with (
+            patch("os.kill"),
+            patch("psutil.Process") as process,
+        ):
+            process.return_value.create_time.return_value = 200.0
+            result = manager._reconcile_state(job_dir, state)
+
+        assert result["status"] == "failed"
+        assert "different process" in result["error"]
+        assert "100.0" in result["error"]
+
+    def test_reconcile_foreign_host_fails_without_checking_local_pid(self, manager):
+        job_dir = manager.jobs_dir / "j_rec_foreign"
+        job_dir.mkdir()
+        state = {
+            "status": "queued", "pid": 12345,
+            "process_host": "another-host", "process_started_at": 100.0,
+        }
+        manager._save_state(job_dir, state)
+
+        with patch("os.kill") as kill:
+            result = manager._reconcile_state(job_dir, state)
+
+        kill.assert_not_called()
+        assert result["status"] == "failed"
+        assert "another-host" in result["error"]
+        assert "this host" in result["error"]
+
+    def test_reconcile_matching_process_stays_running(self, manager):
+        job_dir = manager.jobs_dir / "j_rec_matching"
+        job_dir.mkdir()
+        state = {
+            "status": "running", "pid": 12345,
+            "process_host": socket.gethostname(),
+            "process_started_at": 100.0,
+        }
+
+        with (
+            patch("os.kill"),
+            patch("psutil.Process") as process,
+        ):
+            process.return_value.create_time.return_value = 100.0
+            result = manager._reconcile_state(job_dir, state)
+
+        assert result["status"] == "running"
+
+    def test_reconcile_legacy_record_keeps_pid_only_behavior(self, manager):
+        job_dir = manager.jobs_dir / "j_rec_legacy"
+        job_dir.mkdir()
+        state = {"status": "running", "pid": 12345}
+
+        with (
+            patch("os.kill"),
+            patch("psutil.Process") as process,
+        ):
+            result = manager._reconcile_state(job_dir, state)
+
+        process.assert_not_called()
+        assert result["status"] == "running"
+
     def test_reconcile_running_alive(self, manager):
         """Reconciliation keeps running status if process is alive."""
         job_dir = manager.jobs_dir / "j_rec01"

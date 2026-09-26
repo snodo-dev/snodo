@@ -10,6 +10,7 @@ import json
 import os
 import secrets
 import signal
+import socket
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -202,23 +203,64 @@ class JobManager:
         if pid is None:
             return state
 
-        try:
-            os.kill(pid, 0)  # Check if process is alive
-        except ProcessLookupError:
-            # Process is dead — re-read state.json (wrapper may have updated it)
+        # State written before identity tracking has neither field; preserve
+        # its historical PID-only behavior.
+        host = socket.gethostname()
+        identity_error = None
+        foreign_host = (
+            state.get("process_host") is not None
+            and state["process_host"] != host
+        )
+        if foreign_host:
+            identity_error = (
+                f"Process was started on host {state['process_host']!r}, "
+                f"not this host {host!r}"
+            )
+        elif state.get("process_host") is not None and state.get("process_started_at") is None:
+            identity_error = "Recorded process identity is incomplete (missing start time)"
+
+        if not foreign_host:
+            try:
+                os.kill(pid, 0)  # Check if process is alive
+            except ProcessLookupError:
+                identity_error = f"Process {pid} is no longer running"
+            except PermissionError:
+                # Process exists but we can't signal it — still verify identity.
+                pass
+
+            recorded_start = state.get("process_started_at")
+            if recorded_start is not None and identity_error is None:
+                import psutil
+
+                try:
+                    actual_start = psutil.Process(pid).create_time()
+                except psutil.NoSuchProcess:
+                    identity_error = f"Process {pid} is no longer running"
+                except psutil.AccessDenied:
+                    identity_error = f"Cannot verify the identity of process {pid}"
+                else:
+                    if actual_start != recorded_start:
+                        identity_error = (
+                            f"PID {pid} now belongs to a different process "
+                            f"(started at {actual_start}, expected {recorded_start})"
+                        )
+
+        if identity_error is not None:
+            # Re-read state.json (wrapper may have updated it before exiting).
             fresh_state = self._load_state(job_dir)
             if fresh_state.get("status") in TERMINAL_STATUSES:
                 return fresh_state
-            # Wrapper crashed without updating state
             fresh_state["status"] = "failed"
             fresh_state["completed_at"] = time.time()
             fresh_state["exit_code"] = -1
-            fresh_state["error"] = "Process died unexpectedly (crashed without updating state)"
+            if "no longer running" in identity_error:
+                fresh_state["error"] = (
+                    "Process died unexpectedly (crashed without updating state)"
+                )
+            else:
+                fresh_state["error"] = identity_error
             self._save_state(job_dir, fresh_state)
             return fresh_state
-        except PermissionError:
-            # Process exists but we can't signal it — still running
-            pass
 
         return state
 
@@ -323,6 +365,14 @@ class JobManager:
         # Update state with PID
         state["status"] = "running"
         state["pid"] = pid
+        state["process_host"] = socket.gethostname()
+        try:
+            import psutil
+
+            state["process_started_at"] = psutil.Process(pid).create_time()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            # Keep host identity if the OS denies the additional query.
+            pass
         state["started_at"] = time.time()
         self._save_state(job_dir, state)
 
