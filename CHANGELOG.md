@@ -46,6 +46,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   best-effort and does not alter the cloud sync contract. (Fixes #488)
 
 ### Fixed
+- Coder timeout reporting now distinguishes silence halts from wall-clock
+  timeouts and reports the seconds for the limit that stopped the run; existing
+  wall-clock progress wording is preserved. (Fixes #499)
 - Recon MCP and CLI responses now report the actual agent count and why
   fan-out was reduced, including the `llm.recon.models` setting needed when
   no recon models are configured. (Fixes #498)
