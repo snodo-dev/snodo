@@ -39,7 +39,7 @@ def recon_command(args) -> int:
         paths = ["./"]
 
     from snodo.infrastructure.paths import require_project_root
-    from snodo.recon import ReconManager, resolve_recon_agents
+    from snodo.recon import ReconManager, resolve_recon_agents_with_notice
 
     project_root = require_project_root()
 
@@ -49,7 +49,7 @@ def recon_command(args) -> int:
     recon_models = recon_cfg.get("models", [])
     recon_default_n = recon_cfg.get("num_agents", 1)
 
-    lanes = resolve_recon_agents(
+    lanes, agent_count_notice = resolve_recon_agents_with_notice(
         requested_n=num_agents,
         recon_models=recon_models,
         recon_default_n=recon_default_n,
@@ -59,6 +59,8 @@ def recon_command(args) -> int:
     recon_id = mgr.submit(query, paths, lanes)
 
     print(f"Recon dispatched: {recon_id}")
+    if agent_count_notice:
+        print(f"  Agent count: {len(lanes)} ({agent_count_notice})")
     print(f"  Agents: {', '.join(lane[0] for lane in lanes)}")
     for lane in lanes:
         if len(lane) > 1:

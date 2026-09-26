@@ -258,12 +258,29 @@ def resolve_recon_agents(
     recon_default_n: int = 1,
     explicit_agents: list[str] | None = None,
 ) -> list[list[str]]:
+    """Resolve recon agents, retaining the legacy lanes-only return value."""
+    lanes, _ = resolve_recon_agents_with_notice(
+        requested_n=requested_n,
+        recon_models=recon_models,
+        recon_default_n=recon_default_n,
+        explicit_agents=explicit_agents,
+    )
+    return lanes
+
+
+def resolve_recon_agents_with_notice(
+    requested_n: int | None = None,
+    recon_models: list[str] | None = None,
+    recon_default_n: int = 1,
+    explicit_agents: list[str] | None = None,
+) -> tuple[list[list[str]], str | None]:
     """Resolve recon agents from config + CLI/MCP request into failover chains.
 
     Returns one *lane* per agent to run, in order. Each lane is an ordered
     chain of models: the lane calls its models in turn and the first that
     answers wins, so ``llm.recon.models`` is a priority list in behaviour and
-    not only in name. A model that answers is never retried.
+    not only in name. A model that answers is never retried. The second return
+    value explains any difference between the requested and actual agent count.
 
     Precedence (most specific wins):
       1. explicit_agents non-empty → one single-model lane per name. This is
@@ -283,35 +300,46 @@ def resolve_recon_agents(
     if explicit_agents:
         if requested_n is not None:
             _warn("explicit agents given; ignoring num_agents.")
-        return [[agent] for agent in explicit_agents]
+        lanes = [[agent] for agent in explicit_agents]
+        notice = None
+        if requested_n is not None and requested_n != len(lanes):
+            notice = (
+                f"Requested {requested_n} agents, but {len(lanes)} ran because "
+                "the explicit agents list determines the agent count."
+            )
+        return lanes, notice
 
     n = requested_n or recon_default_n or 1
     models = [m for m in (recon_models or []) if m]
 
     if not models:
         if n > 1:
-            _warn(
-                f"num_agents={n} but no recon models configured. "
-                "Using 'default' once (duplicates add no value)."
+            notice = (
+                f"Requested {n} agents, but 1 ran because no recon models are "
+                "configured. Set llm.recon.models to enable fan-out."
             )
-        return [["default"]]
+            _warn(notice)
+            return [["default"]], notice
+        return [["default"]], None
 
     if n <= 1:
-        return [list(models)]
+        return [list(models)], None
 
     lanes = [[model] for model in models[:n]]
     if len(models) < n:
-        _warn(
-            f"num_agents={n} but only {len(models)} recon model(s) "
-            f"configured; fanning out to {len(models)}."
+        notice = (
+            f"Requested {n} agents, but {len(models)} ran because only "
+            f"{len(models)} recon model(s) are configured."
         )
+        _warn(notice)
+        return lanes, notice
     elif len(models) > n:
         unused = ", ".join(models[n:])
         _warn(
             f"num_agents={n} uses the first {n} recon model(s); unused: "
             f"{unused}. Use num_agents=1 to try the whole list in order."
         )
-    return lanes
+    return lanes, None
 
 
 def normalize_recon_agents(agents: list) -> list[list[str]]:

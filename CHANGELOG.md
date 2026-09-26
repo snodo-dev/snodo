@@ -46,6 +46,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   best-effort and does not alter the cloud sync contract. (Fixes #488)
 
 ### Fixed
+- Recon MCP and CLI responses now report the actual agent count and why
+  fan-out was reduced, including the `llm.recon.models` setting needed when
+  no recon models are configured. (Fixes #498)
 - Cloud sync now reads the accepted interface version from the admission
   lease, keeps v5-compatible events flowing, and holds v6-only chain entries
   until the cloud advertises v6. V6 liveness sections follow the same gate.
