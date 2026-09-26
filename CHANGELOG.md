@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Job submission and liveness checks no longer crash with `UnboundLocalError`
+  when `psutil` is missing from a stale install; process start-time identity
+  is recorded and verified when `psutil` is available. (Refs #501)
+
 ---
 
 ## [0.17.0] — 2026-09-26

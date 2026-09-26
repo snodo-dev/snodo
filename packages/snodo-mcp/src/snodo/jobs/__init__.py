@@ -17,6 +17,11 @@ from typing import List, Optional
 
 from snodo.infrastructure.atomic_json import atomic_write_json
 
+try:  # a declared dependency, but a stale install can lack it
+    import psutil
+except ImportError:  # pragma: no cover - exercised only by stale installs
+    psutil = None
+
 
 class JobError(Exception):
     """Job system error."""
@@ -228,9 +233,7 @@ class JobManager:
                 pass
 
             recorded_start = state.get("process_started_at")
-            if recorded_start is not None and identity_error is None:
-                import psutil
-
+            if recorded_start is not None and identity_error is None and psutil is not None:
                 try:
                     actual_start = psutil.Process(pid).create_time()
                 except psutil.NoSuchProcess:
@@ -365,13 +368,12 @@ class JobManager:
         state["status"] = "running"
         state["pid"] = pid
         state["process_host"] = socket.gethostname()
-        try:
-            import psutil
-
-            state["process_started_at"] = psutil.Process(pid).create_time()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            # Keep host identity if the OS denies the additional query.
-            pass
+        if psutil is not None:
+            try:
+                state["process_started_at"] = psutil.Process(pid).create_time()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # Keep host identity if the OS denies the additional query.
+                pass
         state["started_at"] = time.time()
         self._save_state(job_dir, state)
 
