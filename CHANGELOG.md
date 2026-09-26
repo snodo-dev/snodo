@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.17.0] — 2026-09-26
+
 ### Added
 - MCP getting-started and discovery guidance now directs codebase questions
   and lost-context recovery to recon, using configured models and API keys.
