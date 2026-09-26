@@ -10,7 +10,6 @@ Manages persistent agent memory:
 
 import json
 import logging
-import os
 import sqlite3
 import time
 import uuid
@@ -19,6 +18,7 @@ from typing import Any, List, Optional
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from snodo.infrastructure.atomic_json import atomic_write_json
 from snodo.infrastructure.paths import resolve_home
 
 _logger = logging.getLogger(__name__)
@@ -93,10 +93,7 @@ class AgentMemoryManager:
 
     def _save_registry(self, registry: dict) -> None:
         """Atomically save agent registry."""
-        tmp_path = self.agents_path.with_suffix(".json.tmp")
-        with open(tmp_path, "w") as f:
-            json.dump(registry, f, indent=2)
-        os.replace(str(tmp_path), str(self.agents_path))
+        atomic_write_json(self.agents_path, registry)
 
     def get_or_create_agent(self, project: str, mode: str) -> dict:
         """Get or create an agent entry, returning its config.

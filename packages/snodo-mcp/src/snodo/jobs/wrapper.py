@@ -18,16 +18,15 @@ import sys
 import time
 from pathlib import Path
 
+from snodo.infrastructure.atomic_json import atomic_write_json
+
 _logger = logging.getLogger(__name__)
 
 
 def _save_state(job_dir: str, state: dict) -> None:
     """Atomically write state.json (write tmp + os.replace)."""
     state_path = os.path.join(job_dir, "state.json")
-    tmp_path = os.path.join(job_dir, "state.json.tmp")
-    with open(tmp_path, "w") as f:
-        json.dump(state, f, indent=2)
-    os.replace(tmp_path, state_path)
+    atomic_write_json(state_path, state)
 
 
 def _load_state(job_dir: str) -> dict:

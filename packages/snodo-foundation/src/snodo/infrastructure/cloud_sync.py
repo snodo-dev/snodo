@@ -14,7 +14,6 @@ Contract (from snodo-cloud ADR):
 import atexit
 import json
 import logging
-import os
 import re
 import time
 from pathlib import Path
@@ -25,6 +24,7 @@ from pydantic import (
     field_validator,
 )
 
+from snodo.infrastructure.atomic_json import atomic_write_json
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
 from snodo.infrastructure.cloud_backoff import (
@@ -466,9 +466,7 @@ class CloudSyncState:
             return {}
 
     def _save(self, data: dict) -> None:
-        tmp = self._path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, indent=2) + "\n")
-        os.replace(str(tmp), str(self._path))
+        atomic_write_json(self._path, data, trailing_newline=True)
 
     def get_cursor(self, session_id: str) -> int:
         """Return last_synced_sequence for *session_id* (0 if never synced)."""
