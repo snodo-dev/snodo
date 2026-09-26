@@ -23,6 +23,7 @@ from typing import Optional
 
 from filelock import FileLock
 
+from snodo.infrastructure.atomic_json import atomic_write_json
 from snodo.infrastructure.config import ClassifierConfig, WaveConfig
 from snodo.infrastructure.llm_parameter_errors import rejected_parameter_name
 
@@ -182,9 +183,7 @@ class WaveRegistry:
     def _write_waves(self, waves: list[WaveEntry]) -> None:
         self._snodo_dir.mkdir(parents=True, exist_ok=True)
         raw = [asdict(w) for w in waves]
-        tmp = self._wave_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(raw, indent=2))
-        tmp.replace(self._wave_path)
+        atomic_write_json(self._wave_path, raw)
 
     def _filter_open(self, waves: list[WaveEntry]) -> list[WaveEntry]:
         now = _now()

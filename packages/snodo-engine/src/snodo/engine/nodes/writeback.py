@@ -13,6 +13,7 @@ from snodo.engine.policy import policy_decision_to_dict
 from snodo.engine.state import _task_branch_name
 from snodo.core.interfaces import result_record
 from snodo.core.spec import same_spec
+from snodo.infrastructure.atomic_json import atomic_write_json
 
 _logger = logging.getLogger(__name__)
 
@@ -671,9 +672,7 @@ class WritebackMixin:
                     f"log event job_state_corrupt)"
                 )
         state.update(updates)
-        tmp = job_dir / "state.json.tmp"
-        tmp.write_text(json.dumps(state, indent=2))
-        _os.replace(str(tmp), str(state_path))
+        atomic_write_json(state_path, state)
 
 
 
@@ -988,9 +987,7 @@ class WritebackMixin:
                     task_state["halt"] = halt_payload
                     if findings is not None:
                         task_state["findings"] = findings
-                    tmp = task_dir / "state.json.tmp"
-                    tmp.write_text(json.dumps(task_state, indent=2))
-                    _os.replace(str(tmp), str(task_state_path))
+                    atomic_write_json(task_state_path, task_state)
 
 
         # Dual-write to session for orchestrator / dashboard
