@@ -370,25 +370,26 @@ def _payload_for_events(session_id: str, project_root: str, events: list) -> dic
 
 
 def _v5_payload(payload: dict, interface_version: int) -> Optional[dict]:
-    """Select v5-compatible events, or hold at a v6-only event.
+    """Select the v5-compatible prefix, or hold if it starts with v6 data.
 
     Hashes describe the local audit data and are intentionally unchanged by
-    projection. Sequence, previous_hash and event_hash always travel together.
+    projection. Sequence, previous_hash and event_hash always travel together;
+    once an event needs v6, it and the remainder of the chain stay held.
     """
     if interface_version >= 6:
         return payload
     projected = {**payload, "events": []}
     for event in payload["events"]:
         if event["event_type"] in _V6_EVENT_TYPES:
-            return None
+            break
         data = event["data"]
         removed = _V6_DATA_KEYS.get(event["event_type"], set())
         if removed and isinstance(data, dict) and removed.intersection(data):
             # Stripping these fields would make event_hash no longer attest to
             # the transmitted data. Hold the event and chain suffix intact.
-            return None
+            break
         projected["events"].append(event)
-    return projected
+    return projected if projected["events"] else None
 
 
 def _encode_payload(payload: dict) -> bytes:

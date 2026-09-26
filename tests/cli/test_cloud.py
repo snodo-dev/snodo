@@ -768,8 +768,51 @@ class TestCloudSyncDispatcher:
         assert result["pending"] == 2
         assert [event["sequence"] for event in captured] == [1]
         assert captured[0]["event_hash"] == events[0].event_hash
+        assert captured[0]["previous_hash"] == events[0].previous_hash
+        assert captured[0]["data"] == events[0].data
         assert post.call_count == 1
         advance.assert_called_once_with("sess_v5", 1)
+
+    def test_v5_payload_keeps_only_the_unchanged_compatible_prefix(self):
+        from snodo.infrastructure.cloud_sync import _payload_for_events, _v5_payload
+
+        events = self._make_events(3)
+        events[1].event_type = "recon_started"
+        payload = _payload_for_events("sess_v5_prefix", "/proj", events)
+
+        projected = _v5_payload(payload, 5)
+
+        assert projected is not None
+        assert projected["events"] == payload["events"][:1]
+
+    def test_v5_cloud_holds_batch_starting_with_v6_event(self):
+        import time
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+        from snodo.infrastructure.cloud_lease import CloudLease
+
+        events = self._make_events(2)
+        events[0].event_type = "recon_started"
+        lease = CloudLease("jti", "token", time.time() + 3600, interface_version=5)
+        dispatcher = CloudSyncDispatcher()
+
+        with (
+            patch.object(CloudSyncState, "get_cursor", return_value=0),
+            patch.object(CloudSyncState, "advance_cursor") as advance,
+            patch.object(CloudSyncState, "record_attempt"),
+            patch("snodo.infrastructure.cloud_lease.get_admission_lease", return_value=lease),
+            patch("httpx.post") as post,
+        ):
+            result = dispatcher.sync(
+                "sess_v5_first_v6", "/proj", MagicMock(events=events),
+                "key", "https://api.test",
+            )
+
+        assert result["failed"] is True
+        assert "not yet advertised" in result["reason"]
+        assert result["synced"] == 0
+        assert result["pending"] == 2
+        post.assert_not_called()
+        advance.assert_not_called()
 
     def test_v6_cloud_sends_new_events_and_switches_after_v5(self):
         import time
