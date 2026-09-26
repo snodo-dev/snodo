@@ -785,22 +785,53 @@ class TestResolveReconAgentsPriority:
         assert "unused" in err and "m3" in err
 
     def test_fewer_models_than_agents_warns_once_not_per_slot(self, capsys):
-        from snodo.recon import resolve_recon_agents
+        from snodo.recon import resolve_recon_agents_with_notice
 
-        lanes = resolve_recon_agents(
+        lanes, notice = resolve_recon_agents_with_notice(
             requested_n=5, recon_models=["m1", "m2"], recon_default_n=1,
         )
         assert lanes == [["m1"], ["m2"]]
         err = capsys.readouterr().err
         assert err.count("Warning:") == 1
-        assert "only 2 recon model(s)" in err
+        assert "only 2 recon model(s)" in notice
+        assert "Requested 5 agents, but 2 ran" in notice
 
     def test_no_models_and_n_gt_1_warns_and_uses_default_once(self, capsys):
-        from snodo.recon import resolve_recon_agents
+        from snodo.recon import resolve_recon_agents_with_notice
 
-        lanes = resolve_recon_agents(requested_n=3, recon_models=[], recon_default_n=1)
+        lanes, notice = resolve_recon_agents_with_notice(
+            requested_n=3, recon_models=[], recon_default_n=1,
+        )
         assert lanes == [["default"]]
-        assert "no recon models configured" in capsys.readouterr().err
+        assert "no recon models are configured" in capsys.readouterr().err
+        assert "Requested 3 agents, but 1 ran" in notice
+        assert "llm.recon.models" in notice
+
+    def test_cli_reports_reduced_agent_count(self, monkeypatch, capsys):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from snodo.cli.commands import recon_cmd
+
+        manager = MagicMock()
+        manager.get_status.return_value = {"results": [{
+            "agent": "default", "model": "default", "result": "answer",
+            "error": None, "attempts": [],
+        }]}
+        with patch("snodo.infrastructure.paths.require_project_root", return_value="/tmp/project"), \
+             patch("snodo.config.ConfigManager") as config_manager, \
+             patch("snodo.recon.ReconManager", return_value=manager), \
+             patch("snodo.recon.resolve_recon_agents_with_notice", return_value=(
+                 [["default"]],
+                 "Requested 3 agents, but 1 ran because no recon models are configured. Set llm.recon.models to enable fan-out.",
+             )):
+            config_manager.return_value.load.return_value = {"llm": {"recon": {"models": []}}}
+            assert recon_cmd.recon_command(SimpleNamespace(
+                query="q", paths=["./"], num_agents=3,
+            )) == 0
+        out = capsys.readouterr().out
+        assert "Agent count: 1" in out
+        assert "llm.recon.models" in out
 
     def test_explicit_agents_is_fan_out_of_single_model_lanes(self):
         from snodo.recon import resolve_recon_agents

@@ -31,7 +31,7 @@ class ReconToolHandler:
         explicit_agents = arguments.get("agents")
         num_agents = arguments.get("num_agents")
 
-        from snodo.recon import ReconManager, ReconError, resolve_recon_agents
+        from snodo.recon import ReconManager, ReconError, resolve_recon_agents_with_notice
         from snodo.config import ConfigManager
 
         config = ConfigManager().load()
@@ -39,7 +39,7 @@ class ReconToolHandler:
         recon_models = recon_cfg.get("models", [])
         recon_default_n = recon_cfg.get("num_agents", 1)
 
-        agents = resolve_recon_agents(
+        agents, agent_count_notice = resolve_recon_agents_with_notice(
             requested_n=num_agents,
             recon_models=recon_models,
             recon_default_n=recon_default_n,
@@ -56,6 +56,8 @@ class ReconToolHandler:
             "recon_id": recon_id,
             "status": "running",
             "agents": [lane[0] for lane in agents],
+            "agent_count": len(agents),
+            "agent_count_notice": agent_count_notice,
             "failover": {lane[0]: lane for lane in agents if len(lane) > 1},
             "query": query,
         }

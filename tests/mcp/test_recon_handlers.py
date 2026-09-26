@@ -50,25 +50,26 @@ class TestHandleRecon:
         handler = _handler()
         with patch("snodo.config.ConfigManager") as MockCM, \
              patch("snodo.recon.ReconManager") as MockRM, \
-             patch("snodo.recon.resolve_recon_agents") as mock_rra:
+             patch("snodo.recon.resolve_recon_agents_with_notice") as mock_rra:
             MockCM.return_value.load.return_value = {
                 "llm": {"recon": {"models": ["default"], "num_agents": 1}}
             }
-            mock_rra.return_value = [["default"]]
+            mock_rra.return_value = ([["default"]], None)
             MockRM.return_value.submit.return_value = "recon-abc123"
             result = handler.handle_recon({"query": "find auth code", "paths": ["./"]})
         assert result["recon_id"] == "recon-abc123"
         assert result["status"] == "running"
         assert result["query"] == "find auth code"
         assert "agents" in result
+        assert result["agent_count"] == 1
 
     def test_recon_error_wrapped_as_mcp_error(self):
         handler = _handler()
         with patch("snodo.config.ConfigManager") as MockCM, \
              patch("snodo.recon.ReconManager") as MockRM, \
-             patch("snodo.recon.resolve_recon_agents") as mock_rra:
+             patch("snodo.recon.resolve_recon_agents_with_notice") as mock_rra:
             MockCM.return_value.load.return_value = {}
-            mock_rra.return_value = [["default"]]
+            mock_rra.return_value = ([["default"]], None)
             MockRM.return_value.submit.side_effect = ReconError("submit failed")
             with pytest.raises(MCPError, match="submit failed"):
                 handler.handle_recon({"query": "find auth", "paths": ["./"]})
@@ -78,9 +79,9 @@ class TestHandleRecon:
         handler = _handler()
         with patch("snodo.config.ConfigManager") as MockCM, \
              patch("snodo.recon.ReconManager") as MockRM, \
-             patch("snodo.recon.resolve_recon_agents") as mock_rra:
+             patch("snodo.recon.resolve_recon_agents_with_notice") as mock_rra:
             MockCM.return_value.load.return_value = {}
-            mock_rra.return_value = [["claude-sonnet"], ["gemini"]]
+            mock_rra.return_value = ([["claude-sonnet"], ["gemini"]], None)
             MockRM.return_value.submit.return_value = "recon-xy"
             handler.handle_recon({
                 "query": "what is X",
@@ -95,9 +96,9 @@ class TestHandleRecon:
         handler = _handler()
         with patch("snodo.config.ConfigManager") as MockCM, \
              patch("snodo.recon.ReconManager") as MockRM, \
-             patch("snodo.recon.resolve_recon_agents") as mock_rra:
+             patch("snodo.recon.resolve_recon_agents_with_notice") as mock_rra:
             MockCM.return_value.load.return_value = {}
-            mock_rra.return_value = [["m1"], ["m2"], ["m3"]]
+            mock_rra.return_value = ([["m1"], ["m2"], ["m3"]], None)
             MockRM.return_value.submit.return_value = "recon-3"
             handler.handle_recon({"query": "q", "paths": ["./"], "num_agents": 3})
         call_kwargs = mock_rra.call_args[1]
@@ -118,6 +119,35 @@ class TestHandleRecon:
         submitted = MockRM.return_value.submit.call_args[0]
         assert submitted[2] == [["m1", "m2"]]
         assert result["agents"] == ["m1"]
+
+    def test_missing_models_reports_actual_agent_count_and_config_key(self):
+        handler = _handler()
+        with patch("snodo.config.ConfigManager") as MockCM, \
+             patch("snodo.recon.ReconManager") as MockRM:
+            MockCM.return_value.load.return_value = {
+                "llm": {"recon": {"models": [], "num_agents": 1}}
+            }
+            MockRM.return_value.submit.return_value = "recon-single"
+            result = handler.handle_recon({
+                "query": "q", "paths": ["./"], "num_agents": 3,
+            })
+        assert result["agent_count"] == 1
+        assert "Requested 3 agents, but 1 ran" in result["agent_count_notice"]
+        assert "llm.recon.models" in result["agent_count_notice"]
+
+    def test_fewer_configured_models_reports_actual_agent_count(self):
+        handler = _handler()
+        with patch("snodo.config.ConfigManager") as MockCM, \
+             patch("snodo.recon.ReconManager") as MockRM:
+            MockCM.return_value.load.return_value = {
+                "llm": {"recon": {"models": ["m1", "m2"], "num_agents": 1}}
+            }
+            MockRM.return_value.submit.return_value = "recon-two"
+            result = handler.handle_recon({
+                "query": "q", "paths": ["./"], "num_agents": 3,
+            })
+        assert result["agent_count"] == 2
+        assert "Requested 3 agents, but 2 ran" in result["agent_count_notice"]
 
     def test_naming_agents_uses_those(self):
         handler = _handler()
