@@ -49,6 +49,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Coder timeout reporting now distinguishes silence halts from wall-clock
   timeouts and reports the seconds for the limit that stopped the run; existing
   wall-clock progress wording is preserved. (Fixes #499)
+- Cloud sync sends the unchanged v5-compatible prefix of a mixed batch and
+  holds the v6-only event and remaining hash chain until v6 is advertised.
+  (Fixes #500)
 - Recon MCP and CLI responses now report the actual agent count and why
   fan-out was reduced, including the `llm.recon.models` setting needed when
   no recon models are configured. (Fixes #498)
