@@ -18,14 +18,16 @@ an existing plan. Hand authoring is also the right choice when the structure
 cannot be represented by an empty scaffold alone. In either case, dependencies
 are between waves, and every task spec must stand on its own.
 
-## Recon before planning
+## Ask the code before the operator
 
-Call `recon` before planning when an important part of the intent is still a
-codebase question: for example, which module owns a behavior, where a similar
-path is implemented, or which files and tests a change is likely to touch.
-Recon is optional. Skip it when the repository facts and scope are already
-known, or when the question can be answered from the files you have already
-read.
+Before asking the operator a question, decide whether the code can answer it.
+If it can, run `recon` with three or more agents on the same question, compare
+their answers, and bring the operator only what code and data cannot settle.
+Use recon to recover context after losing it mid-run, too: read the repository
+instead of asking the operator to repeat facts the code can establish.
+Questions about ownership, similar implementations, affected files, and tests
+are common examples. When the repository facts are already clear, move on to
+planning without recon.
 
 Recon is read-only. Agents can use only `read_file` and `list_files`; they do
 not edit files, run commands, create commits, or write a plan. The answers are
@@ -57,19 +59,16 @@ compared against the same clear criterion.
 
 ## Compare agents deliberately
 
-Use several agents on the same question when independent readings are useful:
-to reduce the chance of missing a path, compare interpretations of an unclear
-boundary, or distinguish a repository fact from one agent's guess. Set
-`num_agents` greater than one, or provide an explicit `agents` list. Each lane
-answers the same query independently, and the results are returned one per
-agent.
+Use `num_agents` alone for the normal call; the models come from
+`llm.recon.models`. Set it to three or more to compare independent answers to
+the same question. Supply an explicit `agents` list only to deliberately
+override the configured models. Recon calls model providers directly with the
+configured API keys; it never uses a coder CLI subscription.
 
-Do not confuse fan-out with the configured model priority list. With one lane,
-`llm.recon.models` is an ordered failover chain: the next model is tried only
-when the previous one fails or returns an empty answer. With `num_agents > 1`,
-the configured models become separate single-model lanes for deliberate
-fan-out. An explicit agents list likewise asks every named agent. A poor but
-non-empty answer is not retried.
+With one lane, `llm.recon.models` is an ordered failover chain: the next model
+is tried only when the previous one fails or returns an empty answer. With
+`num_agents > 1`, configured models become separate single-model lanes. A poor
+but non-empty answer is not retried.
 
 Read the raw answers side by side. Convergence means independent agents point
 to the same files, symbols, behavior, and tests; record those repeated facts in

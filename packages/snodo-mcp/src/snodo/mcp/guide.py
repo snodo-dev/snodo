@@ -193,7 +193,7 @@ def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -
 
     menu = guide_menu(project_root, exposed)
     if "queue_run" in exposed and "run_plan" in exposed:
-        path = "First use `propose_plan` and `generate_spec`, then `validate_plan` (queues it in `default`). Order with `queue_validate` / `queue_move` (retire with `queue_remove`), then `queue_run` (`run_plan` for one plan); poll `get_job_status` and `get_job_logs`."
+        path = "First use `propose_plan` and `generate_spec`, then `validate_plan` (queues it in `default`); run with `queue_run` / `run_plan`, poll `get_job_status` / `get_job_logs`."
     elif "queue_run" in exposed:
         path = "Use `queue_list` and `queue_validate`, reorder, remove plans, or create queues with `queue_move` / `queue_remove` / `queue_create`, then start progression with `queue_run`; poll its job with `get_job_status` and `get_job_logs`."
     elif "run_plan" in exposed:
@@ -202,4 +202,6 @@ def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -
         path = "Write a standalone spec, call `validate_task`, then `dispatch_task`; poll with `get_job_status` and inspect failures with `get_job_logs`."
     else:
         path = "Use the tools available in this mode for its declared purpose."
+    if "recon" in exposed:
+        path = f"Use `recon` (3+ agents) for codebase questions; {path}"
     return f"# Snodo getting started\n{path}\n\nGuide topics:\n{menu}"

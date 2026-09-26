@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- MCP getting-started and discovery guidance now directs codebase questions
+  and lost-context recovery to recon, using configured models and API keys.
+  (Fixes #497)
 - `plan_run` events now include the background `job_id` (or null for
   foreground runs) and the protocol `mode`; the v6 schema and cloud sync
   contract publish both fields. (Fixes #496)
