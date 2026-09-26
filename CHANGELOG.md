@@ -46,6 +46,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   best-effort and does not alter the cloud sync contract. (Fixes #488)
 
 ### Fixed
+- Concurrent writers now use unique same-directory temporary files for atomic
+  JSON state writes, so overlapping job, task, memory, wave and cloud-sync
+  writes cannot publish an empty or partial file. (Fixes #502)
 - Coder timeout reporting now distinguishes silence halts from wall-clock
   timeouts and reports the seconds for the limit that stopped the run; existing
   wall-clock progress wording is preserved. (Fixes #499)
