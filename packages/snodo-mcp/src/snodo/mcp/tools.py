@@ -605,7 +605,8 @@ TOOL_REGISTRY = {
             "Returns a recon_id immediately. Agents independently read the "
             "codebase to answer the query. Use get_recon_status to poll for "
             "completion, then get_recon_results for the raw answers. Use when "
-            "you need to understand the codebase before writing a spec."
+            "code can answer a question before you ask the operator, to recover "
+            "lost context, or before writing a spec."
         ),
         "inputSchema": {
             "type": "object",

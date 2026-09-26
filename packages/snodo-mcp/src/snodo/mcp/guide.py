@@ -202,4 +202,6 @@ def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -
         path = "Write a standalone spec, call `validate_task`, then `dispatch_task`; poll with `get_job_status` and inspect failures with `get_job_logs`."
     else:
         path = "Use the tools available in this mode for its declared purpose."
+    if "recon" in exposed:
+        path = f"Use `recon` with 3+ agents for codebase questions; {path[0].lower()}{path[1:]}"
     return f"# Snodo getting started\n{path}\n\nGuide topics:\n{menu}"
