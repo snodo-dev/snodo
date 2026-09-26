@@ -926,6 +926,8 @@ class WritebackMixin:
         if timed_out:
             payload["timed_out"] = True
             payload["timeout_seconds"] = meta.get("timeout_seconds")
+            if meta.get("timeout_limit") is not None:
+                payload["timeout_limit"] = meta["timeout_limit"]
         if turn_budget_exhausted:
             # A run that ran out of turns is worth knowing about even when its
             # recovered work passes (Fixes #282).

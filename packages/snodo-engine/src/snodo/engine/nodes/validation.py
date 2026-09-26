@@ -217,6 +217,7 @@ class ValidationNodeMixin:
             # carry a previous attempt's timeout or output (Fixes #281).
             self._last_timed_out = False
             self._last_timeout_seconds = None
+            self._last_timeout_limit = None
             self._last_timeout_tail = ""
             # The turn-budget bound is a per-run fact too: reset it with the
             # other facts so a halt payload cannot carry a previous attempt's
@@ -249,6 +250,7 @@ class ValidationNodeMixin:
                 if getattr(self, "_last_timed_out", False):
                     loop_state.metadata["timed_out"] = True
                     loop_state.metadata["timeout_seconds"] = getattr(self, "_last_timeout_seconds", None)
+                    loop_state.metadata["timeout_limit"] = getattr(self, "_last_timeout_limit", None)
                     if getattr(self, "_last_timeout_tail", ""):
                         loop_state.metadata["output_tail"] = getattr(self, "_last_timeout_tail", "")
                     self._audit("coder_timed_out", {
@@ -256,16 +258,26 @@ class ValidationNodeMixin:
                         "task_ref": loop_state.task.id,
                         "mode": loop_state.current_mode,
                         "timeout_seconds": getattr(self, "_last_timeout_seconds", None),
+                        "timeout_limit": getattr(self, "_last_timeout_limit", None),
                         "artifacts_count": len(artifacts),
                         "output_tail": getattr(self, "_last_timeout_tail", ""),
                     })
                     # A run that ran out of time is worth knowing about even
                     # when its work passes: say so rather than letting it
                     # proceed silently (Fixes #281).
+                    timeout_limit = getattr(self, "_last_timeout_limit", None)
+                    if timeout_limit == "silence":
+                        progress = (
+                            "  Coder halted after "
+                            f"{getattr(self, '_last_timeout_seconds', None)}s of silence; "
+                        )
+                    else:
+                        progress = (
+                            "  Coder timed out after "
+                            f"{getattr(self, '_last_timeout_seconds', None)}s; "
+                        )
                     self._progress(
-                        "  Coder timed out after "
-                        f"{getattr(self, '_last_timeout_seconds', None)}s; "
-                        f"judging the {len(artifacts)} artifact(s) it produced."
+                        progress + f"judging the {len(artifacts)} artifact(s) it produced."
                     )
                 if getattr(self, "_last_turn_budget_exhausted", False):
                     # The run hit its turn bound but its work was recoverable
@@ -355,6 +367,10 @@ class ValidationNodeMixin:
                     getattr(e, "timeout_seconds", None)
                     or getattr(self, "_last_timeout_seconds", None)
                 )
+                loop_state.metadata["timeout_limit"] = (
+                    getattr(e, "timeout_limit", None)
+                    or getattr(self, "_last_timeout_limit", None)
+                )
                 if getattr(self, "_last_timeout_tail", ""):
                     loop_state.metadata["output_tail"] = getattr(self, "_last_timeout_tail", "")
                 loop_state.metadata["post_validation"] = {
@@ -368,6 +384,7 @@ class ValidationNodeMixin:
                     "task_ref": loop_state.task.id,
                     "mode": loop_state.current_mode,
                     "timeout_seconds": loop_state.metadata["timeout_seconds"],
+                    "timeout_limit": loop_state.metadata["timeout_limit"],
                     "artifacts_count": 0,
                     "output_tail": getattr(self, "_last_timeout_tail", ""),
                 })
@@ -596,6 +613,7 @@ class ValidationNodeMixin:
         if loop_state.metadata.get("timed_out"):
             dispatch_audit["timed_out"] = True
             dispatch_audit["timeout_seconds"] = loop_state.metadata.get("timeout_seconds")
+            dispatch_audit["timeout_limit"] = loop_state.metadata.get("timeout_limit")
         self._audit("dispatch", dispatch_audit)
 
         # Track execution in messages for agent memory

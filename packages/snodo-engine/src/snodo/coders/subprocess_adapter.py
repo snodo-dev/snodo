@@ -562,6 +562,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         proc = None
         self.last_timed_out = False
         self.last_timeout_seconds = None
+        self.last_timeout_limit = None
         self.last_timeout_tail = ""
         self.last_output_tail = ""
 
@@ -582,7 +583,10 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             timed_out = True
             silence_halted = bool(getattr(e, "silence_halted", False))
             self.last_timed_out = True
-            self.last_timeout_seconds = self.timeout_seconds
+            self.last_timeout_limit = "silence" if silence_halted else "wall_clock"
+            self.last_timeout_seconds = (
+                self.silence_timeout_seconds if silence_halted else self.timeout_seconds
+            )
             out_str = e.stdout or e.output or ""
             err_str = e.stderr or ""
             if isinstance(out_str, bytes):
@@ -613,13 +617,20 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
                 # engine consults the branch before declaring a fault. Raise the
                 # operational timeout — not a generic coder failure — so the
                 # engine can look and classify honestly (Fixes #281).
-                raise CoderTimeoutError(msg, timeout_seconds=self.timeout_seconds)
+                raise CoderTimeoutError(
+                    msg, timeout_seconds=self.last_timeout_seconds,
+                    timeout_limit=self.last_timeout_limit,
+                )
             artifact = self._diff_to_artifact(diff_entries)
             if not artifact.files:
-                raise CoderTimeoutError(msg, timeout_seconds=self.timeout_seconds)
+                raise CoderTimeoutError(
+                    msg, timeout_seconds=self.last_timeout_seconds,
+                    timeout_limit=self.last_timeout_limit,
+                )
             if artifact and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
                 artifact.metadata["timed_out"] = True
-                artifact.metadata["timeout_seconds"] = self.timeout_seconds
+                artifact.metadata["timeout_seconds"] = self.last_timeout_seconds
+                artifact.metadata["timeout_limit"] = self.last_timeout_limit
                 if timeout_tail:
                     artifact.metadata["output_tail"] = timeout_tail
             return artifact

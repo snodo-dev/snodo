@@ -83,8 +83,12 @@ class CoderTimeoutError(LLMCallError):
     ran out of time" from "the call failed" without parsing prose.
     """
 
-    def __init__(self, message: str, timeout_seconds: Optional[int] = None):
+    def __init__(
+        self, message: str, timeout_seconds: Optional[int] = None,
+        timeout_limit: Optional[str] = None,
+    ):
         self.timeout_seconds = timeout_seconds
+        self.timeout_limit = timeout_limit
         super().__init__(message)
 
 
@@ -225,6 +229,9 @@ class InPlaceCoderAdapter(Coder, ABC):
             if timed_out:
                 artifact.metadata["timed_out"] = True
                 artifact.metadata["timeout_seconds"] = timeout_seconds
+                timeout_limit = getattr(self, "last_timeout_limit", None)
+                if timeout_limit is not None:
+                    artifact.metadata["timeout_limit"] = timeout_limit
 
         try:
             if coder_name:
