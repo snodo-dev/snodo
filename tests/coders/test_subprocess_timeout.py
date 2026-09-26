@@ -183,8 +183,18 @@ class TestSubprocessTimeout:
             adapter._run_subprocess(["agy", "-p", "test"], str(temp_workspace))
             mock_proc.wait.assert_called_once_with(timeout=120)
 
-    def test_timed_out_run_records_timeout_in_audit_and_terminal_facts(self, temp_workspace: Path):
-        """A timed-out run that produced work records the timeout in audit log and terminal facts."""
+    @pytest.mark.parametrize(
+        ("silence_halted", "expected_limit", "expected_seconds", "progress_text"),
+        [
+            (False, "wall_clock", 1800, "Coder timed out after 1800s;"),
+            (True, "silence", 600, "Coder halted after 600s of silence;"),
+        ],
+    )
+    def test_timed_out_run_records_limit_in_audit_and_terminal_facts(
+        self, temp_workspace: Path, capsys, silence_halted: bool,
+        expected_limit: str, expected_seconds: int, progress_text: str,
+    ):
+        """Both subprocess stop limits reach the audit, progress and halt payload."""
         protocol = Protocol(
             protocol_id="test-proto",
             name="test-proto",
@@ -203,19 +213,24 @@ class TestSubprocessTimeout:
         )
         task = Task(id="t1", spec="build feature")
 
-        adapter = AGYAdapter(workspace=temp_workspace)
+        adapter = AGYAdapter(
+            workspace=temp_workspace, timeout_seconds=1800,
+            silence_timeout_seconds=600,
+        )
 
         def fake_run_timeout_after_commits(*args, **kwargs):
             (temp_workspace / "module.py").write_text("def x(): pass\n")
             subprocess.run(["git", "add", "module.py"], cwd=temp_workspace, check=True)
             subprocess.run(["git", "commit", "-m", "feature commit"], cwd=temp_workspace, check=True)
 
-            raise subprocess.TimeoutExpired(
+            error = subprocess.TimeoutExpired(
                 cmd=["agy"],
                 timeout=1800,
                 output="Created module.py, committed.",
                 stderr="",
             )
+            error.silence_halted = silence_halted
+            raise error
 
         audited_events: list[tuple[str, dict]] = []
 
@@ -249,7 +264,8 @@ class TestSubprocessTimeout:
             # Coder timed out audit event was emitted
             timeout_events = [e for e in audited_events if e[0] == "coder_timed_out"]
             assert len(timeout_events) == 1
-            assert timeout_events[0][1]["timeout_seconds"] == 1800
+            assert timeout_events[0][1]["timeout_seconds"] == expected_seconds
+            assert timeout_events[0][1]["timeout_limit"] == expected_limit
             assert timeout_events[0][1]["artifacts_count"] > 0
 
             # Dispatch audit event recorded the timeout
@@ -262,11 +278,14 @@ class TestSubprocessTimeout:
             task_complete_events = [e for e in audited_events if e[0] == "task_complete"]
             assert len(task_complete_events) == 1
             assert task_complete_events[0][1]["timed_out"] is True
-            assert task_complete_events[0][1]["timeout_seconds"] == 1800
+            assert task_complete_events[0][1]["timeout_seconds"] == expected_seconds
+            assert task_complete_events[0][1]["timeout_limit"] == expected_limit
 
             halt_payload = complete_res["metadata"]["halt_payload"]
             assert halt_payload["timed_out"] is True
-            assert halt_payload["timeout_seconds"] == 1800
+            assert halt_payload["timeout_seconds"] == expected_seconds
+            assert halt_payload["timeout_limit"] == expected_limit
+            assert progress_text in capsys.readouterr().out
 
     def test_operator_set_timeout_honoured_via_config_and_mode(self, temp_workspace: Path):
         """Timeout configured in LlmConfig and overridden in Mode.coder_config is honoured."""

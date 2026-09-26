@@ -612,6 +612,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._last_output_tail: str = ""
         self._last_timed_out: bool = False
         self._last_timeout_seconds: Optional[int] = None
+        self._last_timeout_limit: Optional[str] = None
         self._last_timeout_tail: str = ""
         self._last_turn_budget_exhausted: bool = False
     
@@ -962,6 +963,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         if loop_state.metadata.get("timed_out"):
             halt_audit["timed_out"] = True
             halt_audit["timeout_seconds"] = loop_state.metadata.get("timeout_seconds")
+            if loop_state.metadata.get("timeout_limit") is not None:
+                halt_audit["timeout_limit"] = loop_state.metadata["timeout_limit"]
         self._audit("halt", halt_audit)
 
         loop_state.stage = LoopStage.BLOCKED
@@ -1029,6 +1032,8 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         if loop_state.metadata.get("timed_out"):
             task_complete_audit["timed_out"] = True
             task_complete_audit["timeout_seconds"] = loop_state.metadata.get("timeout_seconds")
+            if loop_state.metadata.get("timeout_limit") is not None:
+                task_complete_audit["timeout_limit"] = loop_state.metadata["timeout_limit"]
         self._audit("task_complete", task_complete_audit)
 
         loop_state.messages.append({

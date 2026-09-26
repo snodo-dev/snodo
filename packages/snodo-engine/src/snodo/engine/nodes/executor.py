@@ -83,6 +83,10 @@ class ExecutorMixin:
             getattr(coder, "last_timeout_seconds", None)
             or metadata.get("timeout_seconds", None)
         )
+        self._last_timeout_limit = (
+            getattr(coder, "last_timeout_limit", None)
+            or metadata.get("timeout_limit", None)
+        )
         self._last_timeout_tail = getattr(coder, "last_timeout_tail", "") or ""
         self._last_output_tail = (
             getattr(coder, "last_output_tail", "") or metadata.get("output_tail", "")
@@ -468,6 +472,7 @@ class ExecutorMixin:
             # would be, so the judges decide (Fixes #281). If not, re-raise:
             # the engine reports the operational timeout, never a blocker
             # verdict.
+            self._record_coder_run_facts(coder)
             recovered = self._recover_bounded_run_work(git_mcp, coder, artifacts)
             if recovered is not None:
                 return recovered
