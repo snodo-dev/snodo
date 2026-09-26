@@ -60,6 +60,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   best-effort and does not alter the cloud sync contract. (Fixes #488)
 
 ### Fixed
+- Recon started and completed audit events now resolve and carry the owning
+  project's ID, matching neighbouring task and session events. (Fixes #503)
 - Concurrent writers now use unique same-directory temporary files for atomic
   JSON state writes, so overlapping job, task, memory, wave and cloud-sync
   writes cannot publish an empty or partial file. (Fixes #502)
