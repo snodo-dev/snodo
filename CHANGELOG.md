@@ -52,6 +52,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Cloud sync sends the unchanged v5-compatible prefix of a mixed batch and
   holds the v6-only event and remaining hash chain until v6 is advertised.
   (Fixes #500)
+- Background job liveness now verifies the recorded host and process start
+  time, so foreign-host state and reused PIDs fail instead of remaining
+  running indefinitely. Legacy records retain PID-only reconciliation.
+  (Fixes #501)
 - Recon MCP and CLI responses now report the actual agent count and why
   fan-out was reduced, including the `llm.recon.models` setting needed when
   no recon models are configured. (Fixes #498)
