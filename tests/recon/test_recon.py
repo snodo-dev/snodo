@@ -241,6 +241,43 @@ def test_recon_started_and_completed_events_cover_terminal_outcomes(
     assert audit.verify_chain()
 
 
+def test_recon_events_use_the_project_id_of_neighbouring_audit_events(
+    project_with_snodo, monkeypatch,
+):
+    from snodo.infrastructure.audit import AuditLog, reset_global_audit_log
+
+    project_id = "github.com/example/project"
+    project_root = Path(project_with_snodo)
+    (project_root / ".snodo" / "project.json").write_text(json.dumps({
+        "id": project_id,
+        "project.id": project_id,
+        "scope": "remote",
+    }))
+    audit_path = project_root / ".snodo" / "audit.log"
+    neighboring_event = AuditLog(str(audit_path), project_id=project_id)
+    neighboring_event.append_event("dispatch", {"task_id": "task-1"})
+
+    monkeypatch.setattr(recon_module, "_threads", [])
+    monkeypatch.setattr(ReconManager, "_run_recon", lambda *args, **kwargs: None)
+    reset_global_audit_log()
+    try:
+        manager = ReconManager(str(project_root))
+        recon_id = manager.submit("Inspect the project", ["./"])
+        recon_dir = Path(manager.recons_dir) / recon_id
+        state = json.loads((recon_dir / "state.json").read_text())
+        state["status"] = "complete"
+        state["completed_at"] = state["created_at"] + 1
+        manager._append_completion_event(state, [])
+
+        events = AuditLog(str(audit_path)).get_history()
+        assert [event.event_type for event in events] == [
+            "dispatch", "recon_started", "recon_completed",
+        ]
+        assert {event.project_id for event in events} == {project_id}
+    finally:
+        reset_global_audit_log()
+
+
 def test_recon_completion_summary_is_capped_with_truncation_marker(recon_mgr):
     long_answer = "answer " * 400
     recon_id = recon_mgr.submit("Summarize", ["./"])
