@@ -336,6 +336,13 @@ since proposal. Plan runs also identify their trigger and, for queue-triggered
 runs, the queue. Each `plan_run` also carries `job_id` (the background job
 running it, or null for a foreground run) and the protocol `mode` at run start.
 
+`disagreement_escalated` is pinned on v6 with `task_ref`, `phase` and `policy`,
+plus `plan_name` and `plan_wave` when the task ran in a plan. It carries no
+validator output: the cloud can identify which planned task is waiting for
+`snodo authorize` without receiving verdict justifications or full results.
+The event and plan fields remain behind the v6 lease gate; a v5 sender holds
+the event and its chain suffix unchanged.
+
 | event_type | data keys |
 |---|---|
 | `project_announced` | project_id, scope, display_name |
@@ -352,6 +359,7 @@ running it, or null for a foreground run) and the protocol `mode` at run start.
 | `task_merged` | task_ref, branch, merge_sha, spec, session_id, base_sha, commit_count, commits (up to 50), files_changed, insertions, deletions, plan_name, plan_wave (when applicable) |
 | `task_unmerged` | task_ref, branch, reason, session_id, plan_name, plan_wave (when applicable) |
 | `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type |
+| `disagreement_escalated` | task_ref, phase, policy, plan_name, plan_wave (when applicable) |
 | `transition` | from_mode, to_mode, task_ref |
 | `token_consumed` | task_ref, session_id |
 | `post_validation_route` | decision, task_ref |
@@ -372,7 +380,6 @@ running it, or null for a foreground run) and the protocol `mode` at run start.
 | `coder_turn_budget_exhausted` | opaque object |
 | `coder_unavailable` | opaque object |
 | `decision_record_task_mismatch` | opaque object |
-| `disagreement_escalated` | opaque object |
 | `disagreement_resolved` | opaque object |
 | `dispatch_refused_coder_unavailable` | opaque object |
 | `dispatch_request` | opaque object |

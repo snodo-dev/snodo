@@ -504,6 +504,7 @@ class CoreToolHandler:
         if not task_id:
             raise MCPError("validate_task requires task_id")
         task_spec = arguments.get("task_spec") or arguments.get("spec") or ""
+        plan_name = arguments.get("plan_name")
 
         server = self.server
         protocol = server.protocol
@@ -601,7 +602,9 @@ class CoreToolHandler:
             }
 
         if status == "escalate":
-            decision_id = self._persist_escalation(task_id, mode_id, results, decision)
+            decision_id = self._persist_escalation(
+                task_id, mode_id, results, decision, plan_name=plan_name,
+            )
             return {
                 "status": "escalate",
                 "token_issued": False,
@@ -659,7 +662,8 @@ class CoreToolHandler:
         return []
 
     def _persist_escalation(
-        self, task_id: str, mode_id: str, results: list, decision: Any
+        self, task_id: str, mode_id: str, results: list, decision: Any,
+        plan_name: Optional[str] = None,
     ) -> str:
         """Persist the escalation as a pending decision (engine shape) for authorize.
 
@@ -673,6 +677,18 @@ class CoreToolHandler:
         from snodo.engine.policy import policy_decision_to_dict
         from snodo.infrastructure.state import read_state
         from snodo.infrastructure.session import SessionManager
+
+        escalation_audit = {
+            "op": "disagreement_escalated",
+            "phase": "pre_execute",
+            "task_ref": task_id,
+            "policy": self.server.protocol.disagreement_policy.value,
+        }
+        plan_wave = self._plan_wave_for_task(plan_name, task_id) if plan_name else None
+        if plan_name and plan_wave is not None:
+            escalation_audit["plan_name"] = plan_name
+            escalation_audit["plan_wave"] = plan_wave
+        self.server._audit("disagreement_escalated", escalation_audit)
 
         try:
             state = read_state(self.server.project_root)
@@ -703,16 +719,26 @@ class CoreToolHandler:
                 pending[task_id] = entry
 
             mgr.update_decision(session.session_id, "pending_decisions", pending)
-            self.server._audit("disagreement_escalated", {
-                "op": "disagreement_escalated",
-                "phase": "pre_execute",
-                "task_ref": task_id,
-                "policy": self.server.protocol.disagreement_policy.value,
-                "decision_id": task_id,
-            })
         except Exception as e:  # noqa: BLE001 — best-effort persistence
             logger.warning("Failed to persist disagreement escalation for %s: %s", task_id, e)
         return task_id
+
+    def _plan_wave_for_task(self, plan_name: str, task_id: str) -> Optional[str]:
+        """Return the existing plan-wave ordinal for a task, when it is present."""
+        from pathlib import Path
+
+        import yaml
+
+        plan_file = Path(self.server.project_root) / ".snodo" / "plans" / plan_name / "plan.yml"
+        try:
+            with plan_file.open() as handle:
+                plan_data = yaml.safe_load(handle) or {}
+            for wave in plan_data.get("waves", []):
+                if task_id in wave.get("tasks", []):
+                    return str(wave["id"])
+        except (OSError, TypeError, AttributeError, KeyError, yaml.YAMLError):
+            logger.debug("Could not resolve plan wave for task %s in %s", task_id, plan_name)
+        return None
 
     def _guard_coder_available(self, coding_model: str) -> None:
         """Refuse dispatch when the coder about to be invoked cannot be invoked HERE.

@@ -181,14 +181,38 @@ def test_validate_node_escalate_spec_authoring(sample_task):
         "phase": "pre_execute",
         "task_ref": "task_001",
         "policy": "unanimous",
-        "validator_results": [{"validator_id": "security", "severity": "warn", "justification": "Warning justification"}],
-        "policy_decision": {
-            "pass_count": 0,
-            "warn_count": 1,
-            "blocker_count": 0,
-            "total_count": 1,
-            "justification": "Unanimous policy requires all validators to pass"
-        }
+    })
+
+
+def test_validate_node_escalate_audit_includes_plan_context(sample_task):
+    protocol = Protocol(
+        protocol_id="test_protocol", name="Test Protocol", version="1.0.0",
+        modes=[Mode(mode_id="producer", name="Producer", tools=["edit"], validators=["security"])],
+        validators=[Validator(validator_id="security", validator_type="security")],
+        disagreement_policy="unanimous", initial_mode="producer",
+    )
+    audit = MagicMock()
+    builder = GraphBuilder(
+        protocol,
+        validator_fn=lambda *args, **kwargs: [ValidatorResult(
+            validator_id="security", severity="warn", justification="private detail",
+        )],
+        audit_log=audit,
+    )
+    result = builder._validate_node({
+        "task": {"id": sample_task.id, "spec": sample_task.spec,
+                 "plan_name": "release", "plan_wave": "2"},
+        "current_mode": "producer", "iteration": 0, "stage": "validate",
+        "validation_results": [], "validation_token": None, "artifacts": [],
+        "constraints_passed": True, "constraint_violations": [],
+        "policy_decision": None, "is_complete": False, "is_blocked": False,
+        "metadata": {},
+    })
+    assert result["pending_disagreement"] is not None
+    audit.append_event.assert_any_call("disagreement_escalated", {
+        "op": "disagreement_escalated", "phase": "pre_execute",
+        "task_ref": sample_task.id, "policy": "unanimous",
+        "plan_name": "release", "plan_wave": "2",
     })
 
 
@@ -790,5 +814,4 @@ class TestExecutionFailureReporting:
         assert result["is_blocked"] is False
         assert "src/thing.py" in result["artifacts"]
         assert result["halt_type"] is None
-
 

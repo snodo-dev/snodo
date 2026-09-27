@@ -105,6 +105,9 @@ class TestFourOutcomes:
 
     def test_escalate_no_token_returns_decision(self, server):
         """Warn under unanimous → escalate, no token, decision_id + evidence."""
+        from snodo.infrastructure.audit import AuditLog
+
+        server._audit_log = AuditLog(str(Path(server.project_root) / ".snodo" / "audit.log"))
         c, s = _patch_completion(warn_completion_fn())
         with c, s:
             result = server.call_tool("validate_task", {"task_id": "t1", "task_spec": "x"})
@@ -117,6 +120,39 @@ class TestFourOutcomes:
             r["validator_id"] == "security" and r["severity"] == "warn"
             for r in result["results"]
         )
+        escalation = next(
+            event for event in server._audit_log.events
+            if event.event_type == "disagreement_escalated"
+        )
+        assert escalation.data == {
+            "op": "disagreement_escalated", "phase": "pre_execute",
+            "task_ref": "t1", "policy": "unanimous",
+        }
+
+    def test_escalate_audit_includes_plan_when_supplied(self, server, project_dir):
+        from snodo.infrastructure.audit import AuditLog
+
+        plan_dir = Path(project_dir) / ".snodo" / "plans" / "release"
+        plan_dir.mkdir(parents=True)
+        (plan_dir / "plan.yml").write_text(
+            "waves:\n  - id: 3\n    tasks: [t1]\n"
+        )
+        server._audit_log = AuditLog(str(Path(project_dir) / ".snodo" / "audit.log"))
+        c, s = _patch_completion(warn_completion_fn())
+        with c, s:
+            result = server.call_tool("validate_task", {
+                "task_id": "t1", "task_spec": "x", "plan_name": "release",
+            })
+        assert result["status"] == "escalate"
+        escalation = next(
+            event for event in server._audit_log.events
+            if event.event_type == "disagreement_escalated"
+        )
+        assert escalation.data == {
+            "op": "disagreement_escalated", "phase": "pre_execute",
+            "task_ref": "t1", "policy": "unanimous",
+            "plan_name": "release", "plan_wave": "3",
+        }
 
     def test_blocker_no_token(self, server):
         """A blocker from a declared validator yields blocker, not warn; never a token."""

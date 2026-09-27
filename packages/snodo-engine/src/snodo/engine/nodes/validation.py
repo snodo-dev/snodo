@@ -33,14 +33,16 @@ class ValidationNodeMixin:
                 "justification": decision.justification,
             },
         }
-        self._audit("disagreement_escalated", {
+        escalation_audit = {
             "op": "disagreement_escalated",
             "phase": phase,
             "task_ref": loop_state.task.id,
             "policy": self.protocol.disagreement_policy.value,
-            "validator_results": pending_disagreement["validator_results"],
-            "policy_decision": pending_disagreement["policy_decision"],
-        })
+        }
+        if loop_state.task.plan_name:
+            escalation_audit["plan_name"] = loop_state.task.plan_name
+            escalation_audit["plan_wave"] = loop_state.task.plan_wave
+        self._audit("disagreement_escalated", escalation_audit)
         return pending_disagreement
 
     def _validate_node(self, state: Dict[str, Any]) -> Dict[str, Any]:

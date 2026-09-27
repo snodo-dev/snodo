@@ -78,6 +78,7 @@ _V6_DATA_KEYS: dict[str, set[str]] = {
     "plan_run": {"intent"},
     "task_unmerged": {"plan_name", "plan_wave"},
     "halt": {"plan_name", "plan_wave"},
+    "disagreement_escalated": {"plan_name", "plan_wave"},
 }
 
 
@@ -195,6 +196,9 @@ _EVENT_DATA_KEYS_V6: dict[str, tuple[str, ...]] = {
         "files_changed", "insertions", "deletions", "plan_name", "plan_wave",
     ),
     "halt": (*_EVENT_DATA_KEYS_V5["halt"], "plan_name", "plan_wave"),
+    "disagreement_escalated": (
+        "task_ref", "phase", "policy", "plan_name", "plan_wave",
+    ),
     "plan_proposed": ("plan_name", "intent", "waves"),
     "plan_run": ("plan_name", "intent", "waves", "trigger", "queue", "job_id", "mode"),
     "task_unmerged": ("task_ref", "branch", "reason", "session_id", "plan_name", "plan_wave"),
@@ -233,6 +237,18 @@ class PlanRunData(PlanProposedData):
     queue: str | None = None
     job_id: str | None = None
     mode: str | None = None
+
+
+class DisagreementEscalatedData(BaseModel):
+    """V6 summary shape for an escalation awaiting human authorization."""
+
+    model_config = ConfigDict(extra="allow")
+
+    task_ref: str | None = None
+    phase: str | None = None
+    policy: str | None = None
+    plan_name: str | None = None
+    plan_wave: str | None = None
 
 
 def _event_models(
@@ -324,6 +340,7 @@ _V6_EVENT_MODELS = _event_models(
     {
         "plan_proposed": PlanProposedData,
         "plan_run": PlanRunData,
+        "disagreement_escalated": DisagreementEscalatedData,
         "task_unmerged": create_model(
             "TaskUnmergedData",
             __config__=ConfigDict(extra="allow"),
