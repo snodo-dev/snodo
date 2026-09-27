@@ -7,6 +7,11 @@ runner processes a queue FIFO and stops at its first plan that ends `blocked`,
 reorders plans, and nudges queues by starting another run. A runner exits when
 there is nothing runnable; it does not wait for a future fix or for more plans.
 
+Choose the smallest structure that fits: dispatch one task directly; use a
+wave only for multiple tasks that can run together; use a plan only for more
+than one wave; and use a queue only when there are several plans to schedule.
+A queue is a scheduler for plans, not a wrapper for one task or one plan.
+
 For first-use cleanup of inherited plans, see the [queue triage guide](queue-triage.md).
 
 ## Read validation and decide

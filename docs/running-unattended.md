@@ -3,9 +3,12 @@
 
 This guide is for an orchestrator that takes a stream of intents and keeps
 turning them into judged, recorded work without a person watching every tool
-call. Snodo's plan tools author work; the execution loop and validators decide
-whether it passes. Treat each run as a job with an outcome to inspect, not as a
-single call that completes the intent.
+call. Choose the smallest structure that fits each intent: dispatch one task
+directly; use a wave only for multiple tasks that can run together; use a plan
+only when there is more than one wave; and use a queue only to schedule several
+plans. Snodo's execution loop and validators decide whether work passes. Treat
+each run as a job with an outcome to inspect, not as a single call that
+completes the intent.
 
 For plans organized into queues, start an orchestration pass with
 `snodo queue validate [x]`. It reports whether each queue's front plan can
@@ -29,7 +32,9 @@ select its position, while `--to <queue>` selects a destination (the back by
 default). Moving a plan that is running is refused. These commands accept
 `--json` for the versioned machine interface.
 
-For each intent:
+For an intent that is one task, call `validate_task`, then `dispatch_task`, and
+follow the returned job with `get_job_status`; do not wrap it in a one-task
+plan. For multi-wave work, use the plan workflow below:
 
 1. Call `propose_plan` to put the intent into a plan. Read the returned wave and
    task structure; split independent work into separate tasks and express their
@@ -50,6 +55,13 @@ For each intent:
    orchestrator's run log): the intent and plan/job ids, what ran, what landed,
    what is parked, why, and any follow-up needed. Do not rely on a later human
    reconstructing this from a conversation.
+
+`validate_plan` checks structure and plan-time references; it is not a separate
+human authorization gate. Plan tasks use the same execution validators and
+auto-merge policy as direct tasks. A plan does add durable plan→wave→task
+history that the cloud can reconstruct under ADR 054, while direct task history
+has no plan hierarchy. Prefer the direct path for one task unless preserving
+that hierarchy is an intentional reporting requirement.
 
 Plan and job vocabularies are different. Job status is `queued`, `running`,
 `completed`, `failed`, `cancelled`, or `unmerged`. Per-task plan status is `pending`,

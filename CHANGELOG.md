@@ -9,6 +9,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The bundled guide and MCP session instructions now direct orchestrators to
+  use the smallest fitting structure: direct task, parallel wave, multi-wave
+  plan, or multi-plan queue. They clarify that plan validation is not an
+  authorization gate and document the plan hierarchy available to cloud
+  history. (Fixes #513)
+
 ### Fixed
 - Protocol DSL reference and template authoring guide now match the current
   tool map, validator registry, Pydantic schema, and directory-based template

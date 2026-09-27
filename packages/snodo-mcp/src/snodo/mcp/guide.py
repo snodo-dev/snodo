@@ -193,11 +193,11 @@ def guide_text(project_root: str, exposed: set[str], topic: str | None = None) -
 
     menu = guide_menu(project_root, exposed)
     if "queue_run" in exposed and "run_plan" in exposed:
-        path = "First use `propose_plan` / `generate_spec`, then `validate_plan` (queues it in `default`); `module` for single-module tasks means own gate + bounded paths; `queue_run` / `run_plan`; poll jobs."
+        path = "Smallest structure: one task direct; wave for parallel tasks; plan for multiple waves; queue plans via `queue_run`. Multi-wave: `propose_plan` → `generate_spec` → `validate_plan` → `run_plan`; poll."
     elif "queue_run" in exposed:
         path = "Use `queue_list` and `queue_validate`, reorder, remove plans, or create queues with `queue_move` / `queue_remove` / `queue_create`, then start progression with `queue_run`; poll its job with `get_job_status` and `get_job_logs`."
     elif "run_plan" in exposed:
-        path = "First use `propose_plan`, add specs with `generate_spec` (`module` for single-module tasks: own gate, bounded paths), then `validate_plan` and `run_plan`; poll `get_job_status` / `get_job_logs`."
+        path = "Choose smallest structure: one task directly; a wave for parallel tasks; a plan for multiple waves. For multi-wave work, use `propose_plan`, `generate_spec`, `validate_plan`, and `run_plan`; poll `get_job_status` / `get_job_logs`."
     elif "dispatch_task" in exposed:
         path = "Write a standalone spec, call `validate_task`, then `dispatch_task`; name `module` when the task is confined to one declared module to select its own test gate and bound writable paths. Poll with `get_job_status` and inspect failures with `get_job_logs`."
     else:
