@@ -22,6 +22,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   and the audit chain syncs and reports a project cursor even when no session
   exists. Session and project cursors share delivered progress to prevent
   duplicate sends. (Fixes #506)
+- Audit events now resolve the canonical project ID from their own
+  `<project>/.snodo/audit.log` path and keep audit-log instances separate by
+  path, so MCP and background writers outside the project cwd retain attribution.
+  Existing audit history and hash chains are unchanged. (Fixes #507)
 - Recon started and completed audit events now resolve and carry the owning
   project's ID, matching neighbouring task and session events. (Fixes #503)
 - Job submission and liveness checks no longer crash with `UnboundLocalError`

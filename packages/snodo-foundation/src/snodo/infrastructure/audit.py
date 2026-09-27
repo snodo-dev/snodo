@@ -143,7 +143,7 @@ class AuditLog:
         """
         self.log_path = Path(log_path)
         if not project_id:
-            project_id = _resolve_default_project_id()
+            project_id = _resolve_project_id_for_log(self.log_path)
         self._project_id = project_id
         self.events: List[AuditEvent] = []
         self._lock = threading.Lock()
@@ -582,12 +582,14 @@ class AuditLog:
 
 # Singleton instance for global audit log
 _global_audit_log = None
+_audit_logs_by_path: dict[str, AuditLog] = {}
 
 
 def reset_global_audit_log() -> None:
     """Reset the global audit log singleton (primarily for testing)."""
-    global _global_audit_log
+    global _global_audit_log, _audit_logs_by_path
     _global_audit_log = None
+    _audit_logs_by_path = {}
 
 
 def get_audit_log(log_path: Optional[str] = None, project_id: str = "") -> AuditLog:
@@ -604,23 +606,44 @@ def get_audit_log(log_path: Optional[str] = None, project_id: str = "") -> Audit
             ``SNODO_AUDIT_LOG`` overrides the default for test isolation only.
         project_id: Optional project identifier
     """
-    global _global_audit_log
-    if _global_audit_log is None:
-        if log_path is None or log_path == ".snodo/audit.log":
-            override = os.environ.get("SNODO_AUDIT_LOG")
-            if override:
-                log_path = override
-            else:
-                log_path = _resolve_default_audit_path()
-        if not project_id:
-            project_id = _resolve_default_project_id()
-        _global_audit_log = AuditLog(log_path, project_id=project_id)
-    else:
-        if project_id and _global_audit_log._project_id != project_id:
-            _global_audit_log._project_id = project_id
-        elif not _global_audit_log._project_id:
-            _global_audit_log._project_id = _resolve_default_project_id()
-    return _global_audit_log
+    global _global_audit_log, _audit_logs_by_path
+    if log_path is None or log_path == ".snodo/audit.log":
+        override = os.environ.get("SNODO_AUDIT_LOG")
+        if override:
+            log_path = override
+        else:
+            log_path = _resolve_default_audit_path()
+
+    resolved_path = str(Path(log_path).expanduser().resolve())
+    resolved_project_id = project_id or _resolve_project_id_for_log(Path(resolved_path))
+    audit_log = _audit_logs_by_path.get(resolved_path)
+    if audit_log is None:
+        audit_log = AuditLog(resolved_path, project_id=resolved_project_id)
+        _audit_logs_by_path[resolved_path] = audit_log
+    elif resolved_project_id and audit_log._project_id != resolved_project_id:
+        audit_log._project_id = resolved_project_id
+
+    _global_audit_log = audit_log
+    return audit_log
+
+
+def _resolve_project_id_for_log(log_path: Path) -> str:
+    """Resolve an audit log's owning project before falling back to process root.
+
+    A conventional ``<root>/.snodo/audit.log`` path carries its own project
+    context, even when an MCP host's cwd is outside that project.
+    """
+    try:
+        resolved_path = log_path.expanduser().resolve()
+        if resolved_path.parent.name == ".snodo":
+            from snodo.project import get_project_id
+
+            project_id, _ = get_project_id(str(resolved_path.parent.parent))
+            if project_id:
+                return project_id
+    except Exception as e:  # noqa: BLE001 — resolution failure must never break logging
+        _logger.debug("Could not resolve project_id from audit log path: %s", e)
+    return _resolve_default_project_id()
 
 
 def _resolve_default_project_id() -> str:

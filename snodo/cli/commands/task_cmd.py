@@ -228,7 +228,7 @@ def _get_all_task_branches(project_root: str) -> dict:
     audit_available = False
     try:
         from snodo.infrastructure.audit import get_audit_log
-        audit_log = get_audit_log()
+        audit_log = get_audit_log(str(Path(project_root) / ".snodo" / "audit.log"))
         events = audit_log.get_history() if audit_log else []
         audit_available = True
         for ev in events:
