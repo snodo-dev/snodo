@@ -137,7 +137,7 @@ class TestVerify:
         assert result is not None
         assert result["sub"] == "test-user"
 
-    def test_verify_expired_token(self, rsa_keypair, jwks_response):
+    def test_verify_expired_token(self, rsa_keypair, jwks_response, caplog):
         """JWT with exp in the past -> verify returns None."""
         private, _ = rsa_keypair
         now = int(time.time())
@@ -155,6 +155,8 @@ class TestVerify:
 
         result = client.verify(token)
         assert result is None
+        assert "authentication refused: expired" in caplog.text.lower()
+        assert token not in caplog.text
 
     def test_verify_tampered_token(self, rsa_keypair, jwks_response):
         """Flip a byte in the JWT payload -> verify returns None."""

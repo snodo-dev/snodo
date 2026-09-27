@@ -24,6 +24,10 @@ from typing import Any, Callable, Optional
 import typer
 
 from snodo.cli.commands import load_protocol
+from snodo.cli.commands.serve_tunnel_output import (
+    forward_child_line as _forward_child_line,
+    tunnel_secret_values as _tunnel_secret_values,
+)
 from snodo.cli.commands.serve_tunnel_config import (  # noqa: F401 - re-exported for callers and tests
     AUTH_METHODS,
     _auth_methods,
@@ -78,6 +82,9 @@ def register(app: typer.Typer) -> None:
         ),
         tunnel: bool = typer.Option(
             False, "--tunnel", help="Provision a managed Cloudflare tunnel (requires free snodo account)",
+        ),
+        verbose: bool = typer.Option(
+            False, "--verbose", help="Log MCP requests and responses for debugging",
         ),
         auth: Optional[list[str]] = typer.Option(
             None, "--auth",
@@ -134,7 +141,7 @@ def register(app: typer.Typer) -> None:
         """Start MCP server from protocol definition."""
         args = SimpleNamespace(
             protocol=protocol, mode=mode, transport=transport, port=port,
-            tunnel=tunnel, auth=auth, rotate=rotate, credential=credential,
+            tunnel=tunnel, verbose=verbose, auth=auth, rotate=rotate, credential=credential,
             delete=delete, hostname=hostname,
             mcp_install=mcp_install, mcp_uninstall=mcp_uninstall,
             mcp_uninstall_all=mcp_uninstall_all, mcp_list=mcp_list,
@@ -288,6 +295,9 @@ def _run_server(args, protocol) -> int:
         else:
             print("  Warning: OAuth 2.1 disabled — could not load JWKS", file=sys.stderr)
 
+    verbose = bool(getattr(args, "verbose", False))
+    if verbose:
+        extra_kwargs["verbose"] = True
     mcp = build_fastmcp_server(protocol_server, **extra_kwargs)
     tools = protocol_server.get_tools()
     mode_label = mode_id or "all"
@@ -1267,6 +1277,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         "--transport", transport,
         "--port", str(port),
     ]
+    if getattr(args, "verbose", False):
+        mcp_cmd.append("--verbose")
     for method in auth_methods:
         mcp_cmd.extend(["--auth", method])
     if mode != "all":
@@ -1276,15 +1288,26 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     # process group, so stopping the tunnel stops the whole tree: terminating
     # only the direct child left the MCP listener alive holding the port, and
     # the next start died on a raw EADDRINUSE (Fixes #290).
+    verbose = bool(getattr(args, "verbose", False))
+    verbose_secrets = _tunnel_secret_values(tunnel_config, api_key)
     mcp_process = subprocess.Popen(  # noqa: S603 - argv list (no shell); protocol path and mode are single argv elements, never interpreted
         mcp_cmd,
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE if verbose else subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
     )
     mcp_stderr_tail: collections.deque[str] = collections.deque(maxlen=1000)
-    _drain_stream(mcp_process.stderr, sink=mcp_stderr_tail)
+    _drain_stream(
+        mcp_process.stderr,
+        sink=mcp_stderr_tail,
+        on_line=(lambda line: _forward_child_line(line, sys.stderr, verbose_secrets)) if verbose else None,
+    )
+    if verbose:
+        _drain_stream(
+            mcp_process.stdout,
+            on_line=lambda line: _forward_child_line(line, sys.stdout, verbose_secrets),
+        )
 
     # Verify the server actually bound before anything is called active. The
     # URL used to be printed as live before the child was even spawned, so a
@@ -1295,7 +1318,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         print(f"Error: MCP server exited with code {mcp_process.returncode}.",
               file=sys.stderr)
         if stderr_output:
-            print(stderr_output, file=sys.stderr)
+            _forward_child_line(stderr_output, sys.stderr, verbose_secrets) if verbose else print(stderr_output, file=sys.stderr)
         _terminate_process_group(mcp_process)
         if newly_provisioned:
             _deprovision_newly_provisioned_tunnel(project_root, api_key,
@@ -1390,7 +1413,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
                     except (ValueError, OSError):
                         stderr_output = ""
                 if stderr_output:
-                    print(stderr_output, file=sys.stderr)
+                    _forward_child_line(stderr_output, sys.stderr, verbose_secrets) if verbose else print(stderr_output, file=sys.stderr)
                 _cleanup()
                 return 1
     except KeyboardInterrupt:
@@ -1408,7 +1431,7 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
           file=sys.stderr)
     stderr_output = _captured_stderr(cf_process, cf_stderr_tail)
     if stderr_output:
-        print(stderr_output, file=sys.stderr)
+        _forward_child_line(stderr_output, sys.stderr, verbose_secrets) if verbose else print(stderr_output, file=sys.stderr)
     _cleanup()
     return 1
 

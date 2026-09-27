@@ -488,6 +488,7 @@ def test_tunnel_targets_the_port_it_chose(tmp_path):
     args = SimpleNamespace(
         protocol=".snodo/protocol.yml", mode=None,
         transport="streamable-http", port=None, rotate=False, delete=False,
+        verbose=True,
     )
     provisioned = {"hostname": "proj-all-abc123.tunnel.snodo.dev", "tunnel_token": "tok"}
 
@@ -537,6 +538,7 @@ def test_tunnel_targets_the_port_it_chose(tmp_path):
     chosen = captured["provision_port"]
     assert isinstance(chosen, int)
     assert captured["mcp_cmd"][captured["mcp_cmd"].index("--port") + 1] == str(chosen)
+    assert "--verbose" in captured["mcp_cmd"]
     assert f"using free port {chosen}" in err.getvalue()
 
 
@@ -803,4 +805,3 @@ def test_run_tunnel_refuses_when_explicit_port_differs_from_recorded_tunnel_port
     err = capsys.readouterr().err
     assert "9000" in err
     assert "8000" in err
-

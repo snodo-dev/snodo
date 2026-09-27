@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `snodo serve --verbose` shows timestamped, redacted and bounded MCP request
+  and response lines across transports; managed tunnels stream the child's
+  diagnostics live, and JWT refusals name the failed check. (Fixes #505)
 - MCP-dispatched tasks and plan tasks can name a declared module to select its
   test command and bound writable paths. Plan and job status expose the module;
   tasks without one keep the existing project-wide behavior. (Fixes #504)

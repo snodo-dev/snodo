@@ -72,7 +72,7 @@ class JwksClient:
         try:
             header = jwt.get_unverified_header(token)
             if header.get("kid") != JWKS_KID:
-                _logger.debug("token rejected: kid %r != %r", header.get("kid"), JWKS_KID)
+                _logger.warning("MCP authentication refused: kid mismatch (expected %r, received %r)", JWKS_KID, header.get("kid"))
                 return None
             payload = jwt.decode(
                 token,
@@ -84,7 +84,29 @@ class JwksClient:
             )
             return payload
         except jwt.InvalidTokenError as exc:
-            # Every rejection reason collapsed to None here, which made a
-            # correctly-issued token indistinguishable from a forged one.
-            _logger.debug("token rejected: %s: %s", type(exc).__name__, exc)
+            # Report actionable claims without ever including the token.
+            if isinstance(exc, jwt.ExpiredSignatureError):
+                reason = "expired"
+            elif isinstance(exc, jwt.ImmatureSignatureError):
+                reason = "iat in the future"
+            elif isinstance(exc, jwt.InvalidAudienceError):
+                try:
+                    received_aud = jwt.decode(
+                        token, options={"verify_signature": False, "verify_aud": False}
+                    ).get("aud")
+                except jwt.InvalidTokenError:
+                    received_aud = "unavailable"
+                reason = f"audience mismatch (expected {audience!r}, received {received_aud!r})"
+            elif isinstance(exc, jwt.InvalidIssuerError):
+                reason = f"wrong issuer (expected {OAUTH_ISSUER!r})"
+            elif isinstance(exc, jwt.InvalidSignatureError):
+                reason = "bad signature"
+            else:
+                reason = f"{type(exc).__name__}: {exc}"
+            _logger.warning("MCP authentication refused: %s", reason)
+            return None
+        except Exception as exc:
+            # Malformed headers and unsupported token encodings still get a
+            # useful refusal line; exception text from parsers is not trusted.
+            _logger.warning("MCP authentication refused: malformed token (%s)", type(exc).__name__)
             return None

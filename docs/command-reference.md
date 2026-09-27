@@ -166,7 +166,10 @@ These commands operate the MCP server rather than a single task.
 
 `snodo serve` defaults to stdio. It can also serve SSE or streamable HTTP with
 `--transport`, and its help describes tunnel provisioning and Claude Desktop
-installation options.
+installation options. Add `--verbose` when debugging to show timestamped MCP
+requests and responses (including tool names, request IDs, duration and outcome);
+arguments and results are redacted and truncated. With `--tunnel`, child output
+is streamed live to the terminal while the tunnel runs.
 
 ## Three Safe Checks
 

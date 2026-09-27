@@ -25,6 +25,9 @@ import inspect
 import json
 import logging
 import re
+import sys
+import time
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from mcp.server.auth.provider import TokenVerifier
@@ -36,6 +39,162 @@ from snodo.mcp.tools import TOOL_REGISTRY
 from snodo.mcp.guide import guide_menu, guide_text
 
 logger = logging.getLogger(__name__)
+
+_MCP_LOG_MAX_CHARS = 240
+_SECRET_KEY_RE = re.compile(
+    r"(?i)(authorization|proxy-authorization|access-token|refresh-token|"
+    r"client[_-]?(?:id|secret)|api[_-]?key|secret|password|tunnel[_-]?token|"
+    r"cf-access-client-(?:id|secret)|x-auth-token)"
+)
+_SECRET_VALUE_RES = (
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9_\-.=+/]+"),
+    re.compile(r"\beyJ[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-.]{4,}(?:\.[A-Za-z0-9_\-.]*)?"),
+    re.compile(r"(?i)\b(?:sk|pk|rk|pat|ghp|gho|ghu|ghs|glpat|xox[baprs])-[A-Za-z0-9_-]{8,}\b"),
+)
+
+
+def _redact_mcp_value(value: Any) -> Any:
+    """Recursively redact credential-shaped MCP payload fields and values."""
+    if isinstance(value, dict):
+        return {
+            key: "[redacted]" if _SECRET_KEY_RE.search(str(key)) else _redact_mcp_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact_mcp_value(item) for item in value]
+    if isinstance(value, str):
+        for pattern in _SECRET_VALUE_RES:
+            value = pattern.sub("[redacted]", value)
+        return value
+    return value
+
+
+def _safe_mcp_excerpt(value: Any) -> str:
+    """Serialize and cap a payload excerpt after redacting secrets."""
+    try:
+        text = json.dumps(_redact_mcp_value(value), default=str, separators=(",", ":"))
+    except Exception:  # noqa: BLE001 — diagnostics must never break serving
+        text = "[unavailable]"
+    text = " ".join(text.split())
+    return text if len(text) <= _MCP_LOG_MAX_CHARS else text[:_MCP_LOG_MAX_CHARS] + "…"
+
+
+def _enable_mcp_traffic_logging(mcp: FastMCP) -> None:
+    """Log incoming JSON-RPC requests and their outgoing responses safely."""
+    server = mcp._mcp_server
+    original = server._handle_request
+
+    async def logged_handle_request(message, req, session, lifespan_context, raise_exceptions):
+        method = getattr(req, "method", type(req).__name__)
+        if not isinstance(method, str):
+            method = str(method)
+        params = getattr(req, "params", None)
+        params_data = params.model_dump(by_alias=True, exclude_none=True) if hasattr(params, "model_dump") else params
+        request_id = getattr(message, "request_id", "-")
+        tool_name = getattr(params, "name", None) if method == "tools/call" else None
+        stamp = datetime.now(timezone.utc).astimezone().isoformat(timespec="milliseconds")
+        label = f"{stamp} IN {method}"
+        if tool_name:
+            label += f" tool={tool_name}"
+        label += f" id={request_id}"
+        if params_data is not None:
+            label += f" data={_safe_mcp_excerpt(params_data)}"
+        print(sanitize_verbose_output(label), file=sys.stderr, flush=True)
+
+        started = time.perf_counter()
+        error = None
+        response_holder = {}
+        original_respond = message.respond
+
+        async def capture_response(response):
+            response_holder["response"] = response
+            await original_respond(response)
+
+        message.respond = capture_response
+        try:
+            await original(message, req, session, lifespan_context, raise_exceptions)
+        except BaseException as exc:
+            error = exc
+            raise
+        finally:
+            response = response_holder.get("response")
+            if error is None and response is not None:
+                error_data = getattr(response, "error", None)
+                error = error_data or (
+                    response if hasattr(response, "code") and hasattr(response, "message") else None
+                ) or (response if getattr(response, "isError", False) else None)
+            status = "error" if error is not None else "ok"
+            duration_ms = (time.perf_counter() - started) * 1000
+            result_data = getattr(response, "root", response)
+            if hasattr(result_data, "model_dump"):
+                result_data = result_data.model_dump(by_alias=True, exclude_none=True)
+            out = (
+                f"{datetime.now(timezone.utc).astimezone().isoformat(timespec='milliseconds')} "
+                f"OUT {method}"
+            )
+            if tool_name:
+                out += f" tool={tool_name}"
+            out += f" id={request_id} duration={duration_ms:.1f}ms {status}"
+            if result_data is not None:
+                out += f" data={_safe_mcp_excerpt(result_data)}"
+            print(sanitize_verbose_output(out), file=sys.stderr, flush=True)
+
+    server._handle_request = logged_handle_request
+
+    original_notification = server._handle_notification
+
+    async def logged_handle_notification(notification):
+        method = getattr(notification, "method", type(notification).__name__)
+        params = getattr(notification, "params", None)
+        params_data = params.model_dump(by_alias=True, exclude_none=True) if hasattr(params, "model_dump") else params
+        line = (
+            f"{datetime.now(timezone.utc).astimezone().isoformat(timespec='milliseconds')} "
+            f"IN {method} id=-"
+        )
+        if params_data is not None:
+            line += f" data={_safe_mcp_excerpt(params_data)}"
+        print(sanitize_verbose_output(line), file=sys.stderr, flush=True)
+        await original_notification(notification)
+
+    server._handle_notification = logged_handle_notification
+
+
+def sanitize_verbose_output(line: str, secrets: tuple[str, ...] = ()) -> str:
+    """Redact credential material before forwarding verbose child output."""
+    text = " ".join((line or "").split())
+    for pattern in _SECRET_VALUE_RES:
+        text = pattern.sub("[redacted]", text)
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret, "[redacted]")
+    text = re.sub(
+        r"(?i)((?:authorization|cf-access-client-(?:id|secret)|api[_-]?key|"
+        r"client[_-]?(?:id|secret)|tunnel[_-]?token)\s*[:=]\s*)([^,\s]+)",
+        r"\1[redacted]", text,
+    )
+    return text
+
+
+class _MissingAuthorizationObserver:
+    """Name a protected HTTP refusal when the caller sent no credentials."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        has_authorization = b"authorization" in headers
+        status = None
+
+        async def observe_send(message):
+            nonlocal status
+            if message.get("type") == "http.response.start":
+                status = message.get("status")
+            await send(message)
+
+        await self.app(scope, receive, observe_send)
+        if status == 401 and not has_authorization:
+            logger.warning("MCP authentication refused: Authorization header missing")
 
 
 _JSON_TYPE_MAP = {
@@ -319,6 +478,7 @@ def build_fastmcp_server(
     *,
     token_verifier: Optional[TokenVerifier] = None,
     auth_settings: Optional[AuthSettings] = None,
+    verbose: bool = False,
 ) -> FastMCP:
     """Build a FastMCP server that delegates to a ProtocolMCPServer.
 
@@ -355,6 +515,20 @@ def build_fastmcp_server(
 
     _register_resources(mcp, protocol_server)
     _register_guide(mcp, protocol_server)
+
+    if verbose:
+        _enable_mcp_traffic_logging(mcp)
+
+    # An absent header never reaches TokenVerifier.verify_token, so the
+    # verifier cannot explain that 401. Observe protected HTTP app responses
+    # without retaining or printing any header values.
+    for app_factory_name in ("streamable_http_app", "sse_app"):
+        app_factory = getattr(mcp, app_factory_name)
+
+        def observed_app_factory(*args, _factory=app_factory, **kwargs):
+            return _MissingAuthorizationObserver(_factory(*args, **kwargs))
+
+        setattr(mcp, app_factory_name, observed_app_factory)
 
     return mcp
 
