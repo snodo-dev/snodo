@@ -604,12 +604,12 @@ class TestDefaultProtocol:
         modes = {m["mode_id"] for m in data["modes"]}
         assert "planner" in modes
 
-    def test_planner_mode_has_assess_and_plan_tools(self):
+    def test_planner_mode_has_plan_and_write_capabilities(self):
         from snodo.cli.main import DEFAULT_PROTOCOL
         data = yaml.safe_load(DEFAULT_PROTOCOL)
         planner = [m for m in data["modes"] if m["mode_id"] == "planner"][0]
-        assert "assess" in planner["tools"]
         assert "plan" in planner["tools"]
+        assert "write" in planner["tools"]
 
     def test_planner_mode_no_edit_tools(self):
         from snodo.cli.main import DEFAULT_PROTOCOL

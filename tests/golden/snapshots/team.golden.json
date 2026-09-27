@@ -30,7 +30,6 @@
       "tools": [
         "edit",
         "dispatch",
-        "resolve",
         "test",
         "validate"
       ],
@@ -80,8 +79,8 @@
       "mode_id": "planner",
       "name": "Planner Mode",
       "tools": [
-        "assess",
-        "plan"
+        "plan",
+        "write"
       ],
       "transitions": {
         "planned": "producer"

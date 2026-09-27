@@ -64,9 +64,10 @@
       "tools": [
         "edit",
         "dispatch",
-        "resolve",
         "test",
-        "validate"
+        "validate",
+        "plan",
+        "write"
       ],
       "transitions": {
         "complete": "reviewer"
