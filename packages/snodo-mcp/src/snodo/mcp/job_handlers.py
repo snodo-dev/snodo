@@ -7,7 +7,7 @@ from typing import Any, Dict
 
 
 class JobToolHandler:
-    """Handles get_job_status, list_jobs, and get_job_logs tool calls."""
+    """Handles job observation tool calls."""
 
     def __init__(self, project_root: str, serving_version: str = "unknown"):
         self.project_root = project_root
@@ -103,9 +103,42 @@ class JobToolHandler:
             "log": log_content,
         }
 
+    def handle_watch_job(self, arguments: Dict[str, Any]) -> str:
+        """Return a text snapshot and an MCP Apps resource for live viewing."""
+        job_id = arguments.get("job_id", "")
+        if not job_id:
+            from snodo.mcp.server import MCPError
+            raise MCPError("watch_job requires job_id")
+
+        status = self.handle_get_job_status({"job_id": job_id})
+        logs = self.handle_get_job_logs({"job_id": job_id, "tail": 10})
+        output = logs.get("log", "") or "(no stdout output)"
+        return (
+            f"Job {job_id} — {status['status']} ({_job_elapsed(status)})\n"
+            f"\nLast output lines:\n{output.rstrip()}"
+        )
+
     def tool_handlers(self) -> dict:
         return {
             "get_job_status": self.handle_get_job_status,
             "list_jobs": self.handle_list_jobs,
             "get_job_logs": self.handle_get_job_logs,
+            "watch_job": self.handle_watch_job,
         }
+
+
+def _job_elapsed(status: dict) -> str:
+    """Format elapsed job time from the status timestamps, when available."""
+    import time
+
+    start = status.get("started_at") or status.get("created_at")
+    if start is None:
+        return "elapsed unavailable"
+    end = status.get("completed_at") or time.time()
+    try:
+        seconds = max(0, int(float(end) - float(start)))
+    except (TypeError, ValueError):
+        return "elapsed unavailable"
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d} elapsed" if hours else f"{minutes}:{seconds:02d} elapsed"
