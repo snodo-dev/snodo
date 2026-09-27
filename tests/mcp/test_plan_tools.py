@@ -314,6 +314,7 @@ class TestRunPlanGate:
 
         intent = "y" * (_PLAN_INTENT_LIMIT + 50)
         server.call_tool("propose_plan", {"plan_name": "long", "intent": intent, "waves": 2})
+        _add_task(server, "long", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
         plan_file = Path(project_dir) / ".snodo" / "plans" / "long" / "plan.yml"
         data = yaml.safe_load(plan_file.read_text())
         data["intent"] = intent
