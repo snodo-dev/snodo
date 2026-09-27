@@ -18,6 +18,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   tasks without one keep the existing project-wide behavior. (Fixes #504)
 
 ### Fixed
+- Recon completion now starts the bounded best-effort cloud sync when enabled,
+  and the audit chain syncs and reports a project cursor even when no session
+  exists. Session and project cursors share delivered progress to prevent
+  duplicate sends. (Fixes #506)
 - Recon started and completed audit events now resolve and carry the owning
   project's ID, matching neighbouring task and session events. (Fixes #503)
 - Job submission and liveness checks no longer crash with `UnboundLocalError`

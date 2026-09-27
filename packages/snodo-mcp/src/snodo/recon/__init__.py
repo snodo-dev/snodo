@@ -688,7 +688,8 @@ class ReconManager:
         )
         completed_at = state["completed_at"]
         created_at = state["created_at"]
-        _audit_log_for_project(self.project_root).append_event("recon_completed", {
+        audit_log = _audit_log_for_project(self.project_root)
+        audit_log.append_event("recon_completed", {
             "recon_id": state["recon_id"],
             "status": state["status"],
             "succeeded_agents": succeeded,
@@ -697,6 +698,16 @@ class ReconManager:
             "completed_at": completed_at,
             "summary": _recon_answer_summary(results),
         })
+        # Recon completion is already recorded locally. Cloud delivery is an
+        # independent best-effort side effect, shared by CLI and MCP callers.
+        try:
+            from snodo.infrastructure.cloud_sync import sync_if_enabled
+
+            sync_if_enabled(
+                _active_session_id(self.project_root), self.project_root, audit_log,
+            )
+        except Exception:  # noqa: BLE001 — cloud sync must never fail a recon
+            _logger.debug("Could not start cloud sync after recon completion", exc_info=True)
 
     def _run_recon_impl(self, recon_id: str, query: str, paths: list[str],
                         agents: list) -> None:

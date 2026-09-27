@@ -241,6 +241,43 @@ def test_recon_started_and_completed_events_cover_terminal_outcomes(
     assert audit.verify_chain()
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+@pytest.mark.parametrize("status", ["complete", "failed"])
+def test_recon_completion_starts_cloud_sync_only_when_enabled(
+    recon_mgr, monkeypatch, enabled, status,
+):
+    import threading
+
+    from snodo.infrastructure import cloud_sync
+
+    recon_id = recon_mgr.submit("query", ["./"])
+    recon_dir = Path(recon_mgr.recons_dir) / recon_id
+    state = json.loads((recon_dir / "state.json").read_text())
+    state["status"] = status
+    state["completed_at"] = state["created_at"] + 1
+
+    called = threading.Event()
+    monkeypatch.setattr(recon_module, "_active_session_id", lambda _root: "")
+    monkeypatch.setattr(
+        "snodo.config.ConfigManager.load",
+        lambda _self: {"cloud": {"sync_enabled": enabled, "api_key": "key"}},
+    )
+    monkeypatch.setattr(
+        cloud_sync.CloudSyncDispatcher, "sync",
+        lambda *args, **kwargs: called.set() or {"synced": 0, "failed": False, "pending": 0},
+    )
+    before = len(cloud_sync._pending_syncs)
+    recon_mgr._append_completion_event(state, [])
+
+    if enabled:
+        assert called.wait(timeout=1)
+    else:
+        assert not called.wait(timeout=0.05)
+    for thread, *_ in cloud_sync._pending_syncs[before:]:
+        thread.join(timeout=1)
+    del cloud_sync._pending_syncs[before:]
+
+
 def test_recon_events_use_the_project_id_of_neighbouring_audit_events(
     project_with_snodo, monkeypatch,
 ):
