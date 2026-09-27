@@ -19,8 +19,13 @@ receives the short message as plain text. `slack`, `discord` and `teams` format
 that same actionable message for their respective incoming-webhook endpoints.
 For Slack and Discord, use their incoming-webhook URLs. For Teams, use the URL
 from a Power Automate/Workflows flow with the **When a Teams webhook request is
-received** trigger and an Adaptive Card posting action. Each can be stored as
-an environment reference (`env:VARIABLE_NAME`) rather than a literal:
+received** trigger; Snodo posts the trigger's documented message envelope with
+an Adaptive Card attachment. See the [Slack incoming webhook
+docs](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks),
+[Discord webhook docs](https://discord.com/developers/docs/resources/webhook#execute-webhook),
+and [Teams webhook trigger docs](https://learn.microsoft.com/en-us/connectors/teams/#when-a-teams-webhook-request-is-received)
+for their current payload requirements. Each URL can be stored as an
+environment reference (`env:VARIABLE_NAME`) rather than a literal:
 
 ```yaml
 notifications:

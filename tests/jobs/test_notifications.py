@@ -75,6 +75,29 @@ def test_chat_platform_payloads_render_the_actionable_message():
         httpd.shutdown()
 
 
+def test_notify_test_sends_to_every_configured_target_type(monkeypatch):
+    httpd = server()
+    try:
+        base = f"http://127.0.0.1:{httpd.server_port}"
+        kinds = ("webhook", "ntfy", "slack", "discord", "teams")
+        monkeypatch.setattr(notifications, "_settings", lambda: {
+            "targets": [{"type": kind, "name": kind, "url": f"{base}/{kind}"} for kind in kinds],
+        })
+
+        results = notifications.test_targets()
+
+        assert results == [(kind, True) for kind in kinds]
+        assert [request[0] for request in StubHandler.requests] == [f"/{kind}" for kind in kinds]
+        bodies = [json.loads(body) if path != "/ntfy" else body.decode() for path, _headers, body in StubHandler.requests]
+        assert bodies[0]["event"] == "test"
+        assert bodies[1] == "Snodo notification test — notifications are configured."
+        assert bodies[2] == {"text": "Snodo notification test — notifications are configured."}
+        assert bodies[3]["content"] == "Snodo notification test — notifications are configured."
+        assert bodies[4]["attachments"][0]["content"]["type"] == "AdaptiveCard"
+    finally:
+        httpd.shutdown()
+
+
 def test_notification_url_and_token_resolve_environment_references(monkeypatch):
     monkeypatch.setenv("SNODO_TEST_HOOK", "http://127.0.0.1/hook")
     monkeypatch.setenv("SNODO_TEST_TOKEN", "secret-token")
