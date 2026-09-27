@@ -9,6 +9,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Protocol DSL reference and template authoring guide now match the current
+  tool map, validator registry, Pydantic schema, and directory-based template
+  discovery. Corrected validator and per-mode concurrency field descriptions.
+  (Fixes #510)
+
 ### Added
 - The solo template's producer mode now grants the complete single-operator
   MCP loop: recon, planning and queues, `.snodo/` writing, dispatch, testing,

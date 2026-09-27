@@ -246,6 +246,20 @@ class TestToolExecution:
 # === MODE_TOOL_MAP coverage ===
 
 class TestModeToolMap:
+    def test_protocol_reference_mapping_matches_mode_tool_map(self):
+        docs_path = Path(__file__).resolve().parents[2] / "docs" / "protocol.md"
+        docs = docs_path.read_text(encoding="utf-8")
+        mapping_section = docs.split("### Concrete tool mapping", 1)[1].split(
+            "### Reference modes", 1
+        )[0]
+        documented = {}
+        for line in mapping_section.splitlines():
+            match = re.fullmatch(r"\| `([^`]+)` \| (.*?) \|", line.strip())
+            if match:
+                documented[match.group(1)] = re.findall(r"`([^`]+)`", match.group(2))
+
+        assert documented == MODE_TOOL_MAP
+
     def test_all_mode_tools_exist_in_registry(self):
         """Every concrete tool referenced by MODE_TOOL_MAP exists in TOOL_REGISTRY."""
         for mode_tool, concrete_tools in MODE_TOOL_MAP.items():

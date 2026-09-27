@@ -192,11 +192,6 @@ class Validator(BaseModel):
     )
     check_tool_access: bool = Field(
         default=False,
-        description="When True, refuse rather than pass a criterion that "
-                    "requires a capability outside this validator's tools.",
-    )
-    check_tool_access: bool = Field(
-        default=False,
         description="When True, if a criterion demands verification by a tool "
                     "outside this validator's own declared tools list, refuse "
                     "rather than silently pass.",
@@ -389,8 +384,8 @@ class Mode(BaseModel):
         default=None,
         ge=1,
         description=(
-            "Override the protocol-level concurrency ceiling for this mode. None = inherit "
-            "the protocol's execution.concurrency setting (default 1)."
+            "Concurrency ceiling for this mode. None = use coder_config.concurrency "
+            "when set, otherwise 1."
         ),
     )
     
