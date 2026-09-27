@@ -460,12 +460,39 @@ def test_plan_run_history_shape_for_cli_triggers(plan_project_env, trigger, queu
     assert {key: proposal.data[key] for key in ("plan_name", "waves")} == {
         "plan_name": plan_name, "waves": expected_waves,
     }
+    assert proposal.data["intent"] == "Build feature plan"
     assert run.data["plan_name"] == plan_name
+    assert run.data["intent"] == "Build feature plan"
     assert run.data["waves"] == expected_waves
     assert run.data["trigger"] == trigger
     assert run.data.get("queue") == queue
     assert run.data["job_id"] == ("j_queue1" if trigger == "queue" else None)
     assert run.data["mode"] == "producer"
+
+
+def test_plan_run_history_bounds_intent_with_recon_marker(plan_project_env, monkeypatch):
+    import yaml
+    from snodo.infrastructure.audit import AuditLog
+    from snodo.mcp.planner import _PLAN_INTENT_LIMIT, _PLAN_INTENT_MARKER
+
+    planner = PlannerMCP(plan_project_env)
+    plan_name, _, _ = _create_mock_plan(planner, "long_intent")
+    plan_file = plan_project_env / ".snodo" / "plans" / plan_name / "plan.yml"
+    data = yaml.safe_load(plan_file.read_text())
+    data["intent"] = "x" * (_PLAN_INTENT_LIMIT + 100)
+    plan_file.write_text(yaml.safe_dump(data))
+    audit_log = AuditLog(str(plan_project_env / ".snodo" / "audit.log"))
+    args = _make_plan_args(plan_name, trigger="cli")
+    args.audit_log = audit_log
+    monkeypatch.delenv("SNODO_JOB_ID", raising=False)
+    with patch("snodo.cli.commands.run_cmd._execute_task", return_value=0):
+        assert _run_plan(args) == 0
+
+    events = audit_log.get_history()
+    for event_type in ("plan_proposed", "plan_run"):
+        event = next(event for event in events if event.event_type == event_type)
+        assert len(event.data["intent"]) == _PLAN_INTENT_LIMIT
+        assert event.data["intent"].endswith(_PLAN_INTENT_MARKER)
 
 
 # ---------------------------------------------------------------------------

@@ -291,10 +291,13 @@ class TestRunPlanGate:
         assert submitted["plan_name"] == "runner"
         assert submitted["mock"] is True
         events = AuditLog(str(Path(project_dir) / ".snodo" / "audit.log")).get_history()
+        plan_proposed = next(event for event in events if event.event_type == "plan_proposed")
+        assert plan_proposed.data["intent"] == "Ship the widget"
         plan_run = next(event for event in events if event.event_type == "plan_run")
         assert plan_run.data == {
             "op": "plan_run",
             "plan_name": "runner",
+            "intent": "Ship the widget",
             "waves": [
                 {"wave_id": 1, "task_refs": ["1.1_x"]},
                 {"wave_id": 2, "task_refs": []},
@@ -303,6 +306,28 @@ class TestRunPlanGate:
             "job_id": "j_runner1",
             "mode": "producer",
         }
+
+    def test_plan_events_bound_authored_intent(self, server, project_dir):
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.mcp.planner import _PLAN_INTENT_LIMIT, _PLAN_INTENT_MARKER
+
+        intent = "y" * (_PLAN_INTENT_LIMIT + 50)
+        server.call_tool("propose_plan", {"plan_name": "long", "intent": intent, "waves": 2})
+        plan_file = Path(project_dir) / ".snodo" / "plans" / "long" / "plan.yml"
+        data = yaml.safe_load(plan_file.read_text())
+        data["intent"] = intent
+        plan_file.write_text(yaml.safe_dump(data))
+        server._audit_log = AuditLog(str(Path(project_dir) / ".snodo" / "audit.log"))
+
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value.submit.return_value = "j_long1"
+            server.call_tool("run_plan", {"plan_name": "long", "mock": True})
+
+        events = server._audit_log.get_history()
+        for event_type in ("plan_proposed", "plan_run"):
+            event = next(event for event in events if event.event_type == event_type)
+            assert len(event.data["intent"]) == _PLAN_INTENT_LIMIT
+            assert event.data["intent"].endswith(_PLAN_INTENT_MARKER)
 
     def test_wait_true_blocks_and_reports_the_final_status(self, server, project_dir):
         """The opt-in wait returns the run's end state, not merely its start."""
