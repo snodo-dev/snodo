@@ -37,6 +37,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from snodo.mcp.server import ProtocolMCPServer
 from snodo.mcp.tools import TOOL_REGISTRY
 from snodo.mcp.guide import guide_menu, guide_text
+from snodo.mcp.watch_job import WATCH_JOB_HTML, WATCH_JOB_RESOURCE_URI
 
 logger = logging.getLogger(__name__)
 
@@ -367,20 +368,20 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
             "## Task loop\n"
             "1. `validate_task(task_id, task_spec)` runs pre-execute validators and returns `pass`, `escalate`, `blocker`, or `validator_error`. `escalate` needs human `snodo authorize`; `blocker` needs a fix or better evidence/spec; `validator_error` needs retry or inspection.\n"
             "2. `dispatch_task(task_spec)` submits background work.\n"
-            "3. Poll `get_job_status(job_id)`; read `get_job_logs(job_id, tail=N)` on failure.\n"
+            "3. Call `watch_job(job_id)` and leave its live view open; use `get_job_status` or `get_job_logs` for a specific follow-up.\n"
         )
 
     if "run_plan" in exposed:
         sections.append(
             "\n"
             "## Planning\n"
-            "`propose_plan` creates the inert plan, `generate_spec` adds named task specs, and `validate_plan` checks plan structure and references (it is not an authorization gate). `run_plan` starts a background run; follow its job id with `get_job_status` and `get_job_logs`. Use `get_plan` for plan state. A wave is a barrier: tasks that need another task's output belong in a later wave.\n"
+            "`propose_plan` creates the inert plan, `generate_spec` adds named task specs, and `validate_plan` checks plan structure and references (it is not an authorization gate). `run_plan` starts a background run; call `watch_job(job_id)` and leave its live view open. Use `get_plan` for per-task plan state and `get_job_status` / `get_job_logs` for specific follow-up. A wave is a barrier: tasks that need another task's output belong in a later wave.\n"
         )
 
     if "queue_run" in exposed:
         sections.append(
             "\n## Queues\n"
-            "Use `queue_list` and `queue_validate` to inspect ordered queues, `queue_create` / `queue_move` / `queue_remove` to manage them, and `queue_run` to progress them (validate, reorder, unblock, run); follow its asynchronous job with `get_job_status` and `get_job_logs`.\n"
+            "Use `queue_list` and `queue_validate` to inspect ordered queues, `queue_create` / `queue_move` / `queue_remove` to manage them, and `queue_run` to progress them (validate, reorder, unblock, run); call `watch_job(job_id)` for its live job view.\n"
         )
 
     if "dispatch_task" in exposed or "run_plan" in exposed or "queue_run" in exposed:
@@ -401,7 +402,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         if "queue_run" in exposed:
             async_lines.append("`queue_run` is ASYNCHRONOUS and returns its job id immediately.\n\n")
         async_lines.append(
-            "Always poll `get_job_status` after a job starts; the starter response only confirms queuing.\n"
+            "After a job starts, open `watch_job(job_id)` and leave its live view open; its panel refreshes itself and stops at a final status. The starter response only confirms queuing.\n"
         )
         sections.append("".join(async_lines))
 
@@ -512,9 +513,21 @@ def build_fastmcp_server(
 
     for tool_info in protocol_server.get_tools():
         fn = _make_tool_handler(protocol_server, tool_info)
-        mcp.add_tool(fn, name=tool_info["name"], description=tool_info["description"])
+        tool_meta = (
+            {"ui": {"resourceUri": WATCH_JOB_RESOURCE_URI}}
+            if tool_info["name"] == "watch_job"
+            else None
+        )
+        mcp.add_tool(
+            fn,
+            name=tool_info["name"],
+            description=tool_info["description"],
+            meta=tool_meta,
+        )
 
     _register_resources(mcp, protocol_server)
+    if "watch_job" in {tool["name"] for tool in protocol_server.get_tools()}:
+        _register_watch_job_resource(mcp)
     _register_guide(mcp, protocol_server)
 
     if verbose:
@@ -544,6 +557,20 @@ def _register_guide(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> None:
     )
     def guide(topic: str | None = None) -> str:
         return guide_text(protocol_server.project_root, exposed, topic)
+
+
+def _register_watch_job_resource(mcp: FastMCP) -> None:
+    """Register the self-contained MCP Apps view only when its tool is granted."""
+
+    @mcp.resource(
+        WATCH_JOB_RESOURCE_URI,
+        name="watch_job_view",
+        description="Live job output view for watch_job",
+        mime_type="text/html;profile=mcp-app",
+        meta={"ui": {"csp": {}, "prefersBorder": True}},
+    )
+    def watch_job_view() -> str:
+        return WATCH_JOB_HTML
 
 
 def _register_resources(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> None:

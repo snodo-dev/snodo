@@ -10,6 +10,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `watch_job` opens a self-refreshing MCP Apps live panel for dispatched tasks,
+  plan runs, and queue runs, with a current status and recent-output text
+  fallback. The dispatch capability and server instructions now direct
+  orchestrators to open the panel instead of scheduling polls. (Fixes #516)
 - Cloud plan history now carries bounded authored intent on proposal and every
   run, and unmerged task events have a pinned v6 shape with plan ownership when
   available. v5 receivers continue to receive no v6-only data. (Fixes #514)

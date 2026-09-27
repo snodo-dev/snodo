@@ -1,4 +1,3 @@
-<!-- snodo-guide topic="following-a-run" aliases="run,follow-run" summary="Follow an MCP plan run to its final task outcomes" section="# Following a plan run" -->
 # Following a plan run
 
 `run_plan` is asynchronous. It returns the plan-run job's `job_id` as soon as
@@ -27,20 +26,19 @@ child job; its task status is still in `get_plan`, and its output is in the
 plan job's own `get_job_logs` result. The plan job is the parent row, not a
 task outcome.
 
-## Poll with backoff
+## Follow the run live
 
-Poll `get_job_status` for the plan job after a short initial delay. Poll
-`get_plan` alongside it to refresh the per-task map, and refresh `list_jobs`
-when you need to discover newly spawned children. A practical cadence is a few
-seconds initially, then 10, 20, 40, and 60 seconds, capped around a minute.
-Reset to a short delay after a task status changes. Coders normally take
-minutes, so continuous polling adds noise without making the run faster.
+Call `watch_job(job_id)` after `run_plan` returns and leave its MCP Apps panel
+open. The panel refreshes the job status and latest stdout lines itself every
+few seconds, then stops at a final job status. This avoids scheduling repeated
+status calls. Use `get_plan` when you need the per-task map, and refresh
+`list_jobs` only when you need to discover child jobs.
 
 There is also an opt-in narrated path: call `run_plan` with `wait=true` and
 send a progress token with the MCP request. The server emits a line when a
 task's plan status changes, including the child job id when there is one. This
 blocks that tool call until the run ends or its `timeout` expires; without a
-progress token, prefer the immediate-return path and poll yourself.
+progress token, prefer the immediate-return path and open `watch_job`.
 
 ## Know when to stop
 
@@ -50,8 +48,8 @@ Job status is separate from plan task status. A job moves through `queued` and
 terminal values. Also inspect its `exit_code`; `completed` with exit code `0`
 is the successful job result, not merely any terminal result.
 
-Do not stop because `run_plan` returned, because validation passed, or because
-one child finished. Conversely, do not wait forever for all tasks to say
+Do not close the live view because `run_plan` returned, because validation
+passed, or because one child finished. Conversely, do not wait forever for all tasks to say
 `completed` after the parent job is terminal: a stopped or failed run can leave
 tasks pending or record a non-success outcome. Once the parent is terminal,
 read the final plan and classify every task before choosing a follow-up.

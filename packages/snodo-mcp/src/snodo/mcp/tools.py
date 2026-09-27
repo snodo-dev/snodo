@@ -481,6 +481,22 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "watch_job": {
+        "description": (
+            "Open a live view of a background job in an MCP Apps host, with a "
+            "plain-text snapshot for clients without UI support. Use after "
+            "dispatch_task, run_plan, or queue_run returns a job_id."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "Job ID returned by dispatch_task, run_plan, or queue_run"},
+            },
+            "required": ["job_id"],
+        },
+        "mcp": None,
+        "method": None,
+    },
     "validate_task": {
         "description": (
             "Run the pre-execute validators and report the quorum's outcome. "
@@ -753,7 +769,7 @@ MODE_TOOL_MAP = {
     "edit": ["read_file", "list_files", "list_models", "resolve_model", "recon", "get_recon_status", "get_recon_results"],
     "write": ["write_file"],
     "decide": ["propose_adjudicate", "propose_set_model"],
-    "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs", "retry_job"],
+    "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs", "watch_job", "retry_job"],
     "test": ["run_tests"],
     "validate": ["run_tests"],
     "review": ["read_file", "list_files", "read_diff", "get_status", "recon", "get_recon_status", "get_recon_results"],
@@ -822,6 +838,7 @@ JOB_OBSERVATION_TOOLS = [
     "get_job_status",
     "list_jobs",
     "get_job_logs",
+    "watch_job",
 ]
 
 # The read-only recon-observation surface, by the same rule as the job one.

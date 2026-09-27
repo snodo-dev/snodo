@@ -30,6 +30,7 @@ nav:
       - Command reference: command-reference.md
       - Coder backends: coders.md
       - Authoring a plan: authoring-a-plan.md
+      - Following a run: following-a-run.md
       - Machine interface: machine-interface.md
       - Protocol reference: protocol.md
       - Runbooks:

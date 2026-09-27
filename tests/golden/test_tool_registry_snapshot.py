@@ -42,6 +42,7 @@ EXPECTED_TOOL_KEYS = frozenset({
     "get_job_status",
     "list_jobs",
     "get_job_logs",
+    "watch_job",
     "list_models",
     "resolve_model",
     "propose_adjudicate",

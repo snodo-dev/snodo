@@ -222,7 +222,7 @@ Each logical tool maps to one or more MCP operations:
 | `edit` | `read_file`, `list_files`, `list_models`, `resolve_model`, `recon`, `get_recon_status`, `get_recon_results` |
 | `write` | `write_file` |
 | `decide` | `propose_adjudicate`, `propose_set_model` |
-| `dispatch` | `dispatch_task`, `get_job_status`, `list_jobs`, `get_job_logs`, `retry_job` |
+| `dispatch` | `dispatch_task`, `get_job_status`, `list_jobs`, `get_job_logs`, `watch_job`, `retry_job` |
 | `test` | `run_tests` |
 | `validate` | `run_tests` |
 | `review` | `read_file`, `list_files`, `read_diff`, `get_status`, `recon`, `get_recon_status`, `get_recon_results` |
