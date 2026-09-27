@@ -135,7 +135,7 @@ def test_job_status_marks_provenance_from_a_different_server_version(tmp_path, m
                 "id": job_id,
                 "status": "completed",
                 "cost": {"provenance": {"snodo_version": "old"}},
-                "task": {"task_id": "task-1", "description": "spec"},
+                "task": {"task_id": "task-1", "description": "spec", "module_id": "core"},
             }
 
     monkeypatch.setattr("snodo.jobs.JobManager", lambda _root: FakeJobs())
@@ -148,3 +148,4 @@ def test_job_status_marks_provenance_from_a_different_server_version(tmp_path, m
         "job": "old",
         "mismatch": True,
     }
+    assert result["module"] == "core"

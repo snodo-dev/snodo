@@ -125,6 +125,7 @@ class ProtocolMCPServer:
         self.git = GitMCP(project_root)
         self.shell = ShellMCP(project_root)
         self.planner = PlannerMCP(project_root, audit_log=self._audit_log)
+        self.planner.protocol = protocol
 
         # PrMCP with auto-detected provider
         provider = self._resolve_provider()
@@ -766,6 +767,14 @@ class CoreToolHandler:
         if not task_spec:
             raise MCPError("dispatch_task requires task_spec")
         coding_model = arguments.get("coding_model", "")
+        module_id = arguments.get("module")
+        if module_id is not None:
+            declared = [module.module_id for module in self.server.protocol.modules]
+            if module_id not in declared:
+                choices = ", ".join(declared) if declared else "(none declared)"
+                raise MCPError(
+                    f"Unknown module '{module_id}'. Declared modules: {choices}"
+                )
 
         # Establish in THIS process that the coder can be invoked at all
         # before a task is dispatched (the halt taxonomy calls the
@@ -782,6 +791,8 @@ class CoreToolHandler:
         }
         if coding_model:
             task_args["model"] = coding_model
+        if module_id is not None:
+            task_args["module_id"] = module_id
         if self.server.mode_id:
             task_args["mode"] = self.server.mode_id
 

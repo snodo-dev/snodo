@@ -39,6 +39,11 @@ validators:
     tooling:
       test_command: "pytest"
     criteria: ["Pass quality"]
+modules:
+  - module_id: "core"
+    paths: ["src/core"]
+    tooling:
+      test_command: "pytest tests/core"
 disagreement_policy: "unanimous"
 """.strip()
     (snodo_dir / "protocol.yml").write_text(protocol_content)
@@ -316,6 +321,35 @@ def test_plan_add_task_happy_path(plan_env, capsys):
     assert "1.1_models" in [t for w in plan.waves for t in w.tasks]
     spec = (plan_env / ".snodo" / "plans" / "p1" / "wave_1" / "1.1_models_task.md").read_text()
     assert spec == "Build the models module"
+
+
+def test_plan_add_task_stores_declared_module(plan_env, capsys):
+    _create_plan(plan_env, "scoped")
+    spec_file = plan_env / "spec.md"
+    spec_file.write_text("Change core")
+
+    result = plan_command(SimpleNamespace(
+        plan_action="add-task", plan="scoped", task_id="1.1_core",
+        spec_file=str(spec_file), parent=None, replace=False, module="core",
+    ))
+
+    assert result == 0
+    entry = _planner(plan_env).get_status("scoped")["tasks"]["1.1_core"]
+    assert entry["module_id"] == "core"
+
+
+def test_plan_add_task_rejects_unknown_module(plan_env, capsys):
+    _create_plan(plan_env, "scoped")
+    spec_file = plan_env / "spec.md"
+    spec_file.write_text("Change core")
+
+    result = plan_command(SimpleNamespace(
+        plan_action="add-task", plan="scoped", task_id="1.1_core",
+        spec_file=str(spec_file), parent=None, replace=False, module="missing",
+    ))
+
+    assert result == 1
+    assert "Declared modules: core" in capsys.readouterr().err
 
 
 def test_plan_add_task_rejects_bad_task_id(plan_env, capsys):

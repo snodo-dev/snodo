@@ -964,6 +964,10 @@ class TestRunner:
         assert "--protocol" in cmd
         assert "custom/proto.yml" in cmd
 
+    def test_build_command_passes_module_scope(self):
+        cmd = build_command("/job", {"description": "core change", "module_id": "core"})
+        assert cmd[cmd.index("--module") + 1] == "core"
+
     def test_build_command_unbuffered(self):
         """build_command() includes -u flag for unbuffered output."""
         task_args = {

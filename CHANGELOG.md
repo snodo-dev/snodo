@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- MCP-dispatched tasks and plan tasks can name a declared module to select its
+  test command and bound writable paths. Plan and job status expose the module;
+  tasks without one keep the existing project-wide behavior. (Fixes #504)
+
 ### Fixed
 - Job submission and liveness checks no longer crash with `UnboundLocalError`
   when `psutil` is missing from a stale install; process start-time identity
