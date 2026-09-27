@@ -489,8 +489,12 @@ class TestSoloProtocolTools:
         assert "dispatch_task" in tool_names
         assert "run_tests" in tool_names
         assert "validate_task" in tool_names
-        # write_file removed from edit capability
-        assert "write_file" not in tool_names
+        assert "write_file" in tool_names
+        assert "decompose" in tool_names
+        assert "propose_plan" in tool_names
+        assert "run_plan" in tool_names
+        assert "queue_list" in tool_names
+        assert "queue_run" in tool_names
 
     def test_team_protocol_producer_no_merge_tools(self, project_dir):
         """Team protocol producer does NOT get merge_branch / delete_branch."""
