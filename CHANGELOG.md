@@ -14,6 +14,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   plan runs, and queue runs, with a current status and recent-output text
   fallback. The dispatch capability and server instructions now direct
   orchestrators to open the panel instead of scheduling polls. (Fixes #516)
+- Detached, best-effort job notifications support JSON webhooks and ntfy for
+  job completion/failure, task halts, authorization escalations, and configurable
+  log silence. Targets are redacted in config output and can be checked with
+  `snodo notify test`. (Fixes #517)
 - Cloud plan history now carries bounded authored intent on proposal and every
   run, and unmerged task events have a pinned v6 shape with plan ownership when
   available. v5 receivers continue to receive no v6-only data. (Fixes #514)

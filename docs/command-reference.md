@@ -18,6 +18,7 @@ up providers or cloud sync.
 | `snodo config set` | Set a configuration value. |
 | `snodo config show` | Show configured keys in masked form. |
 | `snodo config test` | Validate all configured keys. |
+| `snodo notify test` | Send a test notification to every configured target. |
 | `snodo mode show` | Show the current active protocol mode. |
 | `snodo mode change` | Change the active protocol mode. |
 | `snodo session list` | List sessions, optionally filtered by mode, project, or status. |
@@ -40,6 +41,7 @@ Useful forms:
 ```text
 snodo init --template solo
 snodo config set engine.max_subtask_depth 3
+snodo notify test
 snodo mode show --json
 snodo cloud sync --all
 snodo cloud schema --json
@@ -52,6 +54,8 @@ to carry a version field that its own declared type does not know about.
 
 `snodo cloud connect` takes an API key as a required argument. Do not put a
 real key in shell history when a safer secret-handling method is available.
+Notification targets, event filters, the ntfy setup example, and the silence
+threshold are documented in [Running Snodo unattended](running-unattended.md).
 
 ## Author And Plan Work
 

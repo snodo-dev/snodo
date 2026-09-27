@@ -143,6 +143,18 @@ def _config_show(mgr: ConfigManager) -> int:
     else:
         print("No API keys configured.")
         print("  Add one: snodo config add <provider> <key>")
+    notifications = config.get("notifications", {})
+    targets = notifications.get("targets", []) if isinstance(notifications, dict) else []
+    if targets:
+        print("\nNotifications:")
+        for index, target in enumerate(targets, 1):
+            if isinstance(target, dict):
+                name = target.get("name") or f"target {index}"
+                print(f"  {name}: {target.get('type', 'unknown')} (URL: [redacted], credentials: [redacted])")
+        print(f"  Events: {', '.join(notifications.get('events', ['job_finished', 'task_halted', 'authorization_needed', 'job_silent']))}")
+        print(f"  Silence threshold: {notifications.get('silence_threshold_seconds', 900)} seconds")
+    else:
+        print("\nNo notification targets configured.")
     return 0
 
 
