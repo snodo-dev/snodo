@@ -44,6 +44,66 @@ def test_webhook_json_and_ntfy_plain_posts():
         httpd.shutdown()
 
 
+def test_chat_platform_payloads_render_the_actionable_message():
+    httpd = server()
+    try:
+        base = f"http://127.0.0.1:{httpd.server_port}"
+        event = {
+            "event": "job_finished",
+            "message": "project: job j_123 — plan nightly — task t_456 — job completed — Inspect: snodo logs j_123",
+            "project": "project",
+            "job_id": "j_123",
+            "plan": "nightly",
+            "task": "t_456",
+            "command": "snodo logs j_123",
+        }
+        for kind in ("slack", "discord", "teams"):
+            notifications.send({"type": kind, "url": f"{base}/{kind}"}, event)
+
+        requests = {path.removeprefix("/"): json.loads(body) for path, _headers, body in StubHandler.requests}
+        assert requests["slack"] == {"text": event["message"]}
+        assert requests["discord"] == {"content": event["message"], "allowed_mentions": {"parse": []}}
+        teams = requests["teams"]
+        assert teams["type"] == "message"
+        attachment = teams["attachments"][0]
+        assert attachment["contentType"] == "application/vnd.microsoft.card.adaptive"
+        assert attachment["contentUrl"] is None
+        assert attachment["content"]["type"] == "AdaptiveCard"
+        assert attachment["content"]["version"] == "1.2"
+        assert attachment["content"]["body"] == [{"type": "TextBlock", "text": event["message"], "wrap": True}]
+    finally:
+        httpd.shutdown()
+
+
+def test_notification_url_and_token_resolve_environment_references(monkeypatch):
+    monkeypatch.setenv("SNODO_TEST_HOOK", "http://127.0.0.1/hook")
+    monkeypatch.setenv("SNODO_TEST_TOKEN", "secret-token")
+    targets = notifications._targets({"targets": [{
+        "type": "slack", "url": "env:SNODO_TEST_HOOK", "token": "env:SNODO_TEST_TOKEN",
+    }]})
+    assert targets == [{"type": "slack", "url": "http://127.0.0.1/hook", "token": "secret-token"}]
+
+
+def test_missing_environment_reference_warns_once_and_does_not_affect_job(tmp_path, monkeypatch, caplog):
+    root = tmp_path
+    job = root / ".snodo" / "jobs" / "j_missing-reference"
+    job.mkdir(parents=True)
+    state = {"status": "completed", "exit_code": 0, "started_at": 1}
+    (job / "task.json").write_text(json.dumps({"description": "Completed work"}))
+    (job / "state.json").write_text(json.dumps(state))
+    monkeypatch.delenv("SNODO_MISSING_HOOK", raising=False)
+    monkeypatch.setattr(notifications, "_settings", lambda: {
+        "targets": [{"type": "slack", "url": "env:SNODO_MISSING_HOOK"}],
+        "events": ["job_finished"],
+    })
+
+    notifications.monitor(str(root), job.name)
+    notifications.monitor(str(root), job.name)
+
+    assert json.loads((job / "state.json").read_text()) == state
+    assert sum("Unable to resolve notification url reference" in record.message for record in caplog.records) == 1
+
+
 def test_filtering_deduplication_and_delivery_failure_are_best_effort(tmp_path, monkeypatch):
     httpd = server()
     try:
@@ -95,7 +155,10 @@ def test_silence_threshold_fires_once_and_ends_on_completion(tmp_path, monkeypat
 
 
 def test_config_redaction_hides_target_url_and_token():
-    config = {"notifications": {"targets": [{"type": "webhook", "url": "https://secret.invalid/hook", "token": "top-secret"}]}}
+    config = {"notifications": {"targets": [
+        {"type": kind, "url": "https://secret.invalid/hook", "token": "top-secret"}
+        for kind in ("webhook", "ntfy", "slack", "discord", "teams")
+    ]}}
     redacted = notifications.redact_notifications(config)
     assert redacted["notifications"]["targets"][0]["url"] == "[redacted]"
     assert redacted["notifications"]["targets"][0]["token"] == "[redacted]"

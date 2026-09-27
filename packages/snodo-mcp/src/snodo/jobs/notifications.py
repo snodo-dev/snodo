@@ -17,12 +17,13 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from snodo.config import ConfigManager
+from snodo.config import ConfigError, ConfigManager
 
 logger = logging.getLogger(__name__)
 EVENTS = {"job_finished", "task_halted", "authorization_needed", "job_silent"}
 _DELIVERY_TIMEOUT = 2
 _POLL_SECONDS = 0.1
+_MISSING_REFERENCES: set[str] = set()
 
 
 def _settings() -> dict:
@@ -33,9 +34,25 @@ def _settings() -> dict:
 def _targets(settings: dict) -> list[dict]:
     result = []
     for target in settings.get("targets", []):
-        if (isinstance(target, dict) and target.get("type") in {"webhook", "ntfy"}
-                and isinstance(target.get("url"), str) and target["url"].startswith(("https://", "http://"))):
-            result.append(target)
+        if not isinstance(target, dict) or target.get("type") not in {"webhook", "ntfy", "slack", "discord", "teams"}:
+            continue
+        resolved = dict(target)
+        invalid_reference = False
+        for key in ("url", "token"):
+            value = resolved.get(key)
+            if isinstance(value, str) and ":" in value:
+                scheme, _, _ = value.partition(":")
+                if scheme in {"env", "command"}:
+                    try:
+                        resolved[key] = ConfigManager._resolve_key_reference(value)
+                    except ConfigError:
+                        if value not in _MISSING_REFERENCES:
+                            logger.warning("Unable to resolve notification %s reference", key)
+                            _MISSING_REFERENCES.add(value)
+                        invalid_reference = True
+        url = resolved.get("url")
+        if not invalid_reference and isinstance(url, str) and url.startswith(("https://", "http://")):
+            result.append(resolved)
     return result
 
 
@@ -61,6 +78,28 @@ def send(target: dict, event: dict) -> None:
     if kind == "ntfy":
         body = message.encode("utf-8")
         headers = {"Content-Type": "text/plain; charset=utf-8", "Title": "Snodo job update"}
+    elif kind == "slack":
+        body = json.dumps({"text": message}, separators=(",", ":")).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+    elif kind == "discord":
+        body = json.dumps({"content": message, "allowed_mentions": {"parse": []}}, separators=(",", ":")).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+    elif kind == "teams":
+        card = {
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "type": "AdaptiveCard",
+            "version": "1.2",
+            "body": [{"type": "TextBlock", "text": message, "wrap": True}],
+        }
+        body = json.dumps({
+            "type": "message",
+            "attachments": [{
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "contentUrl": None,
+                "content": card,
+            }],
+        }, separators=(",", ":")).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
     else:
         body = json.dumps(event, separators=(",", ":")).encode("utf-8")
         headers = {"Content-Type": "application/json"}
