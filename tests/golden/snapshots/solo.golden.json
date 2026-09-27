@@ -21,7 +21,7 @@
       "auto_merge": null,
       "coder": null,
       "coder_config": {},
-      "concurrency": null,
+      "concurrency": 1,
       "constraints": [],
       "description": null,
       "max_recovery_depth": null,
@@ -29,12 +29,19 @@
       "name": "Producer Mode",
       "tools": [
         "edit",
+        "write",
+        "decide",
         "dispatch",
-        "resolve",
         "test",
         "validate",
+        "review",
+        "approve",
         "commit",
-        "merge"
+        "merge",
+        "pr",
+        "plan",
+        "queue",
+        "read"
       ],
       "transitions": {},
       "validators": [
@@ -57,7 +64,7 @@
   "roles": [],
   "validators": [
     {
-      "check_tool_access": false,
+      "check_tool_access": true,
       "constraints": [],
       "criteria": [
         "Check for security vulnerabilities",
@@ -90,7 +97,7 @@
       "judges_spec": false,
       "max_tool_turns": null,
       "model": null,
-      "scope": "task",
+      "scope": "wave",
       "severity_cap": null,
       "tooling": {},
       "tools": [

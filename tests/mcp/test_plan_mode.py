@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from snodo.compiler.verifier import verify_protocol
-from snodo.mcp.server import MCPError, ProtocolMCPServer
+from snodo.mcp.server import MODE_TOOL_MAP, MCPError, ProtocolMCPServer
 from snodo.protocols import template_protocol
 
 
@@ -103,3 +103,47 @@ def test_canary_capability_refusal_denies_unauthorized_tool(project_dir):
     # Calling tool directly must fail closed with Unknown tool error
     with pytest.raises(MCPError, match="Unknown tool: decompose"):
         server.call_tool("decompose", {"intent": "test", "plan_name": "p"})
+
+
+def test_solo_producer_exposes_the_single_operator_loop(project_dir):
+    """The solo template grants every capability used by the MCP loop."""
+    proto = template_protocol("solo")
+    producer = proto.get_mode("producer")
+    assert producer is not None
+    assert all(tool in MODE_TOOL_MAP for tool in producer.tools)
+
+    names = {tool["name"] for tool in ProtocolMCPServer(
+        proto, project_dir, mode_id="producer"
+    ).get_tools()}
+    assert {
+        "recon",
+        "decompose",
+        "generate_spec",
+        "propose_plan",
+        "get_plan",
+        "run_plan",
+        "validate_plan",
+        "queue_list",
+        "queue_create",
+        "queue_move",
+        "queue_remove",
+        "queue_validate",
+        "queue_run",
+        "write_file",
+        "run_tests",
+        "stage_files",
+        "commit",
+        "merge_branch",
+    } <= names
+    assert "delete_file" not in names
+
+
+def test_solo_protocol_options_keep_safe_loop_defaults():
+    proto = template_protocol("solo")
+    producer = proto.get_mode("producer")
+
+    assert producer is not None
+    assert producer.concurrency == 1
+    assert proto.queue.non_blocking is False
+    assert proto.queue.parallel_runs == 1
+    assert proto.write_allowed_prefixes == [".snodo/"]

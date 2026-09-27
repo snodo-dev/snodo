@@ -7,12 +7,20 @@ modes:
     name: "Producer Mode"
     tools:
       - "edit"
+      - "write"
+      - "decide"
       - "dispatch"
-      - "resolve"
       - "test"
       - "validate"
+      - "review"
+      - "approve"
       - "commit"
       - "merge"
+      - "pr"
+      - "plan"
+      - "queue"
+      - "read"
+    concurrency: 1
     validators:
       - "security"
       - "architecture"
@@ -25,6 +33,7 @@ validators:
   - validator_id: "security"
     validator_type: "security"
     evaluation_phase: "pre_execute"
+    check_tool_access: true
     tools:
       - "read_file"
       - "list_files"
@@ -36,6 +45,9 @@ validators:
   - validator_id: "architecture"
     validator_type: "architecture"
     evaluation_phase: "pre_execute"
+    # A design-coherence judgement applies to the planned wave as a whole;
+    # wave scope is valid for pre-execute validators only.
+    scope: "wave"
     tools:
       - "read_file"
       - "list_files"
@@ -106,5 +118,35 @@ execution:
   # the only human in the loop. Merge its branch automatically so the work lands
   # on the base branch instead of stranding on a task branch.
   auto_merge: true
+
+  # Set only when a repository needs a deterministic setup step after worktree
+  # creation (protocol-authored shell commands are executed as written):
+  # prepare_command: "uv sync --frozen"
+
+# Queue defaults preserve strict FIFO and one plan at a time. Non-blocking and
+# parallel runs are opt-in; use them only for independent plans (ADR 053).
+queue:
+  non_blocking: false
+  parallel_runs: 1
+
+# MCP writes are confined to .snodo/ by default; keep this explicit for the
+# solo template so plans, specs, protocols, and queues can be authored in MCP.
+write_allowed_prefixes:
+  - .snodo/
+
+# Optional module scopes for a monorepo; a module owns paths and may override
+# test tooling and its decision-record location (ADR 041).
+# modules:
+#   - module_id: "api"
+#     paths: ["services/api/**"]
+#     decisions_path: "services/api/docs/adr"
+#     tooling:
+#       test_command: "uv run pytest services/api -q"
+
+# Keep an empty list until this repository has paths task branches must not
+# change; for example, decision records can be protected from task diffs.
+protected_paths: []
+# protected_paths:
+#   - "docs/decisions/**"
 
 global_constraints: []
