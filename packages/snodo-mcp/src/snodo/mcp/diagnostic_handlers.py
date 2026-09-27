@@ -81,6 +81,7 @@ class DiagnosticToolHandler:
         from snodo.project import get_project_id, scope_for_project_id
         from snodo.readiness.checker import assess_readiness
         from snodo.protocols import load_protocol
+        from snodo.mcp.tools import unknown_capability_warnings
 
         project_root = resolve_project_root()
         if project_root is None:
@@ -107,6 +108,7 @@ class DiagnosticToolHandler:
             "repository_findings_count": len(assessment.repository_findings),
             "workstation_findings_count": len(assessment.workstation_findings),
             "findings": [finding.to_dict() for finding in assessment.all_findings],
+            "warnings": unknown_capability_warnings(protocol),
         }
 
     def tool_handlers(self) -> dict:

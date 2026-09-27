@@ -775,6 +775,22 @@ MODE_TOOL_MAP = {
     "read": ["read_file", "list_files"],
 }
 
+
+def unknown_capability_warnings(protocol) -> list[str]:
+    """Describe mode grants that have no MCP capability mapping.
+
+    Kept in snodo-mcp because the protocol verifier in snodo-foundation must
+    not depend on the higher-level MCP package.
+    """
+    known = ", ".join(sorted(MODE_TOOL_MAP))
+    return [
+        f"Mode '{mode.mode_id}' grants unknown capability '{grant}'. "
+        f"Known capabilities: {known}."
+        for mode in protocol.modes
+        for grant in mode.tools
+        if grant not in MODE_TOOL_MAP
+    ]
+
 # These diagnostics are the read-only project-understanding surface. Like the
 # guide, they are available regardless of the active mode's write capability.
 PROJECT_DIAGNOSTIC_TOOLS = ["survey", "intake", "ready"]

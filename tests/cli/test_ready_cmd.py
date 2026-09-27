@@ -134,6 +134,36 @@ def test_ready_cmd_json_output(git_project: Path, capsys):
     assert any(f["id"].startswith("architecture_decisions") for f in data["findings"])
 
 
+def test_ready_reports_unknown_and_legacy_capability_grants(git_project: Path, capsys):
+    proto_file = git_project / ".snodo" / "protocol.yml"
+    protocol_data = yaml.safe_load(proto_file.read_text())
+    protocol_data["modes"][0]["tools"] = ["plan", "resolve", "plna"]
+    proto_file.write_text(yaml.safe_dump(protocol_data))
+
+    exit_code = ready_command(SimpleNamespace(mode=None, protocol=".snodo/protocol.yml", json=True))
+    assert exit_code == 0
+    result = json.loads(capsys.readouterr().out)
+    assert len(result["warnings"]) == 2
+    assert any("Mode 'plan'" in warning and "'resolve'" in warning for warning in result["warnings"])
+    assert any("'plna'" in warning and "Known capabilities:" in warning for warning in result["warnings"])
+
+
+def test_mcp_ready_reports_same_capability_warning(git_project: Path, monkeypatch):
+    from snodo.mcp.diagnostic_handlers import DiagnosticToolHandler
+
+    proto_file = git_project / ".snodo" / "protocol.yml"
+    protocol_data = yaml.safe_load(proto_file.read_text())
+    protocol_data["modes"][0]["tools"] = ["resolve"]
+    proto_file.write_text(yaml.safe_dump(protocol_data))
+    monkeypatch.setattr("snodo.infrastructure.paths.resolve_project_root", lambda: str(git_project))
+
+    result = DiagnosticToolHandler(str(git_project)).ready({})
+    assert result["ok"] is True
+    assert len(result["warnings"]) == 1
+    assert "Mode 'plan'" in result["warnings"][0]
+    assert "unknown capability 'resolve'" in result["warnings"][0]
+
+
 def test_ready_cmd_audit_event_emission(git_project: Path, capsys, monkeypatch):
     """Running 'snodo ready' logs a 'readiness_checked' audit event with repository findings only and workstation count."""
     # Ensure there is a workstation finding by setting a model requiring an unset env var
