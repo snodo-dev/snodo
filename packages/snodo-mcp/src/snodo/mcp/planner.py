@@ -75,7 +75,7 @@ def resolve_audit_log(project_root: Any, audit_log: Any) -> Any:
     try:
         from snodo.infrastructure.audit import get_audit_log
         path = Path(project_root) / ".snodo" / "audit.log"
-        return get_audit_log(str(path) if path.exists() else None)
+        return get_audit_log(str(path))
     except AuditError as exc:
         _logger.debug("Could not resolve audit log for %s: %s", project_root, exc)
         raise PlannerError(str(exc)) from exc
