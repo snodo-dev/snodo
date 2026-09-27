@@ -900,9 +900,16 @@ def _plan_add_wave(planner, args) -> int:
     # The plan must remain verifiable — never silently produce a broken plan.
     from snodo.compiler.verifier import verify_plan_dir
     result = verify_plan_dir(plan_dir, workspace_root=planner.project_root)
-    if not result.passed:
+    # Empty scaffolds are intentionally incomplete while being authored. The
+    # validation gate refuses them, but adding a wave must remain usable before
+    # the plan has any tasks.
+    errors = [
+        error for error in result.errors
+        if error != "Plan has no tasks in any wave"
+    ]
+    if errors:
         print("Error: plan is now invalid:", file=sys.stderr)
-        for err in result.errors:
+        for err in errors:
             print(f"  - {err}", file=sys.stderr)
         return 1
     return 0

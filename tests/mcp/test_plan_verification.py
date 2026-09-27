@@ -194,6 +194,41 @@ def test_verify_plan_missing_intent_or_waves():
     assert "No waves defined" in res.errors
 
 
+def test_verify_plan_refuses_plan_with_no_tasks_in_any_wave():
+    plan = Plan.from_dict({
+        "name": "empty_plan",
+        "intent": "Do some work",
+        "waves": [
+            {"id": 1, "tasks": []},
+            {"id": 2, "depends_on": [1], "tasks": []},
+        ],
+    })
+
+    result = verify_plan(plan)
+
+    assert result.passed is False
+    assert "Plan has no tasks in any wave" in result.errors
+    assert "Wave 1 has no tasks" in result.warnings
+    assert "Wave 2 has no tasks" in result.warnings
+
+
+def test_verify_plan_allows_empty_wave_when_another_wave_has_tasks():
+    plan = Plan.from_dict({
+        "name": "partially_empty_plan",
+        "intent": "Do some work",
+        "waves": [
+            {"id": 1, "tasks": ["1.1_work"]},
+            {"id": 2, "depends_on": [1], "tasks": []},
+        ],
+    })
+
+    result = verify_plan(plan)
+
+    assert result.passed
+    assert result.errors == []
+    assert "Wave 2 has no tasks" in result.warnings
+
+
 def _write_path_validation_plan(tmp_path, cited_path: str, spec_prefix: str = "Update"):
     """Create a plan fixture with an explicit uv workspace member."""
     (tmp_path / "pyproject.toml").write_text(
@@ -336,6 +371,22 @@ def test_planner_validate_plan_model_verification(tmp_path):
     assert val["valid"] is False
     assert "Missing intent" in val["errors"]
     assert any("Wave-number gap detected" in err for err in val["errors"])
+
+
+def test_planner_validate_plan_refuses_plan_with_no_tasks(tmp_path):
+    plan_dir = tmp_path / ".snodo" / "plans" / "empty_plan"
+    plan_dir.mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text(yaml.safe_dump({
+        "name": "empty_plan",
+        "intent": "Do some work",
+        "waves": [{"id": 1, "tasks": []}],
+    }))
+
+    result = PlannerMCP(str(tmp_path)).validate_plan("empty_plan")
+
+    assert result["valid"] is False
+    assert "Plan has no tasks in any wave" in result["errors"]
+    assert "Wave 1 has no tasks" in result["warnings"]
 
 
 def test_planner_get_plan_raises_wellformedness_error(tmp_path):

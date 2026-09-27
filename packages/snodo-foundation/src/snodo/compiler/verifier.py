@@ -536,6 +536,9 @@ def verify_plan(
             if dep not in wave_id_set:
                 errors.append(f"Wave {w.id} depends on unknown wave {dep}")
 
+    if not wave_task_ids:
+        errors.append("Plan has no tasks in any wave")
+
     # Check for wave dependency cycles
     for w_id in wave_map:
         visited_waves: Set[int] = set()

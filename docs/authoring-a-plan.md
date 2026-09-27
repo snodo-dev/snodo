@@ -200,6 +200,7 @@ Errors — the plan will not run:
 |---|---|
 | `Missing intent` | `intent` absent or empty |
 | `No waves defined` | `waves` empty |
+| `Plan has no tasks in any wave` | every wave has an empty `tasks` list |
 | `Wave-number gap detected: expected contiguous 1..N` | wave ids are not `1..N` |
 | `Wave id '<v>' is not an integer` | a non-integer wave id |
 | `Wave N depends on unknown wave M` | `depends_on` names a wave that does not exist |
@@ -213,7 +214,7 @@ Warnings — the plan runs, but say so deliberately:
 
 | message | cause |
 |---|---|
-| `Wave N has no tasks` | an empty wave |
+| `Wave N has no tasks` | an empty wave in a plan that has tasks in another wave |
 
 `Missing spec` is the common authoring mistake: a task listed in `plan.yml`
 whose file was never written, or was written under a name that does not match

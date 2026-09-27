@@ -184,7 +184,8 @@ class TestProposePlan:
         plan_dir = Path(project_dir) / ".snodo" / "plans" / "ondisk"
         assert (plan_dir / "plan.yml").is_file()
         assert (plan_dir / "status.json").is_file()
-        assert result["validation"]["valid"] is True
+        assert result["validation"]["valid"] is False
+        assert "Plan has no tasks in any wave" in result["validation"]["errors"]
 
 
 # === Validate without spend ===
@@ -313,6 +314,7 @@ class TestRunPlanGate:
 
         intent = "y" * (_PLAN_INTENT_LIMIT + 50)
         server.call_tool("propose_plan", {"plan_name": "long", "intent": intent, "waves": 2})
+        _add_task(server, "long", "1.1_x", "INTENT: X.\nCONSTRAINTS: None.")
         plan_file = Path(project_dir) / ".snodo" / "plans" / "long" / "plan.yml"
         data = yaml.safe_load(plan_file.read_text())
         data["intent"] = intent
