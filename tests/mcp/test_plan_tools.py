@@ -184,7 +184,8 @@ class TestProposePlan:
         plan_dir = Path(project_dir) / ".snodo" / "plans" / "ondisk"
         assert (plan_dir / "plan.yml").is_file()
         assert (plan_dir / "status.json").is_file()
-        assert result["validation"]["valid"] is True
+        assert result["validation"]["valid"] is False
+        assert "Plan has no tasks in any wave" in result["validation"]["errors"]
 
 
 # === Validate without spend ===
