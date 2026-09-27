@@ -132,6 +132,26 @@ class TestCloudStatus:
         assert "sess_abc" in out
         assert "last_seq=42" in out
 
+    def test_shows_sessionless_project_cursor(self, capsys):
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+
+        with patch("snodo.config.ConfigManager") as MockCM:
+            MockCM.return_value.load.return_value = {
+                "cloud": {"api_key": "sndo_live_xxx", "sync_enabled": True},
+            }
+            with patch("snodo.infrastructure.cloud_sync.CloudSyncState") as MockState:
+                MockState.return_value.get_summary.return_value = {
+                    "project:github.com/example/project": {
+                        "last_synced_sequence": 12,
+                    },
+                }
+                MockState.return_value.is_refused.return_value = False
+                assert cloud_status_command() == 0
+
+        output = capsys.readouterr().out
+        assert "project (sessionless) [github.com/example/project]" in output
+        assert "last_seq=12" in output
+
 
 # ------------------------------------------------------------------#
 # CloudSyncState tests
@@ -499,6 +519,50 @@ class TestCloudSyncDispatcher:
 
         assert result["synced"] == 5  # events 6-10
         assert result["failed"] is False
+
+    def test_sessionless_and_session_sync_share_project_high_water_cursor(self, tmp_path, monkeypatch):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+        events = self._make_events(3)
+        for event in events:
+            event.project_id = "github.com/example/project"
+        audit = MagicMock(events=events)
+        dispatcher = CloudSyncDispatcher()
+        sent = []
+
+        def accepted(_sid, _root, batch, *_args, **_kwargs):
+            sent.extend(event.sequence for event in batch)
+            return "delivered", "HTTP 200", 200
+
+        with patch.object(dispatcher, "_post_batch", side_effect=accepted):
+            first = dispatcher.sync("", "/project", audit, "key", "https://api.test")
+            second = dispatcher.sync("sess_existing", "/project", audit, "key", "https://api.test")
+
+        assert first["synced"] == 3
+        assert second["synced"] == 0
+        assert sent == [1, 2, 3]
+        state = CloudSyncState()
+        project_cursor = state.get_project_cursor("github.com/example/project")
+        assert project_cursor == 3
+        assert state.get_cursor("sess_existing") == 0
+
+    def test_session_sync_progress_prevents_later_sessionless_duplicate(self, tmp_path, monkeypatch):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
+
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+        events = self._make_events(2)
+        events[0].project_id = "github.com/example/project"
+        events[1].project_id = "github.com/example/project"
+        audit = MagicMock(events=events)
+        dispatcher = CloudSyncDispatcher()
+        with patch.object(dispatcher, "_post_batch", return_value=("delivered", "HTTP 200", 200)) as post:
+            sent = dispatcher.sync("sess_existing", "/project", audit, "key", "https://api.test")
+            sessionless = dispatcher.sync("", "/project", audit, "key", "https://api.test")
+
+        assert sent["synced"] == 2
+        assert sessionless["synced"] == 0
+        post.assert_called_once()
 
     def test_429_retries_with_retry_after(self):
         from unittest.mock import patch
@@ -1371,6 +1435,32 @@ class TestCloudStatusPending:
 # ------------------------------------------------------------------#
 
 class TestCloudSyncCommand:
+    def test_sync_all_with_zero_sessions_uses_project_cursor(self):
+        from snodo.cli.commands.cloud_cmd import cloud_sync_command
+
+        audit = MagicMock(events=[MagicMock(project_id="github.com/example/project")])
+        with (
+            patch("snodo.infrastructure.audit.AuditLog", return_value=audit),
+            patch("snodo.infrastructure.cloud_sync.CloudSyncDispatcher") as MockDisp,
+            patch("snodo.infrastructure.session.SessionManager") as MockSM,
+            patch("snodo.infrastructure.paths.require_project_root", return_value="/fake/proj"),
+            patch("snodo.config.ConfigManager") as MockCM,
+        ):
+            MockCM.return_value.load.return_value = {
+                "cloud": {"api_key": "sndo_live_xxx", "api_url": "https://api.example.com"},
+            }
+            MockSM.return_value.list_sessions.return_value = []
+            MockDisp.return_value.sync.return_value = {
+                "synced": 2, "failed": False, "pending": 0,
+            }
+
+            assert cloud_sync_command(sync_all=True) == 0
+
+        call = MockDisp.return_value.sync.call_args
+        assert call.args[0] == "project:github.com/example/project"
+        assert call.args[1] == "/fake/proj"
+        assert call.args[2] is audit
+
     def test_refusal_after_partial_delivery_is_not_reported_as_success(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_sync_command
 

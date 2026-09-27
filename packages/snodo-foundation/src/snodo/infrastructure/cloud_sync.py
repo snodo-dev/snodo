@@ -448,6 +448,15 @@ def _partition_events(
     return batches
 
 
+def _project_id_from_events(events: list) -> str:
+    """Return the first valid project identity represented by an audit chain."""
+    return next(
+        (event.project_id for event in events
+         if isinstance(getattr(event, "project_id", None), str) and event.project_id),
+        "",
+    )
+
+
 class CloudSyncState:
     """Tracks per-session sync progress in ~/.snodo/cloud_sync.json.
 
@@ -476,6 +485,15 @@ class CloudSyncState:
             return session.get("last_synced_sequence", 0)
         return 0
 
+    @staticmethod
+    def project_cursor_id(project_id: str) -> str:
+        """Stable cursor key for audit events synced without a session."""
+        return f"project:{project_id}"
+
+    def get_project_cursor(self, project_id: str) -> int:
+        """Return the shared high-water cursor for a project's audit chain."""
+        return self.get_cursor(self.project_cursor_id(project_id))
+
     def advance_cursor(self, session_id: str, sequence: int) -> None:
         """Record that events up to *sequence* have been synced.
 
@@ -497,6 +515,11 @@ class CloudSyncState:
         sess["pending_count"] = 0
         sess.pop("last_error", None)
         self._save(data)
+
+    def advance_project_cursor(self, project_id: str, sequence: int) -> None:
+        """Advance the project-wide cursor after confirmed chain delivery."""
+        if project_id:
+            self.advance_cursor(self.project_cursor_id(project_id), sequence)
 
     def record_attempt(
         self, session_id: str, pending: int, error: Optional[str] = None,
@@ -645,8 +668,16 @@ class CloudSyncDispatcher:
             return {"synced": 0, "failed": False, "pending": 0}
 
         state = CloudSyncState()
-
-        cursor = state.get_cursor(session_id)
+        project_id = _project_id_from_events(events)
+        # Empty-session syncs use a stable project key in the existing cursor
+        # file and on the existing ingest envelope. Session cursors and this
+        # shared project cursor represent the same hash-chained project log.
+        if not session_id:
+            session_id = state.project_cursor_id(project_id or str(Path(project_root).resolve()))
+        cursor = max(
+            state.get_cursor(session_id),
+            state.get_project_cursor(project_id) if project_id else 0,
+        )
 
         # Collect unsynced events
         unsynced: list = []
@@ -655,6 +686,10 @@ class CloudSyncDispatcher:
                 unsynced.append(ev)
 
         if not unsynced:
+            if project_id:
+                # Migrate existing per-session progress into the shared
+                # project cursor even when this invocation has nothing new.
+                state.advance_project_cursor(project_id, cursor)
             if state.is_refused(session_id):
                 info = state.get_summary().get(session_id, {})
                 reason = info.get("refused_reason", "refused by server")
@@ -714,6 +749,8 @@ class CloudSyncDispatcher:
             if outcome == "delivered":
                 state.clear_refusal(session_id)
                 state.advance_cursor(session_id, max_seq)
+                if project_id and not session_id.startswith("project:"):
+                    state.advance_project_cursor(project_id, max_seq)
                 _logger.debug("Cursor advanced to sequence %d", max_seq)
                 synced += len(batch)
             elif outcome == "too_large" and len(batch) > 1:
@@ -997,7 +1034,16 @@ def _pending_count(audit_log: Any, session_id: str) -> int:
     events = getattr(audit_log, "events", [])
     if not events:
         return 0
-    cursor = CloudSyncState().get_cursor(session_id)
+    state = CloudSyncState()
+    cursor_id = session_id
+    if not cursor_id:
+        project_id = _project_id_from_events(events) or str(Path(".").resolve())
+        cursor_id = state.project_cursor_id(project_id)
+    cursor = max(
+        state.get_cursor(cursor_id),
+        state.get_project_cursor(_project_id_from_events(events))
+        if _project_id_from_events(events) else 0,
+    )
     return sum(1 for ev in events if ev.sequence > cursor)
 
 
@@ -1085,13 +1131,18 @@ def sync_if_enabled(
     api_url = get_cloud_ingest_url(config)
     lease_url = get_cloud_lease_url(config)
 
+    sync_id = session_id or CloudSyncState.project_cursor_id(
+        _project_id_from_events(getattr(audit_log, "events", []))
+        or str(Path(project_root).resolve())
+    )
+
     dispatcher = CloudSyncDispatcher()
     result: dict = {"synced": 0, "failed": False, "pending": 0}
 
     def _run_sync():
         try:
             result.update(dispatcher.sync(
-                session_id, project_root, audit_log, api_key, api_url,
+                sync_id, project_root, audit_log, api_key, api_url,
                 lease_url=lease_url,
             ))
         except Exception as e:
@@ -1100,4 +1151,4 @@ def sync_if_enabled(
 
     thread = Thread(target=_run_sync, daemon=True)
     thread.start()
-    _pending_syncs.append((thread, result, session_id, audit_log))
+    _pending_syncs.append((thread, result, sync_id, audit_log))

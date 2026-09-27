@@ -165,7 +165,7 @@ def cloud_status_command() -> int:
     summary = state.get_summary()
     if summary:
         print()
-        print("Sync status per session:")
+        print("Sync status per session and project:")
         for sid, info in sorted(summary.items()):
             if not sid:
                 print(
@@ -180,22 +180,23 @@ def cloud_status_command() -> int:
             last_attempt = info.get("last_attempt_at", 0)
             last_attempt_ts = _format_ts(last_attempt) if last_attempt else "never"
             last_error = info.get("last_error")
+            display_id = f"project (sessionless) [{sid.removeprefix('project:')}]" if sid.startswith("project:") else sid
             if state.is_refused(sid):
                 reason = info.get("refused_reason", "refused by server")
                 rng = info.get("refused_range")
                 range_str = f"seq {rng[0]}-{rng[1]}" if rng else "unknown range"
-                print(f"  {sid}:  BLOCKED (refused: {reason}, {range_str})  last_seq={seq}  synced_at={ts}")
-                print(f"    pending={pending}  clear with `snodo cloud sync --session {sid} --force`;")
+                print(f"  {display_id}:  BLOCKED (refused: {reason}, {range_str})  last_seq={seq}  synced_at={ts}")
+                print(f"    pending={pending}  clear with `snodo cloud sync --all --force`;")
                 print("    fix the refused request or retry explicitly to resume.")
             elif info.get("refused"):
                 reason = info.get("refused_reason", "previous response")
                 status = info.get("refused_status_code", "unknown status")
                 print(
-                    f"  {sid}:  RECHECK (old non-terminal refusal HTTP {status}: {reason}); "
+                    f"  {display_id}:  RECHECK (old non-terminal refusal HTTP {status}: {reason}); "
                     f"sync will retry; pending={pending}"
                 )
             else:
-                print(f"  {sid}:  last_seq={seq}  synced_at={ts}")
+                print(f"  {display_id}:  last_seq={seq}  synced_at={ts}")
                 print(f"    pending={pending}  last_attempt={last_attempt_ts}")
             if last_error:
                 print(f"    last_error: {last_error}")
@@ -229,7 +230,7 @@ def _format_ts(ts: float) -> str:
 def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool = False) -> int:
     """Sync audit events to snodo cloud for one or more sessions.
 
-    --all: sync all sessions for the current project
+    --all: sync all sessions and sessionless audit events for the current project
     --session <id>: sync a specific session
     --force / --retry: force re-attempt sync for refused sessions
     (no flags): sync the current active session
@@ -297,19 +298,11 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
         # Active session for current mode
         state = read_state(project_root)
         mode = state.current_mode
-        if not mode:
-            print("Error: No active mode set. Run 'snodo mode change <mode>' first.",
-                  file=sys.stderr)
-            return 1
-        session = session_mgr.get_active_session(mode, project_root)
-        if session is None:
-            print(f"Error: No active session for mode={mode}", file=sys.stderr)
-            return 1
-        sessions_to_sync = [session]
-
-    if not sessions_to_sync:
-        print("No sessions to sync.")
-        return 0
+        session = None
+        if mode:
+            session = session_mgr.get_active_session(mode, project_root)
+        if session is not None:
+            sessions_to_sync = [session]
 
     dispatcher = CloudSyncDispatcher()
     total_synced = 0
@@ -360,9 +353,44 @@ def cloud_sync_command(sync_all: bool = False, session_id: str = "", force: bool
         else:
             print(f"  {sid}  — no new events")
 
+    # With no selected session, sync the project cursor. It carries events
+    # produced before any session existed; successful session sends also
+    # advance it to avoid duplicate delivery across the two cursor forms.
+    if not sessions_to_sync and not session_id:
+        from snodo.infrastructure.cloud_sync import CloudSyncState
+        from snodo.infrastructure.audit import AuditLog, AuditError
+
+        project_audit_path = str(Path(project_root) / ".snodo" / "audit.log")
+        try:
+            project_audit = AuditLog(project_audit_path)
+        except AuditError as err:
+            print(f"  project (sessionless)  ✗ corrupt audit log: {err}")
+            total_failed += 1
+        else:
+            sessionless_id = CloudSyncState.project_cursor_id(
+                next((event.project_id for event in project_audit.events if event.project_id), str(Path(project_root).resolve()))
+            )
+            result = dispatcher.sync(
+                sessionless_id, project_root, project_audit, api_key, api_url,
+                force=force, lease_url=lease_url,
+            )
+            label = "project (sessionless)"
+            if result.get("refused"):
+                print(f"  {label}  BLOCKED (refused: {result.get('reason', 'refused by server')}); {result.get('pending', 0)} event(s) pending.")
+                total_failed += 1
+            elif result.get("synced", 0):
+                print(f"  {label}  ✓ {result['synced']} events synced")
+                total_synced += result["synced"]
+            elif result.get("failed"):
+                print(f"  {label}  ✗ sync failed: {result.get('reason', 'unknown error')}; {result.get('pending', 0)} event(s) pending.")
+                total_failed += 1
+            else:
+                print(f"  {label}  — no new events")
+
     if total_synced > 0 or total_failed > 0:
         print()
-        print(f"Synced {total_synced} events across {len(sessions_to_sync)} session(s).")
+        scope = f"{len(sessions_to_sync)} session(s)" if sessions_to_sync else "the project"
+        print(f"Synced {total_synced} events across {scope}.")
         if total_failed:
             print(f"  {total_failed} session(s) had failures; partial progress: {total_partial}.")
 
