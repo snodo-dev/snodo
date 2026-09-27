@@ -55,6 +55,7 @@ def test_help_names_values_and_any_semantics():
     assert "service-token" in result.stdout
     assert "repeat" in result.stdout
     assert "any accepted" in result.stdout
+    assert "--verbose" in result.stdout
 
 
 def test_mcp_server_arms_and_disarms_liveness_when_transport_exits(monkeypatch):
