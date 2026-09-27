@@ -15,6 +15,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   commit and merge. It also documents current queue, module, path-protection,
   preparation and concurrency options while retaining safe queue defaults.
   (Fixes #512)
+- Team and 2+n templates now grant plan/queue control and `.snodo/`-confined
+  writing to their plan-authoring mode, retain reviewer-only approval/merge,
+  and show current queue, module, path-protection and execution options.
+  (Fixes #508)
 - `snodo serve --verbose` shows timestamped, redacted and bounded MCP request
   and response lines across transports; managed tunnels stream the child's
   diagnostics live, and JWT refusals name the failed check. (Fixes #505)

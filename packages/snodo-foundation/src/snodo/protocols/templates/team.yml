@@ -8,9 +8,14 @@ modes:
     tools:
       - "edit"
       - "dispatch"
-      - "resolve"
       - "test"
       - "validate"
+    # Optional mode-specific controls for a project with differing workloads:
+    # concurrency: 2
+    # max_recovery_depth: 3
+    # auto_merge: false
+    # coder: "litellm"
+    # coder_config: {}
     validators:
       - "security"
       - "architecture"
@@ -35,9 +40,12 @@ modes:
 
   - mode_id: "planner"
     name: "Planner Mode"
+    # The planner decides what work runs, so it owns plan (including queue
+    # control) and write; write_file is confined to .snodo/ below. The reviewer
+    # alone keeps approve/merge, preserving the WF1 separation of duties.
     tools:
-      - "assess"
       - "plan"
+      - "write"
     validators:
       - "intent_clarity"
       - "intent_scope"
@@ -54,6 +62,8 @@ validators:
     tools:
       - "read_file"
       - "list_files"
+      # Optional read-only tool for large directory trees:
+      # - "summarize_directory"
     criteria:
       - "Check for security vulnerabilities"
       - "Validate input sanitization"
@@ -97,6 +107,14 @@ validators:
       - "PROHIBITED in a spec (this is the coder's job): literal function bodies, transcribed implementation logic, exact statement-by-statement code the coder should author, regex literals and exact API-call sequences presented as the implementation, and any spec that leaves the coder no implementation decisions to make."
       - "Guideline for judgment: if more than roughly 40% of the spec is literal implementation code rather than intent, contracts, and constraints, the spec is code-prescriptive and must be rejected as a blocker. The orchestrator must re-issue the task as intent plus constraints, not as transcribed code."
       - "A correctly-scoped spec leaves the coder room to author the implementation while still being unambiguous about what 'done' means. Reject specs that read as code wearing a spec's clothes."
+
+  # Validator options for multi-person projects can be set per judge:
+  #   scope: "wave"                 # also "task" (default)
+  #   check_tool_access: true       # refuse criteria outside its read-only tools
+  #   model: "provider/model-id"    # otherwise use the configured validator model
+  #   max_tool_turns: 20            # bounded read-tool loop override
+  #   severity_cap: "warn"          # keep an experimental judge advisory
+  #   judges_spec: true             # judge plan/spec wording before execution
 
   - validator_id: "intent_clarity"
     validator_type: "planning"
@@ -157,10 +175,32 @@ initial_mode: "producer"
 # while recovery stall detection bounds non-converging loops.
 execution:
   max_recovery_depth: 3
+  # Explicit environment setup when the project needs it (protocol-authored shell):
+  # prepare_command: "uv sync"
   # Producer and reviewer are separate roles here: a resolved closure means the
   # producer's work passed mechanical verification, not that a human reviewed it.
   # Auto-merging would push unreviewed work onto the base branch and defeat the
   # point of the separation, so merging stays a deliberate operator action.
   auto_merge: false
+
+# Queue progression stays strict FIFO by default. Enable non-blocking or parallel
+# runs only when later plans are independent, as described in docs/queues.md.
+queue:
+  non_blocking: false
+  parallel_runs: 1
+
+# MCP plan writes are project-relative and remain inside .snodo/.
+write_allowed_prefixes:
+  - ".snodo/"
+
+# Add paths whose task diffs must never change (for example decision records):
+protected_paths: []
+# Example module scopes for monorepos (ADR 041); replace with real project paths:
+# modules:
+#   - module_id: "api"
+#     paths: ["services/api/**"]
+#     decisions_path: "services/api/docs/adr"
+#     tooling:
+#       test_command: "uv run pytest services/api -q"
 
 global_constraints: []

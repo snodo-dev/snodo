@@ -147,3 +147,41 @@ def test_solo_protocol_options_keep_safe_loop_defaults():
     assert proto.queue.non_blocking is False
     assert proto.queue.parallel_runs == 1
     assert proto.write_allowed_prefixes == [".snodo/"]
+
+
+@pytest.mark.parametrize(
+    ("template", "author_mode"),
+    [("team", "planner"), ("2+n", "producer")],
+)
+def test_team_templates_grant_plan_queue_and_write_to_author_mode(
+    template, author_mode, project_dir,
+):
+    """Shipped team templates expose the current loop only to its author mode."""
+    from snodo.mcp.server import MODE_TOOL_MAP
+
+    protocol = template_protocol(template)
+    result = verify_protocol(protocol)
+    assert result.passed, f"{template} WF violations: {result.errors}"
+    assert all(tool in MODE_TOOL_MAP for mode in protocol.modes for tool in mode.tools)
+    assert protocol.queue.non_blocking is False
+    assert protocol.queue.parallel_runs == 1
+    assert protocol.write_allowed_prefixes == [".snodo/"]
+    assert protocol.protected_paths == []
+
+    author = ProtocolMCPServer(protocol, project_dir, mode_id=author_mode)
+    exposed = {tool["name"] for tool in author.get_tools()}
+    assert {"decompose", "generate_spec", "validate_plan", "propose_plan"} <= exposed
+    assert {"queue_list", "queue_create", "queue_move", "queue_validate", "queue_run"} <= exposed
+    assert "write_file" in exposed
+
+    reviewer = ProtocolMCPServer(protocol, project_dir, mode_id="reviewer")
+    reviewer_tools = {tool["name"] for tool in reviewer.get_tools()}
+    assert not ({"decompose", "generate_spec", "validate_plan", "propose_plan", "queue_list", "queue_run", "write_file"} & reviewer_tools)
+    assert {"stage_files", "commit", "merge_branch"} <= reviewer_tools
+
+    # WF1's exclusive approval and merge capabilities remain reviewer-only.
+    holders = {
+        capability: [mode.mode_id for mode in protocol.modes if capability in mode.tools]
+        for capability in ("approve", "merge")
+    }
+    assert holders == {"approve": ["reviewer"], "merge": ["reviewer"]}
