@@ -121,10 +121,11 @@ class TestJobToolsTravelWithRunPlan:
         names = _names(server)
         assert "run_plan" in names
         assert set(JOB_OBSERVATION_TOOLS) <= names
-        # Read-only travel only: nothing that mutates arrived uninvited.
+        # Planning mode has plan-file writing, but not task dispatch or commits.
         assert "dispatch_task" not in names
         assert "retry_job" not in names
-        assert "write_file" not in names
+        assert "write_file" in names
+        assert "queue_run" in names
 
     def test_mode_granting_no_planning_surface_is_unaffected(self, project_dir):
         """A mode with no 'plan' and no 'dispatch' keeps exactly its grant:
