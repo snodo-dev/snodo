@@ -31,6 +31,7 @@ from snodo.mcp.transport import (
     build_fastmcp_server,
 )
 from snodo.mcp.guide import guide_text
+from snodo.mcp.tools import unknown_capability_warnings
 
 from tests.mcp._validate_helpers import validation_passing
 
@@ -104,6 +105,29 @@ def reviewer_server(protocol, project_dir):
 # === Tool Resolution ===
 
 class TestToolResolution:
+    def test_known_grant_has_no_unknown_capability_warning(self, protocol):
+        assert unknown_capability_warnings(protocol) == []
+
+    def test_unknown_and_legacy_grants_warn_without_refusing_load(self, project_dir, caplog):
+        data = dict(MINIMAL_PROTOCOL_DATA)
+        data["modes"] = [
+            {"mode_id": "planner", "name": "Planner", "tools": ["plan", "resolve", "plna"]}
+        ]
+        protocol = Protocol(**data)
+
+        warnings = unknown_capability_warnings(protocol)
+        assert len(warnings) == 2
+        for grant in ("resolve", "plna"):
+            message = next(warning for warning in warnings if f"'{grant}'" in warning)
+            assert "Mode 'planner'" in message
+            assert "Known capabilities:" in message
+            assert "plan" in message
+
+        # Unknown grants are advisory; server initialization still succeeds.
+        ProtocolMCPServer(protocol, project_dir)
+        assert "unknown capability 'resolve'" in caplog.text
+        assert "unknown capability 'plna'" in caplog.text
+
     def test_all_modes_resolves_all_tools(self, server):
         tools = server.get_tools()
         names = {t["name"] for t in tools}

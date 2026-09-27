@@ -30,7 +30,7 @@ from snodo.mcp.pr import PrMCP
 from snodo.mcp.planner import PlannerMCP
 from snodo.mcp.tools import (
     TOOL_REGISTRY, MODE_TOOL_MAP, PLANNING_TOOLS, PROJECT_DIAGNOSTIC_TOOLS,
-    WORK_STARTING_TOOLS,
+    WORK_STARTING_TOOLS, unknown_capability_warnings,
 )
 from snodo.mcp.job_handlers import JobToolHandler
 from snodo.mcp.model_handlers import ModelToolHandler
@@ -83,6 +83,8 @@ class ProtocolMCPServer:
             audit_log: Optional AuditLog for INV4 event logging
         """
         self.protocol = protocol
+        for warning in unknown_capability_warnings(protocol):
+            logger.warning("Protocol capability warning: %s", warning)
         self.project_root = project_root
         self.mode_id = mode_id
         self._audit_log = audit_log

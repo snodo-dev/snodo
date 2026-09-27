@@ -72,6 +72,7 @@ def ready_command(args) -> int:
     from snodo.infrastructure.paths import resolve_project_root
     from snodo.project import get_project_id, scope_for_project_id
     from snodo.readiness.checker import assess_readiness
+    from snodo.mcp.tools import unknown_capability_warnings
 
     json_out = getattr(args, "json", False)
     mode_filter = getattr(args, "mode", None)
@@ -105,6 +106,7 @@ def ready_command(args) -> int:
 
     # Run assessment across the whole protocol
     assessment = assess_readiness(project_root, protocol)
+    protocol_warnings = unknown_capability_warnings(protocol)
 
     # Resolve project identity for audit logging
     project_id, _ = get_project_id(str(project_root))
@@ -156,6 +158,7 @@ def ready_command(args) -> int:
                 "repository_findings_count": len(assessment.repository_findings),
                 "workstation_findings_count": len(assessment.workstation_findings),
                 "findings": [f.to_dict() for f in assessment.all_findings],
+                "warnings": protocol_warnings,
             },
             EXIT_PASS,
         )
@@ -165,6 +168,12 @@ def ready_command(args) -> int:
     if mode_filter:
         print(f"(Displaying findings for mode '{mode_filter}' — readiness score reflects whole protocol)\n")
     else:
+        print()
+
+    if protocol_warnings:
+        print("Protocol Warnings:")
+        for warning in protocol_warnings:
+            print(f"  ⚠️ {warning}")
         print()
 
     # Filter findings if mode_filter is set
