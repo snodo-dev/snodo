@@ -1180,13 +1180,15 @@ def _report_unmerged_branch(project_root, task, protocol, mode, closure_tree, wo
             file=sys.stderr,
         )
     if audit_log:
+        from snodo.cli.commands.run_merge import _plan_task_fields
+
         audit_log.append_event("task_unmerged", {
             "op": "task_unmerged",
             "task_ref": task.id,
             "branch": branch,
             "reason": reason,
-            "merged": False,
             "session_id": session_id,
+            **_plan_task_fields(project_root, plan_name, task.id, task),
         })
 
 

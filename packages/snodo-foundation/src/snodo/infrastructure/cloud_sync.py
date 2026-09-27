@@ -63,7 +63,9 @@ _PAYLOAD_MARGIN = 256 * 1024
 
 # These event tags and data fields were introduced with interface v6. A v5
 # receiver must never see the new tags; hold at that point in the hash chain.
-_V6_EVENT_TYPES = {"recon_started", "recon_completed", "plan_proposed", "plan_run"}
+_V6_EVENT_TYPES = {
+    "recon_started", "recon_completed", "plan_proposed", "plan_run", "task_unmerged",
+}
 _V6_DATA_KEYS: dict[str, set[str]] = {
     "task_classified": {"plan_name", "plan_wave"},
     "dispatch": {"plan_name", "plan_wave"},
@@ -72,6 +74,9 @@ _V6_DATA_KEYS: dict[str, set[str]] = {
         "plan_name", "plan_wave", "base_sha", "commit_count", "commits",
         "files_changed", "insertions", "deletions",
     },
+    "plan_proposed": {"intent"},
+    "plan_run": {"intent"},
+    "task_unmerged": {"plan_name", "plan_wave"},
     "halt": {"plan_name", "plan_wave"},
 }
 
@@ -190,8 +195,9 @@ _EVENT_DATA_KEYS_V6: dict[str, tuple[str, ...]] = {
         "files_changed", "insertions", "deletions", "plan_name", "plan_wave",
     ),
     "halt": (*_EVENT_DATA_KEYS_V5["halt"], "plan_name", "plan_wave"),
-    "plan_proposed": ("plan_name", "waves"),
-    "plan_run": ("plan_name", "waves", "trigger", "queue", "job_id", "mode"),
+    "plan_proposed": ("plan_name", "intent", "waves"),
+    "plan_run": ("plan_name", "intent", "waves", "trigger", "queue", "job_id", "mode"),
+    "task_unmerged": ("task_ref", "branch", "reason", "session_id", "plan_name", "plan_wave"),
     "recon_started": (
         "recon_id", "query", "paths", "agent_count", "agent_models", "session_id", "created_at",
     ),
@@ -216,6 +222,7 @@ class PlanProposedData(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     plan_name: str | None = None
+    intent: str | None = None
     waves: list[PlanWaveShape] | None = None
 
 
@@ -314,7 +321,20 @@ class OpaqueAuditEventV6(BaseModel):
 _V5_EVENT_MODELS = _event_models(_EVENT_DATA_KEYS_V5)
 _V6_EVENT_MODELS = _event_models(
     _EVENT_DATA_KEYS_V6,
-    {"plan_proposed": PlanProposedData, "plan_run": PlanRunData},
+    {
+        "plan_proposed": PlanProposedData,
+        "plan_run": PlanRunData,
+        "task_unmerged": create_model(
+            "TaskUnmergedData",
+            __config__=ConfigDict(extra="allow"),
+            task_ref=(str | None, None),
+            branch=(str | None, None),
+            reason=(str | None, None),
+            session_id=(str | None, None),
+            plan_name=(str | None, None),
+            plan_wave=(str | None, None),
+        ),
+    },
 )
 
 # Known tags retain their pinned data shapes. Historical tags not declared by

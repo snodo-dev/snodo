@@ -849,6 +849,18 @@ class TestCloudSyncDispatcher:
         assert projected is not None
         assert projected["events"] == payload["events"][:1]
 
+    def test_v5_holds_task_unmerged_with_its_pinned_v6_shape(self):
+        from snodo.infrastructure.cloud_sync import _payload_for_events, _v5_payload
+
+        event = self._make_events(1)[0]
+        event.event_type = "task_unmerged"
+        event.data = {
+            "task_ref": "1.1_x", "branch": "task/p/1.1_x", "reason": "manual",
+            "session_id": "sess_v5", "plan_name": "p", "plan_wave": "1",
+        }
+        payload = _payload_for_events("sess_v5", "/proj", [event])
+        assert _v5_payload(payload, 5) is None
+
     def test_v5_cloud_holds_batch_starting_with_v6_event(self):
         import time
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState

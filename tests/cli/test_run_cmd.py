@@ -1266,8 +1266,32 @@ class TestAutoMerge:
         assert len(events) == 1
         assert events[0].data["op"] == "task_unmerged"
         assert events[0].data["branch"] == branch
-        assert events[0].data["merged"] is False
         assert "auto-merge not enabled" in events[0].data["reason"]
+        assert events[0].data["task_ref"] == task.id
+        assert events[0].data["session_id"] == "sess_1"
+        assert "plan_name" not in events[0].data
+        assert "plan_wave" not in events[0].data
+
+    def test_unmerged_plan_event_carries_plan_and_wave(self, tmp_path, capsys):
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.audit import AuditLog
+        from snodo.cli.commands.run_cmd import _report_unmerged_branch
+
+        plans = tmp_path / ".snodo" / "plans" / "p"
+        plans.mkdir(parents=True)
+        (plans / "plan.yml").write_text("name: p\nintent: test\nwaves:\n  - id: 3\n    tasks: [1.1_x]\n")
+        task = Task(id="1.1_x", spec="a resolved feature")
+        audit_log = AuditLog(str(tmp_path / ".snodo" / "audit.log"))
+        _report_unmerged_branch(
+            str(tmp_path), task, self._protocol(auto_merge=False), "producer",
+            self._tree("resolved"), "/tmp/wt", False, "sess_plan", audit_log,
+            plan_name="p",
+        )
+        event = audit_log.get_history("task_unmerged")[0]
+        assert event.data["plan_name"] == "p"
+        assert event.data["plan_wave"] == "3"
+        assert event.data["task_ref"] == "1.1_x"
+        assert event.data["session_id"] == "sess_plan"
 
     def test_resolved_degraded_reports_working_tree_not_branch(self, tmp_path, capsys):
         """Degraded isolation leaves work in the working tree, not on a branch:

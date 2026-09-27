@@ -89,6 +89,22 @@ from both.
    queue "stopped" is derived as in ADR 053. No plan or task status,
    severity or halt type is added.
 
+### Amendment — plan intent and unmerged outcomes
+
+The history events `plan_proposed` and `plan_run` also carry the authored
+`intent` from `plan.yml`. It is capped at 2,000 characters using the same
+`… [truncated]` marker convention as the recon answer summary. Every run reads
+the plan's current file, so an edit between runs is reflected by the next
+`plan_run` event.
+
+`task_unmerged` has a pinned v6 data shape: `task_ref`, `branch`, `reason` and
+`session_id`, with `plan_name` and `plan_wave` when the task ran in a plan. A
+plan wave is the existing field name `plan_wave`, not the classifier's
+`wave_id`. These fields let an outcome be attributed even when task references
+repeat between plans. v5 continues to hold v6-only events/data and their chain
+suffix; no v6 field is stripped into a v5 payload because that would invalidate
+the event hash.
+
 ## Consequences
 
 The cloud can wire its Recons counter to `recon_started` and its Commits

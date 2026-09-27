@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Cloud plan history now carries bounded authored intent on proposal and every
+  run, and unmerged task events have a pinned v6 shape with plan ownership when
+  available. v5 receivers continue to receive no v6-only data. (Fixes #514)
+
 ### Changed
 - The bundled guide and MCP session instructions now direct orchestrators to
   use the smallest fitting structure: direct task, parallel wave, multi-wave

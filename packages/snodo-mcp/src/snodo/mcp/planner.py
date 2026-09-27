@@ -46,11 +46,23 @@ HAND_COMPLETED_EVENT = "task_completed_by_hand"
 #: same, and the `status` field says which status was recorded.
 HAND_STATUS_EVENT = "task_status_recorded_by_hand"
 
+_PLAN_INTENT_LIMIT = 2_000
+_PLAN_INTENT_MARKER = "… [truncated]"
+
+
+def _bounded_plan_intent(intent: Any) -> str:
+    """Keep the authored intent intact unless it exceeds the cloud bound."""
+    intent = str(intent or "")
+    if len(intent) <= _PLAN_INTENT_LIMIT:
+        return intent
+    return intent[:_PLAN_INTENT_LIMIT - len(_PLAN_INTENT_MARKER)] + _PLAN_INTENT_MARKER
+
 
 def plan_history_shape(plan_data: Dict[str, Any], plan_name: str) -> dict:
     """Return the pinned local-history representation of a plan hierarchy."""
     return {
         "plan_name": plan_name,
+        "intent": _bounded_plan_intent(plan_data.get("intent", "")),
         "waves": [
             {
                 "wave_id": wave.get("id"),

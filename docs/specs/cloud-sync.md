@@ -326,9 +326,13 @@ subjects (with a truncation marker when capped), changed-file count, insertions
 and deletions. Measurement is best-effort; diffs, file contents and commits
 outside snodo's merge range are not sent. The plan-owned task events
 `task_classified`, `dispatch`, `task_complete`, `task_merged` and `halt` carry
-`plan_name` and the plan's `plan_wave` when applicable. `plan_proposed` and
-`plan_run` carry the pinned hierarchy `{plan_name, waves: [{wave_id,
-task_refs}]}`; plan runs also identify their trigger and, for queue-triggered
+`plan_name` and the plan's `plan_wave` when applicable. `task_unmerged` carries
+the pinned `task_ref`, `branch`, `reason` and `session_id`, plus `plan_name` and
+`plan_wave` when the task ran in a plan. `plan_proposed` and `plan_run` carry the
+authored `intent` (capped at 2,000 characters with the same `… [truncated]`
+marker) and the pinned hierarchy `{plan_name, waves: [{wave_id, task_refs}]}`;
+each run reports the intent present in `plan.yml` for that run, even if edited
+since proposal. Plan runs also identify their trigger and, for queue-triggered
 runs, the queue. Each `plan_run` also carries `job_id` (the background job
 running it, or null for a foreground run) and the protocol `mode` at run start.
 
@@ -346,6 +350,7 @@ running it, or null for a foreground run) and the protocol `mode` at run start.
 | `wave_created` | wave_id, feature_description |
 | `task_complete` | task_ref, artifacts, session_id, commit, change_size |
 | `task_merged` | task_ref, branch, merge_sha, spec, session_id, base_sha, commit_count, commits (up to 50), files_changed, insertions, deletions, plan_name, plan_wave (when applicable) |
+| `task_unmerged` | task_ref, branch, reason, session_id, plan_name, plan_wave (when applicable) |
 | `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type |
 | `transition` | from_mode, to_mode, task_ref |
 | `token_consumed` | task_ref, session_id |
@@ -379,8 +384,8 @@ running it, or null for a foreground run) and the protocol `mode` at run start.
 | `merge_failed_escalated` | opaque object |
 | `mode_change` | opaque object |
 | `no_file_operations` | opaque object |
-| `plan_proposed` | plan_name, waves (wave_id, task_refs) |
-| `plan_run` | plan_name, waves (wave_id, task_refs), trigger, queue (for queue trigger), job_id (nullable), mode |
+| `plan_proposed` | plan_name, intent (up to 2,000 characters), waves (wave_id, task_refs) |
+| `plan_run` | plan_name, intent (up to 2,000 characters), waves (wave_id, task_refs), trigger, queue (for queue trigger), job_id (nullable), mode |
 | `protected_path_blocked` | opaque object |
 | `protected_paths_unchecked` | opaque object |
 | `recovery_exhausted` | opaque object |
