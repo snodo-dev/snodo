@@ -46,11 +46,15 @@ This declares one mode (producer) with one tool (edit) and one validator (securi
 | `modes` | list[Mode] | yes | One or more operational modes |
 | `roles` | list[Role] | no | Participant roles |
 | `validators` | list[Validator] | yes | One or more validator configurations |
-| `disagreement_policy` | string | no | How to resolve validator conflicts: `"unanimous"`, `"majority"`, `"quorum"`, `"any"` (default `"unanimous"`) |
+| `disagreement_policy` | DisagreementPolicy | no | How to resolve validator conflicts: `"unanimous"`, `"majority"`, `"quorum"`, `"any"` (default `"unanimous"`) |
 | `initial_mode` | string | yes | Mode ID to start in |
 | `global_constraints` | list[Constraint] | no | Protocol-wide constraints (see Constraints) |
 | `execution` | ExecutionConfig | no | Execution and recovery configuration (see Execution configuration) |
 | `queue` | QueueConfig | no | Default behaviour for queue runs (see Queue configuration) |
+| `protected_paths` | list[string] | no | Repository-relative paths a task may not change; checked against the task branch diff |
+| `write_allowed_prefixes` | list[string] | no | Project-relative prefixes writable through MCP `write`; default `[".snodo/"]` |
+| `exclusive_tools` | set[string] | no | Tools that must be exclusive to one mode; always includes `approve` and `merge` |
+| `modules` | list[Module] | no | Optional named repository scopes (see Modules) |
 | `metadata` | dict | no | Arbitrary key/value metadata |
 
 ---
@@ -59,13 +63,20 @@ This declares one mode (producer) with one tool (edit) and one validator (securi
 
 ```yaml
 execution:
+  max_retries: 3
+  branch_ttl_days: 7
+  branch_prefix: task
   max_recovery_depth: 3
   max_total_fix_attempts: 10
   auto_merge: false
+  prepare_command: "uv sync"
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `max_retries` | int | no | Maximum execution retries (default `3`, range 0–10) |
+| `branch_ttl_days` | int | no | Branch lifetime in days (default `7`, range 1–30) |
+| `branch_prefix` | string | no | Prefix used for task branches (default `"task"`) |
 | `max_recovery_depth` | int | no | Maximum recursive subtask recovery depth along a single branch (default `3`, range 0–20) |
 | `max_total_fix_attempts` | int | no | Maximum total fix subtasks spawned across the task tree (default `10`, range 1–100) |
 | `auto_merge` | bool | no | Whether a completed task's branch merges into the base branch automatically (default `false`) |
@@ -92,6 +103,35 @@ queue:
 |-------|------|----------|-------------|
 | `non_blocking` | bool | no | Pass over a failed plan and continue with later plans (default `false`) |
 | `parallel_runs` | int | no | Maximum plans run at once for a non-blocking queue run; positive integer, default `1`. Read only when `non_blocking` is `true`. |
+
+The protocol's top-level `queue` field defaults to `non_blocking: false` and
+`parallel_runs: 1` when omitted.
+
+## Modules
+
+Modules are optional named scopes, not operational modes. A task may name a
+module to bound writable paths and select module-specific tooling and validators.
+
+```yaml
+modules:
+  - module_id: "api"
+    paths: ["src/api/**"]
+    decisions_path: "docs/api-decisions"
+    tooling: {test_command: "pytest tests/api"}
+    validators: ["security"]
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `module_id` | string | yes | Unique slug-safe module identifier |
+| `paths` | list[string] | yes | One or more non-empty repository roots owned by the module |
+| `decisions_path` | string or null | no | Decision-record directory; falls back to protocol-level setting |
+| `tooling` | dict | no | Per-module tooling; empty falls back to protocol-level tooling |
+| `validators` | list[string] | no | Validator IDs applying within this module |
+
+`protected_paths` forbids task changes to listed repository-relative paths.
+`write_allowed_prefixes` separately controls the MCP `write` capability; it
+defaults to `[".snodo/"]` and does not grant `write` to any mode by itself.
 
 ### `max_recovery_depth` tradeoff
 
@@ -124,6 +164,7 @@ modes:
 |-------|------|----------|-------------|
 | `mode_id` | string | yes | Unique identifier within the protocol |
 | `name` | string | yes | Human-readable name |
+| `description` | string or null | no | Human-readable mode description |
 | `tools` | list[string] | no | Available logical tools — see Tool table below |
 | `validators` | list[string] | no | Validator IDs active in this mode |
 | `transitions` | dict[string, string] | no | Declarative event→target-mode mappings (documented, not engine-executed) |
@@ -132,6 +173,11 @@ modes:
 | `coder_config` | dict | no | Coder backend configuration |
 | `auto_merge` | bool | no | Override protocol-level `execution.auto_merge` for this mode (default `null`) |
 | `max_recovery_depth` | int | no | Override protocol-level `execution.max_recovery_depth` for this mode (default `null`) |
+| `concurrency` | int | no | Per-mode concurrency ceiling (positive integer); absent uses `coder_config.concurrency` if set, otherwise `1` |
+
+`concurrency` is resolved per mode: `mode.concurrency` takes precedence,
+then `mode.coder_config.concurrency` is used when present, otherwise the
+ceiling is `1`. There is no protocol-level `execution.concurrency` setting.
 
 ### Coder backends
 
@@ -173,28 +219,30 @@ Each logical tool maps to one or more MCP operations:
 
 | Protocol tool | Concrete MCP tools |
 |---------------|-------------------|
-| `edit` | `read_file`, `list_files` |
-| `dispatch` | `dispatch_task` |
-| `resolve` | `resolve_disagreement` |
+| `edit` | `read_file`, `list_files`, `list_models`, `resolve_model`, `recon`, `get_recon_status`, `get_recon_results` |
+| `write` | `write_file` |
+| `decide` | `propose_adjudicate`, `propose_set_model` |
+| `dispatch` | `dispatch_task`, `get_job_status`, `list_jobs`, `get_job_logs`, `retry_job` |
 | `test` | `run_tests` |
 | `validate` | `run_tests` |
-| `review` | `read_file`, `list_files`, `read_diff`, `get_status` |
+| `review` | `read_file`, `list_files`, `read_diff`, `get_status`, `recon`, `get_recon_status`, `get_recon_results` |
 | `approve` | `stage_files`, `commit` |
 | `commit` | `stage_files`, `commit` |
 | `merge` | `create_branch`, `stage_files`, `commit`, `merge_branch`, `delete_branch` |
 | `pr` | `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `reject_pr`, `merge_pr` |
-| `plan` | `decompose`, `generate_spec`, `validate_plan` |
-| `assess` | `read_file`, `list_files` |
+| `plan` | `decompose`, `generate_spec`, `validate_plan`, `propose_plan`, `get_plan`, `run_plan`, `record_task_status`, `queue_list`, `queue_create`, `queue_move`, `queue_remove`, `queue_validate`, `queue_run` |
+| `queue` | `queue_list`, `queue_create`, `queue_move`, `queue_remove`, `queue_validate`, `queue_run` |
+| `read` | `read_file`, `list_files` |
 
 ### Reference modes
 
-The shipped templates implement three standard modes:
+Shipped templates define modes suited to their workflows; common roles include:
 
 **Producer mode** — generates code. Typical tools: `edit`, `dispatch`, `test`, `validate`. Validators check security, architecture, conventions before execution.
 
 **Reviewer mode** — reviews and integrates. Typical tools: `review`, `approve`, `merge`, `pr`. Validators re-check security at review time.
 
-**Planner mode** — decomposes work. Typical tools: `assess`, `plan`. Validators check intent clarity, scope, completeness.
+**Planner mode** — decomposes and manages work plans. Typical tool: `plan`, which grants decomposition, spec generation, plan lifecycle, task status, and queue operations. Validators check intent clarity, scope, and completeness.
 
 ---
 
@@ -241,6 +289,12 @@ validators:
 | `constraints` | list[Constraint] | no | Additional predicate constraints |
 | `tooling` | dict | no | Backend tooling configuration (e.g. `test_command` for the quality validator) |
 | `severity_cap` | string | no | Maximum severity this validator can emit. `"warn"` caps blocker to warn — useful for experimental validators. `"blocker"` or absent = full power. |
+| `scope` | `"task"` or `"wave"` | no | Unit judged (default `"task"`); wave scope is valid only for `pre_execute` |
+| `tools` | list[string] | no | Read-only tool allowlist; empty means no tool access |
+| `check_tool_access` | bool | no | When true, refuse rather than pass criteria requiring a capability outside the validator's declared tools (default `false`) |
+| `model` | string or null | no | Validator-specific LLM model override; otherwise falls back to coder model / `default_model` |
+| `max_tool_turns` | int or null | no | Read-tool-loop turn budget override (1–200); otherwise uses configured `llm.validator.max_tool_turns` |
+| `judges_spec` | bool | no | Whether critique is about spec wording and may feed the spec-authoring rewriter (default `false`) |
 
 Security note: `tooling.test_command` (used by the `quality` validator) is
 protocol-authored shell input. snodo does not sandbox it. Treat it like a
@@ -261,8 +315,11 @@ claiming a pass (Fixes #215).
 | `architecture` | LLM | Reviews task spec against design criteria |
 | `conventions` | LLM | Reviews against naming/file/doc conventions |
 | `planning` | LLM | Reviews plan intents against planning criteria |
+| `performance` | LLM | Reviews performance criteria |
+| `testing` | LLM | Reviews testing criteria |
 | `protocol` | LLM | Checks whether work belongs in the current mode |
 | `quality` | subprocess | Runs the repo's test suite (auto-detects test command) |
+| `acceptance` | built-in | Judges produced artifacts against task acceptance criteria |
 | custom | your code | Register any string via the ValidatorRegistry |
 
 ### Severity
