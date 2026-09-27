@@ -14,6 +14,10 @@ everything below is authored.
 
 **Dependencies are between waves, not between tasks.**
 
+Choose the smallest structure that fits: dispatch one task directly; use a
+wave only for more than one task that can run together; use a plan only when
+there is more than one wave; use a queue only to schedule several plans.
+
 Every task in a wave may run in any order, and a wave is only entered once
 every wave it depends on has *completely* finished. There is no way to say
 "task 2.2 needs task 2.1". If B needs A's output, B goes in a later wave.
@@ -169,6 +173,23 @@ are two plans.
 <!-- snodo-guide topic="mistakes" aliases="common-mistakes" summary="Plan refusals and authoring checklist" section="## 4. What gets the plan refused" -->
 ## 4. What gets the plan refused
 
+### Choose the structure before authoring
+
+A one-task plan and a one-plan queue are usually mistakes: dispatch a lone task
+directly, and use a queue only when it schedules several plans. A plan is for
+ordering multiple waves, and a wave is for grouping multiple tasks that can run
+together.
+
+There is no additional human authorization gate in `validate_plan`: it checks
+plan structure and spec references before a plan run, while `validate_task`
+runs the execution validators for each task. Direct tasks and plan tasks use
+the same execution loop and auto-merge policy. A plan does add durable
+plan→wave→task history that the cloud can reconstruct (ADR 054); direct task
+history does not carry that plan hierarchy. If that reporting hierarchy is a
+deliberate requirement for a single-wave task, treat it as an explicit exception
+to the sizing rule rather than assuming a plan changes task validation or
+merging.
+
 The CLI command `snodo plan validate <name>` and the MCP tool
 `validate_plan` run before wave 1 dispatches anything, so a malformed plan
 fails before any work happens rather than in the middle.
@@ -285,9 +306,21 @@ hosting split and then discovering the second half was never written.
 <!-- snodo-guide topic="planning" aliases="end-to-end" summary="The end-to-end plan loop" section="## 8. The planning loop, end to end" -->
 ## 8. The planning loop, end to end
 
+Before writing anything, choose the smallest structure that fits: dispatch one
+task directly; use a wave only when more than one task can run together; use a
+plan only when there is more than one wave; and use a queue only to schedule
+several plans. For one task, call `validate_task` and then `dispatch_task`, and
+follow the returned job with `get_job_status`. A plan's `validate_plan` is a
+structural/preflight check, not a separate human authorization gate; each plan
+task still goes through the same execution validators and auto-merge policy as
+a direct task. Plans do provide durable plan→wave→task history that the cloud
+can reconstruct (ADR 054), unlike direct task history; use a single-wave plan
+for one task only when that hierarchy is an intentional reporting requirement.
+
 ### Write the intent
 
-Start with the outcome the whole plan should produce, in product terms. Keep
+When multiple waves are needed, start with the outcome the whole plan should
+produce, in product terms. Keep
 the intent to one or two sentences; it is not a task list. `propose_plan`
 creates an inert plan scaffold from that intent. `decompose` creates a scaffold
 with the requested number of empty wave slots; it does not invent or populate

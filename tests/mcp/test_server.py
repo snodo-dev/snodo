@@ -2051,6 +2051,14 @@ class TestInstructions:
         assert "get_job_status" in instructions
         assert "get_job_logs" in instructions
 
+    def test_instructions_teach_smallest_work_structure(self, dispatching_server):
+        instructions = _build_instructions(dispatching_server)
+        assert "dispatch one task directly" in instructions
+        assert "wave only for multiple tasks that can run together" in instructions
+        assert "plan only for multiple waves" in instructions
+        assert "queue only to schedule several plans" in instructions
+        assert "does not add a human authorization gate" in instructions
+
     def test_instructions_describe_only_the_tools_the_server_has(self, server):
         """The loop section is written for a server that can dispatch. This
         one cannot (no mode grants 'dispatch'), so its manual must not name
@@ -2113,14 +2121,15 @@ class TestInstructions:
         """The default path contains documented advice without naming withheld tools."""
         exposed = {tool["name"] for tool in server.get_tools()}
         text = guide_text(server.project_root, exposed)
-        assert "First use `propose_plan`" in text
+        assert "Smallest structure" in text
         assert "Guide topics:" in text
         assert len(text) < 1000
         assert "dispatch_task" not in text
 
     def test_guide_default_offers_queue_path_with_or_without_plan_tools(self, server):
         with_plans = guide_text(server.project_root, {"run_plan", "queue_run"})
-        assert "`validate_plan` (queues it in `default`)" in with_plans
+        assert "`validate_plan`" in with_plans
+        assert "`queue_run`" in with_plans
         queue_only = guide_text(server.project_root, {"queue_run", "queue_validate"})
         assert "Use `queue_list` and `queue_validate`" in queue_only
         assert "propose_plan" not in queue_only
@@ -2163,6 +2172,7 @@ class TestInstructions:
         text = guide_text(server.project_root, exposed, "waves")
 
         assert "A plan runs wave by wave" in text
+        assert "dispatch one task directly" in text
         assert "assets/plan-waves.svg" not in text
         assert "## 1. The one modelling rule" not in text
 
@@ -2186,6 +2196,7 @@ class TestInstructions:
         assert "Auto-merge is opt-in" in text
         assert "is recorded `completed`" in text
         assert "attempted and failed" in text
+        assert "plan→wave→task" in text
 
     def test_guide_queues_topic_teaches_queue_progression(self, server):
         exposed = {tool["name"] for tool in server.get_tools()}
@@ -2213,6 +2224,16 @@ class TestInstructions:
         assert "Blocked:" in text and "Errored:" in text and "Unmerged:" in text
         assert "Example: one overnight session" in text
         assert "human decision or repair" in text
+        assert "queue only when there are several plans" in text
+
+    def test_guide_mistakes_names_unnecessary_wrappers_and_plan_differences(self, server):
+        exposed = {tool["name"] for tool in server.get_tools()}
+        text = guide_text(server.project_root, exposed, "mistakes")
+
+        assert "one-task plan" in text and "one-plan queue" in text
+        assert "no additional human authorization gate" in text
+        assert "same execution loop and auto-merge policy" in text
+        assert "cloud can reconstruct" in text
 
     def test_queue_triage_guide_teaches_inherited_plan_review(self, server):
         exposed = {tool["name"] for tool in server.get_tools()}
