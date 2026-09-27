@@ -30,6 +30,9 @@ modes:
     name: "Producer Mode"
     tools:
       - "edit"
+      - "plan"      # Decompose and validate the feature before dispatch.
+      - "write"     # Plan/spec writes stay under .snodo/ by default.
+      - "dispatch"
       - "test"
       - "validate"
       - "commit"
@@ -70,6 +73,15 @@ validators:
 
 disagreement_policy: "any"
 initial_mode: "producer"
+
+# Example for a monorepo: modules scope task paths and may select their own
+# decision records and test command (ADR 041). Replace with real project paths.
+# modules:
+#   - module_id: "api"
+#     paths: ["services/api/**"]
+#     decisions_path: "services/api/docs/adr"
+#     tooling:
+#       test_command: "uv run pytest services/api -q"
 
 # Established repositories have verified build and test harnesses. Depth 3 enables
 # multi-step incremental recovery (e.g. implementation fix followed by criterion refinement)

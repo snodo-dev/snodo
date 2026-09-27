@@ -19,6 +19,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   writing to their plan-authoring mode, retain reviewer-only approval/merge,
   and show current queue, module, path-protection and execution options.
   (Fixes #508)
+- Greenfield, intent, bugfix-surgeon and feature-warden templates now grant
+  current MCP capabilities for recon, planning, queueing, writing plans under
+  `.snodo/`, and dispatch; they also demonstrate documented queue, protected
+  path and module settings. (Fixes #509)
 - `snodo serve --verbose` shows timestamped, redacted and bounded MCP request
   and response lines across transports; managed tunnels stream the child's
   diagnostics live, and JWT refusals name the failed check. (Fixes #505)

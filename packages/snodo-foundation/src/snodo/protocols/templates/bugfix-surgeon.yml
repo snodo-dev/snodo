@@ -27,6 +27,7 @@ modes:
     name: "Producer Mode"
     tools:
       - "edit"
+      - "dispatch"
       - "test"
       - "validate"
       - "commit"
@@ -65,6 +66,12 @@ validators:
 
 disagreement_policy: "any"
 initial_mode: "producer"
+
+# Keep governance records out of minimal bug-fix task diffs. Adjust these
+# repository-relative paths if the project stores decisions elsewhere.
+protected_paths:
+  - "docs/decisions/**"
+  - "docs/adr/**"
 
 # Established repositories have verified build and test harnesses. Depth 3 enables
 # multi-step incremental recovery (e.g. implementation fix followed by criterion refinement)

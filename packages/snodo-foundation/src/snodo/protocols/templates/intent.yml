@@ -12,7 +12,10 @@ modes:
   - mode_id: "producer"
     name: "Producer Mode"
     tools:
-      - "edit"
+      - "edit"      # Includes recon and repository reads before planning/coding.
+      - "plan"      # Author and validate a plan, then run it from the queue.
+      - "write"     # MCP plan/spec writes are confined to .snodo/ by default.
+      - "dispatch"
       - "test"
       - "validate"
       - "commit"
@@ -53,6 +56,12 @@ execution:
   # the only human in the loop. Merge its branch automatically so the work lands
   # on the base branch instead of stranding on a task branch.
   auto_merge: true
+
+# Strict FIFO keeps dependent plans ordered. Parallelism is appropriate only
+# for non-blocking queues of independent plans (ADR 053).
+queue:
+  non_blocking: false
+  parallel_runs: 1
 
 global_constraints:
   - constraint_id: "no_secrets"
