@@ -22,6 +22,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   history. (Fixes #513)
 
 ### Fixed
+- Plan verification now refuses a plan whose waves contain no tasks at all;
+  empty waves remain warnings when another wave has tasks. (Fixes #515)
 - Protocol DSL reference and template authoring guide now match the current
   tool map, validator registry, Pydantic schema, and directory-based template
   discovery. Corrected validator and per-mode concurrency field descriptions.

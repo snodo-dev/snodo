@@ -150,11 +150,12 @@ class TestDecompose:
         with pytest.raises(PlannerError, match="waves must be a non-negative integer"):
             planner.decompose("Intent", "plan_a", waves="abc")
 
-    def test_default_scaffold_is_valid_plan(self, planner):
+    def test_default_scaffold_is_invalid_until_tasks_are_authored(self, planner):
         planner.decompose("Intent", "plan_a")
         result = planner.validate_plan("plan_a")
-        assert result["valid"] is True
+        assert result["valid"] is False
         assert result["wave_count"] == 1
+        assert "Plan has no tasks in any wave" in result["errors"]
 
     def test_duplicate_plan_raises(self, planner):
         planner.decompose("Intent A", "plan_a")
@@ -353,17 +354,23 @@ class TestValidatePlan:
         assert result["valid"] is False
         assert "Missing spec: 1.1_missing" in result["errors"]
 
-    def test_empty_wave_warning(self, planner):
-        planner.decompose("Intent", "plan_a")
+    def test_empty_wave_warning_when_other_wave_has_tasks(self, planner):
+        planner.decompose("Intent", "plan_a", waves=2)
+        planner.generate_spec("plan_a", "1.1_work", "spec")
         plan_file = planner.plans_dir / "plan_a" / "plan.yml"
         with open(plan_file) as f:
             data = yaml.safe_load(f)
-        data["waves"] = [{"id": 1, "tasks": []}]
+        data["waves"] = [
+            {"id": 1, "tasks": ["1.1_work"]},
+            {"id": 2, "depends_on": [1], "tasks": []},
+        ]
         with open(plan_file, "w") as f:
             yaml.dump(data, f)
 
         result = planner.validate_plan("plan_a")
-        assert "Wave 1 has no tasks" in result["warnings"]
+        assert result["valid"] is True
+        assert result["errors"] == []
+        assert "Wave 2 has no tasks" in result["warnings"]
 
     def test_invalid_dependency_reference(self, planner):
         planner.decompose("Intent", "plan_a")

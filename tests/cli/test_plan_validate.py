@@ -126,6 +126,46 @@ def test_plan_validate_passes_on_well_formed_plan(plan_env, capsys):
     assert "queued in default at position 1" in out
 
 
+def test_plan_validate_refuses_plan_with_no_tasks(plan_env, capsys):
+    plan_dir = plan_env / ".snodo" / "plans" / "empty_plan"
+    plan_dir.mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text(yaml.safe_dump({
+        "name": "empty_plan",
+        "intent": "Do some work",
+        "waves": [{"id": 1, "tasks": []}],
+    }))
+
+    result = plan_command(SimpleNamespace(
+        plan_action="validate", name="empty_plan", json_output=False,
+    ))
+
+    assert result == 1
+    assert "Plan has no tasks in any wave" in capsys.readouterr().err
+
+
+def test_plan_run_refuses_plan_with_no_tasks(plan_env, capsys):
+    plan_dir = plan_env / ".snodo" / "plans" / "empty_plan"
+    plan_dir.mkdir(parents=True)
+    (plan_dir / "plan.yml").write_text(yaml.safe_dump({
+        "name": "empty_plan",
+        "intent": "Do some work",
+        "waves": [{"id": 1, "tasks": []}],
+    }))
+
+    result = _run_plan(SimpleNamespace(
+        protocol=".snodo/protocol.yml",
+        model=None,
+        plan="empty_plan",
+        wave=None,
+        mock=True,
+        interactive=False,
+        no_isolation=True,
+    ))
+
+    assert result == 1
+    assert "Plan has no tasks in any wave" in capsys.readouterr().err
+
+
 def test_plan_validate_already_queued_does_not_move_it(plan_env, capsys):
     from snodo.infrastructure.queue_store import QueueStore
 
