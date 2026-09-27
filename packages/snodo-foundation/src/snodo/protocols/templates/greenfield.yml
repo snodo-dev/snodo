@@ -26,8 +26,9 @@ modes:
     name: "Plan"
     max_recovery_depth: 1  # Phase 0 setup: early failures are spec/plan issues subtasks cannot fix without human direction.
     tools:
+      - "edit"   # Includes recon and repository reads for grounded planning.
       - "plan"
-      - "read"
+      - "write"  # MCP write_file defaults to .snodo/ for plans and specs.
     validators:
       - "meta-spec"
     transitions:
@@ -41,7 +42,7 @@ modes:
     tools:
       - "edit"
       - "commit"
-      - "resolve"
+      - "decide"
     validators:
       - "meta-spec"
       - "decision-record"
@@ -59,7 +60,7 @@ modes:
       - "test"
       - "validate"
       - "dispatch"
-      - "resolve"
+      - "decide"
     validators:
       - "meta-spec"
       - "architecture"
@@ -78,7 +79,7 @@ modes:
       - "test"
       - "validate"
       - "dispatch"
-      - "resolve"
+      - "decide"
     validators:
       - "meta-spec"
       - "security"
@@ -200,6 +201,12 @@ validators:
 
 disagreement_policy: "unanimous"
 initial_mode: "decide"
+
+# Queue runs stay strict FIFO by default; enable non-blocking/parallel runs only
+# when the queued plans are independent (ADR 053).
+queue:
+  non_blocking: false
+  parallel_runs: 1
 
 # Protocol default fallback for silent modes. Per-mode overrides above customize depth
 # per phase: decide (1), scaffold (1), build (3).

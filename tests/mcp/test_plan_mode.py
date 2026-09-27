@@ -41,30 +41,43 @@ def test_greenfield_template_includes_plan_mode_and_passes_verification():
     plan_mode = next(m for m in proto.modes if m.mode_id == "plan")
     assert plan_mode.name == "Plan"
     assert "plan" in plan_mode.tools
-    assert "read" in plan_mode.tools
+    assert "edit" in plan_mode.tools
+    assert "write" in plan_mode.tools
     assert "meta-spec" in plan_mode.validators
     assert plan_mode.transitions.get("planned") == "decide"
 
 
-def test_plan_mode_resolves_exact_planner_tools(project_dir):
-    """A mode declaring 'plan' resolves to exactly decompose, generate_spec, and validate_plan."""
+def test_plan_mode_resolves_planning_queue_and_write_tools(project_dir):
+    """Greenfield planning mode can author plans, operate queues, and write under .snodo/."""
     proto = template_protocol("greenfield")
     server = ProtocolMCPServer(proto, project_dir, mode_id="plan")
     tools = server.get_tools()
     tool_names = {t["name"] for t in tools}
 
-    # Must contain exactly the planner tools
+    # Plan authoring and queue operation are one capability surface.
     assert "decompose" in tool_names
     assert "generate_spec" in tool_names
     assert "validate_plan" in tool_names
+    assert "run_plan" in tool_names
+    assert {
+        "queue_list",
+        "queue_create",
+        "queue_move",
+        "queue_remove",
+        "queue_validate",
+        "queue_run",
+    } <= tool_names
 
-    # Plus read-only tools ('read' capability) and validate_task meta-tool
+    # edit gives repository reads/recon, and write_file is bounded to .snodo/.
     assert "read_file" in tool_names
     assert "list_files" in tool_names
     assert "validate_task" in tool_names
+    assert "recon" in tool_names
+    assert "get_recon_status" in tool_names
+    assert "get_recon_results" in tool_names
+    assert "write_file" in tool_names
 
-    # Must NOT hold any mutating repository tools
-    assert "write_file" not in tool_names
+    # The planning mode still has no task-dispatch or commit authority.
     assert "delete_file" not in tool_names
     assert "stage_files" not in tool_names
     assert "commit" not in tool_names

@@ -42,6 +42,52 @@ def test_registry_contains_every_yml_in_templates_dir():
         assert result.passed, f"{name}.yml WF violations: {result.errors}"
 
 
+def test_current_loop_templates_grant_real_mcp_capabilities():
+    """Every grant maps to MCP tools, and planning/dispatch grants compose."""
+    from snodo.mcp.tools import MODE_TOOL_MAP
+
+    names = ("greenfield", "intent", "bugfix-surgeon", "feature-warden")
+    planning_modes = {
+        "greenfield": "plan",
+        "intent": "producer",
+        "feature-warden": "producer",
+    }
+    queue_tools = {
+        "queue_list",
+        "queue_create",
+        "queue_move",
+        "queue_remove",
+        "queue_validate",
+        "queue_run",
+    }
+    recon_tools = {"recon", "get_recon_status", "get_recon_results"}
+
+    for name in names:
+        protocol = _load(name)
+        for mode in protocol.modes:
+            unknown = set(mode.tools) - MODE_TOOL_MAP.keys()
+            assert not unknown, f"{name}.{mode.mode_id} has unmapped grants: {unknown}"
+            concrete = {
+                tool
+                for grant in mode.tools
+                for tool in MODE_TOOL_MAP[grant]
+            }
+            if "dispatch" in mode.tools:
+                assert "edit" in mode.tools, f"{name}.{mode.mode_id} needs edit for recon"
+                assert recon_tools <= concrete
+
+        mode = protocol.get_mode(planning_modes.get(name, "producer"))
+        if name not in planning_modes:
+            continue
+        assert mode is not None
+        grants = set(mode.tools)
+        assert {"edit", "plan", "write"} <= grants
+        concrete = {tool for grant in grants for tool in MODE_TOOL_MAP[grant]}
+        assert queue_tools <= concrete, f"{name}.{mode.mode_id} cannot operate queues"
+        assert "write_file" in concrete, f"{name}.{mode.mode_id} cannot write plans"
+        assert recon_tools <= concrete, f"{name}.{mode.mode_id} cannot recon"
+
+
 def test_every_shipped_template_compiles(tmp_path):
     """Every shipped template builds and compiles an executable graph.
 

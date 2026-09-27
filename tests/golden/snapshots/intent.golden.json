@@ -50,6 +50,9 @@
       "name": "Producer Mode",
       "tools": [
         "edit",
+        "plan",
+        "write",
+        "dispatch",
         "test",
         "validate",
         "commit"
