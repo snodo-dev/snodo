@@ -10,6 +10,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- The solo template's producer mode now grants the complete single-operator
+  MCP loop: recon, planning and queues, `.snodo/` writing, dispatch, testing,
+  commit and merge. It also documents current queue, module, path-protection,
+  preparation and concurrency options while retaining safe queue defaults.
+  (Fixes #512)
 - `snodo serve --verbose` shows timestamped, redacted and bounded MCP request
   and response lines across transports; managed tunnels stream the child's
   diagnostics live, and JWT refusals name the failed check. (Fixes #505)
