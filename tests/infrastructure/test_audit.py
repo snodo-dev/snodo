@@ -486,6 +486,87 @@ def test_get_audit_log_resolves_default_project_id(tmp_path, monkeypatch):
         reset_global_audit_log()
 
 
+def test_default_audit_log_resolves_project_id_outside_project_cwd(tmp_path, monkeypatch):
+    """The default project-root log carries its identity outside the project cwd."""
+    from snodo.infrastructure.audit import get_audit_log, reset_global_audit_log
+
+    project_root = tmp_path / "project"
+    outside = tmp_path / "outside"
+    (project_root / ".snodo").mkdir(parents=True)
+    outside.mkdir()
+    (project_root / ".snodo" / "project.json").write_text(json.dumps({
+        "id": "github.com/org/default-path-project",
+        "project.id": "github.com/org/default-path-project",
+        "scope": "remote",
+    }))
+
+    monkeypatch.delenv("SNODO_AUDIT_LOG", raising=False)
+    monkeypatch.setenv("SNODO_PROJECT_ROOT", str(project_root))
+    monkeypatch.chdir(outside)
+    reset_global_audit_log()
+    try:
+        event = get_audit_log().append_event("task_started", {})
+        assert event.project_id == "github.com/org/default-path-project"
+        audit_path = project_root / ".snodo" / "audit.log"
+        assert audit_path.exists()
+    finally:
+        reset_global_audit_log()
+
+
+def test_log_event_resolves_project_id_outside_project_cwd(tmp_path, monkeypatch):
+    """log_event uses the canonical id from the default audit-log path."""
+    from snodo.infrastructure.audit import log_event, reset_global_audit_log
+
+    project_root = tmp_path / "project"
+    outside = tmp_path / "outside"
+    (project_root / ".snodo").mkdir(parents=True)
+    outside.mkdir()
+    (project_root / ".snodo" / "project.json").write_text(json.dumps({
+        "id": "github.com/org/log-event-project",
+        "project.id": "github.com/org/log-event-project",
+        "scope": "remote",
+    }))
+
+    monkeypatch.delenv("SNODO_AUDIT_LOG", raising=False)
+    monkeypatch.setenv("SNODO_PROJECT_ROOT", str(project_root))
+    monkeypatch.chdir(outside)
+    reset_global_audit_log()
+    try:
+        event = log_event("task_started", {})
+        assert event.project_id == "github.com/org/log-event-project"
+    finally:
+        reset_global_audit_log()
+
+
+def test_get_audit_log_keeps_distinct_project_paths_in_one_process(tmp_path, monkeypatch):
+    """Each explicit project's audit path gets its own identity and instance."""
+    from snodo.infrastructure.audit import get_audit_log, reset_global_audit_log
+
+    roots = [tmp_path / "project-one", tmp_path / "project-two"]
+    ids = ["github.com/org/project-one", "github.com/org/project-two"]
+    for root, project_id in zip(roots, ids):
+        (root / ".snodo").mkdir(parents=True)
+        (root / ".snodo" / "project.json").write_text(json.dumps({
+            "id": project_id,
+            "project.id": project_id,
+            "scope": "remote",
+        }))
+
+    monkeypatch.delenv("SNODO_AUDIT_LOG", raising=False)
+    monkeypatch.delenv("SNODO_PROJECT_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    reset_global_audit_log()
+    try:
+        logs = [get_audit_log(str(root / ".snodo" / "audit.log")) for root in roots]
+        assert logs[0] is not logs[1]
+        for audit_log, project_id in zip(logs, ids):
+            event = audit_log.append_event("task_started", {})
+            assert event.project_id == project_id
+        assert get_audit_log(str(roots[0] / ".snodo" / "audit.log")) is logs[0]
+    finally:
+        reset_global_audit_log()
+
+
 def test_get_audit_log_resolving_id_creates_no_project_file(tmp_path, monkeypatch):
     """Resolving an id for audit labelling must not write .snodo/project.json.
 
@@ -862,4 +943,3 @@ def test_audit_log_project_stamping(tmpdir):
     assert resumed.events[0].project_id == "my-test-project-123"
     assert resumed.events[1].project_id == "my-test-project-123"
     assert resumed.verify_chain() is True
-
