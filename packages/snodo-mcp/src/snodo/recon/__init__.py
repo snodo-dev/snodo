@@ -72,8 +72,13 @@ _RECON_SUMMARY_MARKER = "… [truncated]"
 def _audit_log_for_project(project_root: str):
     """Return the project's normal hash-chained audit log."""
     from snodo.infrastructure.audit import get_audit_log
+    from snodo.project import get_project_id
 
-    return get_audit_log(str(Path(project_root) / ".snodo" / "audit.log"))
+    project_id, _ = get_project_id(project_root)
+    return get_audit_log(
+        str(Path(project_root) / ".snodo" / "audit.log"),
+        project_id=project_id,
+    )
 
 
 def _active_session_id(project_root: str) -> str:

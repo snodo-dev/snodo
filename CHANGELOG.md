@@ -15,6 +15,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   tasks without one keep the existing project-wide behavior. (Fixes #504)
 
 ### Fixed
+- Recon started and completed audit events now resolve and carry the owning
+  project's ID, matching neighbouring task and session events. (Fixes #503)
 - Job submission and liveness checks no longer crash with `UnboundLocalError`
   when `psutil` is missing from a stale install; process start-time identity
   is recorded and verified when `psutil` is available. (Refs #501)
