@@ -10,6 +10,40 @@ plans. Snodo's execution loop and validators decide whether work passes. Treat
 each run as a job with an outcome to inspect, not as a single call that
 completes the intent.
 
+## Get notified without polling
+
+Background job notifications are opt-in. Add one or more targets to
+`~/.snodo/config.yml`; target URLs and tokens are secrets and `snodo config
+show` redacts them. Webhooks receive a JSON POST. An ntfy target receives the
+short message as plain text, which works with a public or self-hosted ntfy
+topic and the ntfy phone app:
+
+```yaml
+notifications:
+  targets:
+    - type: ntfy
+      name: phone
+      url: https://ntfy.sh/my-private-topic
+    - type: webhook
+      name: team-chat
+      url: https://hooks.example.invalid/services/your-webhook
+      token: optional-bearer-token
+  events:
+    - job_finished
+    - task_halted
+    - authorization_needed
+    - job_silent
+  silence_threshold_seconds: 900
+```
+
+The target may be `webhook` or `ntfy`; an optional `token` is sent as a bearer
+authorization header. `events` can select any subset of the four shown event
+names. With no targets configured no notification work is done. Messages name
+the project, job, plan/task when known, outcome, and `snodo logs <job_id>` (or
+`snodo authorize` for a pending human decision). Delivery is detached from the
+runner, bounded, and best-effort. Verify all configured targets with
+`snodo notify test`.
+
 For plans organized into queues, start an orchestration pass with
 `snodo queue validate [x]`. It reports whether each queue's front plan can
 run, re-verifies every queued plan, flags visible path dependencies and

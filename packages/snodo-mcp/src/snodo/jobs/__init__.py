@@ -377,6 +377,26 @@ class JobManager:
         state["started_at"] = time.time()
         self._save_state(job_dir, state)
 
+        # Observe this job in a detached process. Its bounded network calls
+        # can neither delay this submission nor affect the runner's exit code.
+        try:
+            from snodo.jobs.notifications import _settings, _targets
+
+            if _targets(_settings()):
+                import subprocess
+                import sys
+
+                subprocess.Popen(  # noqa: S603 - fixed module and argv, no shell
+                    [sys.executable, "-m", "snodo.jobs.notifications", "monitor", self.project_root, job_id],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                    close_fds=True,
+                )
+        except Exception:  # noqa: BLE001,S110 - notification setup is not a job gate
+            pass
+
         return job_id
 
     def list_jobs(self) -> List[dict]:
