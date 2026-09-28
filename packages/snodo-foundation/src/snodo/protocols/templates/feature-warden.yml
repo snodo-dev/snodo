@@ -1,3 +1,13 @@
+# Job notifications (Slack, Discord, Teams, ntfy, webhook) are configured per
+# user in ~/.snodo/config.yml under `notifications:` — not in this protocol.
+# Example shape (keep endpoint credentials in user config):
+# notifications:
+#   targets:
+#     - type: slack
+#       name: team
+#       url: env:SNODO_SLACK_WEBHOOK_URL
+# See docs/configuration.md.
+
 # Feature-Development "Warden" Protocol — EXP2 (containment over long horizons)
 #
 # WHY (and why it is the OPPOSITE of bugfix-surgeon):

@@ -10,6 +10,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `docs/configuration.md` now documents the user-level `~/.snodo/config.yml`
+  schema and defaults, including all five notification target types and
+  environment references. The reference is linked from the docs home, protocol
+  reference, unattended guide, and each shipped protocol template. (Fixes #521)
 - `disagreement_escalated` now has a pinned v6 cloud shape carrying the task,
   phase, policy and plan/wave ownership when applicable, without validator
   output. v5 continues to hold plan-owned events until v6 is accepted. (Fixes #520)
