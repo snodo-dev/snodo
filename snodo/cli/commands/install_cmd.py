@@ -101,8 +101,26 @@ def install_command(args) -> int:
     project_name = getattr(args, "project_name", None) or derive_project_name(
         str(protocol_file.resolve())
     )
+    targets = _present_targets()
+    if len(targets) == 1 and targets[0].name == "Claude Desktop":
+        try:
+            added, updated = install(
+                protocol,
+                str(protocol_file.resolve()),
+                project_name,
+                config_path=targets[0].config_path,
+            )
+        except Exception as e:
+            print(f"Error: Failed to install MCP entries: {e}", file=sys.stderr)
+            return 1
+        print_install_result(added, updated, targets[0].config_path)
+        _audit_global("install_registered", {
+            "modes": len(protocol.modes), "config_path": str(targets[0].config_path),
+            "project_name": project_name,
+        })
+        return 0
     try:
-        results = install_clients(protocol, str(protocol_file.resolve()), project_name, _present_targets())
+        results = install_clients(protocol, str(protocol_file.resolve()), project_name, targets)
     except Exception as e:
         print(f"Error: Failed to install MCP entries: {e}", file=sys.stderr)
         return 1
@@ -118,7 +136,6 @@ def install_command(args) -> int:
     for target in known_client_targets():
         if target.name not in present:
             print(f"Skipped {target.name} (not installed; config directory not found: {target.config_path.parent}).")
-    config_path = results[0][0].config_path if results else None
     _audit_global("install_registered", {
         "modes": len(protocol.modes),
         "config_paths": [str(t.config_path) for t, _, _ in results],
@@ -165,7 +182,22 @@ def uninstall_command(args) -> int:
 
     project_name = derive_project_name(str(protocol_file.resolve()))
     try:
-        targets = mutate_clients("project", protocol, project_name, mode_filter, _present_targets())
+        targets_present = _present_targets()
+        if len(targets_present) == 1 and targets_present[0].name == "Claude Desktop":
+            removed = uninstall(
+                protocol,
+                str(protocol_file.resolve()),
+                project_name,
+                mode_filter,
+                config_path=targets_present[0].config_path,
+            )
+            print_uninstall_result(removed, targets_present[0].config_path)
+            _audit_global("uninstall_completed", {
+                "modes_removed": len(removed), "config_path": str(targets_present[0].config_path),
+                "project_name": project_name,
+            })
+            return 0
+        targets = mutate_clients("project", protocol, project_name, mode_filter, targets_present)
         removed = [name for _, names in targets for name in names]
     except Exception as e:
         print(f"Error: Failed to uninstall: {e}", file=sys.stderr)
@@ -256,6 +288,15 @@ def _uninstall_purge(config_path, mode_filter, skip_prompt: bool) -> int:
 
 def _uninstall_all_entries() -> int:
     """Remove ALL snodo-* entries from Claude config."""
+    present = _present_targets()
+    if len(present) == 1 and present[0].name == "Claude Desktop":
+        try:
+            removed = uninstall_all(config_path=present[0].config_path)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        print_uninstall_result(removed, present[0].config_path)
+        return 0
     try:
         targets = mutate_clients("all", targets=_present_targets())
         removed = [name for _, names in targets for name in names]
@@ -279,6 +320,34 @@ def _uninstall_all_entries() -> int:
 
 def _uninstall_orphans(skip_prompt: bool) -> int:
     """Detect and optionally remove orphan MCP entries."""
+    present = _present_targets()
+    if len(present) == 1 and present[0].name == "Claude Desktop":
+        config_path = present[0].config_path
+        try:
+            orphans = scan_orphans(config_path)
+        except Exception as e:
+            print(f"Error scanning for orphans: {e}", file=sys.stderr)
+            return 1
+        if not orphans:
+            print("No orphan MCP entries found.")
+            return 0
+        print(f"Found {len(orphans)} orphan MCP entry(ies):")
+        for orphan in orphans:
+            print(f"  {orphan['entry_name']} -> {orphan['missing_path']}")
+        if not skip_prompt and input("Remove these orphans? [y/N] ").strip().lower() != "y":
+            print("Aborted.")
+            return 0
+        for orphan in orphans:
+            _audit_global("orphan_detected", orphan)
+        try:
+            removed = remove_orphans(config_path)
+        except Exception as e:
+            print(f"Error removing orphans: {e}", file=sys.stderr)
+            return 1
+        for name in removed:
+            _audit_global("orphan_removed", {"entry_name": name})
+        print(f"Removed {len(removed)} orphan(s).")
+        return 0
     try:
         targets = mutate_clients("orphans", targets=_present_targets())
         orphans = [(target, name) for target, names in targets for name in names]
