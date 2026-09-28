@@ -27,6 +27,7 @@ nav:
   - Home: index.md
   - Use Snodo:
       - Quickstart: runbook.md
+      - User configuration: configuration.md
       - Command reference: command-reference.md
       - Coder backends: coders.md
       - Authoring a plan: authoring-a-plan.md

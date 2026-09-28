@@ -14,7 +14,8 @@ completes the intent.
 
 Background job notifications are opt-in. Add one or more targets to
 `~/.snodo/config.yml`; target URLs and tokens are secrets and `snodo config
-show` redacts them. `webhook` receives Snodo's generic JSON event, and `ntfy`
+show` redacts them. See the [user configuration reference](configuration.md)
+for all user-level settings and notification target fields. `webhook` receives Snodo's generic JSON event, and `ntfy`
 receives the short message as plain text. `slack`, `discord` and `teams` format
 that same actionable message for their respective incoming-webhook endpoints.
 For Slack and Discord, use their incoming-webhook URLs. For Teams, use the URL

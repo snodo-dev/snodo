@@ -34,6 +34,11 @@ initial_mode: "producer"
 
 This declares one mode (producer) with one tool (edit) and one validator (security checks). The unanimous disagreement policy requires the validator to pass before execution proceeds.
 
+Job notification targets are configured per user in
+[`~/.snodo/config.yml`](configuration.md) under `notifications:`. They contain
+personal endpoints and credentials, so they do not belong in a project
+`protocol.yml`.
+
 ---
 
 ## `Protocol` — top-level

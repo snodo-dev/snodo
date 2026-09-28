@@ -26,6 +26,9 @@ snodo run "your first task" --mock
 [Runbook →](runbook.md) — install, configure, the full CLI reference, MCP
 serving, and troubleshooting.
 
+[User configuration reference →](configuration.md) — `~/.snodo/config.yml`,
+provider credentials, model tuning, cloud and notification settings.
+
 ## Coder backends
 
 The coder writes; snodo governs, gates and records. `litellm` (default),

@@ -4,6 +4,12 @@ This directory contains the shipped protocol templates for snodo.
 Each `.yml` file defines a complete protocol specification following
 the snodo protocol schema.
 
+Job notifications (Slack, Discord, Teams, ntfy, and webhook) are configured per
+user in `~/.snodo/config.yml` under `notifications:`, not in the protocol.
+Keep destination URLs and credentials out of committed templates. See the
+[user configuration reference](../../../../../../docs/configuration.md) for the
+full schema and examples.
+
 ## Available Templates
 
 | File | Template Name | CLI Flag | Description |
