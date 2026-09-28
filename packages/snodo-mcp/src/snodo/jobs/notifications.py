@@ -78,8 +78,9 @@ def _display_name(root: Path) -> str | None:
     try:
         import subprocess
 
-        result = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        result = subprocess.run(  # noqa: S603 - fixed argv, project path passed as one argument
+            ["git",  # noqa: S607 - git resolved from PATH by design
+             "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
             capture_output=True,
             text=True,
             check=False,
@@ -88,7 +89,7 @@ def _display_name(root: Path) -> str | None:
             main_root = Path(result.stdout.strip()).resolve().parent
             if main_root not in roots:
                 roots.append(main_root)
-    except Exception:  # identity lookup must never prevent a best-effort notification
+    except Exception:  # noqa: BLE001,S110 - identity lookup must never prevent notification
         pass
 
     for project_root in roots:
