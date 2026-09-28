@@ -11,6 +11,7 @@ import hashlib
 import json
 import logging
 import os
+import socket
 import sys
 import time
 from pathlib import Path
@@ -77,7 +78,10 @@ def send(target: dict, event: dict) -> None:
     message = event["message"]
     if kind == "ntfy":
         body = message.encode("utf-8")
-        headers = {"Content-Type": "text/plain; charset=utf-8", "Title": "Snodo job update"}
+        project = event.get("project")
+        host = event.get("host")
+        title = " - ".join(value for value in (project, host) if value) or "Snodo job update"
+        headers = {"Content-Type": "text/plain; charset=utf-8", "Title": title}
     elif kind == "slack":
         body = json.dumps({"text": message}, separators=(",", ":")).encode("utf-8")
         headers = {"Content-Type": "application/json"}
@@ -89,7 +93,13 @@ def send(target: dict, event: dict) -> None:
             "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
             "type": "AdaptiveCard",
             "version": "1.2",
-            "body": [{"type": "TextBlock", "text": message, "wrap": True}],
+            "body": ([
+                {"type": "TextBlock", "text": event["project"], "weight": "Bolder", "size": "Medium", "wrap": True},
+                {"type": "TextBlock", "text": f"Runner: {event['host']}", "isSubtle": True, "wrap": True},
+                {"type": "TextBlock", "text": message.partition("\n")[2] or message, "wrap": True},
+            ] if event.get("project") and event.get("host") else [
+                {"type": "TextBlock", "text": message, "wrap": True},
+            ]),
         }
         body = json.dumps({
             "type": "message",
@@ -158,16 +168,35 @@ def _notify(root: Path, event_id: str, event_type: str, message: str, details: d
 
 
 def _job_message(root: Path, job_id: str, task: dict, happened: str) -> tuple[str, dict]:
-    project = root.name
+    project_json = root / ".snodo" / "project.json"
+    display_name = None
+    try:
+        cached_project = json.loads(project_json.read_text())
+        value = cached_project.get("display_name")
+        display_name = value.strip() if isinstance(value, str) and value.strip() else None
+    except (OSError, ValueError, AttributeError):
+        pass
+    try:
+        from snodo.project import get_project_id
+
+        project_id, _scope = get_project_id(str(root))
+    except Exception:  # identity lookup must never prevent a best-effort notification
+        project_id = None
+    project = display_name or project_id or root.name
+    host = socket.gethostname()
     plan = task.get("plan_name") or task.get("task_plan")
     task_id = task.get("task_id")
-    parts = [f"{project}: job {job_id}"]
+    details = [f"job {job_id}"]
     if plan:
-        parts.append(f"plan {plan}")
+        details.append(f"plan {plan}")
     if task_id:
-        parts.append(f"task {task_id}")
-    parts.extend([happened, f"Inspect: snodo logs {job_id}"])
-    return " — ".join(parts), {"project": project, "job_id": job_id, "plan": plan, "task": task_id, "command": f"snodo logs {job_id}"}
+        details.append(f"task {task_id}")
+    details.extend([happened, f"Inspect: snodo logs {job_id}"])
+    message = f"**{project}** · {host}\n" + " — ".join(details)
+    return message, {
+        "project": project, "host": host, "job_id": job_id,
+        "plan": plan, "task": task_id, "command": f"snodo logs {job_id}",
+    }
 
 
 def monitor(root_text: str, job_id: str) -> None:

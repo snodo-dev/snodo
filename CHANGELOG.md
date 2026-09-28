@@ -14,6 +14,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   public base URL is configured. Its read-only live page streams status and
   redacted output until a final outcome; inaccessible servers give the
   `snodo logs <job_id> --watch` fallback. (Fixes #522)
+- Job notifications now lead with the project's configured display name, then
+  its canonical project ID or checkout folder, and include the runner hostname.
+  Slack, Discord, Teams and ntfy foreground project identity in their native
+  formats; generic webhook events carry project and host fields. (Fixes #523)
 - `docs/configuration.md` now documents the user-level `~/.snodo/config.yml`
   schema and defaults, including all five notification target types and
   environment references. The reference is linked from the docs home, protocol
