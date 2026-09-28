@@ -298,18 +298,10 @@ def _run_server(args, protocol) -> int:
     verbose = bool(getattr(args, "verbose", False))
     if verbose:
         extra_kwargs["verbose"] = True
-    public_base_url = (
-        os.environ.get("SNODO_PUBLIC_BASE_URL", "").strip().rstrip("/")
-        if transport != "stdio" else ""
-    )
-    if not public_base_url and tunnel_hostname:
-        public_base_url = f"https://{tunnel_hostname}"
-    if public_base_url:
-        public_base_url = re.sub(r"/mcp$", "", public_base_url)
     try:
-        watch_link_ttl = int(os.environ.get("SNODO_WATCH_LINK_TTL", str(24 * 60 * 60)))
-        if watch_link_ttl <= 0:
-            raise ValueError
+        from snodo.cli.commands.serve_watch import watch_link_settings
+
+        public_base_url, watch_link_ttl = watch_link_settings(transport, tunnel_hostname)
     except ValueError:
         print("Error: SNODO_WATCH_LINK_TTL must be a positive number of seconds", file=sys.stderr)
         return 2
