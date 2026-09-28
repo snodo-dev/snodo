@@ -298,6 +298,15 @@ def _run_server(args, protocol) -> int:
     verbose = bool(getattr(args, "verbose", False))
     if verbose:
         extra_kwargs["verbose"] = True
+    try:
+        from snodo.cli.commands.serve_watch import watch_link_settings
+
+        public_base_url, watch_link_ttl = watch_link_settings(transport, tunnel_hostname)
+    except ValueError:
+        print("Error: SNODO_WATCH_LINK_TTL must be a positive number of seconds", file=sys.stderr)
+        return 2
+    extra_kwargs["public_base_url"] = public_base_url or None
+    extra_kwargs["watch_link_ttl"] = watch_link_ttl
     mcp = build_fastmcp_server(protocol_server, **extra_kwargs)
     tools = protocol_server.get_tools()
     mode_label = mode_id or "all"

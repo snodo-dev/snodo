@@ -10,6 +10,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `watch_job` now returns a job-scoped, expiring browser link when an HTTP
+  public base URL is configured. Its read-only live page streams status and
+  redacted output until a final outcome; inaccessible servers give the
+  `snodo logs <job_id> --watch` fallback. (Fixes #522)
 - `docs/configuration.md` now documents the user-level `~/.snodo/config.yml`
   schema and defaults, including all five notification target types and
   environment references. The reference is linked from the docs home, protocol

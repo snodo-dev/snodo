@@ -7,17 +7,26 @@ mean the work passed or completed.
 
 ## Open the live view
 
-After any of those tools returns `job_id`, call `watch_job(job_id)`. In MCP Apps
-hosts such as Claude or ChatGPT, the result opens a live panel with the job id,
-status, elapsed time, and the latest ten stdout lines. The panel refreshes every
-few seconds through `get_job_status` and `get_job_logs`, then stops automatically
-at the job's final status and shows its final outcome. Keep the panel open while
-the job runs; the orchestrator does not need to schedule repeated status calls.
+After any of those tools returns `job_id`, call `watch_job(job_id)` and hand the
+operator the returned browser link. On a server reachable over HTTP, the link
+opens a read-only live page with the job id, status, elapsed time, and latest
+ten stdout lines. It updates itself and stops at the final status, showing the
+outcome; the operator can open it in any browser, including on a phone. Keep it
+open while the job runs; the orchestrator does not need to schedule repeated
+status calls. The capability link is scoped to that job and expires after 24
+hours by default (`SNODO_WATCH_LINK_TTL` configures the lifetime in seconds).
+
+MCP Apps hosts also retain their in-host live panel. When the server has no
+reachable browser URL (for example stdio or an ssh-proxied server), the result
+says so and provides `snodo logs <job_id> --watch` instead.
+For streamable-HTTP behind a self-managed public proxy, set
+`SNODO_PUBLIC_BASE_URL` to its public origin; `snodo serve --tunnel` detects its
+managed tunnel hostname automatically.
 
 The text result contains the current status and recent output for clients that
-do not render MCP Apps. `watch_job` uses only the same job status and stdout
-logs already available through the dispatch capability. For a particular
-follow-up, call `get_job_status` or `get_job_logs` directly.
+do not render MCP Apps. The browser page uses only the same job status and
+redacted stdout logs already available through the dispatch capability. For a
+particular follow-up, call `get_job_status` or `get_job_logs` directly.
 
 ## Interpret the result
 

@@ -1,6 +1,121 @@
-"""Self-contained MCP Apps view for following a background job."""
+"""Browser and MCP Apps views for following a background job."""
+
+import asyncio
+import base64
+import hashlib
+import hmac
+import json
+import secrets
+import time
+from urllib.parse import quote
 
 WATCH_JOB_RESOURCE_URI = "ui://snodo/watch-job"
+
+
+class WatchLinkIssuer:
+    """Issue and verify short-lived, job-scoped browser capabilities."""
+
+    def __init__(self, ttl_seconds=24 * 60 * 60, secret=None, clock=time.time):
+        self.ttl_seconds = int(ttl_seconds)
+        if self.ttl_seconds <= 0:
+            raise ValueError("watch link lifetime must be positive")
+        self._secret = secret or secrets.token_bytes(32)
+        self._clock = clock
+
+    def issue(self, job_id):
+        payload = {"job": str(job_id), "exp": int(self._clock()) + self.ttl_seconds,
+                   "nonce": secrets.token_urlsafe(16)}
+        encoded = base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":")).encode()
+        ).rstrip(b"=").decode()
+        signature = hmac.new(self._secret, encoded.encode(), hashlib.sha256).digest()
+        return encoded + "." + base64.urlsafe_b64encode(signature).rstrip(b"=").decode()
+
+    def verify(self, token, job_id=None):
+        try:
+            encoded, supplied = token.split(".", 1)
+            expected = base64.urlsafe_b64encode(
+                hmac.new(self._secret, encoded.encode(), hashlib.sha256).digest()
+            ).rstrip(b"=").decode()
+            if not hmac.compare_digest(supplied, expected):
+                return None
+            payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+            if (not isinstance(payload.get("job"), str) or
+                    int(payload.get("exp", 0)) <= int(self._clock()) or
+                    not payload.get("nonce") or
+                    (job_id is not None and not hmac.compare_digest(payload["job"], str(job_id)))):
+                return None
+            return payload["job"]
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+            return None
+
+
+class WatchJobASGI:
+    """Expose only the capability page and its read-only event stream."""
+
+    def __init__(self, app, protocol_server, issuer, base_url):
+        self.app = app
+        self.protocol_server = protocol_server
+        self.issuer = issuer
+        self.base_url = base_url.rstrip("/")
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "")
+        parts = path.strip("/").split("/")
+        if scope.get("type") != "http" or len(parts) not in (2, 3) or parts[0] != "watch":
+            return await self.app(scope, receive, send)
+        # Uvicorn's access logger reads the ASGI scope after this app returns.
+        # Keep the bearer capability out of request logs as well as MCP logs.
+        scope["path"] = "/watch/[capability]"
+        scope["raw_path"] = b"/watch/[capability]"
+        job_id = self.issuer.verify(parts[1])
+        if job_id is None or (len(parts) == 3 and parts[2] != "events") or scope.get("method") != "GET":
+            return await _response(send, 404, b"Not found")
+        if len(parts) == 2:
+            html = BROWSER_WATCH_HTML.replace("__EVENTS__", quote(path.rstrip("/") + "/events", safe="/"))
+            return await _response(send, 200, html.encode(), b"text/html; charset=utf-8")
+        await self._stream(job_id, receive, send)
+
+    async def _stream(self, job_id, receive, send):
+        async def emit(status, logs):
+            payload = json.dumps({"job_id": job_id, "status": status, "logs": logs}, default=str)
+            await send({"type": "http.response.body", "body": f"data: {payload}\n\n".encode(), "more_body": True})
+
+        await send({"type": "http.response.start", "status": 200,
+                    "headers": [(b"content-type", b"text/event-stream"),
+                                (b"cache-control", b"no-store"), (b"x-content-type-options", b"nosniff")]})
+        while True:
+            status = await asyncio.to_thread(self.protocol_server.call_tool, "get_job_status", {"job_id": job_id})
+            logs = await asyncio.to_thread(self.protocol_server.call_tool, "get_job_logs", {"job_id": job_id, "tail": 10})
+            # The same handlers/redaction path as the existing MCP tools is used.
+            if isinstance(status, str):
+                status = json.loads(status)
+            if isinstance(logs, str):
+                logs = json.loads(logs)
+            public_status = {
+                key: status.get(key)
+                for key in ("id", "status", "exit_code", "created_at", "started_at", "completed_at")
+            }
+            await emit(public_status, {"log": logs.get("log", "")})
+            if public_status.get("status") in ("completed", "failed", "cancelled", "unmerged"):
+                break
+            try:
+                message = await asyncio.wait_for(receive(), timeout=3)
+                if message.get("type") == "http.disconnect":
+                    break
+            except asyncio.TimeoutError:
+                pass
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+
+async def _response(send, status, body, content_type=b"text/plain; charset=utf-8"):
+    await send({"type": "http.response.start", "status": status,
+                "headers": [(b"content-type", content_type), (b"cache-control", b"no-store"),
+                            (b"x-content-type-options", b"nosniff")]})
+    await send({"type": "http.response.body", "body": body, "more_body": False})
+
+
+BROWSER_WATCH_HTML = r'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Snodo job watch</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:900px;margin:auto;padding:16px}header{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}h1{font-size:1.2rem}#status{font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f3f5;padding:12px;border-radius:8px;max-height:65vh;overflow:auto}</style><header><h1>Job <code id="id"></code></h1><span id="status">Connecting…</span><span id="elapsed"></span></header><p id="outcome" hidden></p><pre id="logs">Waiting for output…</pre><div id="message" aria-live="polite"></div><script>const FINAL=new Set(["completed","failed","cancelled","unmerged"]);const start=Date.now();const source=new EventSource("__EVENTS__");source.onmessage=e=>{const d=JSON.parse(e.data),s=d.status;document.querySelector("#id").textContent=d.job_id;document.querySelector("#status").textContent=s.status||"unknown";document.querySelector("#logs").textContent=d.logs.log||"(no stdout output)";const began=Number(s.started_at||s.created_at)*1000;const end=Number(s.completed_at)*1000||Date.now();const sec=Math.max(0,Math.floor((end-(began||start))/1000));document.querySelector("#elapsed").textContent=`${Math.floor(sec/60)}:${String(sec%60).padStart(2,"0")} elapsed`;if(FINAL.has(s.status)){const out=document.querySelector("#outcome");out.textContent=`Final outcome: ${s.status}${s.exit_code==null?"":` · exit code ${s.exit_code}`}`;out.hidden=false;document.querySelector("#message").textContent="Job finished; live updates stopped.";source.close()}};source.onerror=()=>document.querySelector("#message").textContent="Connection interrupted; reconnecting…";</script></html>'''
 
 WATCH_JOB_HTML = r'''<!doctype html>
 <html lang="en">

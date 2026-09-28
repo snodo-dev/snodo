@@ -11,8 +11,12 @@ import pytest
 from snodo.mcp.job_handlers import JobToolHandler
 from snodo.mcp.server import ProtocolMCPServer
 from snodo.mcp.tools import JOB_OBSERVATION_TOOLS, MODE_TOOL_MAP
-from snodo.mcp.transport import build_fastmcp_server
-from snodo.mcp.watch_job import WATCH_JOB_HTML, WATCH_JOB_RESOURCE_URI
+from snodo.mcp.transport import (
+    _safe_mcp_excerpt, _with_browser_watch_link, build_fastmcp_server,
+)
+from snodo.mcp.watch_job import (
+    WATCH_JOB_HTML, WATCH_JOB_RESOURCE_URI, WatchJobASGI, WatchLinkIssuer,
+)
 from snodo.protocols import template_protocol
 
 
@@ -90,3 +94,64 @@ def test_watch_page_stops_for_existing_final_job_statuses():
         for status in ("completed", "failed", "cancelled", "unmerged")
     ) + '\nif (shouldStopWatching("running") !== false) process.exit(2);'
     subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+
+def test_watch_link_issue_verification_expiry_and_job_scope():
+    now = [1000]
+    issuer = WatchLinkIssuer(ttl_seconds=60, secret=b"test-secret", clock=lambda: now[0])
+    token = issuer.issue("j_one")
+    assert issuer.verify(token) == "j_one"
+    assert issuer.verify(token, "j_two") is None
+    assert issuer.verify(token + "x") is None
+    now[0] += 60
+    assert issuer.verify(token) is None
+
+
+def test_watch_result_has_link_or_one_line_cli_fallback():
+    def handler(**kwargs):
+        return "Job j_one — running"
+
+    issuer = WatchLinkIssuer(secret=b"test-secret")
+    linked = _with_browser_watch_link(handler, "https://jobs.example", issuer)(job_id="j_one")
+    assert "https://jobs.example/watch/" in linked
+    token = linked.rsplit("/", 1)[1]
+    assert issuer.verify(token) == "j_one"
+    assert token not in _safe_mcp_excerpt({"result": linked})
+    fallback = _with_browser_watch_link(handler, None, None)(job_id="j_one")
+    assert "No reachable browser URL is configured; follow with: snodo logs j_one --watch" in fallback
+
+
+def test_watch_browser_stream_returns_redacted_tool_data_and_ends_at_final_status():
+    class Protocol:
+        def __init__(self):
+            self.calls = []
+
+        def call_tool(self, name, arguments):
+            self.calls.append((name, arguments))
+            if name == "get_job_status":
+                return {"id": "j_one", "status": "completed", "exit_code": 0,
+                        "created_at": 1, "completed_at": 5}
+            return {"job_id": "j_one", "log": "safe redacted output"}
+
+    async def exercise():
+        issuer = WatchLinkIssuer(secret=b"test-secret")
+        protocol = Protocol()
+        token = issuer.issue("j_one")
+        events = []
+
+        async def app(scope, receive, send):
+            raise AssertionError("watch route should not reach MCP auth/app")
+
+        watcher = WatchJobASGI(app, protocol, issuer, "https://jobs.example")
+        async def send(event):
+            events.append(event)
+        await watcher({"type": "http", "method": "GET", "path": f"/watch/{token}/events"},
+                      lambda: asyncio.sleep(0), send)
+        assert events[0]["status"] == 200
+        body = b"".join(event.get("body", b"") for event in events).decode()
+        assert '"status": {"id": "j_one", "status": "completed"' in body
+        assert "safe redacted output" in body
+        assert len(protocol.calls) == 2
+        assert events[-1]["more_body"] is False
+
+    asyncio.run(exercise())
