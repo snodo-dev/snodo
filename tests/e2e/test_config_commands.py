@@ -40,3 +40,19 @@ def test_config_show(snodo_cli):
     assert r.returncode == 0
     # Should show model and/or engine config
     assert "model" in r.stdout.lower() or "api" in r.stdout.lower()
+
+
+@pytest.mark.e2e
+def test_notify_test_alias_prints_deprecation_notice(snodo_cli):
+    r = snodo_cli(["notify", "test"])
+    assert r.returncode != 0
+    assert "deprecated" in r.stderr
+    assert "snodo config --notify-test" in r.stderr
+    assert "No notification targets configured." in r.stdout
+
+
+@pytest.mark.e2e
+def test_config_notify_test_with_no_targets(snodo_cli):
+    r = snodo_cli(["config", "--notify-test"])
+    assert r.returncode != 0
+    assert "No notification targets configured." in r.stdout

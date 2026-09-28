@@ -508,6 +508,37 @@ class TestCLIConfigNoAction:
         assert result == 0
 
 
+class TestNotificationTargetTest:
+    @patch("snodo.jobs.notifications.test_targets")
+    def test_config_notify_test_reports_each_target(self, test_targets, cli_config_dir, capsys):
+        test_targets.return_value = [("phone", True), ("slack", False)]
+
+        assert main(["config", "--notify-test"]) == 1
+        assert capsys.readouterr().out.splitlines() == [
+            "✓ phone: sent",
+            "✗ slack: delivery failed",
+        ]
+        test_targets.assert_called_once_with()
+
+    @patch("snodo.jobs.notifications.test_targets", return_value=[])
+    def test_config_notify_test_with_no_targets_fails(self, test_targets, cli_config_dir, capsys):
+        assert main(["config", "--notify-test"]) == 1
+        assert capsys.readouterr().out.strip() == "No notification targets configured."
+
+    @patch("snodo.jobs.notifications.test_targets", return_value=[("phone", True)])
+    def test_deprecated_notify_alias_prints_migration_notice(self, test_targets, capsys):
+        assert main(["notify", "test"]) == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "✓ phone: sent"
+        assert captured.err.strip() == (
+            "Note: 'snodo notify test' is deprecated. Use 'snodo config --notify-test' instead."
+        )
+
+    def test_deprecated_notify_alias_is_hidden_from_top_level_help(self, capsys):
+        assert main(["--help"]) == 0
+        assert "notify" not in capsys.readouterr().out
+
+
 # === Model resolution in run command ===
 
 class TestModelResolution:

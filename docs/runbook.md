@@ -94,7 +94,7 @@ The complete schema, defaults, environment references, cloud settings, and all
 five notification target formats live in the canonical
 [user configuration reference](configuration.md). Notification targets belong
 in `~/.snodo/config.yml` (or `$SNODO_HOME/config.yml`), not in a project
-protocol. Test them with `snodo notify test`.
+protocol. Test them with `snodo config --notify-test`.
 
 Example `~/.snodo/config.yml` with common role settings and one webhook:
 

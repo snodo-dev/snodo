@@ -61,8 +61,8 @@ notification work is done. Messages name the project, job, plan/task when
 known, outcome, and `snodo logs <job_id>` (or
 `snodo authorize` for a pending human decision). Delivery is detached from the
 runner, bounded, and best-effort. Verify all configured targets with
-`snodo notify test`. Notifications reach the operator; they do not wake or
-resume the orchestrating agent. An unattended agent must keep its own process,
+`snodo config --notify-test`. Notifications reach the operator; they do not wake
+or resume the orchestrating agent. An unattended agent must keep its own process,
 watch, and next action alive rather than relying on a notification to restart it.
 
 For plans organized into queues, start an orchestration pass with

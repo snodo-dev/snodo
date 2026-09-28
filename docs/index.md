@@ -9,7 +9,7 @@ relayed sessions may return only its plain-text snapshot.
 
 Optional job notifications support ntfy, generic webhooks, Slack, Discord, and
 Teams. Configure them in `~/.snodo/config.yml` (or `$SNODO_HOME/config.yml`)
-and test targets with `snodo notify test`. See the
+and test targets with `snodo config --notify-test`. See the
 [user configuration reference](configuration.md). For a short introduction,
 see the [repository README](https://github.com/snodo-dev/snodo#readme).
 

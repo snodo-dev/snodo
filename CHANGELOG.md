@@ -15,6 +15,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   to tools no longer granted are refused after a live mode change; server
   instructions and the guide name the served mode. MCP install entries remain
   explicitly pinned per mode. (Fixes #532)
+### Changed
+- Notification target testing now lives at `snodo config --notify-test`. The
+  `snodo notify test` command remains as a hidden deprecated alias for one
+  release and directs operators to the new option. (Fixes #530)
 
 ---
 
