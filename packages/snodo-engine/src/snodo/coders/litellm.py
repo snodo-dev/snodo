@@ -419,11 +419,10 @@ Return ONLY the JSON array, no other text.
                 ) from e
 
             if getattr(response, "usage", None) is not None:
-                tokens_total = (
-                    (tokens_total or 0)
-                    + _usage_tokens(response, "prompt")
-                    + _usage_tokens(response, "completion")
-                )
+                prompt_tokens = _usage_tokens(response, "prompt")
+                completion_tokens = _usage_tokens(response, "completion")
+                if prompt_tokens is not None and completion_tokens is not None:
+                    tokens_total = (tokens_total or 0) + prompt_tokens + completion_tokens
 
             try:
                 self._check_truncation(response)
