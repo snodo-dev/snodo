@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- OpenCode CLI runs now use `--format json` and record provider-reported token,
+  cache, and cost usage while keeping job output readable. Missing usage remains
+  null. (Fixes #541)
 - Recon result records now include per-model-attempt usage, token/cache counts,
   provider-reported cost, served model, elapsed time, and outcome, including
   failed and fallback attempts. Unknown usage remains null. (Fixes #539)

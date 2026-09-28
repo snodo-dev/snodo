@@ -414,6 +414,8 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
                     output_seen.set()
                     if emit is not None:
                         self._emit_coder_line(emit, line)
+                    else:
+                        self._process_output_line(line)
             except (ValueError, OSError):
                 # Pipe closed underneath us (kill/EOF race); keep what was read.
                 pass
@@ -492,9 +494,15 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         plain stream keep these bytes untouched (Issue #306).
         """
         try:
-            emit(line.rstrip("\n"))
+            rendered = self._process_output_line(line)
+            if rendered:
+                emit(rendered)
         except Exception:
             _logger.debug("%s: progress sink failed on coder output", self.binary, exc_info=True)
+
+    def _process_output_line(self, line: str) -> str:
+        """Return the human-facing form of one captured output line."""
+        return line.rstrip("\n")
 
     @staticmethod
     def _combined_output_tail(stdout: str, stderr: str) -> str:
@@ -539,6 +547,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             self._discard_coder_report(report_path)
 
     def _run_in_place(self, spec: TaskSpec) -> CodeArtifact:
+        self._begin_subprocess_run()
         prompt = self._invite_report(self._build_prompt(spec))
         project_root = str(self._workspace)
         bare_model = self._bare_model()
@@ -685,6 +694,10 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             )
 
         return self._diff_to_artifact(diff_entries)
+
+    def _begin_subprocess_run(self) -> None:
+        """Reset adapter-specific observations before launching the CLI."""
+        return None
 
     def _diff_to_artifact(self, diff_entries: list) -> CodeArtifact:
         """Build a CodeArtifact from diff entries, re-reading content from disk."""
