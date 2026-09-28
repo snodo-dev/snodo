@@ -9,6 +9,7 @@ API — it is what the command knows about a tunnel before it acts.
 """
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Optional
@@ -16,6 +17,7 @@ from typing import Optional
 #: The authentication mechanisms a tunnel may accept. Several may be given;
 #: a tunnel accepts ANY of the mechanisms it was provisioned with.
 AUTH_METHODS = ("oauth", "service-token")
+_logger = logging.getLogger(__name__)
 
 
 def _auth_methods(values: Optional[list[str]]) -> list[str]:
@@ -128,6 +130,6 @@ def resolve_serve_mode(
         current = read_state(project_root).current_mode
         if current and protocol.get_mode(current):
             return current
-    except Exception:  # noqa: BLE001 — state is best-effort
-        pass
+    except Exception as e:  # noqa: BLE001 — state is best-effort
+        _logger.debug("Could not read current mode for tunnel: %s", e)
     return protocol.initial_mode
