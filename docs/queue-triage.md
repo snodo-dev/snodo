@@ -36,11 +36,11 @@ dependency or skip a plan that needs a decision.
 Call `queue_validate` after triage and ordering, and resolve reported plan
 verification failures, order issues, and cross-queue path warnings before the
 first `queue_run`. Validation reports; it does not change queue state. Then
-start the intended queue or queues with `queue_run`; follow its returned job
-with `get_job_status` and `get_job_logs`. Inspect plan and task outcomes with
-`get_plan`. A queue stops at its first blocked, errored, or unmerged plan; fix
-or review that plan and validate the queues again before nudging with another
-`queue_run`.
+start the intended queue or queues with `queue_run`; follow each returned job
+with `watch_job` (and hand the operator its browser link when provided). Inspect
+plan and task outcomes with `get_plan`. A queue stops at its first blocked,
+errored, or unmerged plan; fix or review that plan and validate the queues again
+before nudging with another `queue_run`.
 
 ## Example: eleven inherited Droptrack plans
 
@@ -82,7 +82,7 @@ tools. Include:
 - **Human look:** any work accepted with a known divergence, conflict, or
   unmerged result, with the specific risk and decision needed.
 
-Use `get_job_status` to establish job completion and `get_job_logs` for run
-details; use `get_plan` for task-level status. Report only tasks recorded as
-completed/merged as merged. Keep waiting work and known divergence visible so
-the human can decide what should happen next.
+Use `watch_job` to follow job progress, `get_job_status` and `get_job_logs` for
+specific follow-up, and `get_plan` for task-level status. Report only tasks
+recorded as completed/merged as merged. Keep waiting work and known divergence
+visible so the human can decide what should happen next.

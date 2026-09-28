@@ -95,3 +95,8 @@ A failed recon still reports its recorded failure reason through the terminal
 status/results response. Do not start planning from the initial dispatch
 response, and do not treat a successful dispatch as evidence that the question
 was answered.
+
+Recon completion is recorded in the project's local audit history. When cloud
+sync is enabled, completion also starts a bounded best-effort sync; this works
+even when no Snodo session is active. Cloud delivery does not change the raw
+answers returned by `get_recon_results`.

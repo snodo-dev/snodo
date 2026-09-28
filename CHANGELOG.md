@@ -32,10 +32,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - `disagreement_escalated` now has a pinned v6 cloud shape carrying the task,
   phase, policy and plan/wave ownership when applicable, without validator
   output. v5 continues to hold plan-owned events until v6 is accepted. (Fixes #520)
-- `watch_job` opens a self-refreshing MCP Apps live panel for dispatched tasks,
-  plan runs, and queue runs, with a current status and recent-output text
-  fallback. The dispatch capability and server instructions now direct
-  orchestrators to open the panel instead of scheduling polls. (Fixes #516)
+- `watch_job` includes an optional MCP Apps live panel for dispatched tasks,
+  plan runs, and queue runs, plus a current-status and recent-output text
+  snapshot. Session instructions direct orchestrators to `watch_job`; host
+  support determines whether the panel renders. (Fixes #516)
 - Detached, best-effort job notifications support JSON webhooks and ntfy for
   job completion/failure, task halts, authorization escalations, and configurable
   log silence. Targets are redacted in config output and can be checked with
@@ -51,6 +51,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   available. v5 receivers continue to receive no v6-only data. (Fixes #514)
 
 ### Changed
+- The bundled guide and MCP session instructions now treat `watch_job` as the
+  live MCP follow-up, hand operators browser watch links when available, and
+  explain the CLI watch fallback, optional host-rendered panel, module naming,
+  and operator-facing notifications for unattended runs. (Fixes #528)
 - The bundled guide and MCP session instructions now direct orchestrators to
   use the smallest fitting structure: direct task, parallel wave, multi-wave
   plan, or multi-plan queue. They clarify that plan validation is not an
