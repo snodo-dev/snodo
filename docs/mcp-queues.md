@@ -1,6 +1,10 @@
 # MCP queue tools
 
-The `queue` mode capability grants five MCP tools for operating the plan
+The canonical queue operating guide is [Keep queues moving](queues.md), the
+`queues` MCP guide topic. This page is only a brief tool index; it does not
+duplicate the queue run/recovery guide.
+
+The `queue` mode capability grants six MCP tools for operating the plan
 queues defined by [ADR 053](decisions/053-plans-run-from-queues.md):
 
 - `queue_list` lists queues in creation order and reports each plan's status.
@@ -9,8 +13,10 @@ queues defined by [ADR 053](decisions/053-plans-run-from-queues.md):
   plan cannot be moved.
 - `queue_validate` reports plan verification, queue readiness, order problems,
   cross-queue path warnings, and active runners without changing queue state.
-- `queue_run` starts the CLI queue runner as an asynchronous job and returns a
-  `job_id`. Follow it with `get_job_status` and `get_job_logs`.
+- `queue_run` starts the queue runner as an asynchronous job and returns a
+  `job_id`. Follow it with the browser watch link when available, or
+  `snodo logs <job_id> --watch`; `watch_job` also returns a text snapshot and
+  may render an MCP Apps panel in supporting hosts.
 
 Queue tool access follows the active mode grant. No queue tool requires a token
 held by the caller; queue execution preserves the CLI's ordering, refusal, and

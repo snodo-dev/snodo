@@ -170,9 +170,12 @@ overrides are optional and normally need not be configured.
 
 ## Notifications
 
-Notifications are per-user settings in `~/.snodo/config.yml`, not project
-protocol settings. They are opt-in: with no valid targets, no delivery occurs.
-Delivery is detached and best-effort.
+Notifications are per-user settings in `~/.snodo/config.yml` (or
+`$SNODO_HOME/config.yml`), not project protocol settings. They are opt-in: with
+no valid targets, no delivery occurs. Delivery is detached and best-effort, so
+notification failures do not fail a job. Messages identify the project by its
+configured display name when available, otherwise its canonical project ID or
+checkout folder, and include the runner hostname.
 
 | Key | Default | Description |
 |---|---|---|
@@ -180,13 +183,16 @@ Delivery is detached and best-effort.
 | `notifications.events` | `job_finished`, `task_halted`, `authorization_needed`, `job_silent` | Event names to deliver; set a subset to filter. |
 | `notifications.silence_threshold_seconds` | `900` | Log-silence interval before a `job_silent` notification; invalid values use 900 and values are clamped to at least 1 second. |
 
-Each target has a required-in-practice `type` and `url`; `name` is an optional
+Each target needs a supported `type` and an HTTP(S) `url`; `name` is an optional
 display label. `token` is optional and sent as a bearer token. `headers` is an
-optional extra-header map for generic `webhook` targets. `ntfy` sends plain text;
-Slack and Discord use their incoming-webhook message shapes; Teams sends an
-Adaptive Card envelope to a Workflows/Power Automate webhook. Generic `webhook`
-receives Snodo's JSON event. URLs and credentials are redacted by `snodo config
-show`. Check delivery with `snodo notify test`.
+optional extra-header map for generic `webhook` targets. `ntfy` sends plain text
+and puts the project and runner in its title. Slack, Discord and Teams format
+the project-named message for their respective incoming-webhook interfaces;
+Slack uses its native single-asterisk bold syntax, and Discord disables
+mentions. Teams sends an Adaptive Card envelope to a Workflows/Power Automate
+webhook. Generic `webhook` receives Snodo's JSON event. URLs and credentials
+are redacted by `snodo config show`. `snodo notify test` sends one test message
+to every valid configured target and reports per-target delivery results.
 
 ```yaml
 notifications:
@@ -224,6 +230,12 @@ For any target `url` or optional `token`, an `env:VARIABLE_NAME` or
 `url: env:SNODO_WEBHOOK_URL` reads the webhook endpoint from that environment
 variable, keeping it out of the YAML. Supply only the token when the endpoint
 requires bearer authentication.
+
+The default event set is `job_finished`, `task_halted`, `authorization_needed`,
+and `job_silent`. `job_silent` is sent once when a running job has had no log
+activity for `silence_threshold_seconds` (default 900 seconds; invalid values
+fall back to 900 and valid values are clamped to at least one second). Terminal
+`cancelled` and `unmerged` jobs do not generate a `job_finished` notification.
 
 ## Related guides
 

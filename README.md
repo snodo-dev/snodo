@@ -30,6 +30,28 @@ outvoted), and every governance decision is written to a hash-chained audit log.
 snodo does not make an agent more reliable. It makes the process hold whether or
 not the agent cooperates.
 
+## The working loop
+
+Connect an agent to Snodo over MCP. The orchestrator chooses the smallest
+structure that fits—one task, a parallel wave, a multi-wave plan, or a queue of
+plans—then validates and starts the work. Each task still passes through the
+protocol's validator loop; jobs run asynchronously. Follow a live job with the
+browser watch link returned when an HTTP/tunnel URL is configured, or with
+`snodo logs <job_id> --watch`. `watch_job` also has an optional MCP Apps panel,
+but some hosts (including Claude Desktop and relayed sessions) show only its
+plain-text snapshot.
+
+Optional job notifications can send project-named updates to ntfy, a generic
+webhook, Slack, Discord, or Teams. Configure targets in
+`~/.snodo/config.yml` (`$SNODO_HOME/config.yml` when overridden), then check
+them with `snodo notify test`. The [configuration reference](docs/configuration.md)
+covers all user-level settings.
+
+```text
+orchestrator → MCP validate/dispatch or plan/queue → job → live browser watch
+                                                     └→ snodo logs <job_id> --watch
+```
+
 That makes snodo an **AI-SDLC protocol engine**: a governance layer over the
 software development lifecycle, for teams where AI agents are first-class
 contributors. The coder is interchangeable and separate from the judge — an
@@ -123,6 +145,7 @@ Three honest boundaries, so you meet them here rather than an hour in:
 | [Protocol reference](docs/protocol.md) | The full `protocol.yml` language: modes, validators, constraints, disagreement policies, well-formedness, templates |
 | [Coder backends](docs/coders.md) | Every `--coder`, how selection works, and how adapters are added |
 | [Runbook](docs/runbook.md) | Install, configure, the CLI reference, MCP serving, troubleshooting |
+| [Configuration](docs/configuration.md) | User settings, provider credentials, cloud, and job notifications |
 | [Architecture](docs/architecture.md) | How enforcement works end to end, the package map, the invariant-to-mechanism table |
 | [Machine interface](docs/machine-interface.md) | The versioned `--json` contract and validation-outcome exit codes |
 | [Authoring a plan](docs/authoring-a-plan.md) | The contract for hand- and orchestrator-authored multi-wave plans |

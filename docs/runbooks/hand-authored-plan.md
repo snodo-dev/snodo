@@ -23,9 +23,9 @@ Plan created: reporting
   Tasks: 0
 ```
 
-`create` writes only the scaffold: one empty wave and no tasks. The wave is
-there so a freshly created plan already validates — `snodo plan validate`
-rejects a plan with no waves at all. Add further waves with
+`create` writes only the scaffold: one empty wave and no tasks. It is not yet
+runnable: plan validation refuses a plan with no tasks in any wave. Add the
+tasks to wave 1, and add further waves with
 `snodo plan add-wave`, or author `plan.yml` by hand as below; wave 1 already
 exists, so the first wave you add is 2.
 
@@ -64,7 +64,7 @@ Validating the scaffold fails, which is expected at this point:
 ```console
 $ snodo plan validate reporting
 Error: Plan verification failed for 'reporting':
-  - No waves defined
+  - Plan has no tasks in any wave
 ```
 
 Exit code is `1`.
@@ -155,7 +155,8 @@ Checklist `snodo plan validate` enforces (via `verify_plan`):
 - Every task listed in a wave has `wave_<id>/<task-id>_task.md` on disk.
 - Every `status.json` entry matches a task in the waves (stale entries are
   an error); parent refs must resolve and must not cycle.
-- A wave with no tasks is a warning, not an error.
+- An empty wave is a warning only when at least one other wave in the plan has
+  tasks; a plan empty across all waves is refused.
 
 Once every spec file exists, validation passes:
 

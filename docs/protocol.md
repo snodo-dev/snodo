@@ -37,7 +37,11 @@ This declares one mode (producer) with one tool (edit) and one validator (securi
 Job notification targets are configured per user in
 [`~/.snodo/config.yml`](configuration.md) under `notifications:`. They contain
 personal endpoints and credentials, so they do not belong in a project
-`protocol.yml`.
+`protocol.yml`. Supported target types are `ntfy`, `webhook`, `slack`,
+`discord`, and `teams`; the default events are `job_finished`, `task_halted`,
+`authorization_needed`, and `job_silent`. See the
+[notification configuration reference](configuration.md#notifications) for
+payloads, environment references, and the test command.
 
 ---
 
@@ -116,6 +120,10 @@ The protocol's top-level `queue` field defaults to `non_blocking: false` and
 
 Modules are optional named scopes, not operational modes. A task may name a
 module to bound writable paths and select module-specific tooling and validators.
+The CLI accepts `--module` for `snodo run`, `snodo plan run`, and
+`snodo plan add-task`; MCP `dispatch_task` and `generate_spec` accept a
+`module`. The named module is returned in plan/job status. An omitted module
+preserves project-wide task behavior.
 
 ```yaml
 modules:
@@ -137,6 +145,14 @@ modules:
 `protected_paths` forbids task changes to listed repository-relative paths.
 `write_allowed_prefixes` separately controls the MCP `write` capability; it
 defaults to `[".snodo/"]` and does not grant `write` to any mode by itself.
+
+Mode `tools` entries are logical capability grants, translated by the MCP
+server using the mapping below. Unknown grant names do not expose operations;
+Snodo warns about them when creating an MCP server, including the mode,
+unknown name, and known capability names; `snodo ready` reports the same
+warning in its diagnostics. Remove misspelled or obsolete grants.
+Grant `write` only to modes that need its `write_file` operation; the default
+write path allowlist is `.snodo/`, and it does not stage or commit files.
 
 ### `max_recovery_depth` tradeoff
 
@@ -239,6 +255,12 @@ Each logical tool maps to one or more MCP operations:
 | `queue` | `queue_list`, `queue_create`, `queue_move`, `queue_remove`, `queue_validate`, `queue_run` |
 | `read` | `read_file`, `list_files` |
 
+For dispatched jobs, use the browser watch link returned by `watch_job` when
+the server has a reachable HTTP base URL (including a managed tunnel). The
+link is a short-lived, job-scoped read-only capability. The MCP Apps panel is
+optional and only some hosts render it; other clients receive a plain-text
+snapshot. From the CLI, `snodo logs <job_id> --watch` is the live output path.
+
 ### Reference modes
 
 Shipped templates define modes suited to their workflows; common roles include:
@@ -248,6 +270,15 @@ Shipped templates define modes suited to their workflows; common roles include:
 **Reviewer mode** — reviews and integrates. Typical tools: `review`, `approve`, `merge`, `pr`. Validators re-check security at review time.
 
 **Planner mode** — decomposes and manages work plans. Typical tool: `plan`, which grants decomposition, spec generation, plan lifecycle, task status, and queue operations. Validators check intent clarity, scope, and completeness.
+
+Shipped templates grant these capabilities to match their workflows. `solo`
+gives its producer mode the complete single-operator loop, including plan and
+queue control plus `.snodo/`-confined `write_file`. `team` gives plan/queue
+control and `.snodo/`-confined writing to its separate planner mode, while
+reviewer retains approval and merge. `2+n` gives its producer plan/queue
+control and `.snodo/`-confined writing, with reviewer-only approval and merge.
+The greenfield template has a planning mode with the same confined authoring
+surface. See the shipped YAML files for each complete grant set.
 
 ---
 

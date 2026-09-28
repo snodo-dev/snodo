@@ -3,6 +3,11 @@
 **Protocol:** `greenfield` · **Project:** a shareable digital business card, live at a custom domain
 **Status:** ✅ 6 phases complete and verified against snodo v0.7.0+
 
+> **Historical snapshot:** the commands and behavior below describe the
+> recorded v0.7-era run. For current commands and defaults, use the
+> [runbook](../runbook.md), [configuration reference](../configuration.md),
+> and [command reference](../command-reference.md).
+
 > This is not a template. Every command below is the exact command that was run,
 > in order, on a real project. Copy them. Runbook 01 is the discovery log that
 > produced this path — read that one if you want to know why each step is here.
@@ -455,4 +460,3 @@ Several gates were found reporting green while enforcing nothing:
 | Test suite silent under-collection | Pytest collected only 18% of suite & reported 100% green | **Fixed** in Issue #98 (`pytest_configure` rootdir guard & minimum 2000 test threshold) |
 | Coder unable to delete orphaned files without content | Coder forced to read full file content to submit `action: "delete"` | **Fixed** in Issue #91 (extended `submit_files` schema & prompt discoverability for content-less deletes) |
 | Structured output provider rejection breaking validators | DeepSeek 400 response_format rejected all validators | **Fixed** in Issue #84 (unstructured fallback parsing & strict HTTP status retry classification) |
-

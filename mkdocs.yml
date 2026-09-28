@@ -32,8 +32,20 @@ nav:
       - Coder backends: coders.md
       - Authoring a plan: authoring-a-plan.md
       - Following a run: following-a-run.md
+      - Following a plan run: following-a-plan-run.md
+      - MCP queue tools: mcp-queues.md
       - Machine interface: machine-interface.md
       - Protocol reference: protocol.md
+      - Cloud sync contract: specs/cloud-sync.md
+      - Running unattended: running-unattended.md
+      - Runbooks and guides:
+          - Choosing models: choosing-models.md
+          - Discovery and recon: decompose-and-recon.md
+          - Evolving a protocol: evolving-the-protocol.md
+          - MCP file writing: mcp-writing.md
+          - Outcomes and recovery: outcomes.md
+          - Queue triage: queue-triage.md
+          - Keep queues moving: queues.md
       - Runbooks:
           - Minimal webapp: runbooks/01-minimal-webapp.md
           - Greenfield protocol: runbooks/02-greenfield-protocol.md
@@ -47,6 +59,7 @@ nav:
 
 exclude_docs: |
   specs/*
+  !specs/cloud-sync.md
   architecture/maturity-assessment-*.md
   architecture/verification-hardening-plan.md
 
