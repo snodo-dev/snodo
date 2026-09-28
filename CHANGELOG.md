@@ -10,6 +10,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Browser watch links are checked before any job data is read, and invalid,
+  expired, or job-mismatched capabilities receive the same not-found response.
+  Server instructions now explicitly tell the operator to open the link in a
+  browser. (Fixes #525)
 - `watch_job` now returns a job-scoped, expiring browser link when an HTTP
   public base URL is configured. Its read-only live page streams status and
   redacted output until a final outcome; inaccessible servers give the

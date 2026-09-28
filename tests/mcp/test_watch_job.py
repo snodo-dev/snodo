@@ -172,3 +172,41 @@ def test_watch_browser_stream_returns_redacted_tool_data_and_ends_at_final_statu
         assert events[-1]["more_body"] is False
 
     asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("token_state", ["tampered", "expired"])
+def test_watch_browser_route_refuses_invalid_capabilities_without_job_lookup(token_state):
+    async def exercise():
+        now = [1000]
+        issuer = WatchLinkIssuer(ttl_seconds=60, secret=b"test-secret", clock=lambda: now[0])
+        token = issuer.issue("j_one")
+        if token_state == "tampered":
+            token += "x"
+        elif token_state == "expired":
+            now[0] += 60
+
+        class Protocol:
+            def call_tool(self, *args):
+                raise AssertionError("invalid capability must not read job data")
+
+        async def app(scope, receive, send):
+            raise AssertionError("watch route should not reach MCP auth/app")
+
+        watcher = WatchJobASGI(app, Protocol(), issuer, "https://jobs.example")
+        events = []
+
+        async def send(event):
+            events.append(event)
+
+        scope = {
+            "type": "http", "method": "GET", "path": f"/watch/{token}",
+            "raw_path": f"/watch/{token}".encode(),
+        }
+        await watcher(scope, lambda: asyncio.sleep(0), send)
+        assert events[0]["status"] == 404
+        assert b"Not found" in events[-1]["body"]
+        assert scope["path"] == "/watch/[capability]"
+        assert scope["raw_path"] == b"/watch/[capability]"
+        assert token not in repr(events)
+
+    asyncio.run(exercise())
