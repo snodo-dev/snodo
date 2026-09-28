@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.18.0] — 2026-09-27
+
 ### Added
 - Refresh user-facing entry points, command/configuration references, cloud
   contract and navigation for the current MCP task loop, job watching,
