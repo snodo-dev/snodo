@@ -760,6 +760,26 @@ class ReconManager:
             "duration": max(0.0, completed_at - created_at),
             "completed_at": completed_at,
             "summary": _recon_answer_summary(results),
+            "usage": [
+                {
+                    "role": "recon", "task_ref": None, "attempt": None,
+                    "agent": result.get("agent"),
+                    "model": item.get("model", ""),
+                    "served_model": item.get("served_model"),
+                    "provider": item.get("provider"), "calls": 1,
+                    "input_tokens": item.get("input_tokens"),
+                    "output_tokens": item.get("output_tokens"),
+                    "cache_read_tokens": item.get("cache_read_tokens"),
+                    "cache_write_tokens": item.get("cache_write_tokens"),
+                    "cost_usd": item.get("cost") if item.get("cost_source") == "provider" else None,
+                    "duration_ms": item.get("duration_ms"),
+                    "outcome": "succeeded" if item.get("outcome") in ("success", "succeeded") else "failed",
+                    "error_class": item.get("error_class"),
+                }
+                for result in [r.model_dump() if isinstance(r, ReconResult) else r for r in results]
+                if isinstance(result, dict)
+                for item in (result.get("usage") or []) if isinstance(item, dict)
+            ],
         })
         # Recon completion is already recorded locally. Cloud delivery is an
         # independent best-effort side effect, shared by CLI and MCP callers.

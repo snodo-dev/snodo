@@ -39,6 +39,7 @@ _LOCAL_EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
     "recon_completed": (
         "recon_id", "status", "succeeded_agents", "failed_agents",
         "duration", "completed_at", "summary",
+        "usage",
     ),
 }
 

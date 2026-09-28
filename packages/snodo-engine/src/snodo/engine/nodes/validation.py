@@ -159,6 +159,7 @@ class ValidationNodeMixin:
             "results": _build_audit_results(validators, results, getattr(getattr(self, "_validator_runner", None), "last_cap_originals", None)),
             "outcome": outcome,
             "policy_decision": str(decision.action.value) if decision else None,
+            "usage": [],
         })
 
         return self._state_to_dict(loop_state)
@@ -842,6 +843,7 @@ class ValidationNodeMixin:
             "validators_invoked": [v.validator_id for v in post_validators],
             "results": _build_audit_results(post_validators, results, getattr(getattr(self, "_validator_runner", None), "last_cap_originals", None)),
             "outcome": post_outcome,
+            "usage": [],
         })
 
         return self._state_to_dict(loop_state)

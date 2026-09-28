@@ -41,6 +41,25 @@ sent; the cursor stops before the first v6-only event/data and its chain suffix
 is retried after a later mint. Data is never stripped from a hash-chained event.
 snodo-cloud must advertise v6 only after both ingest and liveness accept it.
 
+### Interface v7 — usage on audit events
+
+Under a lease advertising v7 or later, `task_complete`, `halt`, `validate` and
+`recon_completed` may carry `data.usage`. This is v7-only hash-chained data:
+v5/v6 leases stop the cursor before the first such event and retry that event
+and its suffix unchanged when a v7 lease is available. Usage is projected from
+locally persisted per-call records; estimated costs are never sent.
+
+Each item requires `role` (`coder`, `validator` or `recon`), `model` (the
+configured model asked for), and `outcome` (`succeeded`, `failed` or
+`timed_out`). Optional fields: `task_ref`, `attempt`, `validator_id`, `phase`
+(`pre` or `post`), `agent`, `coder`, `served_model`, `provider`, `calls`,
+`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`,
+`cost_usd`, `duration_ms`, and `error_class`. Irrelevant identity fields are
+null/omitted (recon has null `task_ref`; validator and recon have null
+`attempt`). Token and cost aggregates are null if any contributing call is
+unknown. `cost_usd` is provider-reported only; estimates are null, never zero.
+Local outcomes `success` and `error` normalize to `succeeded` and `failed`.
+
 Batched 1-50 events. Dispatched from a bounded background thread during
 `snodo run` teardown, after recon completion, and from `snodo cloud sync`.
 Recon completion starts this best-effort sync even when there is no session;
@@ -356,17 +375,17 @@ ingestion, but those extra fields are not part of the pinned Snodo contract.
 | `project_announced` | project_id, scope, display_name |
 | `readiness_checked` | project_id, scope, display_name, protocol_id, score, total_checks, passed_checks, repository_findings_count, workstation_findings_count, findings |
 | `recon_started` | recon_id, query, paths, agent_count, agent_models, session_id, created_at |
-| `recon_completed` | recon_id, existing final status, succeeded_agents, failed_agents, duration, completed_at, answer summary (about 2,000 characters maximum) |
+| `recon_completed` | recon_id, existing final status, succeeded_agents, failed_agents, duration, completed_at, answer summary (about 2,000 characters maximum), usage |
 | `dispatch` | task_ref, mode, token_id, artifacts_count, plan_name, plan_wave (when applicable) |
 | `work_already_present` | task_ref, base_ref, artifacts_count, files |
 | `governance_check` | task_ref, mode, constraints_checked |
-| `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision |
+| `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision, usage |
 | `task_classified` | task_ref, flow_type, wave_id, task_summary, plan_name, plan_wave (when applicable) |
 | `wave_created` | wave_id, feature_description |
-| `task_complete` | task_ref, artifacts, session_id, commit, change_size |
+| `task_complete` | task_ref, artifacts, session_id, commit, change_size, usage |
 | `task_merged` | task_ref, branch, merge_sha, spec, session_id, base_sha, commit_count, commits (up to 50), files_changed, insertions, deletions, plan_name, plan_wave (when applicable) |
 | `task_unmerged` | task_ref, branch, reason, session_id, plan_name, plan_wave (when applicable) |
-| `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type |
+| `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type, usage |
 | `disagreement_escalated` | task_ref, phase, policy, plan_name, plan_wave (when applicable) |
 | `transition` | from_mode, to_mode, task_ref |
 | `token_consumed` | task_ref, session_id |

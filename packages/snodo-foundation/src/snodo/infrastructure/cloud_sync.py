@@ -80,6 +80,7 @@ _V6_DATA_KEYS: dict[str, set[str]] = {
     "halt": {"plan_name", "plan_wave"},
     "disagreement_escalated": {"plan_name", "plan_wave"},
 }
+_V7_USAGE_EVENTS = {"task_complete", "halt", "validate", "recon_completed"}
 
 
 def _requires_v6(event: Any) -> bool:
@@ -88,6 +89,11 @@ def _requires_v6(event: Any) -> bool:
         _V6_DATA_KEYS.get(event.event_type, set()) & set((event.data or {}).keys())
         if isinstance(event.data, dict) else False
     )
+
+
+def _requires_v7(event: Any) -> bool:
+    """Whether a usage-bearing event requires interface v7."""
+    return event.event_type in _V7_USAGE_EVENTS and isinstance(event.data, dict) and "usage" in event.data
 
 
 _EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
@@ -210,6 +216,11 @@ _EVENT_DATA_KEYS_V6: dict[str, tuple[str, ...]] = {
     ),
 }
 
+_EVENT_DATA_KEYS_V7: dict[str, tuple[str, ...]] = {
+    **_EVENT_DATA_KEYS_V6,
+    **{event: (*_EVENT_DATA_KEYS_V6[event], "usage") for event in _V7_USAGE_EVENTS},
+}
+
 
 class PlanWaveShape(BaseModel):
     """Optional pinned wave shape used by plan history events."""
@@ -249,6 +260,80 @@ class DisagreementEscalatedData(BaseModel):
     policy: str | None = None
     plan_name: str | None = None
     plan_wave: str | None = None
+
+
+class UsageRecord(BaseModel):
+    """Pinned provider-usage projection for cloud interface v7."""
+
+    model_config = ConfigDict(extra="allow")
+
+    role: Literal["coder", "validator", "recon"]
+    task_ref: str | None = None
+    attempt: int | None = None
+    validator_id: str | None = None
+    phase: Literal["pre", "post"] | None = None
+    agent: str | None = None
+    coder: str | None = None
+    model: str
+    served_model: str | None = None
+    provider: str | None = None
+    calls: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_write_tokens: int | None = None
+    cost_usd: float | None = None
+    duration_ms: float | None = None
+    outcome: Literal["succeeded", "failed", "timed_out"]
+    error_class: str | None = None
+
+
+def _aggregate_usage(records: list[dict], role: str, **identity: Any) -> dict | None:
+    """Project local per-call records while preserving unknowns and provider costs."""
+    if not records:
+        return None
+    out: dict[str, Any] = {"role": role, **identity}
+    out["model"] = next((r.get("model") for r in records if r.get("model")), "")
+    out["served_model"] = next((r.get("served_model") for r in records if r.get("served_model")), None)
+    out["provider"] = next((r.get("provider") for r in records if r.get("provider")), None)
+    out["calls"] = len(records)
+    for target, aliases in {
+        "input_tokens": ("input_tokens", "prompt_tokens"),
+        "output_tokens": ("output_tokens", "completion_tokens"),
+        "cache_read_tokens": ("cache_read_tokens",),
+        "cache_write_tokens": ("cache_write_tokens",),
+    }.items():
+        values = [next((r.get(key) for key in aliases if key in r), None) for r in records]
+        out[target] = sum(values) if all(isinstance(v, (int, float)) for v in values) else None
+    costs = [r.get("cost") if r.get("cost_source") == "provider" else None for r in records]
+    out["cost_usd"] = sum(costs) if all(isinstance(v, (int, float)) for v in costs) else None
+    durations = [r.get("duration_ms") for r in records]
+    out["duration_ms"] = sum(durations) if all(isinstance(v, (int, float)) for v in durations) else None
+    outcomes = {r.get("outcome") for r in records}
+    out["outcome"] = "timed_out" if "timed_out" in outcomes else "succeeded" if outcomes <= {"success", "succeeded"} else "failed"
+    out["error_class"] = next((r.get("error_class") for r in records if r.get("error_class")), None)
+    return out
+
+
+def task_usage_records(project_root: str, task_ref: str) -> list[dict]:
+    """Build coder usage records from the task's persisted usage list."""
+    try:
+        state = json.loads((Path(project_root) / ".snodo" / "tasks" / task_ref / "state.json").read_text())
+    except (OSError, ValueError):
+        return []
+    usage = state.get("usage", [])
+    if not isinstance(usage, list):
+        return []
+    calls = [r for r in usage if isinstance(r, dict) and r.get("role") == "coder"]
+    if not calls:
+        return []
+    match = re.search(r"_fix_(\d+)$", task_ref)
+    attempt = int(match.group(1)) if match else 0
+    row = _aggregate_usage(
+        calls, "coder", task_ref=task_ref, attempt=attempt,
+        coder=str(calls[0].get("coder") or "litellm"),
+    )
+    return [row] if row else []
 
 
 def _event_models(
@@ -353,11 +438,28 @@ _V6_EVENT_MODELS = _event_models(
         ),
     },
 )
+_V7_EVENT_MODELS = _event_models(
+    _EVENT_DATA_KEYS_V7,
+    {
+        "plan_proposed": PlanProposedData,
+        "plan_run": PlanRunData,
+        "disagreement_escalated": DisagreementEscalatedData,
+        **{
+            event: create_model(
+                f"{event.title().replace('_', '')}V7Data",
+                __config__=ConfigDict(extra="allow"),
+                usage=(list[UsageRecord] | None, None),
+            )
+            for event in _V7_USAGE_EVENTS
+        },
+    },
+)
 
 # Known tags retain their pinned data shapes. Historical tags not declared by
 # this client use the same validated envelope with opaque event data.
 AuditEventEnvelope = Union[*_V5_EVENT_MODELS, OpaqueAuditEvent]
 AuditEventEnvelopeV6 = Union[*_V6_EVENT_MODELS, OpaqueAuditEventV6]
+AuditEventEnvelopeV7 = Union[*_V7_EVENT_MODELS, OpaqueAuditEventV6]
 
 
 class AuditIngestBatch(BaseModel):
@@ -380,6 +482,17 @@ class AuditIngestBatchV6(BaseModel):
     project_path: str
     display_name: str
     events: list[AuditEventEnvelopeV6] = Field(min_length=1, max_length=_MAX_BATCH_SIZE)
+
+
+class AuditIngestBatchV7(BaseModel):
+    """The v7 ingest shape, including optional usage on four audit events."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    project_path: str
+    display_name: str
+    events: list[AuditEventEnvelopeV7] = Field(min_length=1, max_length=_MAX_BATCH_SIZE)
 
 
 def _payload_for_events(session_id: str, project_root: str, events: list) -> dict:
@@ -413,10 +526,17 @@ def _v5_payload(payload: dict, interface_version: int) -> Optional[dict]:
     projection. Sequence, previous_hash and event_hash always travel together;
     once an event needs v6, it and the remainder of the chain stay held.
     """
+    if interface_version >= 7:
+        return payload
     if interface_version >= 6:
+        if any(event["event_type"] in _V7_USAGE_EVENTS and "usage" in (event.get("data") or {})
+               for event in payload["events"]):
+            return None
         return payload
     projected = {**payload, "events": []}
     for event in payload["events"]:
+        if event["event_type"] in _V7_USAGE_EVENTS and "usage" in (event.get("data") or {}):
+            break
         if event["event_type"] in _V6_EVENT_TYPES:
             break
         data = event["data"]
@@ -756,13 +876,13 @@ class CloudSyncDispatcher:
         # The margin keeps normal batches below the server's object limit.
         payload_limit = _DEFAULT_PAYLOAD_LIMIT - _PAYLOAD_MARGIN
         queue = _partition_events(session_id, project_root, unsynced, payload_limit)
-        # Keep v6-only tags at batch boundaries. A v5 cloud can then accept the
-        # compatible prefix before the first event it must hold.
+        # Keep versioned-only data at batch boundaries so older leases accept
+        # the compatible prefix before the first event they must hold.
         separated: list[list] = []
         for candidate in queue:
             segment: list = []
             for event in candidate:
-                if _requires_v6(event):
+                if _requires_v6(event) or _requires_v7(event):
                     if segment:
                         separated.append(segment)
                         segment = []
@@ -910,7 +1030,8 @@ class CloudSyncDispatcher:
         interface_version = advertised_version or 5
         payload = _v5_payload(payload, interface_version)
         if payload is None:
-            reason = "Cloud interface v6 is not yet advertised; event batch held for retry"
+            needed = 7 if interface_version < 7 and any(_requires_v7(event) for event in batch) else 6
+            reason = f"Cloud interface v{needed} is not yet advertised; event batch held for retry"
             # A later attempt must ask the cloud again rather than trusting an
             # unknown or stale v5 capability cached in this admission lease.
             invalidate_lease(lease)
@@ -918,7 +1039,8 @@ class CloudSyncDispatcher:
         # Validate the exact projected payload without re-serializing it: its
         # hash-chain envelope remains byte-for-byte unchanged.
         try:
-            AuditIngestBatch.model_validate(payload)
+            (AuditIngestBatchV7 if interface_version >= 7 else
+             AuditIngestBatchV6 if interface_version >= 6 else AuditIngestBatch).model_validate(payload)
         except ValidationError as err:
             event_index = next(
                 (part for error in err.errors() for part in error.get("loc", ())

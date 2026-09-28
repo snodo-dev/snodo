@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Cloud interface v7 carries nullable provider usage on completion, halt,
+  validation, and recon audit events; older leases hold the hash-chain suffix
+  until v7 is advertised. (Fixes #543)
+
 ### Fixed
 - OpenCode CLI runs now use `--format json` and record provider-reported token,
   cache, and cost usage while keeping job output readable. Missing usage remains
