@@ -56,7 +56,11 @@ def test_watch_job_text_snapshot_uses_existing_status_and_logs():
 def test_watch_job_text_snapshot_contains_clean_log_lines():
     handler = JobToolHandler("/project")
     status = {"id": "j_abc", "status": "running", "created_at": 100.0}
-    raw_log = "\x1b[34m→ Reading file\x1b[0m\n\x1b[2K✱ 80%"
+    raw_log = (
+        "\x1b[0m→ \x1b[0mRead data-worker/src/index.ts"
+        "\x1b[90m [offset=800]\x1b[0m\n"
+        "\x1b[2A\x1b[2K✱ 80%"
+    )
     with patch.object(handler, "handle_get_job_status", return_value=status), patch(
         "snodo.jobs.JobManager"
     ) as mock_cls:
@@ -64,7 +68,7 @@ def test_watch_job_text_snapshot_contains_clean_log_lines():
         mock_jm.get_logs.return_value = raw_log
         snapshot = handler.handle_watch_job({"job_id": "j_abc"})
 
-    assert "→ Reading file\n✱ 80%" in snapshot
+    assert "→ Read data-worker/src/index.ts [offset=800]\n✱ 80%" in snapshot
     assert "\x1b" not in snapshot
     assert raw_log not in snapshot
     assert mock_jm.get_logs.return_value == raw_log

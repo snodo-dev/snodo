@@ -57,6 +57,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - MCP job log reads and `watch_job` snapshots now remove ANSI terminal escape
   sequences while preserving visible output and line breaks. (Fixes #524)
+- MCP log sanitization is covered against Coder colour, cursor-position,
+  erase-line, and reset sequences, including the reported output format.
+  (Fixes #527)
 - Plan verification now refuses a plan whose waves contain no tasks at all;
   empty waves remain warnings when another wave has tasks. (Fixes #515)
 - Protocol DSL reference and template authoring guide now match the current

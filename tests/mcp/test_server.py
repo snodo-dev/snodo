@@ -848,8 +848,9 @@ class TestDispatchTask:
         self, dispatch_server
     ):
         raw_log = (
-            "\x1b[32m→ Read data-worker/src/index.ts\x1b[0m\n"
-            "\x1b[2K✱ 100% complete\x1b[0m\n"
+            "\x1b[0m→ \x1b[0mRead data-worker/src/index.ts"
+            "\x1b[90m [offset=800]\x1b[0m\n"
+            "\x1b[2A\x1b[2K✱ 100% complete\x1b[0m\n"
             "plain output"
         )
         with patch("snodo.jobs.JobManager") as mock_cls:
@@ -861,7 +862,7 @@ class TestDispatchTask:
             )
 
         assert result["log"] == (
-            "→ Read data-worker/src/index.ts\n"
+            "→ Read data-worker/src/index.ts [offset=800]\n"
             "✱ 100% complete\nplain output"
         )
         # Sanitization is for the returned view; the source log remains raw.
