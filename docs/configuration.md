@@ -191,8 +191,8 @@ the project-named message for their respective incoming-webhook interfaces;
 Slack uses its native single-asterisk bold syntax, and Discord disables
 mentions. Teams sends an Adaptive Card envelope to a Workflows/Power Automate
 webhook. Generic `webhook` receives Snodo's JSON event. URLs and credentials
-are redacted by `snodo config show`. `snodo notify test` sends one test message
-to every valid configured target and reports per-target delivery results.
+are redacted by `snodo config show`. `snodo config --notify-test` sends one test
+message to every valid configured target and reports per-target delivery results.
 
 ```yaml
 notifications:

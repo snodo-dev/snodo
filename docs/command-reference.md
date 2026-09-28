@@ -16,8 +16,7 @@ on all commands; top-level options are `--version`, `--verbose`/`-v`,
 | `snodo config test` | — |
 | `snodo config set` | `<key> <value>` |
 | `snodo config get` | `<key>` |
-| `snodo config` (group option) | `--encrypt-provider-keys` |
-| `snodo notify test` | — |
+| `snodo config` (group options) | `--encrypt-provider-keys`, `--notify-test` |
 | `snodo mode show` | `--json` |
 | `snodo mode change` | `<new_mode>` |
 | `snodo session list` | `--mode`, `--project`, `--status` |
@@ -40,8 +39,8 @@ on all commands; top-level options are `--version`, `--verbose`/`-v`,
 keys are supported by the setter; edit other settings, including cloud and
 notification targets, in `~/.snodo/config.yml`. See the
 [configuration reference](configuration.md). `snodo cloud schema --json`
-prints the generated cloud interface schema. `snodo notify test` sends a test
-to every valid notification target.
+prints the generated cloud interface schema. `snodo config --notify-test` sends
+a test to every valid notification target.
 
 ## Work and planning
 
@@ -118,7 +117,9 @@ tunnel) streams status and recent output. The CLI alternative is
 `snodo logs <job_id> --watch`; `snodo job logs <job_id> --watch` is also
 available. `watch_job` is an optional MCP Apps enhancement and returns a
 plain-text snapshot to hosts that do not render Apps. Job notifications are
-configured in `~/.snodo/config.yml` and tested with `snodo notify test`.
+configured in `~/.snodo/config.yml` and tested with `snodo config --notify-test`.
+The hidden `snodo notify test` command remains as a deprecated alias for one
+release and prints a migration notice.
 
 ## MCP server
 

@@ -44,7 +44,7 @@ plain-text snapshot.
 Optional job notifications can send project-named updates to ntfy, a generic
 webhook, Slack, Discord, or Teams. Configure targets in
 `~/.snodo/config.yml` (`$SNODO_HOME/config.yml` when overridden), then check
-them with `snodo notify test`. The [configuration reference](docs/configuration.md)
+them with `snodo config --notify-test`. The [configuration reference](docs/configuration.md)
 covers all user-level settings.
 
 ```text

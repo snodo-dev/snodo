@@ -23,8 +23,15 @@ app = typer.Typer(invoke_without_command=True, help="Manage API keys and configu
 def _config_callback(
     ctx: typer.Context,
     encrypt_provider_keys: bool = typer.Option(False, "--encrypt-provider-keys", help="Move plaintext provider keys into encrypted files"),
+    notify_test: bool = typer.Option(False, "--notify-test", help="Send a test message to every configured notification target"),
 ):
     """Manage API keys and configuration."""
+    if notify_test:
+        if ctx.invoked_subcommand is not None:
+            raise typer.BadParameter("--notify-test cannot be combined with a subcommand")
+        from snodo.cli.commands.notify_cmd import run_notify_test
+
+        raise typer.Exit(run_notify_test())
     if encrypt_provider_keys:
         if ctx.invoked_subcommand is not None:
             raise typer.BadParameter("--encrypt-provider-keys cannot be combined with a subcommand")
