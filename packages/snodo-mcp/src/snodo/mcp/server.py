@@ -29,7 +29,7 @@ from snodo.tools.shell import ShellMCP
 from snodo.mcp.pr import PrMCP
 from snodo.mcp.planner import PlannerMCP
 from snodo.mcp.tools import (
-    TOOL_REGISTRY, MODE_TOOL_MAP, PLANNING_TOOLS, PROJECT_DIAGNOSTIC_TOOLS,
+    TOOL_REGISTRY, MODE_TOOL_MAP, PROJECT_DIAGNOSTIC_TOOLS,
     WORK_STARTING_TOOLS, unknown_capability_warnings,
 )
 from snodo.mcp.job_handlers import JobToolHandler
@@ -77,7 +77,7 @@ class ProtocolMCPServer:
         Args:
             protocol: Protocol definition
             project_root: Project root directory
-            mode_id: Specific mode to serve (None = all modes)
+            mode_id: Specific mode to serve (None = current project mode)
             token_issuer: Token issuer backing validate_task's single-use
                 token (recorded on a pass, consumed at the dispatch boundary)
             audit_log: Optional AuditLog for INV4 event logging
@@ -254,12 +254,11 @@ class ProtocolMCPServer:
         """
         tools: Dict[str, dict] = {}
 
-        if self.mode_id:
-            modes = [self.protocol.get_mode(self.mode_id)]
-            if modes[0] is None:
-                raise MCPError(f"Mode not found in protocol: {self.mode_id}")
-        else:
-            modes = list(self.protocol.modes)
+        mode_id = self.mode_id or self._active_mode()
+        mode = self.protocol.get_mode(mode_id)
+        if mode is None:
+            raise MCPError(f"Mode not found in protocol: {mode_id}")
+        modes = [mode]
 
         for mode in modes:
             for proto_tool in mode.tools:  # type: ignore[union-attr]
@@ -271,16 +270,6 @@ class ProtocolMCPServer:
         # Always include validate_task (meta-tool: runs the pre-execute
         # quorum; a pass records the single-use token dispatch consumes)
         tools["validate_task"] = TOOL_REGISTRY["validate_task"]
-
-        # The planning surface is the human gate above the task loop: a
-        # control-plane consumer driving the all-modes server must be able to
-        # propose, validate and run plans, not only dispatch tasks. A server
-        # pinned to one mode stays capability-filtered — its mode grants plan
-        # tools only through the "plan" capability (MODE_TOOL_MAP).
-        if self.mode_id is None:
-            for name in PLANNING_TOOLS:
-                if name not in tools:
-                    tools[name] = TOOL_REGISTRY[name]
 
         # Project diagnostics are read-only, like guide, and are available in
         # every mode so an orchestrator can understand the project before acting.
@@ -347,6 +336,20 @@ class ProtocolMCPServer:
         if name not in self._tools:
             raise MCPError(f"Unknown tool: {name}")
 
+        # An unpinned server follows state changes made by `snodo mode change`.
+        # FastMCP's registered list is static for this process, so enforce the
+        # live mode grant at the call boundary as well as resolving the initial
+        # advertised list from the current mode.
+        if self.mode_id is None:
+            current_tools = self._resolve_tools()
+            if name not in current_tools:
+                mode_id = self._active_mode()
+                missing = self._missing_capability(name)
+                raise MCPError(
+                    f"Tool '{name}' refused in mode '{mode_id}': "
+                    f"missing capability '{missing}'."
+                )
+
         schema = self._tools[name]
 
         self._audit("tool_call", {
@@ -371,6 +374,14 @@ class ProtocolMCPServer:
 
         # Dispatch to backing MCP
         return self._decorate_result(self._dispatch_tool(name, schema, arguments))
+
+    @staticmethod
+    def _missing_capability(tool_name: str) -> str:
+        """Return a logical capability that grants a concrete MCP tool."""
+        for capability, tool_names in MODE_TOOL_MAP.items():
+            if tool_name in tool_names:
+                return capability
+        return "mode grant"
 
     def is_slow_tool(self, name: str) -> bool:
         """Return True if *name* is a tool whose handler may block the event loop."""
@@ -508,7 +519,7 @@ class CoreToolHandler:
 
         server = self.server
         protocol = server.protocol
-        mode_id = server.mode_id or protocol.initial_mode
+        mode_id = server._active_mode()
 
         from snodo.validators.runner import (
             classify_outcome,
@@ -756,7 +767,7 @@ class CoreToolHandler:
         """
         server = self.server
         protocol = server.protocol
-        mode_id = server.mode_id or protocol.initial_mode
+        mode_id = server._active_mode()
         mode_obj = protocol.get_mode(mode_id) if mode_id else None
         mode_coder = getattr(mode_obj, "coder", None) if mode_obj else None
         mode_coder_config = getattr(mode_obj, "coder_config", None) or {}

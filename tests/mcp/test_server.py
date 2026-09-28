@@ -102,6 +102,12 @@ def reviewer_server(protocol, project_dir):
     return ProtocolMCPServer(protocol, project_dir, mode_id="reviewer")
 
 
+@pytest.fixture
+def guide_server(project_dir):
+    from snodo.protocols import template_protocol
+    return ProtocolMCPServer(template_protocol("solo"), project_dir, mode_id="producer")
+
+
 # === Tool Resolution ===
 
 class TestToolResolution:
@@ -113,6 +119,7 @@ class TestToolResolution:
         data["modes"] = [
             {"mode_id": "planner", "name": "Planner", "tools": ["plan", "resolve", "plna"]}
         ]
+        data["initial_mode"] = "planner"
         protocol = Protocol(**data)
 
         warnings = unknown_capability_warnings(protocol)
@@ -128,18 +135,30 @@ class TestToolResolution:
         assert "unknown capability 'resolve'" in caplog.text
         assert "unknown capability 'plna'" in caplog.text
 
-    def test_all_modes_resolves_all_tools(self, server):
+    def test_server_without_mode_resolves_only_current_mode(self, server):
         tools = server.get_tools()
         names = {t["name"] for t in tools}
-        # Producer (edit, test) + reviewer (review, approve) + validate_task
+        # The initial/current mode is producer (edit, test).
         assert "read_file" in names      # edit
         assert "run_tests" in names      # test
-        assert "read_diff" in names      # review
-        assert "stage_files" in names    # approve
-        assert "commit" in names         # approve
+        assert "read_diff" not in names
+        assert "stage_files" not in names
+        assert "commit" not in names
+        assert "approve_pr" not in names
+        assert "merge_pr" not in names
+        assert "merge_branch" not in names
         assert "validate_task" in names  # always present
+        assert "decompose" not in names  # no unconditional planning tools
         # write_file removed from edit capability
         assert "write_file" not in names
+
+    def test_unpinned_server_refuses_tools_after_mode_change(self, server, project_dir):
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        assert "run_tests" in {tool["name"] for tool in server.get_tools()}
+        write_state(project_dir, ProjectState(current_mode="reviewer"))
+        with pytest.raises(MCPError, match="mode 'reviewer'.*missing capability 'test'"):
+            server.call_tool("run_tests", {"test_path": "tests"})
 
     def test_producer_mode_tools(self, producer_server):
         tools = producer_server.get_tools()
@@ -209,12 +228,12 @@ class TestNoSurfaceTokenGate:
             server.call_tool("commit", {"message": "test"})
         assert "token" not in str(exc.value).lower()
 
-    def test_stage_files_and_commit_work_without_token(self, server):
+    def test_stage_files_and_commit_work_without_token(self, reviewer_server):
         # Mutations execute with no validation held by the caller — the
         # guarantee is the engine loop's, per dispatched task, not this gate.
-        (Path(server.project_root) / "new.txt").write_text("hello")
-        server.call_tool("stage_files", {"paths": ["new.txt"]})
-        server.call_tool("commit", {"message": "test commit"})
+        (Path(reviewer_server.project_root) / "new.txt").write_text("hello")
+        reviewer_server.call_tool("stage_files", {"paths": ["new.txt"]})
+        reviewer_server.call_tool("commit", {"message": "test commit"})
 
     def test_validate_task_records_token_on_pass(self, server):
         # The validate_task contract (ADR 015) is untouched: a pass still
@@ -257,9 +276,8 @@ class TestToolExecution:
         result = server.call_tool("run_tests", {"test_path": "tests/"})
         assert hasattr(result, "severity") or isinstance(result, ValidatorResult)
 
-    def test_get_status(self, server):
-        # get_status is available when all modes served
-        result = server.call_tool("get_status", {})
+    def test_get_status(self, reviewer_server):
+        result = reviewer_server.call_tool("get_status", {})
         assert isinstance(result, str)
 
     def test_tool_execution_error_wrapped(self, server):
@@ -355,6 +373,7 @@ class TestFastMCPBridge:
         """A mutating handler runs with no token held: no gate stands in
         front of it, and it never raises a token demand (ADR 047)."""
         (Path(server.project_root) / "staged.txt").write_text("hello")
+        server = ProtocolMCPServer(server.protocol, server.project_root, mode_id="reviewer")
         tool_info = next(t for t in server.get_tools() if t["name"] == "stage_files")
         handler = _make_tool_handler(server, tool_info)
 
@@ -1968,7 +1987,7 @@ class TestServerAuditLog:
     @pytest.fixture
     def audited_server(self, project_dir, audit_log):
         protocol = Protocol(**MINIMAL_PROTOCOL_DATA)
-        return ProtocolMCPServer(protocol, project_dir, audit_log=audit_log)
+        return ProtocolMCPServer(protocol, project_dir, mode_id="reviewer", audit_log=audit_log)
 
     def test_server_accepts_audit_log(self, audited_server, audit_log):
         assert audited_server._audit_log is audit_log
@@ -2093,11 +2112,9 @@ class TestInstructions:
         assert "dispatch_task" not in names
         instructions = _build_instructions(server)
         assert "dispatch_task" not in instructions
-        # The planning surface is unconditional here, and the job observers
-        # travel with it (the server-side invariant):
-        assert "run_plan" in instructions
-        assert "get_job_status" in instructions
-        assert "get_job_status" in names
+        assert "run_plan" not in instructions
+        assert "run_plan" not in names
+        assert "Serving mode: `producer`" in instructions
 
     def test_instructions_contains_async_contract(self, dispatching_server):
         """Instructions explicitly state the async contract."""
@@ -2125,9 +2142,9 @@ class TestInstructions:
         assert "snodo://sessions" in instructions
         assert "snodo://audit" in instructions
 
-    def test_instructions_passed_to_fastmcp(self, server):
+    def test_instructions_passed_to_fastmcp(self, dispatching_server):
         """FastMCP instance receives instructions."""
-        mcp = build_fastmcp_server(server)
+        mcp = build_fastmcp_server(dispatching_server)
         assert mcp.instructions is not None
         assert "ASYNCHRONOUS" in mcp.instructions
         assert "test" in mcp.instructions
@@ -2142,10 +2159,19 @@ class TestInstructions:
         content, _ = asyncio.run(mcp.call_tool("guide", {}))
         assert "Snodo getting started" in content[0].text
 
-    def test_guide_default_is_source_backed_and_mode_honest(self, server):
+    def test_guide_names_the_live_served_mode(self, server, project_dir):
+        from snodo.infrastructure.state import ProjectState, write_state
+        import asyncio
+
+        mcp = build_fastmcp_server(server)
+        write_state(project_dir, ProjectState(current_mode="reviewer"))
+        content, _ = asyncio.run(mcp.call_tool("guide", {}))
+        assert content[0].text.startswith("Serving mode: reviewer.")
+
+    def test_guide_default_is_source_backed_and_mode_honest(self, guide_server):
         """The default path contains documented advice without naming withheld tools."""
-        exposed = {tool["name"] for tool in server.get_tools()}
-        text = guide_text(server.project_root, exposed)
+        exposed = {tool["name"] for tool in guide_server.get_tools()}
+        text = guide_text(guide_server.project_root, exposed)
         assert "waves` topic for the smallest-structure rule" in text
         assert "Guide topics:" in text
         assert len(text) < 1000
@@ -2165,13 +2191,13 @@ class TestInstructions:
         assert "blocker" in text
         assert "environment_error" in text
 
-    def test_following_run_topic_teaches_operator_watch_paths(self, server):
+    def test_following_run_topic_teaches_operator_watch_paths(self, guide_server):
         from snodo.mcp.guide import guide_topics
 
-        topics = guide_topics(server.project_root)
+        topics = guide_topics(guide_server.project_root)
         assert "following-a-run" in topics
         assert "follow-run" in topics["following-a-run"]["aliases"]
-        text = guide_text(server.project_root, {tool["name"] for tool in server.get_tools()}, "follow-run")
+        text = guide_text(guide_server.project_root, {tool["name"] for tool in guide_server.get_tools()}, "follow-run")
 
         assert "call `watch_job(job_id)`" in text
         assert "hand the operator the returned watch link" in text
@@ -2180,12 +2206,12 @@ class TestInstructions:
         assert "get_job_status" in text  # available for a specific follow-up
         assert "schedule repeated status calls" not in text
 
-    def test_every_guide_topic_serves_clean_markdown(self, server):
+    def test_every_guide_topic_serves_clean_markdown(self, guide_server):
         from snodo.mcp.guide import guide_topics
 
-        exposed = {tool["name"] for tool in server.get_tools()}
-        for topic in guide_topics(server.project_root):
-            text = guide_text(server.project_root, exposed, topic)
+        exposed = {tool["name"] for tool in guide_server.get_tools()}
+        for topic in guide_topics(guide_server.project_root):
+            text = guide_text(guide_server.project_root, exposed, topic)
             lines = text.splitlines()
 
             assert "<!--" not in text, topic
@@ -2216,18 +2242,18 @@ class TestInstructions:
         assert "assets/plan-waves.svg" not in text
         assert "## 1. The one modelling rule" not in text
 
-    def test_spec_guide_explains_chain_as_required_state(self, server):
-        text = guide_text(server.project_root, {tool["name"] for tool in server.get_tools()}, "spec")
+    def test_spec_guide_explains_chain_as_required_state(self, guide_server):
+        text = guide_text(guide_server.project_root, {tool["name"] for tool in guide_server.get_tools()}, "spec")
         assert "state that must be true in it" in text
         assert "an empty cart reports a total of zero is a good link" in text
         assert "prescribes the solution" in text
         assert "same-wave file overlap" in text
         assert "module" in text
 
-    def test_guide_automation_topic_and_menu_are_available(self, server):
-        exposed = {tool["name"] for tool in server.get_tools()}
-        menu = guide_text(server.project_root, exposed)
-        text = guide_text(server.project_root, exposed, "automation")
+    def test_guide_automation_topic_and_menu_are_available(self, guide_server):
+        exposed = {tool["name"] for tool in guide_server.get_tools()}
+        menu = guide_text(guide_server.project_root, exposed)
+        text = guide_text(guide_server.project_root, exposed, "automation")
 
         assert "`automation`" in menu
         assert "Intent-to-merged-work" in menu
@@ -2243,10 +2269,10 @@ class TestInstructions:
         assert "watch_job" in text
         assert "snodo logs <job_id> --watch" in text
 
-    def test_guide_queues_topic_teaches_queue_progression(self, server):
-        exposed = {tool["name"] for tool in server.get_tools()}
-        menu = guide_text(server.project_root, exposed)
-        text = guide_text(server.project_root, exposed, "queues")
+    def test_guide_queues_topic_teaches_queue_progression(self, guide_server):
+        exposed = {tool["name"] for tool in guide_server.get_tools()}
+        menu = guide_text(guide_server.project_root, exposed)
+        text = guide_text(guide_server.project_root, exposed, "queues")
 
         assert "`queues`" in menu
         assert "queue_validate" in text
@@ -2272,19 +2298,19 @@ class TestInstructions:
         assert "smallest-structure rule" in text
         assert "Poll each returned job" not in text
 
-    def test_guide_mistakes_names_unnecessary_wrappers_and_plan_differences(self, server):
-        exposed = {tool["name"] for tool in server.get_tools()}
-        text = guide_text(server.project_root, exposed, "mistakes")
+    def test_guide_mistakes_names_unnecessary_wrappers_and_plan_differences(self, guide_server):
+        exposed = {tool["name"] for tool in guide_server.get_tools()}
+        text = guide_text(guide_server.project_root, exposed, "mistakes")
 
         assert "smallest-structure rule above" in text
         assert "no additional human authorization gate" in text
         assert "same execution loop and auto-merge policy" in text
         assert "cloud can reconstruct" in text
 
-    def test_queue_triage_guide_teaches_inherited_plan_review(self, server):
-        exposed = {tool["name"] for tool in server.get_tools()}
-        menu = guide_text(server.project_root, exposed)
-        text = guide_text(server.project_root, exposed, "queue-triage")
+    def test_queue_triage_guide_teaches_inherited_plan_review(self, guide_server):
+        exposed = {tool["name"] for tool in guide_server.get_tools()}
+        menu = guide_text(guide_server.project_root, exposed)
+        text = guide_text(guide_server.project_root, exposed, "queue-triage")
 
         assert "`queue-triage`" in menu
         assert "`queue_list`" in text and "`get_plan`" in text

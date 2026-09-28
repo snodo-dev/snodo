@@ -9,6 +9,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- `snodo serve` without `--mode` now exposes only the current project mode's
+  capability grants, with planning tools available only under `plan`. Calls
+  to tools no longer granted are refused after a live mode change; server
+  instructions and the guide name the served mode. MCP install entries remain
+  explicitly pinned per mode. (Fixes #532)
+
 ---
 
 ## [0.18.0] — 2026-09-27

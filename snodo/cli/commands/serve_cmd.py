@@ -71,7 +71,7 @@ def register(app: typer.Typer) -> None:
             ".snodo/protocol.yml", "--protocol", help="Path to protocol file",
         ),
         mode: Optional[str] = typer.Option(
-            None, "--mode", help="Serve a single mode (default: all modes)",
+            None, "--mode", help="Serve a mode (default: current project mode)",
         ),
         transport: str = typer.Option(
             "stdio", "--transport", help="Transport type: stdio, sse, or streamable-http",
@@ -309,7 +309,7 @@ def _run_server(args, protocol) -> int:
     extra_kwargs["watch_link_ttl"] = watch_link_ttl
     mcp = build_fastmcp_server(protocol_server, **extra_kwargs)
     tools = protocol_server.get_tools()
-    mode_label = mode_id or "all"
+    mode_label = protocol_server._active_mode()
 
     # A non-stdio server owns a port. An explicit --port is the port the
     # operator meant: if a listener already owns it, name the holder and how
@@ -1101,7 +1101,17 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     subprocess alongside the MCP server.  Ctrl+C stops both cleanly.
     """
     project_root = _derive_project_root(args.protocol)
-    mode = getattr(args, "mode", None) or "all"
+    requested_mode = getattr(args, "mode", None)
+    mode = requested_mode
+    if mode is None:
+        try:
+            from snodo.infrastructure.state import read_state
+            current = read_state(project_root).current_mode
+            if current and protocol.get_mode(current):
+                mode = current
+        except Exception as e:  # noqa: BLE001 — fall back to protocol default
+            _logger.debug("Could not read current mode for tunnel: %s", e)
+        mode = mode or protocol.initial_mode
     transport = getattr(args, "transport", "streamable-http")
     rotate = getattr(args, "rotate", False)
     delete = getattr(args, "delete", False)
@@ -1290,8 +1300,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
         mcp_cmd.append("--verbose")
     for method in auth_methods:
         mcp_cmd.extend(["--auth", method])
-    if mode != "all":
-        mcp_cmd.extend(["--mode", mode])
+    if requested_mode:
+        mcp_cmd.extend(["--mode", requested_mode])
 
     # start_new_session puts the MCP child (and anything IT spawns) in its own
     # process group, so stopping the tunnel stops the whole tree: terminating

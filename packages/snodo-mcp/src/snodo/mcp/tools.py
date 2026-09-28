@@ -814,8 +814,8 @@ PROJECT_DIAGNOSTIC_TOOLS = ["survey", "intake", "ready"]
 
 # The planning surface — the human gate above the task loop. A server pinned
 # to a single mode exposes these only when its mode grants the "plan"
-# capability (MODE_TOOL_MAP above); the all-modes server (mode_id=None),
-# which is the surface a control-plane consumer drives, always exposes them.
+# capability (MODE_TOOL_MAP above). An unpinned server resolves the current
+# mode and does not add planning tools outside that capability grant.
 PLANNING_TOOLS = [
     "decompose",
     "generate_spec",
