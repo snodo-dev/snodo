@@ -81,7 +81,7 @@ def _run_fixture(args) -> int:
                 os.environ["SNODO_PROJECT_ROOT"] = old_root
 
 
-def _evaluate_wave_validators(protocol, mode_id: str, wave_id, specs: list) -> dict:
+def _evaluate_wave_validators(protocol, mode_id: str, wave_id, specs: list, mock: bool = False) -> dict:
     """Evaluate wave-scoped pre-execute validators before task dispatch."""
     from snodo.core.interfaces import Task
     from snodo.engine.policy import PolicyAction, PolicyEvaluator
@@ -103,7 +103,14 @@ def _evaluate_wave_validators(protocol, mode_id: str, wave_id, specs: list) -> d
     if not validators:
         return {}
 
-    completion_fn, model, validator_config = resolve_validator_completion()
+    if mock:
+        # --mock runs every task validator against the mock completion; the
+        # wave-scoped judge must not be the one call that reaches a real model.
+        from snodo.coders.mock import mock_completion_fn
+        from snodo.infrastructure.config import load_llm_config as _load_llm_config
+        completion_fn, model, validator_config = mock_completion_fn, "mock", _load_llm_config().validator
+    else:
+        completion_fn, model, validator_config = resolve_validator_completion()
     runner = ValidatorRunner(
         protocol=protocol,
         completion_fn=completion_fn,
@@ -961,7 +968,7 @@ def _execute_waves(waves, planner, args, protocol, model,
                 )
             wave_verdicts = _evaluate_wave_validators(
                 protocol, getattr(args, "mode", None) or protocol.initial_mode,
-                wave_id, wave_specs,
+                wave_id, wave_specs, mock=bool(getattr(args, "mock", False)),
             )
         except Exception as e:
             for task_id in tasks_to_run:

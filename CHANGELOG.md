@@ -71,6 +71,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
   history. (Fixes #513)
 
 ### Fixed
+- `--mock` plan and queue runs no longer send the wave-scoped validators (the solo
+  template's architecture judge) to a real model; they use the mock completion like
+  every task validator. The e2e queue fixtures now use plans whose only task is
+  already complete, since a plan with no tasks is refused.
 - MCP job log reads and `watch_job` snapshots now remove ANSI terminal escape
   sequences while preserving visible output and line breaks. (Fixes #524)
 - MCP log sanitization is covered against Coder colour, cursor-position,

@@ -611,7 +611,8 @@ def test_propose_validate_run_lifecycle_through_the_tool_surface(server, project
     from snodo.jobs import JobManager
 
     result = _propose(server, name="lifecycle", waves=2)
-    assert result["validation"]["valid"] is True
+    # A freshly proposed plan has no tasks yet, and a plan with no tasks is refused (#515).
+    assert result["validation"]["valid"] is False
 
     _add_task(server, "lifecycle", "1.1_first",
               "INTENT: Create first.txt with content first.\nCONSTRAINTS: Touch nothing else.")
