@@ -36,6 +36,7 @@ terminal, intake refuses rather than guessing.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -150,7 +151,8 @@ def _write_protocol(
     import yaml
 
     try:
-        raw = yaml.safe_load(protocol_path.read_text())
+        original = protocol_path.read_text()
+        raw = yaml.safe_load(original)
         if not isinstance(raw, dict):
             raise ValueError("protocol root is not a mapping")
         validator_id = select_validator(raw, requested_validator)
@@ -171,7 +173,9 @@ def _write_protocol(
         print(f"Error: refusing to write the protocol: {e}", file=sys.stderr)
         return EXIT_INTERNAL_ERROR
 
-    protocol_path.write_text(yaml.safe_dump(updated, sort_keys=False))
+    protocol_path.write_text(
+        _append_criteria_text(original, validator_id, [p.criterion for p in accepted], raw)
+    )
     print()
     print(
         f"Wrote {len(accepted)} criterion(s) to validator "
@@ -181,6 +185,61 @@ def _write_protocol(
         print(f"  • {proposal.criterion}")
         print(f"      from: {proposal.record_path}")
     return 0
+
+
+def _append_criteria_text(
+    text: str, validator_id: str, criteria: Sequence[str], raw: dict
+) -> str:
+    """Append criteria to one validator while leaving every existing source line intact."""
+    import yaml
+
+    lines = text.splitlines(keepends=True)
+    next(item for item in raw.get("validators", []) if item.get("validator_id") == validator_id)
+    # Locate validator mapping blocks using the parsed order and YAML indentation.
+    key_line = re.compile(
+        r"^( *)-?\s*validator_id:\s*(['\"]?)"
+        + re.escape(validator_id)
+        + r"\2\s*(?:#.*)?(?:\r?\n)?$"
+    )
+    start = next(i for i, line in enumerate(lines) if key_line.match(line))
+    validator_indent = len(lines[start]) - len(lines[start].lstrip(" "))
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        match = re.match(r"^( *)-\s+validator_id:\s*", lines[i])
+        if match and len(match.group(1)) == max(0, validator_indent - 2):
+            end = i
+            break
+    criteria_line = next(
+        (
+            i
+            for i in range(start + 1, end)
+            if re.match(r"^ *criteria:\s*(?:#.*)?(?:\r?\n)?$", lines[i])
+        ),
+        None,
+    )
+    if criteria_line is not None:
+        indent = len(lines[criteria_line]) - len(lines[criteria_line].lstrip(" ")) + 2
+        list_items = [i for i in range(criteria_line + 1, end) if re.match(r"^ *-\s", lines[i])]
+        if list_items:
+            indent = len(lines[list_items[-1]]) - len(lines[list_items[-1]].lstrip(" "))
+            insertion = list_items[-1] + 1
+        else:
+            insertion = criteria_line + 1
+    else:
+        insertion = end
+        # Place new criteria alongside the validator's other fields, before any
+        # following validator; the list's dash is two columns deeper.
+        lines.insert(insertion, " " * (validator_indent + 2) + "criteria:\n")
+        insertion += 1
+        indent = validator_indent + 4
+
+    rendered = "".join(
+        " " * indent + line
+        for criterion in criteria
+        for line in yaml.safe_dump([criterion], sort_keys=False, width=1000000).splitlines(keepends=True)
+    )
+    lines[insertion:insertion] = [rendered]
+    return "".join(lines)
 
 
 def intake_command(args, ask: Optional[Callable[[str], str]] = None) -> int:

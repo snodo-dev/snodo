@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Intake now appends accepted criteria directly to the target validator's YAML
+  list, preserving all existing protocol comments, layout, and quoting. (Fixes #534)
 - Configuration commands now update only the requested YAML values, preserving
   operator comments and layout without persisting loader defaults. Writes are
   atomic and retain mode 600. (Fixes #533)

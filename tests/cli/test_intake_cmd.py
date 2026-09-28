@@ -128,6 +128,66 @@ class TestProposals:
 
 
 class TestAcceptanceGate:
+    def test_accepting_preserves_protocol_comments_and_appends_in_target(self, tmp_path, monkeypatch):
+        import yaml
+        from snodo.compiler.models import Protocol
+        from snodo.compiler.verifier import verify_protocol
+
+        protocol_path = _make_repo(
+            tmp_path, {"001-rule.md": RULE_RECORD, "002-scope.md": SECOND_RULE_RECORD}
+        )
+        original = protocol_path.read_text()
+        original = original.replace(
+            "protocol_id: monorepo",
+            "# protocol header comment\nprotocol_id: monorepo",
+        ).replace(
+            "  - validator_id: adr\n",
+            "  - validator_id: adr\n    # target validator comment\n",
+        ).replace(
+            "  - validator_id: quality\n",
+            "  - validator_id: quality\n    # other validator comment\n",
+        )
+        protocol_path.write_text(original)
+        monkeypatch.chdir(tmp_path)
+
+        rc = intake_cmd.intake_command(_args(accept_all=True, validator="adr"))
+
+        assert rc == 0
+        updated = protocol_path.read_text()
+        additions = {
+            "  - The org_id is derived server-side from the API key lookup, never accepted from the request.\n",
+            "  - Every D1 query carries an org filter.\n",
+        }
+        assert "".join(line for line in updated.splitlines(keepends=True) if line not in additions) == original
+        data = yaml.safe_load(updated)
+        target = next(v for v in data["validators"] if v["validator_id"] == "adr")
+        other = next(v for v in data["validators"] if v["validator_id"] == "quality")
+        assert target["criteria"][-2:] == [
+            "The org_id is derived server-side from the API key lookup, never accepted from the request.",
+            "Every D1 query carries an org filter.",
+        ]
+        assert other["criteria"] == ["tests pass"]
+        assert verify_protocol(Protocol(**data)).passed
+
+    def test_accepting_adds_a_missing_criteria_list(self, tmp_path, monkeypatch):
+        import yaml
+
+        protocol_path = _make_repo(tmp_path, {"001-rule.md": RULE_RECORD})
+        text = protocol_path.read_text().replace(
+            "  criteria:\n  - The Architecture Decision Records in docs/adr apply here\n", ""
+        )
+        protocol_path.write_text(text)
+        monkeypatch.chdir(tmp_path)
+
+        rc = intake_cmd.intake_command(_args(accept_all=True, validator="adr"))
+
+        assert rc == 0
+        data = yaml.safe_load(protocol_path.read_text())
+        target = next(v for v in data["validators"] if v["validator_id"] == "adr")
+        assert target["criteria"] == [
+            "The org_id is derived server-side from the API key lookup, never accepted from the request."
+        ]
+
     def test_rejecting_writes_nothing(self, tmp_path, monkeypatch, capsys):
         protocol_path = _make_repo(tmp_path, {"001-rule.md": RULE_RECORD})
         before = protocol_path.read_bytes()
@@ -297,4 +357,3 @@ class TestIntakeErrors:
         assert rc == 4
         payload = json.loads(capsys.readouterr().out)
         assert payload["ok"] is False
-
