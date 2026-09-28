@@ -77,6 +77,33 @@ def test_coder_staging_and_readback_excludes_repository_local_home(git_project_w
     assert not any(f.startswith(".custom-home") for f in files)
 
 
+def test_coder_commits_changes_when_gitignore_ignores_snodo(tmp_path):
+    """A blanket .snodo ignore rule must not make the coder's add fail."""
+    repo_dir = tmp_path / "ignored_snodo_project"
+    repo_dir.mkdir()
+    (repo_dir / "src").mkdir()
+    (repo_dir / "src" / "app.py").write_text("print('initial')\n")
+    (repo_dir / ".gitignore").write_text(".snodo/\n")
+    (repo_dir / ".snodo").mkdir()
+    (repo_dir / ".snodo" / "state.json").write_text('{"private": true}\n')
+
+    with Repo.init(str(repo_dir)) as repo:
+        repo.git.config("user.name", "Test User")
+        repo.git.config("user.email", "test@snodo.exp")
+        repo.git.add("-A")
+        repo.git.commit("-m", "initial commit")
+
+    coder = _DummyInPlaceCoder(repo_dir)
+    (repo_dir / "src" / "app.py").write_text("print('updated')\n")
+    coder._commit_changes()
+
+    with Repo(str(repo_dir)) as repo:
+        assert repo.head.commit.message == "coder: task\n"
+        committed_files = [item.path for item in repo.head.commit.tree.traverse() if item.type == "blob"]
+    assert "src/app.py" in committed_files
+    assert not any(path.startswith(".snodo/") for path in committed_files)
+
+
 def test_commit_message_carries_task_and_findings(git_project_with_local_home):
     """The commit history preserves the task context and coder discovery."""
     repo_dir, local_home = git_project_with_local_home

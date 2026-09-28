@@ -393,7 +393,12 @@ class InPlaceCoderAdapter(Coder, ABC):
             )
             return
 
-        exclude_args = [":(exclude).snodo", ":(exclude).snodo/**"]
+        # Do not name .snodo in the add pathspec: when the repository ignores
+        # that directory, Git treats even an exclude pathspec as an explicit
+        # request to add the ignored path and aborts the whole add. Its ignore
+        # rule already keeps untracked .snodo content out of staging, while the
+        # mutation guard above refuses any coder changes there.
+        exclude_args = []
         try:
             local_home_rel = get_project_local_home_rel(self._workspace)
             if local_home_rel:
