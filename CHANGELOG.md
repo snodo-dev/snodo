@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `disagreement_escalated` now has a pinned v6 cloud shape carrying the task,
+  phase, policy and plan/wave ownership when applicable, without validator
+  output. v5 continues to hold plan-owned events until v6 is accepted. (Fixes #520)
 - `watch_job` opens a self-refreshing MCP Apps live panel for dispatched tasks,
   plan runs, and queue runs, with a current status and recent-output text
   fallback. The dispatch capability and server instructions now direct

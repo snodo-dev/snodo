@@ -105,6 +105,18 @@ repeat between plans. v5 continues to hold v6-only events/data and their chain
 suffix; no v6 field is stripped into a v5 payload because that would invalidate
 the event hash.
 
+### Amendment — plan-owned authorization escalations
+
+`disagreement_escalated` has a pinned v6 shape: `task_ref`, `phase` and
+`policy`, plus `plan_name` and `plan_wave` when the task belongs to a plan.
+The engine uses its task's existing plan ownership; MCP validation accepts the
+owning `plan_name` and resolves the task's existing plan wave. The event omits
+validator output and detailed justifications: the notification needs to name
+the task waiting for `snodo authorize`, not repeat the verdict. v5 retains its
+previous opaque event shape; plan-owned escalation events remain held with the
+hash-chain suffix until a v6 lease is advertised. No task, plan, job or recon
+status, severity or halt type is introduced.
+
 ## Consequences
 
 The cloud can wire its Recons counter to `recon_started` and its Commits

@@ -145,6 +145,7 @@ def test_v6_schema_publishes_wave_one_shapes_and_accepts_v5_events():
         "dispatch": {"plan_name", "plan_wave"},
         "task_complete": {"plan_name", "plan_wave"},
         "halt": {"plan_name", "plan_wave"},
+        "disagreement_escalated": {"task_ref", "phase", "policy", "plan_name", "plan_wave"},
     }.items():
         data_schema = ingest["$defs"][by_type[event_type]["properties"]["data"]["$ref"].split("/")[-1]]
         assert keys <= set(data_schema["properties"])
@@ -182,5 +183,7 @@ def test_v6_schema_publishes_wave_one_shapes_and_accepts_v5_events():
         if "const" in v5["$defs"][branch["$ref"].split("/")[-1]]["properties"]["event_type"]
     }
     assert "recon_started" not in v5_types
+    v5_escalation = v5["$defs"][v5_types["disagreement_escalated"]["properties"]["data"]["$ref"].split("/")[-1]]
+    assert not v5_escalation["properties"]
     v5_merged = v5["$defs"][v5_types["task_merged"]["properties"]["data"]["$ref"].split("/")[-1]]
     assert set(v5_merged["properties"]) == {"task_ref", "branch", "merge_sha", "spec", "session_id"}

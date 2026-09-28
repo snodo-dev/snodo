@@ -861,6 +861,18 @@ class TestCloudSyncDispatcher:
         payload = _payload_for_events("sess_v5", "/proj", [event])
         assert _v5_payload(payload, 5) is None
 
+    def test_v5_holds_plan_owned_disagreement_escalation(self):
+        from snodo.infrastructure.cloud_sync import _payload_for_events, _v5_payload
+
+        event = self._make_events(1)[0]
+        event.event_type = "disagreement_escalated"
+        event.data = {
+            "task_ref": "1.1", "phase": "pre_execute", "policy": "unanimous",
+            "plan_name": "release", "plan_wave": "2",
+        }
+        payload = _payload_for_events("sess_v5_escalation", "/proj", [event])
+        assert _v5_payload(payload, 5) is None
+
     def test_v5_cloud_holds_batch_starting_with_v6_event(self):
         import time
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState

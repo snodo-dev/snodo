@@ -512,6 +512,7 @@ TOOL_REGISTRY = {
             "properties": {
                 "task_id": {"type": "string", "description": "Task identifier"},
                 "task_spec": {"type": "string", "description": "Optional task specification the validators evaluate"},
+                "plan_name": {"type": "string", "description": "Optional owning plan name, when validating a task from a plan"},
             },
             "required": ["task_id"],
         },
