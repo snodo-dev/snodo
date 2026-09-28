@@ -96,6 +96,60 @@ five notification target formats live in the canonical
 in `~/.snodo/config.yml` (or `$SNODO_HOME/config.yml`), not in a project
 protocol. Test them with `snodo notify test`.
 
+Example `~/.snodo/config.yml` with common role settings and one webhook:
+
+```yaml
+model: claude-sonnet-4-20250514
+
+llm:
+  num_retries: 3
+  coder:
+    model: null
+    max_tokens: 16000
+    max_tool_turns: 6
+    timeout_seconds: 1800
+    silence_timeout_seconds: 600
+    concurrency: 1
+  validator:
+    model: null
+    max_tokens: 1500
+    max_tool_turns: 6
+  classifier:
+    model: null
+    max_tokens: 500
+    temperature: 0.0
+  recon:
+    num_agents: 1
+    models: []
+  wave:
+    max_age_days: 14
+    max_idle_days: 5
+
+engine:
+  max_subtask_depth: 3
+  max_session_age_days: 30
+  token_ttl_seconds: 600
+
+cloud:
+  api_key: "" # add a literal Snodo Cloud key to enable sync
+  api_url: https://api.snodo.dev
+  tunnel_api_url: https://app.snodo.dev
+  sync_enabled: false
+  liveness_interval_seconds: 60
+
+notifications:
+  targets:
+    - type: webhook
+      name: team-updates
+      url: env:SNODO_WEBHOOK_URL
+  events:
+    - job_finished
+    - task_halted
+    - authorization_needed
+    - job_silent
+  silence_threshold_seconds: 900
+```
+
 Three shapes of key are settable without hand-editing — the bare key
 `model`, anything under `engine.`, and anything under `llm.`:
 
