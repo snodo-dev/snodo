@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Pytest clears inherited Snodo job context before collection and e2e child
+  processes cannot resolve the dispatching project. Removed leaked hello-world
+  source and test files. (Fixes #542)
 - OpenCode CLI runs now use `--format json` and record provider-reported token,
   cache, and cost usage while keeping job output readable. Missing usage remains
   null. (Fixes #541)

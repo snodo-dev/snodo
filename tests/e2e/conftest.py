@@ -78,6 +78,17 @@ def snodo_cli(tmp_path):
         env["SNODO_HOME"] = str(snodo_home)
         env["SNODO_TOKEN_SECRET"] = "e2e_test_fixed_secret_32bytes!"
         env["PYTHONIOENCODING"] = "utf-8"
+        # Keep job context from overriding this fixture's isolated project.
+        for key in (
+            "SNODO_PROJECT_ROOT",
+            "SNODO_JOB_ID",
+            "SNODO_WORKTREE_PATH",
+            "SNODO_PLAN_JOB",
+            "SNODO_TASK_PLAN",
+            "SNODO_TASK_PLAN_WAVE",
+            "SNODO_BENCHMARK",
+        ):
+            env.pop(key, None)
         # The audit log is a property of the PROJECT (Fixes #111): the CLI must
         # write to <project_root>/.snodo/audit.log, not to SNODO_HOME. The
         # in-process suite fixture sets SNODO_AUDIT_LOG to keep unit tests off

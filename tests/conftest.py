@@ -554,6 +554,19 @@ def _get_system_tmp_roots() -> set[Path]:
 
 
 def pytest_sessionstart(session):
+    # A test runner launched by a Snodo job inherits the dispatcher's project
+    # context. Clear it before collection or tests can resolve the real project
+    # and dispatch nested jobs against it.
+    for key in (
+        "SNODO_PROJECT_ROOT",
+        "SNODO_JOB_ID",
+        "SNODO_WORKTREE_PATH",
+        "SNODO_PLAN_JOB",
+        "SNODO_TASK_PLAN",
+        "SNODO_TASK_PLAN_WAVE",
+        "SNODO_BENCHMARK",
+    ):
+        os.environ.pop(key, None)
     _E2E_DESELECTED[0] = 0
     _WORKER_E2E_DESELECTED[0] = 0
     for root in _get_system_tmp_roots():
@@ -732,4 +745,3 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
         return
     for line in build_notice(count).splitlines():
         terminalreporter.write_line(line)
-
