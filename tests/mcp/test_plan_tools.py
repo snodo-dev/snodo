@@ -46,6 +46,12 @@ _PROTOCOL_DATA = {
         {
             "mode_id": "producer",
             "name": "Producer",
+            "tools": ["edit", "dispatch", "test", "plan"],
+            "validators": ["quality"],
+        },
+        {
+            "mode_id": "worker",
+            "name": "Worker",
             "tools": ["edit", "dispatch", "test"],
             "validators": ["quality"],
         },
@@ -92,7 +98,7 @@ def server(project_dir):
 
 @pytest.fixture
 def producer_server(project_dir):
-    return ProtocolMCPServer(Protocol(**_PROTOCOL_DATA), project_dir, mode_id="producer")
+    return ProtocolMCPServer(Protocol(**_PROTOCOL_DATA), project_dir, mode_id="worker")
 
 
 def _token(server):
@@ -127,13 +133,13 @@ PLANNING_TOOL_NAMES = {
 
 
 class TestPlanningSurface:
-    def test_all_modes_server_exposes_planning_surface(self, server):
-        """The consumer surface (no pinned mode) reaches the plan gate."""
+    def test_current_mode_server_exposes_only_its_planning_surface(self, server):
+        """The current mode (no pin) reaches planning only because it grants plan."""
         names = {t["name"] for t in server.get_tools()}
         assert PLANNING_TOOL_NAMES <= names
 
     def test_mode_without_plan_refuses_planning_tools(self, producer_server):
-        """A mode-pinned agent without the 'plan' capability stays fenced out."""
+        """A mode without the 'plan' capability stays fenced out."""
         names = {t["name"] for t in producer_server.get_tools()}
         assert not (PLANNING_TOOL_NAMES & names)
         for tool in ("propose_plan", "get_plan", "run_plan"):
