@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Record nullable token and cache usage, distinguish provider costs from catalog estimates, and retain failed LiteLLM and in-place coder attempts with duration and outcome.
+
+### Fixed
 - Intake now appends accepted criteria directly to the target validator's YAML
   list, preserving all existing protocol comments, layout, and quoting. (Fixes #534)
 - In-place coders now commit repository changes when `.gitignore` contains a
