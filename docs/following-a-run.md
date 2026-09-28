@@ -13,7 +13,8 @@ opens a read-only live page with the job id, status, elapsed time, and latest
 ten stdout lines. It updates itself and stops at the final status, showing the
 outcome; the operator can open it in any browser, including on a phone. Keep it
 open while the job runs; the orchestrator does not need to schedule repeated
-status calls. The capability link is scoped to that job and expires after 24
+status calls. This browser link works independently of MCP Apps support in the
+orchestrator. The capability link is scoped to that job and expires after 24
 hours by default (`SNODO_WATCH_LINK_TTL` configures the lifetime in seconds).
 
 MCP Apps hosts also retain their in-host live panel. When the server has no

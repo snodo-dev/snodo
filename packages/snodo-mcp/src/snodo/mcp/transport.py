@@ -405,7 +405,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         if "queue_run" in exposed:
             async_lines.append("`queue_run` is ASYNCHRONOUS and returns its job id immediately.\n\n")
         async_lines.append(
-            "After a job starts, call `watch_job(job_id)` and hand the operator its browser link; leave the live view open. The link refreshes itself and stops at a final status. If no reachable HTTP URL is configured, pass along the `snodo logs <job_id> --watch` fallback. The starter response only confirms queuing.\n"
+            "After a job starts, call `watch_job(job_id)` and hand the operator its read-only browser link; they can open it in any browser, including on a phone. Leave the live view open; it updates itself and stops at a final status. If no reachable HTTP URL is configured, pass along the `snodo logs <job_id> --watch` fallback. The starter response only confirms queuing.\n"
         )
         sections.append("".join(async_lines))
 
