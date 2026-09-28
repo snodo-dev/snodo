@@ -118,6 +118,8 @@ tunnel) streams status and recent output. The CLI alternative is
 available. `watch_job` is an optional MCP Apps enhancement and returns a
 plain-text snapshot to hosts that do not render Apps. Job notifications are
 configured in `~/.snodo/config.yml` and tested with `snodo config --notify-test`.
+The hidden `snodo notify test` command remains as a deprecated alias for one
+release and prints a migration notice.
 
 ## MCP server
 
