@@ -1,5 +1,12 @@
 # Spec: snodo meta — compact task/job summary
 
+## Current state
+
+This is a historical proposal for a compact `snodo meta` summary command, not
+the current MCP job-following contract. For 0.18 MCP jobs, call `watch_job` for
+the live snapshot/link and use `get_job_status` or `get_job_logs` when a
+particular detail is needed. See [Following a run](../following-a-run.md).
+
 ## Why
 Orchestrator (and human) needs a cheap summary surface: poll meta
 instead of full status/logs. If success -> move on; if not -> pull

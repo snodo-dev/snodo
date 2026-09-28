@@ -1,5 +1,13 @@
 # Recon: multi-agent read-only exploration via MCP
 
+## Current state
+
+This spec's recon observation flow remains distinct from following a background
+job: `recon` returns a `recon_id`, and its results are still retrieved with
+`get_recon_status` and `get_recon_results`. The 0.18 `watch_job` flow applies to
+job IDs returned by task/plan/queue starters. For that job-following contract,
+see [Following a run](../following-a-run.md).
+
 ## Intent
 Recon is the exploration phase before specification. The orchestrator
 calls recon(query, paths, agents) when it needs to understand the

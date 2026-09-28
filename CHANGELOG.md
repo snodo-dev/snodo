@@ -19,6 +19,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Notification target testing now lives at `snodo config --notify-test`. The
   `snodo notify test` command remains as a hidden deprecated alias for one
   release and directs operators to the new option. (Fixes #530)
+- MCP design specs now distinguish retained design history from the 0.18
+  session instructions, guide topics, mode capability boundary, and `watch_job`
+  follow-up contract. (Fixes #531)
 
 ---
 

@@ -1,5 +1,14 @@
 # Spec: Keep the MCP event loop responsive under blocking work
 
+## Current MCP follow-up
+
+This is an implementation-history spec, not the orchestrator's operating
+manual. The job observation tools named below remain available, but after a
+background starter returns a job id the 0.18 default is `watch_job`, with the
+browser link or `snodo logs <job_id> --watch` fallback documented in
+[Following a run](../following-a-run.md). Use `get_job_status` and
+`get_job_logs` for specific follow-up.
+
 ## Problem
 
 FastMCP's stdio transport runs sync tool handlers inline on a single event loop
