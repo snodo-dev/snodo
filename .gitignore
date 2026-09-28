@@ -21,8 +21,14 @@ dist/
 *.egg-info/
 *.whl
 
-# Internal dev scaffold — not for public release
+# snodo's own project state: machine state stays private; the authored
+# protocol and plans are committed (the rules `snodo init` writes).
 .snodo/
+!.snodo/
+.snodo/*
+!.snodo/protocol.yml
+!.snodo/plans/
+!.snodo/plans/**
 
 # Agent memory / checkpoints
 *.db
@@ -52,7 +58,6 @@ studies/hypothesis_paper_run.log
 # macOS
 .DS_Store
 site/
-.snodo/
 
 # Git worktrees for parallel task execution
 .snodo-worktrees/
