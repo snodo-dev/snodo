@@ -12,6 +12,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Intake now appends accepted criteria directly to the target validator's YAML
   list, preserving all existing protocol comments, layout, and quoting. (Fixes #534)
+- In-place coders now commit repository changes when `.gitignore` contains a
+  blanket `.snodo/` rule; the mutation guard still refuses coder changes under
+  `.snodo/`. (Fixes #537)
 - Configuration commands now update only the requested YAML values, preserving
   operator comments and layout without persisting loader defaults. Writes are
   atomic and retain mode 600. (Fixes #533)
