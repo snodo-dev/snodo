@@ -999,6 +999,66 @@ class TestCallAgentChain:
         assert "m1 (boom)" in result.error
         assert "m2 (boom)" in result.error
 
+    def test_failover_records_usage_for_failed_and_successful_models(self, project_with_snodo):
+        from types import SimpleNamespace
+
+        from snodo.recon import call_agent_chain
+
+        answer = SimpleNamespace(
+            model="served-m2", response_cost=0.004,
+            usage=SimpleNamespace(prompt_tokens=8, completion_tokens=3,
+                                  cache_read_input_tokens=2,
+                                  cache_creation_input_tokens=1),
+            choices=[SimpleNamespace(message=SimpleNamespace(content="answer", tool_calls=None))],
+        )
+        with patch("litellm.completion", side_effect=[RuntimeError("offline"), answer]):
+            result = call_agent_chain(project_with_snodo, ["m1", "m2"], "q", [], "agent")
+
+        assert [(item["model"], item["outcome"]) for item in result.usage] == [
+            ("m1", "failed"), ("m2", "succeeded"),
+        ]
+        success = result.usage[1]
+        assert success["served_model"] == "served-m2"
+        assert success["input_tokens"] == 8
+        assert success["output_tokens"] == 3
+        assert success["cache_read_tokens"] == 2
+        assert success["cache_write_tokens"] == 1
+        assert success["cost_usd"] == 0.004
+        assert all(item["duration_ms"] is not None for item in result.usage)
+        assert result.usage[0]["input_tokens"] is None
+
+
+def test_two_agent_recon_persists_usage_and_unknowns_as_null(project_with_snodo, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(recon_module, "_threads", [])
+    manager = ReconManager(project_with_snodo)
+    monkeypatch.setattr(recon_module, "resolve_agent_model", lambda model: model)
+
+    def completion(**kwargs):
+        model = kwargs["model"]
+        usage = (SimpleNamespace(prompt_tokens=11, completion_tokens=4,
+                                 prompt_tokens_details=SimpleNamespace(cached_tokens=3))
+                 if model == "m1" else None)
+        return SimpleNamespace(
+            model=f"served-{model}", usage=usage,
+            choices=[SimpleNamespace(message=SimpleNamespace(content="answer", tool_calls=None))],
+        )
+
+    with patch("litellm.completion", side_effect=completion):
+        recon_id = manager.submit("q", ["./"], agents=[["m1"], ["m2"]])
+        manager.shutdown()
+
+    records = manager.get_results(recon_id)["results"]
+    by_agent = {item["agent"]: item["usage"][0] for item in records}
+    assert by_agent["m1"]["input_tokens"] == 11
+    assert by_agent["m1"]["output_tokens"] == 4
+    assert by_agent["m1"]["cache_read_tokens"] == 3
+    assert by_agent["m1"]["duration_ms"] is not None
+    assert by_agent["m2"]["input_tokens"] is None
+    assert by_agent["m2"]["output_tokens"] is None
+    assert by_agent["m2"]["cost_usd"] is None
+
 
 class TestReconManagerFailover:
     def test_lane_failover_is_called_and_first_answer_wins(

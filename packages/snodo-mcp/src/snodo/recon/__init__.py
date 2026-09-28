@@ -55,6 +55,7 @@ class ReconResult(BaseModel):
     #: absence recorded as absence, never an assumed match. Provenance only:
     #: it does not feed failover, selection or routing.
     served_model: Optional[str] = None
+    usage: list[dict] = []
 
 
 class ReconError(Exception):
@@ -381,13 +382,16 @@ def call_agent_chain(
     why each one was passed over.
     """
     attempts: list[ReconAttempt] = []
+    usage: list[dict] = []
     for model in models:
         result = call_agent(
             project_root, model, query, paths, agent_label, max_turns,
         )
         if not result.error and result.result.strip():
             result.attempts = attempts + [ReconAttempt(model=model)]
+            result.usage = usage + result.usage
             return result
+        usage.extend(result.usage)
         attempts.append(
             ReconAttempt(model=model, error=result.error or "empty result")
         )
@@ -401,6 +405,7 @@ def call_agent_chain(
         result="",
         error=f"all models failed; tried {tried}",
         attempts=attempts,
+        usage=usage,
     )
 
 
@@ -466,6 +471,58 @@ def call_agent(
 
     final_answer = ""
     served_model: Optional[str] = None
+    usage_records: list[dict] = []
+    started = time.monotonic()
+
+    def _usage_record(outcome: str) -> dict:
+        return {
+            "agent": agent_label,
+            "model": model,
+            "served_model": served_model,
+            "provider": ConfigManager._provider_for_model(model),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_write_tokens": cache_write_tokens,
+            "cost_usd": reported_cost,
+            "duration_ms": round((time.monotonic() - started) * 1000, 2),
+            "outcome": outcome,
+        }
+
+    input_tokens = output_tokens = cache_read_tokens = cache_write_tokens = None
+    reported_cost = None
+
+    def _record_response(response) -> None:
+        nonlocal served_model, input_tokens, output_tokens
+        nonlocal cache_read_tokens, cache_write_tokens, reported_cost
+        served_model = served_model_of(response)
+        response_usage = getattr(response, "usage", None)
+        if response_usage is not None:
+            def add(current, value):
+                if value is None:
+                    return current
+                try:
+                    return (current or 0) + int(value)
+                except (TypeError, ValueError):
+                    return current
+
+            input_tokens = add(input_tokens, getattr(response_usage, "prompt_tokens", None))
+            output_tokens = add(output_tokens, getattr(response_usage, "completion_tokens", None))
+            details = getattr(response_usage, "prompt_tokens_details", None)
+            cache_read = getattr(response_usage, "cache_read_input_tokens", None)
+            if cache_read is None:
+                cache_read = getattr(details, "cached_tokens", None)
+            cache_read_tokens = add(cache_read_tokens, cache_read)
+            cache_write_tokens = add(cache_write_tokens, getattr(response_usage, "cache_creation_input_tokens", None))
+        hidden = getattr(response, "_hidden_params", None)
+        cost = getattr(response, "response_cost", None)
+        if cost is None and isinstance(hidden, dict):
+            cost = hidden.get("response_cost")
+        if cost is not None:
+            try:
+                reported_cost = (reported_cost or 0.0) + float(cost)
+            except (TypeError, ValueError):
+                pass
 
     from snodo.config import ConfigManager
     _logger.debug("recon: resolving API key for model=%s", model)
@@ -493,13 +550,15 @@ def call_agent(
         try:
             response = _complete(with_read_tools=True)
         except Exception as e:
+            usage_records.append(_usage_record("failed"))
             return ReconResult(
                 agent=agent_label,
                 model=model,
                 result="",
                 error=str(e),
+                usage=usage_records,
             )
-        served_model = served_model_of(response)
+        _record_response(response)
 
         choice = response.choices[0]
         msg = choice.message
@@ -564,13 +623,15 @@ def call_agent(
         try:
             response = _complete(with_read_tools=False)
         except Exception as e:
+            usage_records.append(_usage_record("failed"))
             return ReconResult(
                 agent=agent_label,
                 model=model,
                 result="",
                 error=str(e),
+                usage=usage_records,
             )
-        served_model = served_model_of(response)
+        _record_response(response)
         final_answer = response.choices[0].message.content or ""
 
     if not final_answer.strip():
@@ -583,6 +644,7 @@ def call_agent(
             agent=agent_label, model=model,
             result="", error="Agent returned empty result",
             served_model=served_model,
+            usage=[_usage_record("failed")],
         )
 
     return ReconResult(
@@ -590,6 +652,7 @@ def call_agent(
         model=model,
         result=final_answer.strip(),
         served_model=served_model,
+        usage=[_usage_record("succeeded")],
     )
 
 
