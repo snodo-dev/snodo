@@ -70,15 +70,15 @@ def cloud_schema_command(json_output: bool = True) -> int:
     from pydantic import TypeAdapter
 
     from snodo.infrastructure.cloud_interface import CLOUD_INTERFACE_VERSION
-    from snodo.infrastructure.cloud_interface import CLOUD_INTERFACE_V5, CLOUD_INTERFACE_V6
+    from snodo.infrastructure.cloud_interface import CLOUD_INTERFACE_V5, CLOUD_INTERFACE_V6, CLOUD_INTERFACE_V7
     from snodo.infrastructure.cloud_liveness import LivenessSnapshot, LivenessSnapshotV6
     from snodo.infrastructure.cloud_runs import run_record_payload_schema
-    from snodo.infrastructure.cloud_sync import AuditIngestBatch, AuditIngestBatchV6
+    from snodo.infrastructure.cloud_sync import AuditIngestBatch, AuditIngestBatchV6, AuditIngestBatchV7
 
     publication = {
         "interface_version": CLOUD_INTERFACE_VERSION,
         "payloads": {
-            "cloud_ingest": TypeAdapter(AuditIngestBatchV6).json_schema(),
+            "cloud_ingest": TypeAdapter(AuditIngestBatchV7).json_schema(),
             "cloud_liveness": TypeAdapter(LivenessSnapshotV6).json_schema(),
             "run_record": run_record_payload_schema(),
         },
@@ -89,6 +89,10 @@ def cloud_schema_command(json_output: bool = True) -> int:
             },
             str(CLOUD_INTERFACE_V6): {
                 "cloud_ingest": TypeAdapter(AuditIngestBatchV6).json_schema(),
+                "cloud_liveness": TypeAdapter(LivenessSnapshotV6).json_schema(),
+            },
+            str(CLOUD_INTERFACE_V7): {
+                "cloud_ingest": TypeAdapter(AuditIngestBatchV7).json_schema(),
                 "cloud_liveness": TypeAdapter(LivenessSnapshotV6).json_schema(),
             },
         },

@@ -119,6 +119,14 @@ status, severity or halt type is introduced.
 
 ## Consequences
 
+### Amendment — provider-reported usage (interface v7)
+
+`task_complete`, `halt`, `validate` and `recon_completed` may carry aggregated
+usage records. `cost_usd` is provider-reported only: local estimates are null.
+Because usage is hash-chained data, v5/v6 leases hold at the first event
+carrying it and its suffix until v7 is advertised; fields are never stripped.
+No task, plan, job or recon status, severity or halt type is added.
+
 The cloud can wire its Recons counter to `recon_started` and its Commits
 counter to `task_merged.commit_count`, show delivered lines and files per
 project, plan and day, and rebuild plan → wave → task for any window from

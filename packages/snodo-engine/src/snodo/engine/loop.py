@@ -956,6 +956,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             "blocker_validators": blocker_validators,
             "halt_type": canonical_halt,
             "raw_halt_type": raw_halt,
+            "usage": _task_cloud_usage(loop_state.task.id),
         }
         if loop_state.task.plan_name:
             halt_audit["plan_name"] = loop_state.task.plan_name
@@ -1025,6 +1026,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             # that predates commit provenance.
             "commit": loop_state.metadata.get("commit"),
             "change_size": change_size,
+            "usage": _task_cloud_usage(loop_state.task.id),
         }
         if loop_state.task.plan_name:
             task_complete_audit["plan_name"] = loop_state.task.plan_name
@@ -1056,6 +1058,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         loop_state.stage = LoopStage.MOVE_NEXT
         self._auto_write_halt_payload(loop_state)
         return self._state_to_dict(loop_state)
+
 
     def _route_after_execute(self, state: Dict[str, Any]) -> str:
         """Route after execution: post-validate on success, block on failure.
@@ -1361,3 +1364,13 @@ def build_protocol_graph(
         **custom_functions
     )
     return builder.build_graph()
+
+
+def _task_cloud_usage(task_ref: str) -> list[dict]:
+    """Read coder attempt usage without allowing telemetry to affect execution."""
+    import os
+    try:
+        from snodo.infrastructure.cloud_sync import task_usage_records
+        return task_usage_records(os.environ.get("SNODO_PROJECT_ROOT", ""), task_ref)
+    except Exception:
+        return []

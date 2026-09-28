@@ -6,6 +6,7 @@ from jsonschema import validate
 from typer.testing import CliRunner
 
 from snodo.cli.commands.cloud_cmd import app
+from snodo.infrastructure.cloud_sync import _aggregate_usage, _v5_payload
 
 
 def test_cloud_schema_validates_real_snapshot_and_event_batch():
@@ -13,7 +14,7 @@ def test_cloud_schema_validates_real_snapshot_and_event_batch():
 
     assert result.exit_code == 0
     publication = json.loads(result.stdout)
-    assert publication["interface_version"] == 6
+    assert publication["interface_version"] == 7
 
     payloads = publication["payloads"]
     batch = {
@@ -63,6 +64,41 @@ def test_cloud_schema_validates_real_snapshot_and_event_batch():
     }, payloads["run_record"])
 
 
+def test_v7_usage_is_pinned_and_older_interfaces_hold_hash_chain():
+    record = {
+        "role": "coder", "task_ref": "task_x_fix_1", "attempt": 1,
+        "model": "asked-model", "outcome": "succeeded",
+        "input_tokens": None, "output_tokens": 12, "cost_usd": None,
+    }
+    event = {
+        "sequence": 1, "timestamp": "2026-09-17T12:00:00+00:00",
+        "event_type": "task_complete", "project_id": "local:project",
+        "scope": "local", "data": {"task_ref": "task_x", "usage": [record]},
+        "previous_hash": "0" * 64, "event_hash": "a" * 64,
+    }
+    payload = {"session_id": "s", "project_path": "/work", "display_name": "work", "events": [event]}
+    assert _v5_payload(payload, 5) is None
+    assert _v5_payload(payload, 6) is None
+    assert _v5_payload(payload, 7) == payload
+
+    estimated = _aggregate_usage([
+        {"model": "m", "input_tokens": 1, "output_tokens": 2,
+         "cost": 0.01, "cost_source": "estimate", "outcome": "success"},
+    ], "coder", task_ref="task_x_fix_1", attempt=1)
+    assert estimated["attempt"] == 1
+    assert estimated["cost_usd"] is None
+    assert estimated["input_tokens"] == 1
+
+    unknown = _aggregate_usage([
+        {"model": "m", "input_tokens": None, "output_tokens": 2,
+         "cost": None, "cost_source": None, "outcome": "success"},
+        {"model": "m", "input_tokens": 4, "output_tokens": 3,
+         "cost": 0.02, "cost_source": "provider", "outcome": "success"},
+    ], "coder", task_ref="task_x", attempt=0)
+    assert unknown["input_tokens"] is None
+    assert unknown["cost_usd"] is None
+
+
 def test_cloud_schema_declares_every_event_data_key_from_contract():
     result = CliRunner().invoke(app, ["schema", "--json"])
     publication = json.loads(result.stdout)
@@ -74,12 +110,12 @@ def test_cloud_schema_declares_every_event_data_key_from_contract():
         "dispatch": {"task_ref", "mode", "token_id", "artifacts_count"},
         "work_already_present": {"task_ref", "base_ref", "artifacts_count", "files"},
         "governance_check": {"task_ref", "mode", "constraints_checked"},
-        "validate": {"phase", "task_ref", "validators_invoked", "results", "outcome", "policy_decision"},
+        "validate": {"phase", "task_ref", "validators_invoked", "results", "outcome", "policy_decision", "usage"},
         "task_classified": {"task_ref", "flow_type", "wave_id", "task_summary"},
         "wave_created": {"wave_id", "feature_description"},
-        "task_complete": {"task_ref", "artifacts", "session_id", "commit", "change_size"},
+        "task_complete": {"task_ref", "artifacts", "session_id", "commit", "change_size", "usage"},
         "task_merged": {"task_ref", "branch", "merge_sha", "spec", "session_id"},
-        "halt": {"task_ref", "reason", "blocker_validators", "halt_type", "raw_halt_type"},
+        "halt": {"task_ref", "reason", "blocker_validators", "halt_type", "raw_halt_type", "usage"},
         "transition": {"from_mode", "to_mode", "task_ref"},
         "token_consumed": {"task_ref", "session_id"},
         "post_validation_route": {"decision", "task_ref"},

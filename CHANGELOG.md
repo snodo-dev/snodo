@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Cloud interface v7 carries nullable provider usage on completion, halt,
+  validation, and recon audit events; older leases hold the hash-chain suffix
+  until v7 is advertised. (Fixes #543)
+
 ### Fixed
 - Pytest clears inherited Snodo job context before collection and e2e child
   processes cannot resolve the dispatching project. Removed leaked hello-world
