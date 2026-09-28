@@ -844,6 +844,29 @@ class TestDispatchTask:
             "j_abc", stream="stdout", tail=50
         )
 
+    def test_get_job_logs_removes_terminal_sequences_and_preserves_text(
+        self, dispatch_server
+    ):
+        raw_log = (
+            "\x1b[32m→ Read data-worker/src/index.ts\x1b[0m\n"
+            "\x1b[2K✱ 100% complete\x1b[0m\n"
+            "plain output"
+        )
+        with patch("snodo.jobs.JobManager") as mock_cls:
+            mock_jm = MagicMock()
+            mock_jm.get_logs.return_value = raw_log
+            mock_cls.return_value = mock_jm
+            result = dispatch_server.call_tool(
+                "get_job_logs", {"job_id": "j_abc"}
+            )
+
+        assert result["log"] == (
+            "→ Read data-worker/src/index.ts\n"
+            "✱ 100% complete\nplain output"
+        )
+        # Sanitization is for the returned view; the source log remains raw.
+        assert mock_jm.get_logs.return_value == raw_log
+
     def test_get_job_logs_custom_stream(self, dispatch_server):
         with patch("snodo.jobs.JobManager") as mock_cls:
             mock_jm = MagicMock()

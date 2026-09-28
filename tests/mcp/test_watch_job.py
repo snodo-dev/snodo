@@ -53,6 +53,23 @@ def test_watch_job_text_snapshot_uses_existing_status_and_logs():
     logs.assert_called_once_with({"job_id": "j_abc", "tail": 10})
 
 
+def test_watch_job_text_snapshot_contains_clean_log_lines():
+    handler = JobToolHandler("/project")
+    status = {"id": "j_abc", "status": "running", "created_at": 100.0}
+    raw_log = "\x1b[34m→ Reading file\x1b[0m\n\x1b[2K✱ 80%"
+    with patch.object(handler, "handle_get_job_status", return_value=status), patch(
+        "snodo.jobs.JobManager"
+    ) as mock_cls:
+        mock_jm = mock_cls.return_value
+        mock_jm.get_logs.return_value = raw_log
+        snapshot = handler.handle_watch_job({"job_id": "j_abc"})
+
+    assert "→ Reading file\n✱ 80%" in snapshot
+    assert "\x1b" not in snapshot
+    assert raw_log not in snapshot
+    assert mock_jm.get_logs.return_value == raw_log
+
+
 def test_watch_job_is_a_dispatch_observer_and_uses_only_job_tools():
     assert "watch_job" in MODE_TOOL_MAP["dispatch"]
     assert "watch_job" in JOB_OBSERVATION_TOOLS

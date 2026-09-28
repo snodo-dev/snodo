@@ -3,7 +3,13 @@
 Extracted from mcp/server.py to isolate job-related tool handling.
 """
 
+import re
 from typing import Any, Dict
+
+
+_ANSI_ESCAPE_SEQUENCE = re.compile(
+    r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[@-_])"
+)
 
 
 class JobToolHandler:
@@ -100,7 +106,7 @@ class JobToolHandler:
             "job_id": job_id,
             "stream": stream,
             "tail": tail,
-            "log": log_content,
+            "log": _ANSI_ESCAPE_SEQUENCE.sub("", log_content),
         }
 
     def handle_watch_job(self, arguments: Dict[str, Any]) -> str:

@@ -47,6 +47,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   history. (Fixes #513)
 
 ### Fixed
+- MCP job log reads and `watch_job` snapshots now remove ANSI terminal escape
+  sequences while preserving visible output and line breaks. (Fixes #524)
 - Plan verification now refuses a plan whose waves contain no tasks at all;
   empty waves remain warnings when another wave has tasks. (Fixes #515)
 - Protocol DSL reference and template authoring guide now match the current
