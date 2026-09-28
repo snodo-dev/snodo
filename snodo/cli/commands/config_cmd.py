@@ -324,14 +324,9 @@ def _set_llm_value(mgr: ConfigManager, subkey: str, value: str) -> int:
             print(f"Error: llm.{subkey} must be a {value_type.__name__}", file=sys.stderr)
             return 1
 
-    config = mgr.load()
-    llm = config.setdefault("llm", {})
     section, sep, field = subkey.partition(".")
-    if sep:
-        llm.setdefault(section, {})[field] = parsed
-    else:
-        llm[subkey] = parsed
-    mgr.save(config)
+    path = ("llm", section, field) if sep else ("llm", subkey)
+    mgr.set_value(path, parsed)
     print(f"Set llm.{subkey} = {value}")
     return 0
 

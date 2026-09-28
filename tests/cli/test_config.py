@@ -48,6 +48,26 @@ def no_provider_credentials(monkeypatch):
 # === ConfigManager.load / save ===
 
 class TestConfigLoadSave:
+    def test_targeted_llm_write_preserves_source_and_does_not_persist_defaults(self, tmp_path):
+        manager = ConfigManager(config_dir=tmp_path)
+        original = (
+            "# operator note\nnotifications:\n  targets: []\n"
+            "providers:\n  custom:\n    api_key_env: CUSTOM_KEY\n"
+            "llm:\n  coder:\n    model: old-model # keep this note\n"
+        )
+        manager.config_dir.mkdir(parents=True, exist_ok=True)
+        manager.config_path.write_text(original)
+        manager.set_value(("llm", "coder", "model"), "new-model")
+        written = manager.config_path.read_text()
+        assert written == original.replace("old-model # keep this note", "new-model # keep this note")
+        assert "cloud:" not in written and "engine:" not in written
+        assert manager.config_path.stat().st_mode & 0o777 == 0o600
+
+    def test_save_creates_fresh_atomic_config(self, mgr):
+        mgr.set_value(("cloud", "api_key"), "sndo_live_example")
+        assert mgr.load()["cloud"]["api_key"] == "sndo_live_example"
+        assert mgr.config_path.stat().st_mode & 0o777 == 0o600
+
     def test_load_returns_defaults_when_no_file(self, mgr):
         config = mgr.load()
         assert config.get("providers", {}) == {}

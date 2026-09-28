@@ -9,10 +9,12 @@ Manages user configuration stored at ~/.snodo/config.yml:
 """
 
 import os
+import re
 import shlex
 import shutil
 import stat
 import subprocess
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -445,18 +447,103 @@ class ConfigManager:
         return None
 
     def save(self, config: dict) -> None:
-        """Save configuration to disk with secure permissions.
+        """Create or replace configuration atomically with secure permissions.
 
         Args:
             config: Configuration dict to save
         """
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
-        with open(self.config_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
+        self._atomic_write(yaml.safe_dump(config, default_flow_style=False, sort_keys=False))
 
-        # Set file permissions to 600 (owner read/write only)
-        os.chmod(self.config_path, stat.S_IRUSR | stat.S_IWUSR)
+    def _atomic_write(self, text: str) -> None:
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(prefix=".config.yml.", dir=self.config_dir)
+        try:
+            os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
+            with os.fdopen(fd, "w") as stream:
+                stream.write(text)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.config_path)
+            os.chmod(self.config_path, stat.S_IRUSR | stat.S_IWUSR)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+
+    def set_value(self, path: tuple[str, ...], value: Any) -> None:
+        """Edit one YAML value while retaining all unrelated source text."""
+        self._edit_value(path, value=value)
+
+    def remove_value(self, path: tuple[str, ...]) -> None:
+        """Remove one YAML value while retaining all unrelated source text."""
+        self._edit_value(path, remove=True)
+
+    def _edit_value(self, path: tuple[str, ...], value: Any = None, remove: bool = False) -> None:
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        text = self.config_path.read_text() if self.config_path.exists() else ""
+        lines = text.splitlines(keepends=True)
+        # Locate the requested mapping by indentation and exact YAML key.
+        start, end, indent = 0, len(lines), -1
+        for depth, key in enumerate(path):
+            wanted_indent = 0 if depth == 0 else indent + 2
+            found = None
+            for index in range(start, end):
+                line = lines[index]
+                match = re.match(r"^( *)([^#\s][^:]*):(?:\s|$)", line)
+                if match and len(match.group(1)) == wanted_indent and match.group(2).strip(" '\"\\") == key:
+                    found = index
+                    break
+            if found is None:
+                # Add absent path components at the end, serializing only the new value.
+                if remove:
+                    return
+                addition: Any = value
+                for component in reversed(path[depth:]):
+                    addition = {component: addition}
+                suffix = yaml.safe_dump(addition, default_flow_style=False, sort_keys=False)
+                if depth == 0:
+                    prefix = "" if not text or text.endswith("\n") else "\n"
+                    updated = text + prefix + suffix
+                else:
+                    parent_line = lines[start - 1]
+                    if parent_line.rstrip("\r\n").endswith(": {}"):
+                        lines[start - 1] = parent_line.replace(": {}", ":", 1)
+                    child_indent = " " * (indent + 2)
+                    rendered = "".join(child_indent + line if line.strip() else line for line in suffix.splitlines(keepends=True))
+                    insertion = end
+                    prefix = "" if insertion == 0 or lines[insertion - 1].endswith("\n") else "\n"
+                    lines[insertion:insertion] = [prefix + rendered]
+                    updated = "".join(lines)
+                self._atomic_write(updated)
+                return
+            indent = wanted_indent
+            start = found + 1
+            end = len(lines)
+            for index in range(start, len(lines)):
+                match = re.match(r"^( *)([^#\s].*?):(?:\s|$)", lines[index])
+                if match and len(match.group(1)) <= indent:
+                    end = index
+                    break
+            if depth == len(path) - 1:
+                key_line = lines[found]
+                if remove:
+                    lines.pop(found)
+                    if found > 0 and re.match(r"^ *[^#\s][^:]*:\s*(?:#.*)?(?:\r?\n)?$", lines[found - 1]):
+                        parent = lines[found - 1]
+                        lines[found - 1] = parent.rstrip("\r\n") + " {}" + ("\n" if parent.endswith("\n") else "")
+                else:
+                    prefix = re.match(r"^ *[^:]+:\s*", key_line).group(0)
+                    comment = ""
+                    old_value = key_line[len(prefix):].rstrip("\r\n")
+                    if " #" in old_value:
+                        comment = " #" + old_value.split(" #", 1)[1]
+                    rendered = yaml.safe_dump(value, default_flow_style=True, sort_keys=False).splitlines()[0]
+                    newline = "\n" if key_line.endswith("\n") else ""
+                    lines[found] = f"{prefix}{rendered}{comment}{newline}"
+                # Remove just the target line (and retain blank lines verbatim).
+                self._atomic_write("".join(lines))
+                return
 
     def add_key(self, provider: str, key: str) -> None:
         """Store an API key for a provider.
@@ -470,11 +557,7 @@ class ConfigManager:
         if not key:
             raise ConfigError("API key cannot be empty")
 
-        config = self.load()
-        providers = config.setdefault("providers", {})
-        provider_data = providers.setdefault(provider, {})
-        provider_data["api_key"] = key
-        self.save(config)
+        self.set_value(("providers", provider, "api_key"), key)
 
     def encrypt_provider_keys(self) -> list[str]:
         """Back up config, then migrate plaintext provider keys to local encrypted files."""
@@ -512,8 +595,7 @@ class ConfigManager:
                 encrypt(name, providers[name]["api_key"])
             except (OSError, ValueError) as exc:
                 raise ConfigError(f"Cannot encrypt provider '{name}' (original config preserved)") from exc
-            providers[name]["api_key"] = f"@keys/{name}.key"
-        self.save(config)
+            self.set_value(("providers", name, "api_key"), f"@keys/{name}.key")
         return names
 
     def get_key(self, provider: str) -> Optional[str]:
@@ -597,8 +679,7 @@ class ConfigManager:
         if isinstance(providers_raw, dict):
             entry = providers_raw.get(provider, {})
             if isinstance(entry, dict) and "api_key" in entry:
-                del entry["api_key"]
-                self.save(config)
+                self.remove_value(("providers", provider, "api_key"))
                 return True
         return False
 
@@ -622,9 +703,7 @@ class ConfigManager:
         Args:
             model: Model identifier
         """
-        config = self.load()
-        config["model"] = model
-        self.save(config)
+        self.set_value(("model",), model)
 
     def get_model(self) -> str:
         """Get the configured default model.
@@ -682,10 +761,7 @@ class ConfigManager:
             if not isinstance(value, int) or value < 60 or value > 86400:
                 raise ValueError(f"token_ttl_seconds must be an integer between 60 and 86400, got {value}")
 
-        config = self.load()
-        engine = config.setdefault("engine", {})
-        engine[key] = value
-        self.save(config)
+        self.set_value(("engine", key), value)
 
     def test_keys(self) -> Dict[str, str]:
         """Test all configured API keys via liteLLM.
