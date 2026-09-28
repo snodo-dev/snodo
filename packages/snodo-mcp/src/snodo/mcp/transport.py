@@ -37,17 +37,20 @@ from mcp.server.fastmcp import Context, FastMCP
 from snodo.mcp.server import ProtocolMCPServer
 from snodo.mcp.tools import TOOL_REGISTRY
 from snodo.mcp.guide import guide_menu, guide_text
-from snodo.mcp.watch_job import WATCH_JOB_HTML, WATCH_JOB_RESOURCE_URI
+from snodo.mcp.watch_job import (
+    WATCH_JOB_HTML, WATCH_JOB_RESOURCE_URI, WatchJobASGI, WatchLinkIssuer,
+)
 
 logger = logging.getLogger(__name__)
 
 _MCP_LOG_MAX_CHARS = 240
 _SECRET_KEY_RE = re.compile(
     r"(?i)(authorization|proxy-authorization|access-token|refresh-token|"
-    r"client[_-]?(?:id|secret)|api[_-]?key|secret|password|tunnel[_-]?token|"
+    r"client[_-]?(?:id|secret)|api[_-]?key|secret|password|tunnel[_-]?token|watch[_-]?token|"
     r"cf-access-client-(?:id|secret)|x-auth-token)"
 )
 _SECRET_VALUE_RES = (
+    re.compile(r"(?i)(?<=/watch/)[A-Za-z0-9_.=-]{24,}"),
     re.compile(r"(?i)\bBearer\s+[A-Za-z0-9_\-.=+/]+"),
     re.compile(r"\beyJ[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-.]{4,}(?:\.[A-Za-z0-9_\-.]*)?"),
     re.compile(r"(?i)\b(?:sk|pk|rk|pat|ghp|gho|ghu|ghs|glpat|xox[baprs])-[A-Za-z0-9_-]{8,}\b"),
@@ -402,7 +405,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         if "queue_run" in exposed:
             async_lines.append("`queue_run` is ASYNCHRONOUS and returns its job id immediately.\n\n")
         async_lines.append(
-            "After a job starts, open `watch_job(job_id)` and leave its live view open; its panel refreshes itself and stops at a final status. The starter response only confirms queuing.\n"
+            "After a job starts, call `watch_job(job_id)` and hand the operator its browser link; leave the live view open. The link refreshes itself and stops at a final status. If no reachable HTTP URL is configured, pass along the `snodo logs <job_id> --watch` fallback. The starter response only confirms queuing.\n"
         )
         sections.append("".join(async_lines))
 
@@ -481,6 +484,8 @@ def build_fastmcp_server(
     token_verifier: Optional[TokenVerifier] = None,
     auth_settings: Optional[AuthSettings] = None,
     verbose: bool = False,
+    public_base_url: Optional[str] = None,
+    watch_link_ttl: int = 24 * 60 * 60,
 ) -> FastMCP:
     """Build a FastMCP server that delegates to a ProtocolMCPServer.
 
@@ -503,6 +508,7 @@ def build_fastmcp_server(
         server_name += f"-{protocol_server.mode_id}"
 
     instructions = _build_instructions(protocol_server)
+    watch_issuer = WatchLinkIssuer(watch_link_ttl) if public_base_url else None
 
     mcp = FastMCP(
         server_name,
@@ -513,6 +519,8 @@ def build_fastmcp_server(
 
     for tool_info in protocol_server.get_tools():
         fn = _make_tool_handler(protocol_server, tool_info)
+        if tool_info["name"] == "watch_job":
+            fn = _with_browser_watch_link(fn, public_base_url, watch_issuer)
         tool_meta = (
             {"ui": {"resourceUri": WATCH_JOB_RESOURCE_URI}}
             if tool_info["name"] == "watch_job"
@@ -544,7 +552,45 @@ def build_fastmcp_server(
 
         setattr(mcp, app_factory_name, observed_app_factory)
 
+    if watch_issuer is not None:
+        for app_factory_name in ("streamable_http_app", "sse_app"):
+            app_factory = getattr(mcp, app_factory_name)
+
+            def watch_app_factory(*args, _factory=app_factory, **kwargs):
+                return WatchJobASGI(
+                    _factory(*args, **kwargs), protocol_server, watch_issuer, public_base_url,
+                )
+
+            setattr(mcp, app_factory_name, watch_app_factory)
+
     return mcp
+
+
+def _with_browser_watch_link(handler, base_url, issuer):
+    """Append the bearer capability to watch_job's user-facing result only."""
+    import inspect
+
+    async_handler = inspect.iscoroutinefunction(handler)
+
+    def decorate(result, arguments):
+        if issuer is None or not base_url:
+            return f"{result}\n\nNo reachable browser URL is configured; follow with: snodo logs {arguments.get('job_id', '')} --watch"
+        job_id = arguments.get("job_id", "")
+        token = issuer.issue(job_id)
+        return f"{result}\n\nLive browser view (expires in {issuer.ttl_seconds} seconds): {base_url.rstrip('/')}/watch/{token}"
+
+    if async_handler:
+        async def wrapped(**kwargs):
+            result = await handler(**kwargs)
+            return decorate(result, kwargs)
+    else:
+        def wrapped(**kwargs):
+            return decorate(handler(**kwargs), kwargs)
+    wrapped.__name__ = handler.__name__
+    wrapped.__doc__ = handler.__doc__
+    wrapped.__signature__ = getattr(handler, "__signature__", inspect.signature(handler))
+    wrapped.__annotations__ = getattr(handler, "__annotations__", {})
+    return wrapped
 
 
 def _register_guide(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> None:
