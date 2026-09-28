@@ -146,6 +146,7 @@ class AuditLog:
             project_id = _resolve_project_id_for_log(self.log_path)
         self._project_id = project_id
         self.events: List[AuditEvent] = []
+        self._legacy_sequences: set[int] = set()
         self._lock = threading.Lock()
         self._load_ok = False
         self._load_existing_log()
@@ -292,6 +293,9 @@ class AuditLog:
                 event.data,
                 event.previous_hash,
                 event.project_id,
+                include_project_id=event.sequence not in getattr(
+                    self, "_legacy_sequences", set()
+                ),
             )
             if event.event_hash != expected_hash:
                 return ChainStatus(
@@ -377,16 +381,19 @@ class AuditLog:
         data: Dict[str, Any],
         previous_hash: str,
         project_id: str = "",
+        *,
+        include_project_id: bool = True,
     ) -> str:
         """Compute cryptographic hash for an event."""
         payload = {
             "sequence": sequence,
             "timestamp": timestamp,
             "event_type": event_type,
-            "project_id": project_id,
             "data": data,
             "previous_hash": previous_hash,
         }
+        if include_project_id:
+            payload["project_id"] = project_id
         payload_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
         return hashlib.sha256(payload_bytes).hexdigest()
 
@@ -407,6 +414,7 @@ class AuditLog:
             return
 
         loaded: List[AuditEvent] = []
+        legacy_sequences: set[int] = set()
         try:
             with open(self.log_path) as f:
                 for line_no, line in enumerate(f, start=1):
@@ -421,7 +429,9 @@ class AuditLog:
                             f"{_RECOVERY_GUIDANCE}"
                         ) from err
 
-                    if "project_id" not in event_dict:
+                    has_project_id = "project_id" in event_dict
+                    if not has_project_id:
+                        legacy_sequences.add(len(loaded))
                         event_dict["project_id"] = ""
 
                     try:
@@ -459,6 +469,7 @@ class AuditLog:
                         event.data,
                         event.previous_hash,
                         event.project_id,
+                        include_project_id=has_project_id,
                     )
                     if event.event_hash != expected_hash:
                         raise AuditError(
@@ -475,6 +486,7 @@ class AuditLog:
             ) from err
 
         self.events = loaded
+        self._legacy_sequences = legacy_sequences
 
     def _exclusive_file_lock(self):
         """Return a context manager holding an exclusive lock on the log file.

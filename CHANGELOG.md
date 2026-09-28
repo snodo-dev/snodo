@@ -13,6 +13,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Configuration commands now update only the requested YAML values, preserving
   operator comments and layout without persisting loader defaults. Writes are
   atomic and retain mode 600. (Fixes #533)
+- Existing audit events written before `project_id` was added now verify using
+  their original hash payload, so valid mixed-format logs can load and append
+  without rewriting history. Events carrying `project_id` remain verified only
+  under the current format. (Fixes #535)
 - The MCP `ready` tool now assesses the project the server was started for, instead of the process
   working directory; servers launched by Claude Desktop run outside the project and reported
   "Not inside a snodo project".

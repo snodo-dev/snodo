@@ -1,6 +1,7 @@
 """Tests for append-only audit log with hash chain."""
 
 import asyncio
+import hashlib
 import json
 import tempfile
 import threading
@@ -415,12 +416,79 @@ def test_valid_log_still_loads_verifies_appends(tmp_path):
     resumed = AuditLog(str(log_path))
     assert len(resumed.events) == 5
     assert resumed.verify_chain() is True
-
     last_hash = resumed.events[-1].event_hash
     resumed.append_event("e5", {"i": 5})
     assert len(resumed.events) == 6
     assert resumed.events[5].previous_hash == last_hash
     assert resumed.verify_chain() is True
+
+
+def test_legacy_log_loads_verifies_and_appends_current_format(tmp_path):
+    """Legacy events retain their hashes when a current event is appended."""
+    log_path = tmp_path / "audit.log"
+    legacy_payload = {
+        "sequence": 0,
+        "timestamp": "2026-05-31T00:00:00+00:00",
+        "event_type": "legacy",
+        "data": {"i": 0},
+        "previous_hash": "0" * 64,
+    }
+    legacy_event = {**legacy_payload, "event_hash": hashlib.sha256(
+        json.dumps(legacy_payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()}
+    log_path.write_text(json.dumps(legacy_event) + "\n")
+
+    resumed = AuditLog(str(log_path))
+    assert len(resumed.events) == 1
+    assert resumed.events[0].project_id == ""
+    assert resumed.verify_chain() is True
+    resumed.append_event("current", {"i": 1})
+
+    serialized = [json.loads(line) for line in log_path.read_text().splitlines()]
+    assert "project_id" not in serialized[0]
+    assert "project_id" in serialized[1]
+    assert resumed.verify_chain() is True
+
+
+def test_legacy_event_with_altered_data_fails_hash_verification(tmp_path):
+    log_path = tmp_path / "audit.log"
+    payload = {
+        "sequence": 0,
+        "timestamp": "2026-05-31T00:00:00+00:00",
+        "event_type": "legacy",
+        "data": {"i": 0},
+        "previous_hash": "0" * 64,
+    }
+    event = {**payload, "event_hash": hashlib.sha256(
+        json.dumps(payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()}
+    event["data"] = {"i": 99}
+    log_path.write_text(json.dumps(event) + "\n")
+
+    with pytest.raises(AuditError, match="event hash mismatch on line 1"):
+        AuditLog(str(log_path))
+
+
+def test_project_id_event_cannot_use_legacy_hash_format(tmp_path):
+    log_path = tmp_path / "audit.log"
+    payload = {
+        "sequence": 0,
+        "timestamp": "2026-05-31T00:00:00+00:00",
+        "event_type": "current",
+        "data": {"i": 0},
+        "previous_hash": "0" * 64,
+    }
+    event = {
+        **payload,
+        "project_id": "",
+        "event_hash": hashlib.sha256(
+            json.dumps(payload, sort_keys=True).encode("utf-8")
+        ).hexdigest(),
+    }
+    log_path.write_text(json.dumps(event) + "\n")
+
+    with pytest.raises(AuditError, match="event hash mismatch on line 1"):
+        AuditLog(str(log_path))
 
 
 # ========== HASH COMPUTATION TESTS ==========
