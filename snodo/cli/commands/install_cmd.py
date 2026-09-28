@@ -17,10 +17,8 @@ from snodo.mcp.installer import (
     install, uninstall, uninstall_all,
     print_install_result, print_uninstall_result,
     purge_project_state, scan_orphans, remove_orphans,
-    list_mcp_entries,
     derive_project_name, get_claude_config_path,
     install_clients, mutate_clients, client_targets, known_client_targets,
-    ClientTarget, get_codex_config_path,
 )
 
 _logger = logging.getLogger(__name__)
@@ -129,9 +127,12 @@ def install_command(args) -> int:
         print("No supported MCP clients detected; skipped Claude Desktop and Codex / ChatGPT desktop.")
     for target, added, updated in results:
         print(f"Updated {target.name}: {target.config_path} ({len(added)} added, {len(updated)} updated)")
-        for name in added: print(f"  + {name}")
-        for name in updated: print(f"  ~ {name}")
-    if results: print("Restart " + " and ".join(t.name for t, _, _ in results) + " to activate the MCP servers.")
+        for name in added:
+            print(f"  + {name}")
+        for name in updated:
+            print(f"  ~ {name}")
+    if results:
+        print("Restart " + " and ".join(t.name for t, _, _ in results) + " to activate the MCP servers.")
     present = {target.name for target, _, _ in results}
     for target in known_client_targets():
         if target.name not in present:
@@ -205,7 +206,8 @@ def uninstall_command(args) -> int:
 
     print_uninstall_result(removed, config_path)
     for target, names in targets:
-        if names: print(f"  Updated {target.name}: {target.config_path}")
+        if names:
+            print(f"  Updated {target.name}: {target.config_path}")
 
     _audit_global("uninstall_completed", {
         "modes_removed": len(removed),
@@ -234,7 +236,8 @@ def list_command() -> int:
         project = entry["project_path"] or "(project path unavailable)"
         state = "exists" if entry["project_exists"] else "missing"
         print(f"  {entry['entry_name']} -> {project} [{state}] ({target.name})")
-    for target, _ in results: print(f"  {target.name} config: {target.config_path}")
+    for target, _ in results:
+        print(f"  {target.name} config: {target.config_path}")
     return 0
 
 
@@ -304,11 +307,13 @@ def _uninstall_all_entries() -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    if not removed: print("No matching MCP servers found to remove.")
+    if not removed:
+        print("No matching MCP servers found to remove.")
     else:
         print(f"Removed {len(removed)} MCP server(s) across {len(targets)} client(s).")
         for target, names in targets:
-            if names: print(f"  {target.name}: {target.config_path} ({', '.join(names)})")
+            if names:
+                print(f"  {target.name}: {target.config_path} ({', '.join(names)})")
         print("Restart the updated MCP clients to apply changes.")
     _audit_global("uninstall_completed", {
         "modes_removed": len(removed),
@@ -360,7 +365,8 @@ def _uninstall_orphans(skip_prompt: bool) -> int:
         return 0
 
     print(f"Found {len(orphans)} orphan MCP entry(ies):")
-    for target, name in orphans: print(f"  {name} ({target.name}: {target.config_path})")
+    for target, name in orphans:
+        print(f"  {name} ({target.name}: {target.config_path})")
 
     if not skip_prompt:
         answer = input("Remove these orphans? [y/N] ").strip().lower()

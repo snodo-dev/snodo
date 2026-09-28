@@ -124,7 +124,8 @@ def mutate_clients(operation: str, protocol: Optional[Protocol] = None,
         if operation == "list":
             entries = []
             for name, entry in servers.items():
-                if not name.startswith("snodo-"): continue
+                if not name.startswith("snodo-"):
+                    continue
                 args = entry.get("args", []) if isinstance(entry, dict) else []
                 p = next((args[i + 1] for i, arg in enumerate(args[:-1]) if arg == "--protocol"), None)
                 project = Path(p).resolve().parent.parent if p and Path(p).parent.name == ".snodo" else (Path(p).resolve().parent if p else None)
@@ -132,18 +133,25 @@ def mutate_clients(operation: str, protocol: Optional[Protocol] = None,
                                 "project_exists": bool(project and project.is_dir())})
             results.append((target, entries))
             continue
-        if not servers: continue
-        if operation == "all": names = [n for n in servers if n.startswith("snodo-")]
-        elif operation == "project": names = [n for n in servers if n in expected]
+        if not servers:
+            continue
+        if operation == "all":
+            names = [n for n in servers if n.startswith("snodo-")]
+        elif operation == "project":
+            names = [n for n in servers if n in expected]
         else:
             names = []
             for name, entry in servers.items():
-                if not name.startswith("snodo-"): continue
+                if not name.startswith("snodo-"):
+                    continue
                 args = entry.get("args", []) if isinstance(entry, dict) else []
                 p = next((args[i + 1] for i, arg in enumerate(args[:-1]) if arg == "--protocol"), None)
-                if p and not Path(p).exists(): names.append(name)
-        for name in names: del servers[name]
-        if names: _write_target(target, config)
+                if p and not Path(p).exists():
+                    names.append(name)
+        for name in names:
+            del servers[name]
+        if names:
+            _write_target(target, config)
         results.append((target, names))
     return results
 
