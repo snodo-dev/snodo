@@ -1,5 +1,31 @@
 # Spec: MCP self-description (instructions + resources)
 
+## Current state (0.18)
+
+The original design below records the motivation and proposed shape; its original
+workflow sketch and acceptance criteria are historical where they differ from
+the shipped surface. The 0.18 session instructions direct each orchestrator to
+call the read-only `guide` first and list the guide topics available to that
+server's exposed tools. The guide is sourced from the topic markers in the docs;
+the current topics include `waves`, `planning`, `spec`, `mistakes`,
+`following-a-run`, `queues`, and `queue-triage` where relevant to the mode.
+
+For background work started by `dispatch_task`, `run_plan`, or `queue_run`, the
+instructions say to call `watch_job(job_id)`. The text snapshot is available
+without an MCP Apps host; pass the returned browser watch link to the operator
+when available, and otherwise use `snodo logs <job_id> --watch`. Use
+`get_job_status` or `get_job_logs` for a specific follow-up, not as the routine
+polling loop. See [Following a run](../following-a-run.md).
+
+Instructions recommend the smallest structure that fits: one direct task, a
+wave for parallel tasks, a plan for multiple waves, and a queue for several
+plans. Tool access is bounded by the active mode's capability grant. A server
+without an explicit `--mode` serves the current mode. The implementation's
+current tool resolution for that case differs; see the report for the code/doc
+discrepancy.
+
+## Original design proposal (historical)
+
 ## Why
 
 A remote/SSE orchestrator has NO filesystem — it can't read protocol.yml, tail audit.log,

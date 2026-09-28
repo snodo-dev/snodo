@@ -1,5 +1,13 @@
 # Spec: inherent task classification — flow_type + emergent waves
 
+## Current MCP context
+
+This is a design for task classification and cloud measurement, not a
+description of the MCP planning or job-following surface. The current smallest-
+structure rule and planning guidance are in the `waves` and `planning` guide
+topics; asynchronous job follow-up is in
+[Following a run](../following-a-run.md).
+
 ## Why
 Capture Flow Distribution (feature/defect/debt/risk) and value-grouping
 (waves) as inherent, non-circumventable properties of every task — zero

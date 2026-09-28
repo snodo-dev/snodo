@@ -1,5 +1,13 @@
 # Spec: the plan layer reports the outcome the engine decided
 
+## Current MCP follow-up
+
+The “concurrent job polling path” below describes the plan runner's internal
+job-completion coordination, not caller guidance for following an MCP job. In
+0.18, after `run_plan` returns a job id, orchestrators call `watch_job`; see
+[Following a run](../following-a-run.md). `get_job_status` remains available
+for specific follow-up.
+
 ## Root cause
 
 The engine classifies every halt as **escalate**, **blocker**, **validator_error**,

@@ -1,5 +1,14 @@
 # W2-02: Split mcp/server.py into three files
 
+## Current state
+
+This records the historical structural extraction and its then-current tool
+registry; it is not a current inventory of the MCP surface or server mode
+contract. Tool exposure follows the mode capability grant, and current
+orchestrator instructions/guide topics are described in
+[Following a run](../following-a-run.md) and the source-backed guide. The 0.18
+job-following path is `watch_job`; see [Following a run](../following-a-run.md).
+
 ## Intent
 mcp/server.py is 832 lines. Two clean extractions reduce it to ~350 lines
 with no behavior change. Pure structural refactor.

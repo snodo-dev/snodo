@@ -1,5 +1,12 @@
 # Spec: LLM tuning via config.yml (max_tokens, tool-turn limits)
 
+## Current MCP context
+
+This config proposal concerns runtime model tuning; it does not define MCP tool
+access or server mode behavior. The MCP capability boundary is the active
+mode's grant, and current server instructions/guide topics describe the
+orchestrator surface.
+
 ## Why
 
 max_tokens and the tool-loop turn limits are engine/model tuning, currently hardcoded —
