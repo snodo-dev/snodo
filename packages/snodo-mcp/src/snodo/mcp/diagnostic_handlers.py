@@ -83,8 +83,10 @@ class DiagnosticToolHandler:
         from snodo.protocols import load_protocol
         from snodo.mcp.tools import unknown_capability_warnings
 
-        project_root = resolve_project_root()
-        if project_root is None:
+        # The server knows its project; the process cwd is wherever the MCP host
+        # launched it (Claude Desktop starts servers outside the project).
+        project_root = self.project_root or resolve_project_root()
+        if project_root is None or not (Path(project_root) / ".snodo").is_dir():
             return _error("ready", "Not inside a snodo project.")
         root = Path(project_root)
         protocol_path = Path(arguments.get("protocol", ".snodo/protocol.yml"))

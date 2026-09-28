@@ -164,6 +164,21 @@ def test_mcp_ready_reports_same_capability_warning(git_project: Path, monkeypatc
     assert "unknown capability 'resolve'" in result["warnings"][0]
 
 
+def test_mcp_ready_uses_the_served_project_not_the_process_cwd(git_project: Path, tmp_path, monkeypatch):
+    """Claude Desktop starts MCP servers outside the project; ready must still find it."""
+    from snodo.mcp.diagnostic_handlers import DiagnosticToolHandler
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.delenv("SNODO_PROJECT_ROOT", raising=False)
+
+    result = DiagnosticToolHandler(str(git_project)).ready({})
+
+    assert result["ok"] is True, result
+    assert Path(result["project_root"]).resolve() == git_project.resolve()
+
+
 def test_ready_cmd_audit_event_emission(git_project: Path, capsys, monkeypatch):
     """Running 'snodo ready' logs a 'readiness_checked' audit event with repository findings only and workstation count."""
     # Ensure there is a workstation finding by setting a model requiring an unset env var

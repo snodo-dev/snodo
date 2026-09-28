@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- The MCP `ready` tool now assesses the project the server was started for, instead of the process
+  working directory; servers launched by Claude Desktop run outside the project and reported
+  "Not inside a snodo project".
 - `snodo serve` without `--mode` now exposes only the current project mode's
   capability grants, with planning tools available only under `plan`. Calls
   to tools no longer granted are refused after a live mode change; server
