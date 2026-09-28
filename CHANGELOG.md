@@ -10,7 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
-- Record nullable token and cache usage, distinguish provider costs from catalog estimates, and retain failed LiteLLM and in-place coder attempts with duration and outcome.
+- (#538) Record nullable token and cache usage, distinguish provider costs from catalog estimates, and retain failed LiteLLM and in-place coder attempts with duration and outcome.
 
 ### Fixed
 - Intake now appends accepted criteria directly to the target validator's YAML
