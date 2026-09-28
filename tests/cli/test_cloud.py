@@ -20,14 +20,13 @@ class TestCloudConnect:
 
         with patch("snodo.config.ConfigManager") as MockCM:
             mock_mgr = MockCM.return_value
-            mock_mgr.load.return_value = {"model": "gpt-4"}
-
             result = cloud_connect_command("sndo_live_abcdef123456789")
 
             assert result == 0
-            saved = mock_mgr.save.call_args[0][0]
-            assert saved["cloud"]["api_key"] == "sndo_live_abcdef123456789"
-            assert saved["cloud"]["sync_enabled"] is True
+            assert [call.args for call in mock_mgr.set_value.call_args_list] == [
+                (("cloud", "api_key"), "sndo_live_abcdef123456789"),
+                (("cloud", "sync_enabled"), True),
+            ]
 
     def test_valid_staging_key(self):
         """Staging key prefix is accepted."""
@@ -35,13 +34,13 @@ class TestCloudConnect:
 
         with patch("snodo.config.ConfigManager") as MockCM:
             mock_mgr = MockCM.return_value
-            mock_mgr.load.return_value = {}
-
             result = cloud_connect_command("sndo_staging_xyz")
 
             assert result == 0
-            saved = mock_mgr.save.call_args[0][0]
-            assert saved["cloud"]["sync_enabled"] is True
+            assert [call.args for call in mock_mgr.set_value.call_args_list] == [
+                (("cloud", "api_key"), "sndo_staging_xyz"),
+                (("cloud", "sync_enabled"), True),
+            ]
 
     def test_invalid_key_format_rejected(self):
         """Keys without valid prefix are rejected."""
@@ -62,16 +61,13 @@ class TestCloudDisconnect:
 
         with patch("snodo.config.ConfigManager") as MockCM:
             mock_mgr = MockCM.return_value
-            mock_mgr.load.return_value = {
-                "cloud": {"api_key": "sndo_live_xxx", "sync_enabled": True},
-            }
-
             result = cloud_disconnect_command()
 
             assert result == 0
-            saved = mock_mgr.save.call_args[0][0]
-            assert saved["cloud"]["api_key"] == ""
-            assert saved["cloud"]["sync_enabled"] is False
+            assert [call.args for call in mock_mgr.set_value.call_args_list] == [
+                (("cloud", "api_key"), ""),
+                (("cloud", "sync_enabled"), False),
+            ]
 
 
 class TestCloudStatus:

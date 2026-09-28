@@ -109,11 +109,8 @@ def cloud_connect_command(api_key: str) -> int:
     from snodo.config import ConfigManager
 
     mgr = ConfigManager()
-    config = mgr.load()
-    cloud = config.setdefault("cloud", {})
-    cloud["api_key"] = api_key
-    cloud["sync_enabled"] = True
-    mgr.save(config)
+    mgr.set_value(("cloud", "api_key"), api_key)
+    mgr.set_value(("cloud", "sync_enabled"), True)
 
     prefix = api_key[:16] + "..." if len(api_key) > 16 else api_key[:4] + "***"
     print("✓ Connected to snodo cloud.")
@@ -127,11 +124,8 @@ def cloud_disconnect_command() -> int:
     from snodo.config import ConfigManager
 
     mgr = ConfigManager()
-    config = mgr.load()
-    cloud = config.setdefault("cloud", {})
-    cloud["api_key"] = ""
-    cloud["sync_enabled"] = False
-    mgr.save(config)
+    mgr.set_value(("cloud", "api_key"), "")
+    mgr.set_value(("cloud", "sync_enabled"), False)
 
     print("Disconnected from snodo cloud.")
     return 0
