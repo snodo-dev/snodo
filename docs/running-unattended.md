@@ -14,9 +14,18 @@ completes the intent.
 
 Background job notifications are opt-in. Add one or more targets to
 `~/.snodo/config.yml`; target URLs and tokens are secrets and `snodo config
-show` redacts them. Webhooks receive a JSON POST. An ntfy target receives the
-short message as plain text, which works with a public or self-hosted ntfy
-topic and the ntfy phone app:
+show` redacts them. `webhook` receives Snodo's generic JSON event, and `ntfy`
+receives the short message as plain text. `slack`, `discord` and `teams` format
+that same actionable message for their respective incoming-webhook endpoints.
+For Slack and Discord, use their incoming-webhook URLs. For Teams, use the URL
+from a Power Automate/Workflows flow with the **When a Teams webhook request is
+received** trigger; Snodo posts the trigger's documented message envelope with
+an Adaptive Card attachment. See the [Slack incoming webhook
+docs](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks),
+[Discord webhook docs](https://discord.com/developers/docs/resources/webhook#execute-webhook),
+and [Teams webhook trigger docs](https://learn.microsoft.com/en-us/connectors/teams/#when-a-teams-webhook-request-is-received)
+for their current payload requirements. Each URL can be stored as an
+environment reference (`env:VARIABLE_NAME`) rather than a literal:
 
 ```yaml
 notifications:
@@ -26,8 +35,17 @@ notifications:
       url: https://ntfy.sh/my-private-topic
     - type: webhook
       name: team-chat
-      url: https://hooks.example.invalid/services/your-webhook
-      token: optional-bearer-token
+      url: env:SNODO_GENERIC_WEBHOOK
+    - type: slack
+      name: slack
+      url: env:SNODO_SLACK_WEBHOOK
+    - type: discord
+      name: discord
+      url: env:SNODO_DISCORD_WEBHOOK
+    - type: teams
+      name: teams
+      url: env:SNODO_TEAMS_WORKFLOW_WEBHOOK
+      token: env:SNODO_TEAMS_TOKEN # only when the Workflow trigger requires authentication
   events:
     - job_finished
     - task_halted
@@ -36,10 +54,12 @@ notifications:
   silence_threshold_seconds: 900
 ```
 
-The target may be `webhook` or `ntfy`; an optional `token` is sent as a bearer
-authorization header. `events` can select any subset of the four shown event
-names. With no targets configured no notification work is done. Messages name
-the project, job, plan/task when known, outcome, and `snodo logs <job_id>` (or
+Targets may be `webhook`, `ntfy`, `slack`, `discord` or `teams`; an optional
+`token` is sent as a bearer authorization header. For Power Automate triggers
+configured to accept anonymous calls, leave `token` unset. `events` can select
+any subset of the four shown event names. With no targets configured no
+notification work is done. Messages name the project, job, plan/task when
+known, outcome, and `snodo logs <job_id>` (or
 `snodo authorize` for a pending human decision). Delivery is detached from the
 runner, bounded, and best-effort. Verify all configured targets with
 `snodo notify test`.

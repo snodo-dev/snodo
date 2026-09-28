@@ -18,6 +18,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   job completion/failure, task halts, authorization escalations, and configurable
   log silence. Targets are redacted in config output and can be checked with
   `snodo notify test`. (Fixes #517)
+- Job notifications now render as readable messages in Slack, Discord, and
+  Microsoft Teams Workflows, while generic webhooks retain their JSON event.
+  Target URLs and tokens can use environment references. (Fixes #518)
+- `snodo notify test` is covered across all five notification target types, and
+  the unattended-running guide links to the platforms' current webhook payload
+  documentation. (Fixes #519)
 - Cloud plan history now carries bounded authored intent on proposal and every
   run, and unmerged task events have a pinned v6 shape with plan ownership when
   available. v5 receivers continue to receive no v6-only data. (Fixes #514)
