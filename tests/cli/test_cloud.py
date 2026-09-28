@@ -23,7 +23,7 @@ class TestCloudConnect:
             result = cloud_connect_command("sndo_live_abcdef123456789")
 
             assert result == 0
-            assert mock_mgr.set_value.call_args_list == [
+            assert [call.args for call in mock_mgr.set_value.call_args_list] == [
                 (("cloud", "api_key"), "sndo_live_abcdef123456789"),
                 (("cloud", "sync_enabled"), True),
             ]
@@ -37,7 +37,7 @@ class TestCloudConnect:
             result = cloud_connect_command("sndo_staging_xyz")
 
             assert result == 0
-            assert mock_mgr.set_value.call_args_list == [
+            assert [call.args for call in mock_mgr.set_value.call_args_list] == [
                 (("cloud", "api_key"), "sndo_staging_xyz"),
                 (("cloud", "sync_enabled"), True),
             ]
@@ -64,7 +64,7 @@ class TestCloudDisconnect:
             result = cloud_disconnect_command()
 
             assert result == 0
-            assert mock_mgr.set_value.call_args_list == [
+            assert [call.args for call in mock_mgr.set_value.call_args_list] == [
                 (("cloud", "api_key"), ""),
                 (("cloud", "sync_enabled"), False),
             ]

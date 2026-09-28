@@ -1233,21 +1233,6 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-        if project_slug != Path(project_root).name.lower():
-            # A dotted (or otherwise unsafe) name now provisions under a
-            # sanitised slug, so any older tunnel published under the raw
-            # name still exists on the cloud side but can never serve TLS.
-            print("Note: this project's directory name is not a single DNS "
-                  "label, so the tunnel is published under a sanitised slug.",
-                  file=sys.stderr)
-            print("  If an older tunnel was provisioned under the raw "
-                  "directory name, it can never work (its name sits one level",
-                  file=sys.stderr)
-            print("  deeper than the wildcard certificate). Remove it by name:",
-                  file=sys.stderr)
-            print("    snodo serve --tunnel --delete --hostname <old-hostname>",
-                  file=sys.stderr)
-
         try:
             provisioned = _provision_with_auth(
                 api_key, project_slug, mode, short_id, __version__, port,
@@ -1268,6 +1253,20 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
+        if project_slug != Path(project_root).name.lower():
+            # A dotted (or otherwise unsafe) name now provisions under a
+            # sanitised slug, so any older tunnel published under the raw
+            # name still exists on the cloud side but can never serve TLS.
+            print("Note: this project's directory name is not a single DNS "
+                  "label, so the tunnel is published under a sanitised slug.",
+                  file=sys.stderr)
+            print("  If an older tunnel was provisioned under the raw "
+                  "directory name, it can never work (its name sits one level",
+                  file=sys.stderr)
+            print("  deeper than the wildcard certificate). Remove it by name:",
+                  file=sys.stderr)
+            print("    snodo serve --tunnel --delete --hostname <old-hostname>",
+                  file=sys.stderr)
         tunnel_config = {
             "hostname": provisioned["hostname"],
             "tunnel_token": provisioned["tunnel_token"],
