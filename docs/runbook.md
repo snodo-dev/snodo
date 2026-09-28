@@ -345,7 +345,8 @@ snodo serve --mode producer
 snodo serve --mode reviewer
 ```
 
-Server naming: `snodo-{protocol_id}` (all modes) or `snodo-{protocol_id}-{mode_id}` (single mode).
+Server naming: `snodo-{protocol_id}` for the current project mode, or
+`snodo-{protocol_id}-{mode_id}` for a server pinned with `--mode`.
 
 Connecting an orchestrator (Claude Desktop, custom agent):
 

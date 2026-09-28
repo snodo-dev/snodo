@@ -35,7 +35,7 @@ _PROTOCOL_DATA = {
         {
             "mode_id": "producer",
             "name": "Producer",
-            "tools": ["edit", "test"],
+            "tools": ["edit", "test", "plan"],
             "validators": ["quality"],
         },
     ],
@@ -307,6 +307,6 @@ class TestSurfaceExposure:
         assert "record_task_status" in MODE_TOOL_MAP["plan"]
         assert "record_task_status" in PLANNING_TOOLS
 
-    def test_all_modes_server_exposes_it(self, server):
+    def test_current_mode_server_exposes_it_when_plan_is_granted(self, server):
         names = {t["name"] for t in server.get_tools()}
         assert "record_task_status" in names

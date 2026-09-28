@@ -360,6 +360,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
     sections: list = [
         f"Call the read-only `guide` tool before anything else. It teaches the shortest path and accepts topics: {guide_menu(protocol_server.project_root)}.\n",
         f"# Snodo Protocol Engine — {p.protocol_id} v{p.version}\n",
+        f"Serving mode: `{protocol_server._active_mode()}`.\n",
         "You are the orchestrator. Use MCP tools and resources only; you cannot read the filesystem directly.\n",
         "Choose the smallest structure that fits: dispatch one task directly; use a wave only for multiple tasks that can run together; use a plan only for multiple waves; use a queue only to schedule several plans. A one-task plan adds plan→wave→task history for cloud reporting, but does not add a human authorization gate, change the task validator loop, or change auto-merge policy.\n",
         "Tool access follows the active mode grant; no tool call is refused for want of a caller-held token. The validator quorum is enforced inside the engine loop (ADR 047); a `blocker` is never overridable, and `escalate` requires human `snodo authorize`.\n",
@@ -601,7 +602,10 @@ def _register_guide(mcp: FastMCP, protocol_server: ProtocolMCPServer) -> None:
         description=f"Read-only Snodo getting-started guide. Omit topic for the shortest first run; ask for {guide_menu(protocol_server.project_root)}.",
     )
     def guide(topic: str | None = None) -> str:
-        return guide_text(protocol_server.project_root, exposed, topic)
+        mode_id = protocol_server._active_mode()
+        return f"Serving mode: {mode_id}.\n\n" + guide_text(
+            protocol_server.project_root, exposed, topic
+        )
 
 
 def _register_watch_job_resource(mcp: FastMCP) -> None:

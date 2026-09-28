@@ -154,6 +154,12 @@ warning in its diagnostics. Remove misspelled or obsolete grants.
 Grant `write` only to modes that need its `write_file` operation; the default
 write path allowlist is `.snodo/`, and it does not stage or commit files.
 
+`snodo serve` without `--mode` serves only the current project mode from
+`.snodo/state.json`, falling back to `initial_mode`. Passing `--mode` pins the
+server to that mode. In either case, planning tools require the mode's `plan`
+capability; read-only diagnostics and the guide remain available in every
+mode. MCP install creates one explicitly mode-pinned entry per protocol mode.
+
 ### `max_recovery_depth` tradeoff
 
 The recovery depth cap controls how deep the engine recurses when spawning subtasks to fix validator rejections. It is configured at the protocol level (`execution.max_recovery_depth`, default `3`) and can be overridden per mode (`mode.max_recovery_depth`). When a mode is silent (`null`), it inherits the protocol's setting.

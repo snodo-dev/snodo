@@ -132,3 +132,9 @@ server defaults to stdio. HTTP transports require `--transport sse` or
 `--transport streamable-http`; `--tunnel` provisions and starts a managed
 tunnel. See `snodo serve --help` for tunnel auth, rotation, deletion, and
 Claude Desktop management options.
+
+Without `--mode`, the server exposes the current mode from
+`.snodo/state.json`, falling back to the protocol's `initial_mode`; `--mode`
+pins it to a named mode. It does not combine grants from other modes. The
+`--mcp-install` option registers one entry per mode, each started with its
+matching `--mode` pin.

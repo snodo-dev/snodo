@@ -150,6 +150,17 @@ def test_solo_producer_exposes_the_single_operator_loop(project_dir):
     } <= names
     assert "delete_file" not in names
 
+    # Omitting --mode uses the protocol initial mode and keeps the same full
+    # single-operator loop in the shipped solo template.
+    unpinned_names = {tool["name"] for tool in ProtocolMCPServer(
+        proto, project_dir
+    ).get_tools()}
+    assert {
+        "decompose", "generate_spec", "validate_plan", "run_plan", "queue_run",
+        "write_file", "dispatch_task", "run_tests", "stage_files", "commit",
+        "merge_branch",
+    } <= unpinned_names
+
 
 def test_solo_protocol_options_keep_safe_loop_defaults():
     proto = template_protocol("solo")
