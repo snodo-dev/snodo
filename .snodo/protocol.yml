@@ -1,0 +1,188 @@
+# Job notifications (Slack, Discord, Teams, ntfy, webhook) are configured per
+# user in ~/.snodo/config.yml under `notifications:` — not in this protocol.
+# Example shape (keep endpoint credentials in user config):
+# notifications:
+#   targets:
+#     - type: slack
+#       name: team
+#       url: env:SNODO_SLACK_WEBHOOK_URL
+# See docs/configuration.md.
+
+protocol_id: "snodo-public"
+name: "snodo-public (solo, dogfood)"
+version: "1.0.0"
+
+modes:
+  - mode_id: "producer"
+    name: "Producer Mode"
+    tools:
+      - "edit"
+      - "write"
+      - "decide"
+      - "dispatch"
+      - "test"
+      - "validate"
+      - "review"
+      - "approve"
+      - "commit"
+      - "merge"
+      - "pr"
+      - "plan"
+      - "queue"
+      - "read"
+    concurrency: 1
+    validators:
+      - "security"
+      - "architecture"
+      - "adr"
+      - "quality"
+      - "meta-spec"
+      - "acceptance"
+    transitions: {}
+
+validators:
+  - validator_id: "security"
+    validator_type: "security"
+    evaluation_phase: "pre_execute"
+    check_tool_access: true
+    tools:
+      - "read_file"
+      - "list_files"
+    criteria:
+      - "Check for security vulnerabilities"
+      - "Validate input sanitization"
+      - "Check authentication/authorization, including the tunnel's bearer and service-token paths and any browser-facing link"
+      - "Secrets (API keys, webhook URLs, bearer and tunnel tokens, watch-link tokens) must never be printed, logged, written to the audit log, or sent to the cloud"
+      - "MCP writes stay inside write_allowed_prefixes; nothing grants a mutating tool to a mode that does not hold it"
+
+  - validator_id: "architecture"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    # A design-coherence judgement applies to the planned wave as a whole;
+    # wave scope is valid for pre-execute validators only.
+    scope: "wave"
+    tools:
+      - "read_file"
+      - "list_files"
+    criteria:
+      - "Check design patterns"
+      - "Validate separation of concerns"
+      - "Check for tight coupling"
+
+  - validator_id: "adr"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    check_tool_access: true
+    tools:
+      - "read_file"
+      - "list_files"
+      - "summarize_directory"
+    criteria:
+      - "Read the decision records in docs/decisions (summarize_directory first, then the relevant records). A task that contradicts an accepted decision without saying it amends that decision is a blocker; name the record."
+      - "Snodo's state machine is closed: a task that would add a task, plan, job or recon status, a severity, or a halt type is a blocker unless its spec explicitly says the operator approved that addition."
+      - "The mode is the capability boundary: a task that exposes a tool to a mode that does not grant its capability, or makes a validator read the coder's own claims as evidence, is a blocker."
+      - "A change to the cloud wire contract (cloud_sync payload shapes, interface version) must say how v5 receivers are protected and must update docs/specs/cloud-sync.md; otherwise warn."
+
+  - validator_id: "quality"
+    validator_type: "quality"
+    evaluation_phase: "post_execute"
+    # Default ships a command that runs on any POSIX shell and exits zero, so a
+    # fresh project never halts on an unresolvable test command. Auto-detection
+    # (marker files) and `snodo init --test-command` override it; while it
+    # stands the quality validator records that NO tests were executed rather
+    # than claiming a pass. Replace it with your stack's command:
+    # The repo gate: pushes the branch to the gate host and runs the fast suite,
+    # ruff, import contracts, ratchets and the changelog/vocabulary/schema checks.
+    # It deselects e2e tests; `make gate-ci` includes them plus coverage (slower).
+    tooling:
+      test_command: "make gate"
+
+  - validator_id: "meta-spec"
+    validator_type: "architecture"
+    evaluation_phase: "pre_execute"
+    judges_spec: true
+    criteria:
+      - "The task spec must define INTENT and CONSTRAINTS — what to build and the boundaries it must respect — and leave implementation decisions to the coder. A spec describes behavior and contracts; it does not transcribe the implementation."
+      - "ALLOWED in a spec (these are constraints, not implementation): function and method signatures, exported names, type and interface shapes, behavioral requirements (what it must do, what inputs it must reject), hard constraints (algorithm choice such as HS256, framework limits, dependency restrictions), specific required values that are genuine requirements (e.g. a 7-day expiry, a max-age), acceptance criteria, and occasional short code hints that clarify a constraint."
+      - "PROHIBITED in a spec (this is the coder's job): literal function bodies, transcribed implementation logic, exact statement-by-statement code the coder should author, regex literals and exact API-call sequences presented as the implementation, and any spec that leaves the coder no implementation decisions to make."
+      - "Guideline for judgment: if more than roughly 40% of the spec is literal implementation code rather than intent, contracts, and constraints, the spec is code-prescriptive and must be rejected as a blocker. The orchestrator must re-issue the task as intent plus constraints, not as transcribed code."
+      - "A correctly-scoped spec leaves the coder room to author the implementation while still being unambiguous about what 'done' means. Reject specs that read as code wearing a spec's clothes."
+
+  - validator_id: "acceptance"
+    validator_type: "acceptance"
+    evaluation_phase: "post_execute"
+    severity_cap: "warn"
+    tools:
+      - "read_file"
+      - "read_file_lines"
+      - "list_files"
+      - "git_show"
+      - "git_log"
+      - "read_diff_between_refs"
+    criteria:
+      - "Judge the produced artifacts against the acceptance criteria in the task spec. A criterion that is verifiable from the tree and unmet is a warn; a criterion that cannot be verified from the tree (device behaviour, human judgement) is uncheckable and never a finding."
+
+# NOTE: `quality` and `acceptance` are the two POST_EXECUTE validators. Under
+# `unanimous`, a phase with exactly one validator is an unopposed veto over
+# completed work — a single flaky test or tool outage would block every task
+# with no second opinion (Fixes #41). Keeping TWO post-execute judges here
+# avoids that; if you remove one, either keep two post-execute validators or
+# switch `disagreement_policy` below.
+
+disagreement_policy: "unanimous"
+initial_mode: "producer"
+
+# Established repositories have verified build and test harnesses. Depth 3 enables
+# multi-step incremental recovery (e.g. implementation fix followed by criterion refinement)
+# while recovery stall detection bounds non-converging loops.
+execution:
+  max_recovery_depth: 3
+  # Single-operator protocol: the operator is both producer and reviewer, so a
+  # task that reaches a genuine "resolved" closure has already been accepted by
+  # the only human in the loop. Merge its branch automatically so the work lands
+  # on the base branch instead of stranding on a task branch.
+  auto_merge: true
+
+  # Set only when a repository needs a deterministic setup step after worktree
+  # creation (protocol-authored shell commands are executed as written):
+  # prepare_command: "uv sync --frozen"
+
+# Queue defaults preserve strict FIFO and one plan at a time. Non-blocking and
+# parallel runs are opt-in; use them only for independent plans (ADR 053).
+queue:
+  non_blocking: false
+  parallel_runs: 1
+
+# MCP writes are confined to .snodo/ by default; keep this explicit for the
+# solo template so plans, specs, protocols, and queues can be authored in MCP.
+write_allowed_prefixes:
+  - .snodo/
+
+# Optional module scopes for a monorepo; a module owns paths and may override
+# test tooling and its decision-record location (ADR 041).
+modules:
+  - module_id: "core"
+    paths: ["packages/snodo-core/**"]
+  - module_id: "foundation"
+    paths: ["packages/snodo-foundation/**"]
+  - module_id: "engine"
+    paths: ["packages/snodo-engine/**"]
+  - module_id: "mcp"
+    paths: ["packages/snodo-mcp/**"]
+  - module_id: "tools"
+    paths: ["packages/snodo-tools/**"]
+  - module_id: "cli"
+    paths: ["snodo/**"]
+  - module_id: "docs"
+    paths: ["docs/**", "README.md", "mkdocs.yml"]
+# No module overrides tooling: every module falls back to `make gate`, because
+# the packages depend on each other and a package-only suite would miss
+# cross-package breakage. Modules here bound paths (files_in_scope), not tests.
+
+# Keep an empty list until this repository has paths task branches must not
+# change; for example, decision records can be protected from task diffs.
+protected_paths: []
+# protected_paths:
+#   - "docs/decisions/**"
+
+global_constraints: []
