@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -77,23 +78,41 @@ def test_chat_platform_payloads_render_the_actionable_message():
 
 
 def test_job_identity_is_stable_across_worktree_plan_queue_and_gate_roots(tmp_path):
-    starting_points = ("worktree-task", "plan-run", "queue-run", "snodo-b")
-    for folder in starting_points:
-        root = tmp_path / folder
-        project_json = root / ".snodo" / "project.json"
-        project_json.parent.mkdir(parents=True)
-        project_json.write_text(json.dumps({
-            "project.id": "github.com/snodo-dev/snodo-cloud",
-            "scope": "override",
-            "display_name": "Snodo Cloud",
-        }))
+    main = tmp_path / "project"
+    main.mkdir()
+    subprocess.run(["git", "init", str(main)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(main), "config", "user.name", "Tests"], check=True)
+    subprocess.run(["git", "-C", str(main), "config", "user.email", "tests@example.invalid"], check=True)
+    (main / "tracked.txt").write_text("project\n")
+    subprocess.run(["git", "-C", str(main), "add", "tracked.txt"], check=True)
+    subprocess.run(["git", "-C", str(main), "commit", "-m", "initial"], check=True, capture_output=True)
+    project_json = main / ".snodo" / "project.json"
+    project_json.parent.mkdir()
+    project_json.write_text(json.dumps({
+        "project.id": "github.com/snodo-dev/snodo-cloud",
+        "scope": "override",
+        "display_name": "Snodo Cloud",
+    }))
 
-        message, details = notifications._job_message(
-            root, "j_123", {"plan_name": "nightly", "task_id": "t_456"}, "job completed",
-        )
+    worktree = tmp_path / "gates" / "snodo-b"
+    worktree.parent.mkdir()
+    subprocess.run(["git", "-C", str(main), "worktree", "add", str(worktree), "-b", "agent-test"], check=True, capture_output=True)
+    gate = tmp_path / "gate-checkout"
+    gate.mkdir()
+    gate_project_json = gate / ".snodo" / "project.json"
+    gate_project_json.parent.mkdir()
+    gate_project_json.write_text(project_json.read_text())
+    starting_points = (
+        (worktree, {"task_id": "t_worktree"}, "task t_worktree"),
+        (main, {"plan_name": "nightly", "task_id": "t_plan"}, "plan nightly — task t_plan"),
+        (main, {"queue_run": True, "queue": "overnight", "task_id": "t_queue"}, "task t_queue"),
+        (gate, {"task_id": "t_gate"}, "task t_gate"),
+    )
+    for root, task, expected_context in starting_points:
+        message, details = notifications._job_message(root, "j_123", task, "job completed")
 
         assert message.startswith(f"**Snodo Cloud** · {details['host']}\n")
-        assert "plan nightly — task t_456 — job completed — Inspect: snodo logs j_123" in message
+        assert f"{expected_context} — job completed — Inspect: snodo logs j_123" in message
         assert details["project"] == "Snodo Cloud"
         assert details["host"]
 
@@ -118,7 +137,7 @@ def test_notification_targets_prominently_format_project_and_host():
         requests = {path.removeprefix("/"): (headers, body) for path, headers, body in StubHandler.requests}
         assert requests["ntfy"][0]["Title"] == "Snodo Cloud - gpu2"
         assert requests["ntfy"][1].decode().startswith("**Snodo Cloud** · gpu2\n")
-        assert json.loads(requests["slack"][1])["text"].startswith("**Snodo Cloud** · gpu2\n")
+        assert json.loads(requests["slack"][1])["text"].startswith("*Snodo Cloud* · gpu2\n")
         assert json.loads(requests["discord"][1])["content"].startswith("**Snodo Cloud** · gpu2\n")
         card = json.loads(requests["teams"][1])["attachments"][0]["content"]
         assert card["body"][0] == {

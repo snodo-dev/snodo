@@ -72,6 +72,37 @@ def redact_notifications(config: dict) -> dict:
     return clean
 
 
+def _display_name(root: Path) -> str | None:
+    """Read a project's configured name, including from a linked worktree's main checkout."""
+    roots = [root]
+    try:
+        import subprocess
+
+        result = subprocess.run(  # noqa: S603 - fixed argv, project path passed as one argument
+            ["git",  # noqa: S607 - git resolved from PATH by design
+             "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            main_root = Path(result.stdout.strip()).resolve().parent
+            if main_root not in roots:
+                roots.append(main_root)
+    except Exception:  # noqa: BLE001,S110 - identity lookup must never prevent notification
+        pass
+
+    for project_root in roots:
+        try:
+            cached_project = json.loads((project_root / ".snodo" / "project.json").read_text())
+            value = cached_project.get("display_name")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        except (OSError, ValueError, AttributeError):
+            continue
+    return None
+
+
 def send(target: dict, event: dict) -> None:
     """Deliver one short event with a hard network timeout."""
     kind = target["type"]
@@ -83,7 +114,13 @@ def send(target: dict, event: dict) -> None:
         title = " - ".join(value for value in (project, host) if value) or "Snodo job update"
         headers = {"Content-Type": "text/plain; charset=utf-8", "Title": title}
     elif kind == "slack":
-        body = json.dumps({"text": message}, separators=(",", ":")).encode("utf-8")
+        first_line, separator, remainder = message.partition("\n")
+        # Slack mrkdwn uses single asterisks for bold; the shared message uses
+        # Markdown's double-asterisk syntax for Discord and generic consumers.
+        if first_line.startswith("**") and (bold_end := first_line.find("**", 2)) >= 0:
+            first_line = f"*{first_line[2:bold_end]}*{first_line[bold_end + 2:]}"
+        slack_message = first_line + (separator + remainder if separator else "")
+        body = json.dumps({"text": slack_message}, separators=(",", ":")).encode("utf-8")
         headers = {"Content-Type": "application/json"}
     elif kind == "discord":
         body = json.dumps({"content": message, "allowed_mentions": {"parse": []}}, separators=(",", ":")).encode("utf-8")
@@ -168,14 +205,7 @@ def _notify(root: Path, event_id: str, event_type: str, message: str, details: d
 
 
 def _job_message(root: Path, job_id: str, task: dict, happened: str) -> tuple[str, dict]:
-    project_json = root / ".snodo" / "project.json"
-    display_name = None
-    try:
-        cached_project = json.loads(project_json.read_text())
-        value = cached_project.get("display_name")
-        display_name = value.strip() if isinstance(value, str) and value.strip() else None
-    except (OSError, ValueError, AttributeError):
-        pass
+    display_name = _display_name(root)
     try:
         from snodo.project import get_project_id
 

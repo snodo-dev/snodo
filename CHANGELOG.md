@@ -22,6 +22,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   its canonical project ID or checkout folder, and include the runner hostname.
   Slack, Discord, Teams and ntfy foreground project identity in their native
   formats; generic webhook events carry project and host fields. (Fixes #523)
+- Linked worktree job notifications now read the display name from the main
+  checkout when the worktree has no `.snodo/project.json`; Slack uses its native
+  bold syntax for the prominent project line. (Fixes #526)
 - `docs/configuration.md` now documents the user-level `~/.snodo/config.yml`
   schema and defaults, including all five notification target types and
   environment references. The reference is linked from the docs home, protocol
