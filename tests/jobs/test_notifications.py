@@ -40,6 +40,7 @@ def test_webhook_json_and_ntfy_plain_posts():
         assert json.loads(StubHandler.requests[0][2]) == event
         assert StubHandler.requests[1][0] == "/topic"
         assert StubHandler.requests[1][2] == b"job finished"
+        assert StubHandler.requests[1][1]["Title"] == "Snodo job update"
     finally:
         httpd.shutdown()
 
@@ -73,6 +74,78 @@ def test_chat_platform_payloads_render_the_actionable_message():
         assert attachment["content"]["body"] == [{"type": "TextBlock", "text": event["message"], "wrap": True}]
     finally:
         httpd.shutdown()
+
+
+def test_job_identity_is_stable_across_worktree_plan_queue_and_gate_roots(tmp_path):
+    starting_points = ("worktree-task", "plan-run", "queue-run", "snodo-b")
+    for folder in starting_points:
+        root = tmp_path / folder
+        project_json = root / ".snodo" / "project.json"
+        project_json.parent.mkdir(parents=True)
+        project_json.write_text(json.dumps({
+            "project.id": "github.com/snodo-dev/snodo-cloud",
+            "scope": "override",
+            "display_name": "Snodo Cloud",
+        }))
+
+        message, details = notifications._job_message(
+            root, "j_123", {"plan_name": "nightly", "task_id": "t_456"}, "job completed",
+        )
+
+        assert message.startswith(f"**Snodo Cloud** · {details['host']}\n")
+        assert "plan nightly — task t_456 — job completed — Inspect: snodo logs j_123" in message
+        assert details["project"] == "Snodo Cloud"
+        assert details["host"]
+
+
+def test_notification_targets_prominently_format_project_and_host():
+    event = {
+        "event": "job_finished",
+        "message": "**Snodo Cloud** · gpu2\njob j_123 — plan nightly — task t_456 — job completed — Inspect: snodo logs j_123",
+        "project": "Snodo Cloud",
+        "host": "gpu2",
+        "job_id": "j_123",
+        "plan": "nightly",
+        "task": "t_456",
+        "command": "snodo logs j_123",
+    }
+    httpd = server()
+    try:
+        base = f"http://127.0.0.1:{httpd.server_port}"
+        for kind in ("webhook", "ntfy", "slack", "discord", "teams"):
+            notifications.send({"type": kind, "url": f"{base}/{kind}"}, event)
+
+        requests = {path.removeprefix("/"): (headers, body) for path, headers, body in StubHandler.requests}
+        assert requests["ntfy"][0]["Title"] == "Snodo Cloud - gpu2"
+        assert requests["ntfy"][1].decode().startswith("**Snodo Cloud** · gpu2\n")
+        assert json.loads(requests["slack"][1])["text"].startswith("**Snodo Cloud** · gpu2\n")
+        assert json.loads(requests["discord"][1])["content"].startswith("**Snodo Cloud** · gpu2\n")
+        card = json.loads(requests["teams"][1])["attachments"][0]["content"]
+        assert card["body"][0] == {
+            "type": "TextBlock", "text": "Snodo Cloud", "weight": "Bolder", "size": "Medium", "wrap": True,
+        }
+        assert card["body"][1]["text"] == "Runner: gpu2"
+        assert card["body"][2]["text"].startswith("job j_123 — plan nightly")
+        webhook = json.loads(requests["webhook"][1])
+        assert webhook["project"] == "Snodo Cloud"
+        assert webhook["host"] == "gpu2"
+    finally:
+        httpd.shutdown()
+
+
+def test_job_identity_falls_back_to_project_id_then_folder(tmp_path, monkeypatch):
+    root = tmp_path / "checkout-name"
+    root.mkdir()
+    monkeypatch.setattr("socket.gethostname", lambda: "runner-a")
+    monkeypatch.setattr("snodo.project.get_project_id", lambda _root: ("github.com/org/project", "remote"))
+    message, details = notifications._job_message(root, "j_1", {}, "job failed")
+    assert message.startswith("**github.com/org/project** · runner-a\n")
+    assert details["project"] == "github.com/org/project"
+
+    monkeypatch.setattr("snodo.project.get_project_id", lambda _root: ("", "local"))
+    message, details = notifications._job_message(root, "j_1", {}, "job failed")
+    assert message.startswith("**checkout-name** · runner-a\n")
+    assert details["project"] == "checkout-name"
 
 
 def test_notify_test_sends_to_every_configured_target_type(monkeypatch):
