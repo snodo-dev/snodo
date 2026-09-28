@@ -268,6 +268,7 @@ def record_inplace_coder_run(
     timeout_seconds: Optional[int] = None,
     outcome: str = "success",
     error_class: Optional[str] = None,
+    usage: Optional[dict] = None,
 ) -> None:
     """Record a completed in-place coder execution in job/task state.json.
 
@@ -281,10 +282,11 @@ def record_inplace_coder_run(
     - ``model``: the model string the CLI was asked to use (may be ``""`` when
       the operator did not specify one — the tool then uses its own default)
 
-    What is NOT recorded:
-    - ``cost``: None — unknown; providers are not queried
-    - ``prompt_tokens`` / ``completion_tokens``: None — the CLI does not expose
-      them in a stable, version-independent way
+    Usage supplied by a CLI adapter is recorded only for fields that adapter
+    directly observed; all other usage remains null. OpenCode CLI reports its
+    provider usage in JSON step-finish events. ``prompt_tokens`` and
+    ``completion_tokens`` remain null because the in-place record uses the
+    input/output token fields instead.
 
     The ``"source": "inplace_coder"`` field distinguishes this record from a
     litellm-originated one.  The ``"measured"`` list declares which fields were
@@ -293,6 +295,7 @@ def record_inplace_coder_run(
 
     This function never raises; attribution must not crash the engine loop.
     """
+    usage = usage or {}
     record: dict = {
         "timestamp": time.time(),
         "source": "inplace_coder",
@@ -301,19 +304,33 @@ def record_inplace_coder_run(
         "role": "coder",
         "model": model,
         "duration_ms": duration_ms,
-        "input_tokens": None,
-        "output_tokens": None,
-        "cache_read_tokens": None,
-        "cache_write_tokens": None,
-        "cost_source": None,
+        "input_tokens": usage.get("input_tokens"),
+        "output_tokens": usage.get("output_tokens"),
+        "reasoning_tokens": usage.get("reasoning_tokens"),
+        "cache_read_tokens": usage.get("cache_read_tokens"),
+        "cache_write_tokens": usage.get("cache_write_tokens"),
+        "cost_source": "provider" if usage.get("cost") is not None else None,
         "outcome": outcome,
-        # cost and tokens are not available for external CLI coders
-        "cost": None,
+        # Compatibility fields not exposed in the in-place usage contract.
+        "cost": usage.get("cost"),
+        "served_model": None,
         "prompt_tokens": None,
         "completion_tokens": None,
         "total_tokens": None,
         # Explicit declaration: only what is in this list was directly observed.
-        "measured": ["duration_ms"] + (["model"] if model else []) + (["timed_out"] if timed_out else []),
+        "measured": (
+            ["duration_ms"]
+            + (["model"] if model else [])
+            + [
+                key
+                for key in (
+                    "input_tokens", "output_tokens", "reasoning_tokens",
+                    "cache_read_tokens", "cache_write_tokens", "cost",
+                )
+                if usage.get(key) is not None
+            ]
+            + (["timed_out"] if timed_out else [])
+        ),
     }
     if error_class:
         record["error_class"] = error_class

@@ -12,6 +12,7 @@ Covers:
 """
 
 import io
+import json
 import subprocess
 import tempfile
 from pathlib import Path
@@ -120,6 +121,41 @@ class TestBareModel:
         """
         adapter = OpenCodeCLIAdapter(model="deepseek/deepseek-chat", workspace=Path("/dummy"))
         assert adapter._bare_model() == ""
+
+
+class TestJsonOutputUsage:
+    def test_opencode_argv_requests_json(self, tmp_path):
+        adapter = OpenCodeCLIAdapter(model="", workspace=tmp_path)
+        assert adapter._build_argv("prompt", str(tmp_path), "") == [
+            "opencode", "run", "--format", "json", "--dir", str(tmp_path),
+            "--dangerously-skip-permissions", "prompt",
+        ]
+
+    @pytest.mark.parametrize(
+        "lines, expected",
+        [
+            ([{"type": "step_finish", "part": {"cost": 0.25, "tokens": {"input": 10, "output": 4, "reasoning": 2, "cache": {"read": 3, "write": 1}}}}],
+             {"input_tokens": 10, "output_tokens": 4, "reasoning_tokens": 2, "cache_read_tokens": 3, "cache_write_tokens": 1, "cost": 0.25}),
+            ([{"type": "step_finish", "part": {"cost": 0.25, "tokens": {"input": 10, "output": 4, "cache": {"read": 3, "write": 1}}}},
+              {"type": "step_finish", "part": {"cost": 0.5, "tokens": {"input": 2, "output": 8, "cache": {"read": 5, "write": 2}}}}],
+             {"input_tokens": 12, "output_tokens": 12, "reasoning_tokens": None, "cache_read_tokens": 8, "cache_write_tokens": 3, "cost": 0.75}),
+            ([{"type": "text", "part": {"text": "hello"}}],
+             {"input_tokens": None, "output_tokens": None, "reasoning_tokens": None, "cache_read_tokens": None, "cache_write_tokens": None, "cost": None}),
+        ],
+    )
+    def test_accumulates_step_finish_usage(self, tmp_path, lines, expected):
+        adapter = OpenCodeCLIAdapter(model="", workspace=tmp_path)
+        adapter._begin_subprocess_run()
+        rendered = [adapter._process_output_line(json.dumps(line)) for line in lines]
+        assert adapter.last_usage == expected
+        if lines[0]["type"] == "text":
+            assert rendered == ["hello"]
+        else:
+            assert rendered == [""] * len(lines)
+
+    def test_malformed_line_passes_through(self, tmp_path):
+        adapter = OpenCodeCLIAdapter(model="", workspace=tmp_path)
+        assert adapter._process_output_line("not-json\n") == "not-json"
 
 
 # ========== GIT-DIFF READBACK ==========
@@ -255,12 +291,13 @@ class TestSubprocessInvocation:
                 call_args = mock_popen.call_args[0][0]
                 assert call_args[0] == "opencode"
                 assert call_args[1] == "run"
-                assert call_args[2] == "--dir"
-                assert call_args[3] == str(git_workspace)
-                assert call_args[4] == "--dangerously-skip-permissions"
-                assert call_args[5] == "test prompt"
-                assert call_args[6] == "-m"
-                assert call_args[7] == "deepseek/deepseek-chat"
+                assert call_args[2:4] == ["--format", "json"]
+                assert call_args[4] == "--dir"
+                assert call_args[5] == str(git_workspace)
+                assert call_args[6] == "--dangerously-skip-permissions"
+                assert call_args[7].startswith("test prompt")
+                assert call_args[8] == "-m"
+                assert call_args[9] == "deepseek/deepseek-chat"
 
     def test_opencode_not_found_raises(self, git_workspace):
         adapter = OpenCodeCLIAdapter(

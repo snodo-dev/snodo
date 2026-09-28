@@ -198,6 +198,7 @@ class InPlaceCoderAdapter(Coder, ABC):
                         timeout_seconds=getattr(exc, "timeout_seconds", None),
                         outcome="error",
                         error_class=type(exc).__name__,
+                        usage=getattr(self, "last_usage", None),
                     )
                 except Exception as record_error:
                     _logger.debug("Failed to record failed inplace coder run: %s", record_error)
@@ -269,6 +270,7 @@ class InPlaceCoderAdapter(Coder, ABC):
                     timed_out=timed_out,
                     timeout_seconds=timeout_seconds,
                     outcome="success",
+                    usage=getattr(self, "last_usage", None),
                 )
         except Exception as e:
             _logger.debug("Failed to record inplace coder run: %s", e)
