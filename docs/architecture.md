@@ -235,6 +235,7 @@ class Coder(ABC):
 Shipped adapters in `snodo.coders`:
 - **LiteLLMAdapter** (`litellm.py`): Direct completions via LiteLLM (~100+ providers).
 - **AGYAdapter** (`agy_adapter.py`): Shells out to Antigravity CLI (`agy -p`) on host.
+- **CodexCLIAdapter** (`codex_cli_adapter.py`): Runs Codex CLI `exec` with JSONL events and workspace-write sandboxing.
 - **OpenCodeCLIAdapter** (`opencode_cli_adapter.py`): Shells out to host `opencode run`.
 - **OpenCodeAdapter** (`opencode_adapter.py`): HTTP client to containerised OpenCode server in Docker (`POST /session`).
 - **MockAdapter** (`mock.py`): Deterministic stubs for dry-runs and testing.
@@ -244,7 +245,7 @@ Shipped adapters in `snodo.coders`:
 Adapters that write directly to the working tree (`skip_workspace_write = True`, `skip_engine_commit = True`) inherit `InPlaceCoderAdapter` (`coders/base.py`) or its host CLI subclass `SubprocessCoderAdapter` (`coders/subprocess_adapter.py`):
 
 1. **Host CLI Subprocess Abstraction**: `SubprocessCoderAdapter` manages prompt generation (`_build_prompt`), subprocess invocation, timeout handling, git diff readback (`_read_changes_from_disk`), and `CodeArtifact` construction. Host CLI adapters set `binary`, `model_prefix`, `install_hint`, and implement `_build_argv`. Adding a new host CLI adapter requires minimal code (e.g. `AGYAdapter` took 37 lines).
-2. **Model Role Separation (`_bare_model`)**: `SubprocessCoderAdapter._bare_model()` strips judging models passed via `-m` (returning `""`) so external CLI tools use their own default models, unless the model string is explicitly prefixed with the adapter's `model_prefix` (e.g., `agy/...`, `opencode-cli/...`).
+2. **Model Role Separation (`_bare_model`)**: `SubprocessCoderAdapter._bare_model()` strips judging models passed via `-m` (returning `""`) so external CLI tools use their own default models, unless the model string is explicitly prefixed with the adapter's `model_prefix` (e.g., `codex-cli/...`, `agy/...`, `opencode-cli/...`).
 3. **`.snodo/` Boundary Guard**: In-place coders bypass `WorkspaceMCP`, so `InPlaceCoderAdapter` snapshots `.snodo/` around the coder execution and raises `SnodoMutationError` if mutated, triggering a `snodo_mutation_blocked` blocker halt (ADR 027).
 4. **Commit Ownership**: `InPlaceCoderAdapter._commit_changes()` stages and commits changes after the coder finishes, ensuring `HEAD` moves and post-execute validators reviewing `git diff HEAD~1..HEAD` see the exact change produced (ADR 030).
 5. **Telemetry & Conformance**: Per ADR 034, absence of per-turn cost/token records for external coders is operational telemetry (non-goal), not an attestation gap. Any adapter added to `CODER_REGISTRY` (`snodo/coders/__init__.py`) is automatically available via `--coder` and included in the adapter conformance test suite (`tests/coders/test_adapter_conformance.py`).

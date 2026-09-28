@@ -41,7 +41,7 @@ provider credentials, model tuning, cloud and notification settings.
 ## Coder backends
 
 The coder writes; snodo governs, gates and records. `litellm` (default),
-`opencode-cli`, `agy` and `mock` are supported; the container `opencode` path is
+`opencode-cli`, `codex-cli`, `agy` and `mock` are supported; the container `opencode` path is
 experimental. Which coder you pick does not change what is enforced.
 
 [Coder backends →](coders.md)

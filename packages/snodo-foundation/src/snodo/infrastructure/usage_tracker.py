@@ -313,7 +313,7 @@ def record_inplace_coder_run(
         "outcome": outcome,
         # Compatibility fields not exposed in the in-place usage contract.
         "cost": usage.get("cost"),
-        "served_model": None,
+        "served_model": usage.get("served_model"),
         "prompt_tokens": None,
         "completion_tokens": None,
         "total_tokens": None,
@@ -325,7 +325,7 @@ def record_inplace_coder_run(
                 key
                 for key in (
                     "input_tokens", "output_tokens", "reasoning_tokens",
-                    "cache_read_tokens", "cache_write_tokens", "cost",
+                    "cache_read_tokens", "cache_write_tokens", "cost", "served_model",
                 )
                 if usage.get(key) is not None
             ]

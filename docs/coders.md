@@ -19,14 +19,15 @@ the write crosses and who makes the commit — everything after is identical.*
 | `litellm` *(default)* | Direct LLM completions via LiteLLM (~100+ providers) | Engine-Managed | Python `litellm` (built-in) | Provider API keys for the **validators**, which always run through LiteLLM (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc. or `snodo config add`) |
 | `opencode` | OpenCode server running in Docker container over HTTP | In-Place Container | Docker daemon running; image `opencode:latest` | OpenCode config/env variables inside container |
 | `opencode-cli` | Host `opencode run` CLI invocation | In-Place Host CLI | `opencode` CLI on PATH | `opencode auth login` or host provider env vars (`OPENROUTER_API_KEY`, etc.) — the coder authenticates against your own subscription |
+| `codex-cli` | OpenAI Codex CLI (`codex exec`) | In-Place Host CLI | `codex` CLI on PATH | `codex login` — uses your Codex subscription |
 | `agy` | Antigravity CLI (`agy -p`) host invocation | In-Place Host CLI | `agy` CLI on PATH | `agy login` / Google Cloud host credentials — the coder authenticates against your own subscription |
 | `mock` | Deterministic stub for dry-runs and testing | Stub | None | None |
 
 ### Authentication: keys are for the validators
 
 Provider API keys are a requirement of the **validators**, which always run
-through LiteLLM — not of the coder. The coder need not use one: `opencode-cli`
-and `agy` authenticate against the operator's own subscription, so no provider
+through LiteLLM — not of the coder. The coder need not use one: `opencode-cli`,
+`codex-cli`, and `agy` authenticate against the operator's own subscription, so no provider
 key is spent on writing the code. `--mock` needs nothing at all.
 
 Beyond the built-in catalog (Anthropic, OpenAI, Google, OpenRouter, DeepSeek and
@@ -39,11 +40,12 @@ not asked for one.
 ## Model Role Separation: Judging vs Execution
 
 - **`-m` / `--model` sets the JUDGING model**: The model passed via `-m` (e.g. `-m claude-3-5-sonnet` or `-m deepseek/deepseek-v4`) is resolved through LiteLLM for **validators** (pre-execute and post-execute gates) and the **classifier** (intent routing).
-- **External CLI coders use their own model catalogs**: Host CLI tools like `agy` or `opencode-cli` maintain their own internal model catalogs and CLI settings. Passing a judging model identifier to an external CLI coder is omitted so the CLI falls back to its own default/last-selected model.
+- **External CLI coders use their own model catalogs**: Host CLI tools like `agy`, `codex-cli`, or `opencode-cli` maintain their own internal model catalogs and CLI settings. Passing a judging model identifier to an external CLI coder is omitted so the CLI falls back to its own default/last-selected model.
 - **Explicit Coder Model Override**: To specify a coder's model explicitly while keeping `-m` for validators, prefix the model string with the coder's namespace:
   ```bash
   snodo run "implement feature" --coder agy --model agy/gemini-2.5-pro
   snodo run "implement feature" --coder opencode-cli --model opencode-cli/claude-3-7-sonnet
+  snodo run "implement feature" --coder codex-cli --model codex-cli/gpt-5-codex
   ```
 
 ## Coder Selection Precedence
@@ -53,12 +55,12 @@ not asked for one.
 1. **Explicit Mock Flag**: `--mock` / `use_mock_coder=True` (always returns `'mock'`).
 2. **Explicit CLI Flag**: `--coder <name>` (e.g., `snodo run "task" --coder agy`).
 3. **Protocol Mode Field**: `coder: <name>` declared in a mode definition in `.snodo/protocol.yml` (`modes[].coder`).
-4. **Model Prefix Mapping**: Inferred from model prefix: `opencode-cli/` → `opencode-cli`, `opencode/` → `opencode`, `agy/` → `agy`, `gpt`/`o1`/`o3` → `openai`, `claude` → `anthropic`, `gemini`/`google/` → `gemini`.
+4. **Model Prefix Mapping**: Inferred from model prefix: `codex-cli/` → `codex-cli`, `opencode-cli/` → `opencode-cli`, `opencode/` → `opencode`, `agy/` → `agy`, `gpt`/`o1`/`o3` → `openai`, `claude` → `anthropic`, `gemini`/`google/` → `gemini`.
 5. **Default Fallback**: `'litellm'`.
 
 ## In-Place Coders vs `litellm`
 
-External coders (`opencode`, `opencode-cli`, `agy`) inherit `InPlaceCoderAdapter` (`skip_engine_commit = True`, `skip_workspace_write = True`):
+External coders (`opencode`, `opencode-cli`, `codex-cli`, `agy`) inherit `InPlaceCoderAdapter` (`skip_engine_commit = True`, `skip_workspace_write = True`):
 
 - **In-Place File Writes**: External coders edit files directly in the workspace working tree.
 - **Commit Ownership**: The adapter stages and commits changes to git upon completion (`InPlaceCoderAdapter._commit_changes()`), advancing `HEAD` so post-execute validators reviewing `git diff HEAD~1..HEAD` see the exact change produced.

@@ -283,6 +283,7 @@ The coder writes; snodo governs, gates and records. `--coder` selects one:
 | `litellm` *(default)* | In-process completions via LiteLLM | built-in | provider API keys |
 | `opencode-cli` | Host `opencode run` | `opencode` on PATH | `opencode auth login` |
 | `agy` | Antigravity CLI (`agy -p`) | `agy` on PATH | `agy login` |
+| `codex-cli` | OpenAI Codex CLI (`codex exec`) | `codex` on PATH | `codex login` |
 | `opencode` *(experimental)* | OpenCode server in Docker over HTTP | Docker, `opencode:latest` | container env |
 | `mock` | Deterministic stub | nothing | none |
 
@@ -290,12 +291,12 @@ Three things are worth knowing up front:
 
 - **`-m` sets the *judging* model, not the coder's.** Validators and the
   classifier run on it. Host CLIs keep their own model catalogs; to pin a
-  coder's model, namespace it — `--coder agy --model agy/gemini-2.5-pro`.
-- **In-place coders own their commit.** `opencode`, `opencode-cli` and `agy`
+  coder's model, namespace it — `--coder codex-cli --model codex-cli/gpt-5-codex`.
+- **In-place coders own their commit.** `opencode`, `opencode-cli`, `codex-cli` and `agy`
   edit the worktree directly and commit, so post-execute validators judge the
   exact change. Any attempt to touch `.snodo/` halts as a blocker (ADR 027).
 - **Selection order:** `--mock`, then `--coder`, then a mode's `coder:` field,
-  then a model prefix (`agy/`, `opencode-cli/`, `claude`, `gpt`…), then
+  then a model prefix (`codex-cli/`, `agy/`, `opencode-cli/`, `claude`, `gpt`…), then
   `litellm`.
 
 To add one, see the [coder adapter contract](architecture/coder-adapter-contract.md).

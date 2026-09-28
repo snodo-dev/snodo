@@ -212,6 +212,7 @@ snodo supports interchangeable code generation backends declared via `--coder` o
 
 - **`litellm`** *(default, supported)*: Routes completions via LiteLLM (~100+ providers). The engine writes artifacts via `WorkspaceMCP` and manages commits and per-turn telemetry.
 - **`agy`** *(host CLI)*: Shells out to Antigravity CLI (`agy -p`) on the host. Edits files in place and commits to git upon completion.
+- **`codex-cli`** *(host CLI)*: Runs `codex exec --json` in `workspace-write` mode using the operator's Codex subscription. Edits files in place and commits to git upon completion.
 - **`opencode-cli`** *(host CLI, experimental)*: Shells out to host `opencode run`. Edits files in place and commits to git upon completion.
 - **`opencode`** *(container, experimental)*: OpenCode server running in Docker over HTTP (`POST /session`, `POST /session/{id}/message`). Edits files in place in the volume-mounted workspace and commits to git upon completion.
 - **`mock`** *(supported)*: Deterministic stub for dry runs and testing.
@@ -221,14 +222,14 @@ snodo supports interchangeable code generation backends declared via `--coder` o
 1. `--mock` / `use_mock_coder=True` option (always returns `'mock'`).
 2. `--coder <name>` CLI option on `snodo run` / `snodo plan run`.
 3. `coder: <name>` field in the active protocol mode definition.
-4. Model prefix mapping (`opencode-cli/`, `opencode/`, `agy/`, `gpt`/`o1`/`o3`, `claude`, `gemini`).
+4. Model prefix mapping (`codex-cli/`, `opencode-cli/`, `opencode/`, `agy/`, `gpt`/`o1`/`o3`, `claude`, `gemini`).
 5. Default (`litellm`).
 
 #### Model Role Separation (Judging vs Execution)
 
 - **`-m` / `--model` sets the JUDGING model**: Passing `-m` specifies the model used by LiteLLM for **validators** (pre/post-execute gates) and the **classifier**.
-- **External CLI Coders use their own model catalogs**: External CLI tools (`agy`, `opencode-cli`) use their own CLI configuration and internal catalogs. Non-prefixed model names passed to `-m` are stripped by `SubprocessCoderAdapter._bare_model()` so the CLI uses its own default model.
-- **Explicit Coder Model**: To set an external coder's model explicitly while keeping `-m` for validators, use the adapter namespace prefix (e.g. `--model agy/gemini-2.5-pro` or `--model opencode-cli/claude-3-7-sonnet`).
+- **External CLI Coders use their own model catalogs**: External CLI tools (`agy`, `codex-cli`, `opencode-cli`) use their own CLI configuration and internal catalogs. Non-prefixed model names passed to `-m` are stripped by `SubprocessCoderAdapter._bare_model()` so the CLI uses its own default model.
+- **Explicit Coder Model**: To set an external coder's model explicitly while keeping `-m` for validators, use the adapter namespace prefix (e.g. `--model codex-cli/gpt-5-codex`, `--model agy/gemini-2.5-pro`, or `--model opencode-cli/claude-3-7-sonnet`).
 
 #### In-Place Coders & Governance
 

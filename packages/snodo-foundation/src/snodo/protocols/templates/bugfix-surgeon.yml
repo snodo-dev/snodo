@@ -20,11 +20,9 @@
 #     for a TIGHTER fix (validate-and-recover aimed at localization).
 #
 # ENGINE DEPENDENCIES (must be satisfied by the EXP1b harness — not by EXP1's):
-#   1. Post-execute diff visibility. opencode-cli leaves changes UNCOMMITTED, so
-#      read_diff_between_refs (HEAD~1..HEAD) is empty (this is what silently broke
-#      arm-c review in EXP1). The only read-only diff tool the engine allows is
-#      read_diff_between_refs, so EXP1b MUST commit the coder's changes before
-#      post-validation. (There is no working-tree validator tool.)
+#   1. Post-execute diff visibility. In-place CLI coders commit their changes,
+#      making read_diff_between_refs (HEAD~1..HEAD) available to the reviewer.
+#      The only read-only diff tool the engine allows is read_diff_between_refs.
 #   2. Recovery must re-prompt the CODER with the reviewer's critique ("tighten:
 #      drop unrelated changes, minimize"), NOT re-author an intermediate spec.
 

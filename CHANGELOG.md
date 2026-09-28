@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Add the `codex-cli/<model>` in-place coder, using Codex CLI workspace-write
+  execution and recording JSONL token usage. (Fixes #547)
 - Cloud interface v7 carries nullable provider usage on completion, halt,
   validation, and recon audit events; older leases hold the hash-chain suffix
   until v7 is advertised. (Fixes #543)
