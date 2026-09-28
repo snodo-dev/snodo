@@ -1,25 +1,26 @@
-<!-- snodo-guide topic="following-a-run" aliases="run,follow-run" summary="Follow an asynchronous job in a live MCP Apps view" section="# Following a run" -->
+<!-- snodo-guide topic="following-a-run" aliases="run,follow-run" summary="Follow an asynchronous job live" section="# Following a run" -->
 # Following a run
 
 `dispatch_task`, `run_plan`, and `queue_run` return a job id when background
 work is accepted. The return only confirms that the run was queued; it does not
 mean the work passed or completed.
 
-## Open the live view
+## Watch a job live
 
-After any of those tools returns `job_id`, call `watch_job(job_id)` and hand the
-operator the returned browser link. On a server reachable over HTTP, the link
-opens a read-only live page with the job id, status, elapsed time, and latest
-ten stdout lines. It updates itself and stops at the final status, showing the
-outcome; the operator can open it in any browser, including on a phone. Keep it
-open while the job runs; the orchestrator does not need to schedule repeated
-status calls. This browser link works independently of MCP Apps support in the
-orchestrator. The capability link is scoped to that job and expires after 24
-hours by default (`SNODO_WATCH_LINK_TTL` configures the lifetime in seconds).
+After any of those tools returns `job_id`, call `watch_job(job_id)`. Its text
+snapshot is available even when the host does not render MCP Apps. When the
+server has a reachable browser URL, hand the operator the returned watch link:
+it opens a read-only live page with job status, elapsed time, and the latest ten
+stdout lines, and stops at the final status. The operator can open it in any
+browser, including on a phone. The capability link is scoped to that job and
+expires after 24 hours by default (`SNODO_WATCH_LINK_TTL` configures the lifetime
+in seconds).
 
-MCP Apps hosts also retain their in-host live panel. When the server has no
-reachable browser URL (for example stdio or an ssh-proxied server), the result
-says so and provides `snodo logs <job_id> --watch` instead.
+The MCP Apps panel is an optional extra, rendered only by some hosts; other
+hosts, including Claude Desktop and relayed sessions, may return only the text
+snapshot. Do not depend on the panel. When there is no reachable browser URL
+(for example stdio or an ssh-proxied server), use `snodo logs <job_id> --watch`
+for live output.
 For streamable-HTTP behind a self-managed public proxy, set
 `SNODO_PUBLIC_BASE_URL` to its public origin; `snodo serve --tunnel` detects its
 managed tunnel hostname automatically.
@@ -37,8 +38,9 @@ Job status is separate from plan task status. A job moves through `queued` and
 successful job; a final state with another exit code is not success.
 
 For a plan run, use `get_plan` when you need the per-task status map and task
-relationships. The live panel follows the plan-run job's own stdout log. For a
-queue run, the panel follows the queue-run job's own output and final status.
+relationships. A host-rendered panel, when supported, follows the plan-run
+job's own stdout log. For a queue run, it follows the queue-run job's own output
+and final status.
 Use `list_jobs` to inspect child jobs, then their ids with `get_job_status` and
 `get_job_logs` when you need child-task detail.
 

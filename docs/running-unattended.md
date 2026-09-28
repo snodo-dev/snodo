@@ -3,14 +3,12 @@
 
 This guide is for an orchestrator that takes a stream of intents and keeps
 turning them into judged, recorded work without a person watching every tool
-call. Choose the smallest structure that fits each intent: dispatch one task
-directly; use a wave only for multiple tasks that can run together; use a plan
-only when there is more than one wave; and use a queue only to schedule several
-plans. Snodo's execution loop and validators decide whether work passes. Treat
+call. Follow the [smallest-structure rule](authoring-a-plan.md#1-the-one-modelling-rule)
+for each intent. Snodo's execution loop and validators decide whether work passes. Treat
 each run as a job with an outcome to inspect, not as a single call that
 completes the intent.
 
-## Get notified without polling
+## Notify the operator
 
 Background job notifications are opt-in. Add one or more targets to
 `~/.snodo/config.yml`; target URLs and tokens are secrets and `snodo config
@@ -63,7 +61,9 @@ notification work is done. Messages name the project, job, plan/task when
 known, outcome, and `snodo logs <job_id>` (or
 `snodo authorize` for a pending human decision). Delivery is detached from the
 runner, bounded, and best-effort. Verify all configured targets with
-`snodo notify test`.
+`snodo notify test`. Notifications reach the operator; they do not wake or
+resume the orchestrating agent. An unattended agent must keep its own process,
+watch, and next action alive rather than relying on a notification to restart it.
 
 For plans organized into queues, start an orchestration pass with
 `snodo queue validate [x]`. It reports whether each queue's front plan can
@@ -88,8 +88,10 @@ default). Moving a plan that is running is refused. These commands accept
 `--json` for the versioned machine interface.
 
 For an intent that is one task, call `validate_task`, then `dispatch_task`, and
-follow the returned job with `get_job_status`; do not wrap it in a one-task
-plan. For multi-wave work, use the plan workflow below:
+follow the returned job with `watch_job`; do not wrap it in a one-task plan.
+When a task is confined to one declared module, name it with `module` on
+`dispatch_task` or `generate_spec`; its module test command is selected and its
+writable paths are bounded. For multi-wave work, use the plan workflow below:
 
 1. Call `propose_plan` to put the intent into a plan. Read the returned wave and
    task structure; split independent work into separate tasks and express their
@@ -102,10 +104,11 @@ plan. For multi-wave work, use the plan workflow below:
 4. Call `run_plan` without `wait=true`. It starts a background job and returns
    `job_id` immediately. That response means the job was accepted, not that any
    task passed or that the intent is complete.
-5. Follow the `job_id` with `get_job_status` until the job is terminal. Use
-   `get_job_logs` when the result needs context, and `get_plan` for per-task
-   status and validation detail. Read the terminal result and task outcomes
-   before choosing the next intent.
+5. Call `watch_job(job_id)` and hand the operator its browser link when one is
+   returned. Otherwise, use `snodo logs <job_id> --watch`. Inspect `get_plan`
+   for per-task status and validation detail; use `get_job_status` or
+   `get_job_logs` for specific follow-up. Read the terminal result and task
+   outcomes before choosing the next intent.
 6. Record what happened in a durable operator-readable report (or the
    orchestrator's run log): the intent and plan/job ids, what ran, what landed,
    what is parked, why, and any follow-up needed. Do not rely on a later human
@@ -124,18 +127,12 @@ Plan and job vocabularies are different. Job status is `queued`, `running`,
 is not necessarily a successful plan: inspect its `exit_code`, logs, and task
 statuses. `get_plan` can be read while a run is in progress as well as after.
 
-## Poll at a useful cadence
+## Keep the orchestration alive
 
-A plan run is asynchronous; waves commonly take minutes. Poll soon after start
-to catch quick plan/validation or startup failures, then back off while coders
-are working. For example, wait a few seconds before the first poll, then use
-increasing waits such as 10, 20, 40, and 60 seconds (capped at about a minute),
-resetting to a short delay after a meaningful status change. This is guidance,
-not a Snodo timeout contract. Do not hold one long blocking wait: it delays
-failure handling and makes it harder to keep other independent work moving. Do
-not poll continuously; `get_job_status` and `list_jobs` are safe to call
-repeatedly, but constant polling adds noise without making the coder finish
-sooner.
+`watch_job` is the live path for job progress; it does not keep an unattended
+agent alive. Keep the agent's own watch/action loop running, handle terminal
+results, and schedule its next action. Notifications are operator-facing
+signals, not agent wake-ups.
 
 Never infer completion from the `run_plan` response or from a validation pass.
 The job's terminal status, exit code, plan task statuses, and any needed logs

@@ -371,20 +371,19 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
             "## Task loop\n"
             "1. `validate_task(task_id, task_spec)` runs pre-execute validators and returns `pass`, `escalate`, `blocker`, or `validator_error`. `escalate` needs human `snodo authorize`; `blocker` needs a fix or better evidence/spec; `validator_error` needs retry or inspection.\n"
             "2. `dispatch_task(task_spec)` submits background work.\n"
-            "3. Call `watch_job(job_id)` and leave its live view open; use `get_job_status` or `get_job_logs` for a specific follow-up.\n"
         )
 
     if "run_plan" in exposed:
         sections.append(
             "\n"
             "## Planning\n"
-            "`propose_plan` creates the inert plan, `generate_spec` adds named task specs, and `validate_plan` checks plan structure and references (it is not an authorization gate). `run_plan` starts a background run; call `watch_job(job_id)` and leave its live view open. Use `get_plan` for per-task plan state and `get_job_status` / `get_job_logs` for specific follow-up. A wave is a barrier: tasks that need another task's output belong in a later wave.\n"
+            "`propose_plan` creates the inert plan, `generate_spec` adds named task specs (name `module` when one declared module owns the task), and `validate_plan` checks structure and references (not an authorization gate). `run_plan` starts a background run. Use `get_plan` for per-task state; a wave is a barrier, so dependent tasks belong in later waves.\n"
         )
 
     if "queue_run" in exposed:
         sections.append(
             "\n## Queues\n"
-            "Use `queue_list` and `queue_validate` to inspect ordered queues, `queue_create` / `queue_move` / `queue_remove` to manage them, and `queue_run` to progress them (validate, reorder, unblock, run); call `watch_job(job_id)` for its live job view.\n"
+            "Use `queue_list` and `queue_validate` to inspect ordered queues, `queue_create` / `queue_move` / `queue_remove` to manage them, and `queue_run` to progress them (validate, reorder, unblock, run).\n"
         )
 
     if "dispatch_task" in exposed or "run_plan" in exposed or "queue_run" in exposed:
@@ -405,7 +404,7 @@ def _build_instructions(protocol_server: ProtocolMCPServer) -> str:
         if "queue_run" in exposed:
             async_lines.append("`queue_run` is ASYNCHRONOUS and returns its job id immediately.\n\n")
         async_lines.append(
-            "After a job starts, call `watch_job(job_id)` and hand the operator its read-only browser link; they can open it in any browser, including on a phone. Leave the live view open; it updates itself and stops at a final status. If no reachable HTTP URL is configured, pass along the `snodo logs <job_id> --watch` fallback. The starter response only confirms queuing.\n"
+            "After a job starts, call `watch_job(job_id)`. Hand the operator its browser link when returned; otherwise use `snodo logs <job_id> --watch`. The text snapshot is always available. The optional MCP Apps panel renders only in some hosts, so do not rely on it. Use `get_job_status` / `get_job_logs` only for a specific follow-up. The starter response only confirms queuing.\n"
         )
         sections.append("".join(async_lines))
 

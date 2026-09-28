@@ -2072,8 +2072,8 @@ class TestInstructions:
         instructions = _build_instructions(dispatching_server)
         assert "validate_task" in instructions
         assert "dispatch_task" in instructions
-        assert "get_job_status" in instructions
-        assert "get_job_logs" in instructions
+        assert "watch_job(job_id)" in instructions
+        assert "snodo logs <job_id> --watch" in instructions
 
     def test_instructions_teach_smallest_work_structure(self, dispatching_server):
         instructions = _build_instructions(dispatching_server)
@@ -2103,7 +2103,8 @@ class TestInstructions:
         """Instructions explicitly state the async contract."""
         instructions = _build_instructions(dispatching_server)
         assert "ASYNCHRONOUS" in instructions
-        assert "poll" in instructions.lower() or "get_job_status" in instructions
+        assert "watch_job(job_id)" in instructions
+        assert "poll get_job_status" not in instructions
         assert "dispatch" in instructions.lower()
 
     def test_instructions_describe_governance_not_a_surface_gate(self, server):
@@ -2145,7 +2146,7 @@ class TestInstructions:
         """The default path contains documented advice without naming withheld tools."""
         exposed = {tool["name"] for tool in server.get_tools()}
         text = guide_text(server.project_root, exposed)
-        assert "Smallest structure" in text
+        assert "waves` topic for the smallest-structure rule" in text
         assert "Guide topics:" in text
         assert len(text) < 1000
         assert "dispatch_task" not in text
@@ -2163,6 +2164,21 @@ class TestInstructions:
         assert "pass" in text
         assert "blocker" in text
         assert "environment_error" in text
+
+    def test_following_run_topic_teaches_operator_watch_paths(self, server):
+        from snodo.mcp.guide import guide_topics
+
+        topics = guide_topics(server.project_root)
+        assert "following-a-run" in topics
+        assert "follow-run" in topics["following-a-run"]["aliases"]
+        text = guide_text(server.project_root, {tool["name"] for tool in server.get_tools()}, "follow-run")
+
+        assert "call `watch_job(job_id)`" in text
+        assert "hand the operator the returned watch link" in text
+        assert "optional extra" in text
+        assert "snodo logs <job_id> --watch" in text
+        assert "get_job_status" in text  # available for a specific follow-up
+        assert "schedule repeated status calls" not in text
 
     def test_every_guide_topic_serves_clean_markdown(self, server):
         from snodo.mcp.guide import guide_topics
@@ -2206,6 +2222,7 @@ class TestInstructions:
         assert "an empty cart reports a total of zero is a good link" in text
         assert "prescribes the solution" in text
         assert "same-wave file overlap" in text
+        assert "module" in text
 
     def test_guide_automation_topic_and_menu_are_available(self, server):
         exposed = {tool["name"] for tool in server.get_tools()}
@@ -2221,6 +2238,10 @@ class TestInstructions:
         assert "is recorded `completed`" in text
         assert "attempted and failed" in text
         assert "plan→wave→task" in text
+        assert "Notifications reach the operator" in text
+        assert "do not wake or" in text
+        assert "watch_job" in text
+        assert "snodo logs <job_id> --watch" in text
 
     def test_guide_queues_topic_teaches_queue_progression(self, server):
         exposed = {tool["name"] for tool in server.get_tools()}
@@ -2248,13 +2269,14 @@ class TestInstructions:
         assert "Blocked:" in text and "Errored:" in text and "Unmerged:" in text
         assert "Example: one overnight session" in text
         assert "human decision or repair" in text
-        assert "queue only when there are several plans" in text
+        assert "smallest-structure rule" in text
+        assert "Poll each returned job" not in text
 
     def test_guide_mistakes_names_unnecessary_wrappers_and_plan_differences(self, server):
         exposed = {tool["name"] for tool in server.get_tools()}
         text = guide_text(server.project_root, exposed, "mistakes")
 
-        assert "one-task plan" in text and "one-plan queue" in text
+        assert "smallest-structure rule above" in text
         assert "no additional human authorization gate" in text
         assert "same execution loop and auto-merge policy" in text
         assert "cloud can reconstruct" in text

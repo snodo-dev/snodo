@@ -7,9 +7,7 @@ runner processes a queue FIFO and stops at its first plan that ends `blocked`,
 reorders plans, and nudges queues by starting another run. A runner exits when
 there is nothing runnable; it does not wait for a future fix or for more plans.
 
-Choose the smallest structure that fits: dispatch one task directly; use a
-wave only for multiple tasks that can run together; use a plan only for more
-than one wave; and use a queue only when there are several plans to schedule.
+Follow the [smallest-structure rule](authoring-a-plan.md#1-the-one-modelling-rule).
 A queue is a scheduler for plans, not a wrapper for one task or one plan.
 
 For first-use cleanup of inherited plans, see the [queue triage guide](queue-triage.md).
@@ -42,9 +40,8 @@ more work:
   ordered queue, or ensure genuinely independent changes will not conflict
   before running those queues together.
 - **Runner active:** `runner_active` means that queue already has a runner.
-  Keep polling the `job_id` returned by that `queue_run`; do not start another
-  run for that queue. A lock report is not a substitute for checking the job's
-  terminal result.
+  Follow its `job_id` with `watch_job`; do not start another run for that queue.
+  A lock report is not a substitute for checking the job's terminal result.
 
 ## Keep the unattended loop alive
 
@@ -52,20 +49,18 @@ more work:
    active runner. Write and validate plans with the plan tools. Use `queue_create`
    for a separate lane and `queue_move` to put dependencies in order.
 2. Start runnable queues with `queue_run`. It returns a `job_id`; remember the
-   job and queues it covers.
-3. Poll `get_job_status` on a short backoff: wait a few seconds for the first
-   check, then about 10, 20, 40, and up to 60 seconds between checks while it
-   remains active. Inspect `get_job_logs` for errors or unclear outcomes and
-   `get_plan` for per-task outcomes. Reset to a short wait after a meaningful
-   status change. Do not busy-poll.
+   job and queues it covers. Call `watch_job(job_id)` and hand the operator its
+   browser link when returned; otherwise use `snodo logs <job_id> --watch`.
+3. Use `get_plan` for per-task outcomes. Use `get_job_status` and
+   `get_job_logs` for specific follow-up or diagnosis, not scheduled polling.
 4. When the runner job is terminal, validate the queues again. A finished job
    may have stopped at a blocked, errored, or unmerged front; act on the report
    and evidence. When the front is runnable and no runner is active, call
    `queue_run` again. Repeat for the whole unattended session.
 5. Independently set a self-check for about every 10 minutes. On each tick,
-   confirm that this orchestration loop is still alive, that its next poll or
+   confirm that this orchestration loop is still alive, that its next watch or
    action is scheduled, and that no completed runner was left without
-   validation. This check is separate from job polling: a live job does not
+   validation. A live job does not
    prove the orchestrator itself will wake up to handle its exit.
 
 There is no need to keep a runner alive after it exits. Revalidation and a new
@@ -124,17 +119,17 @@ Stop nudging a queue when progress requires human judgement or access: an
 `escalate` decision, credentials or environment repair, an unresolved merge
 conflict, repeated unexplained errors, or a dependency/overlap you cannot make
 safe. Also stop when the work is complete or no queue is runnable and there is
-no justified next plan. Do not poll or retry forever. Leave a concise note with
-the queue and plan, job IDs, last status/reason and relevant logs, what landed
-or remains unmerged, what you tried, and the precise human decision or repair
-needed. Independent, safe queues may continue while one is parked.
+no justified next plan. Do not keep nudging or retrying forever. Leave a concise
+note with the queue and plan, job IDs, last status/reason and relevant logs,
+what landed or remains unmerged, what you tried, and the precise human decision or repair needed.
+Independent, safe queues may continue while one is parked.
 
 ## Example: one overnight session
 
 At 22:00, validate `default` and `docs`: `default` contains an API plan then a
 dependent client plan, while `docs` has independent work. Keep the dependent
 pair in `default`, check overlap warnings, and start both lanes in one
-`queue_run`. Poll each returned job on the short backoff and keep the separate
+`queue_run`. Watch each returned job and keep the separate
 10-minute self-check scheduled. At 23:10, the API plan is `blocked`; read its
 halt and logs, prepare a focused corrective plan, and `queue_move` it to the
 front of `default`. The docs runner has exited cleanly, so validate `docs` and

@@ -175,10 +175,8 @@ are two plans.
 
 ### Choose the structure before authoring
 
-A one-task plan and a one-plan queue are usually mistakes: dispatch a lone task
-directly, and use a queue only when it schedules several plans. A plan is for
-ordering multiple waves, and a wave is for grouping multiple tasks that can run
-together.
+Follow the smallest-structure rule above. A plan adds durable plan→wave→task
+history, but does not change task validation or merge policy.
 
 There is no additional human authorization gate in `validate_plan`: it checks
 plan structure and spec references before a plan run, while `validate_task`
@@ -307,16 +305,16 @@ hosting split and then discovering the second half was never written.
 <!-- snodo-guide topic="planning" aliases="end-to-end" summary="The end-to-end plan loop" section="## 8. The planning loop, end to end" -->
 ## 8. The planning loop, end to end
 
-Before writing anything, choose the smallest structure that fits: dispatch one
-task directly; use a wave only when more than one task can run together; use a
-plan only when there is more than one wave; and use a queue only to schedule
-several plans. For one task, call `validate_task` and then `dispatch_task`, and
-follow the returned job with `get_job_status`. A plan's `validate_plan` is a
-structural/preflight check, not a separate human authorization gate; each plan
-task still goes through the same execution validators and auto-merge policy as
-a direct task. Plans do provide durable plan→wave→task history that the cloud
-can reconstruct (ADR 054), unlike direct task history; use a single-wave plan
-for one task only when that hierarchy is an intentional reporting requirement.
+Follow the smallest-structure rule in [The one modelling
+rule](#1-the-one-modelling-rule). For one task, call `validate_task` and then
+`dispatch_task`, and follow the returned job using [the live job
+guide](following-a-run.md). A plan's `validate_plan` is a structural/preflight
+check, not a separate human authorization gate; each plan task still goes
+through the same execution validators and auto-merge policy as a direct task.
+Plans do provide durable plan→wave→task history that the cloud can reconstruct
+(ADR 054), including bounded authored intent on plan proposal and run events,
+hierarchy is an intentional reporting requirement.
+hierarchy is an intentional reporting requirement.
 
 ### Write the intent
 
@@ -336,9 +334,8 @@ another's output, put it in a later wave. Tasks in one wave are unordered and
 may run concurrently, up to the effective concurrency limit. The limit is the
 lower of the mode's concurrency ceiling and the operator's configured coder
 capacity; either may make it 1, in which case tasks in a wave run one at a time.
-When an individual task is confined to one declared module, name that module
-when adding its spec. It runs the module's own test command and bounds writable
-paths; cross-module tasks should leave module unset.
+For module-scoped tasks, follow the module naming rule in [What goes in a task
+spec](#3-what-goes-in-a-task-spec). Cross-module tasks leave `module` unset.
 
 A wave should usually hold several small, independently useful tasks. One task
 per wave is a common sizing mistake: it adds barriers without enabling useful
@@ -388,16 +385,13 @@ Once reviewed, call `run_plan`. It starts an asynchronous job and returns a
 `job_id` immediately; that response confirms that the run was queued, not that
 the plan ran or succeeded.
 
-### Listen to the run
+### Follow the run
 
-Poll the plan-run job with `get_job_status` until it has a terminal status. Use
-`list_jobs` to find child jobs: each child carries the plan-run id in
-`parent_job`. Pair each child's `task_ref` with the task id in the plan, and use
-`get_plan` for the plan's per-task and per-wave state. Do not stop at the
-parent's starter response or assume the plan is done because dispatch returned.
-Terminal job statuses are `completed`, `failed`, `cancelled`, and `unmerged`;
-stop polling once the parent job reaches one of them. Use `get_job_logs` on
-jobs that need diagnosis.
+Use [`watch_job` and the operator watch paths](following-a-run.md) for live
+updates. Use `list_jobs` to find child jobs: each child carries the plan-run id
+in `parent_job`. Pair each child's `task_ref` with the task id in the plan, and
+use `get_plan` for per-task and per-wave state. Do not stop at the starter
+response or assume the plan is done because dispatch returned.
 
 ### Read the outcome
 

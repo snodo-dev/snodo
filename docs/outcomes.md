@@ -5,7 +5,8 @@ An MCP orchestrator receives validator results and asynchronous job records; it
 cannot use `snodo validate` or branch on that command's process exit-code table.
 Use the outcome payload and job state as evidence, then choose the next action
 below. A `dispatch_task` or `retry_job` acceptance is not a successful result:
-poll `get_job_status`, and inspect `get_job_logs` when the result needs context.
+follow it with [`watch_job`](following-a-run.md), and inspect `get_job_status`
+or `get_job_logs` for a specific follow-up or diagnosis.
 
 ## The five canonical halts (ADR 015)
 
