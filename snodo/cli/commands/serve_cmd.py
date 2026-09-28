@@ -1102,16 +1102,8 @@ def _run_tunnel(args, protocol, protocol_path) -> int:
     """
     project_root = _derive_project_root(args.protocol)
     requested_mode = getattr(args, "mode", None)
-    mode = requested_mode
-    if mode is None:
-        try:
-            from snodo.infrastructure.state import read_state
-            current = read_state(project_root).current_mode
-            if current and protocol.get_mode(current):
-                mode = current
-        except Exception as e:  # noqa: BLE001 — fall back to protocol default
-            _logger.debug("Could not read current mode for tunnel: %s", e)
-        mode = mode or protocol.initial_mode
+    from snodo.cli.commands.serve_tunnel_config import resolve_serve_mode
+    mode = resolve_serve_mode(project_root, protocol, requested_mode)
     transport = getattr(args, "transport", "streamable-http")
     rotate = getattr(args, "rotate", False)
     delete = getattr(args, "delete", False)

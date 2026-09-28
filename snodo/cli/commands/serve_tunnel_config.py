@@ -114,3 +114,20 @@ def _save_tunnel_config(project_root: str, config: dict) -> None:
     if config.get("auth_type"):
         to_save["auth_type"] = config["auth_type"]
     path.write_text(json.dumps(to_save, indent=2) + "\n")
+
+
+def resolve_serve_mode(
+    project_root: str, protocol, requested_mode: Optional[str] = None,
+) -> str:
+    """Resolve an explicit serve mode or the project's current/default mode."""
+    if requested_mode:
+        return requested_mode
+    try:
+        from snodo.infrastructure.state import read_state
+
+        current = read_state(project_root).current_mode
+        if current and protocol.get_mode(current):
+            return current
+    except Exception:  # noqa: BLE001 — state is best-effort
+        pass
+    return protocol.initial_mode

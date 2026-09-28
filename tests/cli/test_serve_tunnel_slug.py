@@ -18,9 +18,27 @@ from unittest.mock import patch
 import pytest
 
 from snodo.cli.commands import serve_cmd
+from snodo.cli.commands.serve_tunnel_config import resolve_serve_mode
 
 _LABEL = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\Z")
 _TUNNEL_DOMAIN = ".tunnel.snodo.dev"
+
+
+class TestResolveServeMode:
+    def test_unpinned_tunnel_uses_current_mode_then_protocol_default(self, tmp_path):
+        from snodo.infrastructure.state import ProjectState, write_state
+
+        root = tmp_path / "project"
+        (root / ".snodo").mkdir(parents=True)
+        protocol = SimpleNamespace(
+            initial_mode="producer",
+            get_mode=lambda mode_id: mode_id if mode_id in {"producer", "reviewer"} else None,
+        )
+
+        assert resolve_serve_mode(str(root), protocol) == "producer"
+        write_state(str(root), ProjectState(current_mode="reviewer"))
+        assert resolve_serve_mode(str(root), protocol) == "reviewer"
+        assert resolve_serve_mode(str(root), protocol, "producer") == "producer"
 
 
 def _leading_label(hostname: str) -> str:
