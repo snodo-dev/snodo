@@ -56,7 +56,7 @@ async function connect() {
   await rpc("ui/initialize", {
     protocolVersion:"2026-01-26",
     appCapabilities:{},
-    clientInfo:{name:"snodo-job-watch",version:"1.0.0"}
+    appInfo:{name:"snodo-job-watch",version:"1.0.0"}
   });
   notify("ui/notifications/initialized", {});
 }
