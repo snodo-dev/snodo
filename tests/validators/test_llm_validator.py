@@ -2266,6 +2266,31 @@ class TestStructuredOutput:
         call_kwargs = completion_fn.call_args[1]
         assert call_kwargs["response_format"] is not None
 
+    @pytest.mark.parametrize("model_validator_id", ["another_validator", None])
+    def test_structured_result_uses_configured_validator_id(
+        self, security_validator, task, model_validator_id,
+    ):
+        from unittest.mock import patch
+
+        payload = {
+            "severity": "pass",
+            "justification": "All criteria met",
+        }
+        if model_validator_id is not None:
+            payload["validator_id"] = model_validator_id
+        response = MagicMock()
+        response.choices = [MagicMock()]
+        response.choices[0].message.content = json.dumps(payload)
+        completion_fn = MagicMock(return_value=response)
+        validator = LLMValidator(security_validator, completion_fn, model="gpt-4o")
+
+        with patch("snodo.validators.llm_validator.supports_response_schema", return_value=True):
+            result = validator.evaluate(task)
+
+        assert result.validator_id == "security"
+        assert result.severity == "pass"
+        assert result.justification == "All criteria met"
+
     def test_markdown_prose_still_works_via_structured(self, security_validator, task):
         """Markdown prose in LLM response doesn't break structured output — schema enforces JSON."""
         from unittest.mock import patch

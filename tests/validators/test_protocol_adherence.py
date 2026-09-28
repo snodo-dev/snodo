@@ -3,6 +3,7 @@
 FILE: tests/validators/test_protocol_adherence.py
 """
 
+import json
 from unittest.mock import MagicMock, Mock
 
 import pytest
@@ -362,6 +363,40 @@ class TestStructuredOutput:
         # Structured path passes response_format=ValidatorResult
         call_kwargs = completion_fn.call_args[1]
         assert call_kwargs["response_format"] is not None
+
+    @pytest.mark.parametrize("model_validator_id", ["another_validator", None])
+    def test_structured_result_uses_configured_validator_id(
+        self, task, producer_mode, protocol, validator_spec, model_validator_id,
+    ):
+        from unittest.mock import patch
+
+        payload = {
+            "severity": "pass",
+            "justification": "Work aligns with mode",
+        }
+        if model_validator_id is not None:
+            payload["validator_id"] = model_validator_id
+        response = MagicMock()
+        response.choices = [MagicMock()]
+        response.choices[0].message.content = json.dumps(payload)
+        completion_fn = MagicMock(return_value=response)
+        validator = ProtocolAdherenceValidator(
+            validator_spec, completion_fn, model="gpt-4o",
+        )
+        ctx = ValidatorContext(
+            task=task, current_mode=producer_mode, protocol=protocol,
+            mode_name=producer_mode.name,
+            mode_tools=list(producer_mode.tools),
+            mode_transitions=dict(producer_mode.transitions),
+            mode_validator_refs=list(producer_mode.validators),
+        )
+
+        with patch("snodo.validators.protocol_adherence.supports_response_schema", return_value=True):
+            result = validator.evaluate(ctx)
+
+        assert result.validator_id == "protocol_adherence"
+        assert result.severity == "pass"
+        assert result.justification == "Work aligns with mode"
 
     def test_markdown_prose_still_works_via_structured(self, task, producer_mode, protocol, validator_spec):
         """Markdown prose in LLM response doesn't break structured output — schema enforces JSON."""

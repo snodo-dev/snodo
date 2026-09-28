@@ -1222,7 +1222,10 @@ class LLMValidator(ValidatorBase):
                 "Validator %s raw response (first 2KB): %s",
                 self.validator_spec.validator_id, _truncated_log(content),
             )
-        return ValidatorResult.model_validate_json(content)
+        result = ValidatorResult.model_validate_json(content)
+        return result.model_copy(update={
+            "validator_id": self.validator_spec.validator_id,
+        })
 
     def _parse_response(self, response_text: str) -> ValidatorResult:
         """Parse LLM response into a ValidatorResult.
