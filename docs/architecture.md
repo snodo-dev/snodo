@@ -13,6 +13,20 @@ How enforcement works from top to bottom. For individual design decisions, see [
 
 Snodo is a **policy-vs-mechanism** engine: you declare what a valid software development process looks like (`protocol.yml`), and the engine enforces it structurally — no after-the-fact review, no trust in agent compliance. AI agents participate as first-class team members, gated by the same rules as human contributors.
 
+For MCP orchestration, choose the smallest fitting structure: one direct task,
+a wave only for multiple tasks that can run together, a plan for multiple
+waves, or a queue for several plans. Each task goes through the same engine
+validation and execution loop. Plan validation is a structural preflight, not
+an extra human authorization gate, and a plan with no tasks anywhere is refused.
+
+MCP work starters return asynchronous job IDs. A browser watch link is the
+live-following path when an HTTP public base URL is configured (most commonly
+through a managed tunnel); `snodo logs <job_id> --watch` is the CLI path.
+`watch_job` returns a plain-text snapshot and can open an MCP Apps panel in
+hosts that render Apps; that panel is an optional extra, not a universal host
+feature. Job notifications are separate, opt-in user settings in
+`~/.snodo/config.yml`, delivered best-effort to configured targets.
+
 The 2+N model underlies everything: **2** human-in-control roles (producer and reviewer) plus **N** specialized AI agents that operate within those roles. Mode separation is structural — the engine refuses to load a protocol where two modes share an approval-conferring tool (WF1), and inside the engine loop every mutation is gated by a cryptographically valid token that can only be issued by a satisfied validator quorum (INV1/INV3). Tool access at the MCP surface is the protocol's and the mode's to decide, not a token the caller must hold (ADR 047).
 
 ## Package map
@@ -185,6 +199,14 @@ chain — so a forked or truncated chain is never certified.
 
 The audit log is the **record**, not the gate: it proves what happened and that the
 record was not altered, but enforcement decisions are never derived from scanning it.
+
+When cloud sync is enabled, recon completion starts a bounded best-effort audit
+sync even if the recon has no session. Session and project cursors share
+delivered progress for the same project audit chain, avoiding duplicate sends.
+Cloud interface v6 adds authored plan intent and plan hierarchy to plan events,
+pins `task_unmerged` and `disagreement_escalated` summaries, and remains gated
+until the cloud lease advertises support; see the
+[cloud sync contract](specs/cloud-sync.md).
 
 ## Session checkpoint (INV5)
 

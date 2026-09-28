@@ -1,9 +1,17 @@
 # Snodo
 
-**AI-native Software Development Lifecycle protocol engine.** AI agents as first-class team members, governed by declared policy with structural enforcement — bounded non-determinism, no trust required.
+**Snodo is an AI-SDLC protocol engine.** It runs an MCP loop around the coding agent you choose: validate a task, dispatch it, and inspect its asynchronous job; author plans and queues only when the work needs that structure. Protocol policy defines the validators and capabilities, while the engine enforces the task loop and records decisions.
 
-This is the documentation home. For the two-minute introduction, see the
-[repository README](https://github.com/snodo-dev/snodo#readme).
+For live job watching, open the browser link returned by MCP when an HTTP or
+managed tunnel URL is configured, or run `snodo logs <job_id> --watch`. The
+`watch_job` MCP Apps panel is an optional host feature; Claude Desktop and
+relayed sessions may return only its plain-text snapshot.
+
+Optional job notifications support ntfy, generic webhooks, Slack, Discord, and
+Teams. Configure them in `~/.snodo/config.yml` (or `$SNODO_HOME/config.yml`)
+and test targets with `snodo notify test`. See the
+[user configuration reference](configuration.md). For a short introduction,
+see the [repository README](https://github.com/snodo-dev/snodo#readme).
 
 ## Core idea: policy vs mechanism
 
@@ -23,8 +31,9 @@ snodo init --template team
 snodo run "your first task" --mock
 ```
 
-[Runbook →](runbook.md) — install, configure, the full CLI reference, MCP
-serving, and troubleshooting.
+[Runbook →](runbook.md) — install, configure, CLI usage, MCP serving, and
+troubleshooting. [Command reference →](command-reference.md) lists the current
+commands and options.
 
 [User configuration reference →](configuration.md) — `~/.snodo/config.yml`,
 provider credentials, model tuning, cloud and notification settings.
@@ -51,6 +60,13 @@ list`, plus `snodo validate` for running a phase's validators without a coder.
 Versioned with a `schema` field and validation-outcome exit codes (ADR 022).
 
 [Machine interface →](machine-interface.md)
+
+## Follow work
+
+MCP work starters return job IDs immediately. Watch the job in a browser using
+the returned link (typically through the configured tunnel), or use
+`snodo logs <job_id> --watch`; query status and logs when you need specific
+details. Notifications are detached, opt-in, and best-effort.
 
 ## The language
 

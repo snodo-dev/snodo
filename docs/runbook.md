@@ -88,60 +88,13 @@ JWT validation tokens are HS256-signed. The signing secret is randomly generated
 export SNODO_TOKEN_SECRET=$(openssl rand -hex 32)
 ```
 
-### The full configuration file
+### User configuration reference
 
-Configuration lives in `~/.snodo/config.yml` (`$SNODO_HOME` overrides the
-location). The file below is the whole surface, with the defaults and ranges
-shown.
-
-```yaml
-model: deepseek/deepseek-v4                   # default for all roles
-
-llm:
-  num_retries: 3                              # 0-10, litellm retry count
-  coder:
-    model: null                               # null = the default model
-    max_tokens: 16000
-    max_tool_turns: 6                         # 1-200
-    timeout_seconds: 1800
-    concurrency: 1                            # coders this operator can carry
-  validator:
-    model: null                               # role-specific override
-    max_tokens: 1500
-    max_tool_turns: 6                         # 1-200
-  classifier:
-    model: null
-    max_tokens: 500
-    temperature: 0.0                          # 0.0-2.0
-  recon:
-    num_agents: 1
-    models: []                                # ordered failover list
-  wave:
-    max_age_days: 14
-    max_idle_days: 5
-
-engine:
-  max_subtask_depth: 3                        # 1-10
-  max_session_age_days: 30                    # 1-365
-  token_ttl_seconds: 600                      # 60-86400
-
-providers:
-  anthropic:
-    api_key: sk-ant-...
-    api_key_env: ANTHROPIC_API_KEY            # injected at runtime when a matching model runs
-  ollama:
-    base_url: https://ollama.com/v1
-    api_key_env: OLLAMA_API_KEY
-    litellm_provider: openai                  # route ollama/<model> through the OpenAI protocol
-
-cloud:
-  api_url: https://api.snodo.dev
-  sync_enabled: false
-  liveness_interval_seconds: 60             # at most one liveness push per
-                                            # interval, and at least one while
-                                            # a session is running; lower it to
-                                            # hear from a quiet run more often
-```
+The complete schema, defaults, environment references, cloud settings, and all
+five notification target formats live in the canonical
+[user configuration reference](configuration.md). Notification targets belong
+in `~/.snodo/config.yml` (or `$SNODO_HOME/config.yml`), not in a project
+protocol. Test them with `snodo notify test`.
 
 Three shapes of key are settable without hand-editing — the bare key
 `model`, anything under `engine.`, and anything under `llm.`:
@@ -154,12 +107,11 @@ snodo config set llm.recon.num_agents 2
 snodo config get llm.coder.max_tool_turns
 ```
 
-Anything else — and the keys an operator reaches for first are in this group,
-`cloud.sync_enabled`, `cloud.liveness_interval_seconds`, `cloud.api_url`, and
-the provider endpoint settings `base_url`, `litellm_provider` and
-`api_key_env` — is answered with `Unknown config key` and can only be changed
-by editing `~/.snodo/config.yml` by hand. The only provider field with its own
-commands is `api_key`: `snodo config add` and `snodo config remove` manage it.
+Anything else — including cloud settings, notification targets, and provider
+endpoint settings such as `base_url`, `litellm_provider`, and `api_key_env` —
+is answered with `Unknown config key` and can only be changed by editing
+`~/.snodo/config.yml` by hand. The provider `api_key` field has dedicated
+commands: `snodo config add` and `snodo config remove`.
 
 Anthropic, OpenAI, Google, OpenRouter, DeepSeek and Cloudflare Workers AI have
 built-in provider configuration. `litellm_provider: openai` is what makes an
@@ -246,6 +198,12 @@ key is spent. It still returns artifacts, so the protocol's gates, the worktree
 isolation and the merge path are exercised end to end; useful for testing
 protocol configuration and validator behaviour without a provider.
 
+For an MCP run, the orchestrator validates and dispatches a task (or builds a
+plan/queue when the work needs that structure). Work starters return a job ID;
+follow it using the returned browser watch link over the configured HTTP/tunnel
+endpoint or `snodo logs <job_id> --watch`. `watch_job`'s MCP Apps panel is an
+optional host feature; clients without Apps support receive a text snapshot.
+
 ### Templates
 
 The template list is derived from `snodo/protocols/templates/` — drop in a YAML file and it becomes selectable. Shipped templates:
@@ -258,7 +216,7 @@ The template list is derived from `snodo/protocols/templates/` — drop in a YAM
 | `intent` | producer | Intent-driven, warn-only spec validators |
 | `bugfix-surgeon` | producer | Bug-fix flow with a post-execute review gate |
 | `feature-warden` | producer | Feature flow with a scope guard |
-| `greenfield` | decide, scaffold, build | Phased build of a new project with per-phase exit gates |
+| `greenfield` | plan, decide, scaffold, build | Phased build of a new project with per-phase exit gates |
 
 Run `snodo init --template <name>` to pick one directly, or `snodo init` to choose from the menu.
 
@@ -313,156 +271,12 @@ same implementation, so the plan state the two leave cannot diverge. A recorded
 status is an operator's account — the audit entry is marked unjudged and
 `outside_loop`, and it is never a validator verdict or a substitute for one.
 
-## CLI Reference
+## CLI reference
 
-`snodo <command> --help` is authoritative; the table below is the map.
-
-| | |
-|---|---|
-| `init` | Scaffold `.snodo/` from a template |
-| `run` | Execute a task, a plan (`--plan`), or a single wave (`--wave`). `--background`, `--resume`, `--retry`, `--from-pr`, `--interactive`, `--no-isolation` |
-| `ready` | Score method-scaffolding readiness against the protocol |
-| `intake` | Propose validator criteria from decision records; accept or reject each |
-| `plan` | `list`, `status`, `create`, `validate`, `add-wave`, `add-task`, `run`, `delete` |
-| `status` / `mode` | Active session and mode; `mode change` to switch |
-| `session` | `list`, `show`, `new`, `switch`, `delete`, `prune` |
-| `authorize` | Adjudicate escalated disagreements and `set_model` proposals |
-| `validate` | Run a phase's validators without a coder and return the structured result |
-| `audit verify` | Verify the hash chain |
-| `job` / `logs` / `meta` | Background jobs: `list`, `status`, `logs`, `wait`, `cancel`; log streaming; usage |
-| `task` / `worktree` | Task branches and the git worktrees used for isolation |
-| `recon` | Fan out read-only agents to answer a question; `llm.recon.models` is an ordered failover list |
-| `models` / `config` | Model discovery; keys and settings |
-| `serve` | Run the protocol as an MCP server (stdio or SSE) |
-| `cloud` | `connect`, `disconnect`, `status` for audit sync |
-| `dashboard` | TUI (`snop`) |
-| `agent` / `install` / `uninstall` | Agent memory; Claude Desktop MCP entries |
-
-### Models
-
-`snodo models` lists the configured providers, and `snodo models --provider=<name>`
-lists that provider's models with context window and price. `--stats` reports
-what your own jobs actually spent and how they ran, aggregated from project
-records.
-
-`snodo models --check` makes a small call per configured role using that role's
-request shape: prose and optional read tools for recon, a forced verdict with
-the validator's provider-parameter fallbacks for judging, and a JSON request
-for the classifier. It costs provider tokens. For `opencode-cli` coders it
-looks up the inner model in snodo's provider model list without a billed call;
-this is best-effort because OpenCode may use different provider names. Check
-the actual OpenCode catalog with `opencode models`.
-
-`snodo models --benchmark` answers a different question: how fast is a model on
-one fixed task? It sends **one prompt, the same prompt every run**, read from
-`snodo/cli/commands/model_benchmark_prompt.txt` in the repository, and reports
-the output tokens per second, the time to first token and the total wall time.
-Because the prompt never varies, two providers produce two numbers worth
-comparing — unlike `--stats`, whose rate moves with whatever prompts happened to
-run. The prompt's identity (opening line, length and content hash) is printed
-with the result, so you can tell whether two runs used the same prompt.
-Changing the prompt file makes past numbers incomparable; the file says so.
-
-Narrow the run to a single model with the same flags that filter a listing:
-
-```bash
-snodo models --benchmark --provider=deepseek --id=deepseek-chat
-```
-
-Use `--id` when the model ID is a prefix of other IDs. `--id-contains` remains
-useful for browsing by a remembered substring; an exact ID that matches nothing
-is reported as no match and is never widened to a substring search.
-
-`--benchmark` makes one **real, billed API call**. It is never reachable from
-any other command and runs only when you pass the flag; the command prints the
-model, the prompt identity and the fact that it will spend before it does. The
-output names the token-count basis as well: throughput is computed from the
-provider's reported usage when it reports any, and from a local tokenizer when
-it does not — a comparison between a provider-reported count and a locally
-estimated one is flagged as such rather than silently averaged.
-
-### Plan
-
-| Command | Description |
-|---------|-------------|
-| `snodo plan create <intent>` | Create an empty plan to author into (never generates waves) |
-| `snodo plan list` | List all plans |
-| `snodo plan status <name>` | Show plan progress |
-| `snodo plan validate <name>` | Verify plan structure and task spec files (`--json`) |
-| `snodo run --plan <name>` | Execute a plan by name (`--wave N`, `--interactive`) |
-
-Plans are authored, not generated: `plan create` scaffolds one empty wave, and
-you add waves and tasks (ids are `<wave>.<seq>_<name>`, e.g. `1.1_models`) or
-edit `plan.yml` directly. A plan is re-verified on every load. See
-[runbooks/hand-authored-plan.md](runbooks/hand-authored-plan.md).
-
-### Session
-
-| Command | Description |
-|---------|-------------|
-| `snodo session list` | List sessions (filterable by `--mode`, `--project`) |
-| `snodo session show <id>` | Show session details |
-| `snodo session delete <id>` | Delete a session |
-| `snodo session prune` | Remove stale sessions (>30 days by default) |
-
-### Mode
-
-| Command | Description |
-|---------|-------------|
-| `snodo mode show` | Show active mode |
-| `snodo mode change <mode_id>` | Switch active mode |
-
-### Config
-
-| Command | Description |
-|---------|-------------|
-| `snodo config show` | Show configured keys (masked) |
-| `snodo config add <provider> <key>` | Store an API key |
-| `snodo config remove <provider>` | Remove an API key |
-| `snodo config test` | Validate all configured keys |
-| `snodo config --encrypt-provider-keys` | Back up config and encrypt plaintext provider keys |
-| `snodo config set <section> <key> <value>` | Set a config value |
-| `snodo config get <section> <key>` | Get a config value |
-
-### Agent memory
-
-| Command | Description |
-|---------|-------------|
-| `snodo agent list` | List all agents |
-| `snodo agent memory <name>:<mode>` | Show agent memory summary |
-| `snodo agent reset <name>:<mode>` | Clear memory, assign new thread |
-| `snodo agent rotate <name>:<mode>` | Rotate thread ID (keeps checkpoints) |
-
-### Authorization
-
-| Command | Description | Key flags |
-|---------|-------------|-----------|
-| `snodo authorize [TASK_ID]` | Review and sign pending decisions | `--yes`, `--reject-all` |
-
-### Jobs
-
-| Command | Description |
-|---------|-------------|
-| `snodo job list` | List background jobs |
-| `snodo job status <id>` | Show job status |
-| `snodo job logs <id>` | Show job logs |
-| `snodo job wait <id>` | Wait for completion |
-| `snodo job cancel <id>` | Cancel a running job |
-
-### Install / Uninstall (Claude Desktop)
-
-| Command | Description |
-|---------|-------------|
-| `snodo install` | Install MCP servers into Claude Desktop config |
-| `snodo uninstall` | Remove MCP servers from Claude Desktop config |
-
-### Dashboard
-
-```
-snop
-```
-
-Or `snodo dashboard` — launches the Textual TUI for live session monitoring.
+The maintained, complete command and flag index is the
+[command reference](command-reference.md). Model discovery and selection
+guidance is in [Choosing models](choosing-models.md); plan authoring is in
+[Authoring a plan](authoring-a-plan.md).
 
 ## MCP Serving
 
@@ -497,8 +311,12 @@ Or use `snodo install` / `snodo uninstall` to manage the Claude Desktop config a
 ### How modes become servers
 
 Each protocol mode declares logical tools; `snodo serve` maps each grant to
-concrete MCP operations. A tool a mode does not grant is not exposed. No
-shipped protocol grants `write`, and `delete_file` has no grant.
+concrete MCP operations. A tool a mode does not grant is not exposed. Current
+templates grant the `write` capability where their workflow needs plan/config
+authoring; it exposes `write_file` only, and `delete_file` is not exposed.
+Unknown capability grants are warned about when an MCP server is created and
+reported by `snodo ready`, with the mode, unknown grant, and known capability
+names; they do not expose tools.
 
 | Protocol mode tool | MCP tool(s) | Purpose |
 |---|---|---|
@@ -540,21 +358,23 @@ Run `snodo init` first, or specify the protocol path with `--protocol <path>`.
 
 ### Task blocked with "BLOCKED: ..."
 
-The validators found issues. Check the structured halt payload for per-validator justifications:
+The validators or runtime returned an outcome. Check the structured halt
+payload for canonical `halt_type`, raw cause, and per-validator justifications:
 
 ```
 --- STRUCTURED HALT PAYLOAD ---
 {
-  "halt_type": "escalated",
+  "halt_type": "escalate",
   "validator_results": [...],
   "hint": "Address the blocking concerns and re-run..."
 }
 ```
 
-Two refusal modes appear in the payload:
+For example:
 
-- **`halt_type: escalated`** — no single validator blocked, but the policy threshold wasn't met (e.g., unanimous needs all to pass, but some emitted warn). Use `snodo authorize <task_id>` to review and sign.
-- **`halt_type: blocked`** — at least one validator emitted blocker (INV3). Address the blocking concern and re-run; blocking concerns cannot be voted down.
+- **`halt_type: escalate`** — the policy threshold was not met and there was no blocker. A human may review and sign with `snodo authorize <task_id>`.
+- **`halt_type: blocker`** — at least one validator returned blocker (INV3). Address the blocking concern; it cannot be authorized away.
+- **`validator_error`, `internal_error`, or `environment_error`** — an operational failure, not a verdict about the task. Diagnose the error and do not feed it back as task-spec critique.
 
 ### Token expired or invalid
 
@@ -562,7 +382,11 @@ Tokens expire at the configured TTL (default 10 minutes) and are single-use. At 
 
 ### Quality validator runs subprocess tests
 
-The `quality` validator type executes the repo's test suite via subprocess. It auto-detects the test command from common marker files (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Makefile`). Override in the protocol:
+The `quality` validator type executes the repo's test suite via subprocess. It
+uses a declared `tooling.test_command` or detects one from project marker files.
+Shipped templates provide a no-op fallback if no test command is configured or
+detected; the audit outcome is `no_tests`, not a claim that tests passed.
+Override in the protocol:
 
 ```yaml
 validators:

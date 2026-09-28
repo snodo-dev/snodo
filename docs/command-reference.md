@@ -1,190 +1,134 @@
-# Command Reference
+# Command reference
 
-This is the operator's index of the commands shipped by `snodo`. The command
-descriptions and argument names below follow the CLI help. Run any command with
-`--help` for its complete option list.
+This index matches the Typer command registrations. `snodo <command> --help`
+shows each command's argument descriptions and defaults. `--help` is available
+on all commands; top-level options are `--version`, `--verbose`/`-v`,
+`--install-completion`, and `--show-completion`.
 
-## Start And Configure
+## Project, configuration, and services
 
-Use these commands to create a project, select its operating context, and set
-up providers or cloud sync.
-
-| Command | Purpose |
+| Command | Arguments and options |
 |---|---|
-| `snodo init` | Initialize the Snodo project structure. |
-| `snodo config add` | Store an API key for a provider. |
-| `snodo config get` | Get a configuration value. |
-| `snodo config remove` | Remove a provider API key. |
-| `snodo config set` | Set a configuration value. |
-| `snodo config show` | Show configured keys in masked form. |
-| `snodo config test` | Validate all configured keys. |
-| `snodo notify test` | Send a test notification to every configured target. |
-| `snodo mode show` | Show the current active protocol mode. |
-| `snodo mode change` | Change the active protocol mode. |
-| `snodo session list` | List sessions, optionally filtered by mode, project, or status. |
-| `snodo session show` | Show details for a session. |
-| `snodo session new` | Create a new session and set it as active. |
-| `snodo session switch` | Set an existing session as active. |
-| `snodo session delete` | Delete a session. |
-| `snodo session prune` | Remove stale sessions. |
-| `snodo models` | List configured providers and their models. |
-| `snodo cloud connect` | Connect to Snodo Cloud and enable audit sync. |
-| `snodo cloud disconnect` | Disconnect from Snodo Cloud and disable sync. |
-| `snodo cloud status` | Show cloud connection and sync status. |
-| `snodo cloud sync` | Ship unsynced audit events to Snodo Cloud. |
-| `snodo cloud schema` | Publish the versioned JSON schemas for the cloud wire interface. |
-| `snodo install` | Install MCP servers into the Claude Desktop configuration. |
-| `snodo uninstall` | Remove Snodo MCP servers from the Claude Desktop configuration. |
+| `snodo init` | `--template`/`-t`, `--force`/`-f`, `--mode`/`-m`, `--project-id`, `--force-keygen`, `--yes`/`-y`, `--no-input`, `--test-command`/`-c` |
+| `snodo config show` | — |
+| `snodo config add` | `<provider> <key>` |
+| `snodo config remove` | `<provider>` |
+| `snodo config test` | — |
+| `snodo config set` | `<key> <value>` |
+| `snodo config get` | `<key>` |
+| `snodo config` (group option) | `--encrypt-provider-keys` |
+| `snodo notify test` | — |
+| `snodo mode show` | `--json` |
+| `snodo mode change` | `<new_mode>` |
+| `snodo session list` | `--mode`, `--project`, `--status` |
+| `snodo session show` | `<session_id>`, `--json` |
+| `snodo session new` | `--mode`, `--yes`/`-y`, `--force`/`-f` |
+| `snodo session switch` | `<session_id>` |
+| `snodo session delete` | `<session_id>` |
+| `snodo session prune` | `--days` |
+| `snodo models` | `--provider`/`-p`, `--flush`, `--stats`, `--provenance`, `--provenance-limit`, `--check`, `--benchmark`, `--benchmark-runs`, `--set-baseline`, `--compare`, `--benchmark-run`, `--model`, `--plan`, `--task`/`--task-id`, `--job`, `--json`, `--id`, `--id-contains`, `--max-output-cost`, `--min-output-cost`, `--max-input-cost`, `--min-context` |
+| `snodo cloud connect` | `<api_key>` |
+| `snodo cloud disconnect` | — |
+| `snodo cloud status` | — |
+| `snodo cloud sync` | `--all`, `--session`, `--force`/`--retry` |
+| `snodo cloud schema` | `--json` |
+| `snodo install` | `--protocol` |
+| `snodo uninstall` | `--mode`, `--all`, `--purge`, `--orphans`, `--yes`/`-y` |
 
-Useful forms:
+`snodo config set/get` take dotted configuration keys (for example
+`llm.coder.max_tokens`). Only the top-level `model`, `engine.*`, and `llm.*`
+keys are supported by the setter; edit other settings, including cloud and
+notification targets, in `~/.snodo/config.yml`. See the
+[configuration reference](configuration.md). `snodo cloud schema --json`
+prints the generated cloud interface schema. `snodo notify test` sends a test
+to every valid notification target.
 
-```text
-snodo init --template solo
-snodo config set engine.max_subtask_depth 3
-snodo notify test
-snodo mode show --json
-snodo cloud sync --all
-snodo cloud schema --json
-```
+## Work and planning
 
-The schema command derives its two payload schemas from the engine's declared
-wire types at the installed version. The interface version is top-level because
-it applies to both the PUT snapshot and POST event batch; neither payload has
-to carry a version field that its own declared type does not know about.
-
-`snodo cloud connect` takes an API key as a required argument. Do not put a
-real key in shell history when a safer secret-handling method is available.
-Notification targets, event filters, the ntfy setup example, and the silence
-threshold are documented in [Running Snodo unattended](running-unattended.md).
-
-## Author And Plan Work
-
-Use these commands to inspect the repository, create a plan, and execute work.
-
-| Command | Purpose |
+| Command | Arguments and options |
 |---|---|
-| `snodo plan list` | List all plans. |
-| `snodo plan status` | Show progress for a named plan. |
-| `snodo plan create` | Create a new plan from an intent description. |
-| `snodo plan validate` | Validate a plan's structure and spec files. |
-| `snodo plan add-task` | Add a task to a plan from a spec file. |
-| `snodo plan add-wave` | Add a wave to a plan. |
-| `snodo plan run` | Execute a plan's tasks through the protocol loop. |
-| `snodo queue run` | Run queued plans until each selected queue is empty or blocked. |
-| `snodo queue remove` | Remove a plan from its queue without changing its records. |
-| `snodo plan delete` | Delete a plan directory. |
-| `snodo run` | Execute a task through the protocol. |
-| `snodo validate` | Run a phase's validators and return the structured result. |
-| `snodo ready` | Assess method scaffolding readiness against the configured protocol. |
-| `snodo recon` | Dispatch a read-only exploration query to one or more agents. |
-| `snodo survey` | Analyze the repository by proposing governance or reporting protocol drift. |
-| `snodo intake` | Propose validator criteria from decision records and accept them one at a time. |
-| `snodo authorize` | Authorize a pending decision; this is human-only and requires a private signing key. |
+| `snodo run` | `[description]`; `--protocol`, `--model`/`-m`, `--coder`, `--mode`, `--module`, `--verbose`, `--mock`, `--plan`/`-p`, `--wave`/`-w`, `--interactive`/`-i`, `--from-pr`, `--background`/`-b`, `--resume`, `--retry`, `--append-spec`, `--replace-spec`, `--retain-worktree`, `--no-isolation`, `--fixture` |
+| `snodo plan list` | `--json`, `--tree` |
+| `snodo plan status` | `<name>` |
+| `snodo plan create` | `<description>`, `--name`/`-n`, `--protocol`, `--model`/`-m`, `--mock` |
+| `snodo plan validate` | `<name>`, `--json`, `--protocol` |
+| `snodo plan run` | `<name>`, `--wave`/`-w`, `--interactive`/`-i`, `--protocol`, `--model`/`-m`, `--coder`, `--mode`, `--module`, `--verbose`, `--mock`, `--retain-worktree`, `--no-isolation`, `--fixture` |
+| `snodo plan add-task` | `<plan> <task_id>`, `--spec-file` (required), `--parent`, `--replace`, `--module` |
+| `snodo plan add-wave` | `<plan> <id>`, `--depends-on` |
+| `snodo plan delete` | `<name>`, `--force` |
+| `snodo queue create` | `<name>`, `--json` |
+| `snodo queue move` | `<plan>`, `--front`, `--before`, `--after`, `--to`, `--json` |
+| `snodo queue remove` | `<plan>`, `--json` |
+| `snodo queue run` | `[queues]`, `--all`, `--non-blocking`, `--parallel-run`, `--protocol`, `--mock` |
+| `snodo queue validate` | `[queue]`, `--json` |
+| `snodo queue` (group option) | `--json` |
+| `snodo validate` | `<task_spec>`, `--phase`, `--protocol`, `--mode`, `--json` |
+| `snodo ready` | `--mode`/`-m`, `--protocol`, `--json` |
+| `snodo readiness` | `--mode`/`-m`, `--protocol`, `--json` (legacy alias) |
+| `snodo recon` | `<query> <paths>`, `--agents`/`-n` |
+| `snodo survey` | `--json`, `--agent` |
+| `snodo intake` | `--validator`, `--json`, `--accept-all`, `--reject-all`, `--no-input` |
+| `snodo authorize` | `[task_id]`, `--yes`/`-y`, `--reject-all` |
 
-Plan and task arguments are positional. For example, a plan can be created,
-validated, and run as follows:
+`--module` names a declared protocol module for a task; it selects that
+module's test command and bounds writable paths. Plans with no tasks across all
+waves are refused. `snodo plan create` makes an authoring scaffold, not a
+generated or runnable plan. A task can be run directly; waves group parallel
+tasks, plans order multiple waves, and queues schedule multiple plans. See
+[Authoring a plan](authoring-a-plan.md) and the canonical
+[queue guide](queues.md).
 
-```text
-snodo plan create "Add a health endpoint" --name health-endpoint --mock
-snodo plan validate health-endpoint
-snodo plan run health-endpoint --mock
-```
-`snodo run` accepts a description unless `--plan` is used. Its `--retry`
-option takes a task ID; use `--append-spec` to add guidance or
-`--replace-spec` to deliberately replace the existing spec.
+## Jobs, status, and cleanup
 
-`snodo queue run` runs the `default` queue, or a named queue such as
-`snodo queue run build`. Pass comma-separated names to run queues in parallel;
-`--all` runs queues sequentially in creation order. Queue runs stop at the
-first blocked, errored, or unmerged plan unless `--non-blocking` is set. With
-non-blocking enabled, `--parallel-run N` runs up to N plans from one queue at
-once. The protocol's `queue.non_blocking` and `queue.parallel_runs` settings
-provide the defaults.
-
-## Follow A Run
-
-Use these commands while work is running or when you need a compact status
-view.
-
-| Command | Purpose |
+| Command | Arguments and options |
 |---|---|
-| `snodo status` | Show the protocol, active mode, active session, and most recent run. |
-| `snodo logs` | Show output for a job or recon by ID. |
-| `snodo job list` | List all background jobs. |
-| `snodo job status` | Show the status of a background job. |
-| `snodo job logs` | Show logs for a background job. |
-| `snodo job wait` | Wait for a background job to complete. |
-| `snodo task list` | List all task branches in the current project. |
-| `snodo task show` | Inspect a task's halt and failure record from the active session. |
-| `snodo task review` | Record an operator review verdict, report acceptance statistics, or list pending reviews. |
-| `snodo task report` | Report the operator review acceptance rate over a time window. |
-| `snodo task complete` | Record that a task was completed by hand outside the loop. |
-| `snodo meta` | Show a compact summary for a job or task. |
-| `snodo dashboard` | Launch the TUI dashboard. |
-| `snodo agent list` | List all agents. |
-| `snodo agent memory` | Show an agent memory summary. |
+| `snodo status` | `--json` |
+| `snodo logs` | `<composite_id>`, `--watch`/`-w` |
+| `snodo runs` | `--json`, `--send` |
+| `snodo meta` | `<composite_id>`, `--json` |
+| `snodo job list` | — |
+| `snodo job status` | `<job_id>` |
+| `snodo job logs` | `<job_id>`, `--stream`/`-s`, `--tail`/`-n`, `--watch`/`-w` |
+| `snodo job wait` | `<job_id>`, `--timeout`/`-t` |
+| `snodo job cancel` | `<job_id>` |
+| `snodo job archive` | `--days`, `--yes`/`-y` |
+| `snodo job prune` | `--days`, `--yes`/`-y` |
+| `snodo job unarchive` | `--days`, `--yes`/`-y` |
+| `snodo job retry` | `<job_id>`, `[description]`, `--replace-spec` |
+| `snodo task list` | — |
+| `snodo task show` | `<task_id>`, `--json` |
+| `snodo task abandon` | `<task_id>` |
+| `snodo task prune` | `--days`/`--stale-days` |
+| `snodo task review` | `<task_id> <verdict>`, `--notes`, `--report`, `--pending`, `--days`, `--json` |
+| `snodo task report` | `--days`, `--json` |
+| `snodo task complete` | `<task_id>`, `--plan`/`-p`, `--who`/`--by`, `--notes`, `--json` |
+| `snodo worktree list` | `--json` |
+| `snodo worktree remove` | `<task_id>` |
+| `snodo worktree prune` | `--days`, `--force`/`-f`, `--dry-run` |
+| `snodo audit verify` | `--json` |
+| `snodo cache clear` | `--json` |
+| `snodo agent list` | — |
+| `snodo agent memory` | `<agent_id>` |
+| `snodo agent reset` | `<agent_id>` |
+| `snodo agent rotate` | `<agent_id>` |
+| `snodo dashboard` | — |
 
-For a live job, pass the ID returned by `snodo job list` to either the focused
-`snodo job logs` command or the general `snodo logs` command. Both commands
-also support watching output; the focused form additionally accepts `--tail`
-and `--stream`.
+For a live job, the browser watch link (usually through the configured managed
+tunnel) streams status and recent output. The CLI alternative is
+`snodo logs <job_id> --watch`; `snodo job logs <job_id> --watch` is also
+available. `watch_job` is an optional MCP Apps enhancement and returns a
+plain-text snapshot to hosts that do not render Apps. Job notifications are
+configured in `~/.snodo/config.yml` and tested with `snodo notify test`.
 
-## Clean Up And Recover
+## MCP server
 
-These commands remove stale state, recover work, or inspect integrity after a
-run.
-
-| Command | Purpose |
+| Command | Arguments and options |
 |---|---|
-| `snodo task abandon` | Delete a task branch and clear its failure context. |
-| `snodo task prune` | List and delete stale task branches. |
-| `snodo job cancel` | Cancel a running job. |
-| `snodo job retry` | Retry the task associated with a failed job, keeping its spec by default. |
-| `snodo job archive` | Archive old terminal jobs to `.snodo/jobs_archive/`. |
-| `snodo job unarchive` | Restore jobs from `.snodo/jobs_archive/`. |
-| `snodo job prune` | Permanently delete old terminal jobs. |
-| `snodo cache clear` | Delete the verdict cache so the next run judges fresh. |
-| `snodo audit verify` | Verify the audit log's hash chain for tamper evidence. |
-| `snodo worktree list` | List retained task worktrees. |
-| `snodo worktree remove` | Remove a retained task worktree and its branch. |
-| `snodo worktree prune` | Remove retained worktrees older than the configured TTL. |
-| `snodo agent reset` | Clear agent memory and assign a new thread. |
-| `snodo agent rotate` | Rotate an agent thread ID while keeping old checkpoints. |
+| `snodo serve` | `--protocol`, `--mode`, `--transport`, `--port`, `--tunnel`, `--verbose`, `--auth`, `--rotate`, `--credential`, `--delete`, `--hostname`, `--mcp-install`, `--mcp-uninstall`, `--mcp-uninstall-all`, `--mcp-list`, `--purge`, `--orphans`, `--yes`/`-y`, deprecated `--install`, `--uninstall`, `--uninstall-all`, `--project-name` |
 
-The destructive cleanup commands prompt unless their help documents a
-confirmation bypass such as `--yes` or `--force`. Review the target first:
-
-```text
-snodo worktree list
-snodo worktree prune --dry-run
-snodo audit verify --json
-```
-
-## Run Infrastructure
-
-These commands operate the MCP server rather than a single task.
-
-| Command | Purpose |
-|---|---|
-| `snodo serve` | Start the MCP server from the protocol definition. |
-
-`snodo serve` defaults to stdio. It can also serve SSE or streamable HTTP with
-`--transport`, and its help describes tunnel provisioning and Claude Desktop
-installation options. Add `--verbose` when debugging to show timestamped MCP
-requests and responses (including tool names, request IDs, duration and outcome);
-arguments and results are redacted and truncated. With `--tunnel`, child output
-is streamed live to the terminal while the tunnel runs.
-
-## Three Safe Checks
-
-These commands do not start a task or change project state. After
-`snodo init`, paste them from the project directory to inspect the checkout:
-
-```shell
-snodo status --json
-snodo runs --json
-snodo plan list
-snodo task list
-```
-
-Use `snodo <command> --help` for the full, live option and argument reference.
+`snodo serve --verbose` logs timestamped, redacted and bounded MCP request and
+response summaries; authentication refusals identify the failed check. The
+server defaults to stdio. HTTP transports require `--transport sse` or
+`--transport streamable-http`; `--tunnel` provisions and starts a managed
+tunnel. See `snodo serve --help` for tunnel auth, rotation, deletion, and
+Claude Desktop management options.

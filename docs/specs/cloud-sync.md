@@ -41,12 +41,15 @@ sent; the cursor stops before the first v6-only event/data and its chain suffix
 is retried after a later mint. Data is never stripped from a hash-chained event.
 snodo-cloud must advertise v6 only after both ingest and liveness accept it.
 
-Batched 1-50 events. Dispatched from a background thread during `snodo run`
-teardown and from `snodo cloud sync`; nowhere else. The cursor advances only on
-a 2xx, so a failed batch re-sends rather than being lost. Interface v6 is sent
-only after the cloud accepts v6; until then the client continues sending v5.
-New events are recorded locally while waiting. ("Nowhere else" scopes the
-*ingest* path: liveness is a second, separate wire, described below.)
+Batched 1-50 events. Dispatched from a bounded background thread during
+`snodo run` teardown, after recon completion, and from `snodo cloud sync`.
+Recon completion starts this best-effort sync even when there is no session;
+the shared project cursor tracks that same project audit chain. Session and
+project cursors share delivered progress to prevent duplicate sends. The cursor
+advances only on a 2xx, so a failed batch re-sends rather than being lost.
+Interface v6 is sent only after the cloud accepts v6; until then the client
+continues sending v5. New events are recorded locally while waiting. Liveness
+is a second, separate wire, described below.
 
 ```json
 {
@@ -343,6 +346,11 @@ validator output: the cloud can identify which planned task is waiting for
 The event and plan fields remain behind the v6 lease gate; a v5 sender holds
 the event and its chain suffix unchanged.
 
+These two v6 event definitions are intentionally explicit: `task_unmerged` has
+the six declared keys above, and `disagreement_escalated` has the five declared
+keys above. Their data models allow extra fields for forward-compatible
+ingestion, but those extra fields are not part of the pinned Snodo contract.
+
 | event_type | data keys |
 |---|---|
 | `project_announced` | project_id, scope, display_name |
@@ -413,7 +421,6 @@ the event and its chain suffix unchanged.
 | `task_added` | opaque object |
 | `task_replaced` | opaque object |
 | `task_status_corrected` | opaque object |
-| `task_unmerged` | opaque object |
 | `token_store_unavailable` | opaque object |
 | `tool_call` | opaque object |
 | `validator_contradiction_detected` | opaque object |

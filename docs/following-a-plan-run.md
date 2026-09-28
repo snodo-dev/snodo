@@ -1,5 +1,11 @@
 # Following a plan run
 
+This page is a short plan-specific index. The canonical live-following
+instructions are the MCP guide topic [`following-a-run`](following-a-run.md),
+which describes the browser link, `watch_job` text fallback, CLI log watch, and
+host-dependent MCP Apps support. Use this page for plan hierarchy and final
+task outcomes; do not treat the optional Apps panel as the primary watch path.
+
 `run_plan` is asynchronous. It returns the plan-run job's `job_id` as soon as
 the run is accepted; that response does not mean that any task passed. Keep the
 plan name and job id together in the orchestrator's run record.
@@ -28,17 +34,19 @@ task outcome.
 
 ## Follow the run live
 
-Call `watch_job(job_id)` after `run_plan` returns and leave its MCP Apps panel
-open. The panel refreshes the job status and latest stdout lines itself every
-few seconds, then stops at a final job status. This avoids scheduling repeated
-status calls. Use `get_plan` when you need the per-task map, and refresh
-`list_jobs` only when you need to discover child jobs.
+Use the browser watch link returned for the job when available; it streams
+status and recent output and stops at a final status. Otherwise use
+`snodo logs <job_id> --watch`. `watch_job(job_id)` is an optional MCP observer:
+it returns a plain-text snapshot for clients without MCP Apps support, and some
+hosts render its refreshable panel. Use `get_plan` when you need the per-task
+map, and refresh `list_jobs` only when you need to discover child jobs.
 
 There is also an opt-in narrated path: call `run_plan` with `wait=true` and
 send a progress token with the MCP request. The server emits a line when a
 task's plan status changes, including the child job id when there is one. This
 blocks that tool call until the run ends or its `timeout` expires; without a
-progress token, prefer the immediate-return path and open `watch_job`.
+progress token, prefer the immediate-return path and follow the browser link or
+CLI log watch.
 
 ## Know when to stop
 

@@ -10,6 +10,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Refresh user-facing entry points, command/configuration references, cloud
+  contract and navigation for the current MCP task loop, job watching,
+  notifications, module-scoped tasks, plan structure and interface v6. Reconcile
+  duplicate queue/plan-following pages with their canonical MCP guide topics.
+  (Fixes #529)
 - Browser watch links are checked before any job data is read, and invalid,
   expired, or job-mismatched capabilities receive the same not-found response.
   Server instructions now explicitly tell the operator to open the link in a

@@ -8,6 +8,11 @@
 > about it — because you will hit the same things. Sections marked **Friction**
 > are places snodo got in the way; some of those became bug fixes.
 
+> **Historical snapshot:** this runbook records an early 0.6-era run, not the
+> current product defaults or recommended setup. Use the current
+> [runbook](../runbook.md), [configuration reference](../configuration.md),
+> and [command reference](../command-reference.md) for present-day behavior.
+
 ---
 
 ## 1. What we're building
