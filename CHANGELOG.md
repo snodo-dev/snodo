@@ -13,6 +13,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Recon result records now include per-model-attempt usage, token/cache counts,
   provider-reported cost, served model, elapsed time, and outcome, including
   failed and fallback attempts. Unknown usage remains null. (Fixes #539)
+- (#538) Record nullable token and cache usage, distinguish provider costs from catalog estimates, and retain failed LiteLLM and in-place coder attempts with duration and outcome.
+
+### Fixed
 - Intake now appends accepted criteria directly to the target validator's YAML
   list, preserving all existing protocol comments, layout, and quoting. (Fixes #534)
 - In-place coders now commit repository changes when `.gitignore` contains a

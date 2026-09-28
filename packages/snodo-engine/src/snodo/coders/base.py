@@ -179,7 +179,29 @@ class InPlaceCoderAdapter(Coder, ABC):
         # and handles multiple commits by the coder (ADR 035, #199).
         self._head_before_run = self._record_head_before_run()
         t0 = time.perf_counter()
-        artifact = self._implement_in_place(spec)
+        try:
+            artifact = self._implement_in_place(spec)
+        except Exception as exc:
+            duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+            coder_name = getattr(self, "coder_name", None)
+            if coder_name:
+                try:
+                    from snodo.infrastructure.usage_tracker import record_inplace_coder_run
+                    context = spec.project_context if spec and spec.project_context else {}
+                    record_inplace_coder_run(
+                        coder=coder_name,
+                        model=getattr(self, "model", "") or "",
+                        duration_ms=duration_ms,
+                        job_id=context.get("job_id", ""),
+                        task_id=context.get("task_id", ""),
+                        timed_out=type(exc).__name__ in {"TimeoutExpired", "CoderTimeoutError"},
+                        timeout_seconds=getattr(exc, "timeout_seconds", None),
+                        outcome="error",
+                        error_class=type(exc).__name__,
+                    )
+                except Exception as record_error:
+                    _logger.debug("Failed to record failed inplace coder run: %s", record_error)
+            raise
         duration_ms = round((time.perf_counter() - t0) * 1000, 2)
         findings = getattr(artifact, "findings", None)
         if findings is None and hasattr(artifact, "metadata") and isinstance(artifact.metadata, dict):
@@ -246,6 +268,7 @@ class InPlaceCoderAdapter(Coder, ABC):
                     task_id=task_id,
                     timed_out=timed_out,
                     timeout_seconds=timeout_seconds,
+                    outcome="success",
                 )
         except Exception as e:
             _logger.debug("Failed to record inplace coder run: %s", e)

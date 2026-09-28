@@ -232,6 +232,7 @@ class TestLiteLLMAccountingPinned:
 
         response_obj = SimpleNamespace(
             usage=SimpleNamespace(prompt_tokens=150, completion_tokens=50),
+            _hidden_params={"response_cost": 0.0035},
         )
 
         kwargs = {
@@ -239,14 +240,12 @@ class TestLiteLLMAccountingPinned:
             "metadata": {"role": "coder", "job_id": job_id},
         }
 
-        # Mock completion cost
-        with mock.patch("litellm.completion_cost", return_value=0.0035):
-            tracker.log_success_event(
-                kwargs=kwargs,
-                response_obj=response_obj,
-                start_time=100.0,
-                end_time=102.5,
-            )
+        tracker.log_success_event(
+            kwargs=kwargs,
+            response_obj=response_obj,
+            start_time=100.0,
+            end_time=102.5,
+        )
 
         job_state = json.loads((project_root / ".snodo" / "jobs" / job_id / "state.json").read_text())
         usage = job_state.get("usage", [])
@@ -259,10 +258,77 @@ class TestLiteLLMAccountingPinned:
         assert rec["completion_tokens"] == 50
         assert rec["total_tokens"] == 200
         assert rec["cost"] == 0.0035
+        assert rec["cost_source"] == "provider"
+        assert rec["outcome"] == "success"
         assert rec["duration_ms"] == 2500.0
         assert rec["role"] == "coder"
         # Source is NOT inplace_coder
         assert rec.get("source") != "inplace_coder"
+
+    def test_missing_and_cache_usage_and_failed_call(self, tmp_path, monkeypatch):
+        root = tmp_path
+        job_id = "j_usage_details"
+        _setup_job_dir(root, job_id)
+        monkeypatch.setenv("SNODO_PROJECT_ROOT", str(root))
+        monkeypatch.setenv("SNODO_JOB_ID", job_id)
+        tracker = UsageTracker()
+        no_usage = SimpleNamespace(model="served")
+        with mock.patch("snodo.infrastructure.model_catalog.lookup", return_value={}):
+            tracker.log_success_event({"model": "asked", "metadata": {"job_id": job_id}}, no_usage, 1.0, 2.0)
+        usage = SimpleNamespace(prompt_tokens=7, completion_tokens=3,
+                                cache_read_input_tokens=2, cache_creation_input_tokens=1)
+        tracker.log_success_event({"model": "asked", "metadata": {"job_id": job_id}},
+                                  SimpleNamespace(usage=usage, model="served"), 1.0, 2.0)
+        tracker.log_failure_event({"model": "asked", "metadata": {"job_id": job_id}},
+                                  TimeoutError(), 1.0, 1.5)
+        records = json.loads((root / ".snodo/jobs" / job_id / "state.json").read_text())["usage"]
+        assert records[0]["input_tokens"] is None and records[0]["output_tokens"] is None
+        assert records[1]["cache_read_tokens"] == 2
+        assert records[1]["cache_write_tokens"] == 1
+        assert records[2]["outcome"] == "error"
+        assert records[2]["error_class"] == "TimeoutError"
+
+    def test_catalog_cost_marked_as_estimate(self, tmp_path, monkeypatch):
+        root = tmp_path
+        job_id = "j_usage_estimate"
+        _setup_job_dir(root, job_id)
+        monkeypatch.setenv("SNODO_PROJECT_ROOT", str(root))
+        monkeypatch.setenv("SNODO_JOB_ID", job_id)
+        response = SimpleNamespace(usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5), model="served")
+        with mock.patch("snodo.infrastructure.model_catalog.lookup", return_value={
+                 "input_cost": 1.0, "output_cost": 2.0, "cost_unit": "per_1m"
+             }):
+            UsageTracker().log_success_event({"model": "asked", "metadata": {"job_id": job_id}},
+                                             response, 1.0, 2.0)
+        record = json.loads((root / ".snodo/jobs" / job_id / "state.json").read_text())["usage"][0]
+        assert record["cost_source"] == "estimate"
+
+
+@pytest.mark.parametrize("error", [RuntimeError("crashed"), TimeoutError("timed out")])
+def test_failed_inplace_coder_run_is_recorded(temp_workspace, monkeypatch, error):
+    from snodo.coders.base import InPlaceCoderAdapter
+    from snodo.core.interfaces import TaskSpec
+
+    root = temp_workspace.parent
+    job_id = "j_inplace_failure"
+    _setup_job_dir(root, job_id)
+    monkeypatch.setenv("SNODO_PROJECT_ROOT", str(root))
+    monkeypatch.setenv("SNODO_JOB_ID", job_id)
+
+    class FailingCoder(InPlaceCoderAdapter):
+        coder_name = "test-coder"
+        model = "asked-model"
+        _workspace = temp_workspace
+
+        def _implement_in_place(self, spec):
+            raise error
+
+    with pytest.raises(type(error)):
+        FailingCoder().implement(TaskSpec(description="failure", constraints=[]))
+    record = json.loads((root / ".snodo/jobs" / job_id / "state.json").read_text())["usage"][0]
+    assert record["outcome"] == "error"
+    assert record["error_class"] == type(error).__name__
+    assert record["duration_ms"] >= 0
 
 
 # ============================================================================
@@ -330,4 +396,3 @@ class TestAttributionGuard:
         )
         for line in body.splitlines():
             assert not any(frag in line for frag in forbidden), line
-

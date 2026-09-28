@@ -86,8 +86,8 @@ def _summarize_cost(records: list) -> Tuple[str, float, bool]:
 
 
 def _summarize_tokens(records: list) -> Tuple[int, int, int]:
-    prompt = sum(r.get("prompt_tokens", 0) for r in records)
-    completion = sum(r.get("completion_tokens", 0) for r in records)
+    prompt = sum(value for r in records if isinstance((value := r.get("prompt_tokens")), (int, float)))
+    completion = sum(value for r in records if isinstance((value := r.get("completion_tokens")), (int, float)))
     return prompt, completion, prompt + completion
 
 
@@ -245,8 +245,12 @@ def _per_role_tokens(records: list) -> List[Tuple[str, int, int]]:
         role = r.get("role", "unknown")
         if role not in roles:
             roles[role] = {"prompt": 0, "completion": 0}
-        roles[role]["prompt"] += r.get("prompt_tokens", 0)
-        roles[role]["completion"] += r.get("completion_tokens", 0)
+        prompt = r.get("prompt_tokens")
+        completion = r.get("completion_tokens")
+        if isinstance(prompt, (int, float)):
+            roles[role]["prompt"] += prompt
+        if isinstance(completion, (int, float)):
+            roles[role]["completion"] += completion
     items = [(role, v["prompt"], v["completion"]) for role, v in roles.items()]
     items.sort(key=lambda x: -(x[1] + x[2]))
     return items
