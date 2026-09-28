@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Validator verdicts from structured single-completion responses now always
+  retain the configured validator ID, regardless of the ID returned by the
+  model. (Fixes #536)
 - Configuration commands now update only the requested YAML values, preserving
   operator comments and layout without persisting loader defaults. Writes are
   atomic and retain mode 600. (Fixes #533)

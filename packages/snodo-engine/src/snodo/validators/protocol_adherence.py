@@ -302,7 +302,10 @@ class ProtocolAdherenceValidator(ValidatorBase):
             response_format=ValidatorResult,
         )
         content = response.choices[0].message.content
-        return ValidatorResult.model_validate_json(content)
+        result = ValidatorResult.model_validate_json(content)
+        return result.model_copy(update={
+            "validator_id": self.validator_spec.validator_id,
+        })
 
     def _call_completion_with_retry(self, **kwargs) -> Any:
         """Use the shared provider-parameter recovery used by LLM validators."""
