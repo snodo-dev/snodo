@@ -805,6 +805,51 @@ class TestListMCPEntries:
         assert config_path.read_bytes() == before
 
 
+class TestCodexClientTargets:
+    def test_codex_home_is_honoured(self, temp_dir):
+        from snodo.mcp.installer import get_codex_config_path
+        with patch.dict("os.environ", {"CODEX_HOME": str(temp_dir)}):
+            assert get_codex_config_path() == temp_dir / "config.toml"
+
+    @pytest.mark.parametrize("clients", ["claude", "codex", "both", "neither"])
+    def test_install_detects_present_clients_only(self, protocol, temp_dir, clients):
+        from snodo.mcp.installer import ClientTarget, install_clients
+        claude = ClientTarget("Claude Desktop", temp_dir / "Claude" / "config.json", "mcpServers", "json")
+        codex = ClientTarget("Codex / ChatGPT desktop", temp_dir / "Codex" / "config.toml", "mcp_servers", "toml")
+        targets = {"claude": [claude], "codex": [codex], "both": [claude, codex], "neither": []}[clients]
+        with patch("snodo.mcp.installer.client_targets", return_value=targets):
+            results = install_clients(protocol, "/p.yml", "demo")
+        assert len(results) == len(targets)
+        for target in targets:
+            text = target.config_path.read_text()
+            assert "snodo-demo-producer" in text
+        if codex in targets:
+            assert "tool_timeout_sec = 1800" in codex.config_path.read_text()
+
+    def test_toml_comments_and_existing_servers_survive_install(self, protocol, temp_dir):
+        from snodo.mcp.installer import ClientTarget, install_clients
+        target = ClientTarget("Codex", temp_dir / "config.toml", "mcp_servers", "toml")
+        target.config_path.write_text("# keep this comment\n[mcp_servers.other]\ncommand = 'other-tool' # keep inline\n")
+        with patch("snodo.mcp.installer.client_targets", return_value=[target]):
+            install_clients(protocol, "/p.yml", "demo")
+        text = target.config_path.read_text()
+        assert "# keep this comment" in text
+        assert "# keep inline" in text
+        assert "[mcp_servers.other]" in text
+
+    def test_uninstall_all_removes_only_snodo_from_each_client(self, temp_dir):
+        from snodo.mcp.installer import ClientTarget, mutate_clients
+        claude = ClientTarget("Claude", temp_dir / "claude.json", "mcpServers", "json")
+        codex = ClientTarget("Codex", temp_dir / "config.toml", "mcp_servers", "toml")
+        claude.config_path.write_text(json.dumps({"mcpServers": {"snodo-a": {}, "keep": {}}}))
+        codex.config_path.write_text("[mcp_servers.snodo-a]\ncommand='snodo'\n\n[mcp_servers.keep]\ncommand='other'\n")
+        with patch("snodo.mcp.installer.client_targets", return_value=[claude, codex]):
+            results = mutate_clients("all")
+        assert all(names == ["snodo-a"] for _, names in results)
+        assert "keep" in json.loads(claude.config_path.read_text())["mcpServers"]
+        assert "[mcp_servers.keep]" in codex.config_path.read_text()
+
+
 # ---------------------------------------------------------------------------
 # print_uninstall_result
 # ---------------------------------------------------------------------------

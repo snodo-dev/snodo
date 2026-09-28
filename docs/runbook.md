@@ -362,7 +362,11 @@ Connecting an orchestrator (Claude Desktop, custom agent):
 }
 ```
 
-Or use `snodo install` / `snodo uninstall` to manage the Claude Desktop config automatically.
+Use `snodo serve --mcp-install` to register with installed Claude Desktop and
+Codex-family clients (ChatGPT desktop, Codex CLI, and the IDE extension share
+the Codex config). The installer skips clients whose config directory is absent;
+restart the updated client after installation. `--mcp-uninstall`,
+`--mcp-uninstall-all`, `--mcp-list`, and orphan cleanup cover those clients too.
 
 ### How modes become servers
 

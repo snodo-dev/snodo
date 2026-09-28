@@ -132,10 +132,17 @@ response summaries; authentication refusals identify the failed check. The
 server defaults to stdio. HTTP transports require `--transport sse` or
 `--transport streamable-http`; `--tunnel` provisions and starts a managed
 tunnel. See `snodo serve --help` for tunnel auth, rotation, deletion, and
-Claude Desktop management options.
+MCP client management options for installed Claude Desktop and Codex-family
+clients (ChatGPT desktop, Codex CLI, and the IDE extension share
+`~/.codex/config.toml`; `CODEX_HOME` can relocate it).
 
 Without `--mode`, the server exposes the current mode from
 `.snodo/state.json`, falling back to the protocol's `initial_mode`; `--mode`
 pins it to a named mode. It does not combine grants from other modes. The
 `--mcp-install` option registers one entry per mode, each started with its
 matching `--mode` pin.
+Installation and cleanup update each supported client whose configuration
+directory exists: Claude Desktop and the Codex family (ChatGPT desktop, Codex
+CLI, and the IDE extension). Codex stores its shared configuration in
+`~/.codex/config.toml`, or `$CODEX_HOME/config.toml` when `CODEX_HOME` is set.
+Absent clients are skipped; restart each updated client after installing.

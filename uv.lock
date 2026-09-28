@@ -4292,6 +4292,7 @@ dependencies = [
     { name = "snodo-engine" },
     { name = "snodo-foundation" },
     { name = "snodo-tools" },
+    { name = "tomlkit" },
 ]
 
 [package.metadata]
@@ -4309,6 +4310,7 @@ requires-dist = [
     { name = "snodo-engine", editable = "packages/snodo-engine" },
     { name = "snodo-foundation", editable = "packages/snodo-foundation" },
     { name = "snodo-tools", editable = "packages/snodo-tools" },
+    { name = "tomlkit", specifier = ">=0.13.2" },
 ]
 
 [[package]]

@@ -41,6 +41,12 @@ browser watch link returned when an HTTP/tunnel URL is configured, or with
 but some hosts (including Claude Desktop and relayed sessions) show only its
 plain-text snapshot.
 
+Register Snodo's mode-pinned MCP servers with `snodo serve --mcp-install`.
+Installation supports Claude Desktop and the Codex family: ChatGPT desktop,
+Codex CLI, and the IDE extension share `~/.codex/config.toml` (relocated by
+`CODEX_HOME`). Only clients with an existing config directory are updated;
+restart each updated client to connect.
+
 Optional job notifications can send project-named updates to ntfy, a generic
 webhook, Slack, Discord, or Teams. Configure targets in
 `~/.snodo/config.yml` (`$SNODO_HOME/config.yml` when overridden), then check

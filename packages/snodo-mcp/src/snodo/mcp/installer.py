@@ -16,12 +16,136 @@ import os
 import platform
 import re
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from snodo.compiler.models import Protocol
+import tomlkit
 
 _logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ClientTarget:
+    """Configuration target for one MCP client family."""
+    name: str
+    config_path: Path
+    servers_key: str
+    format: str
+
+
+def get_codex_config_path() -> Path:
+    """Return the shared Codex/ChatGPT desktop MCP configuration path."""
+    return Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "config.toml"
+
+
+def client_targets(claude_config_path: Optional[Path] = None) -> List[ClientTarget]:
+    """Return known client targets, marking presence by their config directory."""
+    claude = claude_config_path or get_claude_config_path()
+    codex = get_codex_config_path()
+    targets = []
+    if claude.parent.is_dir() or claude.exists():
+        targets.append(ClientTarget("Claude Desktop", claude, "mcpServers", "json"))
+    if codex.parent.is_dir() or codex.exists():
+        targets.append(ClientTarget("Codex / ChatGPT desktop", codex, "mcp_servers", "toml"))
+    return targets
+
+
+def known_client_targets() -> List[ClientTarget]:
+    """Return all supported targets, including clients not installed locally."""
+    claude = get_claude_config_path()
+    codex = get_codex_config_path()
+    return [ClientTarget("Claude Desktop", claude, "mcpServers", "json"),
+            ClientTarget("Codex / ChatGPT desktop", codex, "mcp_servers", "toml")]
+
+
+def _read_target(target: ClientTarget):
+    if not target.config_path.exists():
+        return tomlkit.document() if target.format == "toml" else {}
+    text = target.config_path.read_text()
+    if not text.strip():
+        return tomlkit.document() if target.format == "toml" else {}
+    if target.format == "toml":
+        return tomlkit.parse(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _write_target(target: ClientTarget, config) -> None:
+    target.config_path.parent.mkdir(parents=True, exist_ok=True)
+    text = tomlkit.dumps(config) if target.format == "toml" else json.dumps(config, indent=2) + "\n"
+    target.config_path.write_text(text)
+
+
+def _servers(config, target: ClientTarget):
+    if target.servers_key not in config:
+        config[target.servers_key] = tomlkit.table() if target.format == "toml" else {}
+    return config[target.servers_key]
+
+
+def _client_entry(entry: dict, target: ClientTarget) -> dict:
+    if target.format != "toml":
+        return entry
+    # Snodo's long-running synchronous MCP tools need a higher ceiling than Codex's 60s default.
+    return {**entry, "startup_timeout_sec": 120, "tool_timeout_sec": 1800}
+
+
+def install_clients(protocol: Protocol, protocol_path: str, project_name: str,
+                    targets: Optional[List[ClientTarget]] = None):
+    """Install into each detected client; never create absent client directories."""
+    results = []
+    entries = generate_mcp_entries(protocol, protocol_path, project_name)
+    for target in targets if targets is not None else client_targets():
+        config = _read_target(target)
+        servers = _servers(config, target)
+        added, updated = [], []
+        for name, entry in entries.items():
+            (updated if name in servers else added).append(name)
+            servers[name] = _client_entry(entry, target)
+        _write_target(target, config)
+        results.append((target, added, updated))
+    return results
+
+
+def mutate_clients(operation: str, protocol: Optional[Protocol] = None,
+                   project_name: Optional[str] = None, mode_id: Optional[str] = None,
+                   targets: Optional[List[ClientTarget]] = None):
+    """Apply an uninstall/list/orphan operation to all detected client configs."""
+    results = []
+    expected = set(generate_mcp_entries(protocol, "", project_name or "",)) if protocol else set()
+    if mode_id:
+        expected = {name for name in expected if name.endswith("-" + mode_id)}
+    for target in targets if targets is not None else client_targets():
+        config = _read_target(target)
+        servers = config.get(target.servers_key, {})
+        if operation == "list":
+            entries = []
+            for name, entry in servers.items():
+                if not name.startswith("snodo-"): continue
+                args = entry.get("args", []) if isinstance(entry, dict) else []
+                p = next((args[i + 1] for i, arg in enumerate(args[:-1]) if arg == "--protocol"), None)
+                project = Path(p).resolve().parent.parent if p and Path(p).parent.name == ".snodo" else (Path(p).resolve().parent if p else None)
+                entries.append({"entry_name": name, "project_path": str(project) if project else None,
+                                "project_exists": bool(project and project.is_dir())})
+            results.append((target, entries))
+            continue
+        if not servers: continue
+        if operation == "all": names = [n for n in servers if n.startswith("snodo-")]
+        elif operation == "project": names = [n for n in servers if n in expected]
+        else:
+            names = []
+            for name, entry in servers.items():
+                if not name.startswith("snodo-"): continue
+                args = entry.get("args", []) if isinstance(entry, dict) else []
+                p = next((args[i + 1] for i, arg in enumerate(args[:-1]) if arg == "--protocol"), None)
+                if p and not Path(p).exists(): names.append(name)
+        for name in names: del servers[name]
+        if names: _write_target(target, config)
+        results.append((target, names))
+    return results
 
 
 def sanitize_project_name(name: str) -> str:
