@@ -12,6 +12,7 @@ Resolves which CodeHostProvider to use for a project:
 import logging
 import re
 import subprocess
+from urllib.parse import urlparse
 from typing import Dict, Optional, Type
 
 from snodo.providers.base import CodeHostProvider, ProviderError
@@ -88,10 +89,47 @@ def _detect_from_url(url: str) -> Optional[str]:
     Returns:
         Provider name string, or None if no match
     """
-    if "github.com" in url:
+    if "github.com" in _remote_host(url):
         return "github"
-    # Future: gitlab.com, bitbucket.org, etc.
+    host = _remote_host(url)
+    for name, provider_cls in _loaded_plugins().items():
+        hosts = getattr(provider_cls, "remote_hosts", ())
+        if isinstance(hosts, str):
+            hosts = (hosts,)
+        if any(host == declared.lower().strip().rstrip(".") for declared in hosts):
+            return name
     return None
+
+
+def _remote_host(url: str) -> str:
+    """Extract the host from HTTPS, ssh://, or scp-style git remotes."""
+    parsed = urlparse(url if "://" in url else "")
+    if parsed.hostname:
+        return parsed.hostname.lower().rstrip(".")
+    match = re.match(r"(?:[^@]+@)?([^:]+):", url)
+    return match.group(1).lower().rstrip(".") if match else ""
+
+
+def _entry_point_records():
+    """Return (entry point, class, error) records for installed plugins."""
+    from importlib.metadata import entry_points
+    try:
+        eps = entry_points(group="snodo.providers")
+    except Exception as exc:
+        _logger.warning("Could not discover snodo.providers entry points: %s", exc)
+        return []
+    records = []
+    for ep in eps:
+        try:
+            records.append((ep, ep.load(), None))
+        except Exception as exc:
+            _logger.warning("Could not load code-host plugin '%s': %s: %s", ep.name, type(exc).__name__, exc)
+            records.append((ep, None, exc))
+    return records
+
+
+def _loaded_plugins() -> Dict[str, Type[CodeHostProvider]]:
+    return {ep.name: cls for ep, cls, error in _entry_point_records() if cls is not None}
 
 
 def parse_github_slug(url: str) -> Optional[str]:
@@ -146,10 +184,15 @@ def _create_provider(
     provider_cls = _load_entry_point(name)
     if provider_cls:
         try:
-            return provider_cls(project_root=project_root, metadata=metadata)  # type: ignore[call-arg]
-        except TypeError:
-            # Provider may not accept these kwargs
-            return provider_cls()
+            try:
+                return provider_cls(project_root=project_root, metadata=metadata)  # type: ignore[call-arg]
+            except TypeError:
+                # Provider may not accept these kwargs
+                return provider_cls()
+        except Exception as exc:
+            raise ProviderError(
+                f"Could not construct code-host plugin '{name}': {type(exc).__name__}: {exc}"
+            ) from exc
 
     raise ProviderError(
         f"Unknown provider: '{name}'. "
@@ -189,14 +232,11 @@ def _load_entry_point(name: str) -> Optional[Type[CodeHostProvider]]:
     Returns:
         Provider class, or None if not found
     """
-    try:
-        from importlib.metadata import entry_points
-        eps = entry_points(group="snodo.providers")
-        for ep in eps:
-            if ep.name == name:
-                return ep.load()
-    except Exception as e:
-        _logger.debug("Failed to load provider entry point %s: %s", name, e)
+    for ep, provider_cls, error in _entry_point_records():
+        if ep.name == name:
+            if error is not None:
+                raise ProviderError(f"Could not load code-host plugin '{name}': {type(error).__name__}: {error}") from error
+            return provider_cls
     return None
 
 
@@ -211,12 +251,33 @@ def list_providers() -> Dict[str, str]:
         "local": "Local only (no remote)",
     }
 
-    try:
-        from importlib.metadata import entry_points
-        eps = entry_points(group="snodo.providers")
-        for ep in eps:
-            providers[ep.name] = f"Plugin: {ep.value}"
-    except Exception as e:
-        _logger.debug("Failed to discover provider entry points: %s", e)
+    for ep, provider_cls, error in _entry_point_records():
+        providers[ep.name] = (f"Plugin: {ep.value}" if error is None else
+                              f"Plugin failed to load: {type(error).__name__}: {error}")
 
     return providers
+
+
+def provider_plugin_status() -> Dict[str, Dict[str, str]]:
+    """Return installed plugin information, including import/constructor failures."""
+    result = {}
+    for ep, provider_cls, error in _entry_point_records():
+        if error is not None:
+            result[ep.name] = {"status": "failed", "error": f"{type(error).__name__}: {error}", "hosts": ""}
+            continue
+        hosts = getattr(provider_cls, "remote_hosts", ())
+        if isinstance(hosts, str):
+            hosts = (hosts,)
+        result[ep.name] = {"status": "installed", "error": "", "hosts": ", ".join(hosts)}
+    return result
+
+
+def resolve_provider_name(project_root: str, protocol_metadata: Optional[Dict] = None) -> tuple[str, str]:
+    """Explain which provider name applies, without constructing the provider."""
+    metadata = protocol_metadata or {}
+    explicit = metadata.get("provider")
+    if explicit:
+        return explicit, "selected by metadata.provider"
+    remote = _get_git_remote(project_root)
+    detected = _detect_from_url(remote) if remote else None
+    return (detected, f"detected from remote host {_remote_host(remote)}") if detected else ("local", "no installed provider matches the git remote")

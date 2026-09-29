@@ -109,6 +109,7 @@ def ready_command(args) -> int:
     # Run assessment across the whole protocol
     assessment = assess_readiness(project_root, protocol)
     _append_mcp_install_findings(assessment)
+    _append_provider_findings(assessment, project_root, protocol)
     protocol_warnings = unknown_capability_warnings(protocol)
 
     # Resolve project identity for audit logging
@@ -261,5 +262,42 @@ def _append_mcp_install_findings(assessment) -> None:
                     description=(f"Installed MCP entry '{name}' for {target.name} "
                                  f"in {target.config_path} {reason}."),
                     remediation="Reinstall with 'snodo serve --mcp-install' to point at the current installation and refresh its dependencies.",
-                    fix_cost=3,
+                 fix_cost=3,
                 ))
+
+
+def _append_provider_findings(assessment, project_root: Path, protocol) -> None:
+    """Report installed code-host plugins and this project's provider choice."""
+    from snodo.providers.registry import provider_plugin_status, resolve_provider_name, detect_provider
+    from snodo.readiness.models import FindingSeverity, ReadinessFinding, ReadinessKind
+
+    metadata = getattr(protocol, "metadata", {}) or {}
+    statuses = provider_plugin_status()
+    try:
+        selected, why = resolve_provider_name(str(project_root), metadata)
+        # Instantiation is intentional: readiness must identify a selected plugin
+        # whose import succeeded but whose constructor is broken.
+        detect_provider(str(project_root), metadata)
+        resolution = f"This project resolves to provider '{selected}' ({why})."
+    except Exception as exc:
+        selected = metadata.get("provider")
+        why = f"configured provider '{selected}' failed" if selected else "detected provider failed"
+        resolution = f"Provider resolution failed: {type(exc).__name__}: {exc}"
+        assessment.workstation_findings.append(ReadinessFinding(
+            id="code_host_provider_failure", kind=ReadinessKind.WORKSTATION,
+            severity=FindingSeverity.WARN, modes=["all"],
+            description=resolution,
+            remediation="Fix the provider plugin installation/configuration, then re-run 'snodo ready'.",
+            fix_cost=2,
+        ))
+
+    lines = [f"Installed code-host plugin '{name}' ({entry['hosts'] or 'no remote_hosts declared'})."
+             for name, entry in sorted(statuses.items()) if entry["status"] == "installed"]
+    lines.extend(f"Code-host plugin '{name}' failed to load: {entry['error']}"
+                 for name, entry in sorted(statuses.items()) if entry["status"] == "failed")
+    lines.append(resolution)
+    assessment.workstation_findings.append(ReadinessFinding(
+        id="code_host_plugins", kind=ReadinessKind.WORKSTATION,
+        severity=FindingSeverity.INFO, modes=["all"],
+        description=" ".join(lines), remediation="No action required.", fix_cost=1,
+    ))

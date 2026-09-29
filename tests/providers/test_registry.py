@@ -164,3 +164,24 @@ class TestEntryPoints:
         providers = list_providers()
         assert "github" in providers
         assert "local" in providers
+
+    def test_fixture_plugin_is_discovered_and_listed(self):
+        plugin = type("Plugin", (), {"remote_hosts": ("gitlab.example",)})
+        ep = MagicMock(name="gitlab", value="fixture:Plugin")
+        ep.name = "gitlab"
+        ep.load.return_value = plugin
+        with patch("importlib.metadata.entry_points", return_value=[ep]):
+            assert "gitlab" in list_providers()
+            assert _detect_from_url("git@gitlab.example:group/repo.git") == "gitlab"
+
+    def test_broken_plugin_is_reported_and_explicit_provider_wins(self):
+        from snodo.providers.registry import provider_plugin_status
+        ep = MagicMock(value="broken:Provider")
+        ep.name = "broken"
+        ep.load.side_effect = ImportError("missing dependency")
+        with patch("importlib.metadata.entry_points", return_value=[ep]):
+            assert "missing dependency" in provider_plugin_status()["broken"]["error"]
+            with patch("snodo.providers.registry._create_provider", return_value=LocalProvider()) as create:
+                result = detect_provider("/tmp", {"provider": "local"})
+                create.assert_called_once_with("local", "/tmp", {"provider": "local"})
+                assert isinstance(result, LocalProvider)

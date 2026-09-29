@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `snodo ready` reports installed and failing code-host plugins and explains the
+  project's provider resolution; plugins may declare `remote_hosts` for automatic
+  host matching, while `metadata.provider` remains authoritative. (Fixes #556)
+
 ### Changed
 - `retry_job` continues from the previous attempt's worktree by default,
   preserving committed and uncommitted work; `fresh_start` opts into main.
