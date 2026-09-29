@@ -27,8 +27,12 @@ class ExecutionConfig(BaseModel):
         ),
     )
     max_total_fix_attempts: int = Field(default=10, ge=1, le=100)
-    auto_merge: bool = Field(
-        default=False,
+    delivery: Optional[Literal["local_merge", "push_branch", "change_request"]] = Field(
+        default=None,
+        description="How completed work is delivered. Push and change requests are not yet supported.",
+    )
+    auto_merge: Optional[bool] = Field(
+        default=None,
         description=(
             "Whether a successfully completed task's branch is merged into the "
             "base branch automatically. Default off; a mode may override it."
@@ -364,6 +368,10 @@ class Mode(BaseModel):
     constraints: List[Constraint] = Field(default_factory=list, description="Mode-specific constraints")
     coder: Optional[str] = Field(default=None, description="Coder backend name (e.g., 'litellm', 'mock')")
     coder_config: Dict[str, Any] = Field(default_factory=dict, description="Coder backend configuration")
+    delivery: Optional[Literal["local_merge", "push_branch", "change_request"]] = Field(
+        default=None,
+        description="Override protocol delivery for this mode.",
+    )
     auto_merge: Optional[bool] = Field(
         default=None,
         description=(
@@ -464,6 +472,22 @@ class Protocol(BaseModel):
             "that declares no modules compiles and behaves exactly as it does today."
         ),
     )
+
+    @model_validator(mode="after")
+    def validate_delivery_configuration(self):
+        execution_fields = self.execution.model_fields_set
+        if self.execution.delivery is not None and self.execution.auto_merge is not None:
+            raise ValueError("execution.delivery and execution.auto_merge cannot both be set; use execution.delivery")
+        for mode in self.modes:
+            fields = mode.model_fields_set
+            if mode.delivery is not None and mode.auto_merge is not None:
+                raise ValueError(f"mode '{mode.mode_id}' cannot set both delivery and auto_merge; use delivery")
+        for scope, delivery in [("execution", self.execution.delivery)] + [
+            (f"mode '{mode.mode_id}'", mode.delivery) for mode in self.modes
+        ]:
+            if delivery in {"push_branch", "change_request"}:
+                raise ValueError(f"{scope}.delivery '{delivery}' is not yet supported")
+        return self
     
     @field_validator('protocol_id')
     @classmethod
@@ -565,7 +589,20 @@ class Protocol(BaseModel):
         The mode's ``auto_merge`` (if set) overrides the protocol-level
         ``execution.auto_merge``; otherwise the protocol setting applies.
         """
-        return bool(self.resolve_mode_setting(mode_id, "auto_merge"))
+        return self.delivery_for(mode_id) == "local_merge"
+
+    def delivery_for(self, mode_id: str) -> str:
+        """Resolve delivery, translating legacy auto_merge values exactly."""
+        mode = self.get_mode(mode_id)
+        if mode is not None and mode.delivery is not None:
+            return mode.delivery
+        if self.execution.delivery is not None:
+            return self.execution.delivery
+        if mode is not None and mode.auto_merge is not None:
+            return "local_merge" if mode.auto_merge else "leave_unmerged"
+        if self.execution.auto_merge is not None:
+            return "local_merge" if self.execution.auto_merge else "leave_unmerged"
+        return "leave_unmerged"
 
     def max_recovery_depth_for(self, mode_id: str) -> int:
         """Resolve max recovery depth for *mode_id*.

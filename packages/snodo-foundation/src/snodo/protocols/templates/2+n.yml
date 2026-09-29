@@ -34,7 +34,6 @@ modes:
     # Optional mode-specific controls for a project with differing workloads:
     # concurrency: 2
     # max_recovery_depth: 3
-    # auto_merge: false
     # coder: "litellm"
     # coder_config: {}
     validators:
@@ -205,7 +204,6 @@ execution:
   # producer's work passed mechanical verification, not that a human reviewed it.
   # Auto-merging would push unreviewed work onto the base branch and defeat the
   # point of the separation, so merging stays a deliberate operator action.
-  auto_merge: false
 
 # Queue progression stays strict FIFO by default. Enable non-blocking or parallel
 # runs only when later plans are independent, as described in docs/queues.md.

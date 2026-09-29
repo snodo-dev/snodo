@@ -600,6 +600,51 @@ def test_auto_merge_mode_override_off():
     assert p.auto_merge_enabled("producer") is False
 
 
+def test_delivery_mode_overrides_protocol_delivery():
+    from snodo.compiler.models import ExecutionConfig
+    base = _auto_merge_protocol(execution_auto_merge=False)
+    p = Protocol(
+        protocol_id=base.protocol_id, name=base.name,
+        modes=[Mode(mode_id="producer", name="Producer", tools=["edit"], validators=["v1"], delivery="local_merge")],
+        validators=base.validators, initial_mode=base.initial_mode,
+        execution=ExecutionConfig(delivery="local_merge"),
+    )
+    assert p.delivery_for("producer") == "local_merge"
+
+
+@pytest.mark.parametrize(("legacy", "expected"), [(True, "local_merge"), (False, "leave_unmerged")])
+def test_auto_merge_maps_to_delivery(legacy, expected):
+    from snodo.compiler.models import ExecutionConfig
+    p = _auto_merge_protocol(execution_auto_merge=legacy)
+    assert p.delivery_for("producer") == expected
+    assert p.auto_merge_enabled("producer") is (legacy is True)
+
+
+def test_delivery_and_auto_merge_conflict():
+    from pydantic import ValidationError
+    from snodo.compiler.models import ExecutionConfig
+    base = _auto_merge_protocol()
+    with pytest.raises(ValidationError, match="cannot both be set"):
+        Protocol(
+            protocol_id=base.protocol_id, name=base.name, modes=base.modes,
+            validators=base.validators, initial_mode=base.initial_mode,
+            execution=ExecutionConfig(delivery="local_merge", auto_merge=True),
+        )
+
+
+@pytest.mark.parametrize("value", ["push_branch", "change_request"])
+def test_unsupported_delivery_is_rejected(value):
+    from pydantic import ValidationError
+    from snodo.compiler.models import ExecutionConfig
+    base = _auto_merge_protocol()
+    with pytest.raises(ValidationError, match="not yet supported"):
+        Protocol(
+            protocol_id=base.protocol_id, name=base.name, modes=base.modes,
+            validators=base.validators, initial_mode=base.initial_mode,
+            execution=ExecutionConfig(delivery=value),
+        )
+
+
 # ========== per-mode max_recovery_depth configuration ==========
 
 def _recovery_depth_protocol(execution_depth=3, mode_depth=None):

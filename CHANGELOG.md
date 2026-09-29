@@ -9,6 +9,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Protocols can declare `execution.delivery` (`local_merge`, `push_branch`, or
+  `change_request`) with per-mode overrides. Legacy `auto_merge` remains
+  compatible; push and change-request delivery are explicitly rejected until
+  supported. (Fixes #557)
+
 ### Changed
 - `retry_job` continues from the previous attempt's worktree by default,
   preserving committed and uncommitted work; `fresh_start` opts into main.

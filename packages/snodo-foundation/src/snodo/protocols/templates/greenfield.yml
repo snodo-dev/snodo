@@ -226,6 +226,6 @@ execution:
   # task that reaches a genuine "resolved" closure has already been accepted by
   # the only human in the loop. Merge its branch automatically so the work lands
   # on the base branch instead of stranding on a task branch.
-  auto_merge: true
+  delivery: local_merge
 
 global_constraints: []

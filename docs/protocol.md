@@ -77,7 +77,7 @@ execution:
   branch_prefix: task
   max_recovery_depth: 3
   max_total_fix_attempts: 10
-  auto_merge: false
+  delivery: push_branch
   prepare_command: "uv sync"
 ```
 
@@ -88,7 +88,8 @@ execution:
 | `branch_prefix` | string | no | Prefix used for task branches (default `"task"`) |
 | `max_recovery_depth` | int | no | Maximum recursive subtask recovery depth along a single branch (default `3`, range 0–20) |
 | `max_total_fix_attempts` | int | no | Maximum total fix subtasks spawned across the task tree (default `10`, range 1–100) |
-| `auto_merge` | bool | no | Whether a completed task's branch merges into the base branch automatically (default `false`) |
+| `delivery` | `local_merge`, `push_branch`, `change_request` | no | How completed work is delivered. `local_merge` merges locally; `push_branch` and `change_request` are not yet supported and fail protocol loading. Omitted settings preserve the legacy default of leaving work unmerged. |
+| `auto_merge` | bool | no | Deprecated compatibility setting: `true` maps to `local_merge`; `false` preserves the existing leave-unmerged behavior. Do not set alongside `delivery`. |
 | `prepare_command` | string | no | Command executed after worktree setup to prepare environment (e.g. `npm ci`, `uv sync`) |
 
 Security note: `execution.prepare_command` is protocol-authored shell input.
@@ -198,7 +199,8 @@ modes:
 | `constraints` | list[Constraint] | no | Mode-specific constraints |
 | `coder` | string | no | Coder backend (`"litellm"`, `"mock"`; `"opencode"` and `"opencode-cli"` are **experimental** — see below) |
 | `coder_config` | dict | no | Coder backend configuration |
-| `auto_merge` | bool | no | Override protocol-level `execution.auto_merge` for this mode (default `null`) |
+| `delivery` | `local_merge`, `push_branch`, `change_request` | no | Override protocol-level `execution.delivery` for this mode (default `null`) |
+| `auto_merge` | bool | no | Deprecated compatibility override: `true` maps to `local_merge`, `false` to leave-unmerged. Do not set alongside `delivery`. |
 | `max_recovery_depth` | int | no | Override protocol-level `execution.max_recovery_depth` for this mode (default `null`) |
 | `concurrency` | int | no | Per-mode concurrency ceiling (positive integer); absent uses `coder_config.concurrency` if set, otherwise `1` |
 
