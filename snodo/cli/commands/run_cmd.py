@@ -246,14 +246,14 @@ def _fetch_pr_context(pr_number: int, project_root: str) -> str:
     try:
         comments_json = provider.read_change_request_discussion(str(pr_number))
         parts.extend(_format_pr_comments(json.loads(comments_json)))
-    except (ProviderError, json.JSONDecodeError) as e:
+    except (ProviderError, json.JSONDecodeError, AttributeError) as e:
         parts.append(f"(Could not fetch PR comments: {e})")
 
     try:
         diff = provider.read_change_request_diff(str(pr_number))
         if diff.strip():
             parts.append(f"\nDiff:\n{diff}")
-    except ProviderError:
+    except (ProviderError, AttributeError):
         parts.append("(Could not fetch PR diff)")
 
     parts.append("--- End PR Context ---")

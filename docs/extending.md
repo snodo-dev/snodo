@@ -234,7 +234,7 @@ The old `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `rejec
 
 ### Registration
 
-Two paths:
+Register an installable provider with the setuptools entry-point group:
 
 **Setuptools entry point** (recommended for installable plugins; register the provider class in the `snodo.providers` group):
 
@@ -244,9 +244,9 @@ Two paths:
 gitlab = "my_package.gitlab:GitLabProvider"
 ```
 
-The entry-point name is the provider name referenced by `metadata.provider`. The registry discovers entry points for remote-host matching and loads a named entry point when selected.
+The entry-point name is the provider name referenced by `metadata.provider`. The registry also discovers installed entry points when matching a git remote's `remote_hosts` value. Resolution is: explicit `metadata.provider`; otherwise provider detection from the git remote (built-in GitHub, then matching installed plugin `remote_hosts`); otherwise `LocalProvider`. Entry points are not independently selected when no remote match exists.
 
-**Explicit metadata** (for in-project providers):
+Explicit provider selection is configured in protocol metadata (also useful for in-project providers):
 
 ```yaml
 # protocol.yml
@@ -258,8 +258,8 @@ metadata:
 
 ### Resolution order
 
-1. `metadata.provider` if set
-2. Auto-detect from git remote URL: `github.com` selects GitHub; otherwise installed plugins are checked against their `remote_hosts`
+1. `metadata.provider` if set (provider resolved by name, including installed entry points)
+2. Auto-detect from git remote URL: built-in GitHub matching first, then installed entry points whose `remote_hosts` match
 3. Fallback to `LocalProvider` when no provider matches
 
 ### Shipped providers
