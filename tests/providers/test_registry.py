@@ -16,29 +16,7 @@ from snodo.providers.registry import (
     _load_entry_point,
     detect_provider,
     list_providers,
-    parse_github_slug,
 )
-
-# === parse_github_slug ===
-
-class TestParseGithubSlug:
-    def test_ssh_url(self):
-        assert parse_github_slug("git@github.com:owner/repo.git") == "owner/repo"
-
-    def test_https_url_with_git(self):
-        assert parse_github_slug("https://github.com/owner/repo.git") == "owner/repo"
-
-    def test_https_url_without_git(self):
-        assert parse_github_slug("https://github.com/owner/repo") == "owner/repo"
-
-    def test_non_github_url(self):
-        assert parse_github_slug("git@gitlab.com:owner/repo.git") is None
-
-    def test_empty_string(self):
-        assert parse_github_slug("") is None
-
-    def test_malformed_url(self):
-        assert parse_github_slug("not-a-url") is None
 
 
 # === _detect_from_url ===
@@ -162,8 +140,15 @@ class TestEntryPoints:
 
     def test_list_providers_includes_builtins(self):
         providers = list_providers()
-        assert "github" in providers
         assert "local" in providers
+
+    def test_uninstalled_provider_has_install_hint(self):
+        with pytest.raises(ProviderError, match="uv add snodo-provider-not_installed"):
+            detect_provider("/tmp", protocol_metadata={"provider": "not_installed"})
+
+    def test_github_provider_is_discovered_as_plugin(self):
+        providers = list_providers()
+        assert "github" in providers
 
     def test_fixture_plugin_is_discovered_and_listed(self):
         plugin = type("Plugin", (), {"remote_hosts": ("gitlab.example",)})

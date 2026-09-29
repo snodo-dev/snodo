@@ -11,6 +11,7 @@ snodo-tools = { workspace = true }
 snodo-foundation = { workspace = true }
 snodo-engine = { workspace = true }
 snodo-mcp = { workspace = true }
+snodo-provider-github = { workspace = true }
 
 [project]
 name = "snodo"
@@ -21,6 +22,7 @@ dependencies = [
     "snodo-foundation==0.18.0",
     "snodo-engine==0.18.0",
     "snodo-mcp==0.18.0",
+    "snodo-provider-github==0.18.0",
     "pydantic>=2.12.0",
     "pyyaml>=6.0",
     "typer>=0.9.0",

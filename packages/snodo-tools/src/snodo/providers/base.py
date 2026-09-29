@@ -13,6 +13,11 @@ class ProviderError(Exception):
 class CodeHostProvider(ABC):
     """Interface for change requests and their discussions."""
 
+    @classmethod
+    def claims_remote(cls, url: str) -> bool:
+        """Return whether this provider recognizes a Git remote URL."""
+        return False
+
     def __init_subclass__(cls, **kwargs):
         """Adapt legacy provider subclasses while they migrate to the new API."""
         super().__init_subclass__(**kwargs)

@@ -3,6 +3,11 @@
 FILE: snodo/providers/__init__.py
 """
 
+from pkgutil import extend_path
+
+# Provider modules may be supplied by separately installed distributions.
+__path__ = extend_path(__path__, __name__)
+
 from snodo.providers.base import (
     CODE_HOST_PROVIDER_INTERFACE_VERSION,
     CodeHostProvider,

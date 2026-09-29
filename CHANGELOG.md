@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- GitHub is now an entry-point code-host plugin included by the top-level
+  distribution; `snodo-tools` and `snodo-mcp` no longer depend on PyGithub, and
+  provider detection is delegated to installed plugins. (Fixes #559)
+
 ### Changed
 - The code-host provider contract now uses vendor-neutral change-request names,
   opaque string IDs, explicit target branches and neutral discussion authors;

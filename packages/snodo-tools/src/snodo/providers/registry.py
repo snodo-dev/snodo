@@ -21,8 +21,7 @@ from snodo.providers.local import LocalProvider
 _logger = logging.getLogger(__name__)
 
 
-# Built-in provider name -> class mapping (lazy imports to avoid hard deps)
-_BUILTIN_PROVIDERS = {"github", "local"}
+_BUILTIN_PROVIDERS = {"local"}
 
 
 def detect_provider(
@@ -89,13 +88,15 @@ def _detect_from_url(url: str) -> Optional[str]:
     Returns:
         Provider name string, or None if no match
     """
-    if "github.com" in _remote_host(url):
-        return "github"
-    host = _remote_host(url)
     for name, provider_cls in _loaded_plugins().items():
+        claims_remote = getattr(provider_cls, "claims_remote", None)
+        if callable(claims_remote) and claims_remote(url):
+            return name
+        # Compatibility with plugins that declared hosts before claims_remote
         hosts = getattr(provider_cls, "remote_hosts", ())
         if isinstance(hosts, str):
             hosts = (hosts,)
+        host = _remote_host(url)
         if any(host == declared.lower().strip().rstrip(".") for declared in hosts):
             return name
     return None
@@ -132,26 +133,6 @@ def _loaded_plugins() -> Dict[str, Type[CodeHostProvider]]:
     return {ep.name: cls for ep, cls, error in _entry_point_records() if cls is not None}
 
 
-def parse_github_slug(url: str) -> Optional[str]:
-    """Extract owner/repo slug from a GitHub remote URL.
-
-    Handles:
-    - git@github.com:owner/repo.git
-    - https://github.com/owner/repo.git
-    - https://github.com/owner/repo
-
-    Args:
-        url: Git remote URL
-
-    Returns:
-        "owner/repo" string, or None if not a GitHub URL
-    """
-    match = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$", url)
-    if match:
-        return match.group(1)
-    return None
-
-
 def _create_provider(
     name: str,
     project_root: str,
@@ -177,9 +158,6 @@ def _create_provider(
     if name == "local":
         return LocalProvider()
 
-    if name == "github":
-        return _create_github(project_root, metadata)
-
     # Check entry points for third-party providers
     provider_cls = _load_entry_point(name)
     if provider_cls:
@@ -195,30 +173,10 @@ def _create_provider(
             ) from exc
 
     raise ProviderError(
-        f"Unknown provider: '{name}'. "
-        f"Built-in providers: {', '.join(sorted(_BUILTIN_PROVIDERS))}. "
-        f"Install a plugin or check your protocol metadata."
+        f"Unknown provider: '{name}'. Install its plugin with "
+        f"'uv add snodo-provider-{name}' (or 'pip install snodo-provider-{name}'), "
+        f"or check your protocol metadata. Built-in providers: local."
     )
-
-
-def _create_github(project_root: str, metadata: Dict) -> CodeHostProvider:
-    """Create a GitHubProvider, resolving repo slug from git remote."""
-    from snodo.providers.github import GitHubProvider
-
-    # Repo slug from metadata or git remote
-    repo_slug = metadata.get("github_repo")
-    if not repo_slug:
-        remote_url = _get_git_remote(project_root)
-        if remote_url:
-            repo_slug = parse_github_slug(remote_url)
-    if not repo_slug:
-        raise ProviderError(
-            "Could not determine GitHub repo. Set metadata.github_repo "
-            "in protocol.yml or add a github.com git remote."
-        )
-
-    token = metadata.get("github_token")
-    return GitHubProvider(repo_slug=repo_slug, token=token)
 
 
 def _load_entry_point(name: str) -> Optional[Type[CodeHostProvider]]:
@@ -246,10 +204,7 @@ def list_providers() -> Dict[str, str]:
     Returns:
         Dict of provider_name -> description
     """
-    providers = {
-        "github": "GitHub (PyGithub)",
-        "local": "Local only (no remote)",
-    }
+    providers = {"local": "Local only (no remote)"}
 
     for ep, provider_cls, error in _entry_point_records():
         providers[ep.name] = (f"Plugin: {ep.value}" if error is None else

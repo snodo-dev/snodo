@@ -12,7 +12,6 @@ authors = [{ name = "The Snodo Authors", email = "noreply@snodo.dev" }]
 dependencies = [
     "snodo-core==0.18.0",
     "GitPython>=3.1.0",
-    "PyGithub>=2.0.0",
 ]
 
 [project.urls]

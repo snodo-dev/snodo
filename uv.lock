@@ -20,6 +20,7 @@ members = [
     "snodo-engine",
     "snodo-foundation",
     "snodo-mcp",
+    "snodo-provider-github",
     "snodo-tools",
 ]
 
@@ -4112,6 +4113,7 @@ dependencies = [
     { name = "snodo-engine" },
     { name = "snodo-foundation" },
     { name = "snodo-mcp" },
+    { name = "snodo-provider-github" },
     { name = "snodo-tools" },
     { name = "textual" },
     { name = "typer" },
@@ -4182,6 +4184,7 @@ requires-dist = [
     { name = "snodo-engine", editable = "packages/snodo-engine" },
     { name = "snodo-foundation", editable = "packages/snodo-foundation" },
     { name = "snodo-mcp", editable = "packages/snodo-mcp" },
+    { name = "snodo-provider-github", editable = "packages/snodo-provider-github" },
     { name = "snodo-tools", editable = "packages/snodo-tools" },
     { name = "textual", specifier = ">=1.0.0" },
     { name = "typer", specifier = ">=0.9.0" },
@@ -4286,7 +4289,6 @@ dependencies = [
     { name = "mcp" },
     { name = "psutil" },
     { name = "pydantic" },
-    { name = "pygithub" },
     { name = "pyjwt" },
     { name = "snodo-core" },
     { name = "snodo-engine" },
@@ -4304,7 +4306,6 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.28.1,<2" },
     { name = "psutil", specifier = ">=7.0.0" },
     { name = "pydantic", specifier = ">=2.12.0" },
-    { name = "pygithub", specifier = ">=2.0.0" },
     { name = "pyjwt", specifier = ">=2.8.0" },
     { name = "snodo-core", editable = "packages/snodo-core" },
     { name = "snodo-engine", editable = "packages/snodo-engine" },
@@ -4314,19 +4315,32 @@ requires-dist = [
 ]
 
 [[package]]
+name = "snodo-provider-github"
+version = "0.18.0"
+source = { editable = "packages/snodo-provider-github" }
+dependencies = [
+    { name = "pygithub" },
+    { name = "snodo-tools" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pygithub", specifier = ">=2.0.0" },
+    { name = "snodo-tools", editable = "packages/snodo-tools" },
+]
+
+[[package]]
 name = "snodo-tools"
 version = "0.18.0"
 source = { editable = "packages/snodo-tools" }
 dependencies = [
     { name = "gitpython" },
-    { name = "pygithub" },
     { name = "snodo-core" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "gitpython", specifier = ">=3.1.0" },
-    { name = "pygithub", specifier = ">=2.0.0" },
     { name = "snodo-core", editable = "packages/snodo-core" },
 ]
 
