@@ -698,6 +698,9 @@ TOOL_REGISTRY = {
             "task_id from the job's state and dispatches a new run. By "
             "default the task keeps the specification it is recorded with — "
             "an operational failure needs another attempt, not a new spec. "
+            "By default it continues from the previous attempt's worktree and "
+            "committed or uncommitted changes. Set fresh_start=true to start "
+            "from main instead. "
             "Pass append_spec to add guidance on top of that spec; pass "
             "revised_spec only to replace it (the replaced spec is audited "
             "as spec_replaced and stays recoverable)."
@@ -719,6 +722,10 @@ TOOL_REGISTRY = {
                 "revised_spec": {
                     "type": "string",
                     "description": "Replacement specification (discards the recorded one)",
+                },
+                "fresh_start": {
+                    "type": "boolean",
+                    "description": "Start from main instead of continuing the previous attempt's worktree (default false)",
                 },
             },
             "required": ["job_id"],

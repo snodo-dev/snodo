@@ -357,6 +357,37 @@ class TestHandleRetryJob:
         assert result["description"] == original
         assert result["spec_action"] == "unchanged"
 
+    def test_retry_reuses_task_worktree_and_fresh_start_uses_new_identity(self, server, tmp_path):
+        job_dir = tmp_path / "j-continue"
+        job_dir.mkdir()
+        (job_dir / "task.json").write_text(json.dumps({
+            "task_id": "t-continue", "description": "root spec",
+            "worktree_path": str(tmp_path / "prior-worktree"),
+        }))
+        captured = {}
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value._job_dir.return_value = job_dir
+            MockJM.return_value.submit.side_effect = lambda args: (captured.update(args) or "j-next")
+            result = server._handle_retry_job({"job_id": "j-continue"})
+        assert captured["task_id"] == "t-continue"
+        assert captured["retry_task_id"] == "t-continue"
+        assert captured["description"] == "root spec"
+        assert result["spec_action"] == "unchanged"
+
+        with patch("snodo.jobs.JobManager") as MockJM:
+            MockJM.return_value._job_dir.return_value = job_dir
+            MockJM.return_value.submit.side_effect = lambda args: (captured.update(args) or "j-fresh")
+            server._handle_retry_job({"job_id": "j-continue", "fresh_start": True})
+        assert captured["task_id"].startswith("t-continue_fresh_")
+        assert captured["retry_task_id"] is None
+
+    def test_retry_schema_documents_fresh_start(self):
+        from snodo.mcp.tools import TOOL_REGISTRY
+
+        schema = TOOL_REGISTRY["retry_job"]
+        assert "fresh_start" in schema["inputSchema"]["properties"]
+        assert "main" in schema["description"]
+
     def test_append_spec_adds_guidance_on_top(self, server, tmp_path):
         """append_spec annotates the recorded spec; it never stands in for it."""
         job_dir = tmp_path / "j-append"

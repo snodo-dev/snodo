@@ -926,6 +926,7 @@ class CoreToolHandler:
 
         task_id = task_data.get("task_id", "")
         original_spec = task_data.get("description", "")
+        fresh_start = bool(arguments.get("fresh_start", False))
 
         if revised_spec and same_spec(revised_spec, original_spec):
             # Handing back the recorded spec changes nothing; do not book it as
@@ -949,12 +950,33 @@ class CoreToolHandler:
         task_args: Dict[str, Any] = {
             "description": description,
             "cwd": self.server.project_root,
-            "retry_task_id": task_id,
+            "retry_task_id": None if fresh_start else task_id,
+            # Retaining the task identity makes JobManager reuse the prior
+            # attempt's worktree, including uncommitted changes. An explicit
+            # fresh start must get a distinct worktree identity instead.
+            "task_id": (f"{task_id}_fresh_{job_id}" if fresh_start else task_id),
+            "retry_continuation": None if fresh_start else {
+                "job_id": job_id,
+                "task_id": task_id,
+                "commit": self._retry_source_commit(task_data),
+                "fresh_start": False,
+            },
         }
         if self.server.mode_id:
             task_args["mode"] = self.server.mode_id
 
         new_job_id = job_mgr.submit(task_args)
+
+        continuation = task_args.get("retry_continuation")
+        self.server._audit("retry_worktree_continued", {
+            "op": "retry_worktree_continued",
+            "prior_job_id": job_id,
+            "prior_task_id": task_id,
+            "prior_commit": continuation.get("commit") if continuation else None,
+            "fresh_start": fresh_start,
+            "fallback_to_main": bool(not fresh_start and not task_data.get("worktree_path")
+                                      and not task_data.get("branch")),
+        })
 
         return {
             "status": "accepted",
@@ -966,7 +988,32 @@ class CoreToolHandler:
                 else "appended" if append_spec
                 else "unchanged"
             ),
+            "worktree_action": "fresh_from_main" if fresh_start else "continued_previous_attempt",
         }
+
+    def _retry_source_commit(self, task_data: Dict[str, Any]) -> Optional[str]:
+        """Resolve the prior attempt's branch/worktree HEAD for audit provenance."""
+        from pathlib import Path
+        from snodo.tools.git import open_repo
+
+        candidates = []
+        worktree = task_data.get("worktree_path")
+        if worktree:
+            candidates.append(Path(worktree))
+        for candidate in candidates:
+            try:
+                with open_repo(str(candidate)) as repo:
+                    return repo.head.commit.hexsha
+            except Exception:
+                continue
+        branch = task_data.get("branch")
+        if branch:
+            try:
+                with open_repo(self.server.project_root) as repo:
+                    return repo.commit(branch).hexsha
+            except Exception as e:
+                logger.debug("Could not resolve retry source branch %s: %s", branch, e)
+        return None
 
     def tool_handlers(self) -> dict:
         return {

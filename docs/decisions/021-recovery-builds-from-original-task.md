@@ -74,6 +74,12 @@ task.
 
 ## Consequences
 
+Retries in the job layer also continue from the previous attempt's code
+(including uncommitted worktree changes) by default. This does not change this
+ADR's spec or id rules: retry guidance is still appended to the root spec, and
+prior failures retain their attempt attribution. Callers may explicitly request
+a fresh start from main.
+
 - Depth-3 recovery specs contain the original intent exactly once; meta-spec
   can no longer reject its own loop's output as recursive.
 - Ids are stable and linear, not nested.
