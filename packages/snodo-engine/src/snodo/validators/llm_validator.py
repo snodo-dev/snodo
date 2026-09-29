@@ -271,25 +271,34 @@ class LLMValidator(ValidatorBase):
 
         declared_tools = getattr(self.validator_spec, "tools", None) or []
         if declared_tools:
-            missing_dependencies = [
-                name for name, value in (
-                    ("workspace MCP", context.workspace_mcp),
-                    ("git MCP", context.git_mcp),
-                    ("completion function", self._completion_fn),
-                ) if value is None
-            ]
+            workspace_tools = {"read_file", "read_file_lines", "list_files", "summarize_directory"}
+            git_tools = {"read_diff_between_refs", "git_show", "git_log"}
+            missing_dependencies = []
+            if workspace_tools.intersection(declared_tools) and context.workspace_mcp is None:
+                missing_dependencies.append("workspace MCP")
+            if git_tools.intersection(declared_tools) and context.git_mcp is None:
+                missing_dependencies.append("git MCP")
+            if self._completion_fn is None:
+                missing_dependencies.append("completion function")
             if missing_dependencies:
-                return ValidatorResult(
-                    validator_id=self.validator_spec.validator_id,
-                    severity="blocker",
-                    justification=(
-                        "Validator tool infrastructure unavailable: missing "
-                        + ", ".join(missing_dependencies)
-                    ),
-                    error=True,
-                )
-            res = self._evaluate_with_tools(context)
-            return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
+                # Pre-execute validation may run before the execution context
+                # (workspace/git MCPs) exists. Preserve its ordinary
+                # single-completion behavior; post-execute judges must have
+                # their declared inspection tools or report infrastructure
+                # failure rather than inventing a verdict.
+                if getattr(context, "phase", "") == "post_execute":
+                    return ValidatorResult(
+                        validator_id=self.validator_spec.validator_id,
+                        severity="blocker",
+                        justification=(
+                            "Validator tool infrastructure unavailable: missing "
+                            + ", ".join(missing_dependencies)
+                        ),
+                        error=True,
+                    )
+            else:
+                res = self._evaluate_with_tools(context)
+                return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
 
         # Pre-execute or fallback: single-completion path
         prompt = self._build_prompt(context)
