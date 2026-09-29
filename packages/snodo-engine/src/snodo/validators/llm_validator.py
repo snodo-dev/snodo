@@ -270,14 +270,35 @@ class LLMValidator(ValidatorBase):
         from snodo.validators.runner import enrich_result_with_criteria
 
         declared_tools = getattr(self.validator_spec, "tools", None) or []
-        if (
-            declared_tools
-            and context.workspace_mcp is not None
-            and context.git_mcp is not None
-            and self._completion_fn is not None
-        ):
-            res = self._evaluate_with_tools(context)
-            return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
+        if declared_tools:
+            workspace_tools = {"read_file", "read_file_lines", "list_files", "summarize_directory"}
+            git_tools = {"read_diff_between_refs", "git_show", "git_log"}
+            missing_dependencies = []
+            if workspace_tools.intersection(declared_tools) and context.workspace_mcp is None:
+                missing_dependencies.append("workspace MCP")
+            if git_tools.intersection(declared_tools) and context.git_mcp is None:
+                missing_dependencies.append("git MCP")
+            if self._completion_fn is None:
+                missing_dependencies.append("completion function")
+            if missing_dependencies:
+                # Pre-execute validation may run before the execution context
+                # (workspace/git MCPs) exists. Preserve its ordinary
+                # single-completion behavior; post-execute judges must have
+                # their declared inspection tools or report infrastructure
+                # failure rather than inventing a verdict.
+                if getattr(context, "phase", "") == "post_execute":
+                    return ValidatorResult(
+                        validator_id=self.validator_spec.validator_id,
+                        severity="blocker",
+                        justification=(
+                            "Validator tool infrastructure unavailable: missing "
+                            + ", ".join(missing_dependencies)
+                        ),
+                        error=True,
+                    )
+            else:
+                res = self._evaluate_with_tools(context)
+                return enrich_result_with_criteria(self._finalize_result(res), getattr(self.validator_spec, "criteria", []))
 
         # Pre-execute or fallback: single-completion path
         prompt = self._build_prompt(context)
@@ -616,7 +637,32 @@ class LLMValidator(ValidatorBase):
                         if prev_turn is not None:
                             result = format_repeat_read_response(tool_name, args, prev_turn)
                         else:
-                            result = self._execute_tool(tool_name, args, workspace, git)
+                            try:
+                                result = self._execute_tool(tool_name, args, workspace, git)
+                            except Exception as e:
+                                # A refused path or a missing requested file is
+                                # an ordinary inspection result, not a broken
+                                # tool transport. Preserve the existing
+                                # reasoned-refusal / model-evaluation contract.
+                                from snodo.tools.workspace import PathValidationError
+                                if isinstance(e, (PathValidationError, FileNotFoundError)):
+                                    result = f"Tool error: {e}"
+                                else:
+                                    _logger.warning(
+                                        "Validator %s declared tool %s failed on turn %d: %s: %s",
+                                        self.validator_spec.validator_id, tool_name,
+                                        turn + 1, type(e).__name__, e,
+                                    )
+                                    return ValidatorResult(
+                                        validator_id=self.validator_spec.validator_id,
+                                        severity="blocker",
+                                        justification=(
+                                            f"Validator declared tool '{tool_name}' failed "
+                                            f"on turn {turn + 1} ({type(e).__name__}): {e}"
+                                        ),
+                                        error=True,
+                                        examined=examination or None,
+                                    )
                             read_tracker.record_read(tool_name, args, turn + 1)
                             turn_progressed = True
                         target = _normalize_path_arg(args) or json.dumps(args)[:60]
@@ -997,25 +1043,22 @@ class LLMValidator(ValidatorBase):
         git: Any,
     ) -> str:
         """Execute a read-only tool call and return the result as a string."""
-        try:
-            if name == "read_diff_between_refs":
-                return git.diff_between_refs(args["ref1"], args["ref2"])
-            elif name == "git_show":
-                return git.show(args["ref"], args["path"])
-            elif name == "git_log":
-                return git.log(args.get("n", 5))
-            elif name == "read_file":
-                return workspace.read_file(args["path"])
-            elif name == "read_file_lines":
-                return workspace.read_file_lines(args["path"], args["start"], args["end"])
-            elif name == "list_files":
-                return "\n".join(workspace.list_files(args.get("directory", ".")))
-            elif name == "summarize_directory":
-                return workspace.summarize_directory(args.get("directory", "."))
-            else:
-                return f"Unknown tool: {name}"
-        except Exception as e:
-            return f"Tool error: {e}"
+        if name == "read_diff_between_refs":
+            return git.diff_between_refs(args["ref1"], args["ref2"])
+        elif name == "git_show":
+            return git.show(args["ref"], args["path"])
+        elif name == "git_log":
+            return git.log(args.get("n", 5))
+        elif name == "read_file":
+            return workspace.read_file(args["path"])
+        elif name == "read_file_lines":
+            return workspace.read_file_lines(args["path"], args["start"], args["end"])
+        elif name == "list_files":
+            return "\n".join(workspace.list_files(args.get("directory", ".")))
+        elif name == "summarize_directory":
+            return workspace.summarize_directory(args.get("directory", "."))
+        else:
+            return f"Unknown tool: {name}"
 
     # ------------------------------------------------------------------
     # Single-completion path (pre-execute, unchanged)
