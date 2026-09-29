@@ -68,20 +68,23 @@ class GitHubProvider(CodeHostProvider):
         except Exception:
             return None
 
-    def create_pr(self, branch: str, title: str, body: str) -> str:
-        """Create a pull request on GitHub."""
+    def create_change_request(
+        self, branch: str, title: str, body: str, target_branch: Optional[str] = None
+    ) -> str:
+        """Create a change request on GitHub."""
         try:
             pr = self._repo.create_pull(
-                title=title, body=body, head=branch, base="main",
+                title=title, body=body, head=branch,
+                base=target_branch or self._repo.default_branch,
             )
             return pr.html_url
         except Exception as e:
             raise ProviderError(f"Failed to create PR: {e}") from e
 
-    def read_pr_diff(self, pr_number: int) -> str:
+    def read_change_request_diff(self, change_request_id: str) -> str:
         """Read PR diff by concatenating file patches."""
         try:
-            pr = self._repo.get_pull(pr_number)
+            pr = self._repo.get_pull(int(change_request_id))
             files = pr.get_files()
             patches = []
             for f in files:
@@ -94,56 +97,53 @@ class GitHubProvider(CodeHostProvider):
         except Exception as e:
             raise ProviderError(f"Failed to read PR diff: {e}") from e
 
-    def post_review_comment(self, pr_number: int, comment: str) -> str:
+    def post_change_request_comment(self, change_request_id: str, comment: str) -> str:
         """Post a comment on a GitHub PR."""
         try:
-            pr = self._repo.get_pull(pr_number)
+            pr = self._repo.get_pull(int(change_request_id))
             c = pr.create_issue_comment(comment)
             return c.html_url
         except Exception as e:
             raise ProviderError(f"Failed to post comment: {e}") from e
 
-    def approve_pr(self, pr_number: int) -> str:
+    def approve_change_request(self, change_request_id: str) -> str:
         """Approve a GitHub PR."""
         try:
-            pr = self._repo.get_pull(pr_number)
+            pr = self._repo.get_pull(int(change_request_id))
             pr.create_review(event="APPROVE")
-            return f"PR #{pr_number} approved"
+            return f"Change request {change_request_id} approved"
         except Exception as e:
             raise ProviderError(f"Failed to approve PR: {e}") from e
 
-    def reject_pr(self, pr_number: int, reason: str) -> str:
+    def request_change_request_changes(self, change_request_id: str, reason: str) -> str:
         """Request changes on a GitHub PR."""
         try:
-            pr = self._repo.get_pull(pr_number)
+            pr = self._repo.get_pull(int(change_request_id))
             pr.create_review(body=reason, event="REQUEST_CHANGES")
-            return f"PR #{pr_number} changes requested"
+            return f"Change request {change_request_id}: changes requested"
         except Exception as e:
             raise ProviderError(f"Failed to reject PR: {e}") from e
 
-    def merge_pr(self, pr_number: int) -> str:
+    def merge_change_request(self, change_request_id: str) -> str:
         """Merge a GitHub PR."""
         try:
-            pr = self._repo.get_pull(pr_number)
+            pr = self._repo.get_pull(int(change_request_id))
             result = pr.merge()
-            return f"PR #{pr_number} merged: {result.sha[:8]}"
+            return f"Change request {change_request_id} merged: {result.sha[:8]}"
         except Exception as e:
             raise ProviderError(f"Failed to merge PR: {e}") from e
 
-    def read_pr_comments(self, pr_number: int) -> str:
-        """Read PR comments and reviews as JSON.
-
-        Returns JSON compatible with _format_pr_comments in run_cmd.py.
-        """
+    def read_change_request_discussion(self, change_request_id: str) -> str:
+        """Read comments and reviews in the provider-neutral discussion shape."""
         try:
-            pr = self._repo.get_pull(pr_number)
+            pr = self._repo.get_pull(int(change_request_id))
             comments = [
-                {"author": {"login": c.user.login}, "body": c.body or ""}
+                {"author": c.user.login, "body": c.body or ""}
                 for c in pr.get_issue_comments()
             ]
             reviews = [
                 {
-                    "author": {"login": r.user.login},
+                    "author": r.user.login,
                     "body": r.body or "",
                     "state": r.state,
                 }

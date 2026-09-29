@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The code-host provider contract now uses vendor-neutral change-request names,
+  opaque string IDs, explicit target branches and neutral discussion authors;
+  deprecated PR methods remain compatible wrappers. (Fixes #558)
+
 ### Added
 - Protocols can declare `execution.delivery` (`local_merge`, `push_branch`, or
   `change_request`) with per-mode overrides. Legacy `auto_merge` remains

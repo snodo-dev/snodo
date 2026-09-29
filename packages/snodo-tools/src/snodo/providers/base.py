@@ -1,12 +1,9 @@
-"""Code host provider abstract base class.
-
-FILE: snodo/providers/base.py
-
-Defines the interface that all code host providers must implement.
-Providers decouple PR operations from any specific platform (GitHub, GitLab, etc).
-"""
+"""Vendor-neutral code-host provider contract."""
 
 from abc import ABC, abstractmethod
+
+
+CODE_HOST_PROVIDER_INTERFACE_VERSION = 1
 
 
 class ProviderError(Exception):
@@ -14,93 +11,82 @@ class ProviderError(Exception):
 
 
 class CodeHostProvider(ABC):
-    """Abstract base class for code host providers.
+    """Interface for change requests and their discussions."""
 
-    Each provider implements PR operations for a specific platform.
-    PrMCP delegates to a concrete provider instance.
-    """
+    def __init_subclass__(cls, **kwargs):
+        """Adapt legacy provider subclasses while they migrate to the new API."""
+        super().__init_subclass__(**kwargs)
+        legacy = {
+            "create_change_request": "create_pr",
+            "read_change_request_diff": "read_pr_diff",
+            "post_change_request_comment": "post_review_comment",
+            "approve_change_request": "approve_pr",
+            "request_change_request_changes": "reject_pr",
+            "merge_change_request": "merge_pr",
+            "read_change_request_discussion": "read_pr_comments",
+        }
+        if all(name in cls.__dict__ for name in legacy.values()):
+            for new_name, old_name in legacy.items():
+                if new_name not in cls.__dict__:
+                    old_method = cls.__dict__[old_name]
+                    setattr(cls, new_name, lambda self, *args, _m=old_method, **kw: _m(self, *args, **kw))
 
     @abstractmethod
+    def create_change_request(
+        self, branch: str, title: str, body: str, target_branch: str | None = None
+    ) -> str:
+        """Create a change request from ``branch`` into ``target_branch``."""
+
+    @abstractmethod
+    def read_change_request_diff(self, change_request_id: str) -> str:
+        """Read a change request's diff using its opaque identifier."""
+
+    @abstractmethod
+    def post_change_request_comment(self, change_request_id: str, comment: str) -> str:
+        """Post a discussion comment."""
+
+    @abstractmethod
+    def approve_change_request(self, change_request_id: str) -> str:
+        """Approve a change request."""
+
+    @abstractmethod
+    def request_change_request_changes(self, change_request_id: str, reason: str) -> str:
+        """Request changes on a change request."""
+
+    @abstractmethod
+    def merge_change_request(self, change_request_id: str) -> str:
+        """Merge a change request."""
+
+    @abstractmethod
+    def read_change_request_discussion(self, change_request_id: str) -> str:
+        """Return JSON with title and comments/reviews using neutral author strings."""
+
+    # Compatibility for existing integrations. These wrappers intentionally accept
+    # integer identifiers and delegate to the new opaque-string interface.
     def create_pr(self, branch: str, title: str, body: str) -> str:
-        """Create a pull request.
+        """Deprecated compatibility alias for create_change_request."""
+        return self.create_change_request(branch, title, body)
 
-        Args:
-            branch: Source branch name
-            title: PR title
-            body: PR description body
-
-        Returns:
-            PR URL or identifier string
-        """
-
-    @abstractmethod
     def read_pr_diff(self, pr_number: int) -> str:
-        """Read the diff of a pull request.
+        """Deprecated compatibility alias for read_change_request_diff."""
+        return self.read_change_request_diff(str(pr_number))
 
-        Args:
-            pr_number: PR number
-
-        Returns:
-            Diff output as string
-        """
-
-    @abstractmethod
     def post_review_comment(self, pr_number: int, comment: str) -> str:
-        """Post a comment on a pull request.
+        """Deprecated compatibility alias for post_change_request_comment."""
+        return self.post_change_request_comment(str(pr_number), comment)
 
-        Args:
-            pr_number: PR number
-            comment: Comment text
-
-        Returns:
-            Confirmation string
-        """
-
-    @abstractmethod
     def approve_pr(self, pr_number: int) -> str:
-        """Approve a pull request.
+        """Deprecated compatibility alias for approve_change_request."""
+        return self.approve_change_request(str(pr_number))
 
-        Args:
-            pr_number: PR number
-
-        Returns:
-            Confirmation string
-        """
-
-    @abstractmethod
     def reject_pr(self, pr_number: int, reason: str) -> str:
-        """Request changes on a pull request.
+        """Deprecated compatibility alias for request_change_request_changes."""
+        return self.request_change_request_changes(str(pr_number), reason)
 
-        Args:
-            pr_number: PR number
-            reason: Reason for rejection
-
-        Returns:
-            Confirmation string
-        """
-
-    @abstractmethod
     def merge_pr(self, pr_number: int) -> str:
-        """Merge a pull request.
+        """Deprecated compatibility alias for merge_change_request."""
+        return self.merge_change_request(str(pr_number))
 
-        Args:
-            pr_number: PR number
-
-        Returns:
-            Confirmation string
-        """
-
-    @abstractmethod
     def read_pr_comments(self, pr_number: int) -> str:
-        """Read comments and reviews on a pull request.
-
-        Returns JSON string with keys: title, comments, reviews.
-        Each comment has: author.login, body
-        Each review has: author.login, body, state
-
-        Args:
-            pr_number: PR number
-
-        Returns:
-            JSON string
-        """
+        """Deprecated compatibility alias for read_change_request_discussion."""
+        return self.read_change_request_discussion(str(pr_number))

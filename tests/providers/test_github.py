@@ -81,11 +81,18 @@ class TestCreatePr:
         mock_pr.html_url = "https://github.com/owner/repo/pull/42"
         github_provider._mock_repo.create_pull.return_value = mock_pr
 
-        result = github_provider.create_pr("feature", "Add feature", "Description")
+        github_provider._mock_repo.default_branch = "trunk"
+        result = github_provider.create_change_request("feature", "Add feature", "Description")
 
         assert result == "https://github.com/owner/repo/pull/42"
         github_provider._mock_repo.create_pull.assert_called_once_with(
-            title="Add feature", body="Description", head="feature", base="main",
+            title="Add feature", body="Description", head="feature", base="trunk",
+        )
+
+    def test_create_change_request_uses_explicit_target(self, github_provider):
+        github_provider.create_change_request("feature", "title", "body", "release")
+        github_provider._mock_repo.create_pull.assert_called_once_with(
+            title="title", body="body", head="feature", base="release",
         )
 
     def test_create_pr_failure(self, github_provider):
@@ -240,7 +247,7 @@ class TestReadPrComments:
 
         assert data["title"] == "Fix bug"
         assert len(data["comments"]) == 1
-        assert data["comments"][0]["author"]["login"] == "alice"
+        assert data["comments"][0]["author"] == "alice"
         assert data["comments"][0]["body"] == "Looks good"
         assert len(data["reviews"]) == 1
         assert data["reviews"][0]["state"] == "CHANGES_REQUESTED"

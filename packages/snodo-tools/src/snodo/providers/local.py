@@ -17,38 +17,38 @@ class LocalProvider(CodeHostProvider):
     Read operations return empty/placeholder data.
     """
 
-    def create_pr(self, branch: str, title: str, body: str) -> str:
+    def create_change_request(self, branch: str, title: str, body: str, target_branch=None) -> str:
         raise ProviderError(
             "Cannot create PR: no remote code host configured. "
             "Push to a remote and configure a provider."
         )
 
-    def read_pr_diff(self, pr_number: int) -> str:
+    def read_change_request_diff(self, change_request_id: str) -> str:
         raise ProviderError(
-            f"Cannot read PR #{pr_number}: no remote code host configured."
+            f"Cannot read change request {change_request_id}: no remote code host configured."
         )
 
-    def post_review_comment(self, pr_number: int, comment: str) -> str:
+    def post_change_request_comment(self, change_request_id: str, comment: str) -> str:
         raise ProviderError(
             "Cannot post comment: no remote code host configured."
         )
 
-    def approve_pr(self, pr_number: int) -> str:
+    def approve_change_request(self, change_request_id: str) -> str:
         raise ProviderError(
             "Cannot approve PR: no remote code host configured."
         )
 
-    def reject_pr(self, pr_number: int, reason: str) -> str:
+    def request_change_request_changes(self, change_request_id: str, reason: str) -> str:
         raise ProviderError(
             "Cannot reject PR: no remote code host configured."
         )
 
-    def merge_pr(self, pr_number: int) -> str:
+    def merge_change_request(self, change_request_id: str) -> str:
         raise ProviderError(
             "Cannot merge PR: no remote code host configured."
         )
 
-    def read_pr_comments(self, pr_number: int) -> str:
+    def read_change_request_discussion(self, change_request_id: str) -> str:
         raise ProviderError(
-            f"Cannot read PR #{pr_number} comments: no remote code host configured."
+            f"Cannot read change request {change_request_id} discussion: no remote code host configured."
         )
