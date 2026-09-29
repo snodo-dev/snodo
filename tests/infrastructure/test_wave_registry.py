@@ -218,6 +218,44 @@ class TestBuildPrompt:
 
 
 class TestClassifyTask:
+    def test_classifier_adds_opencode_task_header(self, tmp_path):
+        from snodo.config import ConfigManager
+
+        completion = MagicMock()
+        completion.return_value.choices[0].message.content = json.dumps({
+            "flow_type": "feature", "wave_id": "new",
+            "task_summary": "Add login", "feature_description": "Authentication",
+        })
+        with patch.object(
+            ConfigManager, "resolve_extra_headers",
+            side_effect=lambda model, task_id=None: (
+                {"x-opencode-session": task_id} if model == "opencode/gpt-5" else None
+            ),
+        ):
+            _make_registry(tmp_path).classify_task(
+                "add login", "task_opencode", completion, "opencode/gpt-5"
+            )
+
+        assert completion.call_args.kwargs["extra_headers"] == {
+            "x-opencode-session": "task_opencode"
+        }
+
+    def test_classifier_leaves_non_opencode_call_without_headers(self, tmp_path):
+        from snodo.config import ConfigManager
+
+        completion = MagicMock()
+        completion.return_value.choices[0].message.content = json.dumps({
+            "flow_type": "feature", "wave_id": "new",
+            "task_summary": "Add login", "feature_description": "Authentication",
+        })
+        with patch.object(ConfigManager, "resolve_extra_headers", return_value=None):
+            _make_registry(tmp_path).classify_task(
+                "add login", "task_plain", completion, "openai/gpt-4o"
+            )
+
+        assert "extra_headers" not in completion.call_args.kwargs
+        assert "_configured_model" not in completion.call_args.kwargs
+
     def test_new_feature_mints_wave(self, tmp_path):
         reg = _make_registry(tmp_path)
         mock_completion = MagicMock()

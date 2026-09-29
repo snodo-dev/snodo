@@ -25,11 +25,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from snodo.compiler.models import Protocol, Validator
 from snodo.core.interfaces import Task, ValidatorResult
 from snodo.infrastructure.config import DEFAULT_MODEL
+from snodo.infrastructure.completion_headers import wrap_completion_fn_with_headers
 from snodo.validators.change import build_change_context
 from snodo.validators.context import ValidatorContext
 from snodo.validators.verdict_cache import compute_verdict_key
 
 logger = logging.getLogger(__name__)
+
+# Kept as a compatibility alias for existing integrations and tests.
+_wrap_completion_fn_with_headers = wrap_completion_fn_with_headers
 
 
 def resolve_validators(
@@ -517,7 +521,7 @@ def run_validators(
     # construction — no validator can omit them.
     task_aware_completion_fn = completion_fn
     if completion_fn is not None and task.id:
-        task_aware_completion_fn = _wrap_completion_fn_with_headers(completion_fn, task.id)
+        task_aware_completion_fn = wrap_completion_fn_with_headers(completion_fn, task.id)
 
     context = ValidatorContext(
         task=task,
@@ -778,45 +782,6 @@ def build_completion_fn(model: str, base_fn: Any) -> Any:
         kwargs["api_key"] = api_key
 
     return functools.partial(base_fn, **kwargs)
-
-
-def _wrap_completion_fn_with_headers(completion_fn: Any, task_id: str) -> Any:
-    """Wrap a completion function to automatically resolve and attach provider headers.
-
-    Headers are task-scoped (e.g., opencode's x-opencode-session), so they must
-    be resolved at call time, not at build time. This wrapper ensures all
-    call sites — including validators that declare no tools and
-    protocol_adherence — automatically receive headers by construction,
-    making it impossible for a new call site to omit them.
-
-    Header resolution uses the configured model name (passed via _configured_model),
-    not the model key which may be litellm-resolved. This ensures self-hosted and
-    gateway providers with custom snodo config block names resolve correctly.
-
-    Args:
-        completion_fn: The underlying completion function (typically a partial)
-        task_id: The task's unique identifier for header resolution
-
-    Returns:
-        A wrapper function that intercepts calls and injects resolved headers
-    """
-    from snodo.config import ConfigManager
-
-    def headers_aware_wrapper(**kwargs: Any) -> Any:
-        # Use _configured_model (set by validators) for header resolution, not
-        # the "model" kwarg which may be litellm-resolved. Call sites that don't
-        # set _configured_model fall back to the "model" kwarg (for compatibility).
-        resolution_model = kwargs.pop("_configured_model", None) or kwargs.get("model")
-        if resolution_model and "extra_headers" not in kwargs:
-            # Resolve headers for this specific model and task combination
-            extra_headers = ConfigManager.resolve_extra_headers(
-                resolution_model, task_id=task_id
-            )
-            if extra_headers:
-                kwargs["extra_headers"] = extra_headers
-        return completion_fn(**kwargs)
-
-    return headers_aware_wrapper
 
 
 def resolve_validator_completion() -> Tuple[Any, str, Any]:

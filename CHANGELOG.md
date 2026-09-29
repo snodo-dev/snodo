@@ -27,6 +27,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   until v7 is advertised. (Fixes #543)
 
 ### Fixed
+- Task classification now resolves task-scoped provider headers (including
+  OpenCode session routing), allowing classifier calls to assign waves again.
+  (Fixes #551)
 - Pytest clears inherited Snodo job context before collection and e2e child
   processes cannot resolve the dispatching project. Removed leaked hello-world
   source and test files. (Fixes #542)
