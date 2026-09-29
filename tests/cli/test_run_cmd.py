@@ -127,44 +127,62 @@ class TestFetchPrContext:
 
         mock_format.return_value = ["PR Title: Fix bug"]
 
-        with patch("snodo.mcp.pr.PrMCP") as MockPr:
-            mock_pr = MockPr.return_value
-            mock_pr.read_pr_comments.return_value = '{"title": "Fix"}'
-            mock_pr.read_pr_diff.return_value = "diff --git a/foo"
-
-            with patch("snodo.providers.registry.detect_provider", return_value=None):
-                result = _fetch_pr_context(42, "/tmp/proj")
+        provider = MagicMock()
+        provider.read_change_request_discussion.return_value = '{"title": "Fix"}'
+        provider.read_change_request_diff.return_value = "diff --git a/foo"
+        with patch("snodo.providers.registry.detect_provider", return_value=provider):
+            result = _fetch_pr_context(42, "/tmp/proj")
 
         assert "PR #42" in result
         assert "diff --git a/foo" in result
 
+    def test_fetch_pr_context_uses_neutral_only_provider(self):
+        from snodo.cli.commands.run_cmd import _fetch_pr_context
+
+        class NeutralOnlyProvider:
+            def read_change_request_discussion(self, change_request_id):
+                assert change_request_id == "42"
+                return json.dumps({
+                    "title": "Cross-host change",
+                    "comments": [{"author": "reviewer", "body": "Please adjust"}],
+                    "reviews": [{"author": "maintainer", "body": "Looks good", "state": "approved"}],
+                })
+
+            def read_change_request_diff(self, change_request_id):
+                assert change_request_id == "42"
+                return "diff --git a/file b/file"
+
+        with patch("snodo.providers.registry.detect_provider", return_value=NeutralOnlyProvider()):
+            result = _fetch_pr_context(42, "/tmp/proj")
+
+        assert "Cross-host change" in result
+        assert "@reviewer: Please adjust" in result
+        assert "@maintainer [approved]: Looks good" in result
+        assert "diff --git a/file b/file" in result
+
     def test_fetch_pr_context_comment_error(self):
-        from snodo.mcp.pr import PrError
+        from snodo.providers.base import ProviderError
 
         from snodo.cli.commands.run_cmd import _fetch_pr_context
 
-        with patch("snodo.mcp.pr.PrMCP") as MockPr:
-            mock_pr = MockPr.return_value
-            mock_pr.read_pr_comments.side_effect = PrError("Not found")
-            mock_pr.read_pr_diff.return_value = ""
-
-            with patch("snodo.providers.registry.detect_provider", side_effect=Exception("no git")):
-                result = _fetch_pr_context(99, "/tmp/proj")
+        provider = MagicMock()
+        provider.read_change_request_discussion.side_effect = ProviderError("Not found")
+        provider.read_change_request_diff.return_value = ""
+        with patch("snodo.providers.registry.detect_provider", return_value=provider):
+            result = _fetch_pr_context(99, "/tmp/proj")
 
         assert "Could not fetch PR comments" in result
 
     def test_fetch_pr_context_diff_error(self):
-        from snodo.mcp.pr import PrError
+        from snodo.providers.base import ProviderError
 
         from snodo.cli.commands.run_cmd import _fetch_pr_context
 
-        with patch("snodo.mcp.pr.PrMCP") as MockPr:
-            mock_pr = MockPr.return_value
-            mock_pr.read_pr_comments.return_value = '{"title": "T"}'
-            mock_pr.read_pr_diff.side_effect = PrError("fail")
-
-            with patch("snodo.providers.registry.detect_provider", return_value=None):
-                result = _fetch_pr_context(1, "/tmp/proj")
+        provider = MagicMock()
+        provider.read_change_request_discussion.return_value = '{"title": "T"}'
+        provider.read_change_request_diff.side_effect = ProviderError("fail")
+        with patch("snodo.providers.registry.detect_provider", return_value=provider):
+            result = _fetch_pr_context(1, "/tmp/proj")
 
         assert "Could not fetch PR diff" in result
 

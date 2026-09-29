@@ -207,7 +207,7 @@ The engine resolves `coder` to an adapter class at graph build time (`loop.py` p
 
 ### Interface
 
-Implement `CodeHostProvider` (`snodo/providers/base.py:16-106`):
+Implement the v1 `CodeHostProvider` contract (`snodo/providers/base.py`). Identifiers are opaque strings so they can represent pull requests, merge requests, or another host's change request. The discussion methods exchange JSON containing `title`, `comments`, and `reviews`; each entry has an `author` string and `body` string, and reviews may also have a `state` string.
 
 ```python
 from snodo.providers.base import CodeHostProvider
@@ -216,22 +216,27 @@ class GitLabProvider(CodeHostProvider):
     def __init__(self, project_root: str = "", metadata: dict | None = None):
         ...
 
-    def create_pr(self, branch: str, title: str, body: str) -> str: ...
-    def read_pr_diff(self, pr_number: int) -> str: ...
-    def post_review_comment(self, pr_number: int, comment: str) -> str: ...
-    def approve_pr(self, pr_number: int) -> str: ...
-    def reject_pr(self, pr_number: int, reason: str) -> str: ...
-    def merge_pr(self, pr_number: int) -> str: ...
-    def read_pr_comments(self, pr_number: int) -> str: ...
+    def create_change_request(
+        self, branch: str, title: str, body: str,
+        target_branch: str | None = None,
+    ) -> str: ...
+    def read_change_request_diff(self, change_request_id: str) -> str: ...
+    def post_change_request_comment(self, change_request_id: str, comment: str) -> str: ...
+    def approve_change_request(self, change_request_id: str) -> str: ...
+    def request_change_request_changes(self, change_request_id: str, reason: str) -> str: ...
+    def merge_change_request(self, change_request_id: str) -> str: ...
+    def read_change_request_discussion(self, change_request_id: str) -> str: ...
 ```
 
-All seven methods must be implemented. Return types are strings (PR URLs, confirmation messages, JSON payloads). Raise `ProviderError` for failures.
+All seven methods must be implemented. Return strings (URLs, confirmations, or JSON payloads) and raise `ProviderError` for failures. Provider constructors may accept `project_root` and `metadata` keyword arguments; the registry also supports no-argument constructors. For remote auto-detection, define a `remote_hosts` class attribute containing host names.
+
+The old `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `reject_pr`, `merge_pr`, and `read_pr_comments` names are deprecated compatibility wrappers. New providers should implement only the neutral method names.
 
 ### Registration
 
 Two paths:
 
-**Setuptools entry point** (recommended for pip-installable plugins):
+**Setuptools entry point** (recommended for installable plugins; register the provider class in the `snodo.providers` group):
 
 ```toml
 # pyproject.toml
@@ -239,7 +244,7 @@ Two paths:
 gitlab = "my_package.gitlab:GitLabProvider"
 ```
 
-The provider registry (`providers/registry.py:178-197`) loads entry points from the `snodo.providers` group.
+The entry-point name is the provider name referenced by `metadata.provider`. The registry discovers entry points for remote-host matching and loads a named entry point when selected.
 
 **Explicit metadata** (for in-project providers):
 
@@ -254,13 +259,12 @@ metadata:
 ### Resolution order
 
 1. `metadata.provider` if set
-2. Auto-detect from git remote URL (`github.com` → GitHub)
-3. Entry points in the `snodo.providers` group
-4. Fallback to `LocalProvider` (no remote)
+2. Auto-detect from git remote URL: `github.com` selects GitHub; otherwise installed plugins are checked against their `remote_hosts`
+3. Fallback to `LocalProvider` when no provider matches
 
 ### Shipped providers
 
-Two ship: `GitHubProvider` (`snodo/providers/github.py`, backed by PyGithub) and `LocalProvider` (no-op remote, PR operations raise `ProviderError`).
+Two ship: `GitHubProvider` (`snodo/providers/github.py`, backed by PyGithub) and `LocalProvider` (no remote; change-request operations raise `ProviderError`).
 
 [ADR 007](decisions/007-coder-adapter-provider-pattern.md) for the design rationale.
 
@@ -278,14 +282,14 @@ Governance → Validate → Execute → Post-validate → Move-next → Complete
     │                            (post_execute)
  predicates
  (governance)
- providers
- (via PrMCP
+  providers
+  (via PrMCP
   during execute)
 ```
 
 - **Validators** run in the `validate` node (`pre_execute` phase) or the `post_validate` node (`post_execute` phase). The engine builds a single `ValidatorContext` per pass and dispatches each validator spec through the registry.
 - **Predicates** run in the `governance` node (pre-execute constraints) or `post_validate` node (post-execute constraints). The engine builds a `PredicateContext` from `LoopState` and calls `evaluate(context, **params)`.
 - **Coders** run in the `execute` node. The engine passes a `TaskSpec` and receives a `CodeArtifact` — file operations are then applied via WorkspaceMCP and committed via GitMCP.
-- **Providers** are used by `PrMCP` during the `execute` node when PR operations are requested. The provider is resolved at MCP server construction time via `detect_provider()`.
+- **Providers** are used by `PrMCP` during the `execute` node when change-request operations are requested, and by `snodo run --from-pr` to prepend discussion and diff context. The provider is resolved via `detect_provider()`.
 
 All extensions are referenced from `protocol.yml` — no code changes needed in the engine.
