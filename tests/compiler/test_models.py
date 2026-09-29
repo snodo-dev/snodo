@@ -614,7 +614,6 @@ def test_delivery_mode_overrides_protocol_delivery():
 
 @pytest.mark.parametrize(("legacy", "expected"), [(True, "local_merge"), (False, "leave_unmerged")])
 def test_auto_merge_maps_to_delivery(legacy, expected):
-    from snodo.compiler.models import ExecutionConfig
     p = _auto_merge_protocol(execution_auto_merge=legacy)
     assert p.delivery_for("producer") == expected
     assert p.auto_merge_enabled("producer") is (legacy is True)

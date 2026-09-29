@@ -475,11 +475,9 @@ class Protocol(BaseModel):
 
     @model_validator(mode="after")
     def validate_delivery_configuration(self):
-        execution_fields = self.execution.model_fields_set
         if self.execution.delivery is not None and self.execution.auto_merge is not None:
             raise ValueError("execution.delivery and execution.auto_merge cannot both be set; use execution.delivery")
         for mode in self.modes:
-            fields = mode.model_fields_set
             if mode.delivery is not None and mode.auto_merge is not None:
                 raise ValueError(f"mode '{mode.mode_id}' cannot set both delivery and auto_merge; use delivery")
         for scope, delivery in [("execution", self.execution.delivery)] + [
