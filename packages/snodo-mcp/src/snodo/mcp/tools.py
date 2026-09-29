@@ -147,81 +147,117 @@ TOOL_REGISTRY = {
         "mcp": "git",
         "method": "delete_branch",
     },
-    "create_pr": {
-        "description": "Create a pull request",
+    "create_change_request": {
+        "description": "Create a change request",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "branch": {"type": "string", "description": "Source branch name"},
-                "title": {"type": "string", "description": "PR title"},
-                "body": {"type": "string", "description": "PR description body"},
+                "title": {"type": "string", "description": "Change request title"},
+                "body": {"type": "string", "description": "Change request description body"},
             },
             "required": ["branch", "title", "body"],
         },
         "mcp": "pr",
-        "method": "create_pr",
+        "method": "create_change_request",
     },
-    "read_pr_diff": {
-        "description": "Read the diff of a pull request",
+    "read_change_request_diff": {
+        "description": "Read the diff of a change request",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "pr_number": {"type": "integer", "description": "PR number"},
+                "change_request_id": {"type": "string", "description": "Opaque change request identifier"},
             },
-            "required": ["pr_number"],
+        "required": ["change_request_id"],
         },
         "mcp": "pr",
-        "method": "read_pr_diff",
+        "method": "read_change_request_diff",
     },
-    "post_review_comment": {
-        "description": "Post a comment on a pull request",
+    "post_change_request_comment": {
+        "description": "Post a comment on a change request",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "pr_number": {"type": "integer", "description": "PR number"},
+                "change_request_id": {"type": "string", "description": "Opaque change request identifier"},
                 "comment": {"type": "string", "description": "Comment text"},
             },
-            "required": ["pr_number", "comment"],
+        "required": ["change_request_id", "comment"],
         },
         "mcp": "pr",
-        "method": "post_review_comment",
+        "method": "post_change_request_comment",
+    },
+    "approve_change_request": {
+        "description": "Approve a change request",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "change_request_id": {"type": "string", "description": "Opaque change request identifier"},
+            },
+        "required": ["change_request_id"],
+        },
+        "mcp": "pr",
+        "method": "approve_change_request",
+    },
+    "request_change_request_changes": {
+        "description": "Request changes on a change request",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "change_request_id": {"type": "string", "description": "Opaque change request identifier"},
+                "reason": {"type": "string", "description": "Reason for requesting changes"},
+            },
+        "required": ["change_request_id", "reason"],
+        },
+        "mcp": "pr",
+        "method": "request_change_request_changes",
+    },
+    "merge_change_request": {
+        "description": "Merge a change request",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "change_request_id": {"type": "string", "description": "Opaque change request identifier"},
+            },
+        "required": ["change_request_id"],
+        },
+        "mcp": "pr",
+        "method": "merge_change_request",
+    },
+    "read_change_request_discussion": {
+        "description": "Read discussion and reviews on a change request",
+        "inputSchema": {"type": "object", "properties": {
+            "change_request_id": {"type": "string", "description": "Opaque change request identifier"},
+        }, "required": ["change_request_id"]},
+        "mcp": "pr",
+        "method": "read_change_request_discussion",
+    },
+    "create_pr": {
+        "description": "Deprecated: use create_change_request",
+        "inputSchema": {"type": "object", "properties": {
+            "branch": {"type": "string", "description": "Source branch name"},
+            "title": {"type": "string", "description": "PR title"},
+            "body": {"type": "string", "description": "PR description body"},
+        }, "required": ["branch", "title", "body"]}, "mcp": "pr", "method": "create_pr",
+    },
+    "read_pr_diff": {
+        "description": "Deprecated: use read_change_request_diff",
+        "inputSchema": {"type": "object", "properties": {"pr_number": {"type": "integer", "description": "PR number"}}, "required": ["pr_number"]}, "mcp": "pr", "method": "read_pr_diff",
+    },
+    "post_review_comment": {
+        "description": "Deprecated: use post_change_request_comment",
+        "inputSchema": {"type": "object", "properties": {"pr_number": {"type": "integer", "description": "PR number"}, "comment": {"type": "string", "description": "Comment text"}}, "required": ["pr_number", "comment"]}, "mcp": "pr", "method": "post_review_comment",
     },
     "approve_pr": {
-        "description": "Approve a pull request",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "pr_number": {"type": "integer", "description": "PR number"},
-            },
-            "required": ["pr_number"],
-        },
-        "mcp": "pr",
-        "method": "approve_pr",
+        "description": "Deprecated: use approve_change_request",
+        "inputSchema": {"type": "object", "properties": {"pr_number": {"type": "integer", "description": "PR number"}}, "required": ["pr_number"]}, "mcp": "pr", "method": "approve_pr",
     },
     "reject_pr": {
-        "description": "Request changes on a pull request",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "pr_number": {"type": "integer", "description": "PR number"},
-                "reason": {"type": "string", "description": "Reason for rejection"},
-            },
-            "required": ["pr_number", "reason"],
-        },
-        "mcp": "pr",
-        "method": "reject_pr",
+        "description": "Deprecated: use request_change_request_changes",
+        "inputSchema": {"type": "object", "properties": {"pr_number": {"type": "integer", "description": "PR number"}, "reason": {"type": "string", "description": "Reason for rejection"}}, "required": ["pr_number", "reason"]}, "mcp": "pr", "method": "reject_pr",
     },
     "merge_pr": {
-        "description": "Merge a pull request",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "pr_number": {"type": "integer", "description": "PR number"},
-            },
-            "required": ["pr_number"],
-        },
-        "mcp": "pr",
-        "method": "merge_pr",
+        "description": "Deprecated: use merge_change_request",
+        "inputSchema": {"type": "object", "properties": {"pr_number": {"type": "integer", "description": "PR number"}}, "required": ["pr_number"]}, "mcp": "pr", "method": "merge_pr",
     },
     "decompose": {
         "description": "Decompose an intent into a structured plan with waves and tasks",
@@ -785,8 +821,11 @@ MODE_TOOL_MAP = {
     "commit": ["stage_files", "commit"],
     "merge": ["create_branch", "stage_files", "commit", "merge_branch", "delete_branch"],
     "pr": [
-        "create_pr", "read_pr_diff", "post_review_comment",
-        "approve_pr", "reject_pr", "merge_pr",
+        "create_change_request", "read_change_request_diff",
+        "post_change_request_comment", "approve_change_request",
+        "request_change_request_changes", "merge_change_request",
+        "read_change_request_discussion", "create_pr", "read_pr_diff",
+        "post_review_comment", "approve_pr", "reject_pr", "merge_pr",
     ],
     "plan": [
         "decompose", "generate_spec", "validate_plan",

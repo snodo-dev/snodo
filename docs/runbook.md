@@ -383,6 +383,7 @@ names; they do not expose tools.
 | `edit` | `read_file`, `list_files`, model/recon tools | Read and understand project files |
 | `write` | `write_file` | Write files under the protocol's allowed prefixes |
 | `approve` / `commit` | `stage_files`, `commit` | Stage and commit changes |
+| `pr` | `create_change_request`, `read_change_request_diff`, `post_change_request_comment`, `approve_change_request`, `request_change_request_changes`, `merge_change_request`, `read_change_request_discussion` | Create and manage vendor-neutral change requests; legacy `*_pr` tools remain available as deprecated aliases |
 
 `write_file` writes directly; it does not stage or commit. Its default path
 allowance is `.snodo/`. A protocol can replace that default with a top-level

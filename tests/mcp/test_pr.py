@@ -81,6 +81,31 @@ class FailingProvider(CodeHostProvider):
         raise ProviderError("comments failed")
 
 
+class NeutralOnlyProvider(CodeHostProvider):
+    """Provider implementing only the vendor-neutral contract."""
+
+    def create_change_request(self, branch, title, body, target_branch=None):
+        return "created"
+
+    def read_change_request_diff(self, change_request_id):
+        return f"diff:{change_request_id}"
+
+    def post_change_request_comment(self, change_request_id, comment):
+        return f"comment:{change_request_id}:{comment}"
+
+    def approve_change_request(self, change_request_id):
+        return f"approved:{change_request_id}"
+
+    def request_change_request_changes(self, change_request_id, reason):
+        return f"changes:{change_request_id}:{reason}"
+
+    def merge_change_request(self, change_request_id):
+        return f"merged:{change_request_id}"
+
+    def read_change_request_discussion(self, change_request_id):
+        return f"discussion:{change_request_id}"
+
+
 @pytest.fixture
 def pr_mcp(temp_dir):
     """Create a PrMCP with stub provider."""
@@ -194,6 +219,33 @@ class TestReadPrComments:
     def test_read_comments_wraps_error(self, failing_pr_mcp):
         with pytest.raises(PrError, match="comments failed"):
             failing_pr_mcp.read_pr_comments(42)
+
+
+class TestNeutralProvider:
+    def test_neutral_methods_and_legacy_aliases_use_neutral_contract(self, temp_dir):
+        mcp = PrMCP(temp_dir, provider=NeutralOnlyProvider())
+        assert mcp.read_change_request_diff("host/key/42") == "diff:host/key/42"
+        assert mcp.read_pr_diff(42) == "diff:42"
+        assert mcp.approve_pr(42) == "approved:42"
+        assert mcp.merge_change_request("opaque-id") == "merged:opaque-id"
+        assert mcp.read_change_request_discussion("opaque-id") == "discussion:opaque-id"
+
+    def test_neutral_and_legacy_tool_dispatch(self, temp_dir):
+        subprocess.run(["git", "init", temp_dir], capture_output=True, check=True)
+        from snodo.mcp.server import ProtocolMCPServer
+
+        from snodo.compiler.models import Protocol
+
+        protocol = Protocol(**{
+            "protocol_id": "test", "name": "Test", "version": "1.0.0",
+            "modes": [{"mode_id": "reviewer", "name": "Reviewer", "tools": ["pr"], "validators": ["security"]}],
+            "validators": [{"validator_id": "security", "validator_type": "security", "criteria": ["Check"]}],
+            "disagreement_policy": "unanimous", "initial_mode": "reviewer",
+        })
+        server = ProtocolMCPServer(protocol, temp_dir, mode_id="reviewer")
+        server.pr.provider = NeutralOnlyProvider()
+        assert server.call_tool("read_change_request_diff", {"change_request_id": "host/42"}) == "diff:host/42"
+        assert server.call_tool("read_pr_diff", {"pr_number": 42}) == "diff:42"
 
 
 class TestNoProvider:
