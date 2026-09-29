@@ -1011,8 +1011,8 @@ class CoreToolHandler:
             try:
                 with open_repo(self.server.project_root) as repo:
                     return repo.commit(branch).hexsha
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Could not resolve retry source branch %s: %s", branch, e)
         return None
 
     def tool_handlers(self) -> dict:
