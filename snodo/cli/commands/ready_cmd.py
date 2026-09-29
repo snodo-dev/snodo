@@ -234,7 +234,7 @@ def _append_mcp_install_findings(assessment) -> None:
             reason = None
             if launchable and isinstance(args, list):
                 try:
-                    result = subprocess.run(
+                    result = subprocess.run(  # noqa: S603 - argv list, no shell; command comes from installed MCP config
                         [command, *args[:2], "--help"] if args[:2] == ["-m", "snodo"]
                         else [command, "--help"],
                         capture_output=True, text=True, timeout=5, check=False,
