@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- `retry_job` continues from the previous attempt's worktree by default,
+  preserving committed and uncommitted work; `fresh_start` opts into main.
+  Retry specs remain derived from the root task. (Fixes #552)
 - Inert coder-setting notices are logged at INFO, keeping harmless
   configuration information out of default job stderr. (Fixes #550)
 

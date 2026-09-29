@@ -85,7 +85,12 @@ task.
 **Next:** Inspect `get_job_logs` and the halt details, preserve the job ID and
 evidence, and surface the fault for diagnosis. Once the cause is understood and
 resolved, `retry_job` can retry a task job with its original spec by default;
-it preserves the same task identity and available worktree contents. Use a
+the retry continues from the prior attempt's worktree, including uncommitted
+changes. Pass `fresh_start: true` to `retry_job` when a clean start from main is
+intentional. If the prior worktree and branch are unavailable, retry starts
+from main. The spec remains rooted in the original task; use `append_spec` only
+for additional guidance. The retry preserves the same task identity and
+available worktree contents. Use a
 follow-up task only for a deliberate code change, not to disguise the engine
 fault.
 
