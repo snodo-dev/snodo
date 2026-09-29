@@ -5,9 +5,10 @@
     "merge"
   ],
   "execution": {
-    "auto_merge": true,
+    "auto_merge": null,
     "branch_prefix": "task",
     "branch_ttl_days": 7,
+    "delivery": "local_merge",
     "max_recovery_depth": 3,
     "max_retries": 3,
     "max_total_fix_attempts": 10,
@@ -44,6 +45,7 @@
       "coder_config": {},
       "concurrency": null,
       "constraints": [],
+      "delivery": null,
       "description": null,
       "max_recovery_depth": null,
       "mode_id": "producer",
