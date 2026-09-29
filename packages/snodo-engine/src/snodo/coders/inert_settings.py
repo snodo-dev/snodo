@@ -117,7 +117,7 @@ def report_inert_coder_settings(
     coder_name: str,
     explicit: Mapping[str, Any],
 ) -> List[str]:
-    """Warn for each explicit setting the selected coder cannot honour.
+    """Inform for each explicit setting the selected coder cannot honour.
 
     Called where a coder is selected — graph build and the governance-driven
     respawn — so the operator hears "this coder cannot honour that setting"
@@ -148,7 +148,7 @@ def report_inert_coder_settings(
             if key in JUDGED_CONFIG_FIELDS
             else f"coder_config.{key}"
         )
-        _logger.warning(
+        _logger.info(
             "Coder '%s' cannot honour the explicitly configured setting "
             "'%s' (=%r): this coder does not read it, so it will have no "
             "effect. Settings '%s' honours: %s.",
@@ -159,4 +159,3 @@ def report_inert_coder_settings(
             ", ".join(honoured) or "none",
         )
     return reported
-

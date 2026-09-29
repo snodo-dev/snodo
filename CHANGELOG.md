@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Inert coder-setting notices are logged at INFO, keeping harmless
+  configuration information out of default job stderr. (Fixes #550)
+
 ### Added
 - MCP client entries now use an absolute launcher for the installing Snodo
   environment; `snodo ready` reports broken or dependency-drifted installations.

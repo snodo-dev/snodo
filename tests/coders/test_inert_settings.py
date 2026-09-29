@@ -107,7 +107,7 @@ def test_explicit_setting_a_coder_cannot_honour_is_named_with_the_coder(
     explicit = explicit_coder_settings(cfg)
     assert field in explicit, "a written field is explicit regardless of value"
 
-    with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+    with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
         reported = report_inert_coder_settings(coder, explicit)
 
     assert reported == [field]
@@ -115,6 +115,7 @@ def test_explicit_setting_a_coder_cannot_honour_is_named_with_the_coder(
     assert field in text
     assert coder in text
     assert f"llm.coder.{field}" in text
+    assert all(record.levelno == logging.INFO for record in caplog.records)
 
 
 @pytest.mark.parametrize("coder, field", HONOURED_PAIRS)
@@ -129,7 +130,7 @@ def test_a_coder_that_honours_the_setting_reports_nothing(coder, field, caplog):
     cfg = CoderConfig(**{field: value})
     explicit = explicit_coder_settings(cfg)
 
-    with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+    with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
         reported = report_inert_coder_settings(coder, explicit)
 
     assert reported == []
@@ -141,7 +142,7 @@ def test_a_default_setting_is_silent(caplog):
     explicit = explicit_coder_settings(CoderConfig())
     assert explicit == {}
 
-    with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+    with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
         reported = report_inert_coder_settings("opencode-cli", explicit)
 
     assert reported == []
@@ -192,7 +193,7 @@ def test_engine_injected_plumbing_is_not_a_setting_to_honour():
 def test_unknown_coder_name_stays_silent_for_the_report(caplog):
     """``get_coder`` rejects an unknown name loudly; the report is not that
     check and must not double-fire or crash."""
-    with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+    with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
         reported = report_inert_coder_settings(
             "no-such-coder", explicit_coder_settings(CoderConfig(max_tool_turns=9))
         )
@@ -241,7 +242,7 @@ def test_graph_build_reports_the_inert_pairing_at_selection(monkeypatch, tmp_pat
         "    max_tool_turns: 12\n"
     )
     with mock.patch("snodo.engine.loop.GraphBuilder"):
-        with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+        with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
             build_protocol_graph(protocol=_make_protocol(), coder_name="opencode-cli")
 
     text = _warning_text(caplog)
@@ -258,7 +259,7 @@ def test_graph_build_is_silent_when_the_setting_applies(monkeypatch, tmp_path, c
         "    max_tool_turns: 12\n"
     )
     with mock.patch("snodo.engine.loop.GraphBuilder"):
-        with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+        with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
             build_protocol_graph(protocol=_make_protocol(), coder_name="litellm")
 
     assert caplog.records == []
@@ -269,7 +270,7 @@ def test_graph_build_is_silent_when_nothing_was_written(monkeypatch, tmp_path, c
     monkeypatch.setenv("SNODO_HOME", str(tmp_path))
     (tmp_path / "config.yml").write_text("llm:\n  coder:\n    model: opencode-cli/x-model\n")
     with mock.patch("snodo.engine.loop.GraphBuilder"):
-        with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+        with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
             build_protocol_graph(protocol=_make_protocol(), coder_name="opencode-cli")
 
     assert caplog.records == []
@@ -279,7 +280,7 @@ def test_mode_coder_config_settings_are_reported_against_the_selected_coder(capl
     """The protocol's coder_config is an operator-written setting too: a
     temperature handed to opencode-cli is stored and never read."""
     explicit = explicit_coder_settings(CoderConfig(), {"temperature": 0.2})
-    with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+    with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
         reported = report_inert_coder_settings("opencode-cli", explicit)
 
     assert reported == ["temperature"]
@@ -308,7 +309,7 @@ def test_respawn_reports_the_setting_against_the_new_coder(caplog):
 
     cfg = LlmConfig(coder=CoderConfig(max_tool_turns=40))
     with mock.patch("snodo.infrastructure.config.load_llm_config", return_value=cfg):
-        with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+        with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
             builder._maybe_respawn_coder()
 
     assert isinstance(builder.coder, OpenCodeCLIAdapter)
@@ -331,7 +332,7 @@ def test_repeated_task_dispatches_under_unchanged_config_emit_notice_once(
     )
     protocol = _make_protocol()
     with mock.patch("snodo.engine.loop.GraphBuilder"):
-        with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+        with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
             for _ in range(3):
                 build_protocol_graph(protocol=protocol, coder_name="opencode-cli")
 
@@ -344,12 +345,13 @@ def test_repeated_task_dispatches_under_unchanged_config_emit_notice_once(
 
 def test_report_inert_coder_settings_emits_once_for_same_pairing(caplog):
     """Calling report_inert_coder_settings twice for the same coder and setting
-    emits the warning on the first call and is silent on the second (Fixes #355)."""
+    emits the notice on the first call and is silent on the second (Fixes #355)."""
     explicit = {"max_tool_turns": 42}
-    with caplog.at_level(logging.WARNING, logger=_INERT_LOGGER):
+    with caplog.at_level(logging.INFO, logger=_INERT_LOGGER):
         first = report_inert_coder_settings("opencode-cli", explicit)
         assert first == ["max_tool_turns"]
         assert len(caplog.records) == 1
+        assert caplog.records[0].levelno == logging.INFO
 
         second = report_inert_coder_settings("opencode-cli", explicit)
         assert second == []
