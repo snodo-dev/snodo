@@ -245,3 +245,27 @@ def test_ready_cmd_unknown_mode(git_project: Path, capsys):
     assert exit_code != 0
     captured = capsys.readouterr()
     assert "Unknown mode 'nonexistent_mode'" in captured.err
+
+
+def test_ready_reports_mcp_install_dependency_drift(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from snodo.cli.commands.ready_cmd import _append_mcp_install_findings
+    from snodo.mcp.installer import ClientTarget
+
+    launcher = tmp_path / "python"
+    launcher.touch()
+    config = tmp_path / "claude.json"
+    config.write_text(json.dumps({"mcpServers": {
+        "snodo-demo-build": {"command": str(launcher), "args": ["-m", "snodo", "serve"]},
+    }}))
+    target = ClientTarget("Claude Desktop", config, "mcpServers", "json")
+    monkeypatch.setattr("snodo.mcp.installer.known_client_targets", lambda: [target])
+    monkeypatch.setattr("snodo.cli.commands.ready_cmd.subprocess.run", lambda *a, **k: SimpleNamespace(returncode=1))
+    assessment = SimpleNamespace(workstation_findings=[])
+
+    _append_mcp_install_findings(assessment)
+
+    assert len(assessment.workstation_findings) == 1
+    finding = assessment.workstation_findings[0]
+    assert "dependencies" in finding.description
+    assert "snodo serve --mcp-install" in finding.remediation

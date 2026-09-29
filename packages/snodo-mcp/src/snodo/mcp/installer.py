@@ -96,11 +96,6 @@ def _client_entry(entry: dict, target: ClientTarget) -> dict:
 
 def _snodo_launcher() -> Tuple[str, List[str]]:
     """Return an absolute launcher for the currently running Snodo install."""
-    invoked = shutil.which(sys.argv[0]) if sys.argv else None
-    if invoked and Path(invoked).name in {"snodo", "snodo.exe"}:
-        path = Path(invoked).resolve()
-        if path.is_file() and os.access(path, os.X_OK):
-            return str(path), []
     interpreter = Path(sys.executable).resolve()
     if interpreter.is_file() and os.access(interpreter, os.X_OK):
         return str(interpreter), ["-m", "snodo"]
