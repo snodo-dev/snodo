@@ -24,6 +24,7 @@ from typing import Optional
 from filelock import FileLock
 
 from snodo.infrastructure.atomic_json import atomic_write_json
+from snodo.infrastructure.completion_headers import wrap_completion_fn_with_headers
 from snodo.infrastructure.config import ClassifierConfig, WaveConfig
 from snodo.infrastructure.llm_parameter_errors import rejected_parameter_name
 
@@ -103,7 +104,12 @@ class WaveRegistry:
             waves = self._read_waves()
             open_waves = self._filter_open(waves)
             prompt = self._build_prompt(task_spec, open_waves)
-            result = self._call_classifier(prompt, completion_fn, model)
+            task_completion_fn = (
+                wrap_completion_fn_with_headers(completion_fn, task_id)
+                if completion_fn is not None and task_id
+                else completion_fn
+            )
+            result = self._call_classifier(prompt, task_completion_fn, model)
 
             flow_type = result.get("flow_type", "feature")
             task_summary = result.get("task_summary")
@@ -302,7 +308,7 @@ class WaveRegistry:
                     except Exception as e:
                         _logger.debug("Failed to check litellm response_format support: %s", e)
 
-                response = completion_fn(**kwargs)
+                response = completion_fn(_configured_model=model, **kwargs)
                 content = response.choices[0].message.content
                 if not content:
                     continue
