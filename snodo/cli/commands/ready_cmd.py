@@ -15,8 +15,8 @@ Emits findings as an audit event ('readiness_checked') adhering to the cloud
 payload discipline (no absolute paths or machine details).
 """
 
+import os
 import sys
-import shutil
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -229,10 +229,20 @@ def _append_mcp_install_findings(assessment) -> None:
                 continue
             command = entry.get("command", "")
             args = entry.get("args", [])
-            launchable = bool(command and Path(command).is_absolute() and Path(command).is_file()
-                              and (shutil.which(command) or Path(command).exists()))
+            local_snodo = (
+                isinstance(command, str)
+                and Path(command).is_absolute()
+                and (Path(command).name in {"snodo", "snodo.exe"}
+                     or (isinstance(args, list) and len(args) >= 2
+                         and args[0] == "-m" and args[1] == "snodo"))
+            )
+            # SSH and other wrappers execute on a different machine/context;
+            # they cannot be meaningfully imported by this local ready process.
+            if not local_snodo:
+                continue
+            launchable = bool(Path(command).is_file() and os.access(command, os.X_OK))
             reason = None
-            if launchable and isinstance(args, list):
+            if launchable:
                 try:
                     result = subprocess.run(  # noqa: S603 - argv list, no shell; absolute interpreter from installed MCP config
                         [command, "-c", "import snodo.cli.main; import snodo.mcp.server"],
@@ -243,12 +253,13 @@ def _append_mcp_install_findings(assessment) -> None:
                 except (OSError, subprocess.TimeoutExpired):
                     reason = "cannot execute or import Snodo CLI/MCP dependencies"
             else:
-                reason = "command is not an executable absolute path"
+                reason = "local Snodo launcher is not an executable absolute path"
             if reason:
                 assessment.workstation_findings.append(ReadinessFinding(
                     id=f"mcp_install_{name}", kind=ReadinessKind.WORKSTATION,
                     severity=FindingSeverity.WARN, modes=["all"],
-                    description=f"Installed MCP entry '{name}' {reason}.",
+                    description=(f"Installed MCP entry '{name}' for {target.name} "
+                                 f"in {target.config_path} {reason}."),
                     remediation="Reinstall with 'snodo serve --mcp-install' to point at the current installation and refresh its dependencies.",
                     fix_cost=3,
                 ))

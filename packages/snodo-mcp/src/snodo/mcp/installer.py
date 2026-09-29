@@ -96,7 +96,13 @@ def _client_entry(entry: dict, target: ClientTarget) -> dict:
 
 def _snodo_launcher() -> Tuple[str, List[str]]:
     """Return an absolute launcher for the currently running Snodo install."""
-    interpreter = Path(sys.executable).resolve()
+    # Do not resolve the interpreter: venv/uv tool interpreters are commonly
+    # symlinks to a base Python, while the symlink path selects the environment.
+    interpreter = Path(os.path.abspath(sys.executable))
+    scripts_dir = interpreter.parent
+    console_script = scripts_dir / ("snodo.exe" if os.name == "nt" else "snodo")
+    if console_script.is_file() and os.access(console_script, os.X_OK):
+        return str(console_script), []
     if interpreter.is_file() and os.access(interpreter, os.X_OK):
         return str(interpreter), ["-m", "snodo"]
     raise RuntimeError(

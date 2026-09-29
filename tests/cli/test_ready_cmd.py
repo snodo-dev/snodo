@@ -254,6 +254,7 @@ def test_ready_reports_mcp_install_dependency_drift(tmp_path, monkeypatch):
 
     launcher = tmp_path / "python"
     launcher.touch()
+    launcher.chmod(0o755)
     config = tmp_path / "claude.json"
     config.write_text(json.dumps({"mcpServers": {
         "snodo-demo-build": {"command": str(launcher), "args": ["-m", "snodo", "serve"]},
@@ -268,4 +269,38 @@ def test_ready_reports_mcp_install_dependency_drift(tmp_path, monkeypatch):
     assert len(assessment.workstation_findings) == 1
     finding = assessment.workstation_findings[0]
     assert "dependencies" in finding.description
+    assert "Claude Desktop" in finding.description
+    assert str(config) in finding.description
     assert "snodo serve --mcp-install" in finding.remediation
+
+
+def test_ready_skips_remote_mcp_entries_and_distinguishes_clients(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from snodo.cli.commands.ready_cmd import _append_mcp_install_findings
+    from snodo.mcp.installer import ClientTarget
+
+    local = tmp_path / "python"
+    local.touch()
+    configs = [
+        ClientTarget("Claude Desktop", tmp_path / "claude.json", "mcpServers", "json"),
+        ClientTarget("Codex", tmp_path / "codex.json", "mcp_servers", "json"),
+    ]
+    configs[0].config_path.write_text(json.dumps({"mcpServers": {
+        "snodo-remote": {"command": "ssh", "args": ["host", "snodo"]},
+        "snodo-local": {"command": str(local), "args": ["-m", "snodo"]},
+    }}))
+    configs[1].config_path.write_text(json.dumps({"mcp_servers": {
+        "snodo-local": {"command": str(local), "args": ["-m", "snodo"]},
+    }}))
+    monkeypatch.setattr("snodo.mcp.installer.known_client_targets", lambda: configs)
+    monkeypatch.setattr("snodo.cli.commands.ready_cmd.subprocess.run", lambda *a, **k: SimpleNamespace(returncode=1))
+    assessment = SimpleNamespace(workstation_findings=[])
+
+    _append_mcp_install_findings(assessment)
+
+    assert len(assessment.workstation_findings) == 2
+    descriptions = [f.description for f in assessment.workstation_findings]
+    assert all("snodo-local" in d for d in descriptions)
+    assert all("snodo-remote" not in d for d in descriptions)
+    assert "Claude Desktop" in descriptions[0] and "claude.json" in descriptions[0]
+    assert "Codex" in descriptions[1] and "codex.json" in descriptions[1]

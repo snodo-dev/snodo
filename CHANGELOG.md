@@ -17,6 +17,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   configuration information out of default job stderr. (Fixes #550)
 
 ### Added
+- MCP install launcher resolution now preserves virtualenv paths, and `snodo ready`
+  identifies client/config entries while skipping remote or wrapped launchers. (Fixes #554)
 - MCP client entries now use an absolute launcher for the installing Snodo
   environment; `snodo ready` reports broken or dependency-drifted installations.
   Reinstall after moving or recreating the virtualenv. (Fixes #549)
