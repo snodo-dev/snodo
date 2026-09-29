@@ -105,7 +105,7 @@ class TestDetectProvider:
         # detect_provider in ProtocolMCPServer catches this and returns None
         # but direct call should raise
         with patch.dict("os.environ", {}, clear=False):
-            with patch("snodo.providers.github.GitHubProvider._resolve_token", return_value=None):
+            with patch("snodo_provider_github.GitHubProvider._resolve_token", return_value=None):
                 with pytest.raises(ProviderError, match="GitHub token required"):
                     detect_provider(d)
 
@@ -117,7 +117,7 @@ class TestDetectProvider:
         mock_github = MagicMock()
         mock_github.return_value.get_repo.return_value = MagicMock()
 
-        with patch("snodo.providers.github.Github", mock_github):
+        with patch("snodo_provider_github.Github", mock_github):
             provider = detect_provider(
                 "/tmp",
                 protocol_metadata={
@@ -127,13 +127,32 @@ class TestDetectProvider:
                 },
             )
 
-        from snodo.providers.github import GitHubProvider
+        from snodo_provider_github import GitHubProvider
         assert isinstance(provider, GitHubProvider)
 
 
 # === Entry points ===
 
 class TestEntryPoints:
+    def test_plugins_do_not_install_into_core_provider_package(self):
+        from importlib.metadata import entry_points
+        from pathlib import Path
+        import snodo_provider_github
+
+        module_path = Path(snodo_provider_github.__file__).resolve()
+        assert "snodo" not in module_path.parts[-3:-1]
+        assert module_path.parent.name == "snodo_provider_github"
+
+        for ep in entry_points(group="snodo.providers"):
+            distribution = ep.dist
+            if distribution is None or distribution.files is None:
+                continue
+            installed_paths = {str(path).replace("\\", "/") for path in distribution.files}
+            assert not any(path.startswith("snodo/providers/") for path in installed_paths), (
+                f"Provider plugin distribution {distribution.metadata['Name']} installs files "
+                "inside the core snodo.providers package"
+            )
+
     def test_load_entry_point_not_found(self):
         result = _load_entry_point("nonexistent_provider_xyz")
         assert result is None

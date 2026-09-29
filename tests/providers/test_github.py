@@ -19,8 +19,8 @@ class TestGitHubProviderInit:
         mock_repo = MagicMock()
         mock_github.return_value.get_repo.return_value = mock_repo
 
-        with patch("snodo.providers.github.Github", mock_github):
-            from snodo.providers.github import GitHubProvider
+        with patch("snodo_provider_github.Github", mock_github):
+            from snodo_provider_github import GitHubProvider
             provider = GitHubProvider("owner/repo", token="ghp_test123")
 
         assert provider._repo_slug == "owner/repo"
@@ -31,17 +31,17 @@ class TestGitHubProviderInit:
         mock_github = MagicMock()
         mock_github.return_value.get_repo.return_value = MagicMock()
 
-        with patch("snodo.providers.github.Github", mock_github):
+        with patch("snodo_provider_github.Github", mock_github):
             with patch.dict("os.environ", {"GITHUB_TOKEN": "ghp_env"}):
-                from snodo.providers.github import GitHubProvider
+                from snodo_provider_github import GitHubProvider
                 GitHubProvider("owner/repo")
 
         mock_github.assert_called_once_with("ghp_env")
 
     def test_init_no_token_raises(self):
         with patch.dict("os.environ", {}, clear=True):
-            with patch("snodo.providers.github.GitHubProvider._resolve_token", return_value=None):
-                from snodo.providers.github import GitHubProvider
+            with patch("snodo_provider_github.GitHubProvider._resolve_token", return_value=None):
+                from snodo_provider_github import GitHubProvider
                 with pytest.raises(ProviderError, match="GitHub token required"):
                     GitHubProvider("owner/repo")
 
@@ -49,8 +49,8 @@ class TestGitHubProviderInit:
         mock_github = MagicMock()
         mock_github.return_value.get_repo.side_effect = Exception("Not Found")
 
-        with patch("snodo.providers.github.Github", mock_github):
-            from snodo.providers.github import GitHubProvider
+        with patch("snodo_provider_github.Github", mock_github):
+            from snodo_provider_github import GitHubProvider
             with pytest.raises(ProviderError, match="Failed to connect"):
                 GitHubProvider("bad/repo", token="ghp_test")
 
@@ -64,8 +64,8 @@ def github_provider():
     mock_repo = MagicMock()
     mock_github_cls.return_value.get_repo.return_value = mock_repo
 
-    with patch("snodo.providers.github.Github", mock_github_cls):
-        from snodo.providers.github import GitHubProvider
+    with patch("snodo_provider_github.Github", mock_github_cls):
+        from snodo_provider_github import GitHubProvider
         provider = GitHubProvider("owner/repo", token="ghp_test")
 
     # Expose mock_repo for assertions

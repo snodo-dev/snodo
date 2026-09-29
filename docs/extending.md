@@ -228,7 +228,7 @@ class GitLabProvider(CodeHostProvider):
     def read_change_request_discussion(self, change_request_id: str) -> str: ...
 ```
 
-All seven methods must be implemented. Return strings (URLs, confirmations, or JSON payloads) and raise `ProviderError` for failures. Provider constructors may accept `project_root` and `metadata` keyword arguments; the registry also supports no-argument constructors. For remote auto-detection, define a `remote_hosts` class attribute containing host names.
+All seven methods must be implemented. Return strings (URLs, confirmations, or JSON payloads) and raise `ProviderError` for failures. Provider constructors may accept `project_root` and `metadata` keyword arguments; the registry also supports no-argument constructors. For remote auto-detection, implement the `claims_remote(cls, url)` classmethod and return whether the provider claims that URL. `remote_hosts` is supported as a compatibility fallback for older plugins.
 
 The old `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `reject_pr`, `merge_pr`, and `read_pr_comments` names are deprecated compatibility wrappers. New providers should implement only the neutral method names.
 
@@ -244,7 +244,9 @@ Register an installable provider with the setuptools entry-point group:
 gitlab = "my_package.gitlab:GitLabProvider"
 ```
 
-The entry-point name is the provider name referenced by `metadata.provider`. The registry also discovers installed entry points when matching a git remote's `remote_hosts` value. Resolution is: explicit `metadata.provider`; otherwise provider detection from the git remote (built-in GitHub, then matching installed plugin `remote_hosts`); otherwise `LocalProvider`. Entry points are not independently selected when no remote match exists.
+The entry-point name is the provider name referenced by `metadata.provider`. The registry discovers installed plugins from the `snodo.providers` entry-point group; for remote matching, it calls each plugin's `claims_remote(url)` hook. Plugins that do not yet implement that hook may declare `remote_hosts` as a compatibility fallback. Entry points are not independently selected when no remote match exists. If an explicitly named provider is unavailable, the error suggests installing `snodo-provider-<name>` with `uv add` or `pip install`.
+
+The GitHub provider is the reference plugin to copy when creating a provider. It is distributed as the separate `snodo-provider-github` package and imports as `snodo_provider_github`; plugins should ship their own top-level import package rather than adding modules beneath Snodo's `snodo.providers` package.
 
 Explicit provider selection is configured in protocol metadata (also useful for in-project providers):
 
@@ -259,12 +261,12 @@ metadata:
 ### Resolution order
 
 1. `metadata.provider` if set (provider resolved by name, including installed entry points)
-2. Auto-detect from git remote URL: built-in GitHub matching first, then installed entry points whose `remote_hosts` match
-3. Fallback to `LocalProvider` when no provider matches
+2. Auto-detect from git remote URL: installed entry points in the `snodo.providers` group are checked using `claims_remote(url)`; `remote_hosts` is used only when the hook does not claim the URL
+3. Fallback to `LocalProvider` when no provider matches (`local` is the only built-in)
 
 ### Shipped providers
 
-Two ship: `GitHubProvider` (`snodo/providers/github.py`, backed by PyGithub) and `LocalProvider` (no remote; change-request operations raise `ProviderError`).
+The `local` provider is built in (no remote; change-request operations raise `ProviderError`). GitHub is an optional plugin (`snodo-provider-github`, module `snodo_provider_github`, backed by PyGithub) and serves as the reference example for third-party provider packages.
 
 [ADR 007](decisions/007-coder-adapter-provider-pattern.md) for the design rationale.
 

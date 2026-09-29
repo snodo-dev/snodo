@@ -4,9 +4,9 @@ FILE: snodo/providers/registry.py
 
 Resolves which CodeHostProvider to use for a project:
 1. Explicit provider in protocol.metadata["provider"]
-2. Auto-detect from git remote URL
-3. Setuptools entry points (snodo.providers group)
-4. Fallback to LocalProvider
+2. Auto-detect from git remote URL using installed plugin claims_remote hooks
+   (with remote_hosts as a compatibility fallback)
+3. Fallback to LocalProvider (the only built-in provider)
 """
 
 import logging

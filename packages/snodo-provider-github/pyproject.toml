@@ -10,8 +10,8 @@ requires-python = ">=3.12"
 dependencies = ["snodo-tools==0.18.0", "PyGithub>=2.0.0"]
 
 [project.entry-points."snodo.providers"]
-github = "snodo.providers.github:GitHubProvider"
+github = "snodo_provider_github:GitHubProvider"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-namespaces = true
+namespaces = false
