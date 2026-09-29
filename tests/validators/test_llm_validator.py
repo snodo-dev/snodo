@@ -729,6 +729,37 @@ class TestPostExecuteToolLoop:
                    "git_show", "git_log", "read_diff_between_refs"],
         )
 
+    def test_declared_tool_failure_is_validator_error_not_model_verdict(self, security_validator):
+        completion_fn = MagicMock()
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        call = MagicMock()
+        call.id = "tc_read"
+        call.function.name = "read_file"
+        call.function.arguments = '{"path": "src/auth.py"}'
+        resp.choices[0].message.content = None
+        resp.choices[0].message.tool_calls = [call]
+        completion_fn.return_value = resp
+
+        workspace = MagicMock()
+        workspace.read_file.side_effect = OSError("workspace unavailable")
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn, model="gpt-4")
+        result = validator.evaluate(self._make_post_context(completion_fn, workspace, MagicMock()))
+
+        assert result.error is True
+        assert "Validator declared tool 'read_file' failed" in result.justification
+        assert "workspace unavailable" in result.justification
+        completion_fn.assert_called_once()
+
+    def test_missing_declared_tool_infrastructure_is_validator_error(self, security_validator):
+        completion_fn = MagicMock()
+        validator = LLMValidator(self._make_post_validator(security_validator), completion_fn, model="gpt-4")
+        result = validator.evaluate(self._make_post_context(completion_fn, None, MagicMock()))
+
+        assert result.error is True
+        assert "workspace MCP" in result.justification
+        completion_fn.assert_not_called()
+
     def test_tool_loop_uses_diff_head_minus_1_to_head(self, security_validator):
         """Without base_ref, post-execute loop falls back to
         diff_between_refs(HEAD~1, HEAD) and labels it as a fallback in the

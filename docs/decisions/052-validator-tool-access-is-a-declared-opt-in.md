@@ -38,6 +38,11 @@ sends the work back, using the existing blocker semantics. The protocol
 guarantee is narrow and firm: an enabled validator never silently passes a
 criterion it cannot verify.
 
+This refusal applies when the needed capability is outside the declared
+allowlist. If a tool inside that allowlist is unavailable or fails when called,
+the validator has malfunctioned and cannot produce a verdict; that is
+`validator_error`, not an allowlist refusal or a model-chosen `warn`.
+
 Whether "no tool for this" means that no validator in the whole pool can
 verify the criterion, or that another validator in the same wave already
 can, remains an open implementation detail for the implementing ticket. It

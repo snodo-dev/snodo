@@ -27,6 +27,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   until v7 is advertised. (Fixes #543)
 
 ### Fixed
+- Declared validator tools that are missing or fail during execution now produce
+  `validator_error` with the cause instead of asking the model to turn an outage
+  into a warn verdict. (Fixes #553)
 - Pytest clears inherited Snodo job context before collection and e2e child
   processes cannot resolve the dispatching project. Removed leaked hello-world
   source and test files. (Fixes #542)
