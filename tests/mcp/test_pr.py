@@ -450,27 +450,37 @@ class TestDefaultProtocol:
 # === _fetch_pr_context ===
 
 class TestFetchPrContext:
+    @staticmethod
+    def _provider(discussion, diff):
+        class NeutralProvider:
+            def read_change_request_discussion(self, change_request_id):
+                return discussion
+
+            def read_change_request_diff(self, change_request_id):
+                return diff
+
+        return NeutralProvider()
+
     def test_fetch_pr_context_full(self):
         from snodo.cli.main import _fetch_pr_context
 
         pr_json = json.dumps({
             "title": "Add auth",
             "comments": [
-                {"author": {"login": "alice"}, "body": "Nice work!"},
-                {"author": {"login": "bob"}, "body": "Add error handling"},
+                {"author": "alice", "body": "Nice work!"},
+                {"author": "bob", "body": "Add error handling"},
             ],
             "reviews": [
-                {"author": {"login": "carol"}, "body": "Needs tests", "state": "CHANGES_REQUESTED"},
+                {"author": "carol", "body": "Needs tests", "state": "CHANGES_REQUESTED"},
             ],
         })
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("snodo.mcp.pr.PrMCP.read_pr_comments", return_value=pr_json):
-                with patch("snodo.mcp.pr.PrMCP.read_pr_diff", return_value="diff --git a/f.py"):
-                    context = _fetch_pr_context(42, tmpdir)
+            with patch("snodo.providers.registry.detect_provider", return_value=self._provider(pr_json, "diff --git a/f.py")):
+                context = _fetch_pr_context(42, tmpdir)
 
         assert "PR #42" in context
-        assert "PR Title: Add auth" in context
+        assert "Change request title: Add auth" in context
         assert "@alice: Nice work!" in context
         assert "@bob: Add error handling" in context
         assert "@carol [CHANGES_REQUESTED]: Needs tests" in context
@@ -483,11 +493,10 @@ class TestFetchPrContext:
         pr_json = json.dumps({"title": "Empty PR", "comments": [], "reviews": []})
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("snodo.mcp.pr.PrMCP.read_pr_comments", return_value=pr_json):
-                with patch("snodo.mcp.pr.PrMCP.read_pr_diff", return_value="diff content"):
-                    context = _fetch_pr_context(1, tmpdir)
+            with patch("snodo.providers.registry.detect_provider", return_value=self._provider(pr_json, "diff content")):
+                context = _fetch_pr_context(1, tmpdir)
 
-        assert "PR Title: Empty PR" in context
+        assert "Change request title: Empty PR" in context
         assert "Review Comments" not in context
         assert "diff content" in context
 
@@ -495,8 +504,9 @@ class TestFetchPrContext:
         from snodo.cli.main import _fetch_pr_context
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("snodo.mcp.pr.PrMCP.read_pr_comments", side_effect=PrError("no auth")):
-                with patch("snodo.mcp.pr.PrMCP.read_pr_diff", return_value="diff"):
+            provider = self._provider("{}", "diff")
+            with patch.object(provider, "read_change_request_discussion", side_effect=ProviderError("no auth")):
+                with patch("snodo.providers.registry.detect_provider", return_value=provider):
                     context = _fetch_pr_context(42, tmpdir)
 
         assert "Could not fetch PR comments" in context
@@ -508,8 +518,9 @@ class TestFetchPrContext:
         pr_json = json.dumps({"title": "PR", "comments": [], "reviews": []})
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("snodo.mcp.pr.PrMCP.read_pr_comments", return_value=pr_json):
-                with patch("snodo.mcp.pr.PrMCP.read_pr_diff", side_effect=PrError("no diff")):
+            provider = self._provider(pr_json, "")
+            with patch.object(provider, "read_change_request_diff", side_effect=ProviderError("no diff")):
+                with patch("snodo.providers.registry.detect_provider", return_value=provider):
                     context = _fetch_pr_context(42, tmpdir)
 
         assert "Could not fetch PR diff" in context
@@ -518,9 +529,11 @@ class TestFetchPrContext:
         from snodo.cli.main import _fetch_pr_context
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("snodo.mcp.pr.PrMCP.read_pr_comments", side_effect=PrError("err")):
-                with patch("snodo.mcp.pr.PrMCP.read_pr_diff", side_effect=PrError("err")):
-                    context = _fetch_pr_context(42, tmpdir)
+            provider = self._provider("{}", "")
+            with patch.object(provider, "read_change_request_discussion", side_effect=ProviderError("err")):
+                with patch.object(provider, "read_change_request_diff", side_effect=ProviderError("err")):
+                    with patch("snodo.providers.registry.detect_provider", return_value=provider):
+                        context = _fetch_pr_context(42, tmpdir)
 
         assert "PR #42" in context
         assert "Could not fetch PR comments" in context
@@ -532,18 +545,17 @@ class TestFetchPrContext:
         pr_json = json.dumps({
             "title": "PR",
             "comments": [
-                {"author": {"login": "x"}, "body": ""},
-                {"author": {"login": "y"}, "body": "Real comment"},
+                {"author": "x", "body": ""},
+                {"author": "y", "body": "Real comment"},
             ],
             "reviews": [
-                {"author": {"login": "z"}, "body": "", "state": "APPROVED"},
+                {"author": "z", "body": "", "state": "APPROVED"},
             ],
         })
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("snodo.mcp.pr.PrMCP.read_pr_comments", return_value=pr_json):
-                with patch("snodo.mcp.pr.PrMCP.read_pr_diff", return_value=""):
-                    context = _fetch_pr_context(1, tmpdir)
+            with patch("snodo.providers.registry.detect_provider", return_value=self._provider(pr_json, "")):
+                context = _fetch_pr_context(1, tmpdir)
 
         assert "@x" not in context
         assert "@y: Real comment" in context

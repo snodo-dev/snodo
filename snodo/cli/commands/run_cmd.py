@@ -189,10 +189,10 @@ _logger = logging.getLogger(__name__)
 
 
 def _format_pr_comments(data: dict) -> list:
-    """Format PR comments and reviews into text lines.
+    """Format change-request discussion data into text lines.
 
     Args:
-        data: Parsed PR JSON data with comments and reviews
+        data: Parsed provider-neutral JSON with title, comments and reviews.
 
     Returns:
         List of formatted comment strings
@@ -200,7 +200,7 @@ def _format_pr_comments(data: dict) -> list:
     parts = []
     title = data.get("title", "")
     if title:
-        parts.append(f"PR Title: {title}")
+        parts.append(f"Change request title: {title}")
 
     comments = data.get("comments", [])
     reviews = data.get("reviews", [])
@@ -210,12 +210,12 @@ def _format_pr_comments(data: dict) -> list:
 
     parts.append("\nReview Comments:")
     for c in comments:
-        author = c.get("author", {}).get("login", "unknown")
+        author = c.get("author", "unknown")
         body = c.get("body", "").strip()
         if body:
             parts.append(f"  @{author}: {body}")
     for r in reviews:
-        author = r.get("author", {}).get("login", "unknown")
+        author = r.get("author", "unknown")
         body = r.get("body", "").strip()
         state = r.get("state", "")
         if body:
@@ -224,16 +224,16 @@ def _format_pr_comments(data: dict) -> list:
 
 
 def _fetch_pr_context(pr_number: int, project_root: str) -> str:
-    """Fetch PR comments and diff as context string.
+    """Fetch change-request discussion and diff as context string.
 
     Args:
-        pr_number: PR number to fetch context from
+        pr_number: Change-request identifier supplied by ``--from-pr``
         project_root: Project root directory
 
     Returns:
-        Formatted context string with PR title, comments, reviews, and diff
+        Formatted context string with title, comments, reviews, and diff
     """
-    from snodo.mcp.pr import PrMCP, PrError
+    from snodo.providers.base import ProviderError
     from snodo.providers.registry import detect_provider
 
     provider = None
@@ -241,20 +241,19 @@ def _fetch_pr_context(pr_number: int, project_root: str) -> str:
         provider = detect_provider(project_root)
     except Exception as e:
         _logger.debug("PR context: provider detection failed: %s", e)
-    pr = PrMCP(project_root, provider=provider)
     parts = [f"--- PR #{pr_number} Review Context ---"]
 
     try:
-        comments_json = pr.read_pr_comments(pr_number)
+        comments_json = provider.read_change_request_discussion(str(pr_number))
         parts.extend(_format_pr_comments(json.loads(comments_json)))
-    except PrError as e:
+    except (ProviderError, json.JSONDecodeError, AttributeError) as e:
         parts.append(f"(Could not fetch PR comments: {e})")
 
     try:
-        diff = pr.read_pr_diff(pr_number)
+        diff = provider.read_change_request_diff(str(pr_number))
         if diff.strip():
             parts.append(f"\nDiff:\n{diff}")
-    except PrError:
+    except (ProviderError, AttributeError):
         parts.append("(Could not fetch PR diff)")
 
     parts.append("--- End PR Context ---")

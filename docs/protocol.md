@@ -259,7 +259,7 @@ Each logical tool maps to one or more MCP operations:
 | `approve` | `stage_files`, `commit` |
 | `commit` | `stage_files`, `commit` |
 | `merge` | `create_branch`, `stage_files`, `commit`, `merge_branch`, `delete_branch` |
-| `pr` | `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `reject_pr`, `merge_pr` |
+| `pr` | `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `reject_pr`, `merge_pr` (MCP tool names; provider operations use the neutral change-request contract described in [Code-host providers](extending.md#4-code-host-providers)) |
 | `plan` | `decompose`, `generate_spec`, `validate_plan`, `propose_plan`, `get_plan`, `run_plan`, `record_task_status`, `queue_list`, `queue_create`, `queue_move`, `queue_remove`, `queue_validate`, `queue_run` |
 | `queue` | `queue_list`, `queue_create`, `queue_move`, `queue_remove`, `queue_validate`, `queue_run` |
 | `read` | `read_file`, `list_files` |
