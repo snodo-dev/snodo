@@ -9,6 +9,15 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- GitHub support ships as the separate `snodo-provider-github` plugin, with
+  its own `snodo_provider_github` import package and discovery through the
+  `snodo.providers` entry-point group; it remains installed by default with
+  snodo. Plugins claim git remotes through `claims_remote`, with
+  `remote_hosts` retained as a compatibility fallback. The code-host contract
+  and MCP tools use vendor-neutral change-request names, while the old `*_pr`
+  names remain deprecated aliases. (Fixes #561, #558)
+
 ### Added
 - GitHub is now an entry-point code-host plugin included by the top-level
   distribution; `snodo-tools` and `snodo-mcp` no longer depend on PyGithub, and
