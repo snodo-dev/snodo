@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import subprocess
 from typing import Optional
 
 from snodo.providers.base import CodeHostProvider, ProviderError
@@ -136,9 +137,9 @@ def _remote_host(url: str) -> str:
 
 
 def _get_git_remote(project_root: str) -> Optional[str]:
-    import subprocess
     try:
-        result = subprocess.run(["git", "remote", "get-url", "origin"], cwd=project_root,
+        result = subprocess.run(["git", "remote", "get-url", "origin"],  # noqa: S607 - git resolved from PATH by design; argv list, no shell, controlled flags
+                                cwd=project_root,
                                 capture_output=True, text=True, check=True)
         return result.stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
