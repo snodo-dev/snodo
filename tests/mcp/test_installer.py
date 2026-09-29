@@ -807,6 +807,33 @@ class TestListMCPEntries:
 
 
 class TestCodexClientTargets:
+    def test_virtualenv_interpreter_symlink_keeps_environment(self, temp_dir):
+        from snodo.mcp.installer import _snodo_launcher
+
+        base = temp_dir / "base-python"
+        base.write_text("python")
+        base.chmod(0o755)
+        environment = temp_dir / "uv" / "tools" / "snodo" / "bin"
+        environment.mkdir(parents=True)
+        venv_python = environment / "python"
+        venv_python.symlink_to(base)
+        with patch("snodo.mcp.installer.sys.executable", str(venv_python)):
+            assert _snodo_launcher() == (str(venv_python), ["-m", "snodo"])
+
+    def test_prefers_environment_console_script(self, temp_dir):
+        from snodo.mcp.installer import _snodo_launcher
+
+        environment = temp_dir / ".venv" / "bin"
+        environment.mkdir(parents=True)
+        python = environment / "python"
+        python.write_text("python")
+        python.chmod(0o755)
+        script = environment / "snodo"
+        script.write_text("#!/bin/sh\n")
+        script.chmod(0o755)
+        with patch("snodo.mcp.installer.sys.executable", str(python)):
+            assert _snodo_launcher() == (str(script), [])
+
     def test_unresolvable_launcher_fails_clearly(self):
         from snodo.mcp.installer import _snodo_launcher
 
