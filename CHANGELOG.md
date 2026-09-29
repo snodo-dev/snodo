@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- MCP client entries now use an absolute launcher for the installing Snodo
+  environment; `snodo ready` reports broken or dependency-drifted installations.
+  Reinstall after moving or recreating the virtualenv. (Fixes #549)
 - Add the `codex-cli/<model>` in-place coder, using Codex CLI workspace-write
   execution and recording JSONL token usage. (Fixes #547)
 - `snodo serve --mcp-install`, listing, uninstall, and orphan cleanup now cover

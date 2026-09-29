@@ -16,6 +16,7 @@ import os
 import platform
 import re
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -91,6 +92,22 @@ def _client_entry(entry: dict, target: ClientTarget) -> dict:
         return entry
     # Snodo's long-running synchronous MCP tools need a higher ceiling than Codex's 60s default.
     return {**entry, "startup_timeout_sec": 120, "tool_timeout_sec": 1800}
+
+
+def _snodo_launcher() -> Tuple[str, List[str]]:
+    """Return an absolute launcher for the currently running Snodo install."""
+    invoked = shutil.which(sys.argv[0]) if sys.argv else None
+    if invoked and Path(invoked).name in {"snodo", "snodo.exe"}:
+        path = Path(invoked).resolve()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path), []
+    interpreter = Path(sys.executable).resolve()
+    if interpreter.is_file() and os.access(interpreter, os.X_OK):
+        return str(interpreter), ["-m", "snodo"]
+    raise RuntimeError(
+        "Cannot determine an absolute executable for this Snodo installation; "
+        "install Snodo in a virtual environment and rerun 'snodo serve --mcp-install'."
+    )
 
 
 def install_clients(protocol: Protocol, protocol_path: str, project_name: str,
@@ -237,12 +254,13 @@ def generate_mcp_entries(
     Returns:
         Dict of server_name -> server config
     """
+    command, prefix_args = _snodo_launcher()
     entries = {}
     for mode in protocol.modes:
         server_name = f"snodo-{project_name}-{mode.mode_id}"
         entries[server_name] = {
-            "command": "snodo",
-            "args": ["serve", "--protocol", protocol_path, "--mode", mode.mode_id],
+            "command": command,
+            "args": [*prefix_args, "serve", "--protocol", protocol_path, "--mode", mode.mode_id],
         }
     return entries
 

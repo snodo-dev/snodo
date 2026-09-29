@@ -16,6 +16,8 @@ payload discipline (no absolute paths or machine details).
 """
 
 import sys
+import shutil
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
@@ -106,6 +108,7 @@ def ready_command(args) -> int:
 
     # Run assessment across the whole protocol
     assessment = assess_readiness(project_root, protocol)
+    _append_mcp_install_findings(assessment)
     protocol_warnings = unknown_capability_warnings(protocol)
 
     # Resolve project identity for audit logging
@@ -212,3 +215,41 @@ def ready_command(args) -> int:
         print("  ✓ All workstation requirements satisfied.")
 
     return EXIT_PASS
+
+
+def _append_mcp_install_findings(assessment) -> None:
+    """Report registered MCP commands that cannot launch this Snodo install."""
+    from snodo.readiness.models import FindingSeverity, ReadinessFinding, ReadinessKind
+    from snodo.mcp.installer import known_client_targets, _read_target
+
+    for target in known_client_targets():
+        config = _read_target(target)
+        for name, entry in config.get(target.servers_key, {}).items():
+            if not name.startswith("snodo-") or not isinstance(entry, dict):
+                continue
+            command = entry.get("command", "")
+            args = entry.get("args", [])
+            launchable = bool(command and Path(command).is_absolute() and Path(command).is_file()
+                              and (shutil.which(command) or Path(command).exists()))
+            reason = None
+            if launchable and isinstance(args, list):
+                try:
+                    result = subprocess.run(
+                        [command, *args[:2], "--help"] if args[:2] == ["-m", "snodo"]
+                        else [command, "--help"],
+                        capture_output=True, text=True, timeout=5, check=False,
+                    )
+                    if result.returncode != 0:
+                        reason = "cannot import Snodo CLI/MCP dependencies"
+                except (OSError, subprocess.TimeoutExpired):
+                    reason = "cannot execute or import Snodo CLI/MCP dependencies"
+            else:
+                reason = "command is not an executable absolute path"
+            if reason:
+                assessment.workstation_findings.append(ReadinessFinding(
+                    id=f"mcp_install_{name}", kind=ReadinessKind.WORKSTATION,
+                    severity=FindingSeverity.WARN, modes=["all"],
+                    description=f"Installed MCP entry '{name}' {reason}.",
+                    remediation="Reinstall with 'snodo serve --mcp-install' to point at the current installation and refresh its dependencies.",
+                    fix_cost=3,
+                ))

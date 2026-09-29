@@ -141,6 +141,10 @@ Without `--mode`, the server exposes the current mode from
 pins it to a named mode. It does not combine grants from other modes. The
 `--mcp-install` option registers one entry per mode, each started with its
 matching `--mode` pin.
+Each entry points to the Snodo installation that performed the registration,
+using an absolute executable path. Re-run `snodo serve --mcp-install` after
+moving or recreating that virtual environment so clients launch the current
+installation.
 Installation and cleanup update each supported client whose configuration
 directory exists: Claude Desktop and the Codex family (ChatGPT desktop, Codex
 CLI, and the IDE extension). Codex stores its shared configuration in

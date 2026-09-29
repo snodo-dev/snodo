@@ -205,8 +205,8 @@ class TestGenerateMCPEntries:
     def test_entry_structure(self, protocol):
         entries = generate_mcp_entries(protocol, "/project/.snodo/protocol.yml", "myapp")
         entry = entries["snodo-myapp-producer"]
-        assert entry["command"] == "snodo"
-        assert entry["args"] == [
+        assert Path(entry["command"]).is_absolute()
+        assert entry["args"][-5:] == [
             "serve", "--protocol", "/project/.snodo/protocol.yml",
             "--mode", "producer",
         ]
@@ -229,7 +229,7 @@ class TestGenerateMCPEntries:
     def test_reviewer_entry_args(self, protocol):
         entries = generate_mcp_entries(protocol, "/project/protocol.yml", "myapp")
         entry = entries["snodo-myapp-reviewer"]
-        assert entry["args"] == [
+        assert entry["args"][-5:] == [
             "serve", "--protocol", "/project/protocol.yml",
             "--mode", "reviewer",
         ]
@@ -387,6 +387,7 @@ class TestInstall:
         assert "snodo-myapp-reviewer" in added
 
         data = json.loads(config_path.read_text())
+        assert Path(data["mcpServers"]["snodo-myapp-producer"]["command"]).is_absolute()
         producer_args = data["mcpServers"]["snodo-myapp-producer"]["args"]
         assert "/new/path.yml" in producer_args
 
@@ -608,7 +609,7 @@ class TestCLIInstall:
         assert result == 0
         data = json.loads(config_path.read_text())
         producer = data["mcpServers"][f"snodo-{pname}-producer"]
-        assert str(proto.resolve()) in producer["args"][2]
+        assert str(proto.resolve()) in producer["args"][-3]
 
     def test_serve_install_unsupported_os(self, initialized_project):
         import os
@@ -806,6 +807,15 @@ class TestListMCPEntries:
 
 
 class TestCodexClientTargets:
+    def test_unresolvable_launcher_fails_clearly(self):
+        from snodo.mcp.installer import _snodo_launcher
+
+        with patch("snodo.mcp.installer.sys.argv", ["shell-alias"]), \
+             patch("snodo.mcp.installer.sys.executable", "/missing/python"), \
+             patch("snodo.mcp.installer.shutil.which", return_value=None):
+            with pytest.raises(RuntimeError, match="Cannot determine an absolute executable"):
+                _snodo_launcher()
+
     def test_codex_home_is_honoured(self, temp_dir):
         from snodo.mcp.installer import get_codex_config_path
         with patch.dict("os.environ", {"CODEX_HOME": str(temp_dir)}):
@@ -823,6 +833,9 @@ class TestCodexClientTargets:
         for target in targets:
             text = target.config_path.read_text()
             assert "snodo-demo-producer" in text
+            from snodo.mcp.installer import _read_target
+            entry = _read_target(target)[target.servers_key]["snodo-demo-producer"]
+            assert Path(entry["command"]).is_absolute()
         if codex in targets:
             assert "tool_timeout_sec = 1800" in codex.config_path.read_text()
 
