@@ -15,6 +15,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Remove a duplicated sentence from the planning guide. (Fixes #578)
 
 ### Changed
+- Halt and job-state output tails for OpenCode CLI and Codex CLI now show
+  readable coder messages instead of raw JSON events, while retaining stderr
+  diagnostics and unchanged usage recording. (Fixes #588)
 - From v0.19.0, changes to this repository are developed with snodo and delivered as pull requests opened by snodo. (Fixes #582)
 - Change-request delivery now uses the task branch commit subject as a concise
   title, falls back to a truncated spec line, and includes a bounded task spec

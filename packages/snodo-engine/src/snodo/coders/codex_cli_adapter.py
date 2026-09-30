@@ -70,3 +70,33 @@ class CodexCLIAdapter(SubprocessCoderAdapter):
                 return f"[command] {command}".rstrip()
             return str(item.get("text", ""))
         return str(event.get("text", raw))
+
+    def _format_output_tail_stdout(self, stdout: str) -> str:
+        """Replace JSONL events with message text and retain plain diagnostics."""
+        rendered = []
+        for line in stdout.splitlines():
+            try:
+                event = json.loads(line)
+            except (TypeError, ValueError):
+                rendered.append(line)
+                continue
+            if not isinstance(event, dict):
+                rendered.append(line)
+                continue
+            kind = event.get("type")
+            if kind in {"item.completed", "item.started"}:
+                item = event.get("item") or {}
+                item_type = item.get("type")
+                if item_type in {"agent_message", "assistant_message"}:
+                    text = item.get("text")
+                elif item_type in {"command_execution", "command"}:
+                    text = f"[command] {item.get('command') or item.get('text') or ''}".rstrip()
+                else:
+                    text = item.get("text")
+                if text:
+                    rendered.append(str(text))
+            elif kind != "turn.completed":
+                text = event.get("text")
+                if text:
+                    rendered.append(str(text))
+        return "\n".join(rendered)

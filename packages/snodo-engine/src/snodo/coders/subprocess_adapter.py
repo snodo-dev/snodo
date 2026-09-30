@@ -504,8 +504,11 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         """Return the human-facing form of one captured output line."""
         return line.rstrip("\n")
 
-    @staticmethod
-    def _combined_output_tail(stdout: str, stderr: str) -> str:
+    def _format_output_tail_stdout(self, stdout: str) -> str:
+        """Return stdout in the form intended for a human-readable tail."""
+        return stdout
+
+    def _combined_output_tail(self, stdout: str, stderr: str) -> str:
         """Build a diagnostic tail that keeps the end of BOTH output streams.
 
         A coder that narrates to stdout keeps that stream busy, so the *reason*
@@ -522,6 +525,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
         verbatim (no labels around a lone channel); when both have content
         they are returned as labeled sections.
         """
+        stdout = self._format_output_tail_stdout(stdout)
         out_tail = stdout.strip()[-_OUTPUT_TAIL_CHARS:] if stdout and stdout.strip() else ""
         err_tail = stderr.strip()[-_OUTPUT_TAIL_CHARS:] if stderr and stderr.strip() else ""
         if out_tail and err_tail:
