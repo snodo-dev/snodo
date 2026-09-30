@@ -6,7 +6,7 @@ Four extension points. Each maps to an interface or registry in the codebase. Yo
 
 ### Interface
 
-Subclass `ValidatorBase` (`snodo/validators/context.py:34-48`) and implement two methods:
+Subclass `ValidatorBase` (`snodo.validators.context`) and implement the required methods:
 
 ```python
 from snodo.validators.context import ValidatorBase, ValidatorContext
@@ -38,7 +38,7 @@ For a validator that handles multiple types, use `register_compound`:
 _default_registry.register_compound({"my_type", "my_alias"}, MyValidator)
 ```
 
-Registration must happen at import time — put it at the bottom of your validator module. If your module is imported (directly or via `snodo.validators.__init__`), the registration fires automatically.
+Registration must happen at import time — put it at the bottom of your validator module. Snodo imports its built-in validator modules through `snodo.validators.__init__`; it does not discover third-party validators through package entry points. Installing a third-party package does not load it: its module must be imported by the process before protocol dispatch (for example, by application code that imports the module). Once imported, module-level registration makes the type available in the default registry. The public CLI currently has no third-party validator plugin loader.
 
 ### Wiring into the protocol
 
@@ -52,11 +52,11 @@ validators:
     severity_cap: "blocker"   # optional — cap at "warn" for experimental validators
 ```
 
-The engine dispatches to your validator during `_dispatch_one()` in the orchestration loop (`loop.py:776-804`). The `evaluation_phase` controls when it runs: `pre_execute` before code generation, `post_execute` after, `mode_transition` on mode change.
+The engine dispatches to your validator through the validator registry. The `evaluation_phase` controls when it runs: `pre_execute` before code generation, `post_execute` after, `mode_transition` on mode change.
 
 ### Worked example
 
-The test suite includes a complete third-party validator proof (`tests/validators/test_custom_validator.py:32-62`):
+The test suite includes a complete custom-validator proof (`tests/validators/test_custom_validator.py`):
 
 ```python
 class CustomValidator(ValidatorBase):
@@ -85,7 +85,7 @@ from snodo.validators.registry import _default_registry
 _default_registry.register("custom_type", CustomValidator)
 ```
 
-[ADR 005](decisions/005-protocol-adherence-validator.md) for the design rationale.
+[ADR 005](decisions/005-protocol-adherence-validator.md) for the design rationale. See [`docs/coders.md`](coders.md) for coder-backend implementation details.
 
 ---
 
@@ -93,7 +93,7 @@ _default_registry.register("custom_type", CustomValidator)
 
 ### Interface
 
-Subclass `Predicate` (`snodo/predicates/base.py:37-57`) and implement one method:
+Subclass `Predicate` (`snodo.predicates.base`) and implement one method:
 
 ```python
 from snodo.predicates.base import Predicate, PredicateContext, PredicateResult
@@ -121,7 +121,7 @@ from snodo.predicates.registry import _default_registry
 _default_registry.register("my_predicate", MyPredicate())
 ```
 
-Note the difference from validators: predicates register **instances**, not classes. Put registration at import time in your predicate module. WF5 verifies that referenced predicate names are registered at protocol load time.
+Note the difference from validators: predicates register **instances**, not classes. Put registration at import time in your predicate module. Built-in predicate modules are imported by Snodo; there is no third-party predicate entry-point discovery or public plugin loader today. Installing a package alone does not import its module: application code must import it before the protocol references its predicate. WF5 verifies that referenced predicate names are registered at protocol load time.
 
 ### Wiring into the protocol
 
@@ -139,7 +139,7 @@ Constraints can be placed at three levels: `global_constraints` (every task), `m
 
 ### Shipped predicates
 
-Three predicates ship for reference (`snodo/predicates/`):
+Three predicates ship for reference (`snodo.predicates`):
 
 - `files_in_scope` — verifies all modified files match configured scope paths; a task scoped to a module (ADR 041) is instead bounded by that module's declared paths
 - `tests_exist_for_modified` — requires test files for each modified implementation file
@@ -153,12 +153,13 @@ Three predicates ship for reference (`snodo/predicates/`):
 
 ### Interface
 
-Implement `Coder` (`snodo/core/interfaces.py:24-89`):
+Implement `CoderAdapter` (`snodo.coders.base`), the adapter-facing alias for the core `Coder` interface (`snodo.core.interfaces`). Most adapters subclass `CoderAdapter`; adapters that execute a host CLI should normally build on `SubprocessCoderAdapter`, and adapters writing directly into the working tree use `InPlaceCoderAdapter`. See the [coder adapter contract](architecture/coder-adapter-contract.md) and [`docs/coders.md`](coders.md) for shared obligations and a host-CLI example.
 
 ```python
-from snodo.core.interfaces import Coder, TaskSpec, CodeArtifact
+from snodo.coders.base import CoderAdapter
+from snodo.core.interfaces import TaskSpec, CodeArtifact
 
-class MyCoder(Coder):
+class MyCoder(CoderAdapter):
     def implement(self, spec: TaskSpec) -> CodeArtifact:
         # spec.description — the task description
         # spec.constraints — declared constraints
@@ -186,7 +187,7 @@ A `CodeArtifact` is a list of `FileArtifact` objects (path, content, action="wri
 
 ### Wiring
 
-No registry — coders are not plugin-resolved. Set the coder backend on the mode:
+Coder names resolve through `CODER_REGISTRY` in `snodo.coders`. Register an adapter class there under the name used by the protocol. This is an in-process mapping, not an installed-package entry-point mechanism; installing a package alone does not add a coder. The built-in CLI does not load third-party coder packages automatically. A process embedding Snodo must import the extension and register its class before building the execution graph.
 
 ```yaml
 modes:
@@ -197,7 +198,7 @@ modes:
       temperature: 0.7
 ```
 
-The engine resolves `coder` to an adapter class at graph build time (`loop.py` passes the `coder` parameter to `GraphBuilder`). The `--mock` CLI flag overrides to `MockAdapter`.
+The engine resolves `coder` to an adapter class at graph build time. The `--mock` CLI flag overrides to `MockAdapter`. For the in-repository adapter registration pattern and conformance expectations, see [`docs/coders.md`](coders.md).
 
 [ADR 007](decisions/007-coder-adapter-provider-pattern.md) for the design rationale.
 
@@ -228,7 +229,7 @@ class GitLabProvider(CodeHostProvider):
     def read_change_request_discussion(self, change_request_id: str) -> str: ...
 ```
 
-All seven methods must be implemented. Return strings (URLs, confirmations, or JSON payloads) and raise `ProviderError` for failures. Provider constructors may accept `project_root` and `metadata` keyword arguments; the registry also supports no-argument constructors. For remote auto-detection, implement the `claims_remote(cls, url)` classmethod and return whether the provider claims that URL. `remote_hosts` is supported as a compatibility fallback for older plugins.
+All seven methods must be implemented. Return strings (URLs, confirmations, or JSON payloads) and raise `ProviderError` for failures. Provider constructors may accept `project_root` and `metadata` keyword arguments; the registry also supports no-argument constructors. For remote auto-detection, implement `claims_remote(cls, url)`: it receives the complete git origin remote URL as a string (SSH, HTTPS, or scp-style form), and should return whether this provider recognizes that URL. `remote_hosts` is supported as a compatibility fallback for older plugins when the hook does not claim the URL.
 
 The old `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `reject_pr`, `merge_pr`, and `read_pr_comments` names are deprecated compatibility wrappers. New providers should implement only the neutral method names.
 
@@ -244,7 +245,11 @@ Register an installable provider with the setuptools entry-point group:
 gitlab = "my_package.gitlab:GitLabProvider"
 ```
 
-The entry-point name is the provider name referenced by `metadata.provider`. The registry discovers installed plugins from the `snodo.providers` entry-point group; for remote matching, it calls each plugin's `claims_remote(url)` hook. Plugins that do not yet implement that hook may declare `remote_hosts` as a compatibility fallback. Entry points are not independently selected when no remote match exists. If an explicitly named provider is unavailable, the error suggests installing `snodo-provider-<name>` with `uv add` or `pip install`.
+The entry-point name is the provider name referenced by `metadata.provider`. The registry discovers installed plugins from the `snodo.providers` entry-point group; for remote matching, it calls each plugin's `claims_remote(url)` hook. Plugins that do not yet implement that hook may declare `remote_hosts` as a compatibility fallback. Entry points are not independently selected when no remote match exists. If multiple plugins claim the same URL, the registry selects the first matching entry point returned by Python's entry-point discovery; do not rely on an ordering among competing claims. If an explicitly named provider is unavailable, the error suggests installing `snodo-provider-<name>` with `uv add` or `pip install`.
+
+### Verify your plugin
+
+After packaging and installing the distribution in the same environment as Snodo, run `snodo ready` in a project that uses it. The readiness report lists installed code-host plugins (and plugins that failed to load), then reports which provider the project resolves to and why. For remote auto-detection, use a project whose `origin` URL your `claims_remote(url)` recognizes; the report should say it was detected from that remote host. For explicit selection, set `metadata.provider` in the protocol and readiness reports that it was selected by `metadata.provider`. A plugin listed as installed confirms entry-point loading, while a failed status includes the load error; provider construction failures are also reported. If multiple plugins claim the remote, readiness reports the selected one.
 
 The GitHub provider is the reference plugin to copy when creating a provider. It is distributed as the separate `snodo-provider-github` package and imports as `snodo_provider_github`; plugins should ship their own top-level import package rather than adding modules beneath Snodo's `snodo.providers` package.
 
