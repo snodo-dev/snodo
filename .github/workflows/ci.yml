@@ -50,7 +50,7 @@ jobs:
           set -o pipefail
           uv run pytest tests/ -m "" -q -n auto --tb=short --timeout=60 \
             --cov --cov-report=xml --cov-report=term-missing \
-            --cov-fail-under=75 | tee coverage-output.txt
+            --cov-fail-under=80 | tee coverage-output.txt
           echo '## Coverage' >> "$GITHUB_STEP_SUMMARY"
           grep '^TOTAL' coverage-output.txt >> "$GITHUB_STEP_SUMMARY" || true
           uv run python scripts/enforce_patch_coverage.py

@@ -81,11 +81,11 @@ CI clears the marker filter and adds two checks the local gate never runs:
 
 ```bash
 uv run pytest tests/ -m "" -n auto --tb=short --timeout=60 \
-  --cov --cov-report=term-missing --cov-fail-under=75
+  --cov --cov-report=term-missing --cov-fail-under=80
 uv run python scripts/enforce_patch_coverage.py
 ```
 
-That is the whole suite (e2e included) plus a **75% total-coverage floor** and an
+That is the whole suite (e2e included) plus a **80% total-coverage floor** and an
 **80% patch-coverage check**. Run it before pushing — do not stop at the fast
 gate. This is also exactly what every task ticket's verification line refers to
 when it points at the full suite.
@@ -148,13 +148,13 @@ hostile third-party code are out of scope.
 ## Coverage reporting
 
 Coverage is part of the CI gate above, not the local fast gate. CI enforces a
-**75% total repo coverage floor** (`--cov-fail-under=75`) and an **80% patch
+**80% total repo coverage floor** (`--cov-fail-under=80`) and an **80% patch
 coverage** floor (`scripts/enforce_patch_coverage.py`), and publishes live to
 [Codecov](https://codecov.io/gh/snodo-dev/snodo). Reproduce both locally with the
 full-gate command from [Testing and checks](#testing-and-checks):
 
 ```bash
-uv run pytest tests/ -m "" -n auto --cov --cov-report=term-missing --cov-fail-under=75
+uv run pytest tests/ -m "" -n auto --cov --cov-report=term-missing --cov-fail-under=80
 uv run python scripts/enforce_patch_coverage.py
 ```
 

@@ -35,7 +35,7 @@ LOCAL_ADDOPTS_MARKER = "not e2e"
 
 # The gate that decides (CI): marker filter cleared, plus coverage + patch coverage.
 CI_PYTEST_MARKER = ""  # -m "" -> run everything, e2e included
-CI_COV_FAIL_UNDER = "75"  # CI's --cov-fail-under value (do not change per #87)
+CI_COV_FAIL_UNDER = "80"  # CI's --cov-fail-under value; keep in sync with ci.yml (#87)
 CI_PATCH_COVERAGE_SCRIPT = "scripts/enforce_patch_coverage.py"
 
 # Commands the notice prints so a contributor can reproduce the CI test gate.

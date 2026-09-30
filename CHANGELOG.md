@@ -13,6 +13,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [0.19.0] — 2026-09-30
 
+### Changed
+- The CI total-coverage floor rises from 75% to 80%.
 ### Fixed
 - In-place coders that commit their own work are now reported informationally
   instead of warning that they produced no changes. (Fixes #586)
