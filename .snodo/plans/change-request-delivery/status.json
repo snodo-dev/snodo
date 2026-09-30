@@ -1,0 +1,28 @@
+{
+  "tasks": {
+    "1.1_change_request_delivery": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "ded7311264d72af7"
+    },
+    "1.2_gitlab_provider_plugin": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "3bdb55452713c196"
+    },
+    "2.1_protocol_reference_docs": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "c373f20ae1507d25"
+    },
+    "2.2_extending_second_plugin": {
+      "status": "completed",
+      "parent_task_ref": null,
+      "depth": 0,
+      "spec_hash": "dc8527dec907b3a2"
+    }
+  }
+}
