@@ -450,14 +450,26 @@ class InPlaceCoderAdapter(Coder, ABC):
             _logger.warning("git add failed (post-validation diff may be empty): %s", exc)
             return
 
-        # Nothing staged → nothing to commit (the coder made no changes).
+        # A clean index can mean either that the coder made no changes or that
+        # it committed its own work. Keep the established reason value for
+        # callers, but distinguish the two in operator-facing logging.
         try:
             repo.git.diff("--cached", "--quiet")
         except GitCommandError:
             pass  # rc != 0 → staged changes exist
         else:
             self.last_commit_reason = "nothing_staged"
-            _logger.warning("git add staged nothing (coder produced no changes)")
+            try:
+                coder_committed = (
+                    self._head_before_run is not None
+                    and repo.head.commit.hexsha != self._head_before_run
+                )
+            except Exception:
+                coder_committed = False
+            if coder_committed:
+                _logger.info("git add staged nothing (coder already committed its own work)")
+            else:
+                _logger.warning("git add staged nothing (coder produced no changes)")
             return
 
         try:

@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- In-place coders that commit their own work are now reported informationally
+  instead of warning that they produced no changes. (Fixes #586)
+
 ### Changed
 - Change-request delivery now uses the task branch commit subject as a concise
   title, falls back to a truncated spec line, and includes a bounded task spec
