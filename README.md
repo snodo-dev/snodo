@@ -9,10 +9,20 @@
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.21967946-blue)](https://doi.org/10.5281/zenodo.21967946)
 [![Coverage](https://img.shields.io/codecov/c/github/snodo-dev/snodo/main)](https://codecov.io/gh/snodo-dev/snodo)
 [![Security Policy](https://img.shields.io/badge/security-policy-brightgreen)](SECURITY.md)
+[![Built with snodo](https://img.shields.io/badge/built%20with-snodo-2DD4BF)](#built-with-snodo)
 
 **Enforce your development process around whichever AI agent writes the code.**
 
 ![Three coder mechanisms — an in-process LLM client, a host CLI subprocess, and an opencode server in a Docker container — write into the same task worktree and converge on one identical gate and merge path.](https://raw.githubusercontent.com/snodo-dev/snodo/main/docs/assets/coder-paths.svg)
+
+## Built with snodo
+
+From v0.19.0, snodo is developed with snodo. Each change to this repository
+starts as a task spec, passes snodo's validators, is written by a coding agent
+in its own worktree, is verified by the test gate, and arrives here as a pull
+request that snodo opened. The protocol that governs this repository is
+[`.snodo/protocol.yml`](.snodo/protocol.yml), and every run is recorded in its audit
+log.
 
 AI coding agents are fast, confident and non-deterministic. They will report a
 task as finished while a test is failing, while the change has drifted outside
