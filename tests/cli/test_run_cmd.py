@@ -1391,8 +1391,18 @@ class TestAutoMerge:
         subprocess_run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
         subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
 
+        from snodo.infrastructure.audit import AuditLog
+        from git import Repo
+        with Repo(str(repo)) as git_repo:
+            target_commit = git_repo.commit(branch).hexsha
+        audit_log = AuditLog(str(repo / "audit.log"))
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed", "task_ref": task.id,
+            "commit": target_commit, "outcome": "pass", "command": "pytest",
+        })
+
         result, preserve, pushed_branch = _merge_on_success(
-            str(repo), task, 0, None, None, delivery="push_branch"
+            str(repo), task, 0, None, audit_log, delivery="push_branch"
         )
         assert (result, preserve, pushed_branch) == (0, False, branch)
         assert subprocess_run(["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True).stdout.strip() == base_sha

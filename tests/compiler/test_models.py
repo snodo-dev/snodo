@@ -641,16 +641,22 @@ def test_push_branch_delivery_is_accepted():
     assert p.auto_merge_enabled("producer")
 
 
-def test_change_request_delivery_is_rejected():
-    from pydantic import ValidationError
+def test_change_request_delivery_is_accepted_at_protocol_and_mode_level():
     from snodo.compiler.models import ExecutionConfig
     base = _auto_merge_protocol()
-    with pytest.raises(ValidationError, match="not yet supported"):
-        Protocol(
-            protocol_id=base.protocol_id, name=base.name, modes=base.modes,
-            validators=base.validators, initial_mode=base.initial_mode,
-            execution=ExecutionConfig(delivery="change_request"),
-        )
+    protocol = Protocol(
+        protocol_id=base.protocol_id, name=base.name, modes=base.modes,
+        validators=base.validators, initial_mode=base.initial_mode,
+        execution=ExecutionConfig(delivery="change_request"),
+    )
+    assert protocol.delivery_for("producer") == "change_request"
+    mode_protocol = Protocol(
+        protocol_id=base.protocol_id, name=base.name,
+        modes=[Mode(mode_id="producer", name="Producer", delivery="change_request")],
+        validators=base.validators, initial_mode=base.initial_mode,
+    )
+    assert mode_protocol.delivery_for("producer") == "change_request"
+    assert mode_protocol.auto_merge_enabled("producer")
 
 
 # ========== per-mode max_recovery_depth configuration ==========
