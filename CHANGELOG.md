@@ -11,8 +11,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 - Change requests opened through GitHub and GitLab providers receive a `snodo` label when the host permits it. (Fixes #583)
+### Documentation
+- Remove a duplicated sentence from the planning guide. (Fixes #578)
 
 ### Changed
+- From v0.19.0, changes to this repository are developed with snodo and delivered as pull requests opened by snodo. (Fixes #582)
 - Change-request delivery now uses the task branch commit subject as a concise
   title, falls back to a truncated spec line, and includes a bounded task spec
   in the request body. (Fixes #579)
