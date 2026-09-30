@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+- Remove a duplicated sentence from the planning guide. (Fixes #578)
+
 ### Changed
 - The extension guide now documents the bundled GitHub and separately
   installable GitLab provider plugins, their remote claims and token sources,
