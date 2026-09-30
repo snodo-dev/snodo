@@ -57,12 +57,9 @@ def test_ruff_canary_detects_lint_violation():
 
     A non-zero exit is only a lint verdict when ruff actually ran. Ruff
     exits 1 for "violations found" and 2 for "the tool itself broke"
-    (mis-invocation, or "Failed to spawn: ruff" when the binary is absent);
-    an uv-level failure to launch ruff exits elsewhere and names the spawn
-    on stderr. The old assertion ("exit != 0 and F401 in stdout") collapsed
-    a missing binary into "ruff failed to detect a lint violation" and
-    aborted a release over a broken environment. Tool failure must be
-    reported as tool failure, never as a verdict about the fixture.
+    (mis-invocation, or "Failed to spawn: ruff" when the binary is absent).
+    Tool failure must be reported as tool failure, never as a verdict about
+    the fixture.
     """
     with tempfile.TemporaryDirectory() as tmp:
         bad_file = Path(tmp) / "bad_fixture.py"
@@ -71,12 +68,12 @@ def test_ruff_canary_detects_lint_violation():
 
         try:
             proc = subprocess.run(
-                ["uv", "run", "ruff", "check", str(bad_file)],
+                [sys.executable, "-m", "ruff", "check", str(bad_file)],
                 capture_output=True,
                 text=True,
             )
         except OSError as exc:
-            pytest.fail(f"canary could not run: 'uv' is not executable: {exc}")
+            pytest.fail(f"canary could not run Ruff with the test interpreter: {exc}")
 
         combined = f"{proc.stdout}\n{proc.stderr}"
         if proc.returncode not in (0, 1):
