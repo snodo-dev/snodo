@@ -10,6 +10,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Protocol reference now lists every registered coder backend, matches the
+  neutral change-request MCP tools and deprecated aliases, and documents the
+  execution recovery budgets and always-available diagnostics; the related
+  documentation audit also covers first-run runbook guidance, run usage/cost
+  and watch links, job diagnosis paths, and outcomes/retry/delivery guidance.
+  (Fixes #564, Fixes #565, Fixes #567, Fixes #568, Fixes #569, Fixes #571,
+  Fixes #572, Fixes #570, Fixes #576)
 - Slack job-finished notifications now start with a success or warning icon based on the job result. (Fixes #574)
 
 ### Added

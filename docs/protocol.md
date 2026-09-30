@@ -83,11 +83,11 @@ execution:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `max_retries` | int | no | Maximum execution retries (default `3`, range 0–10) |
+| `max_retries` | int | no | Maximum retries allowed for a pending task after failed attempts (default `3`, range 0–10) |
 | `branch_ttl_days` | int | no | Branch lifetime in days (default `7`, range 1–30) |
 | `branch_prefix` | string | no | Prefix used for task branches (default `"task"`) |
-| `max_recovery_depth` | int | no | Maximum recursive subtask recovery depth along a single branch (default `3`, range 0–20) |
-| `max_total_fix_attempts` | int | no | Maximum total fix subtasks spawned across the task tree (default `10`, range 1–100) |
+| `max_recovery_depth` | int | no | Maximum recursive recovery-subtask depth along a task branch (default `3`, range 0–20); modes may override it with `mode.max_recovery_depth` (see `max_recovery_depth_for` below) |
+| `max_total_fix_attempts` | int | no | Maximum fix subtasks spawned across the entire task/recovery tree (default `10`, range 1–100) |
 | `delivery` | `local_merge`, `push_branch`, `change_request` | no | How completed work is delivered. `local_merge` merges locally; `push_branch` pushes the task branch to `delivery_remote` (default `origin`) without changing the local base branch; `change_request` pushes the branch and opens a change request into the base branch through the configured code-host plugin. Change requests require an installed plugin and its credentials. Push or provider failures leave the task unmerged and the pushed branch intact. Omitted settings preserve the legacy default of leaving work unmerged. |
 | `delivery_remote` | string | no | Remote used by `push_branch` (default `origin`). |
 | `auto_merge` | bool | no | Deprecated compatibility setting: `true` maps to `local_merge`; `false` preserves the existing leave-unmerged behavior. Do not set alongside `delivery`. |
@@ -159,8 +159,9 @@ write path allowlist is `.snodo/`, and it does not stage or commit files.
 `snodo serve` without `--mode` serves only the current project mode from
 `.snodo/state.json`, falling back to `initial_mode`. Passing `--mode` pins the
 server to that mode. In either case, planning tools require the mode's `plan`
-capability; read-only diagnostics and the guide remain available in every
-mode. MCP install creates one explicitly mode-pinned entry per protocol mode.
+capability; read-only diagnostics `survey`, `intake`, and `ready`, plus the
+`guide`, remain available in every mode. MCP install creates one explicitly
+mode-pinned entry per protocol mode.
 
 ### `max_recovery_depth` tradeoff
 
@@ -198,7 +199,7 @@ modes:
 | `validators` | list[string] | no | Validator IDs active in this mode |
 | `transitions` | dict[string, string] | no | Declarative event→target-mode mappings (documented, not engine-executed) |
 | `constraints` | list[Constraint] | no | Mode-specific constraints |
-| `coder` | string | no | Coder backend (`"litellm"`, `"mock"`; `"opencode"` and `"opencode-cli"` are **experimental** — see below) |
+| `coder` | string | no | Registered coder backend: `"litellm"`, `"mock"`, `"openai"`, `"anthropic"`, `"gemini"`, `"opencode"`, `"opencode-cli"`, `"agy"`, or `"codex-cli"`; `"opencode"` and `"opencode-cli"` are **experimental** — see [Coder backends](#coder-backends) and [docs/coders.md](coders.md) |
 | `coder_config` | dict | no | Coder backend configuration |
 | `delivery` | `local_merge`, `push_branch`, `change_request` | no | Override protocol-level `execution.delivery` for this mode (default `null`). `change_request` pushes the branch and opens a request through the configured code-host plugin; it requires that plugin and its credentials. Failures leave the task unmerged (and retain a pushed branch). |
 | `auto_merge` | bool | no | Deprecated compatibility override: `true` maps to `local_merge`, `false` to leave-unmerged. Do not set alongside `delivery`. |
@@ -260,7 +261,7 @@ Each logical tool maps to one or more MCP operations:
 | `approve` | `stage_files`, `commit` |
 | `commit` | `stage_files`, `commit` |
 | `merge` | `create_branch`, `stage_files`, `commit`, `merge_branch`, `delete_branch` |
-| `pr` | `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `reject_pr`, `merge_pr` (MCP tool names; provider operations use the neutral change-request contract described in [Code-host providers](extending.md#4-code-host-providers)) |
+| `pr` | `create_change_request`, `read_change_request_diff`, `post_change_request_comment`, `approve_change_request`, `request_change_request_changes`, `merge_change_request`, `read_change_request_discussion`; deprecated aliases: `create_pr`, `read_pr_diff`, `post_review_comment`, `approve_pr`, `reject_pr`, `merge_pr` (provider operations use the neutral change-request contract described in [Code-host providers](extending.md#4-code-host-providers)) |
 | `plan` | `decompose`, `generate_spec`, `validate_plan`, `propose_plan`, `get_plan`, `run_plan`, `record_task_status`, `queue_list`, `queue_create`, `queue_move`, `queue_remove`, `queue_validate`, `queue_run` |
 | `queue` | `queue_list`, `queue_create`, `queue_move`, `queue_remove`, `queue_validate`, `queue_run` |
 | `read` | `read_file`, `list_files` |
