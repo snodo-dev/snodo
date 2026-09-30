@@ -145,7 +145,8 @@ def parse_gitlab_path(remote: str, base_url: str = "https://gitlab.com") -> Opti
 
 def _get_git_remote(project_root: str) -> Optional[str]:
     try:
-        result = subprocess.run(["git", "remote", "get-url", "origin"], cwd=project_root,
+        result = subprocess.run(["git", "remote", "get-url", "origin"],  # noqa: S603, S607 - fixed git argv, no shell; git resolved from PATH by design
+                                cwd=project_root,
                                 capture_output=True, text=True, check=True)
         return result.stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
