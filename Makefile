@@ -92,6 +92,10 @@ release:
 	  git commit -m "release: v$$V" && \
 	  git tag -a "v$$V" -m "snodo v$$V" && \
 	  git push origin main --follow-tags
+	@# Every release ships its documentation: the site is rebuilt (strict) and
+	@# deployed from the released tree, so docs.snodo.dev matches the version
+	@# on PyPI. A failed deploy leaves the release out; re-run `make deploy-docs`.
+	$(MAKE) deploy-docs
 
 # ──────────────────────────────────────────────
 # Experiment task selection
