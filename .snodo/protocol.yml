@@ -174,11 +174,10 @@ initial_mode: "producer"
 # while recovery stall detection bounds non-converging loops.
 execution:
   max_recovery_depth: 3
-  # Single-operator protocol: the operator is both producer and reviewer, so a
-  # task that reaches a genuine "resolved" closure has already been accepted by
-  # the only human in the loop. Merge its branch automatically so the work lands
-  # on the base branch instead of stranding on a task branch.
-  auto_merge: true
+  # Completed, verified work is delivered as a pull request: snodo pushes the
+  # task branch to origin and opens a change request through the code-host
+  # plugin that claims the remote. The operator reviews and merges it.
+  delivery: change_request
 
   # Set only when a repository needs a deterministic setup step after worktree
   # creation (protocol-authored shell commands are executed as written):
