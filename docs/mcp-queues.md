@@ -11,6 +11,8 @@ queues defined by [ADR 053](decisions/053-plans-run-from-queues.md):
 - `queue_create` creates an empty named queue.
 - `queue_move` reorders a queued plan or moves it to another queue; a running
   plan cannot be moved.
+- `queue_remove` removes a plan from whichever queue holds it without changing
+  its plan records; a running plan cannot be removed.
 - `queue_validate` reports plan verification, queue readiness, order problems,
   cross-queue path warnings, and active runners without changing queue state.
 - `queue_run` starts the queue runner as an asynchronous job and returns a

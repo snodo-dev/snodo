@@ -323,3 +323,44 @@ non-zero exit code:
   "error": "human-readable reason"
 }
 ```
+
+## MCP tool reference
+
+MCP tools are exposed according to the active mode's capability grant. The
+dispatch surface provides the following task loop:
+
+- `validate_task` takes required `task_id`, with optional `task_spec` and
+  `plan_name`. It runs pre-execute validators and reports the quorum outcome
+  without running a coder. A passing validation records a single-use token;
+  the next `dispatch_task` consumes it as the audit link. The caller does not
+  hold a token, and no tool call is refused for lack of one.
+- `dispatch_task` takes required `task_spec`, with optional `coding_model` and
+  `module`. It returns a job id for background execution. Use `get_job_status`,
+  `get_job_logs`, or `watch_job` to follow the job; `list_jobs` lists project
+  jobs.
+- `retry_job` takes required `job_id`. By default it keeps the recorded
+  specification and continues from the previous attempt's worktree and changes.
+  `fresh_start: true` starts from main instead. `append_spec` adds guidance to
+  the existing specification; `revised_spec` replaces it, with the replaced
+  specification audited as `spec_replaced` and recoverable.
+
+The read-only project diagnostic tools are always available, independent of
+mode capabilities:
+
+- `survey` reports a repository survey. Its optional `agent: true` allows
+  configured agent boundary judgements and may call models; the default is a
+  deterministic pass without a model call.
+- `intake` reports proposed validator criteria and never writes or prompts.
+- `ready` reports a project readiness assessment. Optional `mode` filters
+  displayed findings; optional `protocol` selects the protocol file (default
+  `.snodo/protocol.yml`). It does not append an audit event.
+
+The `pr` capability exposes vendor-neutral change-request tools:
+`create_change_request` creates one from `branch`, `title`, and `body`;
+`read_change_request_diff` and `read_change_request_discussion` read by
+`change_request_id`; `post_change_request_comment` takes that id and `comment`;
+`approve_change_request` approves by id;
+`request_change_request_changes` takes the id and a `reason`; and
+`merge_change_request` merges by id. The older `create_pr`, `read_pr_diff`,
+`post_review_comment`, `approve_pr`, `reject_pr`, and `merge_pr` names remain
+available as deprecated aliases, respectively.
