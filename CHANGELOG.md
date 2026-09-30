@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Run the Ruff verification canary through the active test interpreter instead
+  of requiring a nested `uv` invocation. (Fixes #598)
+
 ---
 
 ## [0.19.0] — 2026-09-30
