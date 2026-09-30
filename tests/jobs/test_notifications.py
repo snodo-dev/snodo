@@ -152,6 +152,41 @@ def test_notification_targets_prominently_format_project_and_host():
         httpd.shutdown()
 
 
+def test_job_finished_status_icons_are_slack_only():
+    httpd = server()
+    try:
+        base = f"http://127.0.0.1:{httpd.server_port}"
+        message = "**Snodo Cloud** · gpu2\njob j_123 — job finished — Inspect: snodo logs j_123"
+        events = (
+            {"event": "job_finished", "status": "completed", "exit_code": 0, "message": message},
+            {"event": "job_finished", "status": "failed", "exit_code": 1, "message": message},
+            {"event": "job_finished", "status": "completed", "exit_code": 1, "message": message},
+            {"event": "task_halted", "message": message},
+        )
+        targets = ("slack", "discord", "teams", "webhook", "ntfy")
+        for event in events:
+            for kind in targets:
+                notifications.send({"type": kind, "url": f"{base}/{kind}"}, event)
+
+        slack_bodies = [json.loads(body)["text"] for path, _headers, body in StubHandler.requests if path == "/slack"]
+        assert slack_bodies[0].startswith(":white_check_mark: *Snodo Cloud*")
+        assert slack_bodies[1].startswith(":warning: *Snodo Cloud*")
+        assert slack_bodies[2].startswith(":warning: *Snodo Cloud*")
+        assert slack_bodies[3].startswith("*Snodo Cloud*")
+
+        for index, event in enumerate(events):
+            offset = index * len(targets)
+            group = StubHandler.requests[offset:offset + len(targets)]
+            bodies = {path.removeprefix("/"): body for path, _headers, body in group}
+            assert json.loads(bodies["webhook"]) == event
+            assert bodies["ntfy"] == message.encode("utf-8")
+            assert json.loads(bodies["discord"])["content"] == message
+            teams = json.loads(bodies["teams"])["attachments"][0]["content"]
+            assert teams["body"][0]["text"] == message
+    finally:
+        httpd.shutdown()
+
+
 def test_job_identity_falls_back_to_project_id_then_folder(tmp_path, monkeypatch):
     root = tmp_path / "checkout-name"
     root.mkdir()

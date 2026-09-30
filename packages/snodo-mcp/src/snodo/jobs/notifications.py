@@ -115,10 +115,20 @@ def send(target: dict, event: dict) -> None:
         headers = {"Content-Type": "text/plain; charset=utf-8", "Title": title}
     elif kind == "slack":
         first_line, separator, remainder = message.partition("\n")
+        if event.get("event") == "job_finished" and event.get("status") in {"completed", "failed"}:
+            status = event.get("status")
+            exit_code = event.get("exit_code")
+            icon = ":white_check_mark:" if status == "completed" and exit_code == 0 else ":warning:"
+            first_line = f"{icon} {first_line}"
         # Slack mrkdwn uses single asterisks for bold; the shared message uses
         # Markdown's double-asterisk syntax for Discord and generic consumers.
-        if first_line.startswith("**") and (bold_end := first_line.find("**", 2)) >= 0:
-            first_line = f"*{first_line[2:bold_end]}*{first_line[bold_end + 2:]}"
+        bold_start = first_line.find("**")
+        if bold_start >= 0 and (bold_end := first_line.find("**", bold_start + 2)) >= 0:
+            first_line = (
+                first_line[:bold_start]
+                + f"*{first_line[bold_start + 2:bold_end]}*"
+                + first_line[bold_end + 2:]
+            )
         slack_message = first_line + (separator + remainder if separator else "")
         body = json.dumps({"text": slack_message}, separators=(",", ":")).encode("utf-8")
         headers = {"Content-Type": "application/json"}
