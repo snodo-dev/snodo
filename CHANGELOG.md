@@ -9,6 +9,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Change requests opened through GitHub and GitLab providers receive a `snodo` label when the host permits it. (Fixes #583)
 ### Documentation
 - Remove a duplicated sentence from the planning guide. (Fixes #578)
 

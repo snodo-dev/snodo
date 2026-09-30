@@ -210,6 +210,8 @@ The engine resolves `coder` to an adapter class at graph build time. The `--mock
 
 Implement the v1 `CodeHostProvider` contract (`snodo/providers/base.py`). Identifiers are opaque strings so they can represent pull requests, merge requests, or another host's change request. The discussion methods exchange JSON containing `title`, `comments`, and `reviews`; each entry has an `author` string and `body` string, and reviews may also have a `state` string.
 
+Change requests opened by Snodo are labelled `snodo` when the code host permits it.
+
 ```python
 from snodo.providers.base import CodeHostProvider
 
