@@ -42,6 +42,22 @@ notification targets, in `~/.snodo/config.yml`. See the
 prints the generated cloud interface schema. `snodo config --notify-test` sends
 a test to every valid notification target.
 
+`snodo init` creates `.snodo/protocol.yml` and project state from a shipped
+protocol template. `--template` selects a shipped protocol by name: `solo`
+(Solo Developer), `team` (Default Snodo), `2+n` (2+N Reference), `intent`
+(Intent-Driven), `greenfield` (Greenfield Project), `bugfix-surgeon` (Bug-Fix
+Surgeon), or `feature-warden` (Feature-Development Warden); omit it for the
+interactive picker.
+`--test-command` sets the quality validator's test command when the template
+value is empty or a placeholder; otherwise init tries detection from project
+marker files and may prompt on an interactive terminal. `--project-id`
+overrides detected/configured identity and caches it with override scope.
+`--mode` selects the starting mode rather than prompting. `--force-keygen`
+regenerates the RS256 signing keypair; `--force` permits overwriting an existing
+`.snodo/` directory or initializing within a Snodo project. `--yes` and
+`--no-input` acknowledge the trusted-repository warning without prompting,
+including in non-interactive use.
+
 ## Work and planning
 
 | Command | Arguments and options |
@@ -63,8 +79,8 @@ a test to every valid notification target.
 | `snodo queue` (group option) | `--json` |
 | `snodo validate` | `<task_spec>`, `--phase`, `--protocol`, `--mode`, `--json` |
 | `snodo ready` | `--mode`/`-m`, `--protocol`, `--json` |
-| `snodo readiness` | `--mode`/`-m`, `--protocol`, `--json` (legacy alias) |
-| `snodo recon` | `<query> <paths>`, `--agents`/`-n` |
+| `snodo readiness` | `--mode`/`-m`, `--protocol`, `--json` (deprecated alias for `ready`) |
+| `snodo recon` | `<query> [paths...]`, `--agents`/`-n` |
 | `snodo survey` | `--json`, `--agent` |
 | `snodo intake` | `--validator`, `--json`, `--accept-all`, `--reject-all`, `--no-input` |
 | `snodo authorize` | `[task_id]`, `--yes`/`-y`, `--reject-all` |
@@ -76,6 +92,17 @@ generated or runnable plan. A task can be run directly; waves group parallel
 tasks, plans order multiple waves, and queues schedule multiple plans. See
 [Authoring a plan](authoring-a-plan.md) and the canonical
 [queue guide](queues.md).
+
+`--fixture` is used only when `snodo run --plan` is supplied; it is ignored for
+a direct `snodo run` task. Candidate benchmark results are compared with a
+stored task baseline through `snodo models --compare` (with `--plan` and
+`--task`).
+
+`snodo recon <query> [paths...]` runs read-only codebase exploration, waits up
+to 300 seconds, and prints each agent's answer. `--agents`/`-n` requests the
+number of agent lanes; if omitted, the configured count is used. Configured
+models supply the lanes in order, and failed model attempts are reported to
+stderr. See [CLI recon](decompose-and-recon.md#cli-recon).
 
 ## Jobs, status, and cleanup
 
@@ -118,14 +145,30 @@ tunnel) streams status and recent output. The CLI alternative is
 available. `watch_job` is an optional MCP Apps enhancement and returns a
 plain-text snapshot to hosts that do not render Apps. Job notifications are
 configured in `~/.snodo/config.yml` and tested with `snodo config --notify-test`.
-The hidden `snodo notify test` command remains as a deprecated alias for one
-release and prints a migration notice.
+The hidden `snodo notify test` command is deprecated in v0.18.0 and prints a
+migration notice; use `snodo config --notify-test` instead. `snodo readiness`
+is likewise a deprecated alias for `snodo ready` in v0.18.0.
+
+Use `snodo status` for protocol, active mode/session, and the most recent
+session run. Use `snodo ready` to assess protocol method-scaffolding readiness
+(`--mode` filters findings, not the whole-protocol score). `snodo runs` lists
+completed task-run records; `--send` sends those records to Snodo Cloud.
+`snodo task list` lists recorded tasks for inspection and management.
+
+`snodo meta <composite_id>` summarizes a job or task. Job IDs conventionally
+start with `j_` and task IDs with `task_`; other values are resolved by checking
+the project's job and task record directories.
 
 ## MCP server
 
 | Command | Arguments and options |
 |---|---|
 | `snodo serve` | `--protocol`, `--mode`, `--transport`, `--port`, `--tunnel`, `--verbose`, `--auth`, `--rotate`, `--credential`, `--delete`, `--hostname`, `--mcp-install`, `--mcp-uninstall`, `--mcp-uninstall-all`, `--mcp-list`, `--purge`, `--orphans`, `--yes`/`-y`, deprecated `--install`, `--uninstall`, `--uninstall-all`, `--project-name` |
+
+The legacy `snodo serve --install`, `--uninstall`, and `--uninstall-all`
+options are deprecated in v0.18.0; use `--mcp-install`, `--mcp-uninstall`,
+and `--mcp-uninstall-all`, respectively. `--project-name` is also deprecated
+in v0.18.0.
 
 `snodo serve --verbose` logs timestamped, redacted and bounded MCP request and
 response summaries; authentication refusals identify the failed check. The
