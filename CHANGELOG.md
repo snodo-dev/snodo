@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Isolate session CLI tests under pytest temporary directories and explicitly
+  set active-session state in prune tests. (Fixes #599)
 - Run the Ruff verification canary through the active test interpreter instead
   of requiring a nested `uv` invocation. (Fixes #598)
 
