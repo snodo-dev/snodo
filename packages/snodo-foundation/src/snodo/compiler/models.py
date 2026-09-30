@@ -29,8 +29,9 @@ class ExecutionConfig(BaseModel):
     max_total_fix_attempts: int = Field(default=10, ge=1, le=100)
     delivery: Optional[Literal["local_merge", "push_branch", "change_request"]] = Field(
         default=None,
-        description="How completed work is delivered. Push and change requests are not yet supported.",
+        description="How completed work is delivered.",
     )
+    delivery_remote: str = Field(default="origin", min_length=1, description="Remote used for push_branch delivery.")
     auto_merge: Optional[bool] = Field(
         default=None,
         description=(
@@ -483,7 +484,7 @@ class Protocol(BaseModel):
         for scope, delivery in [("execution", self.execution.delivery)] + [
             (f"mode '{mode.mode_id}'", mode.delivery) for mode in self.modes
         ]:
-            if delivery in {"push_branch", "change_request"}:
+            if delivery == "change_request":
                 raise ValueError(f"{scope}.delivery '{delivery}' is not yet supported")
         return self
     
@@ -587,7 +588,7 @@ class Protocol(BaseModel):
         The mode's ``auto_merge`` (if set) overrides the protocol-level
         ``execution.auto_merge``; otherwise the protocol setting applies.
         """
-        return self.delivery_for(mode_id) == "local_merge"
+        return self.delivery_for(mode_id) in {"local_merge", "push_branch"}
 
     def delivery_for(self, mode_id: str) -> str:
         """Resolve delivery, translating legacy auto_merge values exactly."""

@@ -1365,6 +1365,66 @@ class TestAutoMerge:
         assert merged_branch == branch
         assert (repo / "feature.txt").exists()
 
+    def test_push_branch_delivery_leaves_base_untouched(self, tmp_path):
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.worktree import task_branch_name
+        from snodo.cli.commands.run_cmd import _merge_on_success
+
+        repo = tmp_path / "repo"
+        remote = tmp_path / "remote.git"
+        repo.mkdir()
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+        subprocess_run(["git", "init", "--bare", "-q", str(remote)], check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+        base_sha = subprocess_run(["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+        subprocess_run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True)
+        task = Task(id="task_push", spec="push feature")
+        branch = task_branch_name(task.id, task.spec)
+        subprocess_run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "feature.txt").write_text("feature\n")
+        subprocess_run(["git", "add", "feature.txt"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+        result, preserve, pushed_branch = _merge_on_success(
+            str(repo), task, 0, None, None, delivery="push_branch"
+        )
+        assert (result, preserve, pushed_branch) == (0, False, branch)
+        assert subprocess_run(["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True).stdout.strip() == base_sha
+        assert subprocess_run(["git", "--git-dir", str(remote), "rev-parse", branch], check=True, capture_output=True, text=True).returncode == 0
+
+    def test_push_branch_failure_is_unmerged(self, tmp_path):
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.worktree import task_branch_name
+        from snodo.cli.commands.run_cmd import _merge_on_success
+
+        repo = tmp_path
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        subprocess_run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        subprocess_run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+        task = Task(id="task_push_fail", spec="push fails")
+        branch = task_branch_name(task.id, task.spec)
+        subprocess_run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "feature.txt").write_text("feature\n")
+        subprocess_run(["git", "add", "feature.txt"], cwd=repo, check=True)
+        subprocess_run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
+        subprocess_run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+        result, preserve, delivered = _merge_on_success(
+            str(repo), task, 0, None, None, delivery="push_branch"
+        )
+        assert result != 0
+        assert preserve is True
+        assert delivered is None
+
     def test_merge_on_success_conflict_escalates(self, tmp_path):
         from snodo.core.interfaces import Task
         from snodo.infrastructure.worktree import task_branch_name

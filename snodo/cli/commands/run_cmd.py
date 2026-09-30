@@ -29,6 +29,7 @@ from snodo.cli.commands.task_record import (  # noqa: F401
 )
 from snodo.cli.commands.run_merge import (
     _merge_on_success,
+    _deliver_on_success,
     _try_merge_unmerged_task,
     _verified_commit_matches_merge_target,  # noqa: F401
 )
@@ -1023,18 +1024,11 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             project_root=project_root, task=task,
             plan_name=worktree.task_plan_name(args),
         ):
-            merge_result, preserve_worktree, merged_branch = _merge_on_success(
+            result, preserve_worktree, merged_branch = _deliver_on_success(
                 project_root, task, result, session_id, audit_log,
-                plan_name=worktree.task_plan_name(args),
+                protocol, mode, halt_payload, model, worktree.task_plan_name(args),
+                _merge_on_success,
             )
-            if merge_result != 0:
-                result = 2
-                _record_task_completion(
-                    project_root, task.id, "unmerged", halt_payload,
-                    protocol=protocol, model=model,
-                )
-            else:
-                result = merge_result
 
         # Preserve the worktree on non-completion (so the evidence survives) or
         # when the retain flag is set. A cleanly completed task is torn down.

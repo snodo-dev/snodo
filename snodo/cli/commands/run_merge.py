@@ -108,6 +108,8 @@ def _merge_on_success(
     session_id: Optional[str],
     audit_log: Any,
     plan_name: Optional[str] = None,
+    delivery: str = "local_merge",
+    remote: str = "origin",
 ) -> tuple:
     """Merge the completed task's branch into the base branch.
 
@@ -127,6 +129,23 @@ def _merge_on_success(
     spec_for_branch = getattr(task, "root_spec", None) or task.spec
     from snodo.infrastructure.worktree import _task_identity
     _, branch = _task_identity(project_root, task.id, spec_for_branch, plan_name)
+
+    if delivery == "push_branch":
+        try:
+            with open_repo(str(Path(project_root))) as repo:
+                repo.git.push(remote, branch)
+            print(f"✓ Pushed {branch} to {remote}")
+            return result, False, branch
+        except Exception as e:
+            print(f"✗ Push failed for {branch} to {remote}: {e}", file=sys.stderr)
+            print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
+            if audit_log:
+                audit_log.append_event("task_unmerged", {
+                    "op": "task_unmerged", "task_ref": task.id, "branch": branch,
+                    "reason": f"Push to {remote} failed: {e}", "session_id": session_id,
+                    **_plan_task_fields(project_root, plan_name, task.id, task),
+                })
+            return 1, True, None
 
     with merge_lock(project_root):
         # Resolve target commit on the branch to be merged
@@ -222,6 +241,34 @@ def _merge_on_success(
                 "session_id": session_id,
             })
         return 1, True, None
+
+
+def _deliver_on_success(
+    project_root: str, task: Any, result: int, session_id: Optional[str],
+    audit_log: Any, protocol: Protocol, mode: str, halt_payload: Any,
+    model: str, plan_name: Optional[str] = None, merge_operation: Any = None,
+) -> tuple:
+    """Deliver resolved work and persist the resulting task outcome."""
+    deliver = merge_operation or _merge_on_success
+    merge_result, preserve, branch = deliver(
+        project_root, task, result, session_id, audit_log,
+        plan_name=plan_name, delivery=protocol.delivery_for(mode),
+        remote=getattr(protocol.execution, "delivery_remote", "origin"),
+    )
+    from snodo.cli.commands.task_record import _record_task_completion
+
+    if merge_result:
+        _record_task_completion(
+            project_root, task.id, "unmerged", halt_payload,
+            protocol=protocol, model=model,
+        )
+        return 2, preserve, branch
+    if protocol.delivery_for(mode) == "push_branch" and branch:
+        _record_task_completion(
+            project_root, task.id, "completed", halt_payload,
+            protocol=protocol, model=model, delivered_branch=branch,
+        )
+    return merge_result, preserve, branch
 
 
 def _try_merge_unmerged_task(
