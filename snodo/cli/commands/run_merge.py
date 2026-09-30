@@ -135,20 +135,15 @@ def _merge_on_success(
             with open_repo(str(Path(project_root))) as repo:
                 repo.git.push(remote, branch)
             print(f"✓ Pushed {branch} to {remote}")
-            if audit_log:
-                audit_log.append_event("task_pushed", {
-                    "op": "task_pushed", "task_ref": task.id, "branch": branch,
-                    "remote": remote, "session_id": session_id,
-                    **_plan_task_fields(project_root, plan_name, task.id, task),
-                })
             return result, False, branch
         except Exception as e:
             print(f"✗ Push failed for {branch} to {remote}: {e}", file=sys.stderr)
             print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
             if audit_log:
-                audit_log.append_event("push_failed", {
-                    "op": "push_failed", "task_ref": task.id, "branch": branch,
-                    "remote": remote, "error": str(e), "session_id": session_id,
+                audit_log.append_event("task_unmerged", {
+                    "op": "task_unmerged", "task_ref": task.id, "branch": branch,
+                    "reason": f"Push to {remote} failed: {e}", "session_id": session_id,
+                    **_plan_task_fields(project_root, plan_name, task.id, task),
                 })
             return 1, True, None
 
