@@ -110,6 +110,7 @@ def _merge_on_success(
     plan_name: Optional[str] = None,
     delivery: str = "local_merge",
     remote: str = "origin",
+    protocol_metadata: Optional[dict] = None,
 ) -> tuple:
     """Merge the completed task's branch into the base branch.
 
@@ -130,64 +131,88 @@ def _merge_on_success(
     from snodo.infrastructure.worktree import _task_identity
     _, branch = _task_identity(project_root, task.id, spec_for_branch, plan_name)
 
-    if delivery == "push_branch":
+    target_commit = ""
+    try:
+        with open_repo(str(Path(project_root))) as repo:
+            target_commit = repo.commit(branch).hexsha
+    except Exception as e:
+        _logger.debug("Could not resolve commit for branch %s: %s", branch, e)
+
+    if delivery in {"push_branch", "change_request"} or (delivery == "local_merge" and audit_log):
+        history = audit_log.get_history("verification_executed") if audit_log else []
+        matching = [
+            e for e in history
+            if target_commit and _verified_commit_matches_merge_target(
+                e.data.get("commit"), target_commit
+            )
+        ]
+        passing = [e for e in matching if e.data.get("outcome") in {"pass", "no_tests"}]
+        if not passing:
+            commit_display = target_commit[:7] if target_commit else "unknown"
+            reason = f"No passing verification_executed event recorded for task {task.id} at commit {commit_display}."
+            action = "merge" if delivery == "local_merge" else "delivery"
+            print(f"✗ Refused {action} for {branch}: {reason}", file=sys.stderr)
+            if audit_log:
+                audit_log.append_event("unverified_merge_blocked", {
+                    "op": "unverified_merge_blocked", "task_ref": task.id,
+                    "branch": branch, "target_commit": target_commit,
+                    "reason": reason, "session_id": session_id,
+                })
+            return 1, True, None
+        accepted = passing[-1]
+        commit_display = target_commit[:7] if target_commit else "unknown"
+        verb = "merge" if delivery == "local_merge" else "delivery"
+        if accepted.data.get("outcome") == "pass":
+            print(
+                f"✓ Verified {verb} for {branch}: task {task.id} verified at commit "
+                f"{commit_display} ({accepted.data.get('command', '')}).",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"✓ Merged {branch} ungated: task {task.id} at commit {commit_display} "
+                "ran no tests (no test_command configured).",
+                file=sys.stderr,
+            )
+
+    if delivery in {"push_branch", "change_request"}:
         try:
             with open_repo(str(Path(project_root))) as repo:
                 repo.git.push(remote, branch)
             print(f"✓ Pushed {branch} to {remote}")
+            if delivery == "change_request":
+                from snodo.providers.registry import detect_provider
+                provider = detect_provider(project_root, protocol_metadata)
+                from snodo.providers.local import LocalProvider
+                if isinstance(provider, LocalProvider):
+                    raise RuntimeError("no code-host provider is configured; install/configure a provider plugin and its credentials")
+                with open_repo(str(Path(project_root))) as repo:
+                    target_branch = repo.active_branch.name
+                reference = provider.create_change_request(
+                    branch, task.spec, f"Task {task.id}: {task.spec}\n\nTask id: {task.id}",
+                    target_branch=target_branch,
+                )
+                return result, False, (branch, reference)
             return result, False, branch
         except Exception as e:
-            print(f"✗ Push failed for {branch} to {remote}: {e}", file=sys.stderr)
+            print(f"✗ Delivery failed for {branch}: {e}", file=sys.stderr)
             print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
             if audit_log:
+                reason = (
+                    f"Change-request delivery failed: {e}. Check the configured code-host "
+                    "plugin and credentials."
+                    if delivery == "change_request"
+                    else f"Push to {remote} failed: {e}"
+                )
                 audit_log.append_event("task_unmerged", {
                     "op": "task_unmerged", "task_ref": task.id, "branch": branch,
-                    "reason": f"Push to {remote} failed: {e}", "session_id": session_id,
+                    "reason": reason, "session_id": session_id,
                     **_plan_task_fields(project_root, plan_name, task.id, task),
                 })
             return 1, True, None
 
     with merge_lock(project_root):
-        # Resolve target commit on the branch to be merged
-        target_commit = ""
         base_sha = _merge_base_sha(project_root)
-        try:
-            with open_repo(str(Path(project_root))) as repo:
-                target_commit = repo.commit(branch).hexsha
-        except Exception as e:
-            _logger.debug("Could not resolve commit for branch %s: %s", branch, e)
-
-        if audit_log:
-            history = audit_log.get_history("verification_executed")
-            matching = [
-                e for e in history
-                if target_commit
-                and _verified_commit_matches_merge_target(e.data.get("commit"), target_commit)
-            ]
-            matching_passes = [e for e in matching if e.data.get("outcome") == "pass"]
-            matching_ungated = [e for e in matching if e.data.get("outcome") == "no_tests"]
-            if not matching_passes and not matching_ungated:
-                commit_display = target_commit[:7] if target_commit else "unknown"
-                print(f"✗ Refused merge for {branch}: no passing verification_executed event for task {task.id} at commit {commit_display}.", file=sys.stderr)
-                print("  An unverified merge is forbidden. Worktree and branch left intact.", file=sys.stderr)
-                audit_log.append_event("unverified_merge_blocked", {
-                    "op": "unverified_merge_blocked",
-                    "task_ref": task.id,
-                    "branch": branch,
-                    "target_commit": target_commit,
-                    "reason": f"No passing verification_executed event recorded for task {task.id} at commit {commit_display}.",
-                    "session_id": session_id,
-                })
-                return 1, True, None
-
-            if matching_passes:
-                accepted_event = matching_passes[-1]
-                commit_display = target_commit[:7] if target_commit else "unknown"
-                cmd = accepted_event.data.get("command", "")
-                print(f"✓ Verified merge for {branch}: task {task.id} verified at commit {commit_display} ({cmd}).", file=sys.stderr)
-            else:
-                commit_display = target_commit[:7] if target_commit else "unknown"
-                print(f"✓ Merged {branch} ungated: task {task.id} at commit {commit_display} ran no tests (no test_command configured).", file=sys.stderr)
 
         try:
             res = merge_task_branch(project_root, branch)
@@ -254,6 +279,7 @@ def _deliver_on_success(
         project_root, task, result, session_id, audit_log,
         plan_name=plan_name, delivery=protocol.delivery_for(mode),
         remote=getattr(protocol.execution, "delivery_remote", "origin"),
+        protocol_metadata=protocol.metadata,
     )
     from snodo.cli.commands.task_record import _record_task_completion
 
@@ -263,10 +289,14 @@ def _deliver_on_success(
             protocol=protocol, model=model,
         )
         return 2, preserve, branch
-    if protocol.delivery_for(mode) == "push_branch" and branch:
+    change_request_reference = None
+    if isinstance(branch, tuple):
+        branch, change_request_reference = branch
+    if protocol.delivery_for(mode) in {"push_branch", "change_request"} and branch:
         _record_task_completion(
             project_root, task.id, "completed", halt_payload,
             protocol=protocol, model=model, delivered_branch=branch,
+            change_request_reference=change_request_reference,
         )
     return merge_result, preserve, branch
 

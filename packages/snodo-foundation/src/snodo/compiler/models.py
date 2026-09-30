@@ -481,11 +481,6 @@ class Protocol(BaseModel):
         for mode in self.modes:
             if mode.delivery is not None and mode.auto_merge is not None:
                 raise ValueError(f"mode '{mode.mode_id}' cannot set both delivery and auto_merge; use delivery")
-        for scope, delivery in [("execution", self.execution.delivery)] + [
-            (f"mode '{mode.mode_id}'", mode.delivery) for mode in self.modes
-        ]:
-            if delivery == "change_request":
-                raise ValueError(f"{scope}.delivery '{delivery}' is not yet supported")
         return self
     
     @field_validator('protocol_id')
@@ -588,7 +583,7 @@ class Protocol(BaseModel):
         The mode's ``auto_merge`` (if set) overrides the protocol-level
         ``execution.auto_merge``; otherwise the protocol setting applies.
         """
-        return self.delivery_for(mode_id) in {"local_merge", "push_branch"}
+        return self.delivery_for(mode_id) in {"local_merge", "push_branch", "change_request"}
 
     def delivery_for(self, mode_id: str) -> str:
         """Resolve delivery, translating legacy auto_merge values exactly."""

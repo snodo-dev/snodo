@@ -13,7 +13,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Slack job-finished notifications now start with a success or warning icon based on the job result. (Fixes #574)
 
 ### Added
-- `push_branch` delivery pushes resolved task branches to `origin` (or the configured `execution.delivery_remote`) without merging locally; `change_request` remains unsupported. (Fixes #563)
+- `change_request` delivery pushes verified task branches and opens a request through the configured code-host provider; the reference is saved in task/job state. Both push-based delivery modes require verification for the delivered commit. (Fixes #573)
+- `push_branch` delivery pushes resolved task branches to `origin` (or the configured `execution.delivery_remote`) without merging locally. (Fixes #563)
 
 ### Changed
 - GitHub support ships as the separate `snodo-provider-github` plugin, with

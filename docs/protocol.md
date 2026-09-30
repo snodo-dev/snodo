@@ -88,7 +88,7 @@ execution:
 | `branch_prefix` | string | no | Prefix used for task branches (default `"task"`) |
 | `max_recovery_depth` | int | no | Maximum recursive subtask recovery depth along a single branch (default `3`, range 0–20) |
 | `max_total_fix_attempts` | int | no | Maximum total fix subtasks spawned across the task tree (default `10`, range 1–100) |
-| `delivery` | `local_merge`, `push_branch`, `change_request` | no | How completed work is delivered. `local_merge` merges locally; `push_branch` pushes the task branch to `delivery_remote` (default `origin`) without changing the local base branch. `change_request` is not yet supported. Omitted settings preserve the legacy default of leaving work unmerged. |
+| `delivery` | `local_merge`, `push_branch`, `change_request` | no | How completed work is delivered. `local_merge` merges locally; `push_branch` pushes the task branch to `delivery_remote` (default `origin`) without changing the local base branch; `change_request` pushes the branch and opens a change request into the base branch through the configured code-host plugin. Change requests require an installed plugin and its credentials. Push or provider failures leave the task unmerged and the pushed branch intact. Omitted settings preserve the legacy default of leaving work unmerged. |
 | `delivery_remote` | string | no | Remote used by `push_branch` (default `origin`). |
 | `auto_merge` | bool | no | Deprecated compatibility setting: `true` maps to `local_merge`; `false` preserves the existing leave-unmerged behavior. Do not set alongside `delivery`. |
 | `prepare_command` | string | no | Command executed after worktree setup to prepare environment (e.g. `npm ci`, `uv sync`) |
@@ -200,7 +200,7 @@ modes:
 | `constraints` | list[Constraint] | no | Mode-specific constraints |
 | `coder` | string | no | Coder backend (`"litellm"`, `"mock"`; `"opencode"` and `"opencode-cli"` are **experimental** — see below) |
 | `coder_config` | dict | no | Coder backend configuration |
-| `delivery` | `local_merge`, `push_branch`, `change_request` | no | Override protocol-level `execution.delivery` for this mode (default `null`) |
+| `delivery` | `local_merge`, `push_branch`, `change_request` | no | Override protocol-level `execution.delivery` for this mode (default `null`). `change_request` pushes the branch and opens a request through the configured code-host plugin; it requires that plugin and its credentials. Failures leave the task unmerged (and retain a pushed branch). |
 | `auto_merge` | bool | no | Deprecated compatibility override: `true` maps to `local_merge`, `false` to leave-unmerged. Do not set alongside `delivery`. |
 | `max_recovery_depth` | int | no | Override protocol-level `execution.max_recovery_depth` for this mode (default `null`) |
 | `concurrency` | int | no | Per-mode concurrency ceiling (positive integer); absent uses `coder_config.concurrency` if set, otherwise `1` |
