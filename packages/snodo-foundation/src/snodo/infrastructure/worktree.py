@@ -145,8 +145,22 @@ def worktree_is_owned(
     project_root: str, task_id: str, plan_name: Optional[str] = None
 ) -> bool:
     """Return whether Git records *task_id* as a worktree of this repository."""
-    path, _ = _task_identity(project_root, task_id, "", plan_name)
-    return path.resolve() in _project_worktree_paths(project_root)
+    registered = _project_worktree_paths(project_root)
+    return any(
+        path.resolve() in registered
+        for path in _task_worktree_candidates(project_root, task_id, plan_name)
+    )
+
+
+def _task_worktree_candidates(
+    project_root: str, task_id: str, plan_name: Optional[str]
+) -> tuple[Path, ...]:
+    """Return only the current and legacy filesystem locations for this task."""
+    current = worktree_path(project_root, task_id, plan_name)
+    if not plan_name:
+        return (current,)
+    legacy = worktree_path(project_root, task_id)
+    return (current, legacy) if current != legacy else (current,)
 
 
 # Paths a task spec may legitimately name that are not files the coder should
@@ -630,8 +644,12 @@ def remove_worktree(
     project_root: str, task_id: str, plan_name: Optional[str] = None
 ) -> None:
     """Remove the worktree for *task_id* (force, best-effort)."""
-    wt_path, _ = _task_identity(project_root, task_id, "", plan_name)
-    if not worktree_is_owned(project_root, task_id, plan_name):
+    candidates = _task_worktree_candidates(project_root, task_id, plan_name)
+    registered = _project_worktree_paths(project_root)
+    wt_path = next(
+        (path for path in candidates if path.resolve() in registered), candidates[0]
+    )
+    if wt_path.resolve() not in registered:
         _logger.warning("Worktree %s is not owned by project %s", wt_path, project_root)
         return
     with merge_lock(project_root):

@@ -18,6 +18,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Remove a duplicated sentence from the planning guide. (Fixes #578)
 
 ### Changed
+- Successful delivery now removes its task worktree when a plan-scoped task
+  reuses the legacy worktree path; foreign-project worktrees remain protected.
+  (Fixes #587)
 - Halt and job-state output tails for OpenCode CLI and Codex CLI now show
   readable coder messages instead of raw JSON events, while retaining stderr
   diagnostics and unchanged usage recording. (Fixes #588)

@@ -360,6 +360,36 @@ def test_remove_worktree_reconciles_metadata_after_git_failure(repo, monkeypatch
     ).stdout
 
 
+def test_remove_plan_task_worktree_created_from_real_spec(repo, caplog):
+    """A planned task may use its legacy path, selected via its real spec."""
+    spec = "Implement the normal feature"
+    wt = create_worktree(str(repo), "task_plan_cleanup", spec)
+    # Plan creation selects the existing legacy path using the real-spec branch.
+    assert create_worktree(
+        str(repo), "task_plan_cleanup", spec, plan_name="release"
+    ) == wt
+
+    remove_worktree(str(repo), "task_plan_cleanup", "release")
+
+    assert not wt.exists()
+    assert "is not owned by project" not in caplog.text
+
+
+def test_remove_worktree_refuses_worktree_registered_to_another_project(tmp_path, caplog):
+    project = tmp_path / "project"
+    foreign_project = tmp_path / "foreign"
+    project.mkdir()
+    foreign_project.mkdir()
+    _init_repo(project)
+    _init_repo(foreign_project)
+    wt = create_worktree(str(foreign_project), "task_foreign", "foreign task")
+
+    remove_worktree(str(project), "task_foreign")
+
+    assert wt.exists()
+    assert "is not owned by project" in caplog.text
+
+
 def _commit_in_worktree(repo, filename):
     wt = worktree_path(str(repo), "task_1")
     (wt / filename).write_text("work\n")
