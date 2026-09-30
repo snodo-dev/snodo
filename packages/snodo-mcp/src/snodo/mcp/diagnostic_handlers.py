@@ -113,5 +113,12 @@ class DiagnosticToolHandler:
             "warnings": unknown_capability_warnings(protocol),
         }
 
+    def protocol_schema(self, arguments: dict) -> dict:
+        """Return the shared protocol schema without accessing project files."""
+        from snodo.protocols.schema import build_protocol_schema_publication
+
+        return build_protocol_schema_publication()
+
     def tool_handlers(self) -> dict:
-        return {"survey": self.survey, "intake": self.intake, "ready": self.ready}
+        return {"survey": self.survey, "intake": self.intake, "ready": self.ready,
+                "protocol_schema": self.protocol_schema}

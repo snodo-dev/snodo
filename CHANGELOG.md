@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Expose the generated protocol JSON Schema as the always-available, read-only
+  MCP `protocol_schema` tool, using the same publication as the CLI. (Fixes #595)
+
 ### Fixed
 - In-place coders that commit their own work are now reported informationally
   instead of warning that they produced no changes. (Fixes #586)

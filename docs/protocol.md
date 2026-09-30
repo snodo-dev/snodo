@@ -10,6 +10,10 @@ choices loaded from the live capability, coder, validator, provider, and
 template registries. The command is read-only and does not inspect or modify
 `.snodo/protocol.yml`.
 
+The same publication is available to every running `snodo serve` MCP client
+through the always-available `protocol_schema` tool. It takes no arguments and
+does not read or write the project's protocol file.
+
 The publication's `x-snodo-cross-field-rules` documents constraints that
 standard JSON Schema cannot encode, including delivery/legacy `auto_merge`
 exclusivity, exclusive-tool ownership, unique IDs, and validator references.
