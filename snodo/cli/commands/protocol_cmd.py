@@ -24,7 +24,7 @@ def protocol_schema(
 
 def protocol_schema_command(json_output: bool = True) -> int:
     """Print the versioned Protocol model schema, enriched with live choices."""
-    from snodo.protocols.schema import build_protocol_schema_publication
+    from snodo.mcp.schema import build_protocol_schema_publication
 
     publication = build_protocol_schema_publication()
     print(json.dumps(publication, indent=2, sort_keys=True))

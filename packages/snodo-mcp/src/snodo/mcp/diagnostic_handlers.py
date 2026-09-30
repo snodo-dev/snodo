@@ -115,7 +115,7 @@ class DiagnosticToolHandler:
 
     def protocol_schema(self, arguments: dict) -> dict:
         """Return the shared protocol schema without accessing project files."""
-        from snodo.protocols.schema import build_protocol_schema_publication
+        from snodo.mcp.schema import build_protocol_schema_publication
 
         return build_protocol_schema_publication()
 
