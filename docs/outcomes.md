@@ -124,6 +124,25 @@ not call for `snodo authorize`.
 
 ## Job outcomes beyond the five halts
 
+## From a non-completed status to its cause
+
+Start with the job ID and task ID shown by the run. The job record, task record,
+session checkpoint, and audit log answer different questions; use the CLI views
+below rather than treating the printed halt payload as the only copy.
+
+| Status or signal | Where to look | What to do next |
+| --- | --- | --- |
+| Job is `failed`, or its exit code is non-zero | `snodo job status <job_id>` for status/exit code and `snodo job logs <job_id>` for stdout/stderr; then `snodo task show <task_id>` for the halt and failure context | Read `final_decision`, `halt_type`, `phase`, `reason`/`hint`, and each validator result's severity. Repair the cause before retrying. |
+| A structured halt was printed | The job's `.snodo/jobs/<job_id>/state.json` stores it under `halt`; the task's `.snodo/tasks/<task_id>/state.json` also retains local halt details. `snodo task show <task_id>` presents the task halt and failure record | Use the halt type and phase to distinguish a validator decision from execution/environment or engine trouble. For `environment_error`, no synthetic failure context is created, so use the halt/error details and logs to diagnose the environment. |
+| Task context or the session record is needed | `snodo task show <task_id>` reads the active session checkpoint, including `decisions.halt` and `decisions.task_failure`; session details are available through `snodo session show <session_id>` | Use the recorded spec, attempt, branch, and validator context to decide whether to retry, repair, adjudicate, or create a separate follow-up. |
+| You need historical/audit evidence | `.snodo/audit.log` records append-only events such as `spec_replaced` and `task_unmerged`; `snodo meta <job_id>` shows the job's metadata | Correlate the task/job IDs and event history with the current job and task records. |
+| Task is resolved but not on the base branch | `snodo job status <job_id>`, `snodo job logs <job_id>`, `snodo task show <task_id>`, and the `task_unmerged` audit event; the run reports the reason and branch/worktree | Preserve the work and merge the printed branch by hand when there is a branch (`git merge <branch>`); for degraded isolation, inspect and commit the changes in the working tree instead. Do not rerun the task just to merge it. |
+
+The terminal CLI run exit codes are **0** for completed, **1** for failed (including
+preflight or isolation failure), and **2** for completed but not merged. A job
+wrapper reports code 2 as `unmerged`; use both the status and exit code when
+diagnosing a record.
+
 Job status and validator outcome are different fields. Check both
 `get_job_status`'s `status` and `exit_code`; for plan jobs also inspect per-task
 statuses (for example with `get_plan`). `get_job_logs` provides stdout/stderr
@@ -139,6 +158,14 @@ eligible auto-merge attempt failed. A plan task marked `completed` may also
 have work that is not on the base branch when auto-merge was disabled; check
 the plan/job detail rather than infer merge from that word alone.
 
+Resolved work can remain unmerged when the configured delivery mode does not
+use local auto-merge, the closure did not resolve, isolation degraded or no task
+worktree was created, the task branch has no changes, or `SNODO_BENCHMARK=1`.
+When a branch exists, the run prints its name and `git merge <branch>`; when
+isolation degraded, it says the changes are in the working tree and to commit
+them there. A plan task may also be `unmerged` after an eligible auto-merge
+attempt fails.
+
 **Next:** Inspect job status, logs, and the plan/task details. Keep the branch
 and work available for review; arrange a corrective follow-up task if the
 merge conflict or remaining work needs code changes. If the task branch itself
@@ -153,6 +180,29 @@ an existing branch.
 **Operator:** The operator is needed when resolving a merge conflict or
 deciding how to land the retained branch. `snodo authorize` applies only if a
 separate validator `escalate` requires adjudication.
+
+## Retrying a task
+
+Retry only after inspecting the corresponding halt, logs, and task context and
+addressing the diagnosed cause. For the CLI task retry (`snodo run --retry
+<task_id>` or `snodo job retry <job_id> [description]`), the spec choices are:
+
+| Retry form | Spec behavior |
+| --- | --- |
+| Bare `--retry <task_id>` | Keeps the recorded spec unchanged. |
+| Positional description or `--append-spec <guidance>` on `snodo run --retry` | Adds guidance for this retry while retaining the existing spec. A positional description on `snodo job retry` has the same guidance behavior. |
+| `--replace-spec <new_spec>` | Replaces the existing spec. The superseded spec is retained in failure context when present and recorded as a `spec_replaced` audit event. `snodo job retry` also supports this option. |
+
+The CLI refuses `--append-spec` together with `--replace-spec`, and refuses a
+positional description together with `--replace-spec`; append/replace flags
+without a retry are also rejected on `snodo run`. A retry for a task that has no failure
+context but has a verified unmerged branch attempts to merge that existing work
+instead of rerunning the coder.
+
+For MCP `retry_job`, the existing spec is used by default, and the retry
+continues from the previous attempt's worktree so its changes remain available.
+Pass `fresh_start: true` when a clean start is intended. `append_spec` adds
+guidance; `revised_spec` is for an actual specification correction.
 
 ### A `completed` job with a non-zero `exit_code`
 
