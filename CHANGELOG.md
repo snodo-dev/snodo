@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Plan-producing tests are confined to temporary projects, and the suite-level
+  guard now reports any plan creation or modification under the checkout's own
+  `.snodo/plans/`. (Fixes #600)
+
 ---
 
 ## [0.19.0] — 2026-09-30

@@ -90,10 +90,12 @@ def _guard_suite_repo_unchanged():
     before_head = _head_state(repo_root)
     before_branches = _branch_set(repo_root)
     before_snodo = _snodo_dir_state(repo_root)
+    before_plans = _plans_dir_state(repo_root)
     yield
     after_head = _head_state(repo_root)
     after_branches = _branch_set(repo_root)
     after_snodo = _snodo_dir_state(repo_root)
+    after_plans = _plans_dir_state(repo_root)
     assert after_head == before_head, (
         "A test mutated the repository the test suite runs in: HEAD moved from "
         f"{before_head} to {after_head}. Tests must operate on isolated fixture "
@@ -112,6 +114,12 @@ def _guard_suite_repo_unchanged():
         "Code under test must never resolve an audit log (or any other state) "
         "relative to the repository running the tests — use an isolated "
         "fixture repository instead (Fixes #65)."
+    )
+    assert after_plans == before_plans, (
+        "A test created, changed, or deleted a plan under the suite repository's "
+        f"own .snodo/plans/: state changed from {before_plans} to {after_plans}. "
+        "Plan-producing tests must use an isolated pytest temporary project. "
+        "(Fixes #600)."
     )
 
 
@@ -133,6 +141,24 @@ def _snodo_dir_state(repo_root) -> dict:
             except OSError:
                 data = b"<unreadable>"
             state[str(p.relative_to(snodo_dir))] = hashlib.sha256(data).hexdigest()
+    return state
+
+
+def _plans_dir_state(repo_root: Path) -> dict | None:
+    """Fingerprint the suite repository's plans, distinguishing absent from empty."""
+    plans_dir = repo_root / ".snodo" / "plans"
+    if not plans_dir.exists():
+        return None
+    state: dict = {}
+    for path in sorted(plans_dir.rglob("*")):
+        relative = str(path.relative_to(plans_dir))
+        if path.is_dir():
+            state[relative + "/"] = "directory"
+        elif path.is_file():
+            try:
+                state[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError:
+                state[relative] = "<unreadable>"
     return state
 
 
