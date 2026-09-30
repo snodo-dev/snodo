@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- In-place coders that commit their own work are now reported informationally
+  instead of warning that they produced no changes. (Fixes #586)
 ### Added
 - Change requests opened through GitHub and GitLab providers receive a `snodo` label when the host permits it. (Fixes #583)
 ### Documentation
