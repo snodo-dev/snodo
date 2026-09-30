@@ -1408,6 +1408,110 @@ class TestAutoMerge:
         assert subprocess_run(["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True).stdout.strip() == base_sha
         assert subprocess_run(["git", "--git-dir", str(remote), "rev-parse", branch], check=True, capture_output=True, text=True).returncode == 0
 
+    def test_change_request_uses_commit_subject_and_bounded_spec_body(self, tmp_path, monkeypatch):
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.worktree import task_branch_name
+        from snodo.cli.commands.run_merge import _merge_on_success
+        from snodo.infrastructure.audit import AuditLog
+
+        repo = tmp_path / "repo"
+        remote = tmp_path / "remote.git"
+        repo.mkdir()
+        run = __import__("subprocess").run
+        run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+        run(["git", "init", "--bare", "-q", str(remote)], check=True)
+        run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        run(["git", "add", "README.md"], cwd=repo, check=True)
+        run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+        run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True)
+        spec = "Implement the requested feature\n\nDetailed requirements\n" + ("details " * 500)
+        task = Task(id="task_change_request", spec=spec)
+        branch = task_branch_name(task.id, task.spec)
+        run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "feature.txt").write_text("feature\n")
+        run(["git", "add", "feature.txt"], cwd=repo, check=True)
+        subject = "Implement feature and preserve issue link Fixes #123"
+        run(["git", "commit", "-qm", subject], cwd=repo, check=True)
+        run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+        from git import Repo
+        with Repo(str(repo)) as git_repo:
+            commit = git_repo.commit(branch).hexsha
+        audit = AuditLog(str(repo / "audit.log"))
+        audit.append_event("verification_executed", {
+            "op": "verification_executed", "task_ref": task.id,
+            "commit": commit, "outcome": "pass", "command": "pytest",
+        })
+
+        class FakeProvider:
+            def create_change_request(self, source, title, body, target_branch=None):
+                self.args = source, title, body, target_branch
+                return "42"
+
+        provider = FakeProvider()
+        monkeypatch.setattr("snodo.providers.registry.detect_provider", lambda *_: provider)
+        monkeypatch.setattr("snodo.providers.local.LocalProvider", type("LocalProvider", (), {}))
+        result, preserve, value = _merge_on_success(
+            str(repo), task, 0, None, audit, delivery="change_request"
+        )
+        assert (result, preserve, value) == (0, False, (branch, "42"))
+        _, title, body, _ = provider.args
+        assert title == subject
+        assert "\n" not in title
+        assert len(title) < 256
+        assert task.id in body
+        assert spec in body
+
+    def test_change_request_title_falls_back_to_first_spec_line(self, tmp_path, monkeypatch):
+        from snodo.core.interfaces import Task
+        from snodo.infrastructure.worktree import task_branch_name
+        from snodo.cli.commands.run_merge import _merge_on_success
+        from snodo.infrastructure.audit import AuditLog
+
+        repo = tmp_path / "repo"
+        remote = tmp_path / "remote.git"
+        repo.mkdir()
+        run = __import__("subprocess").run
+        run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+        run(["git", "init", "--bare", "-q", str(remote)], check=True)
+        run(["git", "config", "user.email", "t@t.com"], cwd=repo, check=True)
+        run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+        (repo / "README.md").write_text("init\n")
+        run(["git", "add", "README.md"], cwd=repo, check=True)
+        run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+        run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True)
+        spec = "\n\n" + "A" * 250 + "\n\nSeveral paragraphs of task detail."
+        task = Task(id="task_fallback", spec=spec)
+        task.root_spec = "fallback"
+        branch = task_branch_name(task.id, task.root_spec)
+        run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+        (repo / "feature.txt").write_text("feature\n")
+        run(["git", "add", "feature.txt"], cwd=repo, check=True)
+        run(["git", "-c", "core.commentChar=#", "commit", "--allow-empty-message", "-qm", "   "], cwd=repo, check=True)
+        run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+        from git import Repo
+        with Repo(str(repo)) as git_repo:
+            commit = git_repo.commit(branch).hexsha
+        audit = AuditLog(str(repo / "audit.log"))
+        audit.append_event("verification_executed", {
+            "op": "verification_executed", "task_ref": task.id,
+            "commit": commit, "outcome": "pass", "command": "pytest",
+        })
+
+        class FakeProvider:
+            def create_change_request(self, source, title, body, target_branch=None):
+                self.title, self.body = title, body
+                return "43"
+
+        provider = FakeProvider()
+        monkeypatch.setattr("snodo.providers.registry.detect_provider", lambda *_: provider)
+        monkeypatch.setattr("snodo.providers.local.LocalProvider", type("LocalProvider", (), {}))
+        _merge_on_success(str(repo), task, 0, None, audit, delivery="change_request")
+        assert provider.title == "A" * 200
+        assert len(provider.title) < 256
+        assert task.id in provider.body
+
     def test_push_branch_failure_is_unmerged(self, tmp_path):
         from snodo.core.interfaces import Task
         from snodo.infrastructure.worktree import task_branch_name
