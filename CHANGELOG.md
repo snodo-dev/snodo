@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Successful delivery now removes its task worktree when a plan-scoped task
+  reuses the legacy worktree path; foreign-project worktrees remain protected.
+  (Fixes #587)
 - Change-request delivery now uses the task branch commit subject as a concise
   title, falls back to a truncated spec line, and includes a bounded task spec
   in the request body. (Fixes #579)
