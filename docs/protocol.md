@@ -10,6 +10,10 @@ choices loaded from the live capability, coder, validator, provider, and
 template registries. The command is read-only and does not inspect or modify
 `.snodo/protocol.yml`.
 
+The same publication is available to every running `snodo serve` MCP client
+through the always-available `protocol_schema` tool. It takes no arguments and
+does not read or write the project's protocol file.
+
 The released publication is committed at
 [`schemas/protocol-v1.json`](../schemas/protocol-v1.json), so editors can pin
 to the schema at a snodo release without installing snodo. The `v1` filename

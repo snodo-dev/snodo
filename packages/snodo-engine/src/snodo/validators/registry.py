@@ -50,3 +50,8 @@ class ValidatorRegistry:
 
 # Module-level default registry — populated on import by each validator module
 _default_registry = ValidatorRegistry()
+
+
+def list_validator_types() -> List[str]:
+    """Return the registered validator type names from the default registry."""
+    return _default_registry.list_types()

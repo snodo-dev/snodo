@@ -8,6 +8,8 @@ below), and the validator quorum is enforced inside the engine loop, per
 task. Nothing here demands that the caller carry a validation token.
 """
 
+from snodo.protocols.capabilities import MODE_TOOL_MAP
+
 # Tool schemas: name -> {description, inputSchema, mcp, method}
 TOOL_REGISTRY = {
     "read_file": {
@@ -806,38 +808,13 @@ TOOL_REGISTRY = {
         "mcp": None,
         "method": None,
     },
+    "protocol_schema": {
+        "description": "Return the generated protocol JSON Schema publication. Read-only; does not inspect or modify protocol.yml.",
+        "inputSchema": {"type": "object", "properties": {}},
+        "mcp": None,
+        "method": None,
+    },
 }
-
-# Map protocol tool names (from mode.tools) to concrete MCP tool names
-MODE_TOOL_MAP = {
-    "edit": ["read_file", "list_files", "list_models", "resolve_model", "recon", "get_recon_status", "get_recon_results"],
-    "write": ["write_file"],
-    "decide": ["propose_adjudicate", "propose_set_model"],
-    "dispatch": ["dispatch_task", "get_job_status", "list_jobs", "get_job_logs", "watch_job", "retry_job"],
-    "test": ["run_tests"],
-    "validate": ["run_tests"],
-    "review": ["read_file", "list_files", "read_diff", "get_status", "recon", "get_recon_status", "get_recon_results"],
-    "approve": ["stage_files", "commit"],
-    "commit": ["stage_files", "commit"],
-    "merge": ["create_branch", "stage_files", "commit", "merge_branch", "delete_branch"],
-    "pr": [
-        "create_change_request", "read_change_request_diff",
-        "post_change_request_comment", "approve_change_request",
-        "request_change_request_changes", "merge_change_request",
-        "read_change_request_discussion", "create_pr", "read_pr_diff",
-        "post_review_comment", "approve_pr", "reject_pr", "merge_pr",
-    ],
-    "plan": [
-        "decompose", "generate_spec", "validate_plan",
-        "propose_plan", "get_plan", "run_plan", "record_task_status",
-        # Queues are the planning surface run in order (ADR 053): a mode that
-        # may run plans may also order and run them from a queue.
-        "queue_list", "queue_create", "queue_move", "queue_remove", "queue_validate", "queue_run",
-    ],
-    "queue": ["queue_list", "queue_create", "queue_move", "queue_remove", "queue_validate", "queue_run"],
-    "read": ["read_file", "list_files"],
-}
-
 
 def unknown_capability_warnings(protocol) -> list[str]:
     """Describe mode grants that have no MCP capability mapping.
@@ -856,7 +833,7 @@ def unknown_capability_warnings(protocol) -> list[str]:
 
 # These diagnostics are the read-only project-understanding surface. Like the
 # guide, they are available regardless of the active mode's write capability.
-PROJECT_DIAGNOSTIC_TOOLS = ["survey", "intake", "ready"]
+PROJECT_DIAGNOSTIC_TOOLS = ["survey", "intake", "ready", "protocol_schema"]
 
 # The planning surface — the human gate above the task loop. A server pinned
 # to a single mode exposes these only when its mode grants the "plan"

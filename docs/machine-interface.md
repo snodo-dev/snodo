@@ -354,6 +354,10 @@ mode capabilities:
 - `ready` reports a project readiness assessment. Optional `mode` filters
   displayed findings; optional `protocol` selects the protocol file (default
   `.snodo/protocol.yml`). It does not append an audit event.
+- `protocol_schema` takes no arguments and returns the versioned
+  `snodo.protocol.v1` JSON Schema publication also emitted by
+  `snodo protocol schema --json`. It does not read or write the project's
+  `.snodo/protocol.yml`.
 
 The `pr` capability exposes vendor-neutral change-request tools:
 `create_change_request` creates one from `branch`, `title`, and `body`;
