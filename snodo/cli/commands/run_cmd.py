@@ -1026,6 +1026,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             merge_result, preserve_worktree, merged_branch = _merge_on_success(
                 project_root, task, result, session_id, audit_log,
                 plan_name=worktree.task_plan_name(args),
+                delivery=protocol.delivery_for(mode),
+                remote=getattr(protocol.execution, "delivery_remote", "origin"),
             )
             if merge_result != 0:
                 result = 2
@@ -1035,6 +1037,11 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
                 )
             else:
                 result = merge_result
+                if protocol.delivery_for(mode) == "push_branch" and merged_branch:
+                    _record_task_completion(
+                        project_root, task.id, "completed", halt_payload,
+                        protocol=protocol, model=model, delivered_branch=merged_branch,
+                    )
 
         # Preserve the worktree on non-completion (so the evidence survives) or
         # when the retain flag is set. A cleanly completed task is torn down.

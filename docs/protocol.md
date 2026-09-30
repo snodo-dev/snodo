@@ -88,7 +88,8 @@ execution:
 | `branch_prefix` | string | no | Prefix used for task branches (default `"task"`) |
 | `max_recovery_depth` | int | no | Maximum recursive subtask recovery depth along a single branch (default `3`, range 0–20) |
 | `max_total_fix_attempts` | int | no | Maximum total fix subtasks spawned across the task tree (default `10`, range 1–100) |
-| `delivery` | `local_merge`, `push_branch`, `change_request` | no | How completed work is delivered. `local_merge` merges locally; `push_branch` and `change_request` are not yet supported and fail protocol loading. Omitted settings preserve the legacy default of leaving work unmerged. |
+| `delivery` | `local_merge`, `push_branch`, `change_request` | no | How completed work is delivered. `local_merge` merges locally; `push_branch` pushes the task branch to `delivery_remote` (default `origin`) without changing the local base branch. `change_request` is not yet supported. Omitted settings preserve the legacy default of leaving work unmerged. |
+| `delivery_remote` | string | no | Remote used by `push_branch` (default `origin`). |
 | `auto_merge` | bool | no | Deprecated compatibility setting: `true` maps to `local_merge`; `false` preserves the existing leave-unmerged behavior. Do not set alongside `delivery`. |
 | `prepare_command` | string | no | Command executed after worktree setup to prepare environment (e.g. `npm ci`, `uv sync`) |
 

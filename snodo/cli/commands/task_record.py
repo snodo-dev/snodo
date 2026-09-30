@@ -56,6 +56,7 @@ def _record_task_completion(
     halt_payload: Optional[dict] = None,
     protocol: Optional[Protocol] = None,
     model: Optional[str] = None,
+    delivered_branch: Optional[str] = None,
 ) -> None:
     """Record final task completion, halt payload, and measured task cost."""
     if os.environ.get("SNODO_BENCHMARK") == "1":
@@ -119,6 +120,8 @@ def _record_task_completion(
             state["task_id"] = task_id
             state["completed_at"] = time.time()
             state["status"] = status
+            if delivered_branch:
+                state["delivered_branch"] = delivered_branch
             if halt_payload:
                 state["halt"] = halt_payload
                 findings = halt_payload.get("findings")
@@ -128,6 +131,10 @@ def _record_task_completion(
 
         atomic_update_json(task_dir, "state.json", _update)
         if job_dir and job_dir.is_dir():
-            atomic_update_json(job_dir, "state.json", lambda state: state.update({"cost": _task_cost(state)}))
+            def _update_job(state: dict) -> None:
+                state["cost"] = _task_cost(state)
+                if delivered_branch:
+                    state["delivered_branch"] = delivered_branch
+            atomic_update_json(job_dir, "state.json", _update_job)
     except Exception as e:
         _logger.debug("Could not record task completion: %s", e)

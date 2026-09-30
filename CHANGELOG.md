@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `push_branch` delivery pushes resolved task branches to `origin` (or the configured `execution.delivery_remote`) without merging locally; `change_request` remains unsupported. (Fixes #563)
+
 ### Changed
 - GitHub support ships as the separate `snodo-provider-github` plugin, with
   its own `snodo_provider_github` import package and discovery through the
@@ -31,8 +34,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Added
 - Protocols can declare `execution.delivery` (`local_merge`, `push_branch`, or
   `change_request`) with per-mode overrides. Legacy `auto_merge` remains
-  compatible; push and change-request delivery are explicitly rejected until
-  supported. (Fixes #557)
+  compatible; change-request delivery remains unsupported. (Fixes #557)
 - `snodo ready` reports installed and failing code-host plugins and explains the
   project's provider resolution; plugins may declare `remote_hosts` for automatic
   host matching, while `metadata.provider` remains authoritative. (Fixes #556)

@@ -631,8 +631,17 @@ def test_delivery_and_auto_merge_conflict():
         )
 
 
-@pytest.mark.parametrize("value", ["push_branch", "change_request"])
-def test_unsupported_delivery_is_rejected(value):
+def test_push_branch_delivery_is_accepted():
+    from snodo.compiler.models import ExecutionConfig
+    base = _auto_merge_protocol()
+    p = Protocol(protocol_id=base.protocol_id, name=base.name, modes=base.modes,
+                 validators=base.validators, initial_mode=base.initial_mode,
+                 execution=ExecutionConfig(delivery="push_branch"))
+    assert p.delivery_for("producer") == "push_branch"
+    assert p.auto_merge_enabled("producer")
+
+
+def test_change_request_delivery_is_rejected():
     from pydantic import ValidationError
     from snodo.compiler.models import ExecutionConfig
     base = _auto_merge_protocol()
@@ -640,7 +649,7 @@ def test_unsupported_delivery_is_rejected(value):
         Protocol(
             protocol_id=base.protocol_id, name=base.name, modes=base.modes,
             validators=base.validators, initial_mode=base.initial_mode,
-            execution=ExecutionConfig(delivery=value),
+            execution=ExecutionConfig(delivery="change_request"),
         )
 
 

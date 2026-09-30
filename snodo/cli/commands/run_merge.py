@@ -108,6 +108,8 @@ def _merge_on_success(
     session_id: Optional[str],
     audit_log: Any,
     plan_name: Optional[str] = None,
+    delivery: str = "local_merge",
+    remote: str = "origin",
 ) -> tuple:
     """Merge the completed task's branch into the base branch.
 
@@ -127,6 +129,28 @@ def _merge_on_success(
     spec_for_branch = getattr(task, "root_spec", None) or task.spec
     from snodo.infrastructure.worktree import _task_identity
     _, branch = _task_identity(project_root, task.id, spec_for_branch, plan_name)
+
+    if delivery == "push_branch":
+        try:
+            with open_repo(str(Path(project_root))) as repo:
+                repo.git.push(remote, branch)
+            print(f"✓ Pushed {branch} to {remote}")
+            if audit_log:
+                audit_log.append_event("task_pushed", {
+                    "op": "task_pushed", "task_ref": task.id, "branch": branch,
+                    "remote": remote, "session_id": session_id,
+                    **_plan_task_fields(project_root, plan_name, task.id, task),
+                })
+            return result, False, branch
+        except Exception as e:
+            print(f"✗ Push failed for {branch} to {remote}: {e}", file=sys.stderr)
+            print("  The branch and worktree were left intact for manual resolution.", file=sys.stderr)
+            if audit_log:
+                audit_log.append_event("push_failed", {
+                    "op": "push_failed", "task_ref": task.id, "branch": branch,
+                    "remote": remote, "error": str(e), "session_id": session_id,
+                })
+            return 1, True, None
 
     with merge_lock(project_root):
         # Resolve target commit on the branch to be merged
