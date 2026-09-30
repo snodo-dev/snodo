@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Plan-producing tests are confined to temporary projects, and the suite-level
+  guard now reports any plan creation or modification under the checkout's own
+  `.snodo/plans/`. (Fixes #600)
 - Isolate session CLI tests under pytest temporary directories and explicitly
   set active-session state in prune tests. (Fixes #599)
 - Run the Ruff verification canary through the active test interpreter instead
