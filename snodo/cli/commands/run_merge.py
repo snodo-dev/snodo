@@ -15,6 +15,23 @@ from snodo.tools.git import open_repo
 _logger = logging.getLogger(__name__)
 
 _MERGE_COMMIT_LIMIT = 50
+_CHANGE_REQUEST_TITLE_LIMIT = 200
+_CHANGE_REQUEST_BODY_LIMIT = 10_000
+
+
+def _change_request_content(repo: Any, branch: str, task: Any) -> tuple[str, str]:
+    """Build bounded, provider-neutral change-request title and body."""
+    subject = ""
+    try:
+        commit_message = repo.commit(branch).message or ""
+        subject = commit_message.splitlines()[0].strip() if commit_message.splitlines() else ""
+    except Exception as e:
+        _logger.debug("Could not read task branch commit subject: %s", e)
+    if not subject:
+        subject = next((line.strip() for line in task.spec.splitlines() if line.strip()), "Task")
+    title = " ".join(subject.split())[:_CHANGE_REQUEST_TITLE_LIMIT]
+    body = f"Task id: {task.id}\n\n{task.spec}"[:_CHANGE_REQUEST_BODY_LIMIT]
+    return title, body
 
 
 def _merge_base_sha(project_root: str) -> str:
@@ -188,8 +205,9 @@ def _merge_on_success(
                     raise RuntimeError("no code-host provider is configured; install/configure a provider plugin and its credentials")
                 with open_repo(str(Path(project_root))) as repo:
                     target_branch = repo.active_branch.name
+                    title, body = _change_request_content(repo, branch, task)
                 reference = provider.create_change_request(
-                    branch, task.spec, f"Task {task.id}: {task.spec}\n\nTask id: {task.id}",
+                    branch, title, body,
                     target_branch=target_branch,
                 )
                 return result, False, (branch, reference)

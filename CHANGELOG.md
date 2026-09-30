@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Change-request delivery now uses the task branch commit subject as a concise
+  title, falls back to a truncated spec line, and includes a bounded task spec
+  in the request body. (Fixes #579)
 - The extension guide now documents the bundled GitHub and separately
   installable GitLab provider plugins, their remote claims and token sources,
   and how change-request delivery resolves providers and reports failures.
