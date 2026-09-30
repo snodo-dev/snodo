@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+- Remove a duplicated sentence from the planning guide. (Fixes #578)
+
 ### Changed
 - Change-request delivery now uses the task branch commit subject as a concise
   title, falls back to a truncated spec line, and includes a bounded task spec
