@@ -28,8 +28,8 @@ class TestDetectFromUrl:
     def test_github_https(self):
         assert _detect_from_url("https://github.com/o/r") == "github"
 
-    def test_gitlab_returns_none(self):
-        assert _detect_from_url("git@gitlab.com:o/r.git") is None
+    def test_gitlab_ssh_is_detected(self):
+        assert _detect_from_url("git@gitlab.com:o/r.git") == "gitlab"
 
     def test_unknown_returns_none(self):
         assert _detect_from_url("https://example.com/o/r") is None

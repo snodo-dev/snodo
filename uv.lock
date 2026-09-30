@@ -21,6 +21,7 @@ members = [
     "snodo-foundation",
     "snodo-mcp",
     "snodo-provider-github",
+    "snodo-provider-gitlab",
     "snodo-tools",
 ]
 
@@ -3561,6 +3562,19 @@ wheels = [
 ]
 
 [[package]]
+name = "python-gitlab"
+version = "8.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "requests-toolbelt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5c/dc/292d32245ca35447b265c47a0ed9f35de1ab280a05da1da306b61a035833/python_gitlab-8.6.0.tar.gz", hash = "sha256:d1602164fb58ab280ceef460faf015cec6e7d83bb2d9cbae44ba448adb5568ef", size = 423347, upload-time = "2026-09-28T03:13:53.86Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/55/aa/9c96a88d79453eaea91f301c318dc3c5e95b195087759fd94fedf1104386/python_gitlab-8.6.0-py3-none-any.whl", hash = "sha256:34fee7e5576cf01982c4bfa98f94d50e24733edb66beba3cb8ef286287723019", size = 159654, upload-time = "2026-09-28T03:13:52.285Z" },
+]
+
+[[package]]
 name = "python-multipart"
 version = "0.0.32"
 source = { registry = "https://pypi.org/simple" }
@@ -4156,6 +4170,7 @@ dev = [
     { name = "pytest-xdist" },
     { name = "radon" },
     { name = "scipy" },
+    { name = "snodo-provider-gitlab" },
     { name = "swebench" },
 ]
 
@@ -4207,6 +4222,7 @@ dev = [
     { name = "pytest-xdist", specifier = "==3.8.0" },
     { name = "radon", specifier = ">=6.0.1" },
     { name = "scipy", specifier = ">=1.13" },
+    { name = "snodo-provider-gitlab", editable = "packages/snodo-provider-gitlab" },
     { name = "swebench", specifier = ">=4.0.0" },
 ]
 
@@ -4326,6 +4342,21 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "pygithub", specifier = ">=2.0.0" },
+    { name = "snodo-tools", editable = "packages/snodo-tools" },
+]
+
+[[package]]
+name = "snodo-provider-gitlab"
+version = "0.18.0"
+source = { editable = "packages/snodo-provider-gitlab" }
+dependencies = [
+    { name = "python-gitlab" },
+    { name = "snodo-tools" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "python-gitlab", specifier = ">=4.0.0" },
     { name = "snodo-tools", editable = "packages/snodo-tools" },
 ]
 
