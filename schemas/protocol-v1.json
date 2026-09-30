@@ -1,0 +1,744 @@
+{
+  "schema": {
+    "$defs": {
+      "Constraint": {
+        "description": "A rule or limitation on protocol execution.",
+        "properties": {
+          "constraint_id": {
+            "description": "Unique constraint identifier",
+            "title": "Constraint Id",
+            "type": "string"
+          },
+          "description": {
+            "description": "Human-readable constraint description",
+            "title": "Description",
+            "type": "string"
+          },
+          "expression": {
+            "default": "",
+            "description": "Boolean expression string (legacy; summary when predicate is set)",
+            "title": "Expression",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "description": "Parameters passed to the predicate",
+            "title": "Params",
+            "type": "object",
+            "x-snodo-open": true
+          },
+          "predicate": {
+            "default": "",
+            "description": "Predicate name to evaluate this constraint",
+            "title": "Predicate",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/$defs/Severity",
+            "default": "blocker",
+            "description": "Impact if violated"
+          }
+        },
+        "required": [
+          "constraint_id",
+          "description"
+        ],
+        "title": "Constraint",
+        "type": "object"
+      },
+      "DisagreementPolicy": {
+        "description": "Policy for resolving validator disagreements.",
+        "enum": [
+          "unanimous",
+          "majority",
+          "quorum",
+          "any"
+        ],
+        "title": "DisagreementPolicy",
+        "type": "string"
+      },
+      "ExecutionConfig": {
+        "description": "Branch execution configuration for task isolation.",
+        "properties": {
+          "auto_merge": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Whether a successfully completed task's branch is merged into the base branch automatically. Default off; a mode may override it.",
+            "title": "Auto Merge"
+          },
+          "branch_prefix": {
+            "default": "task",
+            "title": "Branch Prefix",
+            "type": "string"
+          },
+          "branch_ttl_days": {
+            "default": 7,
+            "maximum": 30,
+            "minimum": 1,
+            "title": "Branch Ttl Days",
+            "type": "integer"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "enum": [
+                  "local_merge",
+                  "push_branch",
+                  "change_request"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How completed work is delivered.",
+            "title": "Delivery"
+          },
+          "delivery_remote": {
+            "default": "origin",
+            "description": "Remote used for push_branch delivery.",
+            "minLength": 1,
+            "title": "Delivery Remote",
+            "type": "string"
+          },
+          "max_recovery_depth": {
+            "default": 3,
+            "description": "Maximum recovery depth per branch (default 3). Bounded against non-converging loops by recovery-stall detection and max_total_fix_attempts.",
+            "maximum": 20,
+            "minimum": 0,
+            "title": "Max Recovery Depth",
+            "type": "integer"
+          },
+          "max_retries": {
+            "default": 3,
+            "maximum": 10,
+            "minimum": 0,
+            "title": "Max Retries",
+            "type": "integer"
+          },
+          "max_total_fix_attempts": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Max Total Fix Attempts",
+            "type": "integer"
+          },
+          "prepare_command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Explicit environment preparation command executed after worktree setup and before task execution/validation. None = auto-detect from lockfiles.",
+            "title": "Prepare Command"
+          }
+        },
+        "title": "ExecutionConfig",
+        "type": "object"
+      },
+      "Mode": {
+        "additionalProperties": false,
+        "description": "Operational stage with defined permissions and transitions.\n\nTransitions are DECLARATIVE only \u2014 they document the protocol's\nintended mode handoffs but are NOT executed by the engine at\nruntime.  The engine runs single-mode per invocation; cross-mode\nhandoffs are explicit user actions (snodo mode change <m>).\n\nTransitions ARE read by ProtocolAdherenceValidator to provide\nmode-profile context to the LLM.",
+        "properties": {
+          "auto_merge": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Override the protocol-level auto_merge for this mode. None = inherit the protocol's execution.auto_merge setting.",
+            "title": "Auto Merge"
+          },
+          "coder": {
+            "anyOf": [
+              {
+                "description": "Valid choices are the values in this enum.",
+                "enum": [
+                  "agy",
+                  "anthropic",
+                  "codex-cli",
+                  "gemini",
+                  "litellm",
+                  "mock",
+                  "openai",
+                  "opencode",
+                  "opencode-cli"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Coder backend name (e.g., 'litellm', 'mock')",
+            "title": "Coder"
+          },
+          "coder_config": {
+            "additionalProperties": true,
+            "description": "Coder backend configuration",
+            "title": "Coder Config",
+            "type": "object",
+            "x-snodo-open": true
+          },
+          "concurrency": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Concurrency ceiling for this mode. None = use coder_config.concurrency when set, otherwise 1.",
+            "title": "Concurrency"
+          },
+          "constraints": {
+            "description": "Mode-specific constraints",
+            "items": {
+              "$ref": "#/$defs/Constraint"
+            },
+            "title": "Constraints",
+            "type": "array"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "enum": [
+                  "local_merge",
+                  "push_branch",
+                  "change_request"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Override protocol delivery for this mode.",
+            "title": "Delivery"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Human-readable mode description",
+            "title": "Description"
+          },
+          "max_recovery_depth": {
+            "anyOf": [
+              {
+                "maximum": 20,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Override the protocol-level max_recovery_depth for this mode. None = inherit the protocol's execution.max_recovery_depth setting.",
+            "title": "Max Recovery Depth"
+          },
+          "mode_id": {
+            "description": "Unique mode identifier",
+            "title": "Mode Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Human-readable mode name",
+            "title": "Name",
+            "type": "string"
+          },
+          "tools": {
+            "description": "Available tools in this mode",
+            "items": {
+              "description": "Valid choices are the values in this enum.",
+              "enum": [
+                "approve",
+                "commit",
+                "decide",
+                "dispatch",
+                "edit",
+                "merge",
+                "plan",
+                "pr",
+                "queue",
+                "read",
+                "review",
+                "test",
+                "validate",
+                "write"
+              ],
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          },
+          "transitions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Declarative event \u2192 target mode mappings (not engine-executed)",
+            "title": "Transitions",
+            "type": "object"
+          },
+          "validators": {
+            "description": "Active validator IDs",
+            "items": {
+              "type": "string"
+            },
+            "title": "Validators",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode_id",
+          "name"
+        ],
+        "title": "Mode",
+        "type": "object"
+      },
+      "Module": {
+        "description": "A module \u2014 a scope that partitions the repository into named regions.\n\nImplements ADR 041: a module is a structural concept, not an operational\nstage. It declares which paths it owns, where its decision records live,\nwhat tooling it uses, and which validators apply within its scope.\n\nA protocol that declares no modules must compile and behave exactly as it\ndoes today; the field is additive and backward-compatible.",
+        "properties": {
+          "decisions_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Directory where this module's decision records live. When absent, ADR tooling falls back to the protocol-level setting.",
+            "title": "Decisions Path"
+          },
+          "module_id": {
+            "description": "Unique module identifier (slug-safe alphanumeric with - and _)",
+            "title": "Module Id",
+            "type": "string"
+          },
+          "paths": {
+            "description": "One or more root paths this module owns. At least one is required.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Paths",
+            "type": "array"
+          },
+          "tooling": {
+            "additionalProperties": true,
+            "description": "Per-module tooling map (same shape as the tooling field on Validator). When empty, tooling falls back to the protocol-level setting.",
+            "title": "Tooling",
+            "type": "object",
+            "x-snodo-open": true
+          },
+          "validators": {
+            "description": "Validator IDs that apply within this module. Every ID must name a validator already declared in the protocol.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Validators",
+            "type": "array"
+          }
+        },
+        "required": [
+          "module_id",
+          "paths"
+        ],
+        "title": "Module",
+        "type": "object"
+      },
+      "QueueConfig": {
+        "additionalProperties": false,
+        "description": "Default behaviour for runs started from a queue (ADR 053).",
+        "properties": {
+          "non_blocking": {
+            "default": false,
+            "description": "Whether a failed plan is passed over instead of stopping the queue.",
+            "title": "Non Blocking",
+            "type": "boolean"
+          },
+          "parallel_runs": {
+            "default": 1,
+            "description": "Maximum plans to run concurrently in a non-blocking queue run. Read only when non_blocking is true.",
+            "minimum": 1,
+            "title": "Parallel Runs",
+            "type": "integer"
+          }
+        },
+        "title": "QueueConfig",
+        "type": "object"
+      },
+      "Role": {
+        "description": "Participant role in the protocol.",
+        "properties": {
+          "name": {
+            "description": "Human-readable role name",
+            "title": "Name",
+            "type": "string"
+          },
+          "permissions": {
+            "description": "Allowed actions",
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "responsibilities": {
+            "description": "Expected duties",
+            "items": {
+              "type": "string"
+            },
+            "title": "Responsibilities",
+            "type": "array"
+          },
+          "role_id": {
+            "description": "Unique role identifier",
+            "title": "Role Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role_id",
+          "name"
+        ],
+        "title": "Role",
+        "type": "object"
+      },
+      "Severity": {
+        "description": "Validator result severity levels.\n\nOrdered: PASS < WARN < BLOCKER.  Explicit comparison operators\noverride the str-inherited lexicographic ordering.",
+        "enum": [
+          "pass",
+          "warn",
+          "blocker"
+        ],
+        "title": "Severity",
+        "type": "string"
+      },
+      "Validator": {
+        "description": "Evaluation criteria and judging scope for a validator.",
+        "properties": {
+          "check_tool_access": {
+            "default": false,
+            "description": "When True, if a criterion demands verification by a tool outside this validator's own declared tools list, refuse rather than silently pass.",
+            "title": "Check Tool Access",
+            "type": "boolean"
+          },
+          "constraints": {
+            "description": "Additional constraints",
+            "items": {
+              "$ref": "#/$defs/Constraint"
+            },
+            "title": "Constraints",
+            "type": "array"
+          },
+          "criteria": {
+            "description": "Evaluation criteria",
+            "items": {
+              "type": "string"
+            },
+            "title": "Criteria",
+            "type": "array"
+          },
+          "evaluation_phase": {
+            "default": "pre_execute",
+            "description": "When to run this validator (e.g., pre_execute, post_execute)",
+            "title": "Evaluation Phase",
+            "type": "string"
+          },
+          "judges_spec": {
+            "default": false,
+            "description": "Whether this validator's critique is about the spec's wording (intent, constraints, scope) rather than about the work. Only judges_spec validators' critique feeds the spec-authoring rewriter; a non-spec objection must not silently reshape the spec (Fixes #35).",
+            "title": "Judges Spec",
+            "type": "boolean"
+          },
+          "max_tool_turns": {
+            "anyOf": [
+              {
+                "maximum": 200,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional read-tool-loop turn budget override for this validator. Falls back to the configured llm.validator max_tool_turns if not set.",
+            "title": "Max Tool Turns"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional LLM model override for this validator. Falls back to coder model / default_model if not set.",
+            "title": "Model"
+          },
+          "scope": {
+            "default": "task",
+            "description": "Unit this validator judges. A wave-scoped validator judges the wave containing the task; outside a plan, the task is its own wave.",
+            "enum": [
+              "task",
+              "wave"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "severity_cap": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Severity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Maximum severity this validator can emit.  Useful for validators under evaluation: blocker capped to warn prevents blocking the workflow.  None = no cap."
+          },
+          "tooling": {
+            "additionalProperties": true,
+            "description": "Tooling configuration (e.g., test_command, timeout)",
+            "title": "Tooling",
+            "type": "object",
+            "x-snodo-open": true
+          },
+          "tools": {
+            "description": "Read-only tool allowlist for this validator. Empty means no tool access (single-completion path). Allowed: ['git_log', 'git_show', 'list_files', 'read_diff_between_refs', 'read_file', 'read_file_lines', 'summarize_directory']",
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          },
+          "validator_id": {
+            "description": "Unique validator identifier",
+            "title": "Validator Id",
+            "type": "string"
+          },
+          "validator_type": {
+            "description": "Type of validation (e.g., security, architecture) Valid choices are the values in this enum.",
+            "enum": [
+              "acceptance",
+              "architecture",
+              "conventions",
+              "llm",
+              "performance",
+              "planning",
+              "protocol",
+              "quality",
+              "security",
+              "testing"
+            ],
+            "title": "Validator Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "validator_id",
+          "validator_type"
+        ],
+        "title": "Validator",
+        "type": "object"
+      }
+    },
+    "description": "Top-level protocol definition.",
+    "properties": {
+      "disagreement_policy": {
+        "$ref": "#/$defs/DisagreementPolicy",
+        "default": "unanimous",
+        "description": "How to resolve validator conflicts"
+      },
+      "exclusive_tools": {
+        "description": "Tools that must be exclusive to a single mode (approval-conferring). Default: approve + merge. A protocol may extend, but not shrink, this set \u2014 the defaults are always enforced.",
+        "items": {
+          "type": "string"
+        },
+        "title": "Exclusive Tools",
+        "type": "array",
+        "uniqueItems": true
+      },
+      "execution": {
+        "$ref": "#/$defs/ExecutionConfig",
+        "description": "Branch isolation and retry configuration"
+      },
+      "global_constraints": {
+        "description": "Protocol-wide constraints",
+        "items": {
+          "$ref": "#/$defs/Constraint"
+        },
+        "title": "Global Constraints",
+        "type": "array"
+      },
+      "initial_mode": {
+        "description": "Starting mode ID",
+        "title": "Initial Mode",
+        "type": "string"
+      },
+      "metadata": {
+        "additionalProperties": true,
+        "description": "Additional metadata",
+        "title": "Metadata",
+        "type": "object",
+        "x-snodo-open": true
+      },
+      "modes": {
+        "description": "Available operational modes",
+        "items": {
+          "$ref": "#/$defs/Mode"
+        },
+        "minItems": 1,
+        "title": "Modes",
+        "type": "array"
+      },
+      "modules": {
+        "description": "Optional list of modules (ADR 041). A module is a scope \u2014 a named partition of the repository \u2014 not an operational stage. A protocol that declares no modules compiles and behaves exactly as it does today.",
+        "items": {
+          "$ref": "#/$defs/Module"
+        },
+        "title": "Modules",
+        "type": "array"
+      },
+      "name": {
+        "description": "Human-readable protocol name",
+        "title": "Name",
+        "type": "string"
+      },
+      "protected_paths": {
+        "description": "Repository-relative paths that a task may not change. The engine checks the task branch diff after execution.",
+        "items": {
+          "type": "string"
+        },
+        "title": "Protected Paths",
+        "type": "array"
+      },
+      "protocol_id": {
+        "description": "Unique protocol identifier",
+        "title": "Protocol Id",
+        "type": "string"
+      },
+      "queue": {
+        "$ref": "#/$defs/QueueConfig",
+        "description": "Default queue run behaviour (ADR 053)"
+      },
+      "roles": {
+        "description": "Participant roles",
+        "items": {
+          "$ref": "#/$defs/Role"
+        },
+        "title": "Roles",
+        "type": "array"
+      },
+      "validators": {
+        "description": "Validation agents",
+        "items": {
+          "$ref": "#/$defs/Validator"
+        },
+        "minItems": 1,
+        "title": "Validators",
+        "type": "array"
+      },
+      "version": {
+        "default": "1.0.0",
+        "description": "Protocol version",
+        "title": "Version",
+        "type": "string"
+      },
+      "write_allowed_prefixes": {
+        "description": "Project-relative path prefixes writable through the MCP write capability. Defaults to .snodo/.",
+        "items": {
+          "type": "string"
+        },
+        "title": "Write Allowed Prefixes",
+        "type": "array"
+      }
+    },
+    "required": [
+      "protocol_id",
+      "name",
+      "modes",
+      "validators",
+      "initial_mode"
+    ],
+    "title": "Protocol",
+    "type": "object",
+    "x-snodo-choices": {
+      "description": "Runtime choices for editor controls; provider/template choices are not protocol fields.",
+      "providers": [],
+      "templates": [
+        "2+n",
+        "bugfix-surgeon",
+        "feature-warden",
+        "greenfield",
+        "intent",
+        "solo",
+        "team"
+      ]
+    }
+  },
+  "schema_id": "snodo.protocol.v1",
+  "snodo_version": "<release-version>",
+  "x-snodo-cross-field-rules": [
+    {
+      "description": "Protocol execution and each mode may not set delivery and auto_merge together; use delivery.",
+      "id": "delivery-auto-merge-exclusive"
+    },
+    {
+      "description": "Each exclusive tool may appear in at most one mode (WF1).",
+      "id": "exclusive-tools-per-mode"
+    },
+    {
+      "description": "Module identifiers must be unique.",
+      "id": "module-ids-unique"
+    },
+    {
+      "description": "Validators referenced by modes and modules must be declared; dispatch modes require a pre_execute validator (WF3).",
+      "id": "validator-references-declared"
+    },
+    {
+      "description": "initial_mode must name a declared mode (WF3).",
+      "id": "initial-mode-exists"
+    },
+    {
+      "description": "Mode identifiers and validator identifiers must each be unique.",
+      "id": "mode-validator-identifiers-unique"
+    }
+  ]
+}
