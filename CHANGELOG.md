@@ -13,6 +13,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - In-place coders that commit their own work are now reported informationally
   instead of warning that they produced no changes. (Fixes #586)
 ### Added
+- Add `snodo protocol schema --json` to publish the generated protocol JSON Schema. (Fixes #592)
 - Change requests opened through GitHub and GitLab providers receive a `snodo` label when the host permits it. (Fixes #583)
 ### Documentation
 - Remove a duplicated sentence from the planning guide. (Fixes #578)

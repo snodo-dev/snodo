@@ -1,6 +1,24 @@
 
 # Snodo protocol.yml — DSL Reference
 
+## Generated editor schema
+
+Run `snodo protocol schema --json` to emit the versioned JSON Schema generated
+from Snodo's Pydantic `Protocol` models. The output includes the schema ID,
+Snodo producer version, model-derived defaults/descriptions/ranges/enums, and
+choices loaded from the live capability, coder, validator, provider, and
+template registries. The command is read-only and does not inspect or modify
+`.snodo/protocol.yml`.
+
+The publication's `x-snodo-cross-field-rules` documents constraints that
+standard JSON Schema cannot encode, including delivery/legacy `auto_merge`
+exclusivity, exclusive-tool ownership, unique IDs, and validator references.
+The schema uses `x-snodo-open: true` on free-form dictionaries (metadata,
+tooling, coder configuration, and predicate parameters); editors should allow
+arbitrary keys there and may provide raw YAML editing. Runtime choices that do
+not correspond to protocol string fields (providers and selectable templates)
+are published at `schema.x-snodo-choices`.
+
 The protocol file (`protocol.yml`) declares your team's intent: what work can be done, by whom, under which rules, and with what enforcement. The engine reads this declaration and enforces it structurally — no after-the-fact review.
 
 > **Security note: protocol files are executable input.**
