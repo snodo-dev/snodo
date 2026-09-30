@@ -248,6 +248,34 @@ def _merge_on_success(
         return 1, True, None
 
 
+def _deliver_on_success(
+    project_root: str, task: Any, result: int, session_id: Optional[str],
+    audit_log: Any, protocol: Protocol, mode: str, halt_payload: Any,
+    model: str, plan_name: Optional[str] = None, merge_operation: Any = None,
+) -> tuple:
+    """Deliver resolved work and persist the resulting task outcome."""
+    deliver = merge_operation or _merge_on_success
+    merge_result, preserve, branch = deliver(
+        project_root, task, result, session_id, audit_log,
+        plan_name=plan_name, delivery=protocol.delivery_for(mode),
+        remote=getattr(protocol.execution, "delivery_remote", "origin"),
+    )
+    from snodo.cli.commands.task_record import _record_task_completion
+
+    if merge_result:
+        _record_task_completion(
+            project_root, task.id, "unmerged", halt_payload,
+            protocol=protocol, model=model,
+        )
+        return 2, preserve, branch
+    if protocol.delivery_for(mode) == "push_branch" and branch:
+        _record_task_completion(
+            project_root, task.id, "completed", halt_payload,
+            protocol=protocol, model=model, delivered_branch=branch,
+        )
+    return merge_result, preserve, branch
+
+
 def _try_merge_unmerged_task(
     project_root: str,
     task_id: str,
