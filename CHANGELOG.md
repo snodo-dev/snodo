@@ -9,15 +9,18 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-- Expose the generated protocol JSON Schema as the always-available, read-only
-  MCP `protocol_schema` tool, using the same publication as the CLI. (Fixes #595)
+---
+
+## [0.19.0] — 2026-09-30
 
 ### Fixed
 - In-place coders that commit their own work are now reported informationally
   instead of warning that they produced no changes. (Fixes #586)
 ### Added
 - Add `snodo protocol schema --json` to publish the generated protocol JSON Schema. (Fixes #592)
+- Expose the generated protocol JSON Schema as the always-available, read-only
+  MCP `protocol_schema` tool, using the same publication as the CLI. (Fixes #595)
+- Commit a version-pinnable protocol schema publication and check it for model drift; regenerate with `uv run python scripts/protocol_schema.py --write`. (Fixes #594)
 - Change requests opened through GitHub and GitLab providers receive a `snodo` label when the host permits it. (Fixes #583)
 ### Documentation
 - Remove a duplicated sentence from the planning guide. (Fixes #578)

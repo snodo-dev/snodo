@@ -14,6 +14,23 @@ The same publication is available to every running `snodo serve` MCP client
 through the always-available `protocol_schema` tool. It takes no arguments and
 does not read or write the project's protocol file.
 
+The released publication is committed at
+[`schemas/protocol-v1.json`](../schemas/protocol-v1.json), so editors can pin
+to the schema at a snodo release without installing snodo. The `v1` filename
+tracks `schema_id` (`snodo.protocol.v1`), not the package release. The
+publication records a normalized `<release-version>` in `snodo_version` so a
+package version bump alone does not change the contract snapshot. Installed
+providers vary by environment and are runtime-only, so the committed artifact
+and drift check publish an empty `x-snodo-choices.providers`; coder, validator,
+and template choices remain generated in the snapshot.
+
+After an intentional protocol-model/publication change, regenerate the artifact
+with `uv run python scripts/protocol_schema.py --write`, review the resulting
+diff, and commit it with the change. `uv run pytest tests/scripts -q` checks
+that the generated publication matches the committed file and names this
+command when drift is found. The release process runs the test suite before
+tagging; schema changes should update this artifact in that release's change.
+
 The publication's `x-snodo-cross-field-rules` documents constraints that
 standard JSON Schema cannot encode, including delivery/legacy `auto_merge`
 exclusivity, exclusive-tool ownership, unique IDs, and validator references.

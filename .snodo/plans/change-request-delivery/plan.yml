@@ -1,0 +1,17 @@
+intent: A snodo protocol can deliver finished work as a change request (a GitHub pull
+  request, a GitLab merge request, or whatever the installed code-host plugin provides),
+  and the protocol reference documents delivery and the vendor-neutral code-host tools
+  accurately.
+name: change-request-delivery
+waves:
+- depends_on: []
+  id: 1
+  tasks:
+  - 1.1_change_request_delivery
+  - 1.2_gitlab_provider_plugin
+- depends_on:
+  - 1
+  id: 2
+  tasks:
+  - 2.1_protocol_reference_docs
+  - 2.2_extending_second_plugin
