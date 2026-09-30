@@ -251,7 +251,10 @@ The entry-point name is the provider name referenced by `metadata.provider`. The
 
 After packaging and installing the distribution in the same environment as Snodo, run `snodo ready` in a project that uses it. The readiness report lists installed code-host plugins (and plugins that failed to load), then reports which provider the project resolves to and why. For remote auto-detection, use a project whose `origin` URL your `claims_remote(url)` recognizes; the report should say it was detected from that remote host. For explicit selection, set `metadata.provider` in the protocol and readiness reports that it was selected by `metadata.provider`. A plugin listed as installed confirms entry-point loading, while a failed status includes the load error; provider construction failures are also reported. If multiple plugins claim the remote, readiness reports the selected one.
 
-The GitHub provider is the reference plugin to copy when creating a provider. It is distributed as the separate `snodo-provider-github` package and imports as `snodo_provider_github`; plugins should ship their own top-level import package rather than adding modules beneath Snodo's `snodo.providers` package.
+Two working code-host plugins are available as examples to copy. Both implement this neutral contract and register in the `snodo.providers` entry-point group; plugins should ship their own top-level import package rather than adding modules beneath Snodo's `snodo.providers` package:
+
+- **GitHub**: `snodo-provider-github` (import package `snodo_provider_github`) is bundled with the Snodo distribution. It claims remotes on `github.com`. It reads `GITHUB_TOKEN`, `metadata.github_token`, or the configured GitHub key (`snodo config set github <token>`); repository identity can come from `metadata.github_repo` or the remote.
+- **GitLab**: `snodo-provider-gitlab` (import package `snodo_provider_gitlab`) is installed separately, for example with `pip install snodo-provider-gitlab`, or used as a workspace package during development. It claims `gitlab.com` remotes and self-hosted GitLab remotes when `GITLAB_HOST` or `GITLAB_URL` is set. It reads `GITLAB_TOKEN` or `metadata.gitlab_token`; `metadata.gitlab_repo` and `metadata.gitlab_url` can configure the project and host.
 
 Explicit provider selection is configured in protocol metadata (also useful for in-project providers):
 
@@ -269,9 +272,11 @@ metadata:
 2. Auto-detect from git remote URL: installed entry points in the `snodo.providers` group are checked using `claims_remote(url)`; `remote_hosts` is used only when the hook does not claim the URL
 3. Fallback to `LocalProvider` when no provider matches (`local` is the only built-in)
 
+With `execution.delivery: change_request`, Snodo pushes the task branch and then uses this same provider resolution to open a change request targeting the project's active branch. If no installed plugin claims the remote (and `metadata.provider` is not set), resolution falls back to `local`; change-request delivery then fails with a no-provider message. If the selected plugin cannot obtain its token or otherwise fails to construct or open the request, delivery reports the failure and leaves the pushed branch and task unmerged for manual resolution. See the [`execution.delivery` reference](protocol.md#execution-configuration) for configuring delivery modes and their requirements.
+
 ### Shipped providers
 
-The `local` provider is built in (no remote; change-request operations raise `ProviderError`). GitHub is an optional plugin (`snodo-provider-github`, module `snodo_provider_github`, backed by PyGithub) and serves as the reference example for third-party provider packages.
+The `local` provider is built in (no remote; change-request operations raise `ProviderError`). GitHub (`snodo-provider-github`, module `snodo_provider_github`, backed by PyGithub) and GitLab (`snodo-provider-gitlab`, module `snodo_provider_gitlab`, backed by python-gitlab) are discovered as entry-point plugins; GitHub is bundled with Snodo while GitLab is installed separately.
 
 [ADR 007](decisions/007-coder-adapter-provider-pattern.md) for the design rationale.
 

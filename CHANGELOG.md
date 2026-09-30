@@ -10,6 +10,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- The extension guide now documents the bundled GitHub and separately
+  installable GitLab provider plugins, their remote claims and token sources,
+  and how change-request delivery resolves providers and reports failures.
+  (Fixes #577)
 - Protocol reference now lists every registered coder backend, matches the
   neutral change-request MCP tools and deprecated aliases, and documents the
   execution recovery budgets and always-available diagnostics; the related
