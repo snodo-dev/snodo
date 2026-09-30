@@ -29,6 +29,17 @@ Questions about ownership, similar implementations, affected files, and tests
 are common examples. When the repository facts are already clear, move on to
 planning without recon.
 
+## CLI recon
+
+The CLI form is `snodo recon <query> [paths...]`; omit paths to search from the
+current directory. `--agents`/`-n` requests a count of agent lanes, otherwise
+the configured recon count is used. Configured recon models provide the agents
+in order; with a single lane, the configured model list is its failover order.
+The command dispatches the question, waits up to 300 seconds, and prints each
+agent's answer. Failed model attempts in a lane and agent errors are reported
+on stderr. This is a synchronous CLI interaction; the asynchronous recon MCP
+workflow is described below.
+
 Recon is read-only. Agents can use only `read_file` and `list_files`; they do
 not edit files, run commands, create commits, or write a plan. The answers are
 raw text, so use them as evidence while you author the intent, waves, and
