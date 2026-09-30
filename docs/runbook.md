@@ -236,16 +236,35 @@ write. With no flag and no terminal, intake refuses rather than guessing.
 ## Quickstart
 
 ```bash
-# 1. Initialize a project from a template
-snodo init --template team
+# 1. Initialize a project from a template. If your repository has no test
+#    command to detect, provide the command used to run its tests.
+snodo init --template team --test-command "pytest"
 
-# 2. Run a task through the protocol
+# 2. Commit the initialized protocol and project files. Isolated runs need an
+#    initial commit from which Snodo can create task worktrees.
+git add .snodo && git commit -m "Initialize Snodo protocol"
+
+# 3. Smoke-test the protocol without provider credentials or an API call
 snodo run "implement a user registration endpoint" --mock
 
-# 3. Run with a real LLM (requires configured API key)
+# 4. For a real LLM run, configure the credential for your provider first
 snodo config add anthropic sk-ant-...
 snodo run "add password reset flow"
 ```
+
+If you do not have an initial commit, make one before running tasks. Task
+isolation is required by default; `--no-isolation` is an explicit fallback that
+runs in the current working tree. Before `snodo run` creates any state, a
+non-mock run checks that the selected provider's credential is available in
+Snodo config or its environment variable (for example, `ANTHROPIC_API_KEY`).
+Providers configured without an `api_key_env`, such as a local endpoint, do not
+require a credential. `--mock` skips this check.
+
+`snodo init` detects a test command when it can; otherwise templates may use a
+no-op and report the quality outcome as `no_tests`, not as a passing test run.
+Inspect the generated `.snodo/protocol.yml` for the selected `test_command`, or
+set it when initializing with `snodo init --test-command "pytest"`. The test
+command must be appropriate for the project.
 
 The `--mock` flag uses a deterministic stub coder — no API call is made and no
 key is spent. It still returns artifacts, so the protocol's gates, the worktree
@@ -335,10 +354,12 @@ guidance is in [Choosing models](choosing-models.md); plan authoring is in
 
 ## MCP Serving
 
-`snodo serve` starts one or two FastMCP servers based on the protocol:
+`snodo serve` starts one FastMCP server for the resolved protocol mode. Without
+`--mode`, it resolves the current mode; it does not combine grants from all
+modes. Pin a mode explicitly when you want that mode's tool set:
 
 ```bash
-# All modes — one server exposing all tools
+# Current mode
 snodo serve
 
 # Single mode — only that mode's tool set
@@ -362,10 +383,13 @@ Connecting an orchestrator (Claude Desktop, custom agent):
 }
 ```
 
-Use `snodo serve --mcp-install` to register with installed Claude Desktop and
-Codex-family clients (ChatGPT desktop, Codex CLI, and the IDE extension share
-the Codex config). The installer skips clients whose config directory is absent;
-restart the updated client after installation. `--mcp-uninstall`,
+Use `snodo serve --mcp-install` to write MCP server entries to detected Claude
+Desktop JSON configuration and the shared Codex / ChatGPT desktop TOML
+configuration (`~/.codex/config.toml`, or `$CODEX_HOME/config.toml`). Codex
+entries include startup and tool timeouts, and the launcher points to the Snodo
+installation environment that ran the installer. The installer skips clients
+whose config directory is absent. Restart updated clients after installation
+for the new configuration to take effect. `--mcp-uninstall`,
 `--mcp-uninstall-all`, `--mcp-list`, and orphan cleanup cover those clients too.
 
 ### How modes become servers
