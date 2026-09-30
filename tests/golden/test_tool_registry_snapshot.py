@@ -62,6 +62,7 @@ EXPECTED_TOOL_KEYS = frozenset({
     "survey",
     "intake",
     "ready",
+    "protocol_schema",
 })
 
 EXPECTED_MODE_TOOL_MAP_KEYS = frozenset({
