@@ -1,6 +1,7 @@
 """GitLab merge-request provider plugin."""
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -8,6 +9,8 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from snodo.providers.base import CodeHostProvider, ProviderError
+
+logger = logging.getLogger(__name__)
 
 try:
     import gitlab
@@ -51,7 +54,21 @@ class GitLabProvider(CodeHostProvider):
                 "source_branch": branch, "target_branch": target_branch or self._project.default_branch,
                 "title": title, "description": body,
             })
-            return str(mr.iid)
+            reference = str(mr.iid)
+            try:
+                try:
+                    self._project.labels.get("snodo")
+                except Exception:
+                    self._project.labels.create({"name": "snodo", "color": "#6f42c1"})
+                labels = list(getattr(mr, "labels", []) or [])
+                if "snodo" not in labels:
+                    labels.append("snodo")
+                    mr.labels = labels
+                    mr.save()
+            except Exception:
+                logger.warning("Could not apply the snodo label to merge request %s", reference,
+                               exc_info=True)
+            return reference
         except Exception as exc:
             raise ProviderError(f"Failed to create merge request: {exc}") from exc
 

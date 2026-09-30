@@ -80,3 +80,31 @@ class OpenCodeCLIAdapter(SubprocessCoderAdapter):
             title = state.get("title") or state.get("status") or ""
             return f"[{tool}] {title}".rstrip()
         return str(event.get("text", ""))
+
+    def _format_output_tail_stdout(self, stdout: str) -> str:
+        """Replace structured stream events with their human-readable text."""
+        rendered = []
+        for line in stdout.splitlines():
+            try:
+                event = json.loads(line)
+            except (TypeError, ValueError):
+                rendered.append(line)
+                continue
+            if not isinstance(event, dict):
+                rendered.append(line)
+                continue
+            part = event.get("part") or {}
+            if event.get("type") == "text":
+                text = part.get("text")
+                if text:
+                    rendered.append(str(text))
+            elif event.get("type") == "tool":
+                tool = part.get("tool", "tool")
+                state = part.get("state") or {}
+                title = state.get("title") or state.get("status") or ""
+                rendered.append(f"[{tool}] {title}".rstrip())
+            elif event.get("type") not in {"step_finish"}:
+                text = event.get("text")
+                if text:
+                    rendered.append(str(text))
+        return "\n".join(rendered)
