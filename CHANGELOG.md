@@ -9,6 +9,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- In-place coders that commit their own work are now reported informationally
+  instead of warning that they produced no changes. (Fixes #586)
+### Added
+- Change requests opened through GitHub and GitLab providers receive a `snodo` label when the host permits it. (Fixes #583)
 ### Documentation
 - Remove a duplicated sentence from the planning guide. (Fixes #578)
 
@@ -16,6 +21,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Successful delivery now removes its task worktree when a plan-scoped task
   reuses the legacy worktree path; foreign-project worktrees remain protected.
   (Fixes #587)
+- Halt and job-state output tails for OpenCode CLI and Codex CLI now show
+  readable coder messages instead of raw JSON events, while retaining stderr
+  diagnostics and unchanged usage recording. (Fixes #588)
 - From v0.19.0, changes to this repository are developed with snodo and delivered as pull requests opened by snodo. (Fixes #582)
 - Change-request delivery now uses the task branch commit subject as a concise
   title, falls back to a truncated spec line, and includes a bounded task spec

@@ -134,3 +134,37 @@ def test_commit_message_identifies_task_without_findings(git_project_with_local_
 
     with Repo(str(repo_dir)) as repo:
         assert repo.head.commit.message == "coder: Investigate empty result\n"
+
+
+def test_clean_index_after_coder_commit_is_reported_as_information(git_project_with_local_home, caplog):
+    repo_dir, local_home = git_project_with_local_home
+    for path in local_home.iterdir():
+        path.unlink()
+    local_home.rmdir()
+    coder = _DummyInPlaceCoder(repo_dir)
+    with Repo(str(repo_dir)) as repo:
+        coder._head_before_run = repo.head.commit.hexsha
+        (repo_dir / "src" / "app.py").write_text("print('coder committed')\n")
+        repo.git.add("-A")
+        repo.index.commit("coder-owned change")
+
+    with caplog.at_level("INFO"):
+        coder._commit_changes()
+
+    assert "coder already committed its own work" in caplog.text
+    assert "coder produced no changes" not in caplog.text
+    assert coder.last_commit_reason == "nothing_staged"
+
+
+def test_clean_index_without_coder_commit_warns_no_changes(git_project_with_local_home, caplog):
+    repo_dir, local_home = git_project_with_local_home
+    for path in local_home.iterdir():
+        path.unlink()
+    local_home.rmdir()
+    coder = _DummyInPlaceCoder(repo_dir)
+
+    with caplog.at_level("WARNING"):
+        coder._commit_changes()
+
+    assert "coder produced no changes" in caplog.text
+    assert coder.last_commit_reason == "nothing_staged"

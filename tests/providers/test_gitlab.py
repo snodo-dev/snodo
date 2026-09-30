@@ -48,6 +48,33 @@ def test_create_mr_uses_default_or_explicit_target(provider):
     assert provider._mock_project.mergerequests.create.call_args.args[0]["target_branch"] == "release"
 
 
+def test_create_mr_adds_snodo_label(provider):
+    mr = provider._mock_project.mergerequests.create.return_value
+    mr.iid = 42
+    mr.labels = []
+    assert provider.create_change_request("feature", "title", "body") == "42"
+    provider._mock_project.labels.get.assert_called_once_with("snodo")
+    assert mr.labels == ["snodo"]
+    mr.save.assert_called_once_with()
+
+
+def test_create_mr_creates_missing_label(provider):
+    provider._mock_project.labels.get.side_effect = Exception("missing")
+    mr = provider._mock_project.mergerequests.create.return_value
+    mr.iid = 42
+    mr.labels = []
+    assert provider.create_change_request("feature", "title", "body") == "42"
+    provider._mock_project.labels.create.assert_called_once_with({"name": "snodo", "color": "#6f42c1"})
+
+
+def test_create_mr_label_failure_keeps_reference(provider):
+    provider._mock_project.labels.get.side_effect = Exception("missing")
+    provider._mock_project.labels.create.side_effect = PermissionError("forbidden")
+    mr = provider._mock_project.mergerequests.create.return_value
+    mr.iid = 42
+    assert provider.create_change_request("feature", "title", "body") == "42"
+
+
 def test_diff_is_rendered(provider):
     mr = provider._mock_project.mergerequests.get.return_value
     mr.changes.return_value = {"changes": [{"old_path": "a", "new_path": "a", "diff": "+ok"}]}
