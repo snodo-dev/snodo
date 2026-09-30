@@ -31,6 +31,7 @@ on all commands; top-level options are `--version`, `--verbose`/`-v`,
 | `snodo cloud status` | — |
 | `snodo cloud sync` | `--all`, `--session`, `--force`/`--retry` |
 | `snodo cloud schema` | `--json` |
+| `snodo protocol schema` | `--json` |
 | `snodo install` | `--protocol` |
 | `snodo uninstall` | `--mode`, `--all`, `--purge`, `--orphans`, `--yes`/`-y` |
 
@@ -41,6 +42,8 @@ notification targets, in `~/.snodo/config.yml`. See the
 [configuration reference](configuration.md). `snodo cloud schema --json`
 prints the generated cloud interface schema. `snodo config --notify-test` sends
 a test to every valid notification target.
+`snodo protocol schema --json` prints the generated, versioned JSON Schema for
+protocol authoring without reading the project's protocol file.
 
 `snodo init` creates `.snodo/protocol.yml` and project state from a shipped
 protocol template. `--template` selects a shipped protocol by name: `solo`
