@@ -69,13 +69,23 @@ providers:
 Credential selection prefers a configured `api_key`, then `api_key_env`, then
 `api_key_ref`. `env:` and `command:` references are resolved only when the
 credential is used. Provider keys can also be moved to local encrypted files
-with `snodo config --encrypt-provider-keys`.
+with `snodo config --encrypt-provider-keys`. Before a non-mock task run creates
+session or worktree state, Snodo checks that the selected model's provider has
+a credential. If it does not, the run exits with status 1 and suggests the
+provider environment variable or `snodo config add`. Providers that declare no
+`api_key_env` (such as a local endpoint) are exempt; mock runs skip this check.
+
+User configuration is edited in `~/.snodo/config.yml` (or
+`$SNODO_HOME/config.yml`). `snodo config set/get` supports only `model`,
+`engine.*`, and `llm.*`; use `snodo config add/remove` for provider keys and edit
+YAML directly for other `providers.*` settings, `cloud.*`, and
+`notifications.*`.
 
 ## Engine
 
 | Key | Default | Description |
 |---|---:|---|
-| `engine.max_subtask_depth` | `3` | Maximum subtask recovery depth; setter accepts integers 1–10. |
+| `engine.max_subtask_depth` | `3` | Engine-level subtask depth bound; setter accepts integers 1–10. Protocol recovery is separately bounded by `execution.max_recovery_depth` and its mode override, described below. |
 | `engine.max_session_age_days` | `30` | Maximum session age in days; setter accepts integers 1–365. |
 | `engine.token_ttl_seconds` | `600` | Validation-token lifetime in seconds; setter accepts integers 60–86400. |
 
@@ -85,6 +95,17 @@ engine:
   max_session_age_days: 30
   token_ttl_seconds: 600
 ```
+
+The protocol in `.snodo/protocol.yml` supplies additional execution budgets;
+these are not user-config `engine.*` settings. `execution.max_recovery_depth`
+(default `3`) bounds recursive recovery and a mode's `max_recovery_depth`
+overrides it when set. `execution.max_total_fix_attempts` (default `10`) caps
+fix attempts for a run. `execution.max_retries` (default `3`) limits later
+retries of failed tasks, including tasks resumed from a plan. These protocol
+limits act alongside `engine.max_subtask_depth`, which limits engine subtask
+depth; `llm.num_retries` instead controls LiteLLM retries for transient request
+errors and does not set task recovery or task retry limits. See the
+[protocol reference](protocol.md#execution).
 
 ## LLM tuning
 
@@ -168,6 +189,14 @@ cloud:
 Cloud's API key is a literal string when set here; keep it private. The URL
 overrides are optional and normally need not be configured.
 
+When `cloud.sync_enabled` is true and an API key is configured, each run with a
+session attempts audit sync automatically at the end; the hook runs in the
+background and does not block run completion. Liveness heartbeats are sent only
+while a run is executing. `snodo cloud status` reports per-session pending
+counts and the last sync error. If a session is marked as refused/blocked,
+`snodo cloud status` directs you to retry with `snodo cloud sync --all --force`;
+the force option explicitly retries refused sessions.
+
 ## Notifications
 
 Notifications are per-user settings in `~/.snodo/config.yml` (or
@@ -236,6 +265,25 @@ and `job_silent`. `job_silent` is sent once when a running job has had no log
 activity for `silence_threshold_seconds` (default 900 seconds; invalid values
 fall back to 900 and valid values are clamped to at least one second). Terminal
 `cancelled` and `unmerged` jobs do not generate a `job_finished` notification.
+
+## Environment variables
+
+These variables affect run behavior or identify the context of a run. The
+`SNODO_*` variables below are read by Snodo; variables such as `ANTHROPIC_API_KEY`
+are provider credentials documented under [Providers](#providers).
+
+| Variable | Use |
+|---|---|
+| `SNODO_BENCHMARK=1` | Disables task auto-merge, even when protocol policy enables it. |
+| `SNODO_WORKTREE_PATH` | Internal: points a run at an already-created task worktree. |
+| `SNODO_TASK_PLAN` | Internal: supplies the plan name associated with the current task/run. |
+| `SNODO_TASK_PLAN_WAVE` | Internal: supplies the plan wave associated with the current task. |
+| `SNODO_PROJECT_ROOT` | Internal: overrides the project root used by Snodo; run commands set it while executing. |
+| `SNODO_JOB_ID` | Internal: identifies the background job associated with a run. |
+| `SNODO_PLAN_JOB` | Internal: marks plan-run job context so the plan job ID is not treated as a child task job ID. |
+
+The internal variables are primarily set by Snodo's job and plan runners; they
+are not ordinary configuration knobs to set for a normal run.
 
 ## Related guides
 
