@@ -314,7 +314,6 @@ through the same execution validators and auto-merge policy as a direct task.
 Plans do provide durable plan→wave→task history that the cloud can reconstruct
 (ADR 054), including bounded authored intent on plan proposal and run events,
 hierarchy is an intentional reporting requirement.
-hierarchy is an intentional reporting requirement.
 
 ### Write the intent
 
