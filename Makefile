@@ -71,6 +71,12 @@ release:
 		echo "$(RELEASE_GATE) failed. Aborting release."; \
 		exit 1; \
 	}
+	@# The docs must build (strict) before anything is tagged: a broken link
+	@# found after the tag push leaves a release out without its docs.
+	$(MAKE) docs || { \
+		echo "Strict docs build failed. Aborting release."; \
+		exit 1; \
+	}
 	$(MAKE) bump PART=$(PART)
 	@# Read the version in the SHELL, after bump has run. A make-level eval here
 	@# would be expanded when make expands this recipe — before any line of it runs —

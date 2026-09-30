@@ -105,7 +105,7 @@ retries of failed tasks, including tasks resumed from a plan. These protocol
 limits act alongside `engine.max_subtask_depth`, which limits engine subtask
 depth; `llm.num_retries` instead controls LiteLLM retries for transient request
 errors and does not set task recovery or task retry limits. See the
-[protocol reference](protocol.md#execution).
+[protocol reference](protocol.md#execution-configuration).
 
 ## LLM tuning
 

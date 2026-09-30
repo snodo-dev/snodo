@@ -15,7 +15,7 @@ through the always-available `protocol_schema` tool. It takes no arguments and
 does not read or write the project's protocol file.
 
 The released publication is committed at
-[`schemas/protocol-v1.json`](../schemas/protocol-v1.json), so editors can pin
+[`schemas/protocol-v1.json`](https://github.com/snodo-dev/snodo/blob/main/schemas/protocol-v1.json), so editors can pin
 to the schema at a snodo release without installing snodo. The `v1` filename
 tracks `schema_id` (`snodo.protocol.v1`), not the package release. The
 publication records a normalized `<release-version>` in `snodo_version` so a
