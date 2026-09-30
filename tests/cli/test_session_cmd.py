@@ -13,14 +13,19 @@ from snodo.infrastructure.session import SessionManager
 
 from snodo.cli.commands.session_cmd import session_command
 
-PROJECT_ROOT = "/Users/test/Dev/myproject"
-
 
 @pytest.fixture
 def sessions_dir(tmp_path):
     d = tmp_path / "sessions"
     d.mkdir()
     return d
+
+
+@pytest.fixture
+def project_root(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    return str(root)
 
 
 @pytest.fixture
@@ -40,9 +45,9 @@ class TestSessionList:
         assert result == 0
         assert "No sessions found" in capsys.readouterr().out
 
-    def test_list_shows_sessions(self, mgr, capsys):
-        mgr.create_session("producer", PROJECT_ROOT)
-        mgr.create_session("reviewer", PROJECT_ROOT)
+    def test_list_shows_sessions(self, mgr, project_root, capsys):
+        mgr.create_session("producer", project_root)
+        mgr.create_session("reviewer", project_root)
         args = SimpleNamespace(
             session_action="list", mode=None, project=None,
             sessions_dir=mgr.sessions_dir,
@@ -53,9 +58,9 @@ class TestSessionList:
         assert "producer" in out
         assert "reviewer" in out
 
-    def test_list_filter_mode(self, mgr, capsys):
-        mgr.create_session("producer", PROJECT_ROOT)
-        mgr.create_session("reviewer", PROJECT_ROOT)
+    def test_list_filter_mode(self, mgr, project_root, capsys):
+        mgr.create_session("producer", project_root)
+        mgr.create_session("reviewer", project_root)
         args = SimpleNamespace(
             session_action="list", mode="producer", project=None,
             sessions_dir=mgr.sessions_dir,
@@ -70,8 +75,8 @@ class TestSessionList:
 # ========== SHOW ==========
 
 class TestSessionShow:
-    def test_show_session(self, mgr, capsys):
-        session = mgr.create_session("producer", PROJECT_ROOT)
+    def test_show_session(self, mgr, project_root, capsys):
+        session = mgr.create_session("producer", project_root)
         args = SimpleNamespace(
             session_action="show", session_id=session.session_id,
             sessions_dir=mgr.sessions_dir,
@@ -118,8 +123,8 @@ class TestSessionShow:
         assert "audit" in err
         assert "SNODO_HOME" in err
 
-    def test_show_details(self, mgr, capsys):
-        session = mgr.create_session("producer", PROJECT_ROOT)
+    def test_show_details(self, mgr, project_root, capsys):
+        session = mgr.create_session("producer", project_root)
         args = SimpleNamespace(
             session_action="show", session_id=session.session_id,
             sessions_dir=mgr.sessions_dir,
@@ -133,8 +138,8 @@ class TestSessionShow:
 # ========== DELETE ==========
 
 class TestSessionDelete:
-    def test_delete_session(self, mgr, capsys):
-        session = mgr.create_session("producer", PROJECT_ROOT)
+    def test_delete_session(self, mgr, project_root, capsys):
+        session = mgr.create_session("producer", project_root)
         args = SimpleNamespace(
             session_action="delete", session_id=session.session_id,
             sessions_dir=mgr.sessions_dir,
@@ -157,22 +162,20 @@ class TestSessionDelete:
 # ========== PRUNE ==========
 
 class TestSessionPrune:
-    def test_prune(self, mgr, capsys):
+    def test_prune(self, mgr, project_root, capsys):
         from snodo.infrastructure.state import read_state, write_state
 
-        session = mgr.create_session("producer", PROJECT_ROOT)
+        session = mgr.create_session("producer", project_root)
         # Backdate
         path = mgr.sessions_dir / f"{session.session_id}.json"
         data = json.loads(path.read_text())
         data["updated_at"] = (datetime.now(UTC) - timedelta(days=31)).isoformat()
         path.write_text(json.dumps(data, indent=2))
-        # Clear active pointer (no-op for non-existent PROJECT_ROOT, but correct regardless)
-        try:
-            state = read_state(PROJECT_ROOT)
-            state.active_session.pop("producer", None)
-            write_state(PROJECT_ROOT, state)
-        except (OSError, PermissionError):
-            pass
+        # Prune is expected to retain active sessions, so explicitly make this
+        # stale session inactive before checking that it is removed.
+        state = read_state(project_root)
+        state.active_session.pop("producer", None)
+        write_state(project_root, state)
 
         args = SimpleNamespace(
             session_action="prune", sessions_dir=mgr.sessions_dir,
@@ -184,8 +187,8 @@ class TestSessionPrune:
         assert result == 0
         assert "1 stale" in capsys.readouterr().out
 
-    def test_prune_nothing_to_prune(self, mgr, capsys):
-        mgr.create_session("producer", PROJECT_ROOT)  # recent
+    def test_prune_nothing_to_prune(self, mgr, project_root, capsys):
+        mgr.create_session("producer", project_root)  # recent and active
         args = SimpleNamespace(
             session_action="prune", sessions_dir=mgr.sessions_dir,
         )
@@ -196,9 +199,16 @@ class TestSessionPrune:
         assert result == 0
         assert "0 stale" in capsys.readouterr().out
 
-    def test_prune_days_overrides_config_max_age(self, mgr, capsys):
+    def test_prune_days_overrides_config_max_age(self, mgr, project_root, capsys):
         """`session prune --days N` overrides the engine's max session age."""
-        session = mgr.create_session("producer", PROJECT_ROOT)
+        session = mgr.create_session("producer", project_root)
+        # Keep the test subject explicitly inactive; pruning preserves active
+        # sessions regardless of age.
+        from snodo.infrastructure.state import read_state, write_state
+
+        state = read_state(project_root)
+        state.active_session.pop("producer", None)
+        write_state(project_root, state)
         path = mgr.sessions_dir / f"{session.session_id}.json"
         data = json.loads(path.read_text())
         data["updated_at"] = (datetime.now(UTC) - timedelta(days=10)).isoformat()
@@ -508,5 +518,3 @@ class TestSessionCliBindings:
         res = runner.invoke(session_cmd.app, ["switch", "sess_20260101_prod_abc123"])
         assert res.exit_code == 0
         assert captured["session_id"] == "sess_20260101_prod_abc123"
-
-

@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Isolate session CLI tests under pytest temporary directories and explicitly
+  set active-session state in prune tests. (Fixes #599)
+
 ---
 
 ## [0.19.0] — 2026-09-30
