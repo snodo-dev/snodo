@@ -1,12 +1,15 @@
 """GitHub code-host provider plugin using PyGithub."""
 
 import json
+import logging
 import os
 import re
 import subprocess
 from typing import Optional
 
 from snodo.providers.base import CodeHostProvider, ProviderError
+
+logger = logging.getLogger(__name__)
 
 try:
     from github import Github
@@ -67,6 +70,15 @@ class GitHubProvider(CodeHostProvider):
         try:
             pr = self._repo.create_pull(title=title, body=body, head=branch,
                                         base=target_branch or self._repo.default_branch)
+            try:
+                try:
+                    label = self._repo.get_label("snodo")
+                except Exception:
+                    label = self._repo.create_label(name="snodo", color="6f42c1")
+                pr.add_to_labels(label)
+            except Exception:
+                logger.warning("Could not apply the snodo label to pull request %s", pr.html_url,
+                               exc_info=True)
             return pr.html_url
         except Exception as exc:
             raise ProviderError(f"Failed to create PR: {exc}") from exc

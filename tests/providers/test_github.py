@@ -85,6 +85,8 @@ class TestCreatePr:
         result = github_provider.create_change_request("feature", "Add feature", "Description")
 
         assert result == "https://github.com/owner/repo/pull/42"
+        github_provider._mock_repo.get_label.assert_called_once_with("snodo")
+        mock_pr.add_to_labels.assert_called_once_with(github_provider._mock_repo.get_label.return_value)
         github_provider._mock_repo.create_pull.assert_called_once_with(
             title="Add feature", body="Description", head="feature", base="trunk",
         )
@@ -94,6 +96,21 @@ class TestCreatePr:
         github_provider._mock_repo.create_pull.assert_called_once_with(
             title="title", body="body", head="feature", base="release",
         )
+
+    def test_create_change_request_creates_missing_label(self, github_provider):
+        github_provider._mock_repo.get_label.side_effect = Exception("missing")
+        pr = github_provider._mock_repo.create_pull.return_value
+        pr.html_url = "https://github.com/owner/repo/pull/42"
+        assert github_provider.create_change_request("feature", "title", "body").endswith("/42")
+        github_provider._mock_repo.create_label.assert_called_once_with(name="snodo", color="6f42c1")
+        pr.add_to_labels.assert_called_once_with(github_provider._mock_repo.create_label.return_value)
+
+    def test_create_change_request_label_failure_keeps_reference(self, github_provider):
+        github_provider._mock_repo.get_label.side_effect = Exception("missing")
+        github_provider._mock_repo.create_label.side_effect = PermissionError("forbidden")
+        pr = github_provider._mock_repo.create_pull.return_value
+        pr.html_url = "https://github.com/owner/repo/pull/42"
+        assert github_provider.create_change_request("feature", "title", "body") == pr.html_url
 
     def test_create_pr_failure(self, github_provider):
         github_provider._mock_repo.create_pull.side_effect = Exception("conflict")
