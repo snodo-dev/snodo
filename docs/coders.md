@@ -17,11 +17,20 @@ the write crosses and who makes the commit — everything after is identical.*
 | Coder (`--coder`) | Description | Type | Requirements | Authentication |
 |---|---|---|---|---|
 | `litellm` *(default)* | Direct LLM completions via LiteLLM (~100+ providers) | Engine-Managed | Python `litellm` (built-in) | Provider API keys for the **validators**, which always run through LiteLLM (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc. or `snodo config add`) |
+| `openai` | LiteLLM-backed coder using the OpenAI-native message format; selected for OpenAI-style model prefixes | Engine-Managed | Python `litellm` (built-in) | Same provider credentials as `litellm` |
+| `anthropic` | LiteLLM-backed coder for Anthropic models | Engine-Managed | Python `litellm` (built-in) | Same provider credentials as `litellm` |
+| `gemini` | LiteLLM-backed coder for Google Gemini models | Engine-Managed | Python `litellm` (built-in) | Same provider credentials as `litellm` |
 | `opencode` | OpenCode server running in Docker container over HTTP | In-Place Container | Docker daemon running; image `opencode:latest` | OpenCode config/env variables inside container |
 | `opencode-cli` | Host `opencode run` CLI invocation | In-Place Host CLI | `opencode` CLI on PATH | `opencode auth login` or host provider env vars (`OPENROUTER_API_KEY`, etc.) — the coder authenticates against your own subscription |
 | `codex-cli` | OpenAI Codex CLI (`codex exec`) | In-Place Host CLI | `codex` CLI on PATH | `codex login` — uses your Codex subscription |
 | `agy` | Antigravity CLI (`agy -p`) host invocation | In-Place Host CLI | `agy` CLI on PATH | `agy login` / Google Cloud host credentials — the coder authenticates against your own subscription |
 | `mock` | Deterministic stub for dry-runs and testing | Stub | None | None |
+
+`openai`, `anthropic`, and `gemini` are provider-specific LiteLLM adapters, not
+separate CLI integrations. They use the same engine-managed tool loop as
+`litellm`; choosing one selects the corresponding adapter and provider model
+family. `litellm` remains the generic fallback and supports the broader provider
+catalog.
 
 ### Authentication: keys are for the validators
 
@@ -50,13 +59,47 @@ not asked for one.
 
 ## Coder Selection Precedence
 
-`resolve_coder_name()` selects the active coder by evaluating criteria in strict order:
+`resolve_coder_name()` selects the coder in this order:
 
 1. **Explicit Mock Flag**: `--mock` / `use_mock_coder=True` (always returns `'mock'`).
 2. **Explicit CLI Flag**: `--coder <name>` (e.g., `snodo run "task" --coder agy`).
-3. **Protocol Mode Field**: `coder: <name>` declared in a mode definition in `.snodo/protocol.yml` (`modes[].coder`).
+3. **Initial protocol mode**: `coder: <name>` from the mode named by `initial_mode` in `.snodo/protocol.yml`.
 4. **Model Prefix Mapping**: Inferred from model prefix: `codex-cli/` → `codex-cli`, `opencode-cli/` → `opencode-cli`, `opencode/` → `opencode`, `agy/` → `agy`, `gpt`/`o1`/`o3` → `openai`, `claude` → `anthropic`, `gemini`/`google/` → `gemini`.
-5. **Default Fallback**: `'litellm'`.
+5. **Default Fallback**: `litellm`.
+
+For a normal `snodo run`, graph construction resolves the mode-level coder from
+the protocol's `initial_mode`, even if execution has entered or resumed another
+current mode. An explicit `--coder` overrides that mode setting; `--mock` has
+highest priority. Prefix routing applies only when neither is set:
+`codex-cli/`, `opencode-cli/`, `opencode/`, and `agy/` select their named
+backends; `gpt`, `o1`, or `o3` select `openai`; `claude` selects `anthropic`;
+and `gemini` or `google/` select `gemini`. Otherwise the coder is `litellm`.
+
+### Availability and coder settings
+
+Before dispatching a coder, snodo checks its declared runtime requirements in
+the process that will invoke it. If a required executable is missing, the run
+is stopped with the missing binary and the adapter's install/remediation hint.
+For example, host CLI coders require their CLI on `PATH`, while `opencode`
+requires Docker. `litellm`, the provider-specific adapters, and `mock` do not
+declare an external executable requirement.
+
+Explicit `llm.coder.*` settings that the selected backend does not honour are
+reported at info level when that coder is selected. The message names the
+setting, its value, and the settings the coder does honour; this is advisory and
+does not reject the configuration. Unset defaults are not reported. Current
+settings honoured by each backend are:
+
+| Backend(s) | `llm.coder.*` settings honoured |
+|---|---|
+| `litellm`, `openai`, `anthropic`, `gemini` | `model`, `temperature`, `max_tokens`, `max_tool_turns` |
+| `opencode` | `model`, `workspace`, `container`, `sandboxed` |
+| `opencode-cli`, `codex-cli`, `agy` | `model`, `timeout_seconds`, `workspace` |
+| `mock` | `mock_files` |
+
+The provider-specific adapters inherit the LiteLLM settings. The in-place host
+CLI adapters share the subprocess adapter's settings. Settings supplied through
+a mode's `coder_config` are also checked and reported by their config key.
 
 ## In-Place Coders vs `litellm`
 
