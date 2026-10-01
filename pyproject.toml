@@ -16,13 +16,13 @@ snodo-provider-gitlab = { workspace = true }
 
 [project]
 name = "snodo"
-version = "0.19.1"
+version = "0.19.2"
 dependencies = [
-    "snodo-core==0.19.1",
-    "snodo-tools==0.19.1",
-    "snodo-foundation==0.19.1",
-    "snodo-engine==0.19.1",
-    "snodo-mcp==0.19.1",
+    "snodo-core==0.19.2",
+    "snodo-tools==0.19.2",
+    "snodo-foundation==0.19.2",
+    "snodo-engine==0.19.2",
+    "snodo-mcp==0.19.2",
     "snodo-provider-github==0.18.0",
     "pydantic>=2.12.0",
     "pyyaml>=6.0",
