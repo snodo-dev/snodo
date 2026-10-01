@@ -1,5 +1,6 @@
 """Authentication choices for managed serve tunnels."""
 
+import re
 from unittest.mock import MagicMock, patch
 
 import typer
@@ -49,13 +50,16 @@ def test_help_names_values_and_any_semantics():
     app = typer.Typer()
     serve_cmd.register(app)
     result = CliRunner().invoke(app, ["serve", "--help"])
+    # Rich colours help output when it detects CI (GITHUB_ACTIONS) and styles
+    # "-" and "-verbose" separately, so match on the text without ANSI codes.
+    out = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
 
     assert result.exit_code == 0
-    assert "oauth" in result.stdout
-    assert "service-token" in result.stdout
-    assert "repeat" in result.stdout
-    assert "any accepted" in result.stdout
-    assert "--verbose" in result.stdout
+    assert "oauth" in out
+    assert "service-token" in out
+    assert "repeat" in out
+    assert "any accepted" in out
+    assert "--verbose" in out
 
 
 def test_mcp_server_arms_and_disarms_liveness_when_transport_exits(monkeypatch):

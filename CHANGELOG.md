@@ -9,7 +9,21 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.19.1] — 2026-10-01
+
+0.18.0 and 0.19.0 were tagged but never reached PyPI: the release workflow's
+test run failed on GitHub Actions. 0.19.1 is the first published release that
+carries their changes; see both sections below.
+
+### Security
+- Require PyJWT 2.15.0 or newer and refresh the lock to patched PyJWT and urllib3 releases (Dependabot alerts on main).
+
 ### Fixed
+- The `snodo serve --help` test strips ANSI styling before matching, so it no
+  longer fails when Rich colours help output on GitHub Actions. This failure
+  blocked the 0.18.0 and 0.19.0 PyPI publishes.
 - Plan-producing tests are confined to temporary projects, and the suite-level
   guard now reports any plan creation or modification under the checkout's own
   `.snodo/plans/`. (Fixes #600)

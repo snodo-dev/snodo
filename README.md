@@ -13,7 +13,7 @@
 
 **Enforce your development process around whichever AI agent writes the code.**
 
-![Three coder mechanisms — an in-process LLM client, a host CLI subprocess, and an opencode server in a Docker container — write into the same task worktree and converge on one identical gate and merge path.](https://raw.githubusercontent.com/snodo-dev/snodo/main/docs/assets/coder-paths.svg)
+![How snodo runs a task: an agent dispatches over MCP, pre-execute validators issue a signed token, any coder writes the change in its own worktree, post-execute validators run the tests, and clean work arrives as a pull request. A warning sends the findings back to the coder, which corrects and retries until the validators pass. A single blocker halts the run until a human acknowledges it and revises the intent, which starts the run again. Every step is appended to a hash-chained audit log.](https://raw.githubusercontent.com/snodo-dev/snodo/main/docs/assets/snodo-flow.svg)
 
 ## Built with snodo
 
