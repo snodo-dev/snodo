@@ -24,6 +24,9 @@ carries their changes; see both sections below.
 - The `snodo serve --help` test strips ANSI styling before matching, so it no
   longer fails when Rich colours help output on GitHub Actions. This failure
   blocked the 0.18.0 and 0.19.0 PyPI publishes.
+- The unverified token-decode test forges a well-formed signature instead of
+  flipping a character, which PyJWT 2.15 rejects as malformed base64 before any
+  signature check.
 - Plan-producing tests are confined to temporary projects, and the suite-level
   guard now reports any plan creation or modification under the checkout's own
   `.snodo/plans/`. (Fixes #600)

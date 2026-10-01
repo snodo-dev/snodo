@@ -15,6 +15,7 @@ Tests cover:
 - Config-driven TTL
 """
 
+import base64
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
@@ -182,7 +183,12 @@ def test_decode_token_none_returns_none(issuer):
 
 def test_decode_token_does_not_verify_signature(issuer, no_blockers):
     token = issuer.issue_token("task_1", no_blockers)
-    tampered = ValidationToken(jwt=token.jwt[:-1] + "X")
+    # Replace the signature with a different, well-formed one. Flipping the last
+    # character can yield non-canonical base64url, which PyJWT >= 2.15 rejects
+    # before any signature check, so it no longer tests what this test names.
+    header, body, _sig = token.jwt.split(".")
+    forged = base64.urlsafe_b64encode(b"\0" * 32).rstrip(b"=").decode()
+    tampered = ValidationToken(jwt=f"{header}.{body}.{forged}")
     payload = issuer.decode_token(tampered)
     # decode without verify still works (just inspects)
     assert payload is not None

@@ -38,7 +38,7 @@ gate_run() {
       ;;
     gate-ci)
       pytest_args=(tests/ -m "" -n "$GATE_JOBS" --tb=short --timeout=60 \
-        --cov --cov-report=term-missing --cov-fail-under=75)
+        --cov --cov-report=term-missing --cov-fail-under=80)
       ;;
     *)
       echo "gate_remote.sh: unknown target: $target" >&2
