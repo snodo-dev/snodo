@@ -17,7 +17,7 @@ PYTHON := .venv/bin/python
 # Read current root version at make-parse time.
 # Recipe-level targets re-read at execution time.
 _V := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
-PACKAGES := snodo-core snodo-tools snodo-foundation snodo-engine snodo-mcp
+PACKAGES := snodo-core snodo-tools snodo-foundation snodo-engine snodo-mcp snodo-provider-github snodo-provider-gitlab
 PART ?= patch
 
 .PHONY: studies study clean version sync-versions bump release
@@ -32,7 +32,7 @@ sync-versions:
 		uv version "$(V)" --package "$$p" 2>/dev/null; \
 	done
 	# Rewrite all snodo-<name>==X.Y.Z pins across the workspace
-	sed -i.bak 's/snodo-\([a-z]*\)==[0-9]*\.[0-9]*\.[0-9]*/snodo-\1==$(V)/g' \
+	sed -i.bak 's/snodo-\([a-z-]*\)==[0-9]*\.[0-9]*\.[0-9]*/snodo-\1==$(V)/g' \
 		pyproject.toml packages/*/pyproject.toml
 	rm -f pyproject.toml.bak packages/*/pyproject.toml.bak
 	uv lock
