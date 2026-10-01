@@ -13,6 +13,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Add read-only `snodo protocol validate [PATH]` checks against the published
   schema, registry choices, and protocol cross-field rules, with JSON findings.
   (Fixes #606)
+- Add a standalone multi-agent PR review comment generator. (Fixes #619)
 ### Fixed
 - Restore validator registry state after MCP contract tests so fake validator
   types cannot leak into later tests. (Fixes #605)

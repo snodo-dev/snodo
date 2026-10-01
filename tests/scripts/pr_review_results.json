@@ -1,0 +1,5 @@
+[
+  {"agent": "alpha", "result": "Finding: missing test at src/a.py:12"},
+  {"agent": "beta", "result": "Finding: missing test at src/a.py:12"},
+  {"agent": "gamma", "result": "No issues found"}
+]
