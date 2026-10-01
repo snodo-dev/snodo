@@ -9,5 +9,9 @@ providers:
     api_key_env: "${OPENAI_API_KEY_ENV}"
   ollama-cloud:
     api_key_env: "${OLLAMA_CLOUD_API_KEY_ENV}"
+    base_url: https://ollama.com/v1
+    litellm_provider: openai
   ocgo:
     api_key_env: "${OCGO_API_KEY_ENV}"
+    base_url: https://opencode.ai/zen/go/v1
+    litellm_provider: openai
