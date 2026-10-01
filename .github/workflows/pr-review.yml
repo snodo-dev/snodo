@@ -86,6 +86,7 @@ jobs:
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           "$RUNNER_TEMP/pr-review-venv/bin/python" scripts/pr_review.py --pr "$PR_NUMBER" --repo "$REPOSITORY" --out "$RUNNER_TEMP/pr-review.md"
       - name: Create or update review comment
