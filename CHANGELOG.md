@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Add read-only `snodo protocol validate [PATH]` checks against the published
+  schema, registry choices, and protocol cross-field rules, with JSON findings.
+
 ---
 
 ## [0.19.2] — 2026-10-01
