@@ -11,6 +11,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 - Run release checks through package build on pushes to `main` before tagging, without publishing artifacts. (Fixes #604)
+- Group routine Dependabot updates by ecosystem and update type while keeping security updates individual. (Fixes #611)
 
 ---
 

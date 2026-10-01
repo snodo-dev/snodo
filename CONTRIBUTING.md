@@ -147,6 +147,15 @@ Notes:
 Use GitHub Issues for bugs and feature requests. For security issues see
 [SECURITY.md](SECURITY.md) — do not open a public issue.
 
+## Dependency updates
+
+Dependabot checks Python dependencies in the workspace and each package, along
+with GitHub Actions, weekly. Routine minor and patch updates are grouped into
+one pull request per configured ecosystem and directory; major updates are
+grouped separately. GitHub security updates are configured independently and
+remain individual, immediate pull requests rather than joining these routine
+version-update groups.
+
 Note the project's threat model (ADR 014): snodo assumes the repository it is
 initialised in is **trusted**. Reports that depend on running snodo against
 hostile third-party code are out of scope.
