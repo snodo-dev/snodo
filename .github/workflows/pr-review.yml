@@ -67,9 +67,11 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OLLAMA_CLOUD_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
           OCGO_API_KEY: ${{ secrets.OCGO_API_KEY }}
+          SNODO_CLOUD_API_KEY: ${{ secrets.SNODO_CLOUD_API_KEY }}
         run: |
           install -d -m 700 "$HOME/.snodo"
           python - <<'PY'
+          import os
           from pathlib import Path
 
           template = Path(".github/pr-review/config.yml").read_text()
@@ -79,6 +81,11 @@ jobs:
               "${OCGO_API_KEY_ENV}": "OCGO_API_KEY",
           }.items():
               template = template.replace(placeholder, variable)
+          # The cloud key is read as a literal, so it is rendered by value into
+          # the runner's own config (mode 600) and never into the workspace.
+          template = template.replace(
+              "${SNODO_CLOUD_API_KEY_VALUE}", os.environ.get("SNODO_CLOUD_API_KEY", "")
+          )
           Path.home().joinpath(".snodo/config.yml").write_text(template)
           PY
           chmod 600 "$HOME/.snodo/config.yml"

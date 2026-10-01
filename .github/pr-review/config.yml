@@ -15,3 +15,6 @@ providers:
     api_key_env: "${OCGO_API_KEY_ENV}"
     base_url: https://opencode.ai/zen/go/v1
     litellm_provider: openai
+cloud:
+  api_key: "${SNODO_CLOUD_API_KEY_VALUE}"
+  sync_enabled: true
