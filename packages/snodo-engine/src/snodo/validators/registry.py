@@ -47,6 +47,18 @@ class ValidatorRegistry:
         """Return all registered validator types."""
         return sorted(set(list(self._registry.keys()) + list(self._compound.keys())))
 
+    def snapshot(self) -> tuple[Dict[str, Type[ValidatorBase]], Dict[str, str]]:
+        """Return a copy of the registry state for isolated test cleanup."""
+        return self._registry.copy(), self._compound.copy()
+
+    def restore(
+        self, snapshot: tuple[Dict[str, Type[ValidatorBase]], Dict[str, str]]
+    ) -> None:
+        """Restore registry state captured by :meth:`snapshot`."""
+        registry, compound = snapshot
+        self._registry = registry.copy()
+        self._compound = compound.copy()
+
 
 # Module-level default registry — populated on import by each validator module
 _default_registry = ValidatorRegistry()

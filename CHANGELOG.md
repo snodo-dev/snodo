@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Restore validator registry state after MCP contract tests so fake validator
+  types cannot leak into later tests. (Fixes #605)
 ### Added
 - Run release checks through package build on pushes to `main` before tagging, without publishing artifacts. (Fixes #604)
 

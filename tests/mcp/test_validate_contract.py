@@ -82,6 +82,18 @@ def server(protocol, project_dir):
     return ProtocolMCPServer(protocol, project_dir)
 
 
+@pytest.fixture
+def validator_registry():
+    from snodo.validators.registry import _default_registry
+
+    snapshot = _default_registry.snapshot()
+    try:
+        yield _default_registry
+    finally:
+        _default_registry.restore(snapshot)
+        assert not any(t.endswith("_contract_test") for t in _default_registry.list_types())
+
+
 def _patch_completion(fn):
     return patch(
         "snodo.validators.runner.resolve_validator_completion",
@@ -177,10 +189,9 @@ class TestFourOutcomes:
         assert "authorize" not in result["instruction"]
         assert "authorize" not in result.get("instruction", "")
 
-    def test_validator_exception_yields_validator_error(self, server):
+    def test_validator_exception_yields_validator_error(self, server, validator_registry):
         """A validator whose evaluate() raises → validator_error (not pass)."""
         from snodo.validators.context import ValidatorBase
-        from snodo.validators.registry import _default_registry
 
         class _Exploding(ValidatorBase):
             def __init__(self, validator_spec):
@@ -193,7 +204,7 @@ class TestFourOutcomes:
             def evaluate(self, context):
                 raise RuntimeError("boom")
 
-        _default_registry.register("exploding_contract_test", _Exploding)
+        validator_registry.register("exploding_contract_test", _Exploding)
 
         protocol = Protocol(**{
             **SECURITY_PROTOCOL_DATA,
@@ -236,11 +247,10 @@ class TestFailingTestsAreBlocker:
 # ---------------------------------------------------------------------------
 
 class TestEngineMCPParity:
-    def test_same_validator_same_severity(self, server, protocol, project_dir):
+    def test_same_validator_same_severity(self, server, protocol, project_dir, validator_registry):
         """The MCP handler and the engine produce identical validator severities."""
         # Deterministic (non-LLM) validator so no completion is needed.
         from snodo.validators.context import ValidatorBase
-        from snodo.validators.registry import _default_registry
         from snodo.validators.runner import run_validators
 
         class _FixedWarn(ValidatorBase):
@@ -258,7 +268,7 @@ class TestEngineMCPParity:
                     justification="fixed",
                 )
 
-        _default_registry.register("fixed_warn_contract_test", _FixedWarn)
+        validator_registry.register("fixed_warn_contract_test", _FixedWarn)
 
         proto = Protocol(**{
             **SECURITY_PROTOCOL_DATA,
