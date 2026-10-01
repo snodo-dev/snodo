@@ -21,6 +21,88 @@ def _summary(outcome="MINOR REWORK"):
     return {"outcome": outcome, "summary": "Three reviewers returned.", "rows": [{"kind": "Agreement", "finding": "Add the missing test.", "agents": {"alpha": "Agree", "beta": "Agree", "gamma": "No"}, "status": "Open"}], "rework": ["Add regression coverage."]}
 
 
+def test_run_recon_maps_manager_results(monkeypatch):
+    import snodo.recon
+
+    class FakeManager:
+        def __init__(self, root):
+            self.root = root
+
+        def submit(self, question, paths, agents):
+            assert question == "review"
+            assert paths == ["."]
+            assert agents == [["model-a"], ["model-b"], ["model-c"]]
+            return "rec_test"
+
+        def get_status(self, _recon_id):
+            return {"status": "complete"}
+
+        def get_results(self, _recon_id):
+            return {"status": "complete", "results": _results()}
+
+    monkeypatch.setattr(review, "_load_recon_models", lambda: ["model-a", "model-b", "model-c"])
+    monkeypatch.setattr(snodo.recon, "ReconManager", FakeManager)
+    assert review.run_recon("review", "example/example", 1) == _results()
+
+
+def test_run_recon_keeps_failed_agent_error(monkeypatch):
+    import snodo.recon
+
+    class FakeManager:
+        def __init__(self, _root):
+            pass
+
+        def submit(self, *_args, **_kwargs):
+            return "rec_test"
+
+        def get_status(self, _recon_id):
+            return {"status": "complete"}
+
+        def get_results(self, _recon_id):
+            return {"status": "complete", "results": [{"agent": "alpha", "result": "", "error": "provider failure"}]}
+
+    monkeypatch.setattr(review, "_load_recon_models", lambda: ["model-a", "model-b", "model-c"])
+    monkeypatch.setattr(snodo.recon, "ReconManager", FakeManager)
+    assert review.run_recon("review", "example/example", 1) == [
+        {"agent": "alpha", "result": "", "error": "provider failure"}
+    ]
+
+
+def test_run_recon_timeout_returns_per_agent_errors(monkeypatch):
+    import snodo.recon
+
+    class FakeManager:
+        def __init__(self, _root):
+            pass
+
+        def submit(self, *_args, **_kwargs):
+            return "rec_test"
+
+        def get_status(self, _recon_id):
+            return {"status": "running"}
+
+    monkeypatch.setattr(review, "_load_recon_models", lambda: ["model-a", "model-b", "model-c"])
+    monkeypatch.setattr(snodo.recon, "ReconManager", FakeManager)
+    monkeypatch.setattr(review, "RECON_TIMEOUT_SECONDS", 0)
+    assert review.run_recon("review", "example/example", 1) == [
+        {"agent": f"agent-{i}", "result": "", "error": "recon timed out"}
+        for i in range(1, 4)
+    ]
+
+
+def test_dry_run_never_constructs_recon_manager(tmp_path, monkeypatch):
+    import snodo.recon
+
+    def fail_if_constructed(*_args, **_kwargs):
+        raise AssertionError("dry run constructed ReconManager")
+
+    monkeypatch.setattr(snodo.recon, "ReconManager", fail_if_constructed)
+    source, output = tmp_path / "results.json", tmp_path / "out.md"
+    source.write_text(json.dumps(_results()))
+    assert review.main(["--pr", "1", "--repo", "example/example", "--out", str(output), "--dry-run-results", str(source)]) == 0
+    assert output.read_text().startswith("## Suggested outcome: ")
+
+
 def test_dry_run_renders_expected_comment(tmp_path, monkeypatch):
     source, output = tmp_path / "results.json", tmp_path / "out.md"
     source.write_text(json.dumps(_results()))
