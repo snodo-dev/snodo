@@ -201,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
         results = [_result_dict(r) for r in results]
         successful = [r for r in results if str(r.get("result", "")).strip() and not r.get("error")]
         if len(successful) < 2:
+            for r in results:
+                print(_redact_environment(f"{r.get('agent')}: {r.get('error') or 'empty result'}"), file=sys.stderr)
             raise RuntimeError("fewer than two recon agents returned a non-empty result")
         # Canned-result previews are strictly offline. A fixture may include a
         # synthesis object for faithful rendering; otherwise use a neutral,
