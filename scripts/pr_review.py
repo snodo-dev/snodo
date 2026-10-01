@@ -22,8 +22,8 @@ DEFAULT_DIFF_LIMIT = 100_000
 
 
 def _gh_json(repo: str, pr: int, field: str) -> str:
-    completed = subprocess.run(
-        ["gh", "pr", "view", str(pr), "--repo", repo, "--json", field],
+    completed = subprocess.run(  # noqa: S603, S607 - executable and arguments are fixed below
+        ["gh", "pr", "view", str(pr), "--repo", repo, "--json", field],  # noqa: S607 - gh is the fixed executable
         check=True, capture_output=True, text=True,
     )
     return str(json.loads(completed.stdout).get(field) or "")
@@ -32,8 +32,8 @@ def _gh_json(repo: str, pr: int, field: str) -> str:
 def fetch_pull_request(repo: str, pr: int) -> tuple[str, str, str]:
     title = _gh_json(repo, pr, "title")
     body = _gh_json(repo, pr, "body")
-    diff = subprocess.run(
-        ["gh", "pr", "diff", str(pr), "--repo", repo],
+    diff = subprocess.run(  # noqa: S603, S607 - executable and arguments are fixed below
+        ["gh", "pr", "diff", str(pr), "--repo", repo],  # noqa: S607 - gh is the fixed executable
         check=True, capture_output=True, text=True,
     ).stdout
     return title, body, diff
