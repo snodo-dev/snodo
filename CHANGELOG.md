@@ -18,6 +18,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
   types cannot leak into later tests. (Fixes #605)
 ### Added
 - Run release checks through package build on pushes to `main` before tagging, without publishing artifacts. (Fixes #604)
+- Test every published protocol cross-field rule against valid and invalid protocol documents. (Fixes #610)
 
 ---
 
