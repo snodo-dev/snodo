@@ -1,0 +1,48 @@
+name: Release dry run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@snodo.dev"
+          git config --global user.name "snodo CI"
+          git config --global init.defaultBranch main
+      - name: Install dependencies
+        run: uv sync --all-extras
+      # Keep the checks through the build step in sync with release.yml. Tag validation is not
+      # applicable here because this workflow runs against a branch commit.
+      - name: Test suite
+        run: uv run pytest tests/ -q -n auto --timeout=60
+      - name: Lint (ruff)
+        run: uv run ruff check .
+      - name: Architecture (import-linter)
+        run: uv run lint-imports
+      - name: File-length ratchet
+        run: uv run python scripts/enforce_file_length.py
+      - name: Docs-coverage ratchet
+        run: uv run python scripts/enforce_docs_coverage.py
+      - name: Closed-vocabulary check
+        run: uv run python scripts/enforce_vocabularies.py
+      - name: Cloud-schema ratchet
+        run: uv run python scripts/enforce_cloud_schema.py
+      - name: Build all packages
+        run: uv build --all-packages
