@@ -1,6 +1,21 @@
 
 # Snodo protocol.yml — DSL Reference
 
+## Validate a protocol
+
+Run `snodo protocol validate` to check `.snodo/protocol.yml` against the published
+schema, including registered capabilities, closed vocabulary choices, and
+documented cross-field rules. Pass a path to check another file. The command
+is read-only and exits non-zero when it finds an error; `--json` emits
+machine-readable findings with a JSON path, message, and existing severity.
+
+```console
+$ snodo protocol validate .snodo/protocol.yml
+.snodo/protocol.yml: valid
+$ snodo protocol validate .snodo/protocol.yml --json
+[]
+```
+
 ## Generated editor schema
 
 Run `snodo protocol schema --json` to emit the versioned JSON Schema generated

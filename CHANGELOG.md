@@ -10,6 +10,13 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Add read-only `snodo protocol validate [PATH]` checks against the published
+  schema, registry choices, and protocol cross-field rules, with JSON findings.
+  (Fixes #606)
+### Fixed
+- Restore validator registry state after MCP contract tests so fake validator
+  types cannot leak into later tests. (Fixes #605)
+### Added
 - Run release checks through package build on pushes to `main` before tagging, without publishing artifacts. (Fixes #604)
 - Test every published protocol cross-field rule against valid and invalid protocol documents. (Fixes #610)
 
