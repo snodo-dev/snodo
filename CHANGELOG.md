@@ -9,20 +9,6 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-- Automatically publish advisory PR review comments using the released snodo package. (Fixes #620)
-- Add read-only `snodo protocol validate [PATH]` checks against the published
-  schema, registry choices, and protocol cross-field rules, with JSON findings.
-  (Fixes #606)
-- Add a standalone multi-agent PR review comment generator. (Fixes #619)
-### Fixed
-- Restore validator registry state after MCP contract tests so fake validator
-  types cannot leak into later tests. (Fixes #605)
-### Added
-- Run release checks through package build on pushes to `main` before tagging, without publishing artifacts. (Fixes #604)
-- Group routine Dependabot updates by ecosystem and update type while keeping security updates individual. (Fixes #611)
-- Test every published protocol cross-field rule against valid and invalid protocol documents. (Fixes #610)
-
 ---
 
 ## [0.19.3] — 2026-10-01
@@ -33,6 +19,16 @@ uploaded (the new provider packages could not be created) and is yanked.
 0.19.3 is the first complete release that carries their changes; see the
 sections below.
 
+### Added
+- Automatically publish advisory PR review comments using the released snodo package. (Fixes #620)
+- Add read-only `snodo protocol validate [PATH]` checks against the published
+  schema, registry choices, and protocol cross-field rules, with JSON findings.
+  (Fixes #606)
+- Add a standalone multi-agent PR review comment generator. (Fixes #619)
+- Run release checks through package build on pushes to `main` before tagging, without publishing artifacts. (Fixes #604)
+- Group routine Dependabot updates by ecosystem and update type while keeping security updates individual. (Fixes #611)
+- Test every published protocol cross-field rule against valid and invalid protocol documents. (Fixes #610)
+
 ### Changed
 - `make sync-versions` now versions and pins the `snodo-provider-github` and
   `snodo-provider-gitlab` packages with the rest of the workspace; they were
@@ -42,6 +38,8 @@ sections below.
 - Require PyJWT 2.15.0 or newer and refresh the lock to patched PyJWT and urllib3 releases (Dependabot alerts on main).
 
 ### Fixed
+- Restore validator registry state after MCP contract tests so fake validator
+  types cannot leak into later tests. (Fixes #605)
 - The `snodo serve --help` test strips ANSI styling before matching, so it no
   longer fails when Rich colours help output on GitHub Actions. This failure
   blocked the 0.18.0 and 0.19.0 PyPI publishes.

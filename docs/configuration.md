@@ -4,8 +4,8 @@
 
 GitHub Actions runs an advisory snodo review for eligible pull requests and
 posts the suggested outcome and reviewer-agreement table as a PR comment. The
-four suggested outcomes are **approve**, **request changes**, **comment**, and
-**abstain**; they are recommendations for human reviewers, not GitHub review
+four suggested outcomes are **MERGED**, **MINOR REWORK**, **MAJOR REWORK**, and
+**REJECTED**; they are recommendations for human reviewers, not GitHub review
 decisions. The workflow updates its existing comment when rerun.
 
 Add these repository actions secrets under **Settings → Secrets and variables
