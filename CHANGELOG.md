@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Run release checks through package build on pushes to `main` before tagging, without publishing artifacts. (Fixes #604)
+
 ---
 
 ## [0.19.2] — 2026-10-01

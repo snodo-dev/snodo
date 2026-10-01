@@ -90,6 +90,12 @@ That is the whole suite (e2e included) plus a **80% total-coverage floor** and a
 gate. This is also exactly what every task ticket's verification line refers to
 when it points at the full suite.
 
+The release workflow also runs these full release checks through package build
+on every push to `main` and on manual dispatch, without publishing packages or
+creating a GitHub Release. Use the **Release dry run** check to catch
+GitHub Actions environment differences before tagging; tag/CHANGELOG validation
+is performed only by the tag-triggered release workflow.
+
 ### Always-pass checks (local and CI)
 
 ```bash
