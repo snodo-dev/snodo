@@ -110,10 +110,26 @@ def _synthesize(results: list[dict[str, Any]]) -> str:
     if not models:
         raise RuntimeError("No model configured in llm.recon.models for synthesis")
     prompt = f"""Synthesize these independent PR review results. Return only JSON with keys: outcome (exactly one of {', '.join(OUTCOMES)}), summary (one sentence naming returned and failed agents), rows (array of objects with kind exactly Agreement, Disagreement, or Misalignment; finding; agents (mapping agent name to finding/status); status), and rework (array of short suggested actions). Include only findings supported by agent results. Results: {json.dumps(results, ensure_ascii=False)}"""
-    response = litellm.completion(
-        model=models[0], messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-    )
+    # Resolve the model the way recon does, so custom providers (ollama-cloud,
+    # ocgo) route through their configured endpoint and credentials.
+    from snodo.config import ConfigManager
+
+    model = models[0]
+    kwargs: dict[str, Any] = {
+        "model": ConfigManager.resolve_litellm_model(model),
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0,
+    }
+    api_key = ConfigManager().get_key_for_model(model)
+    if api_key:
+        kwargs["api_key"] = api_key
+    api_base = ConfigManager.resolve_api_base(model)
+    if api_base:
+        kwargs["api_base"] = api_base
+    extra_headers = ConfigManager.resolve_extra_headers(model, task_id="pr-review")
+    if extra_headers:
+        kwargs["extra_headers"] = extra_headers
+    response = litellm.completion(**kwargs)
     return str(response.choices[0].message.content or "")
 
 
