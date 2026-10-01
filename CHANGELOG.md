@@ -11,11 +11,11 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.19.1] — 2026-10-01
+## [0.19.2] — 2026-10-01
 
-0.18.0 and 0.19.0 were tagged but never reached PyPI: the release workflow's
-test run failed on GitHub Actions. 0.19.1 is the first published release that
-carries their changes; see both sections below.
+0.18.0, 0.19.0 and 0.19.1 were tagged but never reached PyPI: the release
+workflow's test run failed on GitHub Actions each time. 0.19.2 is the first
+published release that carries their changes; see the sections below.
 
 ### Security
 - Require PyJWT 2.15.0 or newer and refresh the lock to patched PyJWT and urllib3 releases (Dependabot alerts on main).
@@ -27,6 +27,9 @@ carries their changes; see both sections below.
 - The unverified token-decode test forges a well-formed signature instead of
   flipping a character, which PyJWT 2.15 rejects as malformed base64 before any
   signature check.
+- The protocol schema drift test generates the publication in a fresh
+  interpreter, so fake validator types registered by other tests in the same
+  pytest worker no longer leak into it (this failed the 0.19.1 release).
 - Plan-producing tests are confined to temporary projects, and the suite-level
   guard now reports any plan creation or modification under the checkout's own
   `.snodo/plans/`. (Fixes #600)
