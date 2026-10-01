@@ -87,6 +87,9 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OLLAMA_CLOUD_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
+          OCGO_API_KEY: ${{ secrets.OCGO_API_KEY }}
         run: |
           "$RUNNER_TEMP/pr-review-venv/bin/python" scripts/pr_review.py --pr "$PR_NUMBER" --repo "$REPOSITORY" --out "$RUNNER_TEMP/pr-review.md"
       - name: Create or update review comment
