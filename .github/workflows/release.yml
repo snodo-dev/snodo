@@ -31,6 +31,8 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: uv run python scripts/check_release_version.py --tag "$RELEASE_TAG"
+      # Keep the checks through the build step in sync with
+      # release-dry-run.yml; the dry run omits tag validation.
       - name: Test suite
         run: uv run pytest tests/ -q -n auto --timeout=60
       - name: Lint (ruff)

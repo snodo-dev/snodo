@@ -12,14 +12,23 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Restore validator registry state after MCP contract tests so fake validator
   types cannot leak into later tests. (Fixes #605)
+### Added
+- Run release checks through package build on pushes to `main` before tagging, without publishing artifacts. (Fixes #604)
 
 ---
 
-## [0.19.2] — 2026-10-01
+## [0.19.3] — 2026-10-01
 
 0.18.0, 0.19.0 and 0.19.1 were tagged but never reached PyPI: the release
-workflow's test run failed on GitHub Actions each time. 0.19.2 is the first
-published release that carries their changes; see the sections below.
+workflow's test run failed on GitHub Actions each time. 0.19.2 was only partly
+uploaded (the new provider packages could not be created) and is yanked.
+0.19.3 is the first complete release that carries their changes; see the
+sections below.
+
+### Changed
+- `make sync-versions` now versions and pins the `snodo-provider-github` and
+  `snodo-provider-gitlab` packages with the rest of the workspace; they were
+  left at 0.18.0.
 
 ### Security
 - Require PyJWT 2.15.0 or newer and refresh the lock to patched PyJWT and urllib3 releases (Dependabot alerts on main).
