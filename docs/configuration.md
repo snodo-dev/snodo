@@ -1,5 +1,24 @@
 # User configuration reference
 
+## Automated pull request reviews
+
+GitHub Actions runs an advisory snodo review for eligible pull requests and
+posts the suggested outcome and reviewer-agreement table as a PR comment. The
+four suggested outcomes are **approve**, **request changes**, **comment**, and
+**abstain**; they are recommendations for human reviewers, not GitHub review
+decisions. The workflow updates its existing comment when rerun.
+
+Add these repository actions secrets under **Settings → Secrets and variables
+→ Actions**: `OPENAI_API_KEY`, `OLLAMA_CLOUD_API_KEY`, and `OCGO_API_KEY`.
+Each key is used by a configured recon model provider and is kept in the
+runner's user config only. To rerun a review, use **Actions → PR review → Run
+workflow** and enter the pull request number.
+
+Fork pull requests are skipped so repository API keys are never exposed to
+untrusted code. Dependabot pull requests are skipped on automatic events to
+avoid spending API credits on routine updates; maintainers can explicitly
+rerun them with workflow dispatch.
+
 Snodo's user-level configuration lives at `~/.snodo/config.yml`. It is separate
 from a project's `.snodo/protocol.yml`: user config holds machine-wide model
 choices, credentials, cloud settings, and notification destinations; the
