@@ -76,33 +76,10 @@ or a containerised server all converge on the same gate and the same merge path.
 
 ## Install and first run
 
-```bash
-# In a new directory, initialize Git first. In an existing repository, use it
-# as-is; if it has no commits yet, the initial commit below is required.
-git init
-git add -A
-git commit -m "Initial project commit"
-
-pip install snodo
-snodo init --template team --test-command "pytest"
-snodo run "add a hello() function that returns the string 'world', with a test" --mock
-```
-
-Python 3.12+. `snodo init` requires a Git repository, and isolated task runs
-require a commit to create worktrees from. In a new project, `git add -A` and
-the initial commit above preserve the project's source files as that baseline.
-In an existing repository, skip `git init` if it is already initialized; only
-make the initial commit if it has no commits yet. Snodo's generated ignore rules
-keep runtime state out of Git while allowing the authored protocol to be added.
-
-This mock run exercises Snodo's local dispatch, governance flow, worktree
-isolation, and merge path with a deterministic stub coder. It makes no provider
-API call and does **not** implement the requested code or prove that tests pass.
-For a provider-backed run, configure the provider first with
-`snodo config add anthropic <key>` or export `ANTHROPIC_API_KEY`, and use a real
-task description without `--mock`. The configured test command must exist and
-pass for the task to receive a passing test outcome; `--test-command "pytest"`
-declares the intended test runner but does not create tests.
+Follow the canonical [first-run quickstart](docs/runbook.md#quickstart). It
+includes the starter file needed for the initial commit, the Git identity
+prerequisite, and the same governed hello-world mock task shown in the docs.
+Python 3.12+ is required.
 
 Before spending anything on an existing repository, run `snodo ready`. Without
 an LLM, it checks whether the artefacts the protocol expects — decision records,
@@ -111,42 +88,16 @@ missing by how cheap it is to fix. Task worktrees only see `HEAD`, so "present
 on disk" is not enough. See the [runbook](docs/runbook.md) for readiness, the
 full configuration surface, and the command reference.
 
-## What a run looks like
+## What a mock run does
 
-A mock run from a project initialized with the `team` template and its test
-command declared (`--test-command "pytest"`):
-
-```bash
-$ snodo run "add a hello() function that returns the string 'world', with a test" --mock
-
-✓ Loaded protocol: Team Protocol
-  Validators: security, architecture, quality, meta-spec, acceptance
-  Policy: unanimous
-
-  Validating (pre-execute): security, architecture, meta-spec
-    meta-spec: finished
-    architecture: finished
-    security: finished
-  Coder dispatched
-  Coder returned (3 artifact(s))
-  Post-validating: quality, acceptance
-    acceptance: finished
-    quality: finished
-✓ Verified merge for task/task_ca8fd940fe5d/add-a-hello-function-that: task
-  task_ca8fd940fe5d verified at commit 3e144ca (pytest).
-
-task_ca8fd940fe5d  resolved  (depth=0)
-```
-
-`--mock` swaps in a deterministic stub coder, so no key is spent and no network
-call is made. The gates are not stubbed: when a project has tests and a working
-declared test command, the post-execute `quality` validator runs it. A passing
-test result for a mock-generated artifact is not evidence that the requested
-feature was implemented correctly. Replace `--mock` with a configured provider
-or `--coder opencode-cli` to have a real coder attempt the task, then inspect its
-change and test results. The transcript is trimmed for length; the protocol language is in
-the [protocol reference](docs/protocol.md) and the coder backends are in
-[Coder backends](docs/coders.md).
+The canonical quickstart's `--mock` run uses a deterministic stub coder that
+writes `src/hello.py` and `tests/test_hello.py`; it implements the hello-world
+task. The task still passes through the configured governance and verification
+flow; with pytest installed and configured, the generated test passes. The
+mock makes no provider API call and does not prove that a real coder can
+implement your project's requirements. For provider-backed coding, configure
+credentials (for example, `snodo config add anthropic <key>` or
+`ANTHROPIC_API_KEY`) and run without `--mock`.
 
 ## Project status
 
