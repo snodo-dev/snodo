@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Environment preparation commands and detached notification monitors no longer
+  inherit Snodo job-context variables. (Fixes #635)
 - Task-branch merge, merged checks, cleanup, and recovery/change-size probes can
   use the task's integration starting ref while retaining the repository base
   as the default. (Fixes #629)
