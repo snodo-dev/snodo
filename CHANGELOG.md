@@ -10,7 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
-- Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #647)
+- Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #646)
 
 ### Fixed
 - Plan tasks now start from and merge into a durable per-plan integration
