@@ -13,12 +13,13 @@ import os
 import re
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor
+import time
 from pathlib import Path
 from typing import Any
 
 OUTCOMES = ("MERGED", "MINOR REWORK", "MAJOR REWORK", "REJECTED")
 DEFAULT_DIFF_LIMIT = 100_000
+RECON_TIMEOUT_SECONDS = 300
 
 
 def _gh_json(repo: str, pr: int, field: str) -> str:
@@ -73,26 +74,34 @@ def _load_recon_models() -> list[str]:
 
 
 def run_recon(question: str, repo: str, pr: int) -> list[dict[str, Any]]:
-    """Run three configured agents through recon's synchronous read-only API."""
-    from snodo.recon import call_agent_chain, resolve_recon_agents
+    """Run three configured agents through the audited recon lifecycle."""
+    from snodo.recon import ReconManager, resolve_recon_agents
 
     models = _load_recon_models()
     lanes = resolve_recon_agents(requested_n=3, recon_models=models)
-    # Recon tools read files from the checkout available to the job. PR metadata
-    # and the diff are supplied as evidence; no project state is created.
     root = Path.cwd()
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [
-            executor.submit(call_agent_chain, str(root), lane, question, ["."], f"agent-{index}")
-            for index, lane in enumerate(lanes, 1)
+    manager = ReconManager(str(root))
+    recon_id = manager.submit(question, ["."], agents=lanes)
+    deadline = time.monotonic() + RECON_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        status = manager.get_status(recon_id)
+        if status.get("status") in {"complete", "failed"}:
+            break
+        time.sleep(0.1)
+    else:
+        return [
+            {"agent": f"agent-{index}", "result": "", "error": "recon timed out"}
+            for index in range(1, len(lanes) + 1)
         ]
-        results = []
-        for index, future in enumerate(futures, 1):
-            try:
-                results.append(_result_dict(future.result()))
-            except Exception as exc:
-                results.append({"agent": f"agent-{index}", "result": "", "error": str(exc)})
-        return results
+
+    raw = manager.get_results(recon_id)
+    results = [_result_dict(item) for item in raw.get("results", [])]
+    if raw.get("status") == "failed" and not results:
+        return [
+            {"agent": f"agent-{index}", "result": "", "error": "recon failed"}
+            for index in range(1, len(lanes) + 1)
+        ]
+    return results
 
 
 def _result_dict(item: Any) -> dict[str, Any]:

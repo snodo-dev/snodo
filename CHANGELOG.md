@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- PR review agents now run through `ReconManager`, recording recon audit events
+  and enabling configured cloud sync. (Fixes #623)
+
 ---
 
 ## [0.19.3] — 2026-10-01
