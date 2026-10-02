@@ -36,6 +36,7 @@ from snodo.coders.report import (
     parse_coder_report,
 )
 from snodo.core.interfaces import CodeArtifact, FileArtifact, TaskSpec
+from snodo.paths import subprocess_env_without_job_context
 
 _logger = logging.getLogger(__name__)
 
@@ -378,6 +379,7 @@ class SubprocessCoderAdapter(InPlaceCoderAdapter):
             text=True,
             errors="replace",
             start_new_session=True,
+            env=subprocess_env_without_job_context(),
         )
         emit = getattr(self, "progress_callback", None)
         out_chunks: list[str] = []

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from snodo.paths import JOB_CONTEXT_ENV_VARS
 from tests.verification_gate import build_notice
 
 TEST_SECRET = "test-secret-key-that-is-at-least-32-bytes!!"
@@ -583,15 +584,7 @@ def pytest_sessionstart(session):
     # A test runner launched by a Snodo job inherits the dispatcher's project
     # context. Clear it before collection or tests can resolve the real project
     # and dispatch nested jobs against it.
-    for key in (
-        "SNODO_PROJECT_ROOT",
-        "SNODO_JOB_ID",
-        "SNODO_WORKTREE_PATH",
-        "SNODO_PLAN_JOB",
-        "SNODO_TASK_PLAN",
-        "SNODO_TASK_PLAN_WAVE",
-        "SNODO_BENCHMARK",
-    ):
+    for key in JOB_CONTEXT_ENV_VARS:
         os.environ.pop(key, None)
     _E2E_DESELECTED[0] = 0
     _WORKER_E2E_DESELECTED[0] = 0
