@@ -192,6 +192,44 @@ def render_comment(results: list[dict[str, Any]], synthesis: dict[str, Any], tru
     return "\n".join(lines) + "\n"
 
 
+def render_fix_forward_issue(
+    repo: str, pr: int, title: str, review_url: str, synthesis: dict[str, Any]
+) -> str:
+    """Render an intent-first fix-forward ticket from a non-merged review."""
+    lines = [
+        f"# Fix forward for pull request #{pr}",
+        "",
+        f"Pull request: [{title}](https://github.com/{repo}/pull/{pr})",
+        f"Review: [automated review comment]({review_url})",
+        "",
+        f"## Review outcome: {synthesis['outcome']}",
+        "",
+        "## Symptoms and evidence",
+    ]
+    rows = synthesis.get("rows", [])
+    if rows:
+        for row in rows:
+            lines.extend([
+                f"### {row.get('kind', 'Finding')}: {row.get('finding', '')}",
+                f"Status: {row.get('status', '')}",
+            ])
+            for agent, evidence in (row.get("agents") or {}).items():
+                lines.append(f"- {agent}: {evidence}")
+            lines.append("")
+    else:
+        lines.extend(["No finding rows were returned.", ""])
+    lines.extend(["## Review summary", "", str(synthesis.get("summary", "")), "", "## Suggested rework (indications only)"])
+    lines.extend([f"- {item}" for item in synthesis.get("rework", [])] or ["- None suggested."])
+    lines.extend([
+        "",
+        "## For the coder",
+        "",
+        "This issue is the tracking issue for the fix-forward work. Include `Fixes #<this issue's number>` in the commit subject.",
+        "",
+    ])
+    return "\n".join(lines)
+
+
 def _redact_environment(text: str) -> str:
     # Prevent any configured credential accidentally echoed by a provider/model.
     secrets = {value for key, value in os.environ.items() if value and ("KEY" in key.upper() or "TOKEN" in key.upper() or "SECRET" in key.upper())}
@@ -205,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pr", type=int, required=True)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--issue-body", type=Path, help="write a fix-forward issue body for non-MERGED outcomes")
     parser.add_argument("--dry-run-results", type=Path)
     parser.add_argument("--diff-limit", type=int, default=int(os.environ.get("SNODO_PR_REVIEW_DIFF_LIMIT", DEFAULT_DIFF_LIMIT)))
     args = parser.parse_args(argv)
@@ -242,6 +281,10 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("canned synthesis outcome must be one of: " + ", ".join(OUTCOMES))
         output = _redact_environment(render_comment(results, synthesis, truncated))
         args.out.write_text(output)
+        if args.issue_body and synthesis["outcome"] != "MERGED":
+            title = _gh_json(args.repo, args.pr, "title") if not args.dry_run_results else f"Pull request #{args.pr}"
+            issue_body = render_fix_forward_issue(args.repo, args.pr, title, "{{REVIEW_COMMENT_URL}}", synthesis)
+            args.issue_body.write_text(_redact_environment(issue_body))
         return 0
     except Exception as exc:  # user-facing errors must not include subprocess credentials
         print(_redact_environment(f"error: {exc}"), file=sys.stderr)

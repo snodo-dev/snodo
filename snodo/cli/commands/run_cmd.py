@@ -880,6 +880,7 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             existing_worktree_path=existing_wt,
             plan_name=worktree.task_plan_name(args),
             protocol=protocol,
+            base=os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if task.plan_name else None,
         )
         worktree_failure = None
     except Exception as exc:  # noqa: BLE001 — isolation loss must fail loud, never degrade silently
@@ -1059,7 +1060,8 @@ def _execute_task(args, protocol: Protocol, task: Task, model: str) -> int:
             else:
                 try:
                     teardown_task_worktree(
-                        project_root, task.id, worktree.task_plan_name(args)
+                        project_root, task.id, worktree.task_plan_name(args),
+                        target_ref=os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if task.plan_name else None,
                     )
                 except Exception as e:
                     _logger.warning(
