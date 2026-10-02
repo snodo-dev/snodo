@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Quality validator subprocesses no longer inherit job-context `SNODO_*`
+  variables, preventing worktree and baseline checks from resolving the
+  dispatching project. (Fixes #625)
 - PR review agents now run through `ReconManager`, recording recon audit events
   and enabling configured cloud sync. (Fixes #623)
 

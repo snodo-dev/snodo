@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 from snodo.compiler.models import Validator
 from snodo.core.interfaces import ValidatorResult
+from snodo.paths import subprocess_env_without_job_context
 from snodo.validators.context import ValidatorBase
 from snodo.validators.registry import _default_registry
 
@@ -202,6 +203,7 @@ class QualityValidator(ValidatorBase):
                 capture_output=True,
                 text=True,
                 timeout=5,
+                env=subprocess_env_without_job_context(),
             )
             if res.returncode == 0 and res.stdout.strip():
                 return res.stdout.strip()
@@ -283,6 +285,7 @@ class QualityValidator(ValidatorBase):
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=subprocess_env_without_job_context(),
             )
 
             if result.returncode == 0:
@@ -428,6 +431,7 @@ class QualityValidator(ValidatorBase):
                     capture_output=True,
                     text=True,
                     timeout=30,
+                    env=subprocess_env_without_job_context(),
                 )
                 if added.returncode != 0:
                     logger.warning("Could not create quality baseline worktree: %s", added.stderr)
@@ -439,6 +443,7 @@ class QualityValidator(ValidatorBase):
                     capture_output=True,
                     text=True,
                     timeout=self._get_timeout(),
+                    env=subprocess_env_without_job_context(),
                 )
                 outcome = "fail" if baseline.returncode else "pass"
                 self._audit_verification(
@@ -463,6 +468,7 @@ class QualityValidator(ValidatorBase):
                     capture_output=True,
                     text=True,
                     timeout=30,
+                    env=subprocess_env_without_job_context(),
                 )
 
     def _classify_failure(self, command: str, returncode: int,

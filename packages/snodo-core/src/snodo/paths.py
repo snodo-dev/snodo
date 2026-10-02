@@ -14,6 +14,27 @@ from pathlib import Path
 from typing import Optional
 
 
+JOB_CONTEXT_ENV_VARS = (
+    "SNODO_PROJECT_ROOT",
+    "SNODO_JOB_ID",
+    "SNODO_WORKTREE_PATH",
+    "SNODO_PLAN_JOB",
+    "SNODO_TASK_PLAN",
+    "SNODO_TASK_PLAN_WAVE",
+    "SNODO_BENCHMARK",
+    "SNODO_PLAN_TRIGGER",
+    "SNODO_PLAN_QUEUE",
+)
+
+
+def subprocess_env_without_job_context() -> dict[str, str]:
+    """Return the current environment without inherited Snodo job context."""
+    env = os.environ.copy()
+    for key in JOB_CONTEXT_ENV_VARS:
+        env.pop(key, None)
+    return env
+
+
 def resolve_home() -> Path:
     """Return the Snodo home directory.
 
@@ -178,4 +199,3 @@ def is_protected_workspace_path(path: str | Path, workspace: Path | str) -> bool
     except (ValueError, TypeError, RuntimeError):
         return False
     return False
-
