@@ -87,11 +87,13 @@ providers:
       x-task: "{task_id}"
 ```
 
-Credential selection prefers a configured `api_key`, then `api_key_env`, then
-`api_key_ref`. `env:` and `command:` references are resolved only when the
+Credential selection prefers a configured `api_key`, then `api_key_ref`, then
+`api_key_env`. `env:` and `command:` references are resolved only when the
 credential is used. Register one without copying its value into the config, for
 example `snodo config add github --ref 'command:gh auth token'`; `snodo config
-show` displays the reference without executing it. Provider keys can also be
+show` displays the reference without executing it. A `command:` reference is
+stored in the config file as written, so do not include secret arguments in it.
+Provider keys can also be
 moved to local encrypted files with `snodo config --encrypt-provider-keys`.
 Before a non-mock task run creates session or worktree state, Snodo checks that
 the selected model's provider has a credential. If it does not, the run exits

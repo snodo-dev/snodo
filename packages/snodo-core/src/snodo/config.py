@@ -564,6 +564,9 @@ class ConfigManager:
         if not provider:
             raise ConfigError("Provider name cannot be empty")
         self._parse_key_reference(reference)
+        # A newly added reference must replace an existing literal key. Keep
+        # api_key_env as the catalog default, but resolve references before it.
+        self.remove_value(("providers", provider, "api_key"))
         self.set_value(("providers", provider, "api_key_ref"), reference.strip())
 
     def encrypt_provider_keys(self) -> list[str]:
@@ -632,10 +635,10 @@ class ConfigManager:
                 except Exception:
                     raise ConfigError(f"Unable to decrypt API key for provider '{provider}' ({reference})") from None
             return pc.api_key
-        if pc and pc.api_key_env:
-            return os.environ.get(pc.api_key_env) or None
         if pc and pc.api_key_ref:
             return ConfigManager._resolve_key_reference(pc.api_key_ref)
+        if pc and pc.api_key_env:
+            return os.environ.get(pc.api_key_env) or None
         return None
 
     @staticmethod
@@ -699,9 +702,12 @@ class ConfigManager:
         providers_raw = config.get("providers", {})
         if isinstance(providers_raw, dict):
             entry = providers_raw.get(provider, {})
-            if isinstance(entry, dict) and "api_key" in entry:
-                self.remove_value(("providers", provider, "api_key"))
-                return True
+            if isinstance(entry, dict):
+                fields = ("api_key", "api_key_env", "api_key_ref")
+                present = [field for field in fields if field in entry]
+                for field in present:
+                    self.remove_value(("providers", provider, field))
+                return bool(present)
         return False
 
     def get_key_for_model(self, model: str) -> Optional[str]:

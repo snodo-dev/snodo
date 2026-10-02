@@ -59,18 +59,19 @@ class GitHubProvider(CodeHostProvider):
         token = os.environ.get("GITHUB_TOKEN")
         if token:
             return token
+        from snodo.config import ConfigError, ConfigManager
+
+        manager = ConfigManager()
         try:
-            from snodo.config import ConfigManager
-            return ConfigManager().get_key("github")
-        except Exception as exc:
-            try:
-                pc = ConfigManager().get_providers().get("github")
-            except Exception:
-                pc = None
+            return manager.get_key("github")
+        except ConfigError:
+            pc = manager.get_providers().get("github")
             if pc and pc.api_key_ref:
+                scheme, _, target = pc.api_key_ref.partition(":")
+                reference = f"{scheme}:{target.split()[0]}" if scheme == "command" and target.split() else scheme
                 raise ProviderError(
-                    f"GitHub credential reference '{pc.api_key_ref}' failed to resolve: {exc}. "
-                    "Set GITHUB_TOKEN or run: snodo config add github <token>"
+                    f"GitHub credential reference {reference!r} failed to resolve. "
+                    "Set GITHUB_TOKEN or run: snodo config add github --ref 'command:gh auth token'"
                 ) from None
             return None
 

@@ -13,6 +13,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #646, #647)
 
 ### Fixed
+- `snodo config add --ref` now takes precedence over provider defaults, removes
+  all configured credential sources with `config remove`, and safely hides
+  command arguments in output; GitHub guidance uses the reference form. (Fixes #650)
 - `snodo config add` accepts validated credential references, shows them without
   resolving them, and GitHub reports reference-resolution failures with the
   reference and the correct setup command. (Fixes #644)

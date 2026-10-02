@@ -4,6 +4,7 @@ FILE: snodo/cli/commands/config_cmd.py
 """
 
 import sys
+import shlex
 from types import SimpleNamespace
 
 import typer
@@ -141,9 +142,22 @@ def _config_show(mgr: ConfigManager) -> int:
     configured = []
     references = []
     for name, pc in providers.items():
-        if pc.api_key_ref:
-            references.append((name, pc.api_key_ref))
-        elif pc.api_key or pc.api_key_env:
+        if pc.api_key:
+            key = mgr.get_key(name)
+            if key:
+                configured.append((name, key))
+        elif pc.api_key_ref:
+            scheme, _, target = pc.api_key_ref.strip().partition(":")
+            if scheme == "command":
+                try:
+                    command = shlex.split(target)[0]
+                except (ValueError, IndexError):
+                    command = "[invalid]"
+                display_ref = f"command:{command} [arguments hidden]"
+            else:
+                display_ref = pc.api_key_ref.strip()
+            references.append((name, display_ref))
+        elif pc.api_key_env:
             key = mgr.get_key(name)
             if key:
                 configured.append((name, key))
@@ -152,7 +166,7 @@ def _config_show(mgr: ConfigManager) -> int:
         print("API Keys:")
         for name, key in configured:
             print(f"  {name}: {ConfigManager.mask_key(key)}")
-    else:
+    elif not references:
         print("No API keys configured.")
         print("  Add one: snodo config add <provider> <key>")
     if references:
@@ -181,21 +195,33 @@ def _config_add(mgr: ConfigManager, provider: str, key: str = None, ref: str = N
             raise ConfigError("Provide exactly one API key or --ref credential reference")
         if ref:
             mgr.add_key_reference(provider, ref)
-            print(f"✓ Stored {provider} credential reference: {ref.strip()}")
+            scheme, _, target = ref.strip().partition(":")
+            if scheme == "command":
+                try:
+                    target = shlex.split(target)[0]
+                except (ValueError, IndexError):
+                    target = "[invalid]"
+                safe_ref = f"command:{target} [arguments hidden]"
+            else:
+                safe_ref = ref.strip()
+            print(f"✓ Stored {provider} credential reference: {safe_ref}")
         else:
             mgr.add_key(provider, key)
             masked = ConfigManager.mask_key(key)
             print(f"✓ Stored {provider} key: {masked}")
         return 0
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        message = str(e)
+        if ref and "Invalid credential reference" in message:
+            message = "Invalid credential reference; expected env:NAME or command:COMMAND"
+        print(f"Error: {message}", file=sys.stderr)
         return 1
 
 
 def _config_remove(mgr: ConfigManager, provider: str) -> int:
     """Remove an API key."""
     if mgr.remove_key(provider):
-        print(f"✓ Removed {provider} key")
+        print(f"✓ Removed {provider} credential")
         return 0
     else:
         print(f"No key found for provider: {provider}", file=sys.stderr)
