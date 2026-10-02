@@ -71,7 +71,7 @@ class GitHubProvider(CodeHostProvider):
                 reference = f"{scheme}:{target.split()[0]}" if scheme == "command" and target.split() else scheme
                 raise ProviderError(
                     f"GitHub credential reference {reference!r} failed to resolve. "
-                    "Set GITHUB_TOKEN or run: snodo config add github --ref 'command:gh auth token'"
+                    "Set GITHUB_TOKEN or run: snodo config add github --ref 'env:GITHUB_TOKEN'"
                 ) from None
             return None
 
