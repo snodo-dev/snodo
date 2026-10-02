@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Task-branch merge, merged checks, cleanup, and recovery/change-size probes can
+  use the task's integration starting ref while retaining the repository base
+  as the default. (Fixes #629)
 - Quality validator subprocesses no longer inherit job-context `SNODO_*`
   variables, preventing worktree and baseline checks from resolving the
   dispatching project. (Fixes #625)

@@ -683,7 +683,9 @@ def merge_head_sha(project_root: str) -> str:
         return ""
 
 
-def merge_task_branch(project_root: str, branch: str) -> Tuple[str, List[str]]:
+def merge_task_branch(
+    project_root: str, branch: str, target_ref: Optional[str] = None
+) -> Tuple[str, List[str]]:
     """Merge *branch* into the resolved base branch.
 
     Returns:
@@ -699,7 +701,7 @@ def merge_task_branch(project_root: str, branch: str) -> Tuple[str, List[str]]:
     with merge_lock(project_root):
         git = GitMCP(project_root)
         try:
-            git.merge_branch(branch)
+            git.merge_branch(branch, base=target_ref)
             return "merged", []
         except MergeConflictError as e:
             return "conflict", getattr(e, "conflicting_paths", [])
@@ -762,7 +764,8 @@ def delete_task_branches(
 
 
 def delete_merged_task_branches(
-    project_root: str, task_id: str, plan_name: Optional[str] = None
+    project_root: str, task_id: str, plan_name: Optional[str] = None,
+    target_ref: Optional[str] = None,
 ) -> List[str]:
     """Delete branches for *task_id* whose work is already contained in the base.
 
@@ -776,7 +779,7 @@ def delete_merged_task_branches(
     with merge_lock(project_root):
         try:
             from snodo.tools.git import open_repo, resolve_base_branch
-            base = resolve_base_branch(project_root)
+            base = target_ref or resolve_base_branch(project_root)
             with open_repo(project_root) as repo:
                 try:
                     raw = repo.git.branch("--merged", base)
@@ -811,6 +814,7 @@ def task_branch_is_merged(
     task_id: str,
     spec: str,
     plan_name: Optional[str] = None,
+    target_ref: Optional[str] = None,
 ) -> Optional[bool]:
     """Whether *task_id*'s branch is already contained in the base branch.
 
@@ -832,7 +836,7 @@ def task_branch_is_merged(
 
     _, branch = _task_identity(project_root, task_id, spec, plan_name)
     try:
-        base = resolve_base_branch(project_root)
+        base = target_ref or resolve_base_branch(project_root)
         with open_repo(project_root) as repo:
             if branch not in repo.heads:
                 return None
@@ -865,7 +869,8 @@ def task_branch_is_merged(
 
 
 def teardown_task_worktree(
-    project_root: str, task_id: str, plan_name: Optional[str] = None
+    project_root: str, task_id: str, plan_name: Optional[str] = None,
+    target_ref: Optional[str] = None,
 ) -> None:
     """Tear down a task's isolation: worktree first, then its merged branches.
 
@@ -879,7 +884,7 @@ def teardown_task_worktree(
     helper, so the two cannot disagree about the identity or the order.
     """
     remove_worktree(project_root, task_id, plan_name)
-    delete_merged_task_branches(project_root, task_id, plan_name)
+    delete_merged_task_branches(project_root, task_id, plan_name, target_ref)
 
 
 def list_worktrees(project_root: str) -> list:
