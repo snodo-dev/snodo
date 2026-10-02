@@ -892,6 +892,7 @@ def _execute_wave_tasks_concurrent(
             "cwd": project_root,
             "task_plan": args.plan,
             "task_wave": str(wave_id),
+            "base": os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH"),
         }
         # Name the plan-run job that spawned this task, when there is one, so
         # list_jobs can tell a plan run from the tasks it spawned (Fixes #254).
@@ -1064,6 +1065,39 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
             return 1
 
         plan_dir = planner.plans_dir / args.plan
+        # Persist the integration identity before dispatch so interrupted runs
+        # reconnect to exactly the same branch and starting point.
+        status_data = planner.get_status(args.plan)
+        integration = status_data.get("integration") or {}
+        integration_branch = integration.get("branch")
+        if not integration_branch:
+            from snodo.infrastructure.worktree import _name_component, worktree_dir
+            from snodo.tools.git import open_repo, resolve_base_branch
+            try:
+                base_ref = resolve_base_branch(str(project_root))
+                with open_repo(str(project_root)) as repo:
+                    base_sha = repo.commit(base_ref).hexsha
+                    integration_branch = f"plan/{_name_component(args.plan)}/integration"
+                    integration_path = worktree_dir(str(project_root)) / _name_component(args.plan) / "integration"
+                    integration_path.parent.mkdir(parents=True, exist_ok=True)
+                    if integration_branch not in repo.heads:
+                        repo.git.worktree("add", str(integration_path), "-b", integration_branch, base_ref)
+                    elif not integration_path.exists():
+                        repo.git.worktree("add", str(integration_path), integration_branch)
+                from snodo.infrastructure.state import atomic_update_json
+                atomic_update_json(plan_dir, "status.json", lambda data: data.update(
+                    integration={"branch": integration_branch, "base_sha": base_sha}
+                ), strict=True)
+            except Exception as e:
+                # Some callers use the plan runner without a Git repository
+                # (for validation-only tests and embedded integrations).
+                _logger.info("Plan integration worktree unavailable: %s", e)
+                integration_branch = None
+        previous_integration_branch = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH")
+        if integration_branch:
+            os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = integration_branch
+        else:
+            os.environ.pop("SNODO_PLAN_INTEGRATION_BRANCH", None)
         from snodo.infrastructure.state import read_state
         state = read_state(project_root)
         active_mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
@@ -1132,6 +1166,10 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
             waves, planner, args, protocol, model,
             all_waves, interactive, effective_concurrency=effective_concurrency,
         )
+        if previous_integration_branch is None:
+            os.environ.pop("SNODO_PLAN_INTEGRATION_BRANCH", None)
+        else:
+            os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = previous_integration_branch
 
         _print_plan_progress(planner, args.plan)
         return 1 if failed else 0
