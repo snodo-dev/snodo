@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- `snodo config add` accepts validated credential references, shows them without
+  resolving them, and GitHub reports reference-resolution failures with the
+  reference and the correct setup command. (Fixes #644)
 - Plan tasks now start from and merge into a durable per-plan integration
   branch; its worktree remains available after completion for the follow-up
   delivery step. (Fixes #631)
