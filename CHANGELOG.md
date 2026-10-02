@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Plan tasks now start from and merge into a durable per-plan integration
+  branch; its worktree remains available after completion for the follow-up
+  delivery step. (Fixes #631)
 - Task-branch merge, merged checks, cleanup, and recovery/change-size probes can
   use the task's integration starting ref while retaining the repository base
   as the default. (Fixes #629)
