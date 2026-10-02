@@ -26,10 +26,23 @@ Two human-in-control roles — **producer** (code generation) and **reviewer** (
 ## Get started
 
 ```bash
+git init
+git add -A
+git commit -m "Initial project commit"
+
 pip install snodo
-snodo init --template team
+snodo init --template team --test-command "pytest"
 snodo run "your first task" --mock
 ```
+
+Run these commands in a new project directory. In an existing Git repository,
+skip `git init`; make the shown initial commit only if the repository has no
+commits yet. Keep the project's source in that commit: Snodo cuts isolated task
+worktrees from `HEAD`. The mock run checks Snodo's local governance and isolation
+flow with a deterministic stub coder; it does not implement the task or prove
+tests pass. For real coding, configure credentials with `snodo config add
+<provider> <key>` (or the provider's environment variable) and run without
+`--mock`. Ensure the project has tests and the configured test command runs them.
 
 [Runbook →](runbook.md) — install, configure, CLI usage, MCP serving, and
 troubleshooting. [Command reference →](command-reference.md) lists the current

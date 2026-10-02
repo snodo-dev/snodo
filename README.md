@@ -77,19 +77,32 @@ or a containerised server all converge on the same gate and the same merge path.
 ## Install and first run
 
 ```bash
+# In a new directory, initialize Git first. In an existing repository, use it
+# as-is; if it has no commits yet, the initial commit below is required.
+git init
+git add -A
+git commit -m "Initial project commit"
+
 pip install snodo
-snodo init --template solo
-snodo config add anthropic sk-ant-...
-snodo run "add a hello() function that returns the string 'world', with a test"
+snodo init --template team --test-command "pytest"
+snodo run "add a hello() function that returns the string 'world', with a test" --mock
 ```
 
-Python 3.12+. A key already exported in your environment (`ANTHROPIC_API_KEY`
-and friends) is auto-detected. `snodo run ... --mock` needs no key and no
-network at all.
+Python 3.12+. `snodo init` requires a Git repository, and isolated task runs
+require a commit to create worktrees from. In a new project, `git add -A` and
+the initial commit above preserve the project's source files as that baseline.
+In an existing repository, skip `git init` if it is already initialized; only
+make the initial commit if it has no commits yet. Snodo's generated ignore rules
+keep runtime state out of Git while allowing the authored protocol to be added.
 
-Make an initial commit before the first run: each task executes in a git
-worktree on a branch off `HEAD`, and on a repository with no commits snodo
-refuses to run rather than silently dropping isolation (ADR 025).
+This mock run exercises Snodo's local dispatch, governance flow, worktree
+isolation, and merge path with a deterministic stub coder. It makes no provider
+API call and does **not** implement the requested code or prove that tests pass.
+For a provider-backed run, configure the provider first with
+`snodo config add anthropic <key>` or export `ANTHROPIC_API_KEY`, and use a real
+task description without `--mock`. The configured test command must exist and
+pass for the task to receive a passing test outcome; `--test-command "pytest"`
+declares the intended test runner but does not create tests.
 
 Before spending anything on an existing repository, run `snodo ready`. Without
 an LLM, it checks whether the artefacts the protocol expects — decision records,
@@ -100,13 +113,13 @@ full configuration surface, and the command reference.
 
 ## What a run looks like
 
-A project initialised from the `solo` template with its test command declared
-(`--test-command "python -m pytest -q"`), then:
+A mock run from a project initialized with the `team` template and its test
+command declared (`--test-command "pytest"`):
 
 ```bash
 $ snodo run "add a hello() function that returns the string 'world', with a test" --mock
 
-✓ Loaded protocol: Solo Developer Protocol
+✓ Loaded protocol: Team Protocol
   Validators: security, architecture, quality, meta-spec, acceptance
   Policy: unanimous
 
@@ -120,17 +133,18 @@ $ snodo run "add a hello() function that returns the string 'world', with a test
     acceptance: finished
     quality: finished
 ✓ Verified merge for task/task_ca8fd940fe5d/add-a-hello-function-that: task
-  task_ca8fd940fe5d verified at commit 3e144ca (python -m pytest -q).
+  task_ca8fd940fe5d verified at commit 3e144ca (pytest).
 
 task_ca8fd940fe5d  resolved  (depth=0)
 ```
 
 `--mock` swaps in a deterministic stub coder, so no key is spent and no network
-call is made. The gates are not stubbed: the post-execute
-`quality` validator ran this project's declared test command
-(`python -m pytest -q`) against the change and passed it. Replace `--mock` with
-a configured provider or `--coder opencode-cli` and the same gates judge the
-real change. The transcript is trimmed for length; the protocol language is in
+call is made. The gates are not stubbed: when a project has tests and a working
+declared test command, the post-execute `quality` validator runs it. A passing
+test result for a mock-generated artifact is not evidence that the requested
+feature was implemented correctly. Replace `--mock` with a configured provider
+or `--coder opencode-cli` to have a real coder attempt the task, then inspect its
+change and test results. The transcript is trimmed for length; the protocol language is in
 the [protocol reference](docs/protocol.md) and the coder backends are in
 [Coder backends](docs/coders.md).
 

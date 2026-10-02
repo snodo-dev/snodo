@@ -13,6 +13,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #646, #647)
 
 ### Fixed
+- First-run instructions now share a Git-initialized quickstart, explain mock
+  and provider-backed runs, and show the valid provider-key command; the init
+  next-step message now uses `snodo config add`. (Fixes #633)
 - PR review now opens or updates a fix-forward issue from non-MERGED findings.
   (Fixes #641)
 - Plan tasks now start from and merge into a durable per-plan integration
