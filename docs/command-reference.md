@@ -18,7 +18,7 @@ walkthrough.
 |---|---|
 | `snodo init` | `--template`/`-t`, `--force`/`-f`, `--mode`/`-m`, `--project-id`, `--force-keygen`, `--yes`/`-y`, `--no-input`, `--test-command`/`-c` |
 | `snodo config show` | — |
-| `snodo config add` | `<provider> <key>` |
+| `snodo config add` | `<provider> [key]`, `--ref env:NAME|command:COMMAND` (choose key or reference) |
 | `snodo config remove` | `<provider>` |
 | `snodo config test` | — |
 | `snodo config set` | `<key> <value>` |

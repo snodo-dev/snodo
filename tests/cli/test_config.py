@@ -451,6 +451,12 @@ class TestCLIConfigShow:
         out = capsys.readouterr().out
         assert "gpt-4" in out
 
+    def test_show_displays_credential_reference_without_resolving(self, cli_config_dir, capsys):
+        cli_config_dir.save({"providers": {"github": {"api_key_ref": "command:gh auth token"}}})
+        with patch("subprocess.run", side_effect=AssertionError("must not execute reference")):
+            assert main(["config", "show"]) == 0
+        assert "command:gh auth token" in capsys.readouterr().out
+
 
 class TestCLIConfigAdd:
     def test_add_key(self, cli_config_dir, capsys):
@@ -466,6 +472,18 @@ class TestCLIConfigAdd:
         out = capsys.readouterr().out
         assert "sk-verylongapikey" not in out  # Full key not shown
         assert "***" in out
+
+    def test_add_reference(self, cli_config_dir, capsys):
+        assert main(["config", "add", "github", "--ref", "command:gh auth token"]) == 0
+        assert cli_config_dir.get_providers()["github"].api_key_ref == "command:gh auth token"
+
+    def test_reject_malformed_reference(self, cli_config_dir, capsys):
+        assert main(["config", "add", "github", "--ref", "bad"]) == 1
+        assert "Invalid credential reference" in capsys.readouterr().err
+
+    def test_reject_key_and_reference(self, cli_config_dir, capsys):
+        assert main(["config", "add", "github", "secret", "--ref", "env:GITHUB_TOKEN"]) == 1
+        assert "exactly one" in capsys.readouterr().err
 
 
 class TestCLIConfigRemove:

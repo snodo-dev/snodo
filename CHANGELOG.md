@@ -13,6 +13,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #646, #647)
 
 ### Fixed
+- `snodo config add` accepts validated credential references, shows them without
+  resolving them, and GitHub reports reference-resolution failures with the
+  reference and the correct setup command. (Fixes #644)
 - First-run guidance now shares one executable quickstart, starts with a
   committed file, documents the required Git identity, and describes the
   deterministic hello-world mock implementation accurately. (Fixes #649)

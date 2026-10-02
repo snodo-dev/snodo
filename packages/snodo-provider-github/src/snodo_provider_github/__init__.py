@@ -41,7 +41,7 @@ class GitHubProvider(CodeHostProvider):
         if not self._token:
             raise ProviderError(
                 "GitHub token required. Set GITHUB_TOKEN env var "
-                "or configure via: snodo config set github <token>"
+                "or configure via: snodo config add github <token>"
             )
         self._repo_slug = repo_slug
         try:
@@ -62,7 +62,16 @@ class GitHubProvider(CodeHostProvider):
         try:
             from snodo.config import ConfigManager
             return ConfigManager().get_key("github")
-        except Exception:
+        except Exception as exc:
+            try:
+                pc = ConfigManager().get_providers().get("github")
+            except Exception:
+                pc = None
+            if pc and pc.api_key_ref:
+                raise ProviderError(
+                    f"GitHub credential reference '{pc.api_key_ref}' failed to resolve: {exc}. "
+                    "Set GITHUB_TOKEN or run: snodo config add github <token>"
+                ) from None
             return None
 
     def create_change_request(self, branch: str, title: str, body: str,

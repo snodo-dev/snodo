@@ -559,6 +559,13 @@ class ConfigManager:
 
         self.set_value(("providers", provider, "api_key"), key)
 
+    def add_key_reference(self, provider: str, reference: str) -> None:
+        """Store a validated credential reference without resolving it."""
+        if not provider:
+            raise ConfigError("Provider name cannot be empty")
+        self._parse_key_reference(reference)
+        self.set_value(("providers", provider, "api_key_ref"), reference.strip())
+
     def encrypt_provider_keys(self) -> list[str]:
         """Back up config, then migrate plaintext provider keys to local encrypted files."""
         from snodo.provider_key_files import encrypt, provider_file
@@ -632,15 +639,29 @@ class ConfigManager:
         return None
 
     @staticmethod
-    def _resolve_key_reference(reference: str) -> str:
-        """Resolve a named credential reference without persisting its value."""
+    def _parse_key_reference(reference: str) -> tuple[str, str]:
+        """Parse an env: or command: reference without resolving its value."""
         ref = reference.strip()
         scheme, separator, target = ref.partition(":")
-        if not separator or not target.strip():
-            raise ConfigError(f"Unable to resolve credential reference '{reference}'")
+        if not separator or scheme not in ("env", "command") or not target.strip():
+            raise ConfigError(f"Invalid credential reference '{reference}'; expected env:NAME or command:COMMAND")
+        if scheme == "env" and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", target.strip()):
+            raise ConfigError(f"Invalid credential reference '{reference}'; expected env:NAME or command:COMMAND")
+        if scheme == "command":
+            try:
+                if not shlex.split(target):
+                    raise ValueError("empty command")
+            except ValueError:
+                raise ConfigError(f"Invalid credential reference '{reference}'; expected env:NAME or command:COMMAND") from None
+        return scheme, target.strip()
+
+    @staticmethod
+    def _resolve_key_reference(reference: str) -> str:
+        """Resolve a named credential reference without persisting its value."""
+        scheme, target = ConfigManager._parse_key_reference(reference)
 
         if scheme == "env":
-            value = os.environ.get(target.strip())
+            value = os.environ.get(target)
             if value:
                 return value
             raise ConfigError(f"Unable to resolve credential reference '{reference}'")

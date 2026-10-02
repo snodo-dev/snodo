@@ -45,6 +45,17 @@ class TestGitHubProviderInit:
                 with pytest.raises(ProviderError, match="GitHub token required"):
                     GitHubProvider("owner/repo")
 
+    def test_init_names_failed_configured_reference(self):
+        from snodo_provider_github import GitHubProvider
+        from snodo.config import ConfigError
+        pc = type("ProviderConfigStub", (), {"api_key_ref": "command:gh auth token"})()
+        with patch.dict("os.environ", {}, clear=True), \
+             patch("snodo.config.ConfigManager.get_key", side_effect=ConfigError("Unable to resolve credential reference 'command:gh auth token'")), \
+             patch("snodo.config.ConfigManager.get_providers", return_value={"github": pc}), \
+             patch("snodo_provider_github.Github", MagicMock()):
+            with pytest.raises(ProviderError, match="command:gh auth token.*failed to resolve"):
+                GitHubProvider("owner/repo")
+
     def test_init_bad_repo_raises(self):
         mock_github = MagicMock()
         mock_github.return_value.get_repo.side_effect = Exception("Not Found")
