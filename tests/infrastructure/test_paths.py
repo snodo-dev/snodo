@@ -13,7 +13,24 @@ from snodo.infrastructure.paths import (
     resolve_home,
     resolve_project_root,
 )
-from snodo.paths import derive_task_id
+from snodo.paths import (
+    JOB_CONTEXT_ENV_VARS,
+    derive_task_id,
+    subprocess_env_without_job_context,
+)
+
+
+def test_subprocess_environment_drops_job_context_and_keeps_other_values(monkeypatch):
+    for key in JOB_CONTEXT_ENV_VARS:
+        monkeypatch.setenv(key, "job-context")
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("SNODO_HOME", "/tmp/snodo-home")
+
+    env = subprocess_env_without_job_context()
+
+    assert all(key not in env for key in JOB_CONTEXT_ENV_VARS)
+    assert env["PATH"] == "/usr/bin"
+    assert env["SNODO_HOME"] == "/tmp/snodo-home"
 
 
 class TestResolveHome:

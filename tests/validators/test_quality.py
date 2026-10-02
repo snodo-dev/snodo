@@ -392,6 +392,30 @@ class TestTestCommandResolution:
 # === QualityValidator: evaluate ===
 
 class TestQualityValidatorEvaluate:
+    def test_quality_subprocesses_receive_sanitized_environment(
+        self, quality_spec, project_dir, monkeypatch
+    ):
+        from snodo.paths import JOB_CONTEXT_ENV_VARS
+
+        for key in JOB_CONTEXT_ENV_VARS:
+            monkeypatch.setenv(key, "job-context")
+        monkeypatch.setenv("QUALITY_ENV_SENTINEL", "preserved")
+        qv = QualityValidator(quality_spec, project_dir)
+        mock_result = MagicMock(returncode=0, stdout="1 passed\n", stderr="")
+
+        with patch("snodo.validators.quality.subprocess.run", return_value=mock_result) as run:
+            qv.evaluate()
+            qv._rerun_failed_tests_on_base(
+                "pytest -q", "FAILED tests/test_sample.py::test_it\n", "",
+                SimpleNamespace(base_ref="base-sha", audit_log=None),
+            )
+
+        assert len(run.call_args_list) == 5
+        for call in run.call_args_list:
+            env = call.kwargs["env"]
+            assert all(key not in env for key in JOB_CONTEXT_ENV_VARS)
+            assert env["QUALITY_ENV_SENTINEL"] == "preserved"
+
     def test_tests_pass(self, quality_spec, project_dir):
         qv = QualityValidator(quality_spec, project_dir)
         mock_result = MagicMock(returncode=0, stdout="5 passed\n", stderr="")
