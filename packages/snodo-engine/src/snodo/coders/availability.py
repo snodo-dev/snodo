@@ -21,6 +21,8 @@ import shutil
 import subprocess
 from typing import Optional, Tuple
 
+from snodo.paths import subprocess_env_without_job_context
+
 _logger = logging.getLogger(__name__)
 
 
@@ -43,6 +45,7 @@ def read_binary_version(
         proc = subprocess.run(  # noqa: S603 - argv list (no shell); resolved absolute path plus fixed flags
             [binary_path, *version_args],
             capture_output=True,
+            env=subprocess_env_without_job_context(),
             text=True,
             errors="replace",
             timeout=5,
