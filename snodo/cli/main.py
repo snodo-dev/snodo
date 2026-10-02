@@ -52,6 +52,14 @@ app = typer.Typer(
     invoke_without_command=True,
 )
 
+HELP_PANELS = {
+    "Daily loop": {"init", "ready", "run", "recon", "status", "logs", "dashboard"},
+    "Work records": {"job", "task", "plan", "queue", "runs", "meta", "worktree"},
+    "Governance": {"survey", "intake", "validate", "mode", "session", "audit", "authorize"},
+    "Setup": {"config", "models", "cloud", "serve", "install", "uninstall", "cache", "protocol"},
+    "Advanced": {"agent"},
+}
+
 
 @app.callback()
 def _app_callback(
@@ -78,7 +86,13 @@ def _app_callback(
         print(f"snodo {__version__}")
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
-        print(ctx.get_help())
+        print("Start here — your first governed task:")
+        print("  snodo init    Create project protocol and state")
+        print("  snodo ready   Check protocol readiness")
+        print("  snodo run     Run a governed task")
+        print("  snodo status  Inspect current project state")
+        print("  snodo logs    Follow task output")
+        print("\nUse 'snodo --help' to browse command groups and 'snodo <command> --help' for details.")
 
 
 # === Auto-discovery: mount command modules that expose `app` (group) or `register` (command) ===
@@ -95,10 +109,24 @@ for _, _mod_name, _ in _pkgutil.iter_modules(_cli_commands.__path__):
     _sub_app = getattr(_mod, "app", None)
     if isinstance(_sub_app, typer.Typer):
         _cmd_name = getattr(_mod, "COMMAND_NAME", _mod_name.replace("_cmd", ""))
-        app.add_typer(_sub_app, name=_cmd_name)
+        _panel = next((panel for panel, members in HELP_PANELS.items() if _cmd_name in members), None)
+        app.add_typer(_sub_app, name=_cmd_name, rich_help_panel=_panel)
     _reg = getattr(_mod, "register", None)
     if callable(_reg):
         _reg(app)
+
+# Set panels on directly registered commands as well as mounted sub-apps. Keeping
+# the complete inventory here makes newly registered commands visible as ungrouped
+# entries, and the CLI contract test requires every command to be assigned.
+for _command_info in app.registered_commands:
+    _command_name = _command_info.name or typer.main.get_command_name(
+        _command_info.callback.__name__,
+    )
+    _panel = next(
+        (panel for panel, members in HELP_PANELS.items() if _command_name in members),
+        None,
+    )
+    _command_info.rich_help_panel = _panel
 
 del _pkgutil, _importlib, _cli_commands, _mod_name, _mod, _sub_app, _cmd_name, _reg
 
