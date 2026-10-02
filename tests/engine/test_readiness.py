@@ -482,6 +482,16 @@ def test_push_delivery_without_remote_is_reported(git_repo: Path):
     assert finding.severity == FindingSeverity.BLOCKER
 
 
+def test_local_mode_does_not_require_remote_when_protocol_has_delivery_mode(git_repo: Path):
+    protocol = _make_protocol(modes=[
+        Mode(mode_id="local", name="Local", delivery=None, auto_merge=False),
+        Mode(mode_id="publish", name="Publish", delivery="push_branch"),
+    ])
+    assessment = assess_readiness(git_repo, protocol)
+    finding = next(f for f in assessment.repository_findings if f.id == "delivery_remote_missing")
+    assert finding.modes == ["publish"]
+
+
 def test_unknown_model_provider_is_reported(git_repo: Path):
     protocol = _make_protocol(validators=[Validator(
         validator_id="val_quality", validator_type="quality",

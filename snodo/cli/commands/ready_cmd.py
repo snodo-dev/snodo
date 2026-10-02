@@ -92,7 +92,16 @@ def ready_command(args) -> int:
     if not protocol_path.is_absolute():
         protocol_path = project_root / protocol_path
 
-    protocol = load_protocol(protocol_path)
+    protocol_errors = []
+    try:
+        import yaml
+        from snodo.compiler.models import Protocol
+        from snodo.compiler.verifier import verify_protocol
+        raw = yaml.safe_load(protocol_path.read_text())
+        protocol = Protocol(**raw)
+        protocol_errors = verify_protocol(protocol).errors
+    except Exception:
+        protocol = load_protocol(protocol_path)
     if protocol is None:
         if json_out:
             return emit_error("ready", f"Could not load protocol: {protocol_path}", EXIT_INTERNAL_ERROR)
@@ -107,7 +116,7 @@ def ready_command(args) -> int:
         return EXIT_INTERNAL_ERROR
 
     # Run assessment across the whole protocol
-    assessment = assess_readiness(project_root, protocol)
+    assessment = assess_readiness(project_root, protocol, protocol_errors=protocol_errors)
     _append_mcp_install_findings(assessment)
     _append_provider_findings(assessment, project_root, protocol)
     protocol_warnings = unknown_capability_warnings(protocol)

@@ -255,7 +255,7 @@ def _check_model_readiness(model: str, modes: List[str], findings: List[Readines
     from snodo.config import ConfigManager
 
     manager = ConfigManager()
-    provider = ConfigManager._provider_for_model(model)
+    provider = ConfigManager.provider_for_model(model)
     if not provider:
         findings.append(ReadinessFinding(
             id=f"credential_missing:model:{model}", kind=ReadinessKind.WORKSTATION,
@@ -265,9 +265,24 @@ def _check_model_readiness(model: str, modes: List[str], findings: List[Readines
         ))
         return
     try:
-        key = manager.get_key(provider)
-    except Exception:
-        key = None
+        pc = manager.get_providers().get(provider)
+        if pc and pc.api_key_ref and pc.api_key_ref.strip().startswith("command:"):
+            findings.append(ReadinessFinding(
+                id=f"credential_missing:{provider}", kind=ReadinessKind.WORKSTATION,
+                severity=FindingSeverity.INFO, modes=modes,
+                description=f"Credential reference for provider '{provider}' uses a command and cannot be checked offline.",
+                remediation="Verify the credential reference with 'snodo config test'.", fix_cost=1,
+            ))
+            return
+        key = ConfigManager.resolve_provider_key(provider, pc)
+    except Exception as exc:
+        findings.append(ReadinessFinding(
+            id=f"credential_missing:{provider}", kind=ReadinessKind.WORKSTATION,
+            severity=FindingSeverity.WARN, modes=modes,
+            description=f"Credential configuration for provider '{provider}' could not be resolved ({type(exc).__name__}).",
+            remediation="Correct the credential reference or encrypted key file.", fix_cost=2,
+        ))
+        return
     if not key:
         env = _resolve_model_provider_env(model)
         env_var = env[0] if env else (manager.get_providers().get(provider).api_key_env if manager.get_providers().get(provider) else "")
@@ -283,6 +298,7 @@ def _check_model_readiness(model: str, modes: List[str], findings: List[Readines
 def assess_readiness(
     project_root: Path,
     protocol: Protocol,
+    protocol_errors: Optional[List[str]] = None,
 ) -> ReadinessAssessment:
     """Assess method scaffolding readiness of project_root relative to protocol.
 
@@ -304,14 +320,15 @@ def assess_readiness(
     from snodo.compiler.verifier import verify_protocol
 
     verification = verify_protocol(protocol)
-    if not verification.passed:
+    well_formedness_errors = protocol_errors if protocol_errors is not None else verification.errors
+    if well_formedness_errors:
         total_repo_checks += 1
         repository_findings.append(ReadinessFinding(
             id="protocol_well_formedness",
             kind=ReadinessKind.REPOSITORY,
             severity=FindingSeverity.BLOCKER,
             modes=all_mode_ids,
-            description="Protocol is not well-formed: " + "; ".join(verification.errors),
+            description="Protocol is not well-formed: " + "; ".join(well_formedness_errors),
             remediation="Correct the protocol errors and run 'snodo protocol validate' again.",
             fix_cost=2,
         ))
@@ -331,7 +348,8 @@ def assess_readiness(
         except Exception as exc:
             git_problems.append(f"could not inspect git HEAD: {type(exc).__name__}: {exc}")
 
-    needs_remote = any(protocol.delivery_for(mode.mode_id) in {"push_branch", "change_request"} for mode in protocol.modes)
+    delivery_modes = [mode for mode in protocol.modes if protocol.delivery_for(mode.mode_id) in {"push_branch", "change_request"}]
+    needs_remote = bool(delivery_modes)
     if needs_remote and repo is not None:
         total_repo_checks += 1
         remote_name = getattr(protocol.execution, "delivery_remote", "origin") or "origin"
@@ -340,10 +358,17 @@ def assess_readiness(
             remote_url = next(iter(remote.urls), "")
             if not remote_url:
                 raise ValueError("remote has no URL")
-        except Exception:
+        except Exception as exc:
+            from git.exc import GitCommandError
+            if isinstance(exc, GitCommandError):
+                git_problems.append(f"could not inspect git remote '{remote_name}': {type(exc).__name__}")
+                remote = None
+            else:
+                remote = False
+        if remote is False:
             repository_findings.append(ReadinessFinding(
                 id="delivery_remote_missing", kind=ReadinessKind.REPOSITORY,
-                severity=FindingSeverity.BLOCKER, modes=all_mode_ids,
+                severity=FindingSeverity.BLOCKER, modes=[mode.mode_id for mode in delivery_modes],
                 description=f"Delivery requires git remote '{remote_name}', which is not configured.",
                 remediation=f"Configure git remote '{remote_name}' with the repository's delivery URL.", fix_cost=2,
             ))
