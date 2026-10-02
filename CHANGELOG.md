@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Task-branch merge, merged checks, cleanup, and recovery/change-size probes can
+  use the task's integration starting ref while retaining the repository base
+  as the default. (Fixes #629)
 - Coder CLI subprocesses now receive the shared environment without job context,
   and pytest uses that same list when scrubbing inherited job context. (Fixes #627)
 - Quality validator subprocesses no longer inherit job-context `SNODO_*`

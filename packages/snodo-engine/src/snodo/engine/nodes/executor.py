@@ -146,6 +146,7 @@ class ExecutorMixin:
         artifacts: List[str],
         *,
         turn_budget: bool = False,
+        base_ref: Optional[str] = None,
     ) -> Optional[List[str]]:
         """Carry work a bounded run could not submit into post-execute validation.
 
@@ -169,7 +170,7 @@ class ExecutorMixin:
         """
         self._record_coder_run_facts(coder)
         self._last_turn_budget_exhausted = turn_budget
-        existing = self._existing_task_branch_work(git_mcp)
+        existing = self._existing_task_branch_work(git_mcp, base_ref)
         if existing is None:
             return None
         self._last_existing_work_base_ref = existing[0]
@@ -210,7 +211,9 @@ class ExecutorMixin:
 
         return artifact_paths
 
-    def _existing_task_branch_work(self, git_mcp: Optional[Any]) -> Optional[tuple]:
+    def _existing_task_branch_work(
+        self, git_mcp: Optional[Any], base_ref: Optional[str] = None
+    ) -> Optional[tuple]:
         """Return work already committed to the task branch that the base lacks.
 
         Within a single run the coder adapter distinguishes "committed its
@@ -261,7 +264,7 @@ class ExecutorMixin:
             if not self._active_branch_is_task_branch(branch):
                 return None
             head = repo.head.commit
-            base_branch = resolve_base_branch(str(git_mcp.project_root))
+            base_branch = base_ref or resolve_base_branch(str(git_mcp.project_root))
             base_commit = repo.commit(base_branch)
         except Exception as e:
             # None here lets the run halt as no_file_operations — a verdict
@@ -402,7 +405,9 @@ class ExecutorMixin:
                         or (self._last_coder_report is not None and _is_real_findings(getattr(self._last_coder_report, "findings", None)))
                     )
                     if not has_findings:
-                        existing = self._existing_task_branch_work(git_mcp)
+                        existing = self._existing_task_branch_work(
+                            git_mcp, getattr(task, "base", None)
+                        )
                         if existing is None:
                             # "Coder produced nothing" is the same fault whether the
                             # engine commits the artifacts (skip_engine_commit False)
@@ -457,7 +462,8 @@ class ExecutorMixin:
             # bounded turn-budget outcome under its own run-level halt rather
             # than a verdict about the code.
             recovered = self._recover_bounded_run_work(
-                git_mcp, coder, artifacts, turn_budget=True
+                git_mcp, coder, artifacts, turn_budget=True,
+                base_ref=getattr(task, "base", None),
             )
             if recovered is not None:
                 return recovered
@@ -473,7 +479,9 @@ class ExecutorMixin:
             # the engine reports the operational timeout, never a blocker
             # verdict.
             self._record_coder_run_facts(coder)
-            recovered = self._recover_bounded_run_work(git_mcp, coder, artifacts)
+            recovered = self._recover_bounded_run_work(
+                git_mcp, coder, artifacts, base_ref=getattr(task, "base", None)
+            )
             if recovered is not None:
                 return recovered
             raise

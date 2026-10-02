@@ -229,6 +229,23 @@ def test_merge_task_branch_success(repo):
     assert (repo / "feature.txt").exists()  # base branch now has the commit
 
 
+def test_merge_task_branch_targets_integration_ref(repo):
+    subprocess.run(["git", "checkout", "-qb", "integration"], cwd=repo, check=True)
+    branch = task_branch_name("task_target", "add feature")
+    subprocess.run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+    (repo / "feature.txt").write_text("feature\n")
+    subprocess.run(["git", "add", "feature.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+    assert merge_task_branch(str(repo), branch, target_ref="integration") == ("merged", [])
+    assert "feature.txt" not in subprocess.run(
+        ["git", "ls-tree", "--name-only", "main"], cwd=repo, capture_output=True,
+        text=True, check=True,
+    ).stdout.splitlines()
+    assert (repo / "feature.txt").exists()
+
+
 def test_merge_task_branch_conflict(repo):
     branch = task_branch_name("task_1", "conflicting change")
     subprocess.run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
@@ -631,6 +648,30 @@ def test_task_branch_is_merged_true_after_hand_merge(tmp_path):
     subprocess.run(["git", "merge", "-q", "--no-ff", "-m", "merge", branch], cwd=root, check=True)
 
     assert task_branch_is_merged(str(root), "1.1_x", "Add feature") is True
+
+
+def test_merged_check_and_cleanup_use_target_ref(tmp_path):
+    from snodo.infrastructure.worktree import (
+        delete_merged_task_branches, task_branch_is_merged,
+    )
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    _init_repo_on_main(root)
+    subprocess.run(["git", "checkout", "-qb", "integration"], cwd=root, check=True)
+    branch = _make_task_branch_with_work(root)
+    # _make_task_branch_with_work checks out main; merge the branch into the
+    # integration target and return to main, where it remains unmerged.
+    subprocess.run(["git", "checkout", "-q", "integration"], cwd=root, check=True)
+    subprocess.run(["git", "merge", "-q", "--no-ff", "-m", "merge", branch], cwd=root, check=True)
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=root, check=True)
+
+    assert task_branch_is_merged(
+        str(root), "1.1_x", "Add feature", target_ref="integration"
+    ) is True
+    assert delete_merged_task_branches(
+        str(root), "1.1_x", target_ref="integration"
+    ) == [branch]
 
 
 def test_task_branch_is_merged_false_when_not_merged(tmp_path):

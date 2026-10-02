@@ -972,7 +972,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
         self._auto_write_halt_payload(loop_state)
         return self._state_to_dict(loop_state)
     
-    def _task_change_size(self) -> Optional[Dict[str, Any]]:
+    def _task_change_size(self, base_ref: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """How much the task's branch changed, against the point it branched from.
 
         The size — line totals and per-shape file counts — never the diff:
@@ -1000,7 +1000,9 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
             return None
         try:
             head = git.repo.head.commit
-            base_tip = git.repo.commit(resolve_base_branch(str(git.project_root)))
+            base_tip = git.repo.commit(
+                base_ref or resolve_base_branch(str(git.project_root))
+            )
             merge_bases = git.repo.merge_base(base_tip, head)
             if not merge_bases:
                 return None
@@ -1016,7 +1018,7 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
 
         self._clear_failure_context(loop_state)
 
-        change_size = self._task_change_size()
+        change_size = self._task_change_size(loop_state.base_ref)
         loop_state.metadata["change_size"] = change_size
         task_complete_audit = {
             "op": "task_complete",
