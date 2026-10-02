@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- PR review now opens or updates a fix-forward issue from non-MERGED findings.
+  (Fixes #641)
 - Plan tasks now start from and merge into a durable per-plan integration
   branch; its worktree remains available after completion for the follow-up
   delivery step. (Fixes #631)
