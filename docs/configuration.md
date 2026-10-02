@@ -89,12 +89,15 @@ providers:
 
 Credential selection prefers a configured `api_key`, then `api_key_env`, then
 `api_key_ref`. `env:` and `command:` references are resolved only when the
-credential is used. Provider keys can also be moved to local encrypted files
-with `snodo config --encrypt-provider-keys`. Before a non-mock task run creates
-session or worktree state, Snodo checks that the selected model's provider has
-a credential. If it does not, the run exits with status 1 and suggests the
-provider environment variable or `snodo config add`. Providers that declare no
-`api_key_env` (such as a local endpoint) are exempt; mock runs skip this check.
+credential is used. Register one without copying its value into the config, for
+example `snodo config add github --ref 'command:gh auth token'`; `snodo config
+show` displays the reference without executing it. Provider keys can also be
+moved to local encrypted files with `snodo config --encrypt-provider-keys`.
+Before a non-mock task run creates session or worktree state, Snodo checks that
+the selected model's provider has a credential. If it does not, the run exits
+with status 1 and suggests the provider environment variable or
+`snodo config add`. Providers that declare no `api_key_env` (such as a local
+endpoint) are exempt; mock runs skip this check.
 
 User configuration is edited in `~/.snodo/config.yml` (or
 `$SNODO_HOME/config.yml`). `snodo config set/get` supports only `model`,

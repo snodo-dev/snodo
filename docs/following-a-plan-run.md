@@ -86,3 +86,8 @@ After the plan job reaches a terminal status:
 The final plan map is the per-task answer; the job status and logs explain the
 execution evidence. Keep both. A successful parent job alone is not proof that
 every task completed or that every change merged.
+
+Plan tasks use a plan-owned integration branch. Passing tasks merge into it
+before their wave is complete, so dependent waves see earlier changes. The
+integration branch and its linked worktree are retained when the plan finishes;
+final delivery of that branch is not performed by the plan runner yet.

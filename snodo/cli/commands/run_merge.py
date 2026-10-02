@@ -4,6 +4,7 @@ FILE: snodo/cli/commands/run_merge.py
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -233,7 +234,8 @@ def _merge_on_success(
         base_sha = _merge_base_sha(project_root)
 
         try:
-            res = merge_task_branch(project_root, branch)
+            target_ref = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if plan_name else None
+            res = merge_task_branch(project_root, branch, target_ref=target_ref)
             if isinstance(res, tuple):
                 outcome, conflicting_paths = res
             else:
@@ -267,7 +269,7 @@ def _merge_on_success(
                     **_merge_delivery(project_root, base_sha, merge_sha),
                     **_plan_task_fields(project_root, plan_name, task.id, task),
                 })
-            print(f"✓ Merged {branch} into the base branch")
+            print(f"✓ Merged {branch} into {target_ref or 'the base branch'}")
             return result, False, branch
 
         paths_str = ", ".join(conflicting_paths) if conflicting_paths else "unknown path(s)"
@@ -295,7 +297,7 @@ def _deliver_on_success(
     deliver = merge_operation or _merge_on_success
     merge_result, preserve, branch = deliver(
         project_root, task, result, session_id, audit_log,
-        plan_name=plan_name, delivery=protocol.delivery_for(mode),
+        plan_name=plan_name, delivery=("local_merge" if plan_name else protocol.delivery_for(mode)),
         remote=getattr(protocol.execution, "delivery_remote", "origin"),
         protocol_metadata=protocol.metadata,
     )
