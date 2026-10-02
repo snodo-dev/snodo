@@ -156,3 +156,61 @@ def test_empty_agent_remains_in_details_but_not_table_columns():
     assert "Failed or empty: delta." in comment
     assert "<details><summary>delta</summary>" in comment
     assert "Error: provider failure" in comment
+
+
+def test_fix_forward_issue_body_for_each_non_merged_outcome():
+    for outcome in ("MINOR REWORK", "MAJOR REWORK", "REJECTED"):
+        body = review.render_fix_forward_issue(
+            "snodo-dev/snodo", 42, "Review title", "https://example.test/review", _summary(outcome)
+        )
+        assert f"## Review outcome: {outcome}" in body
+        assert "https://github.com/snodo-dev/snodo/pull/42" in body
+        assert "https://example.test/review" in body
+        assert "Add the missing test." in body
+        assert "Add regression coverage." in body
+        assert "tracking issue" in body
+        assert "Fixes #<this issue's number>" in body
+
+
+def test_merged_outcome_does_not_write_issue_body(tmp_path, monkeypatch):
+    source, output, issue_body = tmp_path / "results.json", tmp_path / "out.md", tmp_path / "issue.md"
+    source.write_text(json.dumps({"results": _results(), "synthesis": _summary("MERGED")}))
+    assert review.main([
+        "--pr", "1", "--repo", "example/example", "--out", str(output),
+        "--issue-body", str(issue_body), "--dry-run-results", str(source),
+    ]) == 0
+    assert not issue_body.exists()
+
+
+def test_fix_forward_body_redacts_environment_secrets(tmp_path, monkeypatch):
+    secret = "hidden-credential-value"
+    monkeypatch.setenv("EXAMPLE_API_KEY", secret)
+    source, output, issue_body = tmp_path / "results.json", tmp_path / "out.md", tmp_path / "issue.md"
+    synthesis = _summary()
+    synthesis["summary"] = f"Provider leaked {secret}"
+    source.write_text(json.dumps({"results": _results(), "synthesis": synthesis}))
+    assert review.main([
+        "--pr", "1", "--repo", "example/example", "--out", str(output),
+        "--issue-body", str(issue_body), "--dry-run-results", str(source),
+    ]) == 0
+    assert secret not in issue_body.read_text()
+    assert "[REDACTED]" in issue_body.read_text()
+
+
+def test_fix_forward_body_failure_keeps_review_comment_and_success(tmp_path, monkeypatch, capsys):
+    source, output, issue_body = tmp_path / "results.json", tmp_path / "out.md", tmp_path / "issue.md"
+    source.write_text(json.dumps({"results": _results(), "synthesis": _summary()}))
+
+    def fail_issue_body(*_args, **_kwargs):
+        raise RuntimeError("title unavailable")
+
+    monkeypatch.setattr(review, "render_fix_forward_issue", fail_issue_body)
+    result = review.main([
+        "--pr", "1", "--repo", "example/example", "--out", str(output),
+        "--issue-body", str(issue_body), "--dry-run-results", str(source),
+    ])
+
+    assert result == 0
+    assert output.read_text().startswith("## Suggested outcome: MINOR REWORK\n")
+    assert not issue_body.exists()
+    assert "error building fix-forward issue body: title unavailable" in capsys.readouterr().err

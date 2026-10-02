@@ -9,8 +9,28 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #646, #647)
+
 ### Fixed
 - `snodo ready` resolves configured provider credentials and reports missing git delivery prerequisites; `snodo config test` preserves provider probe failure reasons. (Fixes #634)
+- `snodo config add` accepts validated credential references, shows them without
+  resolving them, and GitHub reports reference-resolution failures with the
+  reference and the correct setup command. (Fixes #644)
+- First-run guidance now shares one executable quickstart, starts with a
+  committed file, documents the required Git identity, and describes the
+  deterministic hello-world mock implementation accurately. (Fixes #649)
+- PR review comment output now survives fix-forward issue-body failures; issue
+  generation is reported separately and reuses the fetched pull-request title.
+  (Fixes #643)
+- First-run instructions now share a Git-initialized quickstart, explain mock
+  and provider-backed runs, and show the valid provider-key command; the init
+  next-step message now uses `snodo config add`. (Fixes #633)
+- PR review now opens or updates a fix-forward issue from non-MERGED findings.
+  (Fixes #641)
+- Plan tasks now start from and merge into a durable per-plan integration
+  branch; its worktree remains available after completion for the follow-up
+  delivery step. (Fixes #631)
 - Task-branch merge, merged checks, cleanup, and recovery/change-size probes can
   use the task's integration starting ref while retaining the repository base
   as the default. (Fixes #629)

@@ -50,10 +50,11 @@ def config_show():
 @app.command("add")
 def config_add(
     provider: str = typer.Argument(..., help="Provider name (openai, anthropic, google)"),
-    key: str = typer.Argument(..., help="API key"),
+    key: str = typer.Argument(None, help="API key"),
+    ref: str = typer.Option(None, "--ref", help="Credential reference (env:NAME or command:COMMAND)"),
 ):
-    """Store an API key."""
-    args = SimpleNamespace(config_action="add", provider=provider, key=key)
+    """Store an API key or credential reference."""
+    args = SimpleNamespace(config_action="add", provider=provider, key=key, ref=ref)
     return config_command(args)
 
 
@@ -100,7 +101,7 @@ def config_command(args) -> int:
     if args.config_action == "show":
         return _config_show(mgr)
     elif args.config_action == "add":
-        return _config_add(mgr, args.provider, args.key)
+        return _config_add(mgr, args.provider, getattr(args, "key", None), getattr(args, "ref", None))
     elif args.config_action == "remove":
         return _config_remove(mgr, args.provider)
     elif args.config_action == "test":
@@ -138,10 +139,14 @@ def _config_show(mgr: ConfigManager) -> int:
     print()
 
     configured = []
+    references = []
     for name, pc in providers.items():
-        key = mgr.get_key(name)
-        if key:
-            configured.append((name, key))
+        if pc.api_key_ref:
+            references.append((name, pc.api_key_ref))
+        elif pc.api_key or pc.api_key_env:
+            key = mgr.get_key(name)
+            if key:
+                configured.append((name, key))
 
     if configured:
         print("API Keys:")
@@ -150,6 +155,10 @@ def _config_show(mgr: ConfigManager) -> int:
     else:
         print("No API keys configured.")
         print("  Add one: snodo config add <provider> <key>")
+    if references:
+        print("Credential references:")
+        for name, reference in references:
+            print(f"  {name}: {reference}")
     notifications = config.get("notifications", {})
     targets = notifications.get("targets", []) if isinstance(notifications, dict) else []
     if targets:
@@ -165,12 +174,18 @@ def _config_show(mgr: ConfigManager) -> int:
     return 0
 
 
-def _config_add(mgr: ConfigManager, provider: str, key: str) -> int:
-    """Add an API key."""
+def _config_add(mgr: ConfigManager, provider: str, key: str = None, ref: str = None) -> int:
+    """Add an API key or credential reference."""
     try:
-        mgr.add_key(provider, key)
-        masked = ConfigManager.mask_key(key)
-        print(f"✓ Stored {provider} key: {masked}")
+        if bool(key) == bool(ref):
+            raise ConfigError("Provide exactly one API key or --ref credential reference")
+        if ref:
+            mgr.add_key_reference(provider, ref)
+            print(f"✓ Stored {provider} credential reference: {ref.strip()}")
+        else:
+            mgr.add_key(provider, key)
+            masked = ConfigManager.mask_key(key)
+            print(f"✓ Stored {provider} key: {masked}")
         return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

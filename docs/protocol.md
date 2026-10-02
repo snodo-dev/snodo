@@ -8,6 +8,8 @@ schema, including registered capabilities, closed vocabulary choices, and
 documented cross-field rules. Pass a path to check another file. The command
 is read-only and exits non-zero when it finds an error; `--json` emits
 machine-readable findings with a JSON path, message, and existing severity.
+This command validates protocol content; `snodo protocol schema --json` instead
+prints the generated authoring schema without reading the project protocol.
 
 ```console
 $ snodo protocol validate .snodo/protocol.yml
