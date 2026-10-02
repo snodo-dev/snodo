@@ -195,3 +195,22 @@ def test_fix_forward_body_redacts_environment_secrets(tmp_path, monkeypatch):
     ]) == 0
     assert secret not in issue_body.read_text()
     assert "[REDACTED]" in issue_body.read_text()
+
+
+def test_fix_forward_body_failure_keeps_review_comment_and_success(tmp_path, monkeypatch, capsys):
+    source, output, issue_body = tmp_path / "results.json", tmp_path / "out.md", tmp_path / "issue.md"
+    source.write_text(json.dumps({"results": _results(), "synthesis": _summary()}))
+
+    def fail_issue_body(*_args, **_kwargs):
+        raise RuntimeError("title unavailable")
+
+    monkeypatch.setattr(review, "render_fix_forward_issue", fail_issue_body)
+    result = review.main([
+        "--pr", "1", "--repo", "example/example", "--out", str(output),
+        "--issue-body", str(issue_body), "--dry-run-results", str(source),
+    ])
+
+    assert result == 0
+    assert output.read_text().startswith("## Suggested outcome: MINOR REWORK\n")
+    assert not issue_body.exists()
+    assert "error building fix-forward issue body: title unavailable" in capsys.readouterr().err
