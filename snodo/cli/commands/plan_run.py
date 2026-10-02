@@ -1171,5 +1171,36 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
         else:
             os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = previous_integration_branch
 
+        if not failed and getattr(args, "wave", None) is None and integration_branch:
+            statuses = planner.get_status(args.plan).get("tasks", {})
+            all_complete = all(
+                (entry.get("status") if isinstance(entry, dict) else entry) == "completed"
+                for entry in statuses.values()
+            )
+            if all_complete:
+                from snodo.cli.commands.run_merge import _deliver_plan_integration
+                from snodo.tools.git import open_repo
+                delivery_mode = protocol.delivery_for(active_mode)
+                already_delivered = False
+                try:
+                    with open_repo(str(project_root)) as repo:
+                        if integration_branch not in repo.heads:
+                            already_delivered = delivery_mode == "local_merge"
+                        elif delivery_mode == "local_merge":
+                            already_delivered = repo.git.merge_base(
+                                "--is-ancestor", integration_branch, "HEAD", with_exceptions=False
+                            ) == 0
+                except Exception:
+                    already_delivered = False
+                if not already_delivered:
+                    delivery_result = _deliver_plan_integration(
+                        str(project_root), integration_branch,
+                        str(plan_data.get("name", args.plan)),
+                        str(plan_data.get("intent", "")),
+                        protocol, active_mode, audit_log,
+                    )
+                    if delivery_result:
+                        failed = True
+
         _print_plan_progress(planner, args.plan)
         return 1 if failed else 0

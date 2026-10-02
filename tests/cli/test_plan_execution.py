@@ -20,6 +20,7 @@ import pytest
 from snodo.mcp.planner import PlannerMCP
 
 from snodo.cli.commands.plan_run import _run_fixture, _run_plan
+from snodo.cli.commands.run_merge import _deliver_plan_integration
 from snodo.cli.main import main
 
 
@@ -234,6 +235,37 @@ def test_plan_wave_filtering(plan_project_env, capsys):
     status = planner.get_status(plan_name)
     assert status["tasks"]["task_1_1"]["status"] == "completed"
     assert status["tasks"]["task_2_1"]["status"] == "pending"
+
+
+@pytest.mark.parametrize("delivery", ["local_merge", "push_branch", "change_request"])
+def test_plan_delivery_uses_configured_delivery_and_plan_content(plan_project_env, delivery):
+    protocol = MagicMock()
+    protocol.delivery_for.return_value = delivery
+    protocol.execution.delivery_remote = "upstream"
+    protocol.metadata = {"provider": "test"}
+    with patch("snodo.cli.commands.run_merge._merge_on_success", return_value=(0, False, "branch")) as deliver:
+        with patch("snodo.infrastructure.worktree.worktree_dir", return_value=plan_project_env / "unused"):
+            assert _deliver_plan_integration(
+                str(plan_project_env), "plan/demo/integration", "demo", "Build a demo",
+                protocol, "producer", MagicMock(),
+            ) == 0
+    kwargs = deliver.call_args.kwargs
+    assert kwargs["delivery"] == delivery
+    assert kwargs["remote"] == "upstream"
+    assert kwargs["branch_override"] == "plan/demo/integration"
+    assert kwargs["change_request_content"] == (
+        "Deliver plan: demo", "Plan: demo\n\nIntent: Build a demo",
+    )
+
+
+def test_plan_delivery_failure_uses_unmerged_exit_code(plan_project_env):
+    protocol = MagicMock()
+    protocol.delivery_for.return_value = "push_branch"
+    with patch("snodo.cli.commands.run_merge._merge_on_success", return_value=(1, True, None)):
+        assert _deliver_plan_integration(
+            str(plan_project_env), "plan/demo/integration", "demo", "intent",
+            protocol, "producer", MagicMock(),
+        ) == 2
 
 
 def test_plan_invalid_wave_filter_fails(plan_project_env, capsys):
