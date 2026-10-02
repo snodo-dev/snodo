@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- `snodo ready` resolves configured provider credentials and reports missing git delivery prerequisites; `snodo config test` preserves provider probe failure reasons. (Fixes #634)
 - Task-branch merge, merged checks, cleanup, and recovery/change-size probes can
   use the task's integration starting ref while retaining the repository base
   as the default. (Fixes #629)

@@ -466,6 +466,22 @@ def test_slash_separated_english_phrase_is_not_a_cited_path(git_repo: Path):
     assert not any(f.id.startswith("cited_path_") for f in assessment.repository_findings)
 
 
+def test_unborn_head_is_reported_as_repository_blocker(tmp_path: Path):
+    root = tmp_path / "unborn"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    assessment = assess_readiness(root, _make_protocol())
+    finding = next(f for f in assessment.repository_findings if f.id == "git_unborn_head")
+    assert finding.severity == FindingSeverity.BLOCKER
+
+
+def test_push_delivery_without_remote_is_reported(git_repo: Path):
+    protocol = _make_protocol(modes=[Mode(mode_id="build", name="Build", delivery="push_branch")])
+    assessment = assess_readiness(git_repo, protocol)
+    finding = next(f for f in assessment.repository_findings if f.id == "delivery_remote_missing")
+    assert finding.severity == FindingSeverity.BLOCKER
+
+
 def test_plaintext_api_key_reported_in_workstation_findings(git_repo: Path, tmp_path: Path, monkeypatch):
     """Plaintext API keys configured in config.yml are reported in workstation findings without affecting repo score (Fixes #227)."""
     snodo_dir = git_repo / ".snodo"

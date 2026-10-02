@@ -799,7 +799,7 @@ class ConfigManager:
 
         model = pc.probe_model
 
-        if not pc.api_key_env and not pc.litellm_provider:
+        if not pc.api_key_env and not pc.litellm_provider and not pc.base_url:
             return "untestable"
 
         try:
@@ -823,8 +823,11 @@ class ConfigManager:
 
             completion(**kwargs)
             return "valid"
-        except Exception:
-            return "invalid"
+        except Exception as exc:
+            reason = str(exc).strip() or type(exc).__name__
+            if key:
+                reason = reason.replace(key, "[redacted]")
+            return f"invalid: {reason}"
 
     @staticmethod
     def mask_key(key: str) -> str:

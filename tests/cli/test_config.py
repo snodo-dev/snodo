@@ -515,6 +515,15 @@ class TestCLIConfigTest:
         out = capsys.readouterr().out
         assert "invalid" in out
 
+    @patch("snodo.config.ConfigManager._test_single_key")
+    def test_test_keys_shows_probe_failure_reason(self, mock_test, cli_config_dir, capsys):
+        cli_config_dir.add_key("openai", "sk-bad")
+        mock_test.return_value = "invalid: authentication failed"
+
+        result = main(["config", "test"])
+        assert result == 1
+        assert "openai: ✗ invalid (authentication failed)" in capsys.readouterr().out
+
     def test_test_no_keys(self, cli_config_dir, capsys):
         result = main(["config", "test"])
         assert result == 1

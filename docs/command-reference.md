@@ -153,8 +153,11 @@ migration notice; use `snodo config --notify-test` instead. `snodo readiness`
 is likewise a deprecated alias for `snodo ready` in v0.18.0.
 
 Use `snodo status` for protocol, active mode/session, and the most recent
-session run. Use `snodo ready` to assess protocol method-scaffolding readiness
-(`--mode` filters findings, not the whole-protocol score). `snodo runs` lists
+session run. Use `snodo ready` for a deterministic, offline check of protocol
+well-formedness, repository/worktree viability, configured delivery remotes,
+models and provider credentials, binaries, and method scaffolding. It does not
+make model calls or contact remotes; `--mode` filters findings, not the
+whole-protocol score. `snodo runs` lists
 completed task-run records; `--send` sends those records to Snodo Cloud.
 `snodo task list` lists recorded tasks for inspection and management.
 

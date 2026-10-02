@@ -251,6 +251,35 @@ def _resolve_model_provider_env(model_name: str) -> Optional[Tuple[str, str]]:
     return None
 
 
+def _check_model_readiness(model: str, modes: List[str], findings: List[ReadinessFinding]) -> None:
+    """Resolve model/provider and credential through the same config path as runs."""
+    from snodo.config import ConfigManager
+
+    manager = ConfigManager()
+    provider = ConfigManager._provider_for_model(model)
+    if not provider:
+        findings.append(ReadinessFinding(
+            id=f"credential_missing:model:{model}", kind=ReadinessKind.WORKSTATION,
+            severity=FindingSeverity.WARN, modes=modes,
+            description=f"Model '{model}' does not resolve to a known provider.",
+            remediation="Configure a model identifier and provider supported by Snodo.", fix_cost=2,
+        ))
+        return
+    try:
+        key = manager.get_key(provider)
+    except Exception:
+        key = None
+    if not key:
+        env = _resolve_model_provider_env(model)
+        env_var = env[0] if env else (manager.get_providers().get(provider).api_key_env if manager.get_providers().get(provider) else "")
+        findings.append(ReadinessFinding(
+            id=f"credential_missing:{env_var or provider}", kind=ReadinessKind.WORKSTATION,
+            severity=FindingSeverity.WARN, modes=modes,
+            description=f"No credential is configured for provider '{provider}' used by model '{model}'.",
+            remediation=(f"Configure credentials for '{provider}' with 'snodo config add'" + (f" or export {env_var}." if env_var else ".")), fix_cost=3,
+        ))
+
+
 def assess_readiness(
     project_root: Path,
     protocol: Protocol,
@@ -267,6 +296,41 @@ def assess_readiness(
     git_problems: List[str] = []
     repo = _get_git_repo(project_root, git_problems)
     all_mode_ids = [m.mode_id for m in protocol.modes]
+    repository_findings: List[ReadinessFinding] = []
+    workstation_findings: List[ReadinessFinding] = []
+    total_repo_checks = 0
+
+    # Run isolation requires an existing commit; delivery modes also need a
+    # configured remote. These checks are local-only and never contact a host.
+    if repo is not None:
+        total_repo_checks += 1
+        try:
+            if not repo.head.is_valid():
+                repository_findings.append(ReadinessFinding(
+                    id="git_unborn_head", kind=ReadinessKind.REPOSITORY,
+                    severity=FindingSeverity.BLOCKER, modes=all_mode_ids,
+                    description="Git HEAD has no commit; isolated task worktrees cannot be created.",
+                    remediation="Create and commit an initial repository commit before running governed tasks.", fix_cost=2,
+                ))
+        except Exception as exc:
+            git_problems.append(f"could not inspect git HEAD: {type(exc).__name__}: {exc}")
+
+    needs_remote = any(protocol.delivery_for(mode) in {"push_branch", "change_request"} for mode in protocol.modes)
+    if needs_remote and repo is not None:
+        total_repo_checks += 1
+        remote_name = getattr(protocol.execution, "delivery_remote", "origin") or "origin"
+        try:
+            remote = repo.remote(remote_name)
+            remote_url = next(iter(remote.urls), "")
+            if not remote_url:
+                raise ValueError("remote has no URL")
+        except Exception:
+            repository_findings.append(ReadinessFinding(
+                id="delivery_remote_missing", kind=ReadinessKind.REPOSITORY,
+                severity=FindingSeverity.BLOCKER, modes=all_mode_ids,
+                description=f"Delivery requires git remote '{remote_name}', which is not configured.",
+                remediation=f"Configure git remote '{remote_name}' with the repository's delivery URL.", fix_cost=2,
+            ))
 
     # Map each validator to the modes that activate it
     validator_modes: Dict[str, List[str]] = {}
@@ -277,10 +341,6 @@ def assess_readiness(
     for val in protocol.validators:
         if val.validator_id not in validator_modes:
             validator_modes[val.validator_id] = all_mode_ids
-
-    repository_findings: List[ReadinessFinding] = []
-    workstation_findings: List[ReadinessFinding] = []
-    total_repo_checks = 0
 
     # ──────────────────────────────────────────────────────────────────────────
     # Check 1: Protocol file committed in git
@@ -607,42 +667,13 @@ def assess_readiness(
         model_str = mode.coder_config.get("model") if mode.coder_config else None
         if model_str and model_str not in checked_models:
             checked_models.add(model_str)
-            prov_env = _resolve_model_provider_env(model_str)
-            if prov_env:
-                env_var, prov_name = prov_env
-                if env_var not in os.environ and not (env_var == "GEMINI_API_KEY" and "GOOGLE_API_KEY" in os.environ):
-                    workstation_findings.append(
-                        ReadinessFinding(
-                            id=f"credential_missing:{env_var}",
-                            kind=ReadinessKind.WORKSTATION,
-                            severity=FindingSeverity.WARN,
-                            modes=[mode_id],
-                            description=f"Environment variable '{env_var}' for {prov_name} model '{model_str}' is not set on workstation.",
-                            remediation=f"export {env_var}='<your-api-key>'",
-                            fix_cost=3,
-                        )
-                    )
+            _check_model_readiness(model_str, [mode_id], workstation_findings)
 
     # Check validator models
     for val in protocol.validators:
         if val.model and val.model not in checked_models:
             checked_models.add(val.model)
-            prov_env = _resolve_model_provider_env(val.model)
-            if prov_env:
-                env_var, prov_name = prov_env
-                if env_var not in os.environ and not (env_var == "GEMINI_API_KEY" and "GOOGLE_API_KEY" in os.environ):
-                    val_modes = validator_modes.get(val.validator_id, all_mode_ids)
-                    workstation_findings.append(
-                        ReadinessFinding(
-                            id=f"credential_missing:{env_var}",
-                            kind=ReadinessKind.WORKSTATION,
-                            severity=FindingSeverity.WARN,
-                            modes=val_modes,
-                            description=f"Environment variable '{env_var}' for {prov_name} model '{val.model}' (validator '{val.validator_id}') is not set on workstation.",
-                            remediation=f"export {env_var}='<your-api-key>'",
-                            fix_cost=3,
-                        )
-                    )
+            _check_model_readiness(val.model, validator_modes.get(val.validator_id, all_mode_ids), workstation_findings)
 
     # Check for plaintext keys configured in config.yml (workstation, unscored)
     try:
