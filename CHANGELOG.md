@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Coder CLI subprocesses now receive the shared environment without job context,
+  and pytest uses that same list when scrubbing inherited job context. (Fixes #627)
 - Quality validator subprocesses no longer inherit job-context `SNODO_*`
   variables, preventing worktree and baseline checks from resolving the
   dispatching project. (Fixes #625)

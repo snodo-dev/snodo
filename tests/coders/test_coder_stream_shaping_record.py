@@ -14,8 +14,10 @@ End-to-end through ``SubprocessCoderAdapter`` with real processes:
 """
 
 import io
+import os
 import subprocess
 import sys
+from unittest.mock import patch
 from pathlib import Path
 
 import pytest
@@ -72,6 +74,27 @@ def _adapter(repo: Path, tmp_path: Path, body: str, name: str) -> SubprocessCode
 
 
 class TestLiveViewShapedRecordRaw:
+    def test_coder_subprocess_receives_environment_without_job_context(
+        self, repo, tmp_path, monkeypatch,
+    ):
+        from snodo.paths import JOB_CONTEXT_ENV_VARS
+
+        for key in JOB_CONTEXT_ENV_VARS:
+            monkeypatch.setenv(key, "inherited-job-context")
+        adapter = _adapter(repo, tmp_path, "print('ok')", "sanitized_env_cli")
+        with patch("snodo.coders.subprocess_adapter.subprocess.Popen") as popen:
+            popen.return_value.stdout = io.StringIO("")
+            popen.return_value.stderr = io.StringIO("")
+            popen.return_value.poll.return_value = 0
+            popen.return_value.wait.return_value = 0
+            popen.return_value.returncode = 0
+
+            adapter._run_subprocess(adapter._argv, str(repo))
+
+        child_env = popen.call_args.kwargs["env"]
+        assert all(key not in child_env for key in JOB_CONTEXT_ENV_VARS)
+        assert child_env["PATH"] == os.environ["PATH"]
+
     def test_capture_is_byte_identical_while_the_view_is_shaped(self, repo, tmp_path):
         adapter = _adapter(repo, tmp_path, _CLI_NARRATION, "narrating_cli")
         live = io.StringIO()
