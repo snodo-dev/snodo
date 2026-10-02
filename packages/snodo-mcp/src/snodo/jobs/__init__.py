@@ -385,12 +385,14 @@ class JobManager:
             if _targets(_settings()):
                 import subprocess
                 import sys
+                from snodo.paths import subprocess_env_without_job_context
 
                 subprocess.Popen(  # noqa: S603 - fixed module and argv, no shell
                     [sys.executable, "-m", "snodo.jobs.notifications", "monitor", self.project_root, job_id],
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
+                    env=subprocess_env_without_job_context(),
                     start_new_session=True,
                     close_fds=True,
                 )

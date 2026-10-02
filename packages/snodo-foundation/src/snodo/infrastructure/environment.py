@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional, Callable, Any, Tuple, List
 
 from snodo.compiler.models import Protocol
+from snodo.paths import subprocess_env_without_job_context
 
 
 class EnvironmentPrepError(Exception):
@@ -159,6 +160,7 @@ def prepare_environment(
             command_to_run,
             shell=True,
             cwd=str(target_path),
+            env=subprocess_env_without_job_context(),
             capture_output=True,
             text=True,
         )

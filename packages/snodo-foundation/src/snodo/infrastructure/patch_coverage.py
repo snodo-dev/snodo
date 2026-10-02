@@ -18,6 +18,8 @@ import subprocess
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Set, Tuple
 
+from snodo.paths import subprocess_env_without_job_context
+
 
 @dataclass(frozen=True)
 class LineDiffCoverage:
@@ -81,6 +83,7 @@ def parse_git_diff_added_lines(
                 ["git",  # noqa: S607 - git resolved from PATH by design
                  "merge-base", resolved_base, "HEAD"],
                 cwd=str(root_path),
+                env=subprocess_env_without_job_context(),
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -97,6 +100,7 @@ def parse_git_diff_added_lines(
                 ["git",  # noqa: S607 - git resolved from PATH by design
                  "diff", "-U0", f"{resolved_base}..HEAD"],
                 cwd=str(root_path),
+                env=subprocess_env_without_job_context(),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -109,6 +113,7 @@ def parse_git_diff_added_lines(
                     ["git",  # noqa: S607 - git resolved from PATH by design
                      "diff", "-U0", "HEAD"],
                     cwd=str(root_path),
+                    env=subprocess_env_without_job_context(),
                     capture_output=True,
                     text=True,
                     timeout=15,

@@ -13,6 +13,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #646, #647)
 
 ### Fixed
+- Environment preparation commands, ShellMCP test runs and detached notification
+  monitors no longer inherit Snodo job-context variables. (Fixes #635)
 - `snodo config add` accepts validated credential references, shows them without
   resolving them, and GitHub reports reference-resolution failures with the
   reference and the correct setup command. (Fixes #644)

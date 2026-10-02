@@ -51,6 +51,22 @@ def test_shell_init_file_as_root_raises():
             ShellMCP(tmpfile.name)
 
 
+@pytest.mark.parametrize("method", ["run_tests", "run_tests_raw"])
+def test_test_runner_subprocess_strips_job_context(temp_project, method):
+    from snodo.paths import JOB_CONTEXT_ENV_VARS
+
+    shell_mcp, _ = temp_project
+    with patch.dict("os.environ", {name: "job-value" for name in JOB_CONTEXT_ENV_VARS}):
+        with patch("snodo.tools.shell.subprocess.run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = ""
+            run.return_value.stderr = ""
+            getattr(shell_mcp, method)(".")
+
+    child_env = run.call_args.kwargs["env"]
+    assert not set(JOB_CONTEXT_ENV_VARS) & child_env.keys()
+
+
 # ========== COMMAND VALIDATION TESTS ==========
 
 def test_validate_command_pytest(temp_project):

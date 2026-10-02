@@ -209,6 +209,24 @@ class TestSubmit:
     def _mock_wt(self, mock_worktree_creation):
         yield
 
+    @patch("subprocess.Popen")
+    @patch("snodo.jobs.notifications._targets", return_value=[{"type": "webhook"}])
+    @patch("snodo.jobs.notifications._settings", return_value={})
+    @patch("snodo.jobs.runner.spawn_background", return_value=99999)
+    def test_notification_monitor_does_not_inherit_job_context(
+        self, _spawn, _settings, _targets, popen, manager, sample_task_args, monkeypatch,
+    ):
+        from snodo.paths import JOB_CONTEXT_ENV_VARS
+
+        for name in JOB_CONTEXT_ENV_VARS:
+            monkeypatch.setenv(name, "job-value")
+        manager.submit(sample_task_args)
+        monitor_call = next(
+            call for call in popen.call_args_list
+            if "snodo.jobs.notifications" in call.args[0]
+        )
+        assert not set(JOB_CONTEXT_ENV_VARS) & monitor_call.kwargs["env"].keys()
+
     @patch("snodo.jobs.runner.spawn_background")
     def test_submit_creates_directory_structure(self, mock_spawn, manager, sample_task_args):
         """submit() creates job dir with state.json and task.json."""

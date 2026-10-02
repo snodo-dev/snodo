@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from snodo.paths import subprocess_env_without_job_context
+
 # Import ValidatorResult from core interfaces
 try:
     from snodo.core.interfaces import ValidatorResult
@@ -126,6 +128,18 @@ class ShellMCP:
             validated.append(arg_str)
         return validated
 
+    def run_command(self, command: str, cwd: Optional[str] = None) -> tuple[int, str]:
+        """Run a preparation command without inheriting Snodo job context."""
+        result = subprocess.run(  # noqa: S602 - preparation commands are trusted protocol/operator commands (ADR 014)
+            command,
+            shell=True,
+            cwd=cwd or str(self.project_root),
+            env=subprocess_env_without_job_context(),
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode, result.stdout + result.stderr
+
     def run_tests(
         self,
         test_path: str,
@@ -163,6 +177,7 @@ class ShellMCP:
             result = subprocess.run(  # noqa: S603 - argv list (no shell) from the ALLOWED_COMMANDS whitelist; test_path/extra_args are single argv elements, never interpreted
                 command,
                 cwd=str(self.project_root),
+                env=subprocess_env_without_job_context(),
                 capture_output=True,
                 text=True,
                 timeout=300  # 5 minute timeout
@@ -202,6 +217,7 @@ class ShellMCP:
             result = subprocess.run(  # noqa: S603
                 command,
                 cwd=str(self.project_root),
+                env=subprocess_env_without_job_context(),
                 capture_output=True,
                 text=True,
                 timeout=timeout,

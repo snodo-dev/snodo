@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import List, Optional, Set, Tuple
 
 import yaml
+from snodo.paths import subprocess_env_without_job_context
 
 _logger = logging.getLogger(__name__)
 
@@ -443,6 +444,7 @@ def stale_index_lock(project_root: str, error: Exception) -> bool:
         result = subprocess.run(  # noqa: S603 - fixed argv; lock path is one argument
             ["lsof", "-t", "--", str(lock_path)],  # noqa: S607 - resolved from PATH by design
             capture_output=True,
+            env=subprocess_env_without_job_context(),
             text=True,
             timeout=5,
             check=False,

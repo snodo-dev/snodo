@@ -77,11 +77,13 @@ def _display_name(root: Path) -> str | None:
     roots = [root]
     try:
         import subprocess
+        from snodo.paths import subprocess_env_without_job_context
 
         result = subprocess.run(  # noqa: S603 - fixed argv, project path passed as one argument
             ["git",  # noqa: S607 - git resolved from PATH by design
              "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
             capture_output=True,
+            env=subprocess_env_without_job_context(),
             text=True,
             check=False,
         )
