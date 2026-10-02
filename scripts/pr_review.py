@@ -250,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         truncated = False
         canned_synthesis = None
+        title = f"Pull request #{args.pr}"
         if args.dry_run_results:
             results = json.loads(args.dry_run_results.read_text())
             if isinstance(results, dict):
@@ -282,9 +283,16 @@ def main(argv: list[str] | None = None) -> int:
         output = _redact_environment(render_comment(results, synthesis, truncated))
         args.out.write_text(output)
         if args.issue_body and synthesis["outcome"] != "MERGED":
-            title = _gh_json(args.repo, args.pr, "title") if not args.dry_run_results else f"Pull request #{args.pr}"
-            issue_body = render_fix_forward_issue(args.repo, args.pr, title, "{{REVIEW_COMMENT_URL}}", synthesis)
-            args.issue_body.write_text(_redact_environment(issue_body))
+            try:
+                issue_body = render_fix_forward_issue(
+                    args.repo, args.pr, title, "{{REVIEW_COMMENT_URL}}", synthesis
+                )
+                args.issue_body.write_text(_redact_environment(issue_body))
+            except Exception as exc:  # issue generation must not block the review comment
+                print(
+                    _redact_environment(f"error building fix-forward issue body: {exc}"),
+                    file=sys.stderr,
+                )
         return 0
     except Exception as exc:  # user-facing errors must not include subprocess credentials
         print(_redact_environment(f"error: {exc}"), file=sys.stderr)

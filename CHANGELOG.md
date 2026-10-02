@@ -16,6 +16,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - First-run guidance now shares one executable quickstart, starts with a
   committed file, documents the required Git identity, and describes the
   deterministic hello-world mock implementation accurately. (Fixes #649)
+- PR review comment output now survives fix-forward issue-body failures; issue
+  generation is reported separately and reuses the fetched pull-request title.
+  (Fixes #643)
 - First-run instructions now share a Git-initialized quickstart, explain mock
   and provider-backed runs, and show the valid provider-key command; the init
   next-step message now uses `snodo config add`. (Fixes #633)
