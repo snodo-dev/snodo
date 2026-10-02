@@ -13,6 +13,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #646, #647)
 
 ### Fixed
+- Resolve the virtualenv and GitPython Dependabot alerts by refreshing their
+  locked versions. (Fixes #655)
 - First-run guidance now shares one executable quickstart, starts with a
   committed file, documents the required Git identity, and describes the
   deterministic hello-world mock implementation accurately. (Fixes #649)
