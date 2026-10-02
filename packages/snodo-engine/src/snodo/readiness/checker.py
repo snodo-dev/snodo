@@ -16,7 +16,6 @@ Ordering: cheapest fix at highest severity first.
 """
 
 import logging
-import os
 import re
 import shutil
 from pathlib import Path
@@ -275,7 +274,8 @@ def _check_model_readiness(model: str, modes: List[str], findings: List[Readines
         findings.append(ReadinessFinding(
             id=f"credential_missing:{env_var or provider}", kind=ReadinessKind.WORKSTATION,
             severity=FindingSeverity.WARN, modes=modes,
-            description=f"No credential is configured for provider '{provider}' used by model '{model}'.",
+            description=f"No credential is configured for provider '{provider}' used by model '{model}'"
+            + (f" (expected {env_var})." if env_var else "."),
             remediation=(f"Configure credentials for '{provider}' with 'snodo config add'" + (f" or export {env_var}." if env_var else ".")), fix_cost=3,
         ))
 
@@ -300,6 +300,22 @@ def assess_readiness(
     workstation_findings: List[ReadinessFinding] = []
     total_repo_checks = 0
 
+    # Use the canonical protocol verifier rather than duplicating well-formedness rules.
+    from snodo.compiler.verifier import verify_protocol
+
+    verification = verify_protocol(protocol)
+    if not verification.passed:
+        total_repo_checks += 1
+        repository_findings.append(ReadinessFinding(
+            id="protocol_well_formedness",
+            kind=ReadinessKind.REPOSITORY,
+            severity=FindingSeverity.BLOCKER,
+            modes=all_mode_ids,
+            description="Protocol is not well-formed: " + "; ".join(verification.errors),
+            remediation="Correct the protocol errors and run 'snodo protocol validate' again.",
+            fix_cost=2,
+        ))
+
     # Run isolation requires an existing commit; delivery modes also need a
     # configured remote. These checks are local-only and never contact a host.
     if repo is not None:
@@ -315,7 +331,7 @@ def assess_readiness(
         except Exception as exc:
             git_problems.append(f"could not inspect git HEAD: {type(exc).__name__}: {exc}")
 
-    needs_remote = any(protocol.delivery_for(mode) in {"push_branch", "change_request"} for mode in protocol.modes)
+    needs_remote = any(protocol.delivery_for(mode.mode_id) in {"push_branch", "change_request"} for mode in protocol.modes)
     if needs_remote and repo is not None:
         total_repo_checks += 1
         remote_name = getattr(protocol.execution, "delivery_remote", "origin") or "origin"

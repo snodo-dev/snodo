@@ -405,7 +405,7 @@ class TestTestKeys:
         mock_completion = MagicMock(side_effect=Exception("Invalid API key"))
         with patch.dict("sys.modules", {"litellm": MagicMock(completion=mock_completion)}):
             result = mgr._test_single_key("openai", "sk-bad-key")
-            assert result == "invalid"
+            assert result == "invalid: Invalid API key"
 
     def test_test_single_key_cleans_up_env_on_failure(self, mgr, monkeypatch):
         """Env var is cleaned up even when API call fails."""
