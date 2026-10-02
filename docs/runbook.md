@@ -236,51 +236,40 @@ write. With no flag and no terminal, intake refuses rather than guessing.
 ## Quickstart
 
 ```bash
-# Run in a new directory. For an existing Git repository, skip `git init`;
-# make this initial commit only if the repository has no commits yet.
+# In a new, empty project directory; an existing repository with a commit can
+# skip the Git initialization and initial commit steps.
+printf '# My project\n' > README.md
 git init
-git add -A
+git add README.md
+# Git must have user.name and user.email configured for this commit.
 git commit -m "Initial project commit"
 
 pip install snodo
+pip install pytest
 snodo init --template team --test-command "pytest"
-
-# Smoke-test Snodo's governance flow without making code or calling a provider
-snodo run "your first task" --mock
-
-# For real coding, configure a provider and run without --mock
-snodo config add anthropic <key>
-snodo run "your first task"
+snodo run "add a hello() function that returns the string 'world', with a test" --mock
 ```
 
-If you do not have an initial commit, make one before running tasks. Task
-isolation is required by default; `--no-isolation` is an explicit fallback that
-runs in the current working tree. Before `snodo run` creates any state, a
-non-mock run checks that the selected provider's credential is available in
-Snodo config or its environment variable (for example, `ANTHROPIC_API_KEY`).
-Providers configured without an `api_key_env`, such as a local endpoint, do not
-require a credential. `--mock` skips this check.
+This is the canonical first-run command sequence; the [README](../README.md) and
+[docs home](index.md) link here. Git needs a committer identity before the
+commit: configure it with `git config --global user.name "Your Name"` and
+`git config --global user.email "you@example.com"`, or set repository-local
+values with `git config user.name "Your Name"` and
+`git config user.email "you@example.com"`.
 
-`snodo init` requires a Git repository. Task isolation also requires at least
-one commit; the initial commit must include the project's own source files,
-because each task worktree is cut from `HEAD`. In an existing repository, do not
-repeat `git init`, and create the initial commit only if it has none. The
-generated `.gitignore` keeps Snodo machine state ignored and permits the
-authored `.snodo/protocol.yml` to be committed with later project changes.
+The starter README ensures the initial commit has a file, and Snodo's isolated
+task worktrees start from that committed `HEAD`. In an existing repository,
+skip `git init`; if it has no commits, commit at least one project file first.
+The mock coder deterministically writes `src/hello.py` and
+`tests/test_hello.py`, implementing the requested hello-world task without a
+provider API call. With the `pytest` dependency and test command in the sequence,
+the quality validator runs pytest and the generated test passes. A mock result
+does not establish that a real coder can implement your requirements.
 
-The mock run uses a deterministic stub coder: it makes no provider API call and
-does not consume a key. It exercises Snodo's local governance, worktree
-isolation, and merge path, but does not implement the requested change or prove
-that project tests pass. A provider-backed run needs the provider credential in
-Snodo config (`snodo config add <provider> <key>`) or its environment variable;
-providers for local endpoints may not require a credential. The test command
-must be appropriate for a project that actually has tests. Without a detectable
-or configured test command, the quality outcome is `no_tests`, not a passing
-test run. Here `--test-command "pytest"` declares the command; it does not add
-test files to the project.
-
-The `--mock` flag is useful for checking the local run path without a provider;
-it is not evidence that generated code works or that a test suite passes.
+For provider-backed coding, configure a provider (for example,
+`snodo config add anthropic <key>` or `ANTHROPIC_API_KEY`) and run the same task
+description without `--mock`. Task isolation is required by default;
+`--no-isolation` is an explicit fallback that runs in the current working tree.
 
 For an MCP run, the orchestrator validates and dispatches a task (or builds a
 plan/queue when the work needs that structure). Work starters return a job ID;
