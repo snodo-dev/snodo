@@ -236,20 +236,21 @@ write. With no flag and no terminal, intake refuses rather than guessing.
 ## Quickstart
 
 ```bash
-# 1. Initialize a project from a template. If your repository has no test
-#    command to detect, provide the command used to run its tests.
+# Run in a new directory. For an existing Git repository, skip `git init`;
+# make this initial commit only if the repository has no commits yet.
+git init
+git add -A
+git commit -m "Initial project commit"
+
+pip install snodo
 snodo init --template team --test-command "pytest"
 
-# 2. Commit the initialized protocol and project files. Isolated runs need an
-#    initial commit from which Snodo can create task worktrees.
-git add .snodo && git commit -m "Initialize Snodo protocol"
+# Smoke-test Snodo's governance flow without making code or calling a provider
+snodo run "your first task" --mock
 
-# 3. Smoke-test the protocol without provider credentials or an API call
-snodo run "implement a user registration endpoint" --mock
-
-# 4. For a real LLM run, configure the credential for your provider first
-snodo config add anthropic sk-ant-...
-snodo run "add password reset flow"
+# For real coding, configure a provider and run without --mock
+snodo config add anthropic <key>
+snodo run "your first task"
 ```
 
 If you do not have an initial commit, make one before running tasks. Task
@@ -260,16 +261,26 @@ Snodo config or its environment variable (for example, `ANTHROPIC_API_KEY`).
 Providers configured without an `api_key_env`, such as a local endpoint, do not
 require a credential. `--mock` skips this check.
 
-`snodo init` detects a test command when it can; otherwise templates may use a
-no-op and report the quality outcome as `no_tests`, not as a passing test run.
-Inspect the generated `.snodo/protocol.yml` for the selected `test_command`, or
-set it when initializing with `snodo init --test-command "pytest"`. The test
-command must be appropriate for the project.
+`snodo init` requires a Git repository. Task isolation also requires at least
+one commit; the initial commit must include the project's own source files,
+because each task worktree is cut from `HEAD`. In an existing repository, do not
+repeat `git init`, and create the initial commit only if it has none. The
+generated `.gitignore` keeps Snodo machine state ignored and permits the
+authored `.snodo/protocol.yml` to be committed with later project changes.
 
-The `--mock` flag uses a deterministic stub coder — no API call is made and no
-key is spent. It still returns artifacts, so the protocol's gates, the worktree
-isolation and the merge path are exercised end to end; useful for testing
-protocol configuration and validator behaviour without a provider.
+The mock run uses a deterministic stub coder: it makes no provider API call and
+does not consume a key. It exercises Snodo's local governance, worktree
+isolation, and merge path, but does not implement the requested change or prove
+that project tests pass. A provider-backed run needs the provider credential in
+Snodo config (`snodo config add <provider> <key>`) or its environment variable;
+providers for local endpoints may not require a credential. The test command
+must be appropriate for a project that actually has tests. Without a detectable
+or configured test command, the quality outcome is `no_tests`, not a passing
+test run. Here `--test-command "pytest"` declares the command; it does not add
+test files to the project.
+
+The `--mock` flag is useful for checking the local run path without a provider;
+it is not evidence that generated code works or that a test suite passes.
 
 For an MCP run, the orchestrator validates and dispatches a task (or builds a
 plan/queue when the work needs that structure). Work starters return a job ID;

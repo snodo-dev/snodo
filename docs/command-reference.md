@@ -32,6 +32,7 @@ on all commands; top-level options are `--version`, `--verbose`/`-v`,
 | `snodo cloud sync` | `--all`, `--session`, `--force`/`--retry` |
 | `snodo cloud schema` | `--json` |
 | `snodo protocol schema` | `--json` |
+| `snodo protocol validate` | `[PATH]`, `--json` |
 | `snodo install` | `--protocol` |
 | `snodo uninstall` | `--mode`, `--all`, `--purge`, `--orphans`, `--yes`/`-y` |
 

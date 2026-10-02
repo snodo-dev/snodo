@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- First-run instructions now share a Git-initialized quickstart, explain mock
+  and provider-backed runs, and show the valid provider-key command; the init
+  next-step message now uses `snodo config add`. (Fixes #633)
 - Task-branch merge, merged checks, cleanup, and recovery/change-size probes can
   use the task's integration starting ref while retaining the repository base
   as the default. (Fixes #629)
