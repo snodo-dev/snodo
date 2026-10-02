@@ -5,6 +5,13 @@ shows each command's argument descriptions and defaults. `--help` is available
 on all commands; top-level options are `--version`, `--verbose`/`-v`,
 `--install-completion`, and `--show-completion`.
 
+The top-level help groups commands into **Daily loop** (init, ready, run, recon,
+status, logs, dashboard), **Work records** (job, task, plan, queue, runs, meta,
+worktree), **Governance** (survey, intake, validate, mode, session, audit,
+authorize), **Setup** (config, models, cloud, serve, install, uninstall, cache,
+protocol), and **Advanced** (agent). Run bare `snodo` for a short first-task
+walkthrough.
+
 ## Project, configuration, and services
 
 | Command | Arguments and options |
@@ -32,6 +39,7 @@ on all commands; top-level options are `--version`, `--verbose`/`-v`,
 | `snodo cloud sync` | `--all`, `--session`, `--force`/`--retry` |
 | `snodo cloud schema` | `--json` |
 | `snodo protocol schema` | `--json` |
+| `snodo protocol validate` | `[PATH]`, `--json` |
 | `snodo install` | `--protocol` |
 | `snodo uninstall` | `--mode`, `--all`, `--purge`, `--orphans`, `--yes`/`-y` |
 

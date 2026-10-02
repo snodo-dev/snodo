@@ -25,11 +25,9 @@ Two human-in-control roles — **producer** (code generation) and **reviewer** (
 
 ## Get started
 
-```bash
-pip install snodo
-snodo init --template team
-snodo run "your first task" --mock
-```
+Use the canonical [first-run quickstart in the runbook](runbook.md#quickstart).
+It creates and commits a starter file before initializing Snodo, then runs a
+deterministic hello-world task through the governed task loop.
 
 [Runbook →](runbook.md) — install, configure, CLI usage, MCP serving, and
 troubleshooting. [Command reference →](command-reference.md) lists the current

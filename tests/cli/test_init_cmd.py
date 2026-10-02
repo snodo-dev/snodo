@@ -114,6 +114,7 @@ def test_init_command_with_all_shipped_templates(template_name, git_project_dir,
     out = capsys.readouterr().out
     assert "Snodo initialized successfully!" in out
     assert "Configure provider credentials" in out
+    assert "snodo config add <provider> <key>" in out
 
 
 def test_init_command_unknown_template(git_project_dir, monkeypatch, capsys):

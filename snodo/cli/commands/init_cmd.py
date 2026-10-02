@@ -598,7 +598,7 @@ def init_command(args) -> int:
 
     print("\nSnodo initialized successfully!")
     print("\nNext steps:")
-    print("  1. Configure provider credentials (e.g. set OPENAI_API_KEY or run 'snodo config set <provider> <key>')")
+    print("  1. Configure provider credentials (e.g. set OPENAI_API_KEY or run 'snodo config add <provider> <key>')")
     print("  2. Edit .snodo/protocol.yml to customize your protocol")
     print("  3. Run: snodo run \"your task description\"")
 

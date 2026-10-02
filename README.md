@@ -76,20 +76,10 @@ or a containerised server all converge on the same gate and the same merge path.
 
 ## Install and first run
 
-```bash
-pip install snodo
-snodo init --template solo
-snodo config add anthropic sk-ant-...
-snodo run "add a hello() function that returns the string 'world', with a test"
-```
-
-Python 3.12+. A key already exported in your environment (`ANTHROPIC_API_KEY`
-and friends) is auto-detected. `snodo run ... --mock` needs no key and no
-network at all.
-
-Make an initial commit before the first run: each task executes in a git
-worktree on a branch off `HEAD`, and on a repository with no commits snodo
-refuses to run rather than silently dropping isolation (ADR 025).
+Follow the canonical [first-run quickstart](docs/runbook.md#quickstart). It
+includes the starter file needed for the initial commit, the Git identity
+prerequisite, and the same governed hello-world mock task shown in the docs.
+Python 3.12+ is required.
 
 Before spending anything on an existing repository, run `snodo ready`. Without
 an LLM, it checks whether the artefacts the protocol expects — decision records,
@@ -98,41 +88,16 @@ missing by how cheap it is to fix. Task worktrees only see `HEAD`, so "present
 on disk" is not enough. See the [runbook](docs/runbook.md) for readiness, the
 full configuration surface, and the command reference.
 
-## What a run looks like
+## What a mock run does
 
-A project initialised from the `solo` template with its test command declared
-(`--test-command "python -m pytest -q"`), then:
-
-```bash
-$ snodo run "add a hello() function that returns the string 'world', with a test" --mock
-
-✓ Loaded protocol: Solo Developer Protocol
-  Validators: security, architecture, quality, meta-spec, acceptance
-  Policy: unanimous
-
-  Validating (pre-execute): security, architecture, meta-spec
-    meta-spec: finished
-    architecture: finished
-    security: finished
-  Coder dispatched
-  Coder returned (3 artifact(s))
-  Post-validating: quality, acceptance
-    acceptance: finished
-    quality: finished
-✓ Verified merge for task/task_ca8fd940fe5d/add-a-hello-function-that: task
-  task_ca8fd940fe5d verified at commit 3e144ca (python -m pytest -q).
-
-task_ca8fd940fe5d  resolved  (depth=0)
-```
-
-`--mock` swaps in a deterministic stub coder, so no key is spent and no network
-call is made. The gates are not stubbed: the post-execute
-`quality` validator ran this project's declared test command
-(`python -m pytest -q`) against the change and passed it. Replace `--mock` with
-a configured provider or `--coder opencode-cli` and the same gates judge the
-real change. The transcript is trimmed for length; the protocol language is in
-the [protocol reference](docs/protocol.md) and the coder backends are in
-[Coder backends](docs/coders.md).
+The canonical quickstart's `--mock` run uses a deterministic stub coder that
+writes `src/hello.py` and `tests/test_hello.py`; it implements the hello-world
+task. The task still passes through the configured governance and verification
+flow; with pytest installed and configured, the generated test passes. The
+mock makes no provider API call and does not prove that a real coder can
+implement your project's requirements. For provider-backed coding, configure
+credentials (for example, `snodo config add anthropic <key>` or
+`ANTHROPIC_API_KEY`) and run without `--mock`.
 
 ## Project status
 
