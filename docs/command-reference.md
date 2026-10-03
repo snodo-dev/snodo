@@ -56,14 +56,17 @@ a test to every valid notification target.
 protocol authoring without reading the project's protocol file.
 
 Use `snodo cloud login` to sign in through a browser and enable cloud sync;
-`--no-browser` prints the authorization URL. OAuth login does not store an API
-key. If a key is configured, OAuth takes priority; run `snodo cloud connect
-<api_key>` to switch back.
-`snodo cloud logout` clears OAuth tokens and best-effort revokes a refresh token
-when the cloud advertises a revocation endpoint. `snodo cloud disconnect` also
-clears the configured API key and disables sync. `snodo cloud status` reports
-the active authentication method, OAuth expiry and account details when known,
-without displaying credential values.
+`--no-browser` prints the authorization URL while still using a localhost
+callback for the authorization response. OAuth credentials are stored in
+`~/.snodo/cloud_oauth.json` (or `$SNODO_HOME/cloud_oauth.json`) and do not
+replace the configured API key. If both exist, OAuth takes priority; run
+`snodo cloud connect <api_key>` to store the key, then `snodo cloud logout` to
+clear OAuth tokens and use API-key authentication. Logout best-effort revokes
+a refresh token when the authorization server advertises a revocation endpoint.
+`snodo cloud disconnect` clears the configured API key and OAuth tokens, and
+disables sync. `snodo cloud status` reports the active authentication method,
+OAuth expiry and account details when known, without displaying credential
+values.
 
 `snodo install` (and `snodo serve --mcp-install`) detects Claude Desktop,
 Claude Code, Cursor, Gemini CLI and Codex-family clients and installs mode-pinned

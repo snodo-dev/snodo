@@ -12,7 +12,8 @@ Compiled against the code, not against intent. When this file and
 bug.
 
 Sync is opt-in: nothing is transmitted unless `cloud.sync_enabled` is true and
-`cloud.api_key` is set. A run with sync disabled makes no network call.
+a usable cloud API key or OAuth login is available. OAuth takes precedence when
+both are present. A run with sync disabled makes no network call.
 
 Runs using the mock coder and runs marked with `SNODO_BENCHMARK=1` are also
 excluded from outbound cloud delivery: neither audit ingest nor liveness is
@@ -26,10 +27,14 @@ the run as mock, audit sync is skipped for the whole run.
 
 ```
 POST {lease_url}/m                  # mint a lease on the app host; no body
-Authorization: Bearer <full cloud.api_key>
+Authorization: Bearer <cloud OAuth access token or full cloud.api_key>
+User-Agent: snodo/<version>
+X-Snodo-Device: <hostname>
 
 POST {api_url}/i/{jti}              # send audit batch on the API host
 Authorization: Bearer <lease token>
+User-Agent: snodo/<version>
+X-Snodo-Device: <hostname>
 ```
 
 With the defaults these are `https://app.snodo.dev/m` and
@@ -40,6 +45,20 @@ one re-mint and one retry. `cloud.lease_url` (or `cloud.lease_api_url`)
 overrides the mint app host/base path; `cloud.api_url` sets the ingest host.
 When only `cloud.api_url` is set, the mint host is derived by replacing its
 `api` hostname label with `app` (or retaining a single-host custom/local host).
+
+For OAuth login, Snodo discovers the HTTPS authorization, token, registration,
+and optional revocation endpoints from `cloud.oauth_metadata_url` (default
+`https://mcp-auth.snodo.dev/.well-known/oauth-authorization-server`). Login
+registers a public client, starts an authorization-code flow with PKCE S256,
+and receives the authorization code through a one-shot localhost callback. The
+code and verifier go only to the discovered token endpoint; refresh and
+best-effort logout revocation send the refresh token only to the discovered
+token or advertised revocation endpoint. The OAuth access token is presented
+only to `{lease_url}/m` to exchange it for a lease; audit and liveness requests
+use the lease token, not the OAuth token. OAuth and cloud requests identify the
+client with `User-Agent: snodo/<version>` and `X-Snodo-Device: <hostname>`.
+Credentials and OAuth flow secrets are not printed, logged, or recorded in
+audit events. OAuth adds no audit event or field.
 
 The successful lease-mint response also advertises the highest accepted
 `interface_version`. Missing or invalid values mean v5. Snodo sends v6 event
@@ -165,6 +184,8 @@ after a failed push, which is worse than the gap it covered.
 ```
 POST {liveness_url}/i/{jti}
 Authorization: Bearer <lease token>
+User-Agent: snodo/<version>
+X-Snodo-Device: <hostname>
 Content-Type: application/json
 Body: full liveness snapshot including session_id
 ```
@@ -327,7 +348,7 @@ timestamp — so a status write that appends no audit event still moves it.
 What the liveness wire never carries is what the ingest path never carries:
 payloads, prompts, diffs, file contents, absolute paths, `usage` records, halt
 payloads — and, unlike the ingest envelope, no `project_path`. Opt-in is the
-same single gate: `cloud.sync_enabled` off or no `cloud.api_key` means a run
+same single gate: `cloud.sync_enabled` off or no usable API key/OAuth credential means a run
 makes no network call on this path either. Log streaming is out of scope.
 
 Every long-lived process reports liveness: `snodo run`, the MCP server and

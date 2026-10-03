@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+- Document browser-based cloud OAuth login, credential storage and precedence,
+  lease authentication, and cloud connection commands. (Fixes #677)
+
 ### Added
 - Add `snodo cloud logout`, best-effort refresh-token revocation, and
   credential-safe authentication details in `snodo cloud status`; disconnect
