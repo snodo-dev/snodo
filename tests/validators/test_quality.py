@@ -410,7 +410,7 @@ class TestQualityValidatorEvaluate:
                 SimpleNamespace(base_ref="base-sha", audit_log=None),
             )
 
-        assert len(run.call_args_list) == 5
+        assert len(run.call_args_list) == 6
         for call in run.call_args_list:
             env = call.kwargs["env"]
             assert all(key not in env for key in JOB_CONTEXT_ENV_VARS)
@@ -424,6 +424,55 @@ class TestQualityValidatorEvaluate:
             assert result.severity == "pass"
             assert result.validator_id == "quality"
             assert "passed" in result.justification.lower()
+
+    def test_tracked_dirty_file_prevents_passing_verification(self, quality_spec, project_dir):
+        from snodo.infrastructure.audit import AuditLog
+
+        (Path(project_dir) / "README.md").write_text("modified")
+        audit = AuditLog(str(Path(project_dir) / "audit.log"))
+        context = SimpleNamespace(
+            audit_log=audit, task_id="", job_id="", working_directory=project_dir
+        )
+        qv = QualityValidator(quality_spec, project_dir)
+        result = qv.evaluate(context)
+
+        assert result.severity == "blocker"
+        assert "tracked files were dirty" in result.justification
+        event = audit.get_history("verification_executed")[0]
+        assert event.data["outcome"] == "fail"
+        assert event.data["commit"] == qv._resolve_commit_hash()
+
+    def test_head_change_during_run_prevents_pass_and_untracked_is_ignored(
+        self, quality_spec, project_dir
+    ):
+        from snodo.infrastructure.audit import AuditLog
+
+        root = Path(project_dir)
+        audit = AuditLog(str(root / "audit.log"))
+        context = SimpleNamespace(
+            audit_log=audit, task_id="", job_id="", working_directory=project_dir
+        )
+        qv = QualityValidator(quality_spec, project_dir)
+        observed = []
+
+        def commit_hash():
+            # First call is the recorded starting commit; subsequent calls
+            # model a commit made while the test command is running.
+            observed.append(True)
+            return "before" if len(observed) == 1 else "after"
+
+        (root / "test-artifact.tmp").write_text("generated")
+        with patch.object(qv, "_resolve_commit_hash", side_effect=commit_hash), patch(
+            "snodo.validators.quality.subprocess.run",
+            return_value=MagicMock(returncode=0, stdout="5 passed\n", stderr=""),
+        ):
+            result = qv.evaluate(context)
+
+        assert result.severity == "blocker"
+        assert "HEAD changed during the test run" in result.justification
+        event = audit.get_history("verification_executed")[0]
+        assert event.data["commit"] == "before"
+        assert event.data["outcome"] == "fail"
 
     def test_tests_fail_is_blocker(self, quality_spec, project_dir):
         """Test failures are blockers (NOT downgraded to warn)."""
@@ -846,8 +895,10 @@ class TestLoopPhases:
         }
 
         result = compiled.invoke(initial_state)
-        assert result["stage"] == LoopStage.COMPLETE.value
-        assert result["is_complete"] is True
+        # The mock coder leaves tracked task edits uncommitted, so verification
+        # must now block rather than claim a pass for HEAD.
+        assert result["stage"] == LoopStage.BLOCKED.value
+        assert result["is_blocked"] is True
 
     def test_backward_compat_protocol_without_phases(self, project_dir):
         """Old-style protocol without evaluation_phase still works."""

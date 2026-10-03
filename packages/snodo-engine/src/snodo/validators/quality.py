@@ -119,8 +119,9 @@ class QualityValidator(ValidatorBase):
                   validator_error, not a judgement
         """
         # Backward-compat: old code calls evaluate() with no args
-        if context is not None and context.working_directory:
-            self.working_directory = Path(context.working_directory).resolve()
+        context_working_directory = getattr(context, "working_directory", None)
+        if context_working_directory:
+            self.working_directory = Path(context_working_directory).resolve()
 
         test_command = self._resolve_test_command(context)
 
@@ -211,6 +212,33 @@ class QualityValidator(ValidatorBase):
             logger.debug("Failed to resolve git commit hash: %s", e)
         return "uncommitted"
 
+    def _tracked_worktree_is_clean(self) -> bool:
+        """Return whether the index and tracked working-tree files match HEAD.
+
+        ``git diff-index`` without ``--quiet``'s untracked-file counterpart
+        deliberately ignores untracked test/build artifacts.
+        """
+        try:
+            from git import Repo
+            from git.exc import GitCommandError
+
+            Repo(str(self.working_directory), search_parent_directories=True).git.diff_index(
+                "--quiet", "HEAD", "--"
+            )
+            return True
+        except GitCommandError:
+            return False
+        except Exception as e:
+            logger.debug("Failed to check tracked worktree state: %s", e)
+            return False
+
+    def _verification_moved_result(self, reason: str) -> ValidatorResult:
+        return ValidatorResult(
+            validator_id=self.validator_id,
+            severity="blocker",
+            justification=f"Verification failed: {reason}",
+        )
+
     def _audit_verification(
         self,
         context: Optional[Any],
@@ -277,6 +305,11 @@ class QualityValidator(ValidatorBase):
 
         commit_hash = self._resolve_commit_hash()
 
+        if not self._tracked_worktree_is_clean():
+            reason = "tracked files were dirty before tests ran."
+            self._audit_verification(context, command, commit_hash, 1, "fail", reason)
+            return self._verification_moved_result(reason)
+
         try:
             result = subprocess.run(  # noqa: S602 - command is an operator-authored shell string (tooling.test_command or auto-detect literal, e.g. "npm test" / "py.test && flake8"); compound commands require a shell. Source is the trusted protocol file (ADR 014 / #110), executed as the repo owner.
                 command,
@@ -289,6 +322,16 @@ class QualityValidator(ValidatorBase):
             )
 
             if result.returncode == 0:
+                final_commit = self._resolve_commit_hash()
+                if final_commit != commit_hash:
+                    reason = (
+                        f"HEAD changed during the test run from {commit_hash} "
+                        f"to {final_commit}."
+                    )
+                    self._audit_verification(
+                        context, command, commit_hash, 1, "fail", reason
+                    )
+                    return self._verification_moved_result(reason)
                 if _is_no_op(command):
                     # The configured no-op default ran. The task proceeds
                     # (severity "pass") but the record must not claim tests
