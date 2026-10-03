@@ -88,6 +88,20 @@ execution evidence. Keep both. A successful parent job alone is not proof that
 every task completed or that every change merged.
 
 Plan tasks use a plan-owned integration branch. Passing tasks merge into it
-before their wave is complete, so dependent waves see earlier changes. The
-integration branch and its linked worktree are retained when the plan finishes;
-final delivery of that branch is not performed by the plan runner yet.
+before their wave is complete, so dependent waves see earlier changes. After
+every wave succeeds in an unfiltered run, the runner delivers that branch using
+the active mode's `execution.delivery` setting:
+
+- **`local_merge`:** merge the integration branch into the base branch, then
+  remove the integration branch and its linked worktree.
+- **`push_branch`:** push the integration branch to the configured delivery
+  remote; the branch and its linked worktree remain available locally.
+- **`change_request`:** push the integration branch and open one change request
+  into the base branch; the branch and its linked worktree remain available
+  locally.
+
+A failed, partial, stopped, or `--wave`-filtered run does not deliver the
+integration branch; it remains for the next run. If delivery itself fails, the
+run exits non-zero and keeps the branch/worktree for resolution. A successful
+push or change-request delivery also keeps them; successful local merge cleans
+them up.
