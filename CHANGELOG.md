@@ -15,6 +15,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - `snodo install` now detects and configures Claude Code, Cursor and Gemini CLI
   alongside Claude Desktop and Codex-family clients, preserving unrelated
   server entries. (Fixes #663)
+### Added
+- Add the `claude-cli/<model>` in-place coder for Claude Code, with structured
+  output and usage capture. (Fixes #662)
 
 ### Changed
 - Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #646, #647)

@@ -153,6 +153,7 @@ _DRIVERS = {
     "opencode-cli": _drive_subprocess_cli_adapter,
     "agy": _drive_subprocess_cli_adapter,
     "codex-cli": _drive_subprocess_cli_adapter,
+    "claude-cli": _drive_subprocess_cli_adapter,
 }
 
 
