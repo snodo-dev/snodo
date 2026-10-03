@@ -404,7 +404,7 @@ def test_plan_delivery_refuses_branch_moved_after_verification(tmp_path):
     repo.config_writer().set_value("user", "email", "test@example.com").release()
     (root / "base.txt").write_text("base\n")
     repo.index.add(["base.txt"])
-    base = repo.index.commit("base").hexsha
+    repo.index.commit("base")
     branch = "plan/moved/integration"
     (root / "verified.txt").write_text("verified\n")
     repo.index.add(["verified.txt"])
