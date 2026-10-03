@@ -201,7 +201,18 @@ def _run_queue(store, queue_name, project_root, run_plan, run_args, protocol, mo
         from snodo.infrastructure.audit import get_audit_log
         from snodo.project import get_project_id
         project_id, _ = get_project_id(str(project_root))
-        result = _deliver_plan_integration(
+        delivered = False
+        if delivery in {"push_branch", "change_request"}:
+            try:
+                from snodo.tools.git import open_repo
+                from snodo.cli.commands.plan_run import _remote_branch_matches
+                with open_repo(str(project_root)) as repo:
+                    local_sha = repo.commit(queue_branch).hexsha
+                    remote = getattr(policy.execution, "delivery_remote", "origin")
+                    delivered = _remote_branch_matches(repo, remote, queue_branch, local_sha)
+            except Exception:
+                delivered = False
+        result = 0 if delivered else _deliver_plan_integration(
             str(project_root), queue_branch, queue_name,
             "Plans: " + ", ".join(initial), policy, mode,
             get_audit_log(project_id=project_id),

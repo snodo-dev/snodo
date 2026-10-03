@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Re-running a completed plan or queue skips push/change-request delivery when its integration branch already points to the delivered commit, while delivering later branch changes. (Fixes #661)
 - Verify plan integration heads before push-branch or change-request delivery, and refuse failed verification through the delivery gate. (Fixes #661)
 - Document plan integration-branch delivery after successful unfiltered runs: local merge cleans up the branch/worktree, push and change-request retain them, and failed, partial, or wave-filtered runs defer delivery. (Fixes #661)
 - Plan integration branches are verified at their combined head before push-branch or change-request delivery. (Fixes #661)
