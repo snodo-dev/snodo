@@ -18,6 +18,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
   head and allowed with passing evidence. (Fixes #693)
 
 ### Fixed
+- Document `uvx snodo` for trying the published package and `uv tool install
+  snodo` for regular use in the first-run guidance. (Fixes #702)
 - `snodo cloud status` now reports local unsent audit events and the local
   chain head for cursors belonging to the current project. (Fixes #700)
 - Cloud sync and liveness now ignore mock-coder events from interleaved sessions,

@@ -4,6 +4,20 @@
 
 Requires Python 3.12 or later.
 
+Try Snodo without installing it:
+
+```bash
+uvx snodo --version
+```
+
+For regular use, install the command with uv:
+
+```bash
+uv tool install snodo
+```
+
+If you prefer pip, install Snodo in your environment:
+
 ```bash
 pip install snodo
 ```
@@ -247,13 +261,16 @@ git add README.md
 # Git must have user.name and user.email configured for this commit.
 git commit -m "Initial project commit"
 
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install snodo
-python -m pip install pytest
-snodo init --template team --test-command "PYTHONPATH=. pytest" --yes
-snodo run "add a hello() function that returns the string 'world', with a test" --mock
+# uvx runs the published package in a temporary environment; --with makes
+# pytest available to the verification command during the Snodo run.
+uvx --with pytest snodo init --template team --test-command "PYTHONPATH=. pytest" --yes
+uvx --with pytest snodo run "add a hello() function that returns the string 'world', with a test" --mock
 ```
+
+For regular use, install Snodo with `uv tool install snodo` (or use the pip
+fallback above), then run the `snodo` commands directly. `uvx --with pytest`
+keeps this quickstart self-contained while making pytest available to the
+verification command.
 
 This is the canonical first-run command sequence; the [README](https://github.com/snodo-dev/snodo#readme) and
 [docs home](index.md) link here. Git needs a committer identity before the
@@ -262,10 +279,8 @@ commit: configure it with `git config --global user.name "Your Name"` and
 values with `git config user.name "Your Name"` and
 `git config user.email "you@example.com"`.
 
-The virtual environment keeps Snodo and pytest out of the system Python, even
-when the machine's shared or system Python is locked down; leave it active while
-running Snodo commands. Using `python -m pip` installs into that environment.
-The starter README ensures the initial
+`uvx` runs Snodo and pytest from a temporary environment, without installing
+either into the system Python. The starter README ensures the initial
 commit has a file, and Snodo's isolated task worktrees start from that committed
 `HEAD`. Starting on `main` is required for the default isolated-worktree flow.
 In an existing repository, skip `git init`; if it has no commits, commit at

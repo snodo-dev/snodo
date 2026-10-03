@@ -83,7 +83,9 @@ or a containerised server all converge on the same gate and the same merge path.
 Follow the canonical [first-run quickstart](docs/runbook.md#quickstart). It
 includes the starter file needed for the initial commit, the Git identity
 prerequisite, and the same governed hello-world mock task shown in the docs.
-Python 3.12+ is required.
+Try the published package without installing it with `uvx snodo --version`, or
+install it for regular use with `uv tool install snodo`; `pip install snodo` is
+also available as a fallback. Python 3.12+ is required.
 
 Before spending anything on an existing repository, run `snodo ready`. Without
 an LLM, it checks whether the artefacts the protocol expects — decision records,
