@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Plan and queue task branches now merge inside their integration branch's
+  registered linked worktree, preserving the project root checkout. (Fixes #668)
 - Background job ids now accompany `plan_run` for every trigger and optional
   per-task audit events, so terminal ids are searchable in cloud history. MCP
   dispatched task plans now emit `plan_run` too. Cloud interface v8 gates the

@@ -246,6 +246,55 @@ def test_merge_task_branch_targets_integration_ref(repo):
     assert (repo / "feature.txt").exists()
 
 
+def test_merge_task_branch_targets_linked_integration_worktree(repo, tmp_path):
+    integration = tmp_path / "integration"
+    subprocess.run(["git", "branch", "integration"], cwd=repo, check=True)
+    subprocess.run(["git", "worktree", "add", str(integration), "integration"], cwd=repo, check=True)
+    branch = task_branch_name("task_linked", "add feature")
+    subprocess.run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+    (repo / "feature.txt").write_text("feature\n")
+    subprocess.run(["git", "add", "feature.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "feature"], cwd=repo, check=True)
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+    root_head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    root_status = subprocess.check_output(
+        ["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo, text=True
+    )
+
+    assert merge_task_branch(str(repo), branch, target_ref="integration") == ("merged", [])
+
+    assert _current_branch(repo) == "main"
+    assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip() == root_head
+    assert subprocess.check_output(
+        ["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo, text=True
+    ) == root_status
+    assert (integration / "feature.txt").read_text() == "feature\n"
+
+
+def test_conflicting_merge_into_linked_worktree_aborts_cleanly(repo, tmp_path):
+    integration = tmp_path / "integration"
+    subprocess.run(["git", "branch", "integration"], cwd=repo, check=True)
+    subprocess.run(["git", "worktree", "add", str(integration), "integration"], cwd=repo, check=True)
+    branch = task_branch_name("task_conflict", "conflicting change")
+    subprocess.run(["git", "checkout", "-qb", branch], cwd=repo, check=True)
+    (repo / "README.md").write_text("task version\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "task change"], cwd=repo, check=True)
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+    (integration / "README.md").write_text("integration version\n")
+    subprocess.run(["git", "add", "README.md"], cwd=integration, check=True)
+    subprocess.run(["git", "commit", "-qm", "integration change"], cwd=integration, check=True)
+
+    assert merge_task_branch(str(repo), branch, target_ref="integration") == ("conflict", ["README.md"])
+
+    assert branch in _branches(repo)
+    assert (integration / "README.md").read_text() == "integration version\n"
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=integration, text=True) == ""
+    assert subprocess.check_output(
+        ["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo, text=True
+    ) == ""
+
+
 def test_merge_task_branch_conflict(repo):
     branch = task_branch_name("task_1", "conflicting change")
     subprocess.run(["git", "checkout", "-qb", branch], cwd=repo, check=True)

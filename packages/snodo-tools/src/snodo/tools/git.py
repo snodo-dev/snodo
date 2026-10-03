@@ -379,30 +379,52 @@ class GitMCP:
             Command output
         """
         base = base or resolve_base_branch(self.project_root)
+        merge_repo = self.repo
+        # A branch checked out in a linked worktree cannot be checked out in
+        # this repository's worktree. Locate the registered checkout via Git
+        # metadata and run the merge there, keeping the operator's checkout
+        # and index untouched.
         try:
-            current_branch = self.repo.active_branch.name
+            worktrees = self.repo.git.worktree("list", "--porcelain")
+        except GitCommandError as e:
+            raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
+        target_worktree = None
+        for record in worktrees.split("\n\n"):
+            lines = record.splitlines()
+            path = next((line.removeprefix("worktree ") for line in lines if line.startswith("worktree ")), None)
+            ref = next((line.removeprefix("branch refs/heads/") for line in lines if line.startswith("branch refs/heads/")), None)
+            if ref == base and path:
+                target_worktree = Path(path)
+                break
+        if target_worktree is not None and target_worktree.resolve() != self.project_root:
+            try:
+                merge_repo = open_repo(str(target_worktree), search_parent_directories=False)
+            except InvalidGitRepositoryError as e:
+                raise GitError(f"Target worktree for '{base}' is unavailable: {target_worktree}") from e
+        try:
+            current_branch = merge_repo.active_branch.name
         except Exception:
             current_branch = None
 
         if current_branch != base:
             try:
-                self.repo.git.checkout(base)
+                merge_repo.git.checkout(base)
             except GitCommandError as e:
                 raise GitError(f"Git command failed: {e.stderr.strip() if e.stderr else str(e)}") from e
 
         try:
-            return self.repo.git.merge(branch)
+            return merge_repo.git.merge(branch)
         except GitCommandError as e:
             stderr = e.stderr.strip() if e.stderr else str(e)
-            if _has_merge_conflict(self.repo):
+            if _has_merge_conflict(merge_repo):
                 conflicting_paths = []
                 try:
-                    unmerged = self.repo.index.unmerged_blobs()
+                    unmerged = merge_repo.index.unmerged_blobs()
                     conflicting_paths = sorted(list(unmerged.keys()))
                 except Exception as err:
                     _logger.debug("Failed to inspect unmerged blobs: %s", err)
                 try:
-                    self.repo.git.merge("--abort")
+                    merge_repo.git.merge("--abort")
                 except GitCommandError as err:
                     _logger.debug("Failed to abort merge: %s", err)
                 paths_str = ", ".join(conflicting_paths) if conflicting_paths else "unknown path(s)"
@@ -414,7 +436,7 @@ class GitMCP:
             if "overwritten by merge" in stderr or "overwritten by checkout" in stderr:
                 staged_files = []
                 try:
-                    staged_files = self.repo.git.diff("--cached", "--name-only").splitlines()
+                    staged_files = merge_repo.git.diff("--cached", "--name-only").splitlines()
                 except Exception as err:
                     _logger.debug("Failed to inspect staged diff: %s", err)
                 if staged_files:
@@ -424,7 +446,7 @@ class GitMCP:
                     ) from e
 
                 try:
-                    part_files = self.repo.git.diff("--name-only", f"{base}..{branch}").splitlines()
+                    part_files = merge_repo.git.diff("--name-only", f"{base}..{branch}").splitlines()
                 except Exception:
                     part_files = []
                 if part_files:
