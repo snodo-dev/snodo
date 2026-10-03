@@ -868,14 +868,20 @@ class CloudSyncDispatcher:
         separated: list[list] = []
         for candidate in queue:
             segment: list = []
+            segment_version: int | None = None
             for event in candidate:
-                if _requires_v6(event) or _requires_v7(event) or _requires_v8(event):
-                    if segment:
-                        separated.append(segment)
-                        segment = []
-                    separated.append([event])
+                required_version = (
+                    8 if _requires_v8(event) else
+                    7 if _requires_v7(event) else
+                    6 if _requires_v6(event) else 5
+                )
+                if segment and required_version != segment_version:
+                    segment.append(event)
+                    separated.append(segment[:-1])
+                    segment = [event]
                 else:
                     segment.append(event)
+                segment_version = required_version
             if segment:
                 separated.append(segment)
         queue = separated
@@ -884,8 +890,6 @@ class CloudSyncDispatcher:
             batch = queue.pop(0)
             first_seq = batch[0].sequence
             max_seq = batch[-1].sequence
-            from snodo.infrastructure.cloud_sync_output import batch_progress
-            batch_progress(session_id, synced, max(0, len(unsynced) - synced))
             outcome, reason, status_code = self._post_batch(
                 session_id, project_root, batch, api_key, api_url,
                 force=force or bool(oversized_sequences),
@@ -900,6 +904,7 @@ class CloudSyncDispatcher:
                     state.advance_project_cursor(project_id, max_seq)
                 _logger.debug("Cursor advanced to sequence %d", max_seq)
                 synced += len(batch)
+                from snodo.infrastructure.cloud_sync_output import batch_progress
                 batch_progress(session_id, synced, max(0, len(unsynced) - synced))
             elif outcome == "too_large" and len(batch) > 1:
                 server_limit = status_code or _DEFAULT_PAYLOAD_LIMIT

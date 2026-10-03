@@ -18,6 +18,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   head and allowed with passing evidence. (Fixes #693)
 
 ### Fixed
+- Cloud audit sync now fills batches up to the 50-event limit when events share
+  an interface-version boundary, while retaining payload/hold rules and printing
+  each progress update once. (Fixes #704)
 - Document `uvx snodo` for trying the published package and `uv tool install
   snodo` for regular use in the first-run guidance. (Fixes #702)
 - `snodo cloud status` now reports local unsent audit events and the local

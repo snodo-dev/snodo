@@ -667,6 +667,29 @@ class TestCloudSyncDispatcher:
         assert result["synced"] == 75
         assert result["failed"] is False
         assert mock_post.call_count == 2
+        assert [len(call.args[2]) for call in mock_post.call_args_list] == [50, 25]
+
+    def test_ready_events_under_50_share_one_batch_and_progress_prints_once(self, capsys):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        events = self._make_events(29)
+        dispatcher = CloudSyncDispatcher()
+        with (
+            patch.object(CloudSyncState, "get_cursor", return_value=0),
+            patch.object(CloudSyncState, "advance_cursor"),
+            patch.object(dispatcher, "_post_batch", return_value=("delivered", "HTTP 200", 200)) as post,
+        ):
+            result = dispatcher.sync(
+                "sess_batch_once", "/proj", MagicMock(events=events),
+                "sndo_live_xxx", "https://api.example.com",
+            )
+
+        assert result["synced"] == 29
+        post.assert_called_once()
+        assert len(post.call_args.args[2]) == 29
+        output = capsys.readouterr().err
+        assert output.count("Cloud sync sess_batch_once: 29 events accepted; 0 pending.") == 1
+        assert output.count("29 events accepted; 0 pending.") == 1
 
     def test_large_events_are_partitioned_below_payload_limit(self):
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
