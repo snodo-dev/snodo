@@ -35,6 +35,7 @@ walkthrough.
 | `snodo models` | `--provider`/`-p`, `--flush`, `--stats`, `--provenance`, `--provenance-limit`, `--check`, `--benchmark`, `--benchmark-runs`, `--set-baseline`, `--compare`, `--benchmark-run`, `--model`, `--plan`, `--task`/`--task-id`, `--job`, `--json`, `--id`, `--id-contains`, `--max-output-cost`, `--min-output-cost`, `--max-input-cost`, `--min-context` |
 | `snodo cloud connect` | `<api_key>` |
 | `snodo cloud login` | `--no-browser` |
+| `snodo cloud logout` | — |
 | `snodo cloud disconnect` | — |
 | `snodo cloud status` | — |
 | `snodo cloud sync` | `--all`, `--session`, `--force`/`--retry` |
@@ -58,6 +59,11 @@ Use `snodo cloud login` to sign in through a browser and enable cloud sync;
 `--no-browser` prints the authorization URL. OAuth login does not store an API
 key. If a key is configured, OAuth takes priority; run `snodo cloud connect
 <api_key>` to switch back.
+`snodo cloud logout` clears OAuth tokens and best-effort revokes a refresh token
+when the cloud advertises a revocation endpoint. `snodo cloud disconnect` also
+clears the configured API key and disables sync. `snodo cloud status` reports
+the active authentication method, OAuth expiry and account details when known,
+without displaying credential values.
 
 `snodo install` (and `snodo serve --mcp-install`) detects Claude Desktop,
 Claude Code, Cursor, Gemini CLI and Codex-family clients and installs mode-pinned
