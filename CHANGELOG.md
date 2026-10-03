@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Queue and other generic-description jobs now use unique job identities, while
+  plan-dispatched tasks retain task-specific worktrees and retry reuse. (Fixes #684)
 - `snodo cloud status` now shows OAuth expiry in UTC with time remaining (or
   notes that the next sync will refresh an expired token) and displays only the
   access token's `org_id` claim when present. (Fixes #683)
