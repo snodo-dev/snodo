@@ -1244,7 +1244,7 @@ def _on_audit_event(event: Any, audit_log: Any) -> None:
     try:
         if not _ARMED:
             return
-        from snodo.infrastructure.cloud_sync import cloud_delivery_skip_reason
+        from snodo.infrastructure.cloud_delivery import cloud_delivery_skip_reason
         if cloud_delivery_skip_reason(audit_log):
             return
         event_type = getattr(event, "event_type", "")

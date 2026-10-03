@@ -14,7 +14,6 @@ Contract (from snodo-cloud ADR):
 import atexit
 import json
 import logging
-import os
 import re
 import time
 from pathlib import Path
@@ -26,6 +25,7 @@ from pydantic import (
 )
 
 from snodo.infrastructure.atomic_json import atomic_write_json
+from snodo.infrastructure.cloud_delivery import cloud_delivery_skip_reason
 from snodo.infrastructure.paths import resolve_home
 from snodo.project import scope_for_project_id
 from snodo.infrastructure.cloud_backoff import (
@@ -1171,29 +1171,6 @@ def _should_sync(config: Optional[dict] = None) -> bool:
         config = ConfigManager().load()
     cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
     return bool(cloud.get("sync_enabled")) and bool(cloud.get("api_key", "").strip())
-
-
-def cloud_delivery_skip_reason(audit_log: Any = None) -> Optional[str]:
-    """Return why this run's outbound cloud delivery should be suppressed.
-
-    Audit history remains local and complete. The coder is read from recorded
-    task usage, avoiding a new run-state field or configuration switch.
-    """
-    if os.environ.get("SNODO_BENCHMARK") == "1":
-        return "benchmark run"
-    for event in getattr(audit_log, "events", ()):
-        data = getattr(event, "data", None)
-        if not isinstance(data, dict):
-            continue
-        usage = data.get("usage", ())
-        if isinstance(usage, list) and any(
-            isinstance(item, dict) and item.get("coder") == "mock"
-            for item in usage
-        ):
-            return "mock coder run"
-        if data.get("coder") == "mock":
-            return "mock coder run"
-    return None
 
 
 #: How long the flush waits for background syncs to finish before giving up.
