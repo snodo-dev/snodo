@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Verify plan integration heads before push-branch or change-request delivery, and refuse failed verification through the delivery gate. (Fixes #661)
 - Document plan integration-branch delivery and cleanup for all delivery modes, including failure and filtered-run behavior. (Fixes #661)
 - Plan integration branches are verified at their combined head before push-branch or change-request delivery. (Fixes #661)
 - Plan and queue task branches now merge inside their integration branch's

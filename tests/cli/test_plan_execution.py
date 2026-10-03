@@ -243,9 +243,12 @@ def test_plan_delivery_uses_configured_delivery_and_plan_content(plan_project_en
     protocol.delivery_for.return_value = delivery
     protocol.execution.delivery_remote = "upstream"
     protocol.metadata = {"provider": "test"}
+    protocol.validators = []
     with patch("snodo.cli.commands.run_merge._merge_on_success", return_value=(0, False, "branch")) as deliver:
-        with patch("snodo.infrastructure.worktree.worktree_dir", return_value=plan_project_env / "unused"):
-            assert _deliver_plan_integration(
+        with patch("git.Repo") as repo_cls:
+            repo_cls.return_value.__enter__.return_value.commit.return_value.hexsha = "a" * 40
+            with patch("snodo.infrastructure.worktree.worktree_dir", return_value=plan_project_env / "unused"):
+                assert _deliver_plan_integration(
                 str(plan_project_env), "plan/demo/integration", "demo", "Build a demo",
                 protocol, "producer", MagicMock(),
             ) == 0
@@ -262,10 +265,12 @@ def test_plan_delivery_failure_uses_unmerged_exit_code(plan_project_env):
     protocol = MagicMock()
     protocol.delivery_for.return_value = "push_branch"
     with patch("snodo.cli.commands.run_merge._merge_on_success", return_value=(1, True, None)):
-        assert _deliver_plan_integration(
-            str(plan_project_env), "plan/demo/integration", "demo", "intent",
-            protocol, "producer", MagicMock(),
-        ) == 2
+        with patch("git.Repo") as repo_cls:
+            repo_cls.return_value.__enter__.return_value.commit.return_value.hexsha = "a" * 40
+            assert _deliver_plan_integration(
+                str(plan_project_env), "plan/demo/integration", "demo", "intent",
+                protocol, "producer", MagicMock(),
+            ) == 2
 
 
 def test_plan_invalid_wave_filter_fails(plan_project_env, capsys):

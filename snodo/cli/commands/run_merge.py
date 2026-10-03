@@ -425,8 +425,11 @@ def _deliver_plan_integration(
                 task=task, protocol=protocol, audit_log=audit_log,
                 working_directory=str(integration_path), task_id=plan_name,
             ))
-            if verification.severity == "blocker" or verification.error:
-                return 2
+            # Always let the delivery gate make the final decision. A failed
+            # integration-head run records its verification_executed event;
+            # the gate then refuses it using the ordinary
+            # unverified_merge_blocked path and preserves the integration
+            # branch/worktree for human resolution.
     result, preserve, _ = _merge_on_success(
         project_root, task, 0, None, audit_log,
         delivery=delivery,
