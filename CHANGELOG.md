@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Add a one-shot localhost callback listener for cloud OAuth sign-in. (Fixes #673)
 - Persist cloud OAuth credentials in a private, atomic user-level store with
   safe logout and expiry helpers. (Fixes #672)
 - Add cloud OAuth discovery, public-client registration, PKCE authorization,
