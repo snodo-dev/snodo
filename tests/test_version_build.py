@@ -1,0 +1,56 @@
+"""Source checkout version labels are deterministic and fail closed."""
+
+import subprocess
+
+from snodo.version import _version_for
+
+
+def _git(repo, *args):
+    return subprocess.run(
+        ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _commit(repo, name, content):
+    (repo / name).write_text(content)
+    _git(repo, "add", name)
+    _git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-m",
+        name,
+    )
+
+
+def test_source_checkout_version_contains_count_and_short_sha(tmp_path):
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _commit(repo, "first", "one")
+
+    first = _version_for("0.19.3", repo)
+    first_count = int(first.split("+b", 1)[1].split(".g", 1)[0])
+    first_sha = _git(repo, "rev-parse", "--short", "HEAD")
+    assert first == f"0.19.3+b{first_count}.g{first_sha}"
+
+    _commit(repo, "second", "two")
+    second = _version_for("0.19.3", repo)
+    second_count = int(second.split("+b", 1)[1].split(".g", 1)[0])
+    assert second_count == first_count + 1
+    assert second.endswith(f".g{_git(repo, 'rev-parse', '--short', 'HEAD')}")
+
+
+def test_outside_git_worktree_uses_plain_version(tmp_path):
+    assert _version_for("0.19.3", tmp_path) == "0.19.3"
+
+
+def test_unavailable_git_uses_plain_version(tmp_path, monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr("snodo.version.subprocess.run", unavailable)
+    assert _version_for("0.19.3", tmp_path) == "0.19.3"

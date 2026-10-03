@@ -15,6 +15,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   head and allowed with passing evidence. (Fixes #693)
 
 ### Fixed
+- Source-checkout version strings now include the reachable commit count and
+  short commit id, distinguishing editable builds from released packages.
+  (Fixes #694)
 - Plan integration delivery now verifies the combined head in every delivery
   mode and refuses if its branch moves before the verified commit is merged or
   pushed. (Fixes #692)
