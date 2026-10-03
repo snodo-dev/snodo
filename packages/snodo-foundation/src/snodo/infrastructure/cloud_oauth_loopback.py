@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import http.server
 import socket
 import threading
@@ -31,7 +32,7 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.client_address[0] not in {"127.0.0.1", "::1"}:
-            self._reply("This callback is available only on this device.")
+            self._reply(False, "This callback is available only on this device.")
             return
 
         parsed = urllib.parse.urlsplit(self.path)
@@ -47,15 +48,50 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
         else:
             self.server.result = query["code"][0]
             self.server.received.set()
-            self._reply("Sign-in complete. You can close this tab.")
+            self._reply(True)
 
     def _finish_error(self, message: str, page: str) -> None:
         self.server.result = CloudOAuthLoopbackError(message)
         self.server.received.set()
-        self._reply(page)
+        self._reply(False, page)
 
-    def _reply(self, message: str) -> None:
-        body = f"<!doctype html><html><body><p>{message}</p></body></html>".encode()
+    def _reply(self, success: bool, message: str = "") -> None:
+        if success:
+            heading = "You're signed in to snodo cloud"
+            detail = "You can go back to the terminal and close this tab."
+            label = "SNODO CLOUD · SIGN-IN COMPLETE"
+        else:
+            heading = "Sign-in couldn't be completed"
+            detail = f"{html.escape(message)} Please run <code>snodo cloud login</code> again."
+            label = "SNODO CLOUD · SIGN-IN"
+        body = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(heading)}</title>
+  <style>
+    :root {{ color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    body {{ box-sizing: border-box; min-height: 100vh; margin: 0; padding: 24px; display: grid; place-items: center; background: #f4f7f7; color: #172729; }}
+    main {{ width: min(100%, 480px); box-sizing: border-box; padding: clamp(24px, 7vw, 48px); border: 1px solid #dce7e6; border-radius: 18px; background: #fff; box-shadow: 0 18px 60px #193c3b12; }}
+    .label {{ margin: 0 0 22px; color: #087e78; font: 600 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }}
+    h1 {{ margin: 0; font-size: clamp(25px, 7vw, 34px); line-height: 1.15; letter-spacing: -.035em; }}
+    .detail {{ margin: 16px 0 0; color: #536365; font-size: 16px; line-height: 1.65; }}
+    code {{ color: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }}
+    @media (prefers-color-scheme: dark) {{
+      body {{ background: #101718; color: #edf5f4; }}
+      main {{ background: #182223; border-color: #2c3a3b; box-shadow: 0 18px 60px #0005; }}
+      .label {{ color: #5ad3c8; }}
+      .detail {{ color: #b3c2c1; }}
+    }}
+  </style>
+</head>
+<body><main>
+  <p class="label">{html.escape(label)}</p>
+  <h1>{html.escape(heading)}</h1>
+  <p class="detail">{detail}</p>
+</main></body>
+</html>""".encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))

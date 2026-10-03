@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import threading
 import urllib.error
 import urllib.request
@@ -18,6 +19,8 @@ def _run_with_callback(monkeypatch, path: str, query: str, *, state: str = "expe
 
     original_server = module._CallbackServer
     created = []
+    pages = []
+    requests = []
 
     class CapturingServer(original_server):
         def __init__(self, expected_state: str) -> None:
@@ -30,13 +33,16 @@ def _run_with_callback(monkeypatch, path: str, query: str, *, state: str = "expe
         port = created[0].server_port
 
         def redirect() -> None:
-            url = f"http://localhost:{port}{path}?{query}"
+            url = f"http://127.0.0.1:{port}{path}?{query}"
             try:
-                urllib.request.urlopen(url, timeout=2).read()
+                with urllib.request.urlopen(url, timeout=2) as response:
+                    pages.append((response.headers.get_content_type(), response.read().decode()))
             except urllib.error.URLError:
-                pass
+                pages.append(("request failed", ""))
 
-        threading.Thread(target=redirect, daemon=True).start()
+        request = threading.Thread(target=redirect, daemon=True)
+        requests.append(request)
+        request.start()
         return True
 
     result = None
@@ -47,17 +53,22 @@ def _run_with_callback(monkeypatch, path: str, query: str, *, state: str = "expe
         error = exc
     finally:
         assert created[0].fileno() == -1
-    return result, error
+        for request in requests:
+            request.join(timeout=2)
+    return result, error, pages[0]
 
 
 def test_success_returns_code_and_localhost_redirect_uri(monkeypatch):
-    result, error = _run_with_callback(monkeypatch, "/callback", "code=secret-code&state=expected")
+    result, error, (content_type, page) = _run_with_callback(monkeypatch, "/callback", "code=secret-code&state=expected")
     assert error is None
     assert result is not None
     code, redirect_uri = result
     assert code == "secret-code"
     assert redirect_uri.startswith("http://localhost:")
     assert redirect_uri.endswith("/callback")
+    assert content_type == "text/html"
+    assert "You're signed in to snodo cloud" in html.unescape(page)
+    assert "go back to the terminal and close this tab" in page
 
 
 @pytest.mark.parametrize(
@@ -69,10 +80,13 @@ def test_success_returns_code_and_localhost_redirect_uri(monkeypatch):
     ],
 )
 def test_invalid_callback_fails_without_returning_code(monkeypatch, path, query, message):
-    result, error = _run_with_callback(monkeypatch, path, query)
+    result, error, (content_type, page) = _run_with_callback(monkeypatch, path, query)
     assert result is None
     assert error is not None
     assert message in str(error)
+    assert content_type == "text/html"
+    assert "Sign-in couldn't be completed" in html.unescape(page)
+    assert "snodo cloud login" in page
 
 
 def test_timeout(monkeypatch):
