@@ -31,7 +31,9 @@ from snodo.infrastructure.cloud_backoff import (
     cloud_backoff_seconds,
     retry_after_seconds,
 )
-from snodo.infrastructure.cloud_usage import UsageRecord, _aggregate_usage, task_usage_records
+from snodo.infrastructure.cloud_usage import (  # noqa: F401 — compatibility re-exports
+    UsageRecord, _aggregate_usage, task_usage_records,
+)
 
 _logger = logging.getLogger(__name__)
 
