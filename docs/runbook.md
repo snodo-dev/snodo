@@ -270,7 +270,9 @@ commit has a file, and Snodo's isolated task worktrees start from that committed
 `HEAD`. Starting on `main` is required for the default isolated-worktree flow.
 In an existing repository, skip `git init`; if it has no commits, commit at
 least one project file first. `--yes` acknowledges Snodo's trusted-repository
-model so initialization works without an interactive prompt.
+model so initialization works without an interactive prompt. `snodo init` adds
+Git ignore rules for Snodo's runtime state while allowing the authored
+`.snodo/protocol.yml` to be added and committed.
 
 For Python, the mock coder always writes the same `src/hello.py` and
 `tests/test_hello.py` hello-world fixture, whatever the task text says; it does
@@ -282,8 +284,13 @@ requirements.
 
 For provider-backed coding, configure a provider (for example,
 `snodo config add anthropic <key>` or `ANTHROPIC_API_KEY`) and run the same task
-description without `--mock`. Task isolation is required by default;
-`--no-isolation` is an explicit fallback that runs in the current working tree.
+description without `--mock`; the selected provider needs a credential in Snodo
+config or its environment variable. A configured local endpoint that declares
+no `api_key_env` needs no credential. `--test-command` declares the test runner;
+it does not create tests. The configured command must exist and pass for the
+quality validator to report a passing test outcome. Task isolation is required
+by default; `--no-isolation` is an explicit fallback that runs in the current
+working tree.
 
 For an MCP run, the orchestrator validates and dispatches a task (or builds a
 plan/queue when the work needs that structure). Work starters return a job ID;

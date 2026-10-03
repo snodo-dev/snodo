@@ -16,6 +16,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Add a static regression check for the canonical first-run quickstart links and command order. (Fixes #653)
 - Quickstart installs Snodo and pytest into an activated virtual environment with `python -m pip`, and documents that the mock always writes the same hello-world fixture regardless of task text. (Fixes #653)
+- Restore first-run notes on provider credentials, generated Git ignore rules, credential-free local endpoints, and the test command's requirements. (Fixes #653)
 - Gate security support and package documentation against the release and workspace layout. (Fixes #664)
 ### Added
 - `snodo install` now detects and configures Claude Code, Cursor and Gemini CLI
