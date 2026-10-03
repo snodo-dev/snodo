@@ -298,8 +298,12 @@ Plan delivery happens once, after every wave in an unfiltered plan run has
 completed successfully. It follows `execution.delivery` for the active mode:
 `local_merge` merges the plan integration branch into the base branch,
 `push_branch` pushes that branch, and `change_request` pushes it and opens one
-change request titled for the plan. Failed, stopped, or `--wave`-filtered runs
-do not deliver the plan branch.
+change request titled for the plan. A queue run using `push_branch` or
+`change_request` instead merges its completed plans into a persistent
+`queue/<name>/integration` branch and delivers that branch once when every plan
+in the run succeeds. Partial and skipped runs leave it for a later run to
+resume. Queue runs using `local_merge` retain per-plan merges to the base.
+Failed, stopped, or `--wave`-filtered plan runs do not deliver the plan branch.
 
 These variables affect run behavior or identify the context of a run. The
 `SNODO_*` variables below are read by Snodo; variables such as `ANTHROPIC_API_KEY`

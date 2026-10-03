@@ -10,6 +10,14 @@ there is nothing runnable; it does not wait for a future fix or for more plans.
 Follow the [smallest-structure rule](authoring-a-plan.md#1-the-one-modelling-rule).
 A queue is a scheduler for plans, not a wrapper for one task or one plan.
 
+For `push_branch` and `change_request` delivery, one successful queue run is
+delivered as a single unit. Snodo keeps a `queue/<name>/integration` branch,
+merges each completed plan into it, and pushes or opens one request after all
+plans in the run succeed. An interrupted or partial run keeps that branch for
+the next run to resume. `--non-blocking` runs that skip a failed plan do not
+deliver; rerun after resolving or removing the failure. With `local_merge`,
+each plan continues to merge directly into the base branch.
+
 For first-use cleanup of inherited plans, see the [queue triage guide](queue-triage.md).
 
 ## Read validation and decide
