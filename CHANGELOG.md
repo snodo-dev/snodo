@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Add `snodo cloud logout`, best-effort refresh-token revocation, and
+  credential-safe authentication details in `snodo cloud status`; disconnect
+  now clears OAuth login too. (Fixes #676)
 - Add `snodo cloud login` for browser-based OAuth sign-in and cloud sync setup. (Fixes #674)
 - Add a one-shot localhost callback listener for cloud OAuth sign-in. (Fixes #673)
 - Persist cloud OAuth credentials in a private, atomic user-level store with

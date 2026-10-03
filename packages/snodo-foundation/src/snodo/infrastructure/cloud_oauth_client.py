@@ -34,6 +34,7 @@ class OAuthMetadata:
     token_endpoint: str
     registration_endpoint: str
     jwks_uri: str
+    revocation_endpoint: str | None = None
 
 
 def pkce_verifier() -> str:
@@ -92,7 +93,10 @@ class CloudOAuthClient:
         issuer = payload.get("issuer", "")
         if not isinstance(issuer, str) or not issuer.startswith("https://"):
             raise CloudOAuthError("OAuth metadata issuer must use HTTPS")
-        self.metadata = OAuthMetadata(issuer=issuer, **values)
+        revocation_endpoint = payload.get("revocation_endpoint")
+        if not isinstance(revocation_endpoint, str) or not revocation_endpoint.startswith("https://"):
+            revocation_endpoint = None
+        self.metadata = OAuthMetadata(issuer=issuer, revocation_endpoint=revocation_endpoint, **values)
         return self.metadata
 
     def register_client(self, redirect_uri: str = "http://localhost:*") -> str:
@@ -153,6 +157,24 @@ class CloudOAuthClient:
             metadata.token_endpoint,
             {"grant_type": "refresh_token", "client_id": client_id, "refresh_token": refresh_token},
         )
+
+    def revoke(self, client_id: str, refresh_token: str) -> None:
+        """Revoke a refresh token when discovery advertises a revocation endpoint."""
+        metadata = self._require_metadata()
+        if metadata.revocation_endpoint is None:
+            return
+        try:
+            response = self.http.post(
+                metadata.revocation_endpoint,
+                data={"token": refresh_token, "token_type_hint": "refresh_token", "client_id": client_id},
+                headers=self.headers,
+            )
+            if not 200 <= response.status_code < 300:
+                raise CloudOAuthError(f"OAuth revocation endpoint returned HTTP {response.status_code}")
+        except CloudOAuthError:
+            raise
+        except Exception:
+            raise CloudOAuthError("OAuth revocation request failed due to a network error") from None
 
     def _token_request(self, endpoint: str, data: dict[str, str]) -> dict:
         try:

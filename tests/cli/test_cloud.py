@@ -69,6 +69,42 @@ class TestCloudDisconnect:
                 (("cloud", "sync_enabled"), False),
             ]
 
+    def test_clears_oauth_state_too(self, monkeypatch):
+        from snodo.cli.commands.cloud_cmd import cloud_disconnect_command
+        cleared = []
+        monkeypatch.setattr("snodo.infrastructure.cloud_oauth_store.clear_oauth_state", lambda: cleared.append(True))
+        with patch("snodo.config.ConfigManager"):
+            assert cloud_disconnect_command() == 0
+        assert cleared == [True]
+
+
+class TestCloudLogout:
+    @pytest.mark.parametrize(("refresh", "failure"), [("refresh-secret", False), (None, False), ("refresh-secret", True)])
+    def test_clears_tokens_and_revokes_best_effort(self, monkeypatch, tmp_path, capsys, refresh, failure):
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, load_oauth_state, save_oauth_state
+        save_oauth_state(CloudOAuthState("client", "access-secret", refresh, 1234))
+        calls = []
+        class Client:
+            def __init__(self, _config): pass
+            def discover(self):
+                return type("Metadata", (), {"revocation_endpoint": "https://cloud.example/revoke"})()
+            def revoke(self, client_id, token):
+                calls.append((client_id, token))
+                if failure:
+                    raise RuntimeError("failure")
+        monkeypatch.setattr("snodo.infrastructure.cloud_oauth_client.CloudOAuthClient", Client)
+        with patch("snodo.config.ConfigManager") as manager:
+            manager.return_value.load.return_value = {}
+            from snodo.cli.commands.cloud_cmd import cloud_logout_command
+            assert cloud_logout_command() == 0
+        assert load_oauth_state().access_token is None
+        assert (len(calls) == 1) is bool(refresh)
+        output = capsys.readouterr().out
+        assert "access-secret" not in output and "refresh-secret" not in output
+        if refresh and failure:
+            assert "local sign-out is complete" in output
+
 
 class TestCloudOAuthLogin:
     def _setup(self, monkeypatch, tmp_path, *, key="", result=("auth-code", "http://localhost:4312/callback")):
@@ -161,7 +197,23 @@ class TestCloudOAuthLogin:
 
 
 class TestCloudStatus:
-    def test_connected_shows_key_prefix(self, capsys):
+    def test_oauth_status_and_dual_credential_precedence_are_redacted(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
+        from snodo.infrastructure.cloud_oauth_store import CloudOAuthState, save_oauth_state
+        save_oauth_state(CloudOAuthState("client", "access-secret", "refresh-secret", 1_900_000_000))
+        from snodo.cli.commands.cloud_cmd import cloud_status_command
+        with patch("snodo.config.ConfigManager") as manager, patch("snodo.infrastructure.cloud_sync.CloudSyncState") as state:
+            manager.return_value.load.return_value = {"cloud": {"api_key": "api-key-secret", "sync_enabled": True}}
+            state.return_value.get_summary.return_value = {}
+            assert cloud_status_command() == 0
+        out = capsys.readouterr().out
+        assert "Authentication: OAuth login" in out
+        assert "OAuth login takes priority" in out
+        assert "Refresh token present: yes" in out
+        assert "expires" in out
+        assert all(secret not in out for secret in ("access-secret", "refresh-secret", "api-key-secret"))
+
+    def test_connected_reports_key_method_without_key(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_status_command
 
         with patch("snodo.config.ConfigManager") as MockCM:
@@ -181,7 +233,8 @@ class TestCloudStatus:
         assert result == 0
         out = capsys.readouterr().out
         assert "connected" in out
-        assert "sndo_live_abcdef..." in out  # first 16 chars + ...
+        assert "Authentication: API key" in out
+        assert "sndo_live_abcdef123456789000" not in out
 
     def test_disconnected_shows_not_connected(self, capsys):
         from snodo.cli.commands.cloud_cmd import cloud_status_command
