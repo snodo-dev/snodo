@@ -263,7 +263,7 @@ class TestCloudAdmission:
 
         assert outcome == "retryable"
         assert status == 404
-        assert reason == "https://api.test/i/minted-jti -> HTTP 404: unknown ingest route"
+        assert reason == "api.test -> HTTP 404: unknown ingest route"
         assert post.call_args.args[0] == "https://api.test/i/minted-jti"
         assert not CloudSyncState().is_refused("sess_route")
         assert reason in capsys.readouterr().err
