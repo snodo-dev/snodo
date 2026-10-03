@@ -114,6 +114,8 @@ def get_admission_lease(
     session_id: Optional[str] = None,
     sync_state: Optional[CloudSyncState] = None,
     force: bool = False,
+    oauth: bool = False,
+    config: Optional[dict] = None,
 ) -> Optional[CloudLease]:
     """Obtain or renew a lease, exchanging the API key if needed.
 
@@ -149,7 +151,7 @@ def get_admission_lease(
             return None
 
     # 4. Perform exchange
-    return _perform_exchange(api_key, lease_url, sid, state)
+    return _perform_exchange(api_key, lease_url, sid, state, oauth=oauth, config=config)
 
 
 def _perform_exchange(
@@ -157,11 +159,13 @@ def _perform_exchange(
     lease_url: str,
     session_id: str,
     state: CloudSyncState,
+    *, oauth: bool = False, config: Optional[dict] = None, _retried: bool = False,
 ) -> Optional[CloudLease]:
     global _current_lease, _current_lease_session_id, _quiet_until, _consecutive_failures
 
     global _last_admission_error
-    headers = {"Authorization": f"Bearer {api_key}"}
+    from snodo.infrastructure.cloud_credentials import cloud_identity_headers
+    headers = {"Authorization": f"Bearer {api_key}", **cloud_identity_headers()}
     mint_url = f"{lease_url.rstrip('/')}/m"
 
     try:
@@ -206,7 +210,16 @@ def _perform_exchange(
                 state.clear_refusal(session_id)
             return lease
 
-        message = response.text[:500].strip() or "No server message"
+        message = "OAuth authorization rejected" if oauth and response.status_code == 401 else (response.text[:500].strip() or "No server message")
+        if response.status_code == 401 and oauth and not _retried:
+            from snodo.infrastructure.cloud_credentials import resolve_cloud_credential
+            try:
+                refreshed, is_oauth = resolve_cloud_credential(config or {}, force_refresh=True)
+            except Exception:
+                refreshed, is_oauth = None, True
+            if refreshed and is_oauth:
+                return _perform_exchange(refreshed, lease_url, session_id, state, oauth=True, config=config, _retried=True)
+            message = "OAuth authorization expired; run `snodo cloud login` again"
         _last_admission_error = f"{mint_url} -> HTTP {response.status_code}: {message}"
         print(f"Cloud lease mint failed: {_last_admission_error}", file=sys.stderr)
 

@@ -783,6 +783,8 @@ class CloudSyncDispatcher:
         api_url: str,
         force: bool = False,
         lease_url: Optional[str] = None,
+        oauth: bool = False,
+        config: Optional[dict] = None,
     ) -> dict:
         """Sync audit events since the last cursor.
 
@@ -801,7 +803,7 @@ class CloudSyncDispatcher:
         try:
             return self._sync_impl(
                 session_id, project_root, audit_log, api_key, api_url,
-                force=force, lease_url=lease_url,
+                force=force, lease_url=lease_url, oauth=oauth, config=config,
             )
         except Exception:
             _logger.warning("Cloud sync threw unexpected exception", exc_info=True)
@@ -816,6 +818,8 @@ class CloudSyncDispatcher:
         api_url: str,
         force: bool = False,
         lease_url: Optional[str] = None,
+        oauth: bool = False,
+        config: Optional[dict] = None,
     ) -> dict:
         events = getattr(audit_log, "events", [])
         if not events:
@@ -900,6 +904,7 @@ class CloudSyncDispatcher:
                 session_id, project_root, batch, api_key, api_url,
                 force=force or bool(oversized_sequences),
                 lease_url=lease_url,
+                oauth=oauth, config=config,
             )
 
             if outcome == "delivered":
@@ -995,6 +1000,8 @@ class CloudSyncDispatcher:
         api_url: str,
         force: bool = False,
         lease_url: Optional[str] = None,
+        oauth: bool = False,
+        config: Optional[dict] = None,
     ) -> tuple:
         """POST a batch of events.
 
@@ -1016,7 +1023,7 @@ class CloudSyncDispatcher:
 
         state = CloudSyncState()
         lease_url = lease_url or get_cloud_lease_url({"cloud": {"api_url": api_url}})
-        lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state, force=force)
+        lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state, force=force, oauth=oauth, config=config)
         if lease is None:
             if state.is_refused(session_id):
                 info = state._load().get(session_id, {})
@@ -1077,6 +1084,8 @@ class CloudSyncDispatcher:
             "Authorization": f"Bearer {lease.token}",
             "Content-Type": "application/json",
         }
+        from snodo.infrastructure.cloud_credentials import cloud_identity_headers
+        headers.update(cloud_identity_headers())
         lease_replaced = False
 
         attempt = 0
@@ -1097,7 +1106,7 @@ class CloudSyncDispatcher:
                 if response.status_code == 401 and not lease_replaced:
                     print(f"Cloud ingest rejected lease: {reason}; minting once and retrying", file=__import__("sys").stderr)
                     invalidate_lease(lease)
-                    lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state, force=True)
+                    lease = get_admission_lease(api_key, lease_url, session_id=session_id, sync_state=state, force=True, oauth=oauth, config=config)
                     if lease is None:
                         from snodo.infrastructure.cloud_lease import get_last_admission_error
                         return ("retryable", get_last_admission_error() or reason, None)
@@ -1165,12 +1174,16 @@ class CloudSyncDispatcher:
 
 
 def _should_sync(config: Optional[dict] = None) -> bool:
-    """Return True if cloud sync is enabled and an API key is configured."""
+    """Return True when enabled with either an OAuth login or API key."""
     if config is None:
         from snodo.config import ConfigManager
         config = ConfigManager().load()
     cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
-    return bool(cloud.get("sync_enabled")) and bool(cloud.get("api_key", "").strip())
+    if not cloud.get("sync_enabled"):
+        return False
+    from snodo.infrastructure.cloud_oauth_store import load_oauth_state
+    state = load_oauth_state()
+    return bool(state.access_token or state.refresh_token) or bool(cloud.get("api_key", "").strip())
 
 
 #: How long the flush waits for background syncs to finish before giving up.
@@ -1291,7 +1304,15 @@ def sync_if_enabled(
     from snodo.config import get_cloud_ingest_url, get_cloud_lease_url
 
     cloud = config.get("cloud", {})
-    api_key = cloud["api_key"]
+    from snodo.infrastructure.cloud_credentials import resolve_cloud_credential
+    try:
+        api_key, oauth = resolve_cloud_credential(config)
+    except Exception:
+        _logger.warning("Cloud OAuth credential refresh failed; run `snodo cloud login` again")
+        return
+    if not api_key:
+        print("Cloud authorization unavailable; run `snodo cloud login` again.", file=__import__("sys").stderr)
+        return
     # cloud.api_url is the ingest base. Tunnel provisioning uses its own
     # key (cloud.tunnel_api_url) — never route one service's requests to
     # the other's host.
@@ -1310,7 +1331,7 @@ def sync_if_enabled(
         try:
             result.update(dispatcher.sync(
                 sync_id, project_root, audit_log, api_key, api_url,
-                lease_url=lease_url,
+                lease_url=lease_url, oauth=oauth, config=config,
             ))
         except Exception as e:
             _logger.warning("Cloud sync background thread failed: %s", e)

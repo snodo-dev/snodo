@@ -18,6 +18,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
   code exchange and refresh protocol helpers. (Fixes #671)
 
 ### Changed
+- Cloud sync uses the signed-in OAuth credential with refresh and lease retry, and identifies clients on lease and ingest requests. (Fixes #675)
 - Mock-coder and `SNODO_BENCHMARK` runs keep audit events local and skip cloud
   audit and liveness delivery; real runs continue to sync. (Fixes #669)
 - Plan and queue task branches now merge inside their integration branch's
