@@ -61,11 +61,11 @@ def test_benchmark_run_skips_cloud_sync(tmp_path, monkeypatch):
     liveness.assert_not_called()
 
 
-def test_mock_mode_suppresses_liveness(tmp_path, monkeypatch):
+def test_mock_audit_event_suppresses_liveness(tmp_path, monkeypatch):
     (tmp_path / ".snodo").mkdir()
-    monkeypatch.setattr("snodo.coders.mock.is_mock_mode_active", lambda: True)
-    with patch.object(cloud_liveness, "_deliver") as liveness:
-        assert not cloud_liveness.request_liveness_push(
-            "session", str(tmp_path), config=_config(),
-        )
+    audit = _audit(tmp_path, "mock")
+    monkeypatch.setattr(cloud_liveness, "_ARMED", True)
+    event = SimpleNamespace(event_type="dispatch", data={"session_id": "session"})
+    with patch.object(cloud_liveness, "request_liveness_push") as liveness:
+        cloud_liveness._on_audit_event(event, audit)
     liveness.assert_not_called()

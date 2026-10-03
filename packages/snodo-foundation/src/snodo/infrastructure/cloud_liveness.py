@@ -277,12 +277,6 @@ def _sync_gate_open(config: Optional[dict] = None) -> bool:
     import os
     if os.environ.get("SNODO_BENCHMARK") == "1":
         return False
-    try:
-        from snodo.coders.mock import is_mock_mode_active
-        if is_mock_mode_active():
-            return False
-    except ImportError:
-        pass
     if config is not None:
         return _should_sync(config)
     now = time.monotonic()
