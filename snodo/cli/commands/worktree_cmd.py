@@ -20,6 +20,7 @@ from rich.console import Console
 from rich.table import Table
 
 from snodo.infrastructure.paths import require_project_root
+from snodo.cli.commands.task_cleanup import inspect_task_branches
 from snodo.infrastructure.worktree import (
     list_task_branches,
     list_worktrees,
@@ -220,12 +221,10 @@ def worktree_remove_command(args) -> int:
     # only exact task owners; a bare task id shared by plans cannot identify a
     # single retained worktree safely.
     try:
-        from snodo.tools.git import GitMCP
-        heads = [head.name for head in GitMCP(project_root).repo.heads]
+        git, owned, owners = inspect_task_branches(project_root, task_id)
     except Exception:
         heads = []
-    owned = [name for name in heads if _branch_task_owner(name, task_id)]
-    owners = sorted({_branch_task_owner(name, task_id) for name in owned})
+        owned, owners = [], []
     if len(owners) > 1:
         print(
             f"Task id {task_id} is ambiguous ({', '.join(sorted(owners))}); "
@@ -263,18 +262,6 @@ def worktree_remove_command(args) -> int:
 
     print(f"Removed worktree for {task_id}; removed branches: {', '.join(removed) or 'none'}.")
     return 0
-
-
-def _branch_task_owner(branch: str, task_id: str) -> Optional[str]:
-    """Return exact task owner key for legacy or plan-scoped branch names."""
-    parts = branch.split("/")
-    if len(parts) < 2 or parts[0] != "task":
-        return None
-    if parts[1] == task_id:
-        return task_id
-    if len(parts) >= 4 and parts[2] == task_id:
-        return f"{parts[1]}/{task_id}"
-    return None
 
 
 def worktree_prune_command(args) -> int:

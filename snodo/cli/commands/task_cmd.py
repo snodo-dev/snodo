@@ -721,18 +721,12 @@ def task_abandon_command(args) -> int:
         print("Not inside a snodo project.", file=sys.stderr)
         return 1
 
-    from snodo.cli.commands.worktree_cmd import _branch_task_owner
+    from snodo.cli.commands.task_cleanup import inspect_task_branches
     try:
-        from snodo.tools.git import GitMCP
-        git = GitMCP(project_root)
-        owned_branches = [
-            head.name for head in git.repo.heads
-            if _branch_task_owner(head.name, task_id) is not None
-        ]
+        git, owned_branches, owners = inspect_task_branches(project_root, task_id)
     except Exception as e:
         print(f"Error deleting branch: {e}", file=sys.stderr)
         return 1
-    owners = sorted({_branch_task_owner(branch, task_id) for branch in owned_branches})
     if len(owners) > 1 or (owners and owners[0] != task_id):
         print(
             f"Task id {task_id} is ambiguous ({', '.join(owners)}); "
