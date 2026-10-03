@@ -123,11 +123,12 @@ def _quality_validator_ids(protocol: Optional[Protocol]) -> set[str]:
     """Return IDs declared for quality-type validators in the active protocol."""
     if protocol is None:
         return {"quality"}
-    return {
-        validator.validator_id
+    validator_ids = {
+        getattr(validator, "validator_id", "quality")
         for validator in getattr(protocol, "validators", [])
         if validator.validator_type == "quality"
     }
+    return validator_ids or {"quality"}
 
 
 def _matching_task_verifications(
