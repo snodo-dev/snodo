@@ -22,7 +22,10 @@ def resolve_cloud_credential(config: dict, *, force_refresh: bool = False, http_
             from snodo.version import __version__
 
             client = CloudOAuthClient(config, http_client=http_client, version=__version__)
-            payload = client.refresh(state.client_id, state.refresh_token)
+            try:
+                payload = client.refresh(state.client_id, state.refresh_token)
+            except Exception:
+                return None, True
             access = payload.get("access_token")
             refresh = payload.get("refresh_token") or state.refresh_token
             expires_in = payload.get("expires_in")
@@ -31,9 +34,13 @@ def resolve_cloud_credential(config: dict, *, force_refresh: bool = False, http_
             state = CloudOAuthState(state.client_id, access, refresh, time.time() + float(expires_in), payload.get("scope") or state.scope)
             save_oauth_state(state)
         return state.access_token, True
+    return _configured_api_key(config), False
+
+
+def _configured_api_key(config: dict) -> str | None:
     cloud = config.get("cloud", {}) if isinstance(config, dict) else {}
     key = cloud.get("api_key") if isinstance(cloud, dict) else None
-    return (key.strip() or None, False) if isinstance(key, str) else (None, False)
+    return key.strip() or None if isinstance(key, str) else None
 
 
 def cloud_identity_headers() -> dict[str, str]:
@@ -65,10 +72,21 @@ def cloud_sync_enabled(config: dict | None = None) -> bool:
     )
 
 
-def safe_cloud_sync_credential(config: dict) -> tuple[str | None, bool]:
+def safe_cloud_sync_credential(config: dict, *, force_refresh: bool = False, http_client=None) -> tuple[str | None, bool]:
     """Resolve a sync credential, reporting refresh failures without secrets."""
     try:
-        return resolve_cloud_credential(config)
+        credential, is_oauth = resolve_cloud_credential(config, force_refresh=force_refresh, http_client=http_client)
+        if credential is None and is_oauth:
+            credential = _configured_api_key(config)
+            if credential:
+                _logger.warning("Cloud OAuth login needs `snodo cloud login` again; using the configured API key for cloud sync")
+                return credential, False
+            _logger.warning("Cloud OAuth credential refresh failed; run `snodo cloud login` again")
+        return credential, is_oauth
     except Exception:
+        key = _configured_api_key(config)
+        if key:
+            _logger.warning("Cloud OAuth login needs `snodo cloud login` again; using the configured API key for cloud sync")
+            return key, False
         _logger.warning("Cloud OAuth credential refresh failed; run `snodo cloud login` again")
         return None, True

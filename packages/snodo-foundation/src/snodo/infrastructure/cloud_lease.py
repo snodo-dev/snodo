@@ -212,13 +212,12 @@ def _perform_exchange(
 
         message = "OAuth authorization rejected" if oauth and response.status_code == 401 else (response.text[:500].strip() or "No server message")
         if response.status_code == 401 and oauth and not _retried:
-            from snodo.infrastructure.cloud_credentials import resolve_cloud_credential
-            try:
-                refreshed, is_oauth = resolve_cloud_credential(config or {}, force_refresh=True)
-            except Exception:
-                refreshed, is_oauth = None, True
+            from snodo.infrastructure.cloud_credentials import safe_cloud_sync_credential
+            refreshed, is_oauth = safe_cloud_sync_credential(config or {}, force_refresh=True)
             if refreshed and is_oauth:
                 return _perform_exchange(refreshed, lease_url, session_id, state, oauth=True, config=config, _retried=True)
+            if refreshed:
+                return _perform_exchange(refreshed, lease_url, session_id, state, oauth=False, config=config, _retried=True)
             message = "OAuth authorization expired; run `snodo cloud login` again"
         _last_admission_error = f"{mint_url} -> HTTP {response.status_code}: {message}"
         print(f"Cloud lease mint failed: {_last_admission_error}", file=sys.stderr)
