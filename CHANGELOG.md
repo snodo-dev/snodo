@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Cloud liveness snapshots now prioritize recent active task and job rows and
+  cap plan and nested detail lists client-side to preserve current work as
+  project history grows. (Fixes #682)
 - Cloud OAuth consent now identifies the signing-in machine and refreshes old
   cached client registrations once. (Fixes #681)
 - `snodo cloud connect <api_key>` now clears any OAuth login and best-effort

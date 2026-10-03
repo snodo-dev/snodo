@@ -153,3 +153,29 @@ def test_recon_only_snapshot_is_available_locally_without_v5_liveness(tmp_path):
     assert snapshot is not None
     assert snapshot["recons"][0]["id"] == "rec_only"
     assert snapshot["plans"] == snapshot["tasks"] == snapshot["jobs"] == []
+
+
+def test_liveness_rows_are_active_first_recent_first_and_bounded():
+    rows = [
+        {"id": f"finished-{i:03}", "status": "completed", "started_at": f"2026-01-{i % 28 + 1:02}"}
+        for i in range(cloud_liveness.LIVENESS_LIST_LIMIT + 20)
+    ]
+    rows.extend([
+        {"id": "active-old", "status": "running", "started_at": "2025-01-01"},
+        {"id": "active-new", "status": "running", "started_at": "2026-01-01"},
+    ])
+
+    result = cloud_liveness._prioritize_liveness_rows(rows)
+
+    assert len(result) == cloud_liveness.LIVENESS_LIST_LIMIT
+    assert [row["id"] for row in result[:2]] == ["active-new", "active-old"]
+    assert all(row["status"] == "completed" for row in result[2:])
+
+
+def test_small_liveness_row_list_is_preserved():
+    rows = [
+        {"id": "done", "status": "completed", "started_at": "2026-01-01"},
+        {"id": "live", "status": "in_progress", "started_at": "2025-01-01"},
+    ]
+
+    assert cloud_liveness._prioritize_liveness_rows(rows) == [rows[1], rows[0]]

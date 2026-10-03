@@ -71,6 +71,25 @@ from snodo.project import scope_for_project_id
 
 _logger = logging.getLogger(__name__)
 
+# Stay below the cloud's 200-row ingestion ceiling; preserve headroom for
+# future wire additions and decide truncation before serialization.
+LIVENESS_LIST_LIMIT = 150
+_ACTIVE_LIVENESS_STATUSES = {"running", "in_progress", "blocked", "pending"}
+
+
+def _prioritize_liveness_rows(rows: list, *, status_key: str = "status") -> list:
+    """Active rows first, then newest-first within each status group."""
+    ordered = sorted(rows, key=lambda row: str(row.get("id", "")))
+    ordered.sort(
+        key=lambda row: str(row.get("started_at") or row.get("created_at") or ""),
+        reverse=True,
+    )
+    ordered.sort(
+        key=lambda row: row.get(status_key) in _ACTIVE_LIVENESS_STATUSES,
+        reverse=True,
+    )
+    return ordered[:LIVENESS_LIST_LIMIT]
+
 
 LivenessStatus = Literal[
     "pending", "in_progress", "running", "completed", "failed",
@@ -728,6 +747,12 @@ def build_liveness_snapshot(
     # (Fixes #303).
     live_tasks, task_counts = _unreported(task_rows, tallied_refs, detailed_refs)
     live_jobs, job_counts = _unreported(job_rows, tallied_job_ids, nested_job_ids)
+    # Status counts deliberately cover the complete local inventory, including
+    # rows represented by counts instead of detail; the bounded arrays carry
+    # only prioritized row detail.
+    live_tasks = _prioritize_liveness_rows(live_tasks)
+    live_jobs = _prioritize_liveness_rows(live_jobs)
+    plans = _prioritize_plan_nodes(plans)
     snapshot: LocalLivenessSnapshot = {
         "session_id": session_id,
         "project_id": project_id,
@@ -952,10 +977,10 @@ def _collect_plans(
             if completed:
                 tnode["completed_at"] = _as_iso(completed)
             if live:
-                tnode["jobs"] = [
+                tnode["jobs"] = _prioritize_liveness_rows([
                     {k: j[k] for k in ("id", "status", "started_at") if k in j}
                     for j in live
-                ]
+                ])
                 nested_job_ids.update(j["id"] for j in live)
             return tnode
 
@@ -983,14 +1008,19 @@ def _collect_plans(
                 })
                 if registry_wave_ids:
                     wave_node["wave_ids"] = registry_wave_ids
-                wave_node["tasks"] = [task_node(t) for t in members]
+                wave_node["tasks"] = _prioritize_liveness_rows(
+                    [task_node(t) for t in members]
+                )
+                wave_node["tasks"] = wave_node["tasks"][:LIVENESS_LIST_LIMIT]
                 wave_nodes.append(wave_node)
             node["waves"] = wave_nodes
         leftover = [
             t for t in statuses if t not in enumerated
         ]
         if leftover:
-            node["tasks"] = [task_node(t) for t in leftover]
+            node["tasks"] = _prioritize_liveness_rows(
+                [task_node(t) for t in leftover]
+            )
         nodes.append(node)
 
     # A settled record whose task ref is tallied by a plan node is not
@@ -1004,7 +1034,20 @@ def _collect_plans(
         for task_id, s in info["statuses"].items()
         if s != _PENDING_TASK_STATUS
     }
-    return nodes, started_refs, detailed_refs, settled_job_ids, nested_job_ids
+    return _prioritize_plan_nodes(nodes), started_refs, detailed_refs, settled_job_ids, nested_job_ids
+
+
+def _prioritize_plan_nodes(plans: list) -> list:
+    """Cap plans, retaining in-play plans before completed summaries."""
+    return sorted(
+        plans,
+        key=lambda plan: (
+            any(status in _ACTIVE_LIVENESS_STATUSES
+                for status, count in plan.get("status_counts", {}).items() if count),
+            str(plan.get("name", "")),
+        ),
+        reverse=True,
+    )[:LIVENESS_LIST_LIMIT]
 
 
 def _unreported(
