@@ -2,7 +2,7 @@ llm:
   recon:
     models:
       - ollama-cloud/deepseek-v4-pro:0813
-      - ocgo1/gpt-6-luna
+      - ocgo1/responses/gpt-6-luna
       - ocgo2/qwen3.8-flash
 providers:
   ollama-cloud:
