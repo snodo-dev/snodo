@@ -667,6 +667,7 @@ def _retry_task(args, task_id: str, project_root: str, session_manager) -> int:
                 session_id=session.session_id if session else None,
                 audit_log=audit_log,
                 plan_name=worktree.task_plan_name(args),
+                mode=mode,
             )
             if merge_res is True:
                 print(f"✓ Successfully merged unmerged task {task_id}")

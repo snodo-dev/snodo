@@ -392,6 +392,7 @@ def _try_merge_unmerged_task(
     session_id: Optional[str] = None,
     audit_log: Optional[Any] = None,
     plan_name: Optional[str] = None,
+    mode: Optional[str] = None,
 ) -> Optional[bool]:
     """Attempt fast-path merge of an unmerged task branch.
 
@@ -433,8 +434,16 @@ def _try_merge_unmerged_task(
     from snodo.cli.commands.task_record import _record_task_completion
 
     task = Task(id=task_id, spec=spec)
+    delivery = "local_merge" if plan_name or protocol is None else protocol.delivery_for(
+        mode or protocol.initial_mode
+    )
     merge_result, preserve_worktree, merged_branch = _merge_on_success(
-        project_root, task, 0, session_id, audit_log, plan_name=plan_name
+        project_root, task, 0, session_id, audit_log,
+        plan_name=plan_name,
+        delivery=delivery,
+        remote=getattr(getattr(protocol, "execution", None), "delivery_remote", "origin"),
+        protocol_metadata=getattr(protocol, "metadata", None),
+        protocol=protocol,
     )
     if merge_result == 0 and merged_branch:
         try:

@@ -15,6 +15,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   head and allowed with passing evidence. (Fixes #693)
 
 ### Fixed
+- Re-run fast-path merges now apply the active protocol's quality validator ID,
+  delivery mode, remote, and metadata, refusing missing evidence and honoring
+  push-branch delivery. Completes #696. (Fixes #698)
 - Cloud sync and liveness now suppress only the current session's mock-coder
   usage, so an earlier mock run cannot keep later real runs off the cloud.
   Fixes a regression from #669. (Fixes #697)

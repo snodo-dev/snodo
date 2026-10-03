@@ -165,6 +165,65 @@ def test_default_quality_validator_id_remains_accepted(tmp_path):
     )[0] == 0
 
 
+def test_fast_path_merge_uses_protocol_validator_and_delivery(tmp_path):
+    from git import Repo
+    from snodo.cli.commands.run_merge import _try_merge_unmerged_task
+    from snodo.compiler.models import Validator
+    from snodo.infrastructure.audit import AuditLog
+    from snodo.infrastructure.worktree import task_branch_name
+
+    project, base = _repository(tmp_path, remote=True)
+    task_id, spec = "task_fast_path", "fast path delivery"
+    branch = task_branch_name(task_id, spec)
+    _path, commit = _branch(project, base, branch, "fast.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    protocol = SimpleNamespace(
+        validators=[Validator(validator_id="qa-gate", validator_type="quality")],
+        initial_mode="producer",
+        delivery_for=lambda mode: "push_branch" if mode == "producer" else "local_merge",
+        execution=SimpleNamespace(delivery_remote="origin"),
+        metadata={"provider": "test"},
+    )
+    audit.append_event("verification_executed", {
+        "op": "verification_executed", "task_ref": task_id,
+        "validator_id": "qa-gate", "returncode": 0, "commit": commit,
+        "outcome": "pass", "command": "true",
+    })
+
+    assert _try_merge_unmerged_task(
+        str(project), task_id, spec, protocol=protocol, audit_log=audit,
+    ) is True
+    with Repo(str(project)) as repo:
+        assert repo.commit("main").hexsha == base
+    with Repo(str(tmp_path / "remote.git")) as remote:
+        assert remote.commit(branch).hexsha == commit
+
+
+def test_fast_path_refuses_without_passing_custom_validator_evidence(tmp_path):
+    from snodo.cli.commands.run_merge import _try_merge_unmerged_task
+    from snodo.compiler.models import Validator
+    from snodo.infrastructure.audit import AuditLog
+    from snodo.infrastructure.worktree import task_branch_name
+
+    project, base = _repository(tmp_path)
+    task_id, spec = "task_fast_refused", "fast path refusal"
+    branch = task_branch_name(task_id, spec)
+    _path, commit = _branch(project, base, branch, "fast.txt")
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    audit.append_event("verification_executed", {
+        "op": "verification_executed", "task_ref": task_id,
+        "validator_id": "qa-gate", "returncode": 0, "commit": commit,
+        "outcome": "fail", "command": "false",
+    })
+    protocol = SimpleNamespace(
+        validators=[Validator(validator_id="qa-gate", validator_type="quality")],
+        initial_mode="producer", delivery_for=lambda _mode: "local_merge",
+    )
+    assert _try_merge_unmerged_task(
+        str(project), task_id, spec, protocol=protocol, audit_log=audit,
+    ) is None
+
+
 @pytest.mark.parametrize("delivery", ["local_merge", "push_branch", "change_request"])
 def test_plan_integration_delivery_requires_exact_commit_verification(tmp_path, delivery, monkeypatch):
     from git import Repo

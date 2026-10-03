@@ -583,6 +583,7 @@ def _execute_wave_task(planner, args, protocol, model, wave_id, task_id) -> bool
             session_id=session_id,
             audit_log=audit_log,
             plan_name=args.plan,
+            mode=mode,
         )
         end_mono = time.monotonic()
         end_wall = time.time()
@@ -853,6 +854,7 @@ def _execute_wave_tasks_concurrent(
                 session_id=session_id,
                 audit_log=audit_log,
                 plan_name=args.plan,
+                mode=mode,
             )
             end_mono = time.monotonic()
             end_wall = time.time()
