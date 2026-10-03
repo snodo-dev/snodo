@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Exercise plan integration delivery through real Git repositories, covering delivery outcomes and gate behavior. (Fixes #661)
 - Local plan delivery now removes the integration worktree created for the plan directory, even when `plan.yml` declares a different name. (Fixes #661)
 - Re-running a completed plan or queue skips push/change-request delivery when its integration branch already points to the delivered commit, while delivering later branch changes. (Fixes #661)
 - Verify plan integration heads before push-branch or change-request delivery, and refuse failed verification through the delivery gate. (Fixes #661)

@@ -436,6 +436,72 @@ def test_plan_delivery_failed_integration_verification_blocks_gate(plan_project_
     assert audit_log.get_history("unverified_merge_blocked")
 
 
+@pytest.mark.parametrize("delivery", ["local_merge", "push_branch", "change_request"])
+def test_plan_integration_delivery_uses_real_git_and_delivery_gate(tmp_path, delivery):
+    """Exercise the plan delivery boundary against real local Git repositories."""
+    from git import Repo
+
+    from snodo.infrastructure.audit import AuditLog
+
+    root = tmp_path / "project"
+    root.mkdir()
+    remote_path = tmp_path / "remote.git"
+    remote = Repo.init(remote_path, bare=True)
+    root_repo = Repo.init(root)
+    root_repo.config_writer().set_value("user", "name", "Test").release()
+    root_repo.config_writer().set_value("user", "email", "test@example.com").release()
+    (root / "base.txt").write_text("base\n")
+    root_repo.index.add(["base.txt"])
+    base = root_repo.index.commit("base")
+    root_repo.create_remote("origin", str(remote_path))
+    root_repo.git.push("-u", "origin", "HEAD:main")
+    integration = tmp_path / "integration"
+    branch = "plan/demo/integration"
+    root_repo.git.worktree("add", "-b", branch, str(integration), base.hexsha)
+    integration_repo = Repo(integration)
+    for name in ("one", "two"):
+        (integration / f"{name}.txt").write_text(f"{name}\n")
+        integration_repo.index.add([f"{name}.txt"])
+        integration_repo.index.commit(f"task {name}")
+    combined = integration_repo.head.commit.hexsha
+    integration_repo.close()
+    root_repo.close()
+    remote.close()
+
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    audit.append_event("verification_executed", {
+        "op": "verification_executed", "task_ref": "demo", "commit": combined,
+        "outcome": "pass", "command": "true",
+    })
+    provider_calls = []
+
+    class Provider:
+        def create_change_request(self, source, title, body, target_branch=None):
+            provider_calls.append((source, title, body, target_branch))
+            return "cr-1"
+
+    protocol = MagicMock()
+    protocol.delivery_for.return_value = delivery
+    protocol.execution.delivery_remote = "origin"
+    protocol.metadata = {"provider": "stub"}
+    protocol.validators = []
+    with patch("snodo.providers.registry.detect_provider", return_value=Provider()):
+        result = _deliver_plan_integration(
+            str(root), branch, "demo", "two-task plan", protocol, "producer", audit,
+            integration_path=integration,
+        )
+    assert result == 0
+    with Repo(str(root)) as repo:
+        if delivery == "local_merge":
+            assert (root / "one.txt").read_text() == "one\n"
+            assert (root / "two.txt").read_text() == "two\n"
+            assert branch not in repo.heads
+        else:
+            refs = repo.git.ls_remote("origin", branch)
+            assert combined in refs
+    assert len(provider_calls) == (1 if delivery == "change_request" else 0)
+
+
 def test_plan_invalid_wave_filter_fails(plan_project_env, capsys):
     """Passing a non-existent wave ID (--wave 99) fails with exit code 1."""
     planner = PlannerMCP(plan_project_env)
