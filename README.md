@@ -52,10 +52,14 @@ but some hosts (including Claude Desktop and relayed sessions) show only its
 plain-text snapshot.
 
 Register Snodo's mode-pinned MCP servers with `snodo serve --mcp-install`.
-Installation supports Claude Desktop and the Codex family: ChatGPT desktop,
-Codex CLI, and the IDE extension share `~/.codex/config.toml` (relocated by
-`CODEX_HOME`). Only clients with an existing config directory are updated;
-restart each updated client to connect.
+Installation supports Claude Desktop, Claude Code, Cursor, Gemini CLI and the
+Codex family (ChatGPT desktop, Codex CLI and IDE extension). It writes their
+user-level configurations: Claude Desktop's platform-specific config,
+Claude Code's `~/.claude.json`, Cursor's `~/.cursor/mcp.json`, Gemini CLI's
+`~/.gemini/settings.json`, and Codex's `~/.codex/config.toml` (relocated by
+`CODEX_HOME`). Only detected clients are updated; unrelated MCP entries are
+preserved and each updated client is reported. Restart each updated client to
+connect.
 
 Optional job notifications can send project-named updates to ntfy, a generic
 webhook, Slack, Discord, or Teams. Configure targets in

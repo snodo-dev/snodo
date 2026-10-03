@@ -53,6 +53,15 @@ a test to every valid notification target.
 `snodo protocol schema --json` prints the generated, versioned JSON Schema for
 protocol authoring without reading the project's protocol file.
 
+`snodo install` (and `snodo serve --mcp-install`) detects Claude Desktop,
+Claude Code, Cursor, Gemini CLI and Codex-family clients and installs mode-pinned
+MCP entries into each detected user's configuration. It uses Claude Code's
+`~/.claude.json`, Cursor's `~/.cursor/mcp.json`, Gemini CLI's
+`~/.gemini/settings.json`, and Codex's `~/.codex/config.toml` (or `CODEX_HOME`);
+Claude Desktop uses its platform-specific user config. Project-level Cursor,
+Gemini CLI and Claude Code files are not selected. Existing unrelated server
+entries are preserved, and output identifies updated and undetected clients.
+
 `snodo init` creates `.snodo/protocol.yml` and project state from a shipped
 protocol template. `--template` selects a shipped protocol by name: `solo`
 (Solo Developer), `team` (Default Snodo), `2+n` (2+N Reference), `intent`

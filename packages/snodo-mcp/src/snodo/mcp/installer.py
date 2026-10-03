@@ -41,15 +41,42 @@ def get_codex_config_path() -> Path:
     return Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "config.toml"
 
 
+def get_claude_code_config_path() -> Path:
+    """Return Claude Code's user-level MCP configuration file."""
+    if "CLAUDE_CONFIG_DIR" in os.environ:
+        return Path(os.environ["CLAUDE_CONFIG_DIR"]) / ".claude.json"
+    return Path.home() / ".claude.json"
+
+
+def get_cursor_config_path() -> Path:
+    """Return Cursor's global user-level MCP configuration file."""
+    return Path.home() / ".cursor" / "mcp.json"
+
+
+def get_gemini_config_path() -> Path:
+    """Return Gemini CLI's user-level settings file."""
+    return Path.home() / ".gemini" / "settings.json"
+
+
 def client_targets(claude_config_path: Optional[Path] = None) -> List[ClientTarget]:
     """Return known client targets, marking presence by their config directory."""
     claude = claude_config_path or get_claude_config_path()
     codex = get_codex_config_path()
+    claude_code = get_claude_code_config_path()
+    cursor = get_cursor_config_path()
+    gemini = get_gemini_config_path()
     targets = []
     if claude.parent.is_dir() or claude.exists():
         targets.append(ClientTarget("Claude Desktop", claude, "mcpServers", "json"))
     if codex.parent.is_dir() or codex.exists():
         targets.append(ClientTarget("Codex / ChatGPT desktop", codex, "mcp_servers", "toml"))
+    if (claude_code.exists()
+            or Path(os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude"))).is_dir()):
+        targets.append(ClientTarget("Claude Code", claude_code, "mcpServers", "json"))
+    if cursor.parent.is_dir() or cursor.exists():
+        targets.append(ClientTarget("Cursor", cursor, "mcpServers", "json"))
+    if gemini.parent.is_dir() or gemini.exists():
+        targets.append(ClientTarget("Gemini CLI", gemini, "mcpServers", "json"))
     return targets
 
 
@@ -57,8 +84,14 @@ def known_client_targets() -> List[ClientTarget]:
     """Return all supported targets, including clients not installed locally."""
     claude = get_claude_config_path()
     codex = get_codex_config_path()
+    claude_code = get_claude_code_config_path()
+    cursor = get_cursor_config_path()
+    gemini = get_gemini_config_path()
     return [ClientTarget("Claude Desktop", claude, "mcpServers", "json"),
-            ClientTarget("Codex / ChatGPT desktop", codex, "mcp_servers", "toml")]
+            ClientTarget("Codex / ChatGPT desktop", codex, "mcp_servers", "toml"),
+            ClientTarget("Claude Code", claude_code, "mcpServers", "json"),
+            ClientTarget("Cursor", cursor, "mcpServers", "json"),
+            ClientTarget("Gemini CLI", gemini, "mcpServers", "json")]
 
 
 def _read_target(target: ClientTarget):

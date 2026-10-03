@@ -16,6 +16,8 @@ import pytest
 import yaml
 from snodo.compiler.models import Protocol
 from snodo.mcp.installer import (
+    ClientTarget,
+    client_targets,
     derive_project_name,
     generate_mcp_entries,
     get_claude_config_path,
@@ -28,6 +30,8 @@ from snodo.mcp.installer import (
     uninstall,
     uninstall_all,
     write_claude_config,
+    install_clients,
+    mutate_clients,
 )
 
 # ---------------------------------------------------------------------------
@@ -81,6 +85,52 @@ def temp_dir():
     d = tempfile.mkdtemp()
     yield Path(d)
     shutil.rmtree(d, ignore_errors=True)
+
+
+def test_new_client_targets_detect_install_uninstall_and_preserve_other_servers(temp_dir, protocol):
+    targets = [
+        ClientTarget("Claude Code", temp_dir / ".claude.json", "mcpServers", "json"),
+        ClientTarget("Cursor", temp_dir / ".cursor" / "mcp.json", "mcpServers", "json"),
+        ClientTarget("Gemini CLI", temp_dir / ".gemini" / "settings.json", "mcpServers", "json"),
+    ]
+    for target in targets:
+        target.config_path.parent.mkdir(parents=True, exist_ok=True)
+        target.config_path.write_text(json.dumps({"mcpServers": {"unrelated": {"command": "keep"}}}))
+
+    installed = install_clients(protocol, "/project/.snodo/protocol.yml", "project", targets)
+    assert [target.name for target, _, _ in installed] == ["Claude Code", "Cursor", "Gemini CLI"]
+    for target in targets:
+        config = json.loads(target.config_path.read_text())
+        assert config["mcpServers"]["unrelated"] == {"command": "keep"}
+        assert "snodo-project-producer" in config["mcpServers"]
+
+    removed = mutate_clients("project", protocol, "project", targets=targets)
+    assert all(names for _, names in removed)
+    for target in targets:
+        assert json.loads(target.config_path.read_text())["mcpServers"] == {
+            "unrelated": {"command": "keep"}
+        }
+
+
+def test_client_targets_detect_new_user_config_directories(temp_dir, monkeypatch):
+    from snodo.mcp import installer
+
+    claude = temp_dir / "Claude" / "config.json"
+    codex = temp_dir / "Codex" / "config.toml"
+    claude_code = temp_dir / ".claude.json"
+    cursor = temp_dir / ".cursor" / "mcp.json"
+    gemini = temp_dir / ".gemini" / "settings.json"
+    (temp_dir / ".claude").mkdir()
+    cursor.parent.mkdir()
+    gemini.parent.mkdir()
+    monkeypatch.setattr(installer, "get_claude_config_path", lambda: claude)
+    monkeypatch.setattr(installer, "get_codex_config_path", lambda: codex)
+    monkeypatch.setattr(installer, "get_claude_code_config_path", lambda: claude_code)
+    monkeypatch.setattr(installer, "get_cursor_config_path", lambda: cursor)
+    monkeypatch.setattr(installer, "get_gemini_config_path", lambda: gemini)
+    monkeypatch.setattr(installer.Path, "home", lambda: temp_dir)
+    found = {target.name for target in client_targets()}
+    assert found == {"Claude Code", "Cursor", "Gemini CLI"}
 
 
 @pytest.fixture
