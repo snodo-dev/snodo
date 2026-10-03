@@ -933,7 +933,7 @@ class TestSnapshotShape:
             "1.1": "in_progress",
         })
         body = _snapshot(root, "sess_old")
-        done, live = body["plans"]
+        live, done = body["plans"]
         assert done["name"] == "done_plan"
         assert done["status_counts"] == {"completed": 6}
         assert "waves" not in done and "tasks" not in done
