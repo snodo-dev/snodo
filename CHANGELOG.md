@@ -9,6 +9,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Add cloud OAuth discovery, public-client registration, PKCE authorization,
+  code exchange and refresh protocol helpers. (Fixes #671)
+
 ### Changed
 - Mock-coder and `SNODO_BENCHMARK` runs keep audit events local and skip cloud
   audit and liveness delivery; real runs continue to sync. (Fixes #669)
