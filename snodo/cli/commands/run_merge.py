@@ -396,6 +396,37 @@ def _deliver_plan_integration(
     """Deliver a completed plan branch using the task delivery machinery."""
     delivery = protocol.delivery_for(mode)
     task = Task(id=plan_name, spec=f"{plan_name}\n\n{intent}")
+    if delivery in {"push_branch", "change_request"}:
+        # Task validators ran against each task commit. The integration branch
+        # has its own (merge) commit and combined tree, so verify that exact
+        # tree before asking the ordinary delivery gate to accept it.
+        from git import Repo
+        from snodo.infrastructure.worktree import _name_component, worktree_dir
+        from snodo.validators.context import ValidatorContext
+        from snodo.validators.quality import QualityValidator
+
+        integration_path = worktree_dir(project_root) / _name_component(plan_name) / "integration"
+        quality = next(
+            (validator for validator in getattr(protocol, "validators", [])
+             if validator.validator_type == "quality"),
+            None,
+        )
+        with Repo(project_root) as repo:
+            target_commit = repo.commit(branch).hexsha
+        if quality is None:
+            audit_log.append_event("verification_executed", {
+                "op": "verification_executed", "task_ref": plan_name,
+                "commit": target_commit, "outcome": "no_tests",
+                "command": "no test_command configured",
+            })
+        else:
+            validator = QualityValidator(quality, working_directory=str(integration_path))
+            verification = validator.evaluate(ValidatorContext(
+                task=task, protocol=protocol, audit_log=audit_log,
+                working_directory=str(integration_path), task_id=plan_name,
+            ))
+            if verification.severity == "blocker" or verification.error:
+                return 2
     result, preserve, _ = _merge_on_success(
         project_root, task, 0, None, audit_log,
         delivery=delivery,

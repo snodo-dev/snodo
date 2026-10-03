@@ -10,6 +10,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Plan integration branches are verified at their combined head before push-branch or change-request delivery. (Fixes #661)
 - Plan and queue task branches now merge inside their integration branch's
   registered linked worktree, preserving the project root checkout. (Fixes #668)
 - Background job ids now accompany `plan_run` for every trigger and optional
