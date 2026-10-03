@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 def cloud_delivery_skip_reason(
     audit_log: Any = None, *, session_id: Optional[str] = None,
+    task_ref: Optional[str] = None, job_id: Optional[str] = None,
 ) -> Optional[str]:
     """Return why this run's outbound cloud delivery should be suppressed.
 
@@ -14,29 +15,19 @@ def cloud_delivery_skip_reason(
     """
     if os.environ.get("SNODO_BENCHMARK") == "1":
         return "benchmark run"
-    events = list(getattr(audit_log, "events", ()))
-    if session_id:
-        # Session-start events mark the boundary in the shared project log.
-        # Inspect only the current session's suffix, never earlier sessions.
-        starts = [
-            index for index, item in enumerate(events)
-            if getattr(item, "event_type", "") == "session_started"
-            and isinstance(getattr(item, "data", None), dict)
-            and item.data.get("session_id") == session_id
-        ]
-        if starts:
-            events = events[starts[-1]:]
-        else:
-            # Without a boundary, usage must identify the requested session
-            # explicitly; unrelated historical events are not evidence.
-            events = [
-                item for item in events
-                if isinstance(getattr(item, "data", None), dict)
-                and item.data.get("session_id") == session_id
-            ]
-    for item in events:
+    identifiers = {
+        key: value for key, value in (
+            ("session_id", session_id), ("task_ref", task_ref),
+            ("job_id", job_id),
+        ) if value
+    }
+    if not identifiers:
+        return None
+    for item in getattr(audit_log, "events", ()):
         data = getattr(item, "data", None)
-        if not isinstance(data, dict):
+        if not isinstance(data, dict) or not any(
+            data.get(key) == value for key, value in identifiers.items()
+        ):
             continue
         usage = data.get("usage", ())
         if isinstance(usage, list) and any(

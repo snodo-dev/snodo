@@ -75,6 +75,60 @@ def test_historical_mock_run_does_not_suppress_real_sync(tmp_path):
     dispatch.assert_called_once()
 
 
+def test_interleaved_mock_sessions_do_not_suppress_real_sync(tmp_path):
+    (tmp_path / ".snodo").mkdir()
+    audit = SimpleNamespace(log_path=tmp_path / ".snodo" / "audit.log", events=[
+        SimpleNamespace(sequence=1, event_type="session_started", data={"session_id": "A"}),
+        SimpleNamespace(sequence=2, event_type="session_started", data={"session_id": "B"}),
+        SimpleNamespace(event_type="task_complete", data={
+            "session_id": "B", "usage": [{"coder": "mock"}],
+        }),
+        SimpleNamespace(sequence=4, event_type="session_started", data={"session_id": "C"}),
+        SimpleNamespace(event_type="task_complete", data={
+            "session_id": "C", "usage": [{"coder": "mock"}],
+        }),
+        SimpleNamespace(event_type="task_complete", data={
+            "session_id": "A", "task_ref": "real-task",
+            "usage": [{"coder": "litellm"}],
+        }),
+    ])
+    for sequence, item in enumerate(audit.events, 1):
+        item.sequence = sequence
+    finished = Event()
+    with patch.object(
+        cloud_sync.CloudSyncDispatcher, "sync",
+        side_effect=lambda *args, **kwargs: (
+            finished.set() or {"synced": 1, "failed": False, "pending": 0}
+        ),
+    ) as dispatch:
+        cloud_sync.sync_if_enabled("A", str(tmp_path), audit, _config())
+        assert finished.wait(2)
+    dispatch.assert_called_once()
+
+
+def test_long_session_interleaved_mock_sessions_do_not_suppress_liveness(tmp_path, monkeypatch):
+    (tmp_path / ".snodo").mkdir()
+    events = [SimpleNamespace(event_type="session_started", data={"session_id": "A"})]
+    for index in range(31):
+        sid = f"mock-{index}"
+        events.extend((
+            SimpleNamespace(event_type="session_started", data={"session_id": sid}),
+            SimpleNamespace(event_type="task_complete", data={
+                "session_id": sid, "usage": [{"coder": "mock"}],
+            }),
+        ))
+    events.append(SimpleNamespace(event_type="task_complete", data={
+        "session_id": "A", "task_ref": "real-task",
+        "usage": [{"coder": "litellm"}],
+    }))
+    audit = SimpleNamespace(log_path=tmp_path / ".snodo" / "audit.log", events=events)
+    monkeypatch.setattr(cloud_liveness, "_ARMED", True)
+    event = SimpleNamespace(event_type="dispatch", data={"session_id": "A"})
+    with patch.object(cloud_liveness, "request_liveness_push") as liveness:
+        cloud_liveness._on_audit_event(event, audit)
+    liveness.assert_called_once_with("A", str(tmp_path), force=False)
+
+
 def test_benchmark_run_skips_cloud_sync(tmp_path, monkeypatch):
     (tmp_path / ".snodo").mkdir()
     audit = _audit(tmp_path, "litellm")
