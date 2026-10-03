@@ -108,6 +108,31 @@ def _branch_exists(project_root: str, branch: str) -> bool:
         return False
 
 
+def _worktree_has_branch(project_root: str, path: Path, branch: str) -> bool:
+    """Return whether Git records *path* checked out on *branch*."""
+    try:
+        from snodo.tools.git import open_repo
+
+        with open_repo(project_root) as repo:
+            raw = repo.git.worktree("list", "--porcelain")
+    except Exception:
+        return False
+
+    target = path.resolve()
+    entry_path = None
+    entry_branch = None
+    for line in (*raw.splitlines(), ""):
+        if not line:
+            if entry_path == target and entry_branch == f"refs/heads/{branch}":
+                return True
+            entry_path = entry_branch = None
+        elif line.startswith("worktree "):
+            entry_path = Path(line.removeprefix("worktree ")).resolve()
+        elif line.startswith("branch "):
+            entry_branch = line.removeprefix("branch ")
+    return False
+
+
 def _task_identity(
     project_root: str, task_id: str, spec: str, plan_name: Optional[str]
 ) -> Tuple[Path, str]:
@@ -119,7 +144,10 @@ def _task_identity(
 
     old_path = worktree_path(project_root, task_id)
     old_branch = legacy_task_branch_name(task_id, spec)
-    if old_path.exists() or _branch_exists(project_root, old_branch):
+    if (
+        _branch_exists(project_root, old_branch)
+        and _worktree_has_branch(project_root, old_path, old_branch)
+    ):
         return old_path, old_branch
     return new_path, new_branch
 
@@ -841,7 +869,18 @@ def task_branch_is_merged(
     try:
         base = target_ref or resolve_base_branch(project_root)
         with open_repo(project_root) as repo:
-            if branch not in repo.heads:
+            # A plan task may have been merged under either its plan-scoped
+            # branch (current identity) or the exact legacy branch (older
+            # identity). Identity selection intentionally does not adopt
+            # legacy artifacts here: this lookup is only for recognising
+            # already-merged work by its spec-derived branch name.
+            branches = [branch]
+            if plan_name:
+                legacy_branch = legacy_task_branch_name(task_id, spec)
+                if legacy_branch != branch:
+                    branches.append(legacy_branch)
+            existing = [candidate for candidate in branches if candidate in repo.heads]
+            if not existing:
                 return None
             try:
                 base_commit = repo.commit(base)
@@ -849,12 +888,16 @@ def task_branch_is_merged(
                 _logger.debug("Could not resolve base commit for %s: %s", base, e)
                 return None
             if hasattr(repo, "is_ancestor"):
-                try:
-                    ancestor = repo.is_ancestor(repo.commit(branch), base_commit)
-                    if isinstance(ancestor, bool):
-                        return ancestor
-                except Exception as e:
-                    _logger.debug("Could not check ancestry of %s: %s", branch, e)
+                answers = []
+                for candidate in existing:
+                    try:
+                        ancestor = repo.is_ancestor(repo.commit(candidate), base_commit)
+                        if isinstance(ancestor, bool):
+                            answers.append(ancestor)
+                    except Exception as e:
+                        _logger.debug("Could not check ancestry of %s: %s", candidate, e)
+                if answers:
+                    return any(answers)
             try:
                 raw = repo.git.branch("--merged", base)
             except Exception as e:
@@ -865,7 +908,7 @@ def task_branch_is_merged(
                 for line in raw.splitlines()
                 if line.strip().lstrip("*+ ").strip()
             } if isinstance(raw, str) else set()
-            return branch in merged
+            return any(candidate in merged for candidate in existing)
     except Exception as e:
         _logger.debug("Could not determine whether %s is merged: %s", branch, e)
         return None

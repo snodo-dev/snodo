@@ -63,6 +63,7 @@ def _submit(project_root: Path) -> tuple:
     manager = JobManager(str(project_root))
     with patch("snodo.jobs.runner.spawn_background", return_value=99999):
         job_id = manager.submit({
+            "task_id": TASK_ID,
             "description": DESCRIPTION,
             "protocol": ".snodo/protocol.yml",
             "model": None,
@@ -191,12 +192,48 @@ class TestWorktreeNameHasOneHome:
 
         assert stored == wrapper_identity == TASK_ID
 
-    def test_resolver_ignores_the_job_id_when_a_description_exists(self):
-        """The identity is the description's, not the job id — the drift that
-        left the real worktree registered was teardown using the job id."""
+    def test_generic_description_uses_unique_job_id(self):
+        """Generic descriptions are not stable identities across job runs."""
         from snodo.jobs import resolve_task_identity
 
-        assert resolve_task_identity({"description": DESCRIPTION}, "j_deadbeef") == TASK_ID
+        task_args = {"description": "Run queue(s): default", "queue_run": True}
+        assert resolve_task_identity(task_args, "j_deadbeef") == "j_deadbeef"
+        assert resolve_task_identity(task_args, "j_cafef00d") == "j_cafef00d"
+
+    def test_plan_tasks_get_distinct_worktrees_and_retry_reuses_own(self, git_project):
+        """Plan task ids isolate siblings and name their durable retry path."""
+        from snodo.infrastructure.worktree import worktree_path
+
+        manager = JobManager(str(git_project))
+        with patch("snodo.jobs.runner.spawn_background", return_value=99999):
+            for task_id in ("2.2_lease_exchange_with_oauth", "2.3_polish_oauth"):
+                manager.submit({
+                    "task_id": task_id,
+                    "description": f"Implement {task_id}",
+                    "task_plan": "cloud-oauth-login",
+                    "cwd": str(git_project),
+                })
+            retry_job = manager.submit({
+                "task_id": "2.2_lease_exchange_with_oauth",
+                "retry": "2.2_lease_exchange_with_oauth",
+                "description": "Retry lease exchange",
+                "task_plan": "cloud-oauth-login",
+                "cwd": str(git_project),
+            })
+
+        first = worktree_path(str(git_project), "2.2_lease_exchange_with_oauth", "cloud-oauth-login")
+        second = worktree_path(str(git_project), "2.3_polish_oauth", "cloud-oauth-login")
+        assert first != second
+        assert first.exists() and second.exists()
+        assert (manager.jobs_dir / retry_job / "task.json").exists()
+        branches = subprocess.run(
+            ["git", "branch", "--format=%(refname:short)"], cwd=git_project,
+            capture_output=True, text=True, check=True,
+        ).stdout.splitlines()
+        assert any("2.2_lease_exchange_with_oauth" in b for b in branches)
+        assert any("2.3_polish_oauth" in b for b in branches)
+        assert json.loads((manager.jobs_dir / retry_job / "task.json").read_text())["task_id"] == "2.2_lease_exchange_with_oauth"
+        assert first.exists()  # retry's submit reused the existing task worktree
 
     def test_plan_run_has_no_task_identity(self):
         from snodo.jobs import resolve_task_identity

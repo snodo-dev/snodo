@@ -22,6 +22,19 @@ snodo uses [Semantic Versioning](https://semver.org/).
   dirty or HEAD changes during the test run. (Fixes #690)
 - Queue integration merges now require passing verification for each plan head
   and for the combined queue tree before delivery. (Fixes #689)
+- `snodo worktree remove` and `snodo task abandon` now delete only exact
+  task-owned branches and refuse ambiguous ids shared by multiple plans.
+  (Fixes #687)
+- `retry_job` now refuses queue-run and plan-run jobs with guidance to resume
+  the queue or fix and rerun the plan, without creating a task job. (Fixes #686)
+- Plan tasks reuse a legacy worktree only when the exact legacy branch is
+  checked out there; unrelated same-id worktrees and branches remain untouched.
+  (Fixes #685)
+- Hand-merged plan tasks are recognised under both current plan-scoped and
+  legacy spec-derived branch identities, so stale `unmerged` statuses are
+  corrected without redispatch. (Fixes #685)
+- Queue and other generic-description jobs now use unique job identities, while
+  plan-dispatched tasks retain task-specific worktrees and retry reuse. (Fixes #684)
 - `snodo cloud status` now shows OAuth expiry in UTC with time remaining (or
   notes that the next sync will refresh an expired token) and displays only the
   access token's `org_id` claim when present. (Fixes #683)

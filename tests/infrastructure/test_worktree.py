@@ -181,6 +181,30 @@ def test_plan_run_reuses_existing_legacy_worktree(repo):
     assert reused != worktree_path(str(repo), "task_1_1", "alpha")
 
 
+def test_plan_run_ignores_unrelated_legacy_worktree(repo):
+    legacy_path = worktree_path(str(repo), "task_1_1")
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "branch", "foreign"], cwd=repo, check=True)
+    subprocess.run(["git", "worktree", "add", str(legacy_path), "foreign"], cwd=repo, check=True)
+
+    scoped = create_worktree(str(repo), "task_1_1", "Add the shared feature", plan_name="alpha")
+
+    assert scoped == worktree_path(str(repo), "task_1_1", "alpha")
+    assert scoped.exists()
+    assert legacy_path.exists()
+    assert _current_branch(legacy_path) == "foreign"
+
+
+def test_plan_run_ignores_legacy_branch_without_its_worktree(repo):
+    legacy_branch = task_branch_name("task_1_1", "Add the shared feature")
+    subprocess.run(["git", "branch", legacy_branch], cwd=repo, check=True)
+
+    scoped = create_worktree(str(repo), "task_1_1", "Add the shared feature", plan_name="alpha")
+
+    assert scoped == worktree_path(str(repo), "task_1_1", "alpha")
+    assert legacy_branch in _branches(repo)
+
+
 def test_retry_reuses_existing_worktree_without_discarding_work(repo):
     """A retry keeps artifacts in an existing task worktree (ticket 4TICKET)."""
     wt = create_worktree(str(repo), "task_retry", "Implement the feature")

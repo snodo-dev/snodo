@@ -47,9 +47,10 @@ def resolve_task_identity(task_args: dict, job_id: str) -> Optional[str]:
     """The ONE place that decides a job's task identity.
 
     A task job's identity is, in order: an explicit ``task_id`` (a
-    plan-dispatched child names it), the task it is retrying, a digest of the
-    description, and failing that the job id. A plan-run job owns no task and
-    yields None.
+    plan-dispatched child names it), the task it is retrying, a digest of a
+    task description, and finally the job id. Queue-run descriptions are
+    generic and shared across runs, so queue jobs are keyed by their job id.
+    A plan-run job owns no task and yields None.
 
     The worktree is created and torn down under this identity. It lived in two
     call sites once — creation derived a name, teardown used the job id — and
@@ -65,6 +66,8 @@ def resolve_task_identity(task_args: dict, job_id: str) -> Optional[str]:
     task_id = task_args.get("task_id") or task_args.get("retry")
     if task_id:
         return task_id
+    if task_args.get("queue_run"):
+        return job_id
     description = task_args.get("description", "")
     if description:
         from snodo.paths import derive_task_id

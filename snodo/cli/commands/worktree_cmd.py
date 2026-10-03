@@ -20,6 +20,7 @@ from rich.console import Console
 from rich.table import Table
 
 from snodo.infrastructure.paths import require_project_root
+from snodo.cli.commands.task_cleanup import inspect_task_branches
 from snodo.infrastructure.worktree import (
     list_task_branches,
     list_worktrees,
@@ -216,6 +217,26 @@ def worktree_remove_command(args) -> int:
 
     project_root = require_project_root()
 
+    # Branch-list keys preserve the plan component for scoped branches. Resolve
+    # only exact task owners; a bare task id shared by plans cannot identify a
+    # single retained worktree safely.
+    try:
+        git, owned, owners = inspect_task_branches(project_root, task_id)
+    except Exception:
+        owned, owners = [], []
+    if len(owners) > 1:
+        print(
+            f"Task id {task_id} is ambiguous ({', '.join(sorted(owners))}); "
+            "specify the specific worktree or branch.", file=sys.stderr,
+        )
+        return 1
+    if len(owners) == 1 and owners[0] != task_id:
+        print(
+            f"Task id {task_id} is owned by {owners[0]}; specify the specific worktree or branch.",
+            file=sys.stderr,
+        )
+        return 1
+
     if not worktree_is_owned(project_root, task_id):
         print(f"Worktree {task_id} does not belong to this project.", file=sys.stderr)
         return 1
@@ -227,14 +248,18 @@ def worktree_remove_command(args) -> int:
     try:
         from snodo.tools.git import GitMCP
         git = GitMCP(project_root)
-        branch_prefix = f"task/{task_id}"
-        for head in list(git.repo.heads):
-            if head.name == branch_prefix or head.name.startswith(f"{branch_prefix}/"):
-                git.repo.git.branch("-D", head.name)
+        removed = []
+        for name in owned:
+            try:
+                git.repo.git.branch("-D", name)
+                removed.append(name)
+            except Exception:
+                _logger.debug("Could not remove branch %s", name, exc_info=True)
     except Exception as e:
         _logger.warning("Could not delete task branch for %s: %s", task_id, e)
+        removed = []
 
-    print(f"Removed worktree for {task_id}.")
+    print(f"Removed worktree for {task_id}; removed branches: {', '.join(removed) or 'none'}.")
     return 0
 
 

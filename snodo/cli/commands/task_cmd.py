@@ -721,6 +721,19 @@ def task_abandon_command(args) -> int:
         print("Not inside a snodo project.", file=sys.stderr)
         return 1
 
+    from snodo.cli.commands.task_cleanup import inspect_task_branches
+    try:
+        git, owned_branches, owners = inspect_task_branches(project_root, task_id)
+    except Exception as e:
+        print(f"Error deleting branch: {e}", file=sys.stderr)
+        return 1
+    if len(owners) > 1 or (owners and owners[0] != task_id):
+        print(
+            f"Task id {task_id} is ambiguous ({', '.join(owners)}); "
+            "specify the specific worktree or branch.", file=sys.stderr,
+        )
+        return 1
+
     # Clear failure context from session
     from snodo.infrastructure.state import read_state
     from snodo.infrastructure.session import SessionManager
@@ -743,18 +756,6 @@ def task_abandon_command(args) -> int:
                         "Could not clear failure context for task %s: %s", task_id, e,
                     )
 
-    # Delete the branch
-    try:
-        from snodo.tools.git import GitMCP
-        git = GitMCP(project_root)
-        branch_name = f"task/{task_id}"
-        for head in git.repo.heads:
-            if head.name.startswith(branch_name):
-                git.repo.git.branch("-D", head.name)
-    except Exception as e:
-        print(f"Error deleting branch: {e}", file=sys.stderr)
-        return 1
-
     # Remove worktree
     try:
         from snodo.infrastructure.worktree import remove_worktree
@@ -762,7 +763,15 @@ def task_abandon_command(args) -> int:
     except Exception as e:
         _logger.warning("Could not remove worktree for task %s: %s", task_id, e)
 
-    print("Task abandoned.")
+    removed = []
+    for branch in owned_branches:
+        try:
+            git.repo.git.branch("-D", branch)
+            removed.append(branch)
+        except Exception as e:
+            _logger.warning("Could not delete branch %s: %s", branch, e)
+
+    print(f"Task abandoned; removed branches: {', '.join(removed) or 'none'}.")
     return 0
 
 
