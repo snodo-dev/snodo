@@ -1128,13 +1128,23 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                 "op": "plan_run",
                 **plan_history_shape(plan_data, args.plan),
                 "trigger": trigger,
-                "job_id": os.environ.get("SNODO_JOB_ID") if trigger == "queue" else None,
+                "job_id": os.environ.get("SNODO_JOB_ID") or None,
                 "mode": active_mode,
             }
             queue = getattr(args, "queue", None) or os.environ.get("SNODO_PLAN_QUEUE")
             if trigger == "queue" and queue:
                 run_event["queue"] = queue
             audit_log.append_event("plan_run", run_event)
+        else:
+            # MCP-dispatched plan jobs have run history too; proposal is kept
+            # separate because the plan was not proposed by this execution.
+            audit_log.append_event("plan_run", {
+                "op": "plan_run",
+                **plan_history_shape(plan_data, args.plan),
+                "trigger": trigger,
+                "job_id": os.environ.get("SNODO_JOB_ID") or None,
+                "mode": active_mode,
+            })
 
         if fixture_identity:
             print(f"Benchmark fixture: {fixture_identity}")

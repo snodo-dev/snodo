@@ -81,6 +81,13 @@ _V6_DATA_KEYS: dict[str, set[str]] = {
     "disagreement_escalated": {"plan_name", "plan_wave"},
 }
 _V7_USAGE_EVENTS = {"task_complete", "halt", "validate", "recon_completed"}
+_V8_JOB_ID_EVENTS = {
+    "dispatch", "work_already_present", "governance_check", "validate",
+    "task_classified", "task_complete", "task_merged", "halt", "transition",
+    "token_consumed", "post_validation_route", "post_validate_bypassed",
+    "execution_failed", "verification_executed", "unverified_merge_blocked",
+    "task_unmerged", "disagreement_escalated",
+}
 
 
 def _requires_v6(event: Any) -> bool:
@@ -94,6 +101,16 @@ def _requires_v6(event: Any) -> bool:
 def _requires_v7(event: Any) -> bool:
     """Whether a usage-bearing event requires interface v7."""
     return event.event_type in _V7_USAGE_EVENTS and isinstance(event.data, dict) and "usage" in event.data
+
+
+def _requires_v8(event: Any) -> bool:
+    """Whether transmitting an optional task job id requires interface v8."""
+    return event.event_type in _V8_JOB_ID_EVENTS and isinstance(event.data, dict) and "job_id" in event.data
+
+
+def _requires_v8_payload(event: dict) -> bool:
+    """Whether a projected wire event contains the v8-only job id."""
+    return event.get("event_type") in _V8_JOB_ID_EVENTS and isinstance(event.get("data"), dict) and "job_id" in event["data"]
 
 
 _EVENT_DATA_KEYS: dict[str, tuple[str, ...]] = {
@@ -219,6 +236,11 @@ _EVENT_DATA_KEYS_V6: dict[str, tuple[str, ...]] = {
 _EVENT_DATA_KEYS_V7: dict[str, tuple[str, ...]] = {
     **_EVENT_DATA_KEYS_V6,
     **{event: (*_EVENT_DATA_KEYS_V6[event], "usage") for event in _V7_USAGE_EVENTS},
+}
+
+_EVENT_DATA_KEYS_V8: dict[str, tuple[str, ...]] = {
+    **_EVENT_DATA_KEYS_V7,
+    **{event: (*_EVENT_DATA_KEYS_V7[event], "job_id") for event in _V8_JOB_ID_EVENTS},
 }
 
 
@@ -454,12 +476,38 @@ _V7_EVENT_MODELS = _event_models(
         },
     },
 )
+_V8_EVENT_MODELS = _event_models(
+    _EVENT_DATA_KEYS_V8,
+    {
+        "plan_proposed": PlanProposedData,
+        "plan_run": PlanRunData,
+        "disagreement_escalated": DisagreementEscalatedData,
+        **{
+            event: create_model(
+                f"{event.title().replace('_', '')}V8Data",
+                __config__=ConfigDict(extra="allow"),
+                job_id=(str | None, None),
+                **({"usage": (list[UsageRecord] | None, None)} if event in _V7_USAGE_EVENTS else {}),
+            )
+            for event in _V8_JOB_ID_EVENTS
+        },
+        **{
+            event: create_model(
+                f"{event.title().replace('_', '')}V8UsageData",
+                __config__=ConfigDict(extra="allow"),
+                usage=(list[UsageRecord] | None, None),
+            )
+            for event in _V7_USAGE_EVENTS - _V8_JOB_ID_EVENTS
+        },
+    },
+)
 
 # Known tags retain their pinned data shapes. Historical tags not declared by
 # this client use the same validated envelope with opaque event data.
 AuditEventEnvelope = Union[*_V5_EVENT_MODELS, OpaqueAuditEvent]
 AuditEventEnvelopeV6 = Union[*_V6_EVENT_MODELS, OpaqueAuditEventV6]
 AuditEventEnvelopeV7 = Union[*_V7_EVENT_MODELS, OpaqueAuditEventV6]
+AuditEventEnvelopeV8 = Union[*_V8_EVENT_MODELS, OpaqueAuditEventV6]
 
 
 class AuditIngestBatch(BaseModel):
@@ -495,6 +543,17 @@ class AuditIngestBatchV7(BaseModel):
     events: list[AuditEventEnvelopeV7] = Field(min_length=1, max_length=_MAX_BATCH_SIZE)
 
 
+class AuditIngestBatchV8(BaseModel):
+    """The v8 ingest shape, including optional task job ids."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    project_path: str
+    display_name: str
+    events: list[AuditEventEnvelopeV8] = Field(min_length=1, max_length=_MAX_BATCH_SIZE)
+
+
 def _payload_for_events(session_id: str, project_root: str, events: list) -> dict:
     """Build the exact wire payload used for size measurement and delivery."""
     payload_events = []
@@ -526,15 +585,23 @@ def _v5_payload(payload: dict, interface_version: int) -> Optional[dict]:
     projection. Sequence, previous_hash and event_hash always travel together;
     once an event needs v6, it and the remainder of the chain stay held.
     """
+    if interface_version >= 8:
+        return payload
     if interface_version >= 7:
+        if any(_requires_v8_payload(event) for event in payload["events"]):
+            return None
         return payload
     if interface_version >= 6:
+        if any(_requires_v8_payload(event) for event in payload["events"]):
+            return None
         if any(event["event_type"] in _V7_USAGE_EVENTS and "usage" in (event.get("data") or {})
                for event in payload["events"]):
             return None
         return payload
     projected = {**payload, "events": []}
     for event in payload["events"]:
+        if _requires_v8_payload(event):
+            break
         if event["event_type"] in _V7_USAGE_EVENTS and "usage" in (event.get("data") or {}):
             break
         if event["event_type"] in _V6_EVENT_TYPES:
@@ -884,7 +951,7 @@ class CloudSyncDispatcher:
         for candidate in queue:
             segment: list = []
             for event in candidate:
-                if _requires_v6(event) or _requires_v7(event):
+                if _requires_v6(event) or _requires_v7(event) or _requires_v8(event):
                     if segment:
                         separated.append(segment)
                         segment = []
@@ -1032,7 +1099,11 @@ class CloudSyncDispatcher:
         interface_version = advertised_version or 5
         payload = _v5_payload(payload, interface_version)
         if payload is None:
-            needed = 7 if interface_version < 7 and any(_requires_v7(event) for event in batch) else 6
+            needed = (
+                8 if interface_version < 8 and any(_requires_v8(event) for event in batch)
+                else 7 if interface_version < 7 and any(_requires_v7(event) for event in batch)
+                else 6
+            )
             reason = f"Cloud interface v{needed} is not yet advertised; event batch held for retry"
             # A later attempt must ask the cloud again rather than trusting an
             # unknown or stale v5 capability cached in this admission lease.
@@ -1041,7 +1112,7 @@ class CloudSyncDispatcher:
         # Validate the exact projected payload without re-serializing it: its
         # hash-chain envelope remains byte-for-byte unchanged.
         try:
-            (AuditIngestBatchV7 if interface_version >= 7 else
+            (AuditIngestBatchV8 if interface_version >= 8 else AuditIngestBatchV7 if interface_version >= 7 else
              AuditIngestBatchV6 if interface_version >= 6 else AuditIngestBatch).model_validate(payload)
         except ValidationError as err:
             event_index = next(

@@ -1154,6 +1154,12 @@ class GraphBuilder(GovernanceNodeMixin, ValidationNodeMixin, ExecutorMixin, Serd
     def _audit(self, event_type: str, data: Dict[str, Any]) -> None:
         """Log an audit event if audit_log is available."""
         if self._audit_log is not None:
+            # A plan-run job identifies the enclosing run, not this child task.
+            # Ordinary background task jobs use the same id printed by the CLI.
+            import os
+            job_id = os.environ.get("SNODO_JOB_ID") or None
+            if job_id and os.environ.get("SNODO_PLAN_JOB") != "1":
+                data["job_id"] = job_id
             if self._session_id:
                 data["session_id"] = self._session_id
             self._audit_log.append_event(event_type, data)

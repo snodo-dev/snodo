@@ -14,7 +14,7 @@ def test_cloud_schema_validates_real_snapshot_and_event_batch():
 
     assert result.exit_code == 0
     publication = json.loads(result.stdout)
-    assert publication["interface_version"] == 7
+    assert publication["interface_version"] == 8
 
     payloads = publication["payloads"]
     batch = {
@@ -80,6 +80,24 @@ def test_v7_usage_is_pinned_and_older_interfaces_hold_hash_chain():
     assert _v5_payload(payload, 5) is None
     assert _v5_payload(payload, 6) is None
     assert _v5_payload(payload, 7) == payload
+
+
+def test_v8_task_job_id_is_optional_and_older_interfaces_hold_chain():
+    from snodo.infrastructure.cloud_sync import AuditIngestBatchV8
+
+    base = {
+        "sequence": 1, "timestamp": "2026-09-17T12:00:00+00:00",
+        "event_type": "task_complete", "project_id": "local:project",
+        "scope": "local", "data": {"task_ref": "task_a", "session_id": "s"},
+        "previous_hash": "0" * 64, "event_hash": "a" * 64,
+    }
+    legacy_payload = {"session_id": "s", "project_path": "/work", "display_name": "work", "events": [base]}
+    AuditIngestBatchV8.model_validate(legacy_payload)
+    with_job = {**base, "data": {**base["data"], "job_id": "j_plain123"}}
+    payload = {**legacy_payload, "events": [with_job]}
+    AuditIngestBatchV8.model_validate(payload)
+    assert _v5_payload(payload, 7) is None
+    assert _v5_payload(payload, 8) == payload
 
     estimated = _aggregate_usage([
         {"model": "m", "input_tokens": 1, "output_tokens": 2,

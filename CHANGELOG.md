@@ -10,6 +10,10 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- Background job ids now accompany `plan_run` for every trigger and optional
+  per-task audit events, so terminal ids are searchable in cloud history. MCP
+  dispatched task plans now emit `plan_run` too. Cloud interface v8 gates the
+  new optional task field. (Fixes #667)
 - PR-review Actions now create unique CI-prefixed reviewer sessions so recon audit events sync under valid cloud session IDs. (Fixes #666)
 - Queue runs with push-branch or change-request delivery now deliver one persistent integration branch for all successful plans in the run. (Fixes #665)
 

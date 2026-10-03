@@ -41,6 +41,14 @@ sent; the cursor stops before the first v6-only event/data and its chain suffix
 is retried after a later mint. Data is never stripped from a hash-chained event.
 snodo-cloud must advertise v6 only after both ingest and liveness accept it.
 
+### Interface v8 — background job ids on task events
+
+Under a lease advertising v8 or later, per-task audit events may carry the
+optional `job_id` of the background job that ran the task. Foreground events
+omit it. Plan-run job ids stay on `plan_run` and are never attributed to child
+tasks. Older leases hold an event containing this field and its hash-chain
+suffix unchanged; events recorded before the field existed remain valid.
+
 ### Interface v7 — usage on audit events
 
 Under a lease advertising v7 or later, `task_complete`, `halt`, `validate` and
@@ -356,7 +364,8 @@ marker) and the pinned hierarchy `{plan_name, waves: [{wave_id, task_refs}]}`;
 each run reports the intent present in `plan.yml` for that run, even if edited
 since proposal. Plan runs also identify their trigger and, for queue-triggered
 runs, the queue. Each `plan_run` also carries `job_id` (the background job
-running it, or null for a foreground run) and the protocol `mode` at run start.
+running it, for any trigger, or null for a foreground run) and the protocol
+`mode` at run start. MCP-dispatched task plans also emit `plan_run` history.
 
 `disagreement_escalated` is pinned on v6 with `task_ref`, `phase` and `policy`,
 plus `plan_name` and `plan_wave` when the task ran in a plan. It carries no
@@ -376,31 +385,31 @@ ingestion, but those extra fields are not part of the pinned Snodo contract.
 | `readiness_checked` | project_id, scope, display_name, protocol_id, score, total_checks, passed_checks, repository_findings_count, workstation_findings_count, findings |
 | `recon_started` | recon_id, query, paths, agent_count, agent_models, session_id, created_at |
 | `recon_completed` | recon_id, existing final status, succeeded_agents, failed_agents, duration, completed_at, answer summary (about 2,000 characters maximum), usage |
-| `dispatch` | task_ref, mode, token_id, artifacts_count, plan_name, plan_wave (when applicable) |
-| `work_already_present` | task_ref, base_ref, artifacts_count, files |
-| `governance_check` | task_ref, mode, constraints_checked |
-| `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision, usage |
-| `task_classified` | task_ref, flow_type, wave_id, task_summary, plan_name, plan_wave (when applicable) |
+| `dispatch` | task_ref, mode, token_id, artifacts_count, plan_name, plan_wave (when applicable), job_id (optional, v8) |
+| `work_already_present` | task_ref, base_ref, artifacts_count, files, job_id (optional, v8) |
+| `governance_check` | task_ref, mode, constraints_checked, job_id (optional, v8) |
+| `validate` | phase, task_ref, validators_invoked, results, outcome, policy_decision, usage, job_id (optional, v8) |
+| `task_classified` | task_ref, flow_type, wave_id, task_summary, plan_name, plan_wave (when applicable), job_id (optional, v8) |
 | `wave_created` | wave_id, feature_description |
-| `task_complete` | task_ref, artifacts, session_id, commit, change_size, usage |
-| `task_merged` | task_ref, branch, merge_sha, spec, session_id, base_sha, commit_count, commits (up to 50), files_changed, insertions, deletions, plan_name, plan_wave (when applicable) |
-| `task_unmerged` | task_ref, branch, reason, session_id, plan_name, plan_wave (when applicable) |
-| `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type, usage |
-| `disagreement_escalated` | task_ref, phase, policy, plan_name, plan_wave (when applicable) |
-| `transition` | from_mode, to_mode, task_ref |
-| `token_consumed` | task_ref, session_id |
-| `post_validation_route` | decision, task_ref |
-| `post_validate_bypassed` | mode, reason, task_ref |
+| `task_complete` | task_ref, artifacts, session_id, commit, change_size, usage, job_id (optional, v8) |
+| `task_merged` | task_ref, branch, merge_sha, spec, session_id, base_sha, commit_count, commits (up to 50), files_changed, insertions, deletions, plan_name, plan_wave (when applicable), job_id (optional, v8) |
+| `task_unmerged` | task_ref, branch, reason, session_id, plan_name, plan_wave (when applicable), job_id (optional, v8) |
+| `halt` | task_ref, reason, blocker_validators, halt_type, raw_halt_type, usage, job_id (optional, v8) |
+| `disagreement_escalated` | task_ref, phase, policy, plan_name, plan_wave (when applicable), job_id (optional, v8) |
+| `transition` | from_mode, to_mode, task_ref, job_id (optional, v8) |
+| `token_consumed` | task_ref, session_id, job_id (optional, v8) |
+| `post_validation_route` | decision, task_ref, job_id (optional, v8) |
+| `post_validate_bypassed` | mode, reason, task_ref, job_id (optional, v8) |
 | `session_started` | session_id, mode, project_root |
 | `session_task_changed` | old_task, new_task |
 | `session_decision_updated` | key, value |
 | `recovery_resolved` | depth, attempts_used |
 | `recovery_internal_error` | depth, error |
-| `execution_failed` | error, task_ref |
+| `execution_failed` | error, task_ref, job_id (optional, v8) |
 | `verification_executed` | command, commit, returncode, outcome, validator_id, working_directory, output_tail |
 | `coder_test_run` | command_type, exit_code, test_path, turn_index, job_id |
 | `test_modified` | mutations, task_id, job_id |
-| `unverified_merge_blocked` | task_ref, branch, target_commit, reason, session_id |
+| `unverified_merge_blocked` | task_ref, branch, target_commit, reason, session_id, job_id (optional, v8) |
 | `adjudication_carry_forward` | opaque object |
 | `coder_respawned` | opaque object |
 | `coder_timed_out` | opaque object |
