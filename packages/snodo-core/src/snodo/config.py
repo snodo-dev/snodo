@@ -446,6 +446,11 @@ class ConfigManager:
 
         return None
 
+    @staticmethod
+    def provider_for_model(model: str) -> Optional[str]:
+        """Resolve the Snodo provider namespace for a model identifier."""
+        return ConfigManager._provider_for_model(model)
+
     def save(self, config: dict) -> None:
         """Create or replace configuration atomically with secure permissions.
 
@@ -791,6 +796,7 @@ class ConfigManager:
             Dict of provider -> result status ("valid", "invalid", "untestable")
         """
         results = {}
+        self.test_key_reasons = getattr(self, "test_key_reasons", {})
         providers = self.get_providers()
 
         for name, pc in providers.items():
@@ -820,7 +826,7 @@ class ConfigManager:
 
         model = pc.probe_model
 
-        if not pc.api_key_env and not pc.litellm_provider:
+        if not pc.api_key_env and not pc.litellm_provider and not pc.base_url:
             return "untestable"
 
         try:
@@ -844,7 +850,18 @@ class ConfigManager:
 
             completion(**kwargs)
             return "valid"
-        except Exception:
+        except Exception as exc:
+            message = str(exc).lower()
+            if any(term in message for term in ("auth", "api key", "unauthorized", "401", "403")):
+                reason = "authentication"
+            elif any(term in message for term in ("model", "404", "not found")):
+                reason = "unknown model"
+            elif any(term in message for term in ("connect", "timeout", "network", "unreachable", "dns")):
+                reason = "unreachable"
+            else:
+                reason = "other"
+            self.test_key_reasons = getattr(self, "test_key_reasons", {})
+            self.test_key_reasons[provider] = reason
             return "invalid"
 
     @staticmethod

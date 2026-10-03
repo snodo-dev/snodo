@@ -406,6 +406,7 @@ class TestTestKeys:
         with patch.dict("sys.modules", {"litellm": MagicMock(completion=mock_completion)}):
             result = mgr._test_single_key("openai", "sk-bad-key")
             assert result == "invalid"
+            assert mgr.test_key_reasons["openai"] == "authentication"
 
     def test_test_single_key_cleans_up_env_on_failure(self, mgr, monkeypatch):
         """Env var is cleaned up even when API call fails."""
@@ -532,6 +533,16 @@ class TestCLIConfigTest:
         assert result == 1
         out = capsys.readouterr().out
         assert "invalid" in out
+
+    @patch("snodo.config.ConfigManager._test_single_key")
+    def test_test_keys_shows_probe_failure_reason(self, mock_test, cli_config_dir, capsys):
+        cli_config_dir.add_key("openai", "sk-bad")
+        mock_test.return_value = "invalid"
+        cli_config_dir.test_key_reasons = {"openai": "authentication"}
+
+        result = main(["config", "test"])
+        assert result == 1
+        assert "openai: ✗ invalid (authentication)" in capsys.readouterr().out
 
     def test_test_no_keys(self, cli_config_dir, capsys):
         result = main(["config", "test"])

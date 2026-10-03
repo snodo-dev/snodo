@@ -181,10 +181,13 @@ Read from the environment, never stored in the config file: `SNODO_HOME`,
 ## Check readiness before you spend
 
 `snodo ready` is worth running first on an existing repository. It checks,
-deterministically and without an LLM, whether every artefact the protocol
-demands is **committed** — decision records, a resolvable test command, coder
-configs, paths cited in criteria — and scores what is missing by how cheap it
-is to fix. Task worktrees only see `HEAD`, so "present on disk" is not enough.
+deterministically and offline, protocol well-formedness, committed decision
+records, a resolvable test command, coder configs, cited paths, git worktree
+viability (including an initial commit), and required delivery remotes. It also
+reports model/provider and credential configuration and workstation binaries.
+Repository findings are scored; workstation findings are unscored. It makes no
+model calls, contacts no remotes, and does not execute command credential
+references. Task worktrees only see `HEAD`, so "present on disk" is not enough.
 
 ```
 $ snodo ready
@@ -197,7 +200,7 @@ Repository Readiness (Scored — travels with git repository):
 ```
 
 Repository findings are scored and travel with the repository; workstation
-findings (missing binaries, plaintext keys) are reported but unscored. `--mode`
+findings (binaries and credential availability) are reported but unscored. `--mode`
 filters the displayed findings to one mode; `--json` emits the machine-readable
 form.
 

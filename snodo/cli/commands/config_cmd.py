@@ -220,7 +220,9 @@ def _config_test(mgr: ConfigManager) -> int:
         elif status == "untestable":
             print(f"  {provider}: ? untestable")
         else:
-            print(f"  {provider}: ✗ invalid")
+            reason = getattr(mgr, "test_key_reasons", {}).get(provider, "")
+            suffix = f" ({reason})" if reason else ""
+            print(f"  {provider}: ✗ invalid{suffix}")
             has_invalid = True
     return 1 if has_invalid else 0
 

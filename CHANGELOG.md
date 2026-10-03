@@ -25,6 +25,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Environment preparation commands, ShellMCP test runs and detached notification
   monitors no longer inherit Snodo job-context variables. (Fixes #635)
+- `snodo ready` resolves configured provider credentials and reports missing git delivery prerequisites; `snodo config test` preserves provider probe failure reasons. (Fixes #634)
 - `snodo config add` accepts validated credential references, shows them without
   resolving them, and GitHub reports reference-resolution failures with the
   reference and the correct setup command. (Fixes #644)
