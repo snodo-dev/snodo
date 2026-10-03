@@ -443,6 +443,39 @@ def test_plan_delivery_failed_integration_verification_blocks_gate(plan_project_
     assert audit_log.get_history("unverified_merge_blocked")
 
 
+def test_queue_merge_head_requires_passing_verification(tmp_path, monkeypatch):
+    from git import Repo
+    from snodo.cli.commands.plan_run import _verify_queue_merge_head
+    from snodo.infrastructure.audit import AuditLog
+
+    repo = Repo.init(tmp_path)
+    repo.config_writer().set_value("user", "name", "Test").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    (tmp_path / "test.txt").write_text("content\n")
+    repo.index.add(["test.txt"])
+    commit = repo.index.commit("queue head").hexsha
+    repo.close()
+    audit = AuditLog(str(tmp_path / ".snodo" / "audit.log"))
+    protocol = SimpleNamespace(validators=[SimpleNamespace(validator_type="quality")])
+
+    class FailingValidator:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def evaluate(self, context):
+            context.audit_log.append_event("verification_executed", {
+                "op": "verification_executed", "task_ref": context.task_id,
+                "validator_id": "quality", "commit": commit,
+                "returncode": 1, "outcome": "fail", "command": "pytest",
+            })
+
+    monkeypatch.setattr("snodo.validators.quality.QualityValidator", FailingValidator)
+    assert not _verify_queue_merge_head(
+        str(tmp_path), tmp_path, "queue:default", protocol, audit, "HEAD"
+    )
+    assert audit.get_history("unverified_merge_blocked")
+
+
 @pytest.mark.parametrize("delivery", ["local_merge", "push_branch", "change_request"])
 def test_plan_integration_delivery_uses_real_git_and_delivery_gate(tmp_path, delivery):
     """Exercise the plan delivery boundary against real local Git repositories."""

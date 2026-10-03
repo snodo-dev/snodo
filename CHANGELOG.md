@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Queue integration merges now require passing verification for each plan head
+  and for the combined queue tree before delivery. (Fixes #689)
 - `snodo cloud status` now shows OAuth expiry in UTC with time remaining (or
   notes that the next sync will refresh an expired token) and displays only the
   access token's `org_id` claim when present. (Fixes #683)

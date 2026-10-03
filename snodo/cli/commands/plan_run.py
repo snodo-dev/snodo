@@ -1026,6 +1026,55 @@ def _print_plan_progress(planner, plan_name: str) -> None:
     print(f"\nPlan progress: {done}/{len(tasks)} completed")
 
 
+def _verify_queue_merge_head(project_root, working_directory, task_ref, protocol, audit_log, branch):
+    """Verify one exact plan/queue integration commit before queue delivery."""
+    from git import Repo
+    from snodo.cli.commands.run_merge import _matching_task_verifications
+    from snodo.validators.context import ValidatorContext
+    from snodo.validators.quality import QualityValidator
+
+    with Repo(project_root) as repo:
+        target_commit = repo.commit(branch).hexsha
+    quality = next(
+        (validator for validator in getattr(protocol, "validators", [])
+         if validator.validator_type == "quality"),
+        None,
+    )
+    task = Task(id=task_ref, spec=task_ref)
+    if quality is None:
+        audit_log.append_event("verification_executed", {
+            "op": "verification_executed", "task_ref": task_ref,
+            "commit": target_commit, "outcome": "no_tests",
+            "command": "no test_command configured",
+        })
+    else:
+        QualityValidator(quality, working_directory=str(working_directory)).evaluate(
+            ValidatorContext(
+                task=task, protocol=protocol, audit_log=audit_log,
+                working_directory=str(working_directory), task_id=task_ref,
+            )
+        )
+    history = audit_log.get_history("verification_executed") if audit_log else []
+    passing = [
+        event for event in _matching_task_verifications(history, task_ref, target_commit)
+        if event.data.get("outcome") in {"pass", "no_tests"}
+    ]
+    if passing:
+        return True
+    reason = (
+        f"No passing verification_executed event recorded for task {task_ref} "
+        f"at commit {target_commit[:7]}."
+    )
+    print(f"✗ Refused queue merge for {branch}: {reason}", file=sys.stderr)
+    if audit_log:
+        audit_log.append_event("unverified_merge_blocked", {
+            "op": "unverified_merge_blocked", "task_ref": task_ref,
+            "branch": branch, "target_commit": target_commit,
+            "reason": reason, "session_id": None,
+        })
+    return False
+
+
 def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
     """Execute a plan's tasks through the protocol loop."""
     from snodo.mcp.planner import PlannerMCP, PlannerError
@@ -1202,9 +1251,25 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                 try:
                     from snodo.infrastructure.worktree import _name_component, worktree_dir
                     from snodo.tools.git import open_repo
+                    plan_integration_path = (
+                        worktree_dir(str(project_root)) / _name_component(args.plan) / "integration"
+                    )
                     queue_path = worktree_dir(str(project_root)) / "queues" / _name_component(getattr(args, "queue", "default")) / "integration"
+                    if not _verify_queue_merge_head(
+                        str(project_root), plan_integration_path,
+                        str(plan_data.get("name", args.plan)), protocol, audit_log,
+                        integration_branch,
+                    ):
+                        failed = True
+                        raise RuntimeError("plan integration head has no passing verification")
                     with open_repo(str(queue_path)) as repo:
                         repo.git.merge("--no-edit", integration_branch)
+                    queue_task_ref = f"queue:{getattr(args, 'queue', 'default')}"
+                    if not _verify_queue_merge_head(
+                        str(queue_path), queue_path, queue_task_ref, protocol,
+                        audit_log, queue_integration_branch,
+                    ):
+                        failed = True
                 except Exception as exc:
                     print(f"Queue integration merge failed for {args.plan}: {exc}", file=sys.stderr)
                     failed = True
