@@ -453,10 +453,13 @@ class TestCLIConfigShow:
         assert "gpt-4" in out
 
     def test_show_displays_credential_reference_without_resolving(self, cli_config_dir, capsys):
-        cli_config_dir.save({"providers": {"github": {"api_key_ref": "command:gh auth token"}}})
+        cli_config_dir.save({"providers": {"github": {"api_key_ref": "command:gh auth --token secret-value"}}})
         with patch("subprocess.run", side_effect=AssertionError("must not execute reference")):
             assert main(["config", "show"]) == 0
-        assert "command:gh auth token" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "github: command:gh [arguments hidden]" in out
+        assert "secret-value" not in out
+        assert "No API keys configured" not in out
 
 
 class TestCLIConfigAdd:
@@ -475,8 +478,18 @@ class TestCLIConfigAdd:
         assert "***" in out
 
     def test_add_reference(self, cli_config_dir, capsys):
+        cli_config_dir.add_key("github", "old-literal")
         assert main(["config", "add", "github", "--ref", "command:gh auth token"]) == 0
         assert cli_config_dir.get_providers()["github"].api_key_ref == "command:gh auth token"
+        assert cli_config_dir.get_providers()["github"].api_key == ""
+        with patch("snodo.config.ConfigManager._resolve_key_reference", return_value="new-reference-key"):
+            assert cli_config_dir.get_key("github") == "new-reference-key"
+        assert "token" not in capsys.readouterr().out
+
+    def test_existing_env_reference_resolves(self, cli_config_dir, monkeypatch):
+        monkeypatch.setenv("TEST_PROVIDER_REF", "resolved-existing-key")
+        cli_config_dir.save({"providers": {"openai": {"api_key_ref": "env:TEST_PROVIDER_REF"}}})
+        assert cli_config_dir.get_key("openai") == "resolved-existing-key"
 
     def test_reject_malformed_reference(self, cli_config_dir, capsys):
         assert main(["config", "add", "github", "--ref", "bad"]) == 1
@@ -493,13 +506,21 @@ class TestCLIConfigRemove:
         result = main(["config", "remove", "openai"])
         assert result == 0
         out = capsys.readouterr().out
-        assert "Removed openai key" in out
+        assert "Removed openai credential" in out
 
     def test_remove_nonexistent_key(self, cli_config_dir, capsys):
         result = main(["config", "remove", "openai"])
         assert result == 1
         err = capsys.readouterr().err
         assert "No key found" in err
+
+    def test_remove_reference_and_environment_source(self, cli_config_dir):
+        cli_config_dir.save({"providers": {"openai": {
+            "api_key": "literal", "api_key_env": "CUSTOM_KEY", "api_key_ref": "env:OTHER_KEY",
+        }}})
+        assert main(["config", "remove", "openai"]) == 0
+        provider = cli_config_dir.get_providers()["openai"]
+        assert provider.api_key == provider.api_key_env == provider.api_key_ref == ""
 
 
 class TestCLIConfigTest:
