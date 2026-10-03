@@ -219,21 +219,28 @@ class QualityValidator(ValidatorBase):
         deliberately ignores untracked test/build artifacts.
         """
         try:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 ["git", "status", "--porcelain", "--untracked-files=no"],
                 cwd=str(self.working_directory),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=5,
                 env=subprocess_env_without_job_context(),
             )
-            if result.returncode == 0:
-                return not bool(result.stdout.strip())
+            try:
+                output, error = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+                logger.debug("Timed out checking tracked worktree state")
+                return False
+            if process.returncode == 0:
+                return not bool(output.strip())
             # No repository (or no HEAD yet): there is no commit evidence to
             # misattribute, so retain the validator's legacy non-git behavior.
-            if "not a git repository" in result.stderr.lower():
+            if "not a git repository" in error.lower():
                 return True
-            logger.debug("Failed to check tracked worktree state: %s", result.stderr)
+            logger.debug("Failed to check tracked worktree state: %s", error)
             return False
         except Exception as e:
             logger.debug("Failed to check tracked worktree state: %s", e)
