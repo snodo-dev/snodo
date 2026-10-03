@@ -205,8 +205,16 @@ def _merge_on_success(
 
     if delivery in {"push_branch", "change_request"}:
         try:
-            with open_repo(str(Path(project_root))) as repo:
-                repo.git.push(remote, branch)
+            with merge_lock(project_root):
+                from git import Repo
+                with Repo(project_root) as repo:
+                    current_commit = repo.commit(branch).hexsha
+                    if current_commit != target_commit:
+                        return _refuse_moved_branch(
+                            branch, task, target_commit, session_id, audit_log,
+                            action="delivery",
+                        )
+                    repo.git.push(remote, f"{target_commit}:refs/heads/{branch}")
             print(f"✓ Pushed {branch} to {remote}")
             if delivery == "change_request":
                 from snodo.providers.registry import detect_provider
@@ -245,7 +253,15 @@ def _merge_on_success(
 
         try:
             target_ref = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH") if plan_name else None
-            res = merge_task_branch(project_root, branch, target_ref=target_ref)
+            from git import Repo
+            with Repo(project_root) as repo:
+                current_commit = repo.commit(branch).hexsha
+            if current_commit != target_commit:
+                return _refuse_moved_branch(
+                    branch, task, target_commit, session_id, audit_log,
+                    action="merge",
+                )
+            res = merge_task_branch(project_root, target_commit, target_ref=target_ref)
             if isinstance(res, tuple):
                 outcome, conflicting_paths = res
             else:
@@ -264,7 +280,6 @@ def _merge_on_success(
                     "session_id": session_id,
                 })
             return 1, True, None
-
         if outcome == "merged":
             if audit_log:
                 authoritative_spec = getattr(task, "root_spec", None) or getattr(task, "spec", "")
@@ -296,6 +311,23 @@ def _merge_on_success(
                 "session_id": session_id,
             })
         return 1, True, None
+
+
+def _refuse_moved_branch(
+    branch: str, task: Any, verified_commit: str,
+    session_id: Optional[str], audit_log: Any, action: str,
+) -> tuple:
+    """Refuse delivery when the branch no longer identifies its verified commit."""
+    commit_display = verified_commit[:7] if verified_commit else "unknown"
+    reason = f"Branch {branch} moved after verification from {commit_display}."
+    print(f"✗ Refused {action} for {branch}: {reason}", file=sys.stderr)
+    if audit_log:
+        audit_log.append_event("unverified_merge_blocked", {
+            "op": "unverified_merge_blocked", "task_ref": task.id,
+            "branch": branch, "target_commit": verified_commit,
+            "reason": reason, "session_id": session_id,
+        })
+    return 1, True, None
 
 
 def _deliver_on_success(
@@ -400,7 +432,7 @@ def _deliver_plan_integration(
     """Deliver a completed plan branch using the task delivery machinery."""
     delivery = protocol.delivery_for(mode)
     task = Task(id=plan_name, spec=f"{plan_name}\n\n{intent}")
-    if delivery in {"push_branch", "change_request"}:
+    if delivery in {"push_branch", "change_request", "local_merge"}:
         # Task validators ran against each task commit. The integration branch
         # has its own (merge) commit and combined tree, so verify that exact
         # tree before asking the ordinary delivery gate to accept it.

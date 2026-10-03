@@ -340,7 +340,7 @@ def test_plan_local_delivery_cleans_directory_identity_not_authored_name(plan_pr
     assert str(unrelated_path) in registered
 
 
-@pytest.mark.parametrize("delivery", ["push_branch", "change_request"])
+@pytest.mark.parametrize("delivery", ["local_merge", "push_branch", "change_request"])
 def test_plan_delivery_verifies_integration_head_before_delivery(plan_project_env, delivery):
     """The exact combined plan commit is verified and its audit event gates delivery."""
     from git import Repo
@@ -388,6 +388,60 @@ def test_plan_delivery_verifies_integration_head_before_delivery(plan_project_en
             str(plan_project_env), "plan/verified/integration", plan_name, "combine tasks",
             protocol, "producer", audit_log,
         ) == 0
+
+
+def test_plan_delivery_refuses_branch_moved_after_verification(tmp_path):
+    """A newer integration tip is never merged after the old head was verified."""
+    from git import Repo
+
+    from snodo.cli.commands.run_merge import _deliver_plan_integration
+    from snodo.infrastructure.audit import AuditLog
+
+    root = tmp_path / "project"
+    root.mkdir()
+    repo = Repo.init(root)
+    repo.config_writer().set_value("user", "name", "Test").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    (root / "base.txt").write_text("base\n")
+    repo.index.add(["base.txt"])
+    base = repo.index.commit("base").hexsha
+    branch = "plan/moved/integration"
+    (root / "verified.txt").write_text("verified\n")
+    repo.index.add(["verified.txt"])
+    verified = repo.index.commit("verified head").hexsha
+    repo.git.branch(branch, verified)
+    audit = AuditLog(str(tmp_path / "audit.log"))
+    protocol = MagicMock()
+    protocol.delivery_for.return_value = "local_merge"
+    protocol.execution.delivery_remote = "origin"
+    protocol.metadata = {}
+    protocol.validators = [SimpleNamespace(validator_type="quality", tooling={"test_command": "true"})]
+
+    class MovingValidator:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def evaluate(self, context):
+            context.audit_log.append_event("verification_executed", {
+                "op": "verification_executed", "task_ref": context.task_id,
+                "validator_id": "quality", "returncode": 0,
+                "commit": verified, "outcome": "pass", "command": "true",
+            })
+            (root / "later.txt").write_text("later\n")
+            repo.index.add(["later.txt"])
+            advanced = repo.index.commit("advanced after verification").hexsha
+            repo.git.update_ref(f"refs/heads/{branch}", advanced)
+
+    with patch("snodo.validators.quality.QualityValidator", MovingValidator):
+        result = _deliver_plan_integration(
+            str(root), branch, "moved", "intent", protocol, "producer", audit,
+            integration_path=root,
+        )
+    assert result == 2
+    assert audit.get_history("verification_executed")[-1].data["commit"] == verified
+    assert audit.get_history("unverified_merge_blocked")
+    assert len(repo.head.commit.parents) == 1
+    repo.close()
 
 
 def test_plan_delivery_failed_integration_verification_blocks_gate(plan_project_env):

@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Plan integration delivery now verifies the combined head in every delivery
+  mode and refuses if its branch moves before the verified commit is merged or
+  pushed. (Fixes #692)
 - Quality verification now refuses a passing result when tracked files are
   dirty or HEAD changes during the test run. (Fixes #690)
 - Queue integration merges now require passing verification for each plan head
