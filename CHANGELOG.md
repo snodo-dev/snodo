@@ -10,6 +10,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Cloud OAuth consent now identifies the signing-in machine and refreshes old
+  cached client registrations once. (Fixes #681)
 - `snodo cloud connect <api_key>` now clears any OAuth login and best-effort
   revokes its refresh token, so API-key authentication takes effect immediately;
   revocation failure does not block the switch. (Fixes #680)

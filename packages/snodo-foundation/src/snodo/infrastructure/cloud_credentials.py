@@ -45,7 +45,12 @@ def _configured_api_key(config: dict) -> str | None:
 
 def cloud_identity_headers() -> dict[str, str]:
     from snodo.version import __version__
-    return {"User-Agent": f"snodo/{__version__}", "X-Snodo-Device": socket.gethostname()}
+    return {"User-Agent": f"snodo/{__version__}", "X-Snodo-Device": cloud_device_name()}
+
+
+def cloud_device_name() -> str:
+    """Return the hostname used to identify this machine to the cloud."""
+    return socket.gethostname()
 
 
 def cloud_ingest_headers(lease_token: str) -> dict[str, str]:

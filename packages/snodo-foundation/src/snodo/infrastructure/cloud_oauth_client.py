@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
-import socket
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
@@ -71,7 +70,9 @@ class CloudOAuthClient:
         self.metadata_url = get_cloud_oauth_metadata_url(config or {})
         self.http = http_client or httpx.Client(timeout=15.0)
         self.user_agent = f"snodo/{version}"
-        self.hostname = hostname or socket.gethostname()
+        from snodo.infrastructure.cloud_credentials import cloud_device_name
+
+        self.hostname = hostname or cloud_device_name()
         self.metadata: OAuthMetadata | None = None
 
     @property
@@ -105,7 +106,7 @@ class CloudOAuthClient:
             "POST",
             metadata.registration_endpoint,
             json={
-                "client_name": "Snodo",
+                "client_name": self.client_name,
                 "redirect_uris": [redirect_uri],
                 "token_endpoint_auth_method": "none",
                 "grant_types": ["authorization_code", "refresh_token"],
@@ -116,6 +117,11 @@ class CloudOAuthClient:
         if not isinstance(client_id, str) or not client_id:
             raise CloudOAuthError("OAuth client registration response has no client_id")
         return client_id
+
+    @property
+    def client_name(self) -> str:
+        """Consent-screen name identifying this machine."""
+        return f"snodo CLI ({self.hostname})"
 
     def authorization_url(
         self,

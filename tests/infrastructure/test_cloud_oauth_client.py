@@ -56,6 +56,7 @@ def test_register_pkce_authorize_exchange_and_refresh():
     assert pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk") == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
     client_id = client.register_client()
     assert client_id == "client-1"
+    assert '"client_name":"snodo CLI (host-a)"' in requests[-1].read().decode()
     body = requests[-1].read().decode()
     assert 'http://localhost:*' in body
     assert requests[-1].headers["User-Agent"] == "snodo/0.19.3"

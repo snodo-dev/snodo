@@ -32,13 +32,14 @@ class CloudOAuthState:
     refresh_token: str | None = None
     expires_at: float | None = None
     scope: str | None = None
+    registered_client_name: str | None = None
 
     def __repr__(self) -> str:
         return (
             "CloudOAuthState(client_id_present="
             f"{self.client_id is not None}, access_token_present={self.access_token is not None}, "
             f"refresh_token_present={self.refresh_token is not None}, expires_at={self.expires_at!r}, "
-            f"scope_present={self.scope is not None})"
+            f"scope_present={self.scope is not None}, registered_client_name={self.registered_client_name!r})"
         )
 
     def is_expired(self, *, now: Callable[[], float] = time.time) -> bool:
@@ -90,11 +91,12 @@ def load_oauth_state() -> CloudOAuthState:
             refresh_token = raw.get("refresh_token")
             expires_at = raw.get("expires_at")
             scope = raw.get("scope")
-            if any(value is not None and not isinstance(value, str) for value in (client_id, access_token, refresh_token, scope)):
+            registered_client_name = raw.get("registered_client_name")
+            if any(value is not None and not isinstance(value, str) for value in (client_id, access_token, refresh_token, scope, registered_client_name)):
                 return CloudOAuthState()
             if expires_at is not None and (isinstance(expires_at, bool) or not isinstance(expires_at, (int, float))):
                 return CloudOAuthState()
-            return CloudOAuthState(client_id, access_token, refresh_token, expires_at, scope)
+            return CloudOAuthState(client_id, access_token, refresh_token, expires_at, scope, registered_client_name)
         except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
             return CloudOAuthState()
 
@@ -110,6 +112,7 @@ def save_oauth_state(state: CloudOAuthState) -> None:
         "refresh_token": state.refresh_token,
         "expires_at": state.expires_at,
         "scope": state.scope,
+        "registered_client_name": state.registered_client_name,
     }
     with _locked(path):
         atomic_write_json(path, payload, trailing_newline=True)
@@ -134,5 +137,12 @@ def clear_oauth_state(*, keep_client_id: bool = True) -> None:
             except FileNotFoundError:
                 pass
         else:
-            atomic_write_json(path, {"client_id": client_id, "access_token": None, "refresh_token": None, "expires_at": None, "scope": None}, trailing_newline=True)
+            registered_client_name = None
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict) and isinstance(raw.get("registered_client_name"), str):
+                    registered_client_name = raw["registered_client_name"]
+            except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+                pass
+            atomic_write_json(path, {"client_id": client_id, "access_token": None, "refresh_token": None, "expires_at": None, "scope": None, "registered_client_name": registered_client_name}, trailing_newline=True)
             os.chmod(path, 0o600)

@@ -157,7 +157,10 @@ def cloud_login_command(*, no_browser: bool = False) -> int:
         previous = load_oauth_state()
         client = CloudOAuthClient(config)
         client.discover()
-        client_id = previous.client_id or client.register_client()
+        client_name = client.client_name
+        client_id = previous.client_id
+        if client_id is None or previous.registered_client_name != client_name:
+            client_id = client.register_client()
         verifier = pkce_verifier()
         state = oauth_state()
         def auth_url(redirect_uri: str) -> str:
@@ -179,6 +182,7 @@ def cloud_login_command(*, no_browser: bool = False) -> int:
             refresh_token=tokens.get("refresh_token") if isinstance(tokens.get("refresh_token"), str) else None,
             expires_at=expires_at,
             scope=tokens.get("scope") if isinstance(tokens.get("scope"), str) else None,
+            registered_client_name=client_name,
         ))
         mgr.set_value(("cloud", "sync_enabled"), True)
         account = _oauth_account_label(access_token)

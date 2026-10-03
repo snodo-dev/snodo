@@ -175,8 +175,12 @@ class TestCloudOAuthLogin:
 
         monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
         calls = {"registered": 0, "saved": None, "opened": [], "exchange": []}
-        state = CloudOAuthState(client_id="existing-client" if (tmp_path / "reuse").exists() else None)
+        state = CloudOAuthState(
+            client_id="existing-client" if (tmp_path / "reuse").exists() else None,
+            registered_client_name="snodo CLI (test-host)" if (tmp_path / "reuse").exists() else None,
+        )
         class Client:
+            client_name = "snodo CLI (test-host)"
             def __init__(self, _config): pass
             def discover(self): return object()
             def register_client(self):
@@ -223,6 +227,7 @@ class TestCloudOAuthLogin:
         assert mgr.set_value.call_count == 1
         assert mgr.set_value.call_args.args == (("cloud", "sync_enabled"), True)
         assert calls["registered"] == 1
+        assert calls["saved"].registered_client_name == "snodo CLI (test-host)"
         assert calls["saved"].access_token == "not-a-jwt-secret"
         output = capsys.readouterr().out
         assert "not-a-jwt-secret" not in output and "refresh-secret" not in output
@@ -234,6 +239,18 @@ class TestCloudOAuthLogin:
         assert cloud_login_command() == 0
         assert calls["registered"] == 0
         assert calls["exchange"][0][0] == "existing-client"
+
+    def test_reregisters_client_when_cached_name_is_stale(self, monkeypatch, tmp_path):
+        (tmp_path / "reuse").touch()
+        calls, _mgr = self._setup(monkeypatch, tmp_path)
+        import sys
+        state_module = sys.modules["snodo.infrastructure.cloud_oauth_store"]
+        state = state_module.load_oauth_state()
+        state_module.load_oauth_state = lambda: type(state)(client_id="existing-client", registered_client_name="Snodo")
+        from snodo.cli.commands.cloud_cmd import cloud_login_command
+        assert cloud_login_command() == 0
+        assert calls["registered"] == 1
+        assert calls["exchange"][0][0] == "new-client"
 
     def test_no_browser_prints_authorization_url(self, monkeypatch, tmp_path, capsys):
         self._setup(monkeypatch, tmp_path)
