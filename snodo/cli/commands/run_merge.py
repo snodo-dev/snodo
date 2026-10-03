@@ -392,10 +392,47 @@ def _try_merge_unmerged_task(
 def _deliver_plan_integration(
     project_root: str, branch: str, plan_name: str, intent: str,
     protocol: Protocol, mode: str, audit_log: Any,
+    integration_path: Optional[Path] = None,
 ) -> int:
     """Deliver a completed plan branch using the task delivery machinery."""
     delivery = protocol.delivery_for(mode)
     task = Task(id=plan_name, spec=f"{plan_name}\n\n{intent}")
+    if delivery in {"push_branch", "change_request"}:
+        # Task validators ran against each task commit. The integration branch
+        # has its own (merge) commit and combined tree, so verify that exact
+        # tree before asking the ordinary delivery gate to accept it.
+        from git import Repo
+        from snodo.infrastructure.worktree import _name_component, worktree_dir
+        from snodo.validators.context import ValidatorContext
+        from snodo.validators.quality import QualityValidator
+
+        integration_path = integration_path or (
+            worktree_dir(project_root) / _name_component(plan_name) / "integration"
+        )
+        quality = next(
+            (validator for validator in getattr(protocol, "validators", [])
+             if validator.validator_type == "quality"),
+            None,
+        )
+        with Repo(project_root) as repo:
+            target_commit = repo.commit(branch).hexsha
+        if quality is None:
+            audit_log.append_event("verification_executed", {
+                "op": "verification_executed", "task_ref": plan_name,
+                "commit": target_commit, "outcome": "no_tests",
+                "command": "no test_command configured",
+            })
+        else:
+            validator = QualityValidator(quality, working_directory=str(integration_path))
+            validator.evaluate(ValidatorContext(
+                task=task, protocol=protocol, audit_log=audit_log,
+                working_directory=str(integration_path), task_id=plan_name,
+            ))
+            # Always let the delivery gate make the final decision. A failed
+            # integration-head run records its verification_executed event;
+            # the gate then refuses it using the ordinary
+            # unverified_merge_blocked path and preserves the integration
+            # branch/worktree for human resolution.
     result, preserve, _ = _merge_on_success(
         project_root, task, 0, None, audit_log,
         delivery=delivery,
@@ -412,7 +449,9 @@ def _deliver_plan_integration(
     if delivery == "local_merge" and not preserve:
         from snodo.infrastructure.worktree import _name_component, worktree_dir
         from snodo.tools.git import open_repo
-        integration_path = worktree_dir(project_root) / _name_component(plan_name) / "integration"
+        integration_path = integration_path or (
+            worktree_dir(project_root) / _name_component(plan_name) / "integration"
+        )
         try:
             with open_repo(project_root) as repo:
                 repo.git.worktree("remove", "--force", str(integration_path))

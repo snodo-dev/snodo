@@ -40,6 +40,12 @@ snodo uses [Semantic Versioning](https://semver.org/).
   remote, plan content, and unmerged exit code after linked-worktree delivery
   changes; the reported regression tests pass without changing their assertions.
   (Fixes #670)
+- Exercise plan integration delivery through real Git repositories, covering delivery outcomes and gate behavior. (Fixes #661)
+- Local plan delivery now removes the integration worktree created for the plan directory, even when `plan.yml` declares a different name. (Fixes #661)
+- Re-running a completed plan or queue skips push/change-request delivery when its integration branch already points to the delivered commit, while delivering later branch changes. (Fixes #661)
+- Verify plan integration heads before push-branch or change-request delivery, and refuse failed verification through the delivery gate. (Fixes #661)
+- Document plan integration-branch delivery after successful unfiltered runs: local merge cleans up the branch/worktree, push and change-request retain them, and failed, partial, or wave-filtered runs defer delivery. (Fixes #661)
+- Plan integration branches are verified at their combined head before push-branch or change-request delivery. (Fixes #661)
 - Plan and queue task branches now merge inside their integration branch's
   registered linked worktree, preserving the project root checkout. (Fixes #668)
 - Background job ids now accompany `plan_run` for every trigger and optional
@@ -92,8 +98,8 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - PR review now opens or updates a fix-forward issue from non-MERGED findings.
   (Fixes #641)
 - Plan tasks now start from and merge into a durable per-plan integration
-  branch; its worktree remains available after completion for the follow-up
-  delivery step. (Fixes #631)
+  branch; completed unfiltered runs now deliver it according to the active mode,
+  while partial and filtered runs retain it for a later run. (Fixes #631, #661)
 - Task-branch merge, merged checks, cleanup, and recovery/change-size probes can
   use the task's integration starting ref while retaining the repository base
   as the default. (Fixes #629)

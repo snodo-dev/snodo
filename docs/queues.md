@@ -18,6 +18,9 @@ the next run to resume. `--non-blocking` runs that skip a failed plan do not
 deliver; rerun after resolving or removing the failure. With `local_merge`,
 each plan continues to merge directly into the base branch.
 
+If queue delivery fails, the queue run exits non-zero and keeps its integration
+branch and worktree for resolution and a later run.
+
 For first-use cleanup of inherited plans, see the [queue triage guide](queue-triage.md).
 
 ## Read validation and decide

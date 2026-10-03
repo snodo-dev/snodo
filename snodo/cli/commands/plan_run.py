@@ -22,6 +22,16 @@ from snodo.cli.commands import followup
 _logger = logging.getLogger(__name__)
 
 
+def _remote_branch_matches(repo, remote: str, branch: str, local_sha: str) -> bool:
+    """Whether the remote integration ref already names this exact commit."""
+    return any(
+        len(fields := line.split()) == 2
+        and fields[0] == local_sha
+        and fields[1] == f"refs/heads/{branch}"
+        for line in repo.git.ls_remote(remote, branch).splitlines()
+    )
+
+
 def _fixture_tree_identity(fixture: Path) -> str:
     """Return the identity of the committed tree supplied as a fixture."""
     result = subprocess.run(  # noqa: S603 - fixed git argv; fixture path is one argument
@@ -1093,11 +1103,6 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                 # (for validation-only tests and embedded integrations).
                 _logger.info("Plan integration worktree unavailable: %s", e)
                 integration_branch = None
-        previous_integration_branch = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH")
-        if integration_branch:
-            os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = integration_branch
-        else:
-            os.environ.pop("SNODO_PLAN_INTEGRATION_BRANCH", None)
         from snodo.infrastructure.state import read_state
         state = read_state(project_root)
         active_mode = getattr(args, "mode", None) or state.current_mode or protocol.initial_mode
@@ -1172,6 +1177,11 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
             )
             return 1
 
+        previous_integration_branch = os.environ.get("SNODO_PLAN_INTEGRATION_BRANCH")
+        if integration_branch:
+            os.environ["SNODO_PLAN_INTEGRATION_BRANCH"] = integration_branch
+        else:
+            os.environ.pop("SNODO_PLAN_INTEGRATION_BRANCH", None)
         failed = _execute_waves(
             waves, planner, args, protocol, model,
             all_waves, interactive, effective_concurrency=effective_concurrency,
@@ -1211,14 +1221,24 @@ def _run_plan(args, fixture_identity: Optional[str] = None) -> int:
                             already_delivered = repo.git.merge_base(
                                 "--is-ancestor", integration_branch, "HEAD", with_exceptions=False
                             ) == 0
+                        elif delivery_mode in {"push_branch", "change_request"}:
+                            local_sha = repo.commit(integration_branch).hexsha
+                            remote = getattr(protocol.execution, "delivery_remote", "origin")
+                            already_delivered = _remote_branch_matches(
+                                repo, remote, integration_branch, local_sha
+                            )
                 except Exception:
                     already_delivered = False
                 if not already_delivered:
+                    from snodo.infrastructure.worktree import _name_component, worktree_dir
                     delivery_result = _deliver_plan_integration(
                         str(project_root), integration_branch,
                         str(plan_data.get("name", args.plan)),
                         str(plan_data.get("intent", "")),
                         protocol, active_mode, audit_log,
+                        integration_path=(
+                            worktree_dir(str(project_root)) / _name_component(args.plan) / "integration"
+                        ),
                     )
                     if delivery_result:
                         failed = True
