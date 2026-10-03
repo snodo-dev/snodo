@@ -14,6 +14,7 @@ snodo uses [Semantic Versioning](https://semver.org/).
 - Queue runs with push-branch or change-request delivery now deliver one persistent integration branch for all successful plans in the run. (Fixes #665)
 
 ### Fixed
+- Quickstart installs Snodo and pytest in an activated virtual environment, and configures the mock fixture's pytest import path accurately. (Fixes #653)
 - Gate security support and package documentation against the release and workspace layout. (Fixes #664)
 ### Added
 - `snodo install` now detects and configures Claude Code, Cursor and Gemini CLI

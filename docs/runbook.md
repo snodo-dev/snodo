@@ -242,14 +242,16 @@ write. With no flag and no terminal, intake refuses rather than guessing.
 # In a new, empty project directory; an existing repository with a commit can
 # skip the Git initialization and initial commit steps.
 printf '# My project\n' > README.md
-git init
+git init -b main
 git add README.md
 # Git must have user.name and user.email configured for this commit.
 git commit -m "Initial project commit"
 
+python3 -m venv .venv
+source .venv/bin/activate
 pip install snodo
 pip install pytest
-snodo init --template team --test-command "pytest"
+snodo init --template team --test-command "PYTHONPATH=. pytest" --yes
 snodo run "add a hello() function that returns the string 'world', with a test" --mock
 ```
 
@@ -260,14 +262,20 @@ commit: configure it with `git config --global user.name "Your Name"` and
 values with `git config user.name "Your Name"` and
 `git config user.email "you@example.com"`.
 
-The starter README ensures the initial commit has a file, and Snodo's isolated
-task worktrees start from that committed `HEAD`. In an existing repository,
-skip `git init`; if it has no commits, commit at least one project file first.
-The mock coder deterministically writes `src/hello.py` and
-`tests/test_hello.py`, implementing the requested hello-world task without a
-provider API call. With the `pytest` dependency and test command in the sequence,
-the quality validator runs pytest and the generated test passes. A mock result
-does not establish that a real coder can implement your requirements.
+The virtual environment keeps Snodo and pytest out of the system Python; leave
+it active while running Snodo commands. The starter README ensures the initial
+commit has a file, and Snodo's isolated task worktrees start from that committed
+`HEAD`. Starting on `main` is required for the default isolated-worktree flow.
+In an existing repository, skip `git init`; if it has no commits, commit at
+least one project file first. `--yes` acknowledges Snodo's trusted-repository
+model so initialization works without an interactive prompt.
+
+For Python, the mock coder always writes the same `src/hello.py` and
+`tests/test_hello.py` hello-world fixture, whatever the task text says; it does
+not implement the requested task. `PYTHONPATH=.` in the test command makes the
+fixture's `from src.hello import hello` import resolve from the project root.
+The mock run can then demonstrate the fixture's test passing, but does not
+establish that a real coder can implement your requirements.
 
 For provider-backed coding, configure a provider (for example,
 `snodo config add anthropic <key>` or `ANTHROPIC_API_KEY`) and run the same task
