@@ -242,14 +242,16 @@ write. With no flag and no terminal, intake refuses rather than guessing.
 # In a new, empty project directory; an existing repository with a commit can
 # skip the Git initialization and initial commit steps.
 printf '# My project\n' > README.md
-git init
+git init -b main
 git add README.md
 # Git must have user.name and user.email configured for this commit.
 git commit -m "Initial project commit"
 
-pip install snodo
-pip install pytest
-snodo init --template team --test-command "pytest"
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install snodo
+python -m pip install pytest
+snodo init --template team --test-command "PYTHONPATH=. pytest" --yes
 snodo run "add a hello() function that returns the string 'world', with a test" --mock
 ```
 
@@ -260,19 +262,35 @@ commit: configure it with `git config --global user.name "Your Name"` and
 values with `git config user.name "Your Name"` and
 `git config user.email "you@example.com"`.
 
-The starter README ensures the initial commit has a file, and Snodo's isolated
-task worktrees start from that committed `HEAD`. In an existing repository,
-skip `git init`; if it has no commits, commit at least one project file first.
-The mock coder deterministically writes `src/hello.py` and
-`tests/test_hello.py`, implementing the requested hello-world task without a
-provider API call. With the `pytest` dependency and test command in the sequence,
-the quality validator runs pytest and the generated test passes. A mock result
-does not establish that a real coder can implement your requirements.
+The virtual environment keeps Snodo and pytest out of the system Python, even
+when the machine's shared or system Python is locked down; leave it active while
+running Snodo commands. Using `python -m pip` installs into that environment.
+The starter README ensures the initial
+commit has a file, and Snodo's isolated task worktrees start from that committed
+`HEAD`. Starting on `main` is required for the default isolated-worktree flow.
+In an existing repository, skip `git init`; if it has no commits, commit at
+least one project file first. `--yes` acknowledges Snodo's trusted-repository
+model so initialization works without an interactive prompt. `snodo init` adds
+Git ignore rules for Snodo's runtime state while allowing the authored
+`.snodo/protocol.yml` to be added and committed.
+
+For Python, the mock coder always writes the same `src/hello.py` and
+`tests/test_hello.py` hello-world fixture, whatever the task text says; it does
+not implement the requested task. `PYTHONPATH=.` in the test command makes the
+fixture's `from src.hello import hello` import resolve from the project root.
+With the fixture present, that command lets pytest import and run its test; a
+passing fixture test does not establish that a real coder can implement your
+requirements.
 
 For provider-backed coding, configure a provider (for example,
 `snodo config add anthropic <key>` or `ANTHROPIC_API_KEY`) and run the same task
-description without `--mock`. Task isolation is required by default;
-`--no-isolation` is an explicit fallback that runs in the current working tree.
+description without `--mock`; the selected provider needs a credential in Snodo
+config or its environment variable. A configured local endpoint that declares
+no `api_key_env` needs no credential. `--test-command` declares the test runner;
+it does not create tests. The configured command must exist and pass for the
+quality validator to report a passing test outcome. Task isolation is required
+by default; `--no-isolation` is an explicit fallback that runs in the current
+working tree.
 
 For an MCP run, the orchestrator validates and dispatches a task (or builds a
 plan/queue when the work needs that structure). Work starters return a job ID;
