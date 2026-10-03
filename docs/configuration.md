@@ -294,6 +294,13 @@ fall back to 900 and valid values are clamped to at least one second). Terminal
 
 ## Environment variables
 
+Plan delivery happens once, after every wave in an unfiltered plan run has
+completed successfully. It follows `execution.delivery` for the active mode:
+`local_merge` merges the plan integration branch into the base branch,
+`push_branch` pushes that branch, and `change_request` pushes it and opens one
+change request titled for the plan. Failed, stopped, or `--wave`-filtered runs
+do not deliver the plan branch.
+
 These variables affect run behavior or identify the context of a run. The
 `SNODO_*` variables below are read by Snodo; variables such as `ANTHROPIC_API_KEY`
 are provider credentials documented under [Providers](#providers).

@@ -129,6 +129,8 @@ def _merge_on_success(
     delivery: str = "local_merge",
     remote: str = "origin",
     protocol_metadata: Optional[dict] = None,
+    branch_override: Optional[str] = None,
+    change_request_content: Optional[tuple[str, str]] = None,
 ) -> tuple:
     """Merge the completed task's branch into the base branch.
 
@@ -148,6 +150,7 @@ def _merge_on_success(
     spec_for_branch = getattr(task, "root_spec", None) or task.spec
     from snodo.infrastructure.worktree import _task_identity
     _, branch = _task_identity(project_root, task.id, spec_for_branch, plan_name)
+    branch = branch_override or branch
 
     target_commit = ""
     try:
@@ -206,7 +209,7 @@ def _merge_on_success(
                     raise RuntimeError("no code-host provider is configured; install/configure a provider plugin and its credentials")
                 with open_repo(str(Path(project_root))) as repo:
                     target_branch = repo.active_branch.name
-                    title, body = _change_request_content(repo, branch, task)
+                    title, body = change_request_content or _change_request_content(repo, branch, task)
                 reference = provider.create_change_request(
                     branch, title, body,
                     target_branch=target_branch,
@@ -384,3 +387,36 @@ def _try_merge_unmerged_task(
         return True
     _record_task_completion(project_root, task_id, "unmerged")
     return False
+
+
+def _deliver_plan_integration(
+    project_root: str, branch: str, plan_name: str, intent: str,
+    protocol: Protocol, mode: str, audit_log: Any,
+) -> int:
+    """Deliver a completed plan branch using the task delivery machinery."""
+    delivery = protocol.delivery_for(mode)
+    task = Task(id=plan_name, spec=f"{plan_name}\n\n{intent}")
+    result, preserve, _ = _merge_on_success(
+        project_root, task, 0, None, audit_log,
+        delivery=delivery,
+        remote=getattr(protocol.execution, "delivery_remote", "origin"),
+        protocol_metadata=protocol.metadata,
+        branch_override=branch,
+        change_request_content=(
+            f"Deliver plan: {plan_name}"[:_CHANGE_REQUEST_TITLE_LIMIT],
+            f"Plan: {plan_name}\n\nIntent: {intent}"[:_CHANGE_REQUEST_BODY_LIMIT],
+        ),
+    )
+    if result:
+        return 2
+    if delivery == "local_merge" and not preserve:
+        from snodo.infrastructure.worktree import _name_component, worktree_dir
+        from snodo.tools.git import open_repo
+        integration_path = worktree_dir(project_root) / _name_component(plan_name) / "integration"
+        try:
+            with open_repo(project_root) as repo:
+                repo.git.worktree("remove", "--force", str(integration_path))
+                repo.git.branch("-D", branch)
+        except Exception as exc:
+            _logger.warning("Could not clean up delivered plan integration branch %s: %s", branch, exc)
+    return 0
