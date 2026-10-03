@@ -15,6 +15,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
   head and allowed with passing evidence. (Fixes #693)
 
 ### Fixed
+- Cloud audit sync now bounds repeated rate-limit retries, preserves the
+  pending cursor for a later run, reports accepted and pending progress, and
+  keeps admission lease ids out of operator-facing errors. (Fixes #695)
 - Source-checkout version strings now include the reachable commit count and
   short commit id, distinguishing editable builds from released packages.
   (Fixes #694)

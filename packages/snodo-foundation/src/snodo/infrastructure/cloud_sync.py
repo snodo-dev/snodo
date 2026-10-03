@@ -563,23 +563,6 @@ def _response_limit_bytes(response: Any) -> Optional[int]:
     return int(match.group(1)) if match else None
 
 
-def _response_retry_after_seconds(response: Any) -> Optional[float]:
-    """Read the server's retry delay from Retry-After or its JSON body."""
-    headers = getattr(response, "headers", None)
-    header_delay = retry_after_seconds(headers)
-    if header_delay is not None:
-        return header_delay
-    try:
-        value = response.json().get("retry_after")
-    except (AttributeError, TypeError, ValueError):
-        return None
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return max(0.0, float(value))
-    if isinstance(value, str):
-        return retry_after_seconds({"Retry-After": value})
-    return None
-
-
 def _partition_events(
     session_id: str, project_root: str, events: list, byte_limit: int,
 ) -> list[list]:
@@ -874,6 +857,7 @@ class CloudSyncDispatcher:
         refused = False
         refused_reason = None
         last_error: Optional[str] = None
+        rate_limited = False
 
         # Partition by both event count and the actual serialized wire size.
         # The margin keeps normal batches below the server's object limit.
@@ -900,6 +884,8 @@ class CloudSyncDispatcher:
             batch = queue.pop(0)
             first_seq = batch[0].sequence
             max_seq = batch[-1].sequence
+            from snodo.infrastructure.cloud_sync_output import batch_progress
+            batch_progress(session_id, synced, max(0, len(unsynced) - synced))
             outcome, reason, status_code = self._post_batch(
                 session_id, project_root, batch, api_key, api_url,
                 force=force or bool(oversized_sequences),
@@ -914,6 +900,7 @@ class CloudSyncDispatcher:
                     state.advance_project_cursor(project_id, max_seq)
                 _logger.debug("Cursor advanced to sequence %d", max_seq)
                 synced += len(batch)
+                batch_progress(session_id, synced, max(0, len(unsynced) - synced))
             elif outcome == "too_large" and len(batch) > 1:
                 server_limit = status_code or _DEFAULT_PAYLOAD_LIMIT
                 payload_limit = min(payload_limit, max(1, server_limit - _PAYLOAD_MARGIN))
@@ -967,6 +954,7 @@ class CloudSyncDispatcher:
             else:  # retryable
                 failed = True
                 last_error = reason
+                rate_limited = status_code == 429
                 break
 
             if outcome == "delivered" and oversized_sequences:
@@ -982,6 +970,8 @@ class CloudSyncDispatcher:
 
         pending = max(0, len(unsynced) - synced)
         state.record_attempt(session_id, pending=pending, error=last_error if failed else None)
+        from snodo.infrastructure.cloud_sync_output import session_summary
+        session_summary(session_id, synced, pending, rate_limited)
 
         res_dict: dict = {"synced": synced, "failed": failed, "pending": pending}
         if failed and last_error:
@@ -1097,7 +1087,8 @@ class CloudSyncDispatcher:
                     return ("delivered", f"HTTP {response.status_code}", response.status_code)
 
                 body_text = response.text[:500]
-                reason = f"{url} -> HTTP {response.status_code}: {body_text.strip() or 'No server message'}"
+                from snodo.infrastructure.cloud_sync_output import ingest_failure
+                reason = ingest_failure(url, response.status_code, body_text)
 
                 if response.status_code == 401 and not lease_replaced:
                     print(f"Cloud ingest rejected lease: {reason}; minting once and retrying", file=__import__("sys").stderr)
@@ -1113,16 +1104,14 @@ class CloudSyncDispatcher:
                     continue
 
                 if response.status_code == 429:
-                    retry_after = _response_retry_after_seconds(response)
-                    wait = cloud_backoff_seconds(
-                        attempt + 1, retry_after,
+                    from snodo.infrastructure.cloud_sync_output import (
+                        response_retry_after, retry_rate_limited,
                     )
-                    _logger.warning(
-                        "Cloud sync HTTP 429 retry_after=%s (session=%s): %s",
-                        retry_after, session_id, body_text,
-                    )
-                    print(f"Cloud ingest failed: {reason}", file=__import__("sys").stderr)
-                    time.sleep(wait)
+                    if not retry_rate_limited(
+                        session_id, body_text, response_retry_after(response), attempt, _MAX_RETRIES,
+                    ):
+                        return ("retryable", reason, response.status_code)
+                    attempt += 1
                     continue
 
                 if response.status_code >= 500:
@@ -1160,7 +1149,8 @@ class CloudSyncDispatcher:
                         "Cloud sync network error retries exhausted (session=%s): %s",
                         session_id, exc, exc_info=True,
                     )
-                    reason = f"{url} -> no response: {exc}"
+                    from urllib.parse import urlsplit
+                    reason = f"{urlsplit(url).netloc or 'cloud ingest'} -> no response: {exc}"
                     print(f"Cloud ingest failed: {reason}", file=__import__("sys").stderr)
                     return ("retryable", reason, None)
                 time.sleep(cloud_backoff_seconds(attempt + 1))

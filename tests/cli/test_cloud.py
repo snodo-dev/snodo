@@ -849,7 +849,33 @@ class TestCloudSyncDispatcher:
         mock_sleep.assert_called_with(1)
         assert mock_post.call_count == 2
 
-    def test_429_body_retry_after_is_honoured_without_using_retry_budget(self):
+    def test_429_then_200_advances_cursor(self, tmp_path, monkeypatch):
+        import time
+
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+        from snodo.infrastructure.cloud_lease import CloudLease
+
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+        events = self._make_events(1)
+        rate_limited = MagicMock(
+            status_code=429, headers={"Retry-After": "1"}, text="rate limited",
+        )
+        accepted = MagicMock(status_code=200, text="ok")
+        lease = CloudLease("lease-secret", "token", time.time() + 3600, interface_version=8)
+        dispatcher = CloudSyncDispatcher()
+        with (
+            patch("snodo.infrastructure.cloud_lease.get_admission_lease", return_value=lease),
+            patch("httpx.post", side_effect=[rate_limited, accepted]) as post,
+            patch("snodo.infrastructure.cloud_sync.time.sleep"),
+        ):
+            result = dispatcher.sync("sess_recovered", "/project", MagicMock(events=events), "key", "https://api.test")
+
+        assert post.call_count == 2
+        assert result["synced"] == 1
+        assert result["pending"] == 0
+        assert CloudSyncState().get_cursor("sess_recovered") == 1
+
+    def test_429_body_retry_after_is_honoured_with_bounded_retry_budget(self):
         from unittest.mock import patch
 
         from snodo.infrastructure.cloud_sync import CloudSyncDispatcher
@@ -861,9 +887,8 @@ class TestCloudSyncDispatcher:
         rate_limited.headers = {}
         rate_limited.text = '{"error":"rate_limited","retry_after":60}'
         rate_limited.json.return_value = {"error": "rate_limited", "retry_after": 60}
-        ok_resp = MagicMock(status_code=200, text="ok")
         with (
-            patch("httpx.post", side_effect=[rate_limited] * 7 + [ok_resp]) as mock_post,
+            patch("httpx.post", side_effect=[rate_limited] * 6) as mock_post,
             patch("snodo.infrastructure.cloud_sync.time.sleep") as mock_sleep,
         ):
             outcome, _reason, _status = dispatcher._post_batch(
@@ -871,10 +896,59 @@ class TestCloudSyncDispatcher:
                 "sndo_live_xxx", "https://api.example.com",
             )
 
-        assert outcome == "delivered"
-        assert mock_post.call_count == 8
-        assert mock_sleep.call_count == 7
+        assert outcome == "retryable"
+        assert mock_post.call_count == 6
+        assert mock_sleep.call_count == 5
         mock_sleep.assert_called_with(60)
+
+    def test_repeated_429_leaves_batch_pending_and_cursor_unchanged(self, tmp_path, monkeypatch, capsys):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+        events = self._make_events(2)
+        audit_log = MagicMock(events=events)
+        dispatcher = CloudSyncDispatcher()
+
+        with patch.object(
+            dispatcher, "_post_batch", return_value=("retryable", "api.example.com -> HTTP 429", 429),
+        ) as post:
+            result = dispatcher.sync("sess_bounded", "/project", audit_log, "key", "https://api.example.com")
+
+        assert post.call_count == 1
+        assert result["pending"] == 2
+        assert result["synced"] == 0
+        assert CloudSyncState().get_cursor("sess_bounded") == 0
+        output = capsys.readouterr().err
+        assert "0 accepted, 2 still pending; stopped early because of rate limiting" in output
+
+    def test_sync_progress_summary_and_failure_hide_lease_id(self, tmp_path, monkeypatch, capsys):
+        from snodo.infrastructure.cloud_sync import CloudSyncDispatcher, CloudSyncState
+        from snodo.infrastructure.cloud_sync_output import ingest_failure
+
+        monkeypatch.setattr("snodo.infrastructure.cloud_sync.resolve_home", lambda: tmp_path)
+        events = self._make_events(2)
+        audit_log = MagicMock(events=events)
+        dispatcher = CloudSyncDispatcher()
+        calls = iter([
+            ("delivered", "HTTP 200", 200),
+            ("retryable", "api.example.com -> HTTP 429", 429),
+        ])
+        with (
+            patch("snodo.infrastructure.cloud_sync._partition_events", return_value=[[events[0]], [events[1]]]),
+            patch.object(dispatcher, "_post_batch", side_effect=lambda *a, **kw: next(calls)),
+        ):
+            result = dispatcher.sync("sess_progress", "/project", audit_log, "key", "https://api.example.com")
+
+        assert result["synced"] == 1
+        assert result["pending"] == 1
+        assert CloudSyncState().get_cursor("sess_progress") == 1
+        output = capsys.readouterr().err
+        assert "1 events accepted; 1 pending" in output
+        assert "1 accepted, 1 still pending; stopped early because of rate limiting" in output
+        assert "lease-secret" not in output
+        message = ingest_failure("https://api.example.com/i/lease-secret", 429, "rate limited")
+        assert message == "api.example.com -> HTTP 429: rate limited"
+        assert "lease-secret" not in message
 
     def test_5xx_exponential_backoff(self):
         from unittest.mock import patch
