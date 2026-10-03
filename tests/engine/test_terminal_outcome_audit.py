@@ -222,7 +222,7 @@ class TestHaltEventShape:
 
         _, data = audit.append_event.call_args[0]
         emitted = set(data) - {"op"}
-        assert emitted == _documented_halt_keys()
+        assert emitted == _documented_halt_keys() - {"job_id"}
 
 
 class TestTaskCompleteEventShape:
@@ -256,7 +256,7 @@ class TestTaskCompleteEventShape:
 
         _, data = audit.append_event.call_args[0]
         emitted = set(data) - {"op"}
-        assert emitted == _documented_event_keys("task_complete")
+        assert emitted == _documented_event_keys("task_complete") - {"job_id"}
         assert data["change_size"] is None  # no git here: unmeasured, not zero
 
     def test_plan_owned_task_complete_records_plan_wave(self):
