@@ -45,8 +45,9 @@ not the agent cooperates.
 Connect an agent to Snodo over MCP. The orchestrator chooses the smallest
 structure that fits—one task, a parallel wave, a multi-wave plan, or a queue of
 plans—then validates and starts the work. Each task still passes through the
-protocol's validator loop; jobs run asynchronously. Follow a live job with the
-browser watch link returned when an HTTP/tunnel URL is configured, or with
+protocol's validator loop; jobs run asynchronously. Follow task status and
+progress in the configured cloud live view (`/now?task_ref=<task_ref>`) when
+cloud sync is configured, and follow live output with
 `snodo logs <job_id> --watch`. `watch_job` also has an optional MCP Apps panel,
 but some hosts (including Claude Desktop and relayed sessions) show only its
 plain-text snapshot.

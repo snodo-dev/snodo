@@ -2205,7 +2205,9 @@ class TestInstructions:
         text = guide_text(guide_server.project_root, {tool["name"] for tool in guide_server.get_tools()}, "follow-run")
 
         assert "call `watch_job(job_id)`" in text
-        assert "hand the operator the returned watch link" in text
+        assert "cloud live view" in text
+        assert "not a live output stream" in text
+        assert "tunnel.snodo.dev/watch/" not in text
         assert "optional extra" in text
         assert "snodo logs <job_id> --watch" in text
         assert "get_job_status" in text  # available for a specific follow-up

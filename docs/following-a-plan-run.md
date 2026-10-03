@@ -2,9 +2,9 @@
 
 This page is a short plan-specific index. The canonical live-following
 instructions are the MCP guide topic [`following-a-run`](following-a-run.md),
-which describes the browser link, `watch_job` text fallback, CLI log watch, and
-host-dependent MCP Apps support. Use this page for plan hierarchy and final
-task outcomes; do not treat the optional Apps panel as the primary watch path.
+which describes cloud live view, CLI log watch, and host-dependent MCP Apps
+support. Use this page for plan hierarchy and final task outcomes; do not treat
+the optional Apps panel as the primary watch path.
 
 `run_plan` is asynchronous. It returns the plan-run job's `job_id` as soon as
 the run is accepted; that response does not mean that any task passed. Keep the
@@ -34,9 +34,11 @@ task outcome.
 
 ## Follow the run live
 
-Use the browser watch link returned for the job when available; it streams
-status and recent output and stops at a final status. Otherwise use
-`snodo logs <job_id> --watch`. `watch_job(job_id)` is an optional MCP observer:
+When cloud sync is configured and the job has a task reference, suggest the
+cloud live view at `<configured cloud liveness/app URL>/now?task_ref=<task_ref>`
+for task status and progress. It does not stream output. Always suggest
+`snodo logs <job_id> --watch` for the live output stream.
+`watch_job(job_id)` is an optional MCP observer:
 it returns a plain-text snapshot for clients without MCP Apps support, and some
 hosts render its refreshable panel. Use `get_plan` when you need the per-task
 map, and refresh `list_jobs` only when you need to discover child jobs.
@@ -45,8 +47,8 @@ There is also an opt-in narrated path: call `run_plan` with `wait=true` and
 send a progress token with the MCP request. The server emits a line when a
 task's plan status changes, including the child job id when there is one. This
 blocks that tool call until the run ends or its `timeout` expires; without a
-progress token, prefer the immediate-return path and follow the browser link or
-CLI log watch.
+progress token, prefer the immediate-return path and follow the cloud view and
+CLI log watch when available.
 
 ## Know when to stop
 

@@ -12,8 +12,9 @@ the current topics include `waves`, `planning`, `spec`, `mistakes`,
 
 For background work started by `dispatch_task`, `run_plan`, or `queue_run`, the
 instructions say to call `watch_job(job_id)`. The text snapshot is available
-without an MCP Apps host; pass the returned browser watch link to the operator
-when available, and otherwise use `snodo logs <job_id> --watch`. Use
+without an MCP Apps host; suggest the configured cloud live view for task
+status/progress when available and always suggest `snodo logs <job_id> --watch`
+for live output. Do not hand out the MCP server's `/watch/` capability URL. Use
 `get_job_status` or `get_job_logs` for a specific follow-up, not as the routine
 polling loop. See [Following a run](../following-a-run.md).
 

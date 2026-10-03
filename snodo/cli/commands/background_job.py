@@ -74,9 +74,22 @@ def _submit_background_job(args) -> int:
             return 1
 
         print(f"Job submitted: {job_id}")
-        # A job that has just started is still running: offer its live surface
-        # (tail the output until it completes) alongside the record commands.
-        print(f"  Watch (running): {followup.job_followup(job_id, running=True)}")
+        # The dashboard covers status/progress; the terminal command tails output.
+        status = manager.get_status(job_id)
+        task = status.get("task") if isinstance(status.get("task"), dict) else {}
+        task_ref = task.get("task_id") or task.get("retry_task_id")
+        cloud_config = mgr.load()
+        from snodo.infrastructure.cloud_credentials import cloud_sync_enabled
+        if task_ref and cloud_sync_enabled(cloud_config):
+            from snodo.config import get_cloud_liveness_url
+            print(
+                f"  Cloud live view: {followup.job_live_view(task_ref, get_cloud_liveness_url(cloud_config))} "
+                "(task status and progress; not a live output stream)"
+            )
+        print(
+            f"  Watch (running): {followup.job_followup(job_id, running=True)} "
+            "— streams the job's live output in a terminal."
+        )
         print(f"  snodo job status {job_id}")
         print(f"  snodo job logs {job_id}")
         print(f"  snodo job wait {job_id}")
