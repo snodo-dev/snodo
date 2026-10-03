@@ -109,7 +109,7 @@ class TestCloudConnect:
     def test_connect_without_oauth_keeps_existing_behavior(self, monkeypatch, tmp_path, capsys):
         monkeypatch.setenv("SNODO_HOME", str(tmp_path / "home"))
         from snodo.infrastructure.cloud_oauth_store import load_oauth_state
-        with patch("snodo.config.ConfigManager") as manager:
+        with patch("snodo.config.ConfigManager"):
             from snodo.cli.commands.cloud_cmd import cloud_connect_command
             assert cloud_connect_command("sndo_live_valid") == 0
         assert load_oauth_state().access_token is None
