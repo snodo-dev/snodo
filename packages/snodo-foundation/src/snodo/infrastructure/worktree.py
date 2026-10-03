@@ -108,6 +108,31 @@ def _branch_exists(project_root: str, branch: str) -> bool:
         return False
 
 
+def _worktree_has_branch(project_root: str, path: Path, branch: str) -> bool:
+    """Return whether Git records *path* checked out on *branch*."""
+    try:
+        from snodo.tools.git import open_repo
+
+        with open_repo(project_root) as repo:
+            raw = repo.git.worktree("list", "--porcelain")
+    except Exception:
+        return False
+
+    target = path.resolve()
+    entry_path = None
+    entry_branch = None
+    for line in (*raw.splitlines(), ""):
+        if not line:
+            if entry_path == target and entry_branch == f"refs/heads/{branch}":
+                return True
+            entry_path = entry_branch = None
+        elif line.startswith("worktree "):
+            entry_path = Path(line.removeprefix("worktree ")).resolve()
+        elif line.startswith("branch "):
+            entry_branch = line.removeprefix("branch ")
+    return False
+
+
 def _task_identity(
     project_root: str, task_id: str, spec: str, plan_name: Optional[str]
 ) -> Tuple[Path, str]:
@@ -119,7 +144,10 @@ def _task_identity(
 
     old_path = worktree_path(project_root, task_id)
     old_branch = legacy_task_branch_name(task_id, spec)
-    if old_path.exists() or _branch_exists(project_root, old_branch):
+    if (
+        _branch_exists(project_root, old_branch)
+        and _worktree_has_branch(project_root, old_path, old_branch)
+    ):
         return old_path, old_branch
     return new_path, new_branch
 

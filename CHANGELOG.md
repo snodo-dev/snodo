@@ -10,6 +10,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Plan tasks reuse a legacy worktree only when the exact legacy branch is
+  checked out there; unrelated same-id worktrees and branches remain untouched.
+  (Fixes #685)
 - Queue and other generic-description jobs now use unique job identities, while
   plan-dispatched tasks retain task-specific worktrees and retry reuse. (Fixes #684)
 - `snodo cloud status` now shows OAuth expiry in UTC with time remaining (or
