@@ -31,7 +31,7 @@ The 2+N model underlies everything: **2** human-in-control roles (producer and r
 
 ## Package map
 
-A uv workspace of five packages, all under the `snodo.*` namespace, plus the root
+A uv workspace of packages, all under the `snodo.*` namespace, plus the root
 CLI/TUI package.
 
 | Package | Responsibility | Key modules |
@@ -42,6 +42,8 @@ CLI/TUI package.
 | **snodo-foundation** | Infrastructure + protocol compiler + shipped templates | `infrastructure/`: `tokens.py`, `audit.py`, `session.py`, `decisions.py`, `memory.py`, `cloud_sync.py` · `compiler/`: `models.py`, `verifier.py` (WF1–WF5) · `protocols/templates/*.yml` |
 | **snodo-engine** | The executable part | `engine/`: `loop.py` (graph builder), `closure.py` (recursive driver), `policy.py`, `constraints.py`, `nodes/*` · `validators/`: `runner.py`, `registry.py`, `llm_validator.py`, `quality.py`, `protocol_adherence.py`, `context.py` · `coders/` |
 | **snodo-mcp** | MCP server surface for external agents | `server.py`, `decision_handlers.py`, planner, PR, recon, jobs |
+| **snodo-provider-github** | GitHub code-host integration | GitHub provider implementation |
+| **snodo-provider-gitlab** | GitLab code-host integration | GitLab provider implementation |
 
 Two persistent stores, both user-global under `SNODO_HOME` (not per-project — task
 execution may run inside a git worktree, so project-relative state would fragment):

@@ -9,6 +9,9 @@ snodo uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Gate security support and package documentation against the release and workspace layout. (Fixes #664)
+
 ### Changed
 - Group top-level CLI help into task-focused panels and show a start-here screen when `snodo` is run without arguments. (Fixes #646, #647)
 

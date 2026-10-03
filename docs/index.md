@@ -85,7 +85,7 @@ state of the code, not a promise.
 
 | | |
 |---|---|
-| Code | ~32,700 lines of code (five packages — `snodo-core`, `snodo-tools`, `snodo-foundation`, `snodo-engine`, `snodo-mcp` — plus the root CLI/TUI) |
+| Code | ~32,700 lines of code across the uv workspace packages plus the root CLI/TUI |
 | Complexity | average cyclomatic complexity **A (4.96)** over 1,728 blocks (`radon`) |
 | Lint / architecture | `ruff` clean; package layering enforced in CI by `import-linter` |
 | Tests | ~3,900 collected; property-based tests over randomised inputs for the enforcement invariants |

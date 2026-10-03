@@ -17,7 +17,7 @@ PYTHON := .venv/bin/python
 # Read current root version at make-parse time.
 # Recipe-level targets re-read at execution time.
 _V := $(shell sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
-PACKAGES := snodo-core snodo-tools snodo-foundation snodo-engine snodo-mcp snodo-provider-github snodo-provider-gitlab
+PACKAGES := $(notdir $(wildcard packages/*))
 PART ?= patch
 
 .PHONY: studies study clean version sync-versions bump release
